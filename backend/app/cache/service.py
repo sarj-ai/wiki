@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 import asyncio
-from collections.abc import Mapping
+from collections.abc import Iterable, Mapping
 from datetime import datetime, timedelta
 from enum import StrEnum
 from itertools import batched
@@ -31,12 +31,24 @@ _MAX_WRITE_ROWS_PER_QUERY = 1_000
 _ARRAY_WRITE_THRESHOLD = 8
 _UNNEST_LOOKUP_THRESHOLD = 4_096
 _BULK_CPU_OFFLOAD_THRESHOLD = 256
+_PAYLOAD_CPU_OFFLOAD_BYTES = 512 * 1024
 _MAX_CACHE_TTL = timedelta(minutes=5)
 
 
 class _ProtectedCacheValue(NamedTuple):
     key: str
     envelope: str
+
+
+def _needs_crypto_offload(envelopes: Iterable[object]) -> bool:
+    ciphertext_bytes = 0
+    for envelope in envelopes:
+        if not isinstance(envelope, str):
+            continue
+        ciphertext_bytes += len(envelope)
+        if ciphertext_bytes >= _PAYLOAD_CPU_OFFLOAD_BYTES:
+            return True
+    return False
 
 
 def _cache_insert(
@@ -186,7 +198,12 @@ class CachePSqlService(CacheService):
                 continue
             observed = rows_by_key[candidate]
             try:
-                value = self._protector.unprotect(namespace, key, observed)
+                if _needs_crypto_offload((observed,)):
+                    value = await asyncio.to_thread(
+                        self._protector.unprotect, namespace, key, observed
+                    )
+                else:
+                    value = self._protector.unprotect(namespace, key, observed)
             except InvalidCacheEntryError:
                 continue
             increment("cache_hits")
@@ -236,7 +253,9 @@ class CachePSqlService(CacheService):
                 async with self._sessionmaker() as db:
                     rows = [(row[0], row[1]) for row in (await db.execute(statement)).all()]
                 rows_by_key.update(rows)
-        if len(physical_by_logical) >= _BULK_CPU_OFFLOAD_THRESHOLD:
+        if len(physical_by_logical) >= _BULK_CPU_OFFLOAD_THRESHOLD or _needs_crypto_offload(
+            rows_by_key.values()
+        ):
             values = await asyncio.to_thread(
                 self._unprotect_rows, namespace, physical_by_logical, rows_by_key
             )

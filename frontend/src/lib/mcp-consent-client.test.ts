@@ -12,6 +12,33 @@ const CSRF = `wm_intent_${"b".repeat(43)}`;
 describe("MCP consent transport", () => {
   afterEach(() => vi.unstubAllGlobals());
 
+  it.each(["read", "decision", "disconnect"] as const)(
+    "releases unused %s error bodies without waiting for cleanup or retrying",
+    async (operation) => {
+      const cleanup = Promise.withResolvers<undefined>();
+      const cancel = vi.fn<() => Promise<undefined>>().mockReturnValue(cleanup.promise);
+      const response = new Response(new ReadableStream<Uint8Array>({ cancel }), { status: 503 });
+      const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(response);
+      vi.stubGlobal("fetch", fetchMock);
+      try {
+        const pending =
+          operation === "read"
+            ? getMcpConsent(INTENT)
+            : operation === "decision"
+              ? decideMcpConsent(INTENT, CSRF, { approve: true, transformApproved: false })
+              : disconnectMcpConnection("00000000-0000-4000-8000-000000000001", "a".repeat(64));
+        await expect(pending).rejects.toMatchObject({
+          name: "McpConsentRequestError",
+          status: 503,
+        });
+        expect(cancel).toHaveBeenCalledOnce();
+        expect(fetchMock).toHaveBeenCalledOnce();
+      } finally {
+        cleanup.resolve(undefined);
+      }
+    },
+  );
+
   it("disconnects with browser credentials and CSRF, accepting only a confirmed 204", async () => {
     const fetchMock = vi.fn().mockResolvedValue(new Response(null, { status: 204 }));
     vi.stubGlobal("fetch", fetchMock);

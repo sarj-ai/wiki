@@ -4,16 +4,18 @@ from abc import ABC, abstractmethod
 import asyncio
 from collections import deque
 from datetime import timedelta
+from functools import partial
 from typing import override
 from uuid import UUID
 
 from loguru import logger
 from pydantic import ValidationError
 
+from app.auth.google_tokens import provider_refresh_scope
 from app.cache.service import CacheNamespace, CacheService
 from app.drive.schemas import MIME_DOC, MIME_FOLDER, MIME_SLIDE, DriveNode, DriveSummary
 from app.drive.service import DriveService
-from app.identifiers import FileId
+from app.identifiers import DriveId, FileId
 from app.sidebar.singleflight import Singleflight
 from app.templates.schemas import TemplateCatalogRead, TemplateMimeType, TemplateRead
 
@@ -26,11 +28,16 @@ _SUPPORTED_MIME_TYPES = frozenset({MIME_DOC, MIME_SLIDE})
 
 
 _singleflight = Singleflight[TemplateCatalogRead]()
+_workspace_singleflight = Singleflight[list[TemplateRead]]()
 
 
 class TemplateCatalogService(ABC):
     @abstractmethod
     async def list_templates(self, *, refresh: bool = False) -> TemplateCatalogRead: ...
+
+    async def resolve_template(self, file_id: FileId, drive_id: DriveId) -> TemplateRead | None:
+        catalog = await self.list_templates(refresh=True)
+        return _find_template(catalog.templates, file_id=file_id, drive_id=drive_id)
 
 
 class DriveTemplateCatalogService(TemplateCatalogService):
@@ -56,6 +63,34 @@ class DriveTemplateCatalogService(TemplateCatalogService):
                 except ValidationError:
                     await self._cache.delete(CacheNamespace.TEMPLATE_CATALOG, str(self._user_id))
         return await _singleflight.do(str(self._user_id), self._discover_and_cache)
+
+    @override
+    async def resolve_template(self, file_id: FileId, drive_id: DriveId) -> TemplateRead | None:
+        drives = await self._drive.list_drives()
+        drive = next((item for item in drives if item.id == drive_id), None)
+        if drive is None:
+            return None
+        # Copy validation needs a fresh catalog for this workspace. Unrelated
+        # workspace trees do not contribute to the selected template verdict.
+        (templates,) = await asyncio.gather(
+            _workspace_singleflight.do(
+                f"{self._user_id}:{drive.id}", partial(self._discover_workspace, drive)
+            ),
+            return_exceptions=True,
+        )
+        if isinstance(templates, BaseException):
+            logger.warning(
+                "template discovery failed error_type={error_type}",
+                error_type=type(templates).__name__,
+            )
+            return None
+        return _find_template(templates, file_id=file_id, drive_id=drive_id)
+
+    async def _discover_workspace(self, drive: DriveSummary) -> list[TemplateRead]:
+        # Credential refresh belongs to the discovery task that owns the
+        # provider reads and their concurrency bound.
+        with provider_refresh_scope():
+            return await self._discover_drive(drive)
 
     async def _discover_and_cache(self) -> TemplateCatalogRead:
         drives = await self._drive.list_drives()
@@ -169,3 +204,12 @@ def _template_mime_type(value: str) -> TemplateMimeType:
         case _:
             msg = f"Unsupported template MIME type: {value}"
             raise ValueError(msg)
+
+
+def _find_template(
+    templates: list[TemplateRead], *, file_id: FileId, drive_id: DriveId
+) -> TemplateRead | None:
+    return next(
+        (item for item in templates if item.file_id == file_id and item.drive_id == drive_id),
+        None,
+    )

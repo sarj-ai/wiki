@@ -171,10 +171,12 @@ class GoogleTokenManager:
         try:
             sessions = self._provider_sessions()
             async with sessions() as db:
-                if (fresh_user := await db.get(User, user_id)) is None:
-                    raise GoogleReauthenticationRequiredError
+                # The fresh credential snapshot checks existence and every CAS
+                # field. An identity-only object avoids a redundant full read;
+                # it is never added to this independent session.
+                snapshot_user = User(id=user_id)
                 token = await GoogleTokenManager(db, self._http).ensure_valid(
-                    fresh_user,
+                    snapshot_user,
                     force_generation=force_generation,
                 )
             # Credential commits belong to the independent session. Mirror
@@ -267,6 +269,12 @@ class GoogleTokenManager:
         owner: uuid.UUID,
         now: datetime,
     ) -> bool:
+        if snapshot.lease_until is not None and snapshot.lease_until > now:
+            # A freshly observed live lease cannot satisfy the UPDATE below.
+            # Release the read checkout while retaining the existing retry/CAS
+            # path for absent or expired leases.
+            await self._db.commit()
+            return False
         session_revision_column = User.token_version
         credential_generation_column = User.google_token_generation
         credential_ciphertext_column = User.encrypted_refresh_token

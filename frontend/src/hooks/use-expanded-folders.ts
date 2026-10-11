@@ -117,9 +117,8 @@ let pendingReveal: null | string = null;
 export function useExpandedFolder(id: string): [boolean, (next: boolean) => void] {
   const store = folderStore(useBrowserUserId());
   const expanded = store((s) => s.expanded[id] === true);
-  const setExpanded = store((s) => s.setExpanded);
   const setter = (next: boolean) => {
-    setExpanded(id, next);
+    store.getState().setExpanded(id, next);
   };
   return [expanded, setter];
 }

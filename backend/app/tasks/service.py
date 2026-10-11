@@ -12,11 +12,12 @@ import uuid
 
 from cryptography.fernet import InvalidToken
 from pydantic import BaseModel, JsonValue, RootModel
-from sqlalchemy import Text, and_, case, cast, delete, func, literal, or_, select, update
+from sqlalchemy import Text, and_, case, cast, delete, func, literal, or_, select, union_all, update
 from sqlalchemy.dialects.postgresql import JSONB, insert as pg_insert
 from sqlalchemy.engine import Row
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import load_only
+from sqlalchemy.sql.selectable import CompoundSelect
 
 from app.auth.encryption import decrypt_cache, encrypt_cache
 from app.document_transform.brand_manifest import CURRENT_BRAND_MANIFEST
@@ -993,16 +994,7 @@ class PostgresTaskService(TaskService):
                 .where(
                     Task.owner_user_id == owner_user_id,
                     Task.kind == kind,
-                    or_(
-                        Task.idempotency_key == idempotency_key,
-                        Task.id.in_(
-                            select(TaskReplayKey.task_id).where(
-                                TaskReplayKey.owner_user_id == owner_user_id,
-                                TaskReplayKey.kind == kind,
-                                TaskReplayKey.idempotency_key == idempotency_key,
-                            )
-                        ),
-                    ),
+                    Task.id.in_(_task_ids_for_key(UserId(owner_user_id), kind, idempotency_key)),
                     Task.expires_at > func.now(),
                 )
             )
@@ -1121,15 +1113,10 @@ class PostgresTaskService(TaskService):
                     Task.owner_user_id == owner_user_id,
                     Task.kind == TaskKind.FILE_DOCUMENT_TRANSFORM,
                     Task.expires_at > func.now(),
-                    or_(
-                        Task.idempotency_key == idempotency_key,
-                        Task.id.in_(
-                            select(TaskReplayKey.task_id).where(
-                                TaskReplayKey.owner_user_id == owner_user_id,
-                                TaskReplayKey.kind == TaskKind.FILE_DOCUMENT_TRANSFORM,
-                                TaskReplayKey.idempotency_key == idempotency_key,
-                            )
-                        ),
+                    Task.id.in_(
+                        _task_ids_for_key(
+                            UserId(owner_user_id), TaskKind.FILE_DOCUMENT_TRANSFORM, idempotency_key
+                        )
                     ),
                 )
             )
@@ -1253,6 +1240,25 @@ class PostgresTaskService(TaskService):
             or stored.verified_revision_sha256 != revision_digest
         ):
             raise OutputConflictError
+
+
+def _task_ids_for_key(
+    owner_user_id: UserId, kind: TaskKind, idempotency_key: IdempotencyKey
+) -> CompoundSelect[tuple[TaskId]]:
+    # Both keys have an owner/kind/key index. Resolve their at-most-two IDs
+    # before reading Task rows instead of scanning the owner's retained history.
+    return union_all(
+        select(Task.id).where(
+            Task.owner_user_id == owner_user_id,
+            Task.kind == kind,
+            Task.idempotency_key == idempotency_key,
+        ),
+        select(TaskReplayKey.task_id).where(
+            TaskReplayKey.owner_user_id == owner_user_id,
+            TaskReplayKey.kind == kind,
+            TaskReplayKey.idempotency_key == idempotency_key,
+        ),
+    )
 
 
 def _validate_header_attestation(

@@ -15,6 +15,7 @@ from app.aliases.service import PostgresAliasService
 from app.auth.encryption import encrypt_text
 from app.auth.google_tokens import GoogleTokenManager
 from app.cache.service import CacheNamespace, CachePSqlService
+from app.drive.google_schemas import GoogleFileAccessLocation
 from app.drive.schemas import DriveSummary, DriveTree
 from app.drive.service import GoogleDriveService
 from app.files.schemas import FileResponse
@@ -24,6 +25,8 @@ from app.models.user import User
 from app.models.wiki import DocumentAlias
 from app.sidebar.cache import PostgresSidebarCacheService
 from app.sidebar.singleflight import Singleflight
+from tests.test_provider_hot_paths import _MetadataFiles
+from tests.test_provider_round3 import _CoordinatedBatchProvider, _CountingDrive
 from tests.test_task_source_dedupe_postgres import _qa_engine
 
 
@@ -60,6 +63,12 @@ class _OfflineFiles(GoogleFilesService):
             drive_id=self._offline_drive_id,
             parent_folder_id=None,
             modified_time=None,
+        )
+
+    @override
+    def _get_access_location_sync(self, file_id: FileId) -> GoogleFileAccessLocation:
+        return GoogleFileAccessLocation.model_validate(
+            {"id": file_id, "driveId": self._offline_drive_id}
         )
 
     @override
@@ -130,6 +139,61 @@ async def test_valid_credential_preparation_selects_fresh_token_without_update(
         assert prepared.user.encrypted_access_token == original_ciphertext
         assert len(statements) == 1
         assert statements[0].lstrip().startswith("SELECT")
+
+
+async def test_cancelled_metadata_waiter_preserves_running_provider_refresh(
+    provider_database: _ProviderDatabase,
+) -> None:
+    refreshes = 0
+    refreshed_tokens: list[str] = []
+    provider = _CoordinatedBatchProvider()
+    workers: list[asyncio.Task[object]] = []
+
+    def oauth_response(request: httpx.Request) -> httpx.Response:
+        nonlocal refreshes
+        assert request.url.host == "oauth2.googleapis.com"
+        refreshes += 1
+        return httpx.Response(
+            200, json={"access_token": "metadata-worker-refreshed", "expires_in": 3600}
+        )
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(oauth_response)) as http:
+
+        async def request() -> None:
+            async with provider_database.sessions() as db:
+                user = await db.get(User, provider_database.owner)
+                assert user is not None
+                user.encrypted_refresh_token = encrypt_text("metadata-worker-refresh-fixture")
+                await db.commit()
+                prepared = await GoogleTokenManager(db, http).prepare(user)
+                await db.commit()
+
+                def refresh() -> None:
+                    refreshed_tokens.append(prepared.refresh_handler(object()).token)
+
+                provider.refresh = refresh
+                files = _MetadataFiles(_CountingDrive(), provider)
+                try:
+                    await files.get_accessible_ids(list(provider.records))
+                finally:
+                    workers.extend(files._metadata_reads)
+
+        owner = asyncio.create_task(request())
+        try:
+            await asyncio.wait_for(provider.started.wait(), timeout=2)
+            owner.cancel()
+            with pytest.raises(asyncio.CancelledError):
+                await owner
+            assert provider.active == 4
+            assert not refreshed_tokens
+        finally:
+            provider.release.set()
+        assert workers
+        await asyncio.wait_for(asyncio.gather(*workers), timeout=4)
+    assert refreshed_tokens == ["metadata-worker-refreshed"] * 4
+    assert refreshes == 1
+    assert provider.active == 0
+    assert len(provider.batch_sizes) == 4
 
 
 async def test_cold_sidebar_load_releases_read_connection_before_saving_tree(

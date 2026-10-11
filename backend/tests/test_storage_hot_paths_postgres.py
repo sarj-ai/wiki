@@ -21,6 +21,7 @@ from sqlalchemy.ext.asyncio import (
 
 from app.auth.encryption import decrypt_cache, encrypt_text
 from app.auth.google_tokens import (
+    GoogleReauthenticationRequiredError,
     GoogleRefreshResult,
     GoogleTokenManager,
     ManagedGoogleToken,
@@ -35,10 +36,12 @@ from app.extras.schemas import SortOrderWrite
 from app.extras.service import PostgresExtrasService
 from app.identifiers import DriveId, FileId, GoogleUserId, IdempotencyKey, UserId
 from app.models.task import Task
+from app.models.task_replay_key import TaskReplayKey
 from app.models.user import User
 from app.models.wiki import CacheEntry, DriveTreeCache, UserSortOrder
 from app.sidebar.cache import PostgresSidebarCacheService
 from app.sidebar.singleflight import Singleflight
+from app.tasks.errors import TaskNotFoundError
 from app.tasks.schemas import TaskKind
 from app.tasks.service import PostgresTaskService
 from tests.test_task_source_dedupe_postgres import _qa_engine
@@ -461,9 +464,18 @@ async def test_provider_refresh_keeps_owner_lock_and_pending_writes_without_stal
         await PostgresTaskService(db=db)._lock_document_transform_owner(database.owner)
         user.display_name = "Caller-owned change"
 
-        refreshed = await asyncio.to_thread(prepared.refresh_handler, object())
+        queries = _Queries()
+        event.listen(database.engine.sync_engine, "before_cursor_execute", queries.record)
+        try:
+            refreshed = await asyncio.to_thread(prepared.refresh_handler, object())
+        finally:
+            event.remove(database.engine.sync_engine, "before_cursor_execute", queries.record)
         assert refreshed.token == "storage-audit-refreshed-token"
         assert refreshes == 1
+        snapshots = [sql for sql in queries.sql if sql.startswith("SELECT")]
+        assert len(snapshots) == 1
+        assert "users.email" not in snapshots[0]
+        assert "users.google_refresh_lease_until" in snapshots[0]
         state = inspect(user)
         assert state is not None
         assert state.attrs.display_name.history.has_changes()
@@ -736,3 +748,212 @@ async def test_stale_sidebar_refresh_owns_provider_lifetime_after_request_exit(
         plaintext = decrypt_cache(tree_row.tree)
         assert isinstance(plaintext, str)
         assert DriveTree.model_validate_json(plaintext) == (stale if cancel_background else updated)
+
+
+@pytest.mark.parametrize("credential_state", ["deleted", "revoked", "rotated"])
+async def test_identity_only_provider_refresh_still_reads_fresh_credential_state(
+    database: _Database, credential_state: str
+) -> None:
+    await _seed_google_credentials(database)
+
+    def unexpected_oauth(_request: httpx.Request) -> httpx.Response:
+        raise AssertionError
+
+    async with (
+        httpx.AsyncClient(transport=httpx.MockTransport(unexpected_oauth)) as http,
+        database.sessions() as db,
+    ):
+        user = await db.get(User, database.owner)
+        assert user is not None
+        prepared = await GoogleTokenManager(db, http).prepare(user)
+        await db.commit()
+        user.display_name = "Caller-owned pending change"
+        async with database.sessions() as observer:
+            if credential_state == "deleted":
+                await observer.execute(delete(User).where(User.id == database.owner))
+            else:
+                await observer.execute(
+                    update(User)
+                    .where(User.id == database.owner)
+                    .values(
+                        encrypted_access_token=(
+                            encrypt_text("round3-other-session-token")
+                            if credential_state == "rotated"
+                            else None
+                        ),
+                        encrypted_refresh_token=None,
+                        google_access_token_expires_at=(
+                            datetime.now(UTC) + timedelta(hours=1)
+                            if credential_state == "rotated"
+                            else None
+                        ),
+                        google_token_generation=1,
+                        token_version=1,
+                    )
+                )
+            await observer.commit()
+        queries = _Queries()
+        event.listen(database.engine.sync_engine, "before_cursor_execute", queries.record)
+        try:
+            if credential_state == "rotated":
+                refreshed = await asyncio.to_thread(prepared.refresh_handler, object())
+                assert refreshed.token == "round3-other-session-token"
+                assert user.google_token_generation == 1
+            else:
+                with pytest.raises(GoogleReauthenticationRequiredError):
+                    await asyncio.to_thread(prepared.refresh_handler, object())
+        finally:
+            event.remove(database.engine.sync_engine, "before_cursor_execute", queries.record)
+        assert len(queries.sql) == 1
+        assert queries.sql[0].startswith("SELECT")
+        assert user.display_name == "Caller-owned pending change"
+        assert inspect(user).attrs.display_name.history.has_changes()
+
+
+@pytest.mark.parametrize("live_lease", [False, True])
+async def test_live_lease_snapshot_skips_doomed_update_but_expired_lease_attempts_cas(
+    database: _Database, live_lease: bool
+) -> None:
+    await _seed_google_credentials(database)
+    lease_until = datetime.now(UTC) + timedelta(seconds=10 if live_lease else -10)
+    async with database.sessions() as db:
+        await db.execute(
+            update(User)
+            .where(User.id == database.owner)
+            .values(google_refresh_lease_owner=uuid.uuid7(), google_refresh_lease_until=lease_until)
+        )
+        await db.commit()
+    async with httpx.AsyncClient() as http, database.sessions() as db:
+        manager = GoogleTokenManager(db, http)
+        identity = User(id=database.owner)
+        snapshot = await manager._snapshot(identity)
+        queries = _Queries()
+        event.listen(database.engine.sync_engine, "before_cursor_execute", queries.record)
+        try:
+            acquired = await manager._acquire_lease(
+                identity, snapshot, uuid.uuid7(), datetime.now(UTC)
+            )
+        finally:
+            event.remove(database.engine.sync_engine, "before_cursor_execute", queries.record)
+        assert acquired is not live_lease
+        assert len(queries.sql) == (0 if live_lease else 1)
+        assert not db.in_transaction()
+
+
+async def test_live_lease_waiters_recheck_fresh_generation_without_doomed_updates(
+    database: _Database,
+) -> None:
+    await _seed_google_credentials(database)
+    async with database.sessions() as db:
+        await db.execute(
+            update(User)
+            .where(User.id == database.owner)
+            .values(
+                google_refresh_lease_owner=uuid.uuid7(),
+                google_refresh_lease_until=datetime.now(UTC) + timedelta(seconds=10),
+            )
+        )
+        await db.commit()
+    observed = asyncio.Event()
+    queries = _Queries()
+
+    def record(
+        _connection: object,
+        _cursor: object,
+        statement: str,
+        parameters: object,
+        _context: object,
+        _executemany: bool,
+    ) -> None:
+        queries.record(_connection, _cursor, statement, parameters, _context, _executemany)
+        if sum(sql.startswith("SELECT") for sql in queries.sql) >= 2:
+            observed.set()
+
+    def unexpected_oauth(_request: httpx.Request) -> httpx.Response:
+        raise AssertionError
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(unexpected_oauth)) as http:
+
+        async def wait_for_token() -> ManagedGoogleToken:
+            async with database.sessions() as db:
+                return await GoogleTokenManager(db, http).ensure_valid(
+                    User(id=database.owner), force_generation=0
+                )
+
+        event.listen(database.engine.sync_engine, "before_cursor_execute", record)
+        waiting = [asyncio.create_task(wait_for_token()) for _ in range(2)]
+        try:
+            await asyncio.wait_for(observed.wait(), timeout=2)
+            assert not any(sql.startswith("UPDATE") for sql in queries.sql)
+            async with database.sessions() as observer:
+                await observer.execute(
+                    update(User)
+                    .where(User.id == database.owner)
+                    .values(
+                        encrypted_access_token=encrypt_text("round3-winning-generation"),
+                        google_token_generation=1,
+                        google_refresh_lease_owner=None,
+                        google_refresh_lease_until=None,
+                    )
+                )
+                await observer.commit()
+            tokens = await asyncio.wait_for(asyncio.gather(*waiting), timeout=2)
+            assert [token.token for token in tokens] == ["round3-winning-generation"] * 2
+            assert [token.generation for token in tokens] == [1, 1]
+            assert sum(sql.startswith("UPDATE") for sql in queries.sql) == 1
+        finally:
+            event.remove(database.engine.sync_engine, "before_cursor_execute", record)
+            for task in waiting:
+                if not task.done():
+                    task.cancel()
+            await asyncio.gather(*waiting, return_exceptions=True)
+
+
+@pytest.mark.parametrize("key_kind", ["original", "alias", "both"])
+@pytest.mark.parametrize("visibility", ["retained", "expired", "wrong-owner", "wrong-kind"])
+async def test_indexed_key_lookup_preserves_identity_owner_kind_and_expiry(
+    database: _Database, key_kind: str, visibility: str
+) -> None:
+    original, alias = IdempotencyKey(uuid.uuid7()), IdempotencyKey(uuid.uuid7())
+    now = datetime.now(UTC)
+    task = Task(
+        owner_user_id=database.owner,
+        kind=TaskKind.FILE_DOCUMENT_TRANSFORM,
+        idempotency_key=original,
+        request_hash="0" * 64,
+        payload={},
+        created_at=now - timedelta(days=2),
+        expires_at=now + timedelta(days=1),
+    )
+    async with database.sessions() as db:
+        db.add(task)
+        await db.flush()
+        if key_kind in {"alias", "both"}:
+            db.add(
+                TaskReplayKey(
+                    owner_user_id=database.owner,
+                    kind=TaskKind.FILE_DOCUMENT_TRANSFORM,
+                    idempotency_key=alias if key_kind == "alias" else original,
+                    task_id=task.id,
+                )
+            )
+        if visibility == "expired":
+            task.expires_at = now - timedelta(days=1)
+        elif visibility == "wrong-kind":
+            task.kind = TaskKind.FILE_SMART_CREATE
+        await db.commit()
+        task_id = task.id
+    key = alias if key_kind == "alias" else original
+    owner = database.other_owner if visibility == "wrong-owner" else database.owner
+    async with database.sessions() as db:
+        service = PostgresTaskService(db=db)
+        existing = await service._maybe_existing(owner, TaskKind.FILE_DOCUMENT_TRANSFORM, key)
+        if visibility == "retained":
+            assert existing is not None
+            assert existing.id == task_id
+            admission = await service.get_document_transform_admission(owner, key)
+            assert admission.task_id == task_id
+        else:
+            assert existing is None
+            with pytest.raises(TaskNotFoundError):
+                await service.get_document_transform_admission(owner, key)

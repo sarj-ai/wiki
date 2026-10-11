@@ -467,3 +467,48 @@ async def test_large_cache_batch_crypto_does_not_run_on_the_request_thread() -> 
     assert protector.protection_threads
     assert protector.unprotection_threads
     assert write.commits == 1
+
+
+@pytest.mark.parametrize("many", [False, True])
+async def test_large_cache_values_offload_crypto_even_with_few_keys(many: bool) -> None:
+    protector = _ObservedProtector()
+    namespace = CacheNamespace.TEMPLATE_CATALOG
+    values: dict[str, JsonValue] = {"catalog": {"content": "x" * (512 * 1024)}}
+    if many:
+        values["catalog-other"] = {"content": "y" * (512 * 1024)}
+    rows = [
+        _CacheRow(
+            protector.wrapped.physical_keys(namespace, key)[0],
+            protector.wrapped.protect(namespace, key, value),
+        )
+        for key, value in values.items()
+    ]
+    service = _service(_Session(_Result(rows=rows)), protector=dependency(protector))
+
+    if many:
+        assert await service.get_many(namespace, list(values)) == values
+    else:
+        assert await service.get(namespace, "catalog") == values["catalog"]
+
+    assert protector.lookup_threads == {get_ident()}
+    assert protector.unprotection_threads
+    assert get_ident() not in protector.unprotection_threads
+
+
+@pytest.mark.parametrize("many", [False, True])
+async def test_small_cache_hits_keep_crypto_inline(many: bool) -> None:
+    protector = _ObservedProtector()
+    namespace = CacheNamespace.TEMPLATE_CATALOG
+    value: JsonValue = {"content": "x" * 1024}
+    row = _CacheRow(
+        protector.wrapped.physical_keys(namespace, "catalog")[0],
+        protector.wrapped.protect(namespace, "catalog", value),
+    )
+    service = _service(_Session(_Result(rows=[row])), protector=dependency(protector))
+
+    if many:
+        assert await service.get_many(namespace, ["catalog"]) == {"catalog": value}
+    else:
+        assert await service.get(namespace, "catalog") == value
+
+    assert protector.unprotection_threads == {get_ident()}

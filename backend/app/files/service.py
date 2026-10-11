@@ -2,15 +2,17 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 import asyncio
-from collections.abc import Generator
+from collections.abc import Callable, Generator
 from contextlib import contextmanager
 from dataclasses import dataclass
+from functools import partial
 from itertools import batched
 from typing import TYPE_CHECKING, Any, override
 
 from googleapiclient.errors import HttpError
 from pydantic import BaseModel, Field, ValidationError
 
+from app.auth.google_tokens import provider_refresh_scope
 from app.drive.google_schemas import GoogleFile, GoogleFileAccessLocation
 from app.drive.retry import execute_batch_with_retry, execute_mutation, execute_with_retry
 from app.drive.schemas import MIME_FOLDER, MIME_HTML, NAVIGATOR_SUPPORTED_MIME_TYPES
@@ -43,6 +45,7 @@ _SEARCH_FIELDS = "id,name,mimeType,parents,driveId,modifiedTime,trashed"
 _SMART_TASK_PROPERTY = "sarjWikiTaskId"
 _MAX_HTML_BYTES = 5 * 1024 * 1024
 _FILE_GET_BATCH_SIZE = 100
+_FILE_GET_BATCH_CONCURRENCY = 4
 
 
 class _DriveErrorItem(BaseModel):
@@ -93,6 +96,9 @@ class FilesService(ABC):
     @abstractmethod
     async def get(self, file_id: FileId) -> FileResponse: ...
 
+    async def require_access(self, file_id: FileId) -> None:
+        await self.get(file_id)
+
     async def get_accessible_many(self, file_ids: list[FileId]) -> dict[FileId, FileResponse]:
         async def load(file_id: FileId) -> _AccessibleFile | None:
             try:
@@ -140,6 +146,8 @@ class GoogleFilesService(FilesService):
         self._user = user
         self._drive = drive
         self._clients: dict[int, DriveResource] = {}
+        self._metadata_slots = asyncio.Semaphore(_FILE_GET_BATCH_CONCURRENCY)
+        self._metadata_reads: set[asyncio.Task[Any]] = set()
 
     @override
     async def create(self, parent_folder_id: FileId, name: str, mime_type: str) -> FileResponse:
@@ -225,6 +233,18 @@ class GoogleFilesService(FilesService):
         return await self._normalize_member_drive(result)
 
     @override
+    async def require_access(self, file_id: FileId) -> None:
+        file = await asyncio.to_thread(self._get_access_location_sync, file_id)
+        resolved = await self._drive.resolve_member_drive(
+            file.id,
+            file.drive_id,
+            parent_id=file.parents[0] if file.parents else None,
+        )
+        if resolved is None:
+            msg = "File not available in Sarj Wiki"
+            raise FileNotInScopeError(msg)
+
+    @override
     async def get_accessible_many(self, file_ids: list[FileId]) -> dict[FileId, FileResponse]:
         return await self._get_accessible_many(file_ids, fields=_FIELDS)
 
@@ -243,12 +263,16 @@ class GoogleFilesService(FilesService):
         unique_ids = list(dict.fromkeys(file_ids))
         if not unique_ids:
             return set()
-        fetched = await asyncio.to_thread(
-            self._get_accessible_records_many_sync,
+        fetched: dict[FileId, GoogleFileAccessLocation] = await self._read_metadata_chunks(
             unique_ids,
-            fields=_ACCESS_FIELDS,
-            model=GoogleFileAccessLocation,
+            partial(
+                self._get_accessible_records_many_sync,
+                fields=_ACCESS_FIELDS,
+                model=GoogleFileAccessLocation,
+            ),
         )
+        if not fetched:
+            return set()
         member_drives = await self._drive.resolve_member_drives(
             {file.id: file.drive_id for file in fetched.values()},
             parent_ids={
@@ -266,11 +290,12 @@ class GoogleFilesService(FilesService):
         unique_ids = list(dict.fromkeys(file_ids))
         if not unique_ids:
             return {}
-        fetched = await asyncio.to_thread(
-            self._get_accessible_many_sync,
+        fetched = await self._read_metadata_chunks(
             unique_ids,
-            fields=fields,
+            partial(self._get_accessible_many_sync, fields=fields),
         )
+        if not fetched:
+            return {}
         member_drives = await self._drive.resolve_member_drives(
             {file.id: file.drive_id for file in fetched.values()},
             parent_ids={file.id: file.parent_folder_id for file in fetched.values()},
@@ -284,6 +309,57 @@ class GoogleFilesService(FilesService):
             for file in fetched.values()
             if (member_drive_id := member_drives.get(file.id)) is not None
         }
+
+    async def _read_metadata_chunks[Record](
+        self,
+        file_ids: list[FileId],
+        read: Callable[[list[FileId]], dict[FileId, Record]],
+    ) -> dict[FileId, Record]:
+        if len(file_ids) <= _FILE_GET_BATCH_SIZE:
+            return await asyncio.to_thread(read, file_ids)
+        failed = asyncio.Event()
+
+        async def run_chunk(chunk: tuple[FileId, ...]) -> dict[FileId, Record]:
+            async with self._metadata_slots:
+                if failed.is_set():
+                    return {}
+                with provider_refresh_scope():
+                    (result,) = await asyncio.gather(
+                        asyncio.to_thread(read, list(chunk)), return_exceptions=True
+                    )
+                if isinstance(result, BaseException):
+                    failed.set()
+                    raise result
+                return result
+
+        async def read_chunk(chunk: tuple[FileId, ...]) -> dict[FileId, Record]:
+            worker = asyncio.create_task(run_chunk(chunk))
+            self._metadata_reads.add(worker)
+            worker.add_done_callback(self._finish_metadata_read)
+            try:
+                return await asyncio.shield(worker)
+            except asyncio.CancelledError:
+                failed.set()
+                raise
+
+        # Each worker owns its thread-local Google HTTP client. Publish nothing
+        # until all admitted batches finish, and stop queued work on failure.
+        # Canceling a waiter cannot release a running thread's concurrency slot.
+        chunks = await asyncio.gather(
+            *(read_chunk(chunk) for chunk in batched(file_ids, _FILE_GET_BATCH_SIZE, strict=False)),
+            return_exceptions=True,
+        )
+        records: dict[FileId, Record] = {}
+        for result in chunks:
+            if isinstance(result, BaseException):
+                raise result
+            records.update(result)
+        return records
+
+    def _finish_metadata_read(self, task: asyncio.Task[Any]) -> None:
+        self._metadata_reads.discard(task)
+        if not task.cancelled():
+            task.exception()
 
     @override
     async def can_edit(self, file_id: FileId) -> bool:
@@ -309,7 +385,7 @@ class GoogleFilesService(FilesService):
 
     @override
     async def rename(self, file_id: FileId, new_name: str) -> FileResponse:
-        await self.get(file_id)
+        await self.require_access(file_id)
         result = await asyncio.to_thread(self._rename_sync, file_id=file_id, new_name=new_name)
         return await self._normalize_member_drive(result)
 
@@ -396,7 +472,19 @@ class GoogleFilesService(FilesService):
             raw = execute_with_retry(
                 client.files().get(fileId=file_id, fields=_FIELDS, supportsAllDrives=True)
             )
-        return _to_accessible_response(raw)
+        return _to_accessible_response(raw, requested_id=file_id)
+
+    def _get_access_location_sync(self, file_id: FileId) -> GoogleFileAccessLocation:
+        client = self._client()
+        with _translated_drive_errors():
+            raw = execute_with_retry(
+                client.files().get(fileId=file_id, fields=_ACCESS_FIELDS, supportsAllDrives=True)
+            )
+        file = GoogleFileAccessLocation.model_validate(raw)
+        if file.id != file_id or file.trashed:
+            msg = "File not available in Sarj Wiki"
+            raise FileNotInScopeError(msg)
+        return file
 
     def _get_accessible_many_sync(
         self,
@@ -605,9 +693,9 @@ def _to_response(raw: File) -> FileResponse:
     return _file_response(GoogleFile.model_validate(raw))
 
 
-def _to_accessible_response(raw: File) -> FileResponse:
+def _to_accessible_response(raw: File, *, requested_id: FileId) -> FileResponse:
     file = GoogleFile.model_validate(raw)
-    if file.trashed:
+    if file.id != requested_id or file.trashed:
         msg = "File not available in Sarj Wiki"
         raise FileNotInScopeError(msg)
     return _file_response(file)

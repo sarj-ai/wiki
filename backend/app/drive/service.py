@@ -1361,14 +1361,19 @@ def reuse_drive_client(
     clients: dict[int, DriveResource],
     *,
     refresh_handler: GoogleRefreshHandler | None = None,
+    client_factory: Callable[[User, GoogleRefreshHandler | None], DriveResource] | None = None,
 ) -> DriveResource:
     thread_id = threading.get_ident()
     client = clients.get(thread_id)
     if client is None:
         client = (
-            GoogleDriveService.build_drive_client(user, refresh_handler)
-            if refresh_handler is not None
-            else GoogleDriveService.build_drive_client(user)
+            client_factory(user, refresh_handler)
+            if client_factory is not None
+            else (
+                GoogleDriveService.build_drive_client(user, refresh_handler)
+                if refresh_handler is not None
+                else GoogleDriveService.build_drive_client(user)
+            )
         )
         clients[thread_id] = client
     return client

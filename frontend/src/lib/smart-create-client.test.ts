@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { claimBrowserSession, retireBrowserSession } from "@/lib/browser-session";
 import { smartCreateApi } from "@/lib/smart-create-client";
 
 const ACTION_MOCKS = vi.hoisted(() => ({ create: vi.fn(), propose: vi.fn() }));
@@ -73,6 +74,38 @@ afterEach(() => {
 });
 
 describe("smartCreateApi", () => {
+  it("does not poll an old task using the replacement session after a sleep", async () => {
+    vi.useFakeTimers();
+    const owner = {};
+    const next = {};
+    claimBrowserSession(owner);
+    FETCH_MOCK.mockResolvedValue(
+      Response.json({
+        ...PENDING_TASK,
+        error_code: "stopped",
+        error_detail: null,
+        status: "failed",
+      }),
+    );
+    const pending = smartCreateApi
+      .waitForCompletion({
+        id: TASK_ID,
+        status: "pending",
+      })
+      .catch((error: unknown) => error);
+    try {
+      retireBrowserSession(owner);
+      claimBrowserSession(next);
+      await vi.advanceTimersByTimeAsync(1_000);
+      expect(FETCH_MOCK).not.toHaveBeenCalled();
+      await expect(pending).resolves.toMatchObject({ name: "AbortError" });
+    } finally {
+      retireBrowserSession(next);
+      vi.useRealTimers();
+      await pending;
+    }
+  });
+
   it("transforms and refreshes authenticated Drive templates over GET", async () => {
     FETCH_MOCK.mockResolvedValue(Response.json(CATALOG));
 

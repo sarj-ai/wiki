@@ -49,10 +49,10 @@ make standards-check
 `make check` mirrors CI. `make audit` performs network-backed dependency audits, and
 `make standards-check` verifies generated standards configuration, version pins, and code.
 
-See the [199-pass performance record and reproduction commands](docs/performance.json) for
+See the [229-pass performance record and reproduction commands](docs/performance.json) for
 frontend loading and backend latency work.
 
-Local production-build measurements against the same locked main toolchain:
+Original-tranche production-build measurements against the same locked main toolchain:
 
 | Measurement                         | Before    | After     |
 | ----------------------------------- | --------- | --------- |
@@ -90,6 +90,27 @@ transaction so it cannot release the caller's admission lock or commit pending
 changes. Resource and CPU reductions are measured separately from transfer size and
 production page-load time. Rejected regressions and remaining tradeoffs are recorded;
 these passes do not establish a physical performance maximum.
+
+The latest tranche adds 30 distinct candidates across five agents: 26 retained
+improvements and four measured rejections, bringing the record to 229 passes.
+Against the deployed `1f7fa858` baseline, controlled measurements include:
+
+| Measurement                                      | Before    | After     |
+| ------------------------------------------------ | --------- | --------- |
+| Provider-refresh SQL statements                  | 4         | 3         |
+| Live-lease poll updates, 31 polls                | 31        | 0         |
+| Metadata batch fixture, 701 IDs / 5 ms per batch | 53.418 ms | 15.686 ms |
+| Search-snippet reads while typing                | 14        | 2         |
+| Collapsed tree-index entry reads, 23,000 entries | 23,000    | 0         |
+| Expanded-folder subscriptions, 500 rows          | 1,000     | 500       |
+
+The integrated gate passes 4,251 backend tests and 803 frontend tests. Browser
+recovery restores verified user preferences after reload, obsolete polling stops
+at session retirement, and error-body reads have size and time bounds. Final
+compressed client inventories increase about 0.6%: home 179,354 to 180,375 B and
+document 190,761 to 191,806 B. Read, resource and controlled timing reductions
+are separate from this bundle tradeoff and do not establish production page-load
+latency. The record includes candidate-specific methods and rejected regressions.
 
 The drive-loading regression was reproduced in the compiled Cloudflare Worker:
 server `fetch` rejects `redirect: "error"` before reaching the API. Server clients

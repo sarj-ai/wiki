@@ -5,9 +5,50 @@ import { POST } from "./route";
 
 afterEach(() => {
   vi.restoreAllMocks();
+  vi.useRealTimers();
 });
 
 describe("performance ingestion", () => {
+  it("bounds ingestion time even when a body sends fewer than 2 KiB and stalls", async () => {
+    vi.useFakeTimers();
+    vi.spyOn(AbortSignal, "timeout").mockImplementation((milliseconds) => {
+      const controller = new AbortController();
+      setTimeout(() => {
+        controller.abort(new DOMException("Deadline exceeded", "TimeoutError"));
+      }, milliseconds);
+      return controller.signal;
+    });
+    const controller = new AbortController();
+    const cancel = vi.fn();
+    const body = new ReadableStream<Uint8Array>({
+      start(stream) {
+        stream.enqueue(new TextEncoder().encode("{"));
+      },
+      cancel,
+    });
+    const options = {
+      body,
+      duplex: "half",
+      headers: { cookie: "access_token=test-session" },
+      method: "POST",
+      signal: controller.signal,
+    };
+    let settled: Response | undefined;
+    const pending = (async () => {
+      const response = await POST(new Request("https://wiki.sarj.ai/api/perf", options));
+      settled = response;
+      return response;
+    })();
+    try {
+      await vi.advanceTimersByTimeAsync(5_000);
+      expect(settled?.status).toBe(408);
+      expect(cancel).toHaveBeenCalledOnce();
+    } finally {
+      controller.abort();
+      await pending;
+    }
+  });
+
   it("rejects streamed bytes over the limit before reading an unbounded body", async () => {
     const cancel = vi.fn();
     const body = new ReadableStream<Uint8Array>({

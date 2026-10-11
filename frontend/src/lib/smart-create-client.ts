@@ -3,6 +3,7 @@ import * as z from "zod";
 import { createSmartFileAction, proposeSmartFileAction } from "@/app/actions/smart-create-actions";
 import { abortableDelay } from "@/lib/abortable-delay";
 import { runAction } from "@/lib/action-client";
+import { captureBrowserSession } from "@/lib/browser-session";
 import { wikiReadHttp } from "@/lib/clients/wiki-read-http";
 import {
   zBlankSource,
@@ -141,8 +142,11 @@ async function waitForTask(
   signal: AbortSignal | undefined,
   pollIntervalMs: number,
 ): Promise<SmartCreateResult> {
+  const owner = captureBrowserSession();
+  const pollSignal = signal === undefined ? owner : AbortSignal.any([owner, signal]);
   let current = task;
   for (;;) {
+    pollSignal.throwIfAborted();
     switch (current.status) {
       case "cancelled":
         throw new Error("File creation was cancelled");
@@ -153,9 +157,9 @@ async function waitForTask(
       case "pending":
       case "running":
         // eslint-disable-next-line no-await-in-loop -- Wait before issuing the next status request.
-        await abortableDelay(pollIntervalMs, signal);
+        await abortableDelay(pollIntervalMs, pollSignal);
         // eslint-disable-next-line no-await-in-loop -- Each poll depends on the preceding task status.
-        current = await SmartCreateApi.getTask(current.id, signal);
+        current = await SmartCreateApi.getTask(current.id, pollSignal);
     }
   }
 }

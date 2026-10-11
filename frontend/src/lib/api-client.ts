@@ -1,6 +1,7 @@
 import { z } from "zod";
 
 import { ApiError, RATE_LIMIT_MESSAGE, SESSION_REFRESH_UNAVAILABLE_MESSAGE } from "@/lib/api-error";
+import { boundedErrorText } from "@/lib/bounded-error-text";
 import { captureBrowserSession } from "@/lib/browser-session";
 import { discardStream } from "@/lib/discard-stream";
 import { API_URL } from "@/lib/env";
@@ -75,11 +76,11 @@ client.interceptors.request.use(async (request, options) => {
 
 client.interceptors.response.use(async (response, request) => {
   const session = REQUEST_SESSIONS.get(request) ?? captureBrowserSession();
-  if (session.aborted) {
+  if (session.aborted || request.signal.aborted) {
     discardStream(response.body);
     session.throwIfAborted();
+    request.signal.throwIfAborted();
   }
-  request.signal.throwIfAborted();
   let settled = response;
   if (settled.status === 401 && !request.url.endsWith("/auth/refresh")) {
     try {
@@ -109,7 +110,7 @@ client.interceptors.response.use(async (response, request) => {
       discardStream(settled.body);
       throw new ApiError(429, RATE_LIMIT_MESSAGE);
     }
-    const message = await readErrorMessage(settled);
+    const message = await readErrorMessage(settled, AbortSignal.any([session, request.signal]));
     session.throwIfAborted();
     request.signal.throwIfAborted();
     throw new ApiError(settled.status, message ?? `API error: ${settled.status}`);
@@ -179,9 +180,9 @@ function requestSession(options: object): AbortSignal {
   return captureBrowserSession();
 }
 
-async function readErrorMessage(response: Response): Promise<null | string> {
+async function readErrorMessage(response: Response, signal: AbortSignal): Promise<null | string> {
   try {
-    const text = await response.text();
+    const text = await boundedErrorText(response.body, signal);
     if (!text) return null;
     const parsed: unknown = JSON.parse(text);
     const payload = ErrorDetailSchema.safeParse(parsed);

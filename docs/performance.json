@@ -1,7 +1,7 @@
 {
-  "recordedAt": "2026-10-10",
+  "recordedAt": "2026-10-11",
   "baselineRevision": "f63e8f6f342a27d3b3f085e2150417ccd45756bf",
-  "totalPasses": 199,
+  "totalPasses": 229,
   "initialPasses": [
     {
       "pass": 1,
@@ -237,7 +237,7 @@
         },
         {
           "pass": 10,
-          "result": "Remove repeated bootstrap validation and DRY transforms. `zBootstrapRead` already validates every nested resource. Extracted shared pure transforms for Drive summaries, icons, preferences, profile, and sort order; standalone resource schemas retain their wire validation while bootstrap maps its already-validated data directly. This extends the first tranche's nested-tree improvement to the other metadata arrays. Tests preserve default values, nullable fields, and rejection of malformed nested data. A 1,409,370-byte fixture with 100 drives and 10,000 each of document icons, folder icons, and sort orders has deeply equal before/after output: median 4.190 → 1.407 ms (66.4% less CPU), p95 7.302 → 3.365 ms, 100 samples. The fixture has no tree, so the result isolates this additional metadata improvement. Converted wire-property reads to bracket access and constant-backed test/query keys so strict lint and Prettier agree without additional suppressions."
+          "result": "Remove repeated bootstrap validation and DRY transforms. `zBootstrapRead` already validates every nested resource. Extracted shared pure transforms for Drive summaries, icons, preferences, profile, and sort order; standalone resource schemas retain their wire validation while bootstrap maps its already-validated data directly. This extends the first tranche's nested-tree improvement to the other metadata arrays. Tests preserve default values, nullable fields, and rejection of malformed nested data. A 1,409,370-byte fixture with 100 drives and 10,000 each of document icons, folder icons, and sort orders has deeply equal before/after output: median 4.190 \u2192 1.407 ms (66.4% less CPU), p95 7.302 \u2192 3.365 ms, 100 samples. The fixture has no tree, so the result isolates this additional metadata improvement. Converted wire-property reads to bracket access and constant-backed test/query keys so strict lint and Prettier agree without additional suppressions."
         }
       ]
     },
@@ -1657,14 +1657,14 @@
           "cases": {
             "destinationPickerWarm": {
               "medianMillisecondsBefore": 0.16125042000000123,
-              "medianMillisecondsAfter": 8.334999999988213e-06,
+              "medianMillisecondsAfter": 8.334999999988213e-6,
               "alternatingSamples": 40,
               "iterationsPerSample": 100,
               "scope": "10,000 immutable mixed folder nodes; repeated selected-destination render"
             },
             "lazyClassificationWarm": {
               "medianMillisecondsBefore": 0.14228166499999928,
-              "medianMillisecondsAfter": 9.1650000001664e-06,
+              "medianMillisecondsAfter": 9.1650000001664e-6,
               "alternatingSamples": 40,
               "iterationsPerSample": 100,
               "scope": "10,000 immutable mixed lazy nodes; repeated folder-shortcut render"
@@ -1678,7 +1678,7 @@
             },
             "documentFilterWarm": {
               "medianMillisecondsBefore": 0.06447687499999802,
-              "medianMillisecondsAfter": 9.374999997362466e-06,
+              "medianMillisecondsAfter": 9.374999997362466e-6,
               "alternatingSamples": 40,
               "iterationsPerSample": 100,
               "scope": "8,000 immutable non-folder nodes; document-only collapsed child count"
@@ -1720,7 +1720,7 @@
             },
             "dragContainerValidation": {
               "medianMillisecondsBefore": 0.07058124500000304,
-              "medianMillisecondsAfter": 5.354500000066764e-05,
+              "medianMillisecondsAfter": 5.354500000066764e-5,
               "alternatingSamples": 40,
               "iterationsPerSample": 100,
               "scope": "Container lookup during drag hover with 10,000 sibling IDs; strict full list validation retained on drop commit"
@@ -2193,23 +2193,17 @@
                 {
                   "ms": 631.7329579032958,
                   "completed": 1,
-                  "errors": [
-                    "TimeoutError"
-                  ]
+                  "errors": ["TimeoutError"]
                 },
                 {
                   "ms": 613.3281660731882,
                   "completed": 1,
-                  "errors": [
-                    "TimeoutError"
-                  ]
+                  "errors": ["TimeoutError"]
                 },
                 {
                   "ms": 613.5858329944313,
                   "completed": 1,
-                  "errors": [
-                    "TimeoutError"
-                  ]
+                  "errors": ["TimeoutError"]
                 }
               ],
               "median_ms": 613.5858329944313
@@ -2943,10 +2937,7 @@
                 "after_rows": 2,
                 "before_response_json_bytes": 830815,
                 "after_response_json_bytes": 187,
-                "unchanged_matching_root_ids": [
-                  "templates-a",
-                  "templates-b"
-                ]
+                "unchanged_matching_root_ids": ["templates-a", "templates-b"]
               }
             },
             {
@@ -2955,9 +2946,7 @@
               "result": "Bind every bulk metadata response to its requested ID before membership work",
               "evidence": {
                 "fixture": "Local mismatched-ID provider fixture; identity correctness, not a valid-record throughput claim",
-                "before_accepted_ids": [
-                  "different"
-                ],
+                "before_accepted_ids": ["different"],
                 "after_accepted_ids": [],
                 "before_metadata_get_subrequests": 1,
                 "after_metadata_get_subrequests": 1,
@@ -3028,7 +3017,7 @@
                     "after_median": 10.63
                   }
                 },
-                "tradeoff": "Two-parent zero-I/O fixtures add about 15–21 microseconds of memo bookkeeping. Retained because repeated real provider reads/quotas are eliminated, fan-out CPU improves, and memo retention is bounded. Simulated latency is explicitly not production timing.",
+                "tradeoff": "Two-parent zero-I/O fixtures add about 15\u201321 microseconds of memo bookkeeping. Retained because repeated real provider reads/quotas are eliminated, fan-out CPU improves, and memo retention is bounded. Simulated latency is explicitly not production timing.",
                 "regression_coverage": [
                   "200 distinct parents use one shared-ancestor GET in normal and bounded modes.",
                   "Next-call parent revocation produces a new GET and drops personal files while retaining the permitted shared file.",
@@ -3053,7 +3042,7 @@
               "evidence": {
                 "issue": "Typed cache codec rejected valid deep JsonValue payloads accepted by the legacy implementation.",
                 "classification": "Round-two compatibility regression",
-                "proof": "At nested-list depths 200–253, 80b6e095 round-tripped while ba129bb unprotect raised InvalidCacheEntryError. At 254 ba129bb protect raised PydanticSerializationError. Both implementations already reject 255 in JsonValue validation.",
+                "proof": "At nested-list depths 200\u2013253, 80b6e095 round-tripped while ba129bb unprotect raised InvalidCacheEntryError. At 254 ba129bb protect raised PydanticSerializationError. Both implementations already reject 255 in JsonValue validation.",
                 "fix": "Keep typed serialization/validation as the common path. Fall back to legacy json.dumps only on typed serialization failure and to json.loads plus strict _CacheEnvelope.model_validate on typed parse/validation failure. Namespace/key binding, extra-field rejection, authenticated ciphertext, legacy envelopes, NaN/Infinity/-0.0, Unicode and large integers remain tested.",
                 "tests": "Five new depth cases (199, 200, 210, 253, 254), each covering legacy and new envelopes plus wrong namespace/key rejection.",
                 "proof_artifact": "/private/tmp/sarj-wiki-storage-audit-nesting.json",
@@ -3232,18 +3221,12 @@
                   "raw_refresh_requests": 2,
                   "distribution": "one old plus one shared new",
                   "old_waiter": "AbortError",
-                  "new_waiters": [
-                    "refreshed",
-                    "refreshed"
-                  ]
+                  "new_waiters": ["refreshed", "refreshed"]
                 },
                 {
                   "scenario": "Actual HTTP child reads through initial StrictMode mount/cleanup/remount",
                   "read_requests": 2,
-                  "signals_aborted": [
-                    true,
-                    false
-                  ],
+                  "signals_aborted": [true, false],
                   "current_query_data": "loaded",
                   "terminal_events": 0
                 }
@@ -3263,9 +3246,7 @@
                 "evidence_before": {
                   "oldRequestAbortedAtHandoff": false,
                   "notifications": 1,
-                  "clearedUserIds": [
-                    "user-b"
-                  ],
+                  "clearedUserIds": ["user-b"],
                   "replacementLocation": "/login?redirect=%2Fd%2Fcurrent"
                 },
                 "evidence_after": {
@@ -3424,9 +3405,7 @@
                         "actionCallsBeforeHandoff": 0,
                         "actionCallsAfterHandoff": 1,
                         "refreshCalls": 1,
-                        "redirects": [
-                          "/login?redirect=%2F"
-                        ],
+                        "redirects": ["/login?redirect=%2F"],
                         "replacementCacheSurvived": false,
                         "retiredCacheRecreated": true,
                         "toasts": {
@@ -3445,9 +3424,7 @@
                         "scope": "Measured after initial epoch/UI guards, before threading the captured mutation signal into runAction",
                         "actionCalls": 1,
                         "refreshCalls": 1,
-                        "redirects": [
-                          "/login?redirect=%2F"
-                        ],
+                        "redirects": ["/login?redirect=%2F"],
                         "retiredCacheRecreated": false,
                         "toasts": []
                       },
@@ -3489,29 +3466,19 @@
                             "ownedMedianMicroseconds": 1.4520420000000058,
                             "deltaMicroseconds": 0.2254169999999931,
                             "bareSamples": [
-                              2.297499999999957,
-                              1.445083000000011,
-                              1.2266250000000127,
-                              1.2921249999999986,
-                              1.3017500000000268,
-                              3.481124999999963,
-                              1.0131250000000023,
-                              1.0505830000000174,
-                              1.1139590000000226,
-                              1.0453339999999685,
+                              2.297499999999957, 1.445083000000011,
+                              1.2266250000000127, 1.2921249999999986,
+                              1.3017500000000268, 3.481124999999963,
+                              1.0131250000000023, 1.0505830000000174,
+                              1.1139590000000226, 1.0453339999999685,
                               1.087709000000018
                             ],
                             "ownedSamples": [
-                              5.1668750000000045,
-                              1.4520420000000058,
-                              5.541207999999983,
-                              1.7409590000000321,
-                              1.419499999999971,
-                              1.6224579999999946,
-                              1.1923330000000192,
-                              1.2350830000000315,
-                              1.2213749999999663,
-                              2.656833000000006,
+                              5.1668750000000045, 1.4520420000000058,
+                              5.541207999999983, 1.7409590000000321,
+                              1.419499999999971, 1.6224579999999946,
+                              1.1923330000000192, 1.2350830000000315,
+                              1.2213749999999663, 2.656833000000006,
                               1.2821250000000077
                             ]
                           },
@@ -3523,29 +3490,19 @@
                             "ownedMedianMicroseconds": 1.540790999999956,
                             "deltaMicroseconds": 0.22804099999996197,
                             "bareSamples": [
-                              1.2169170000000236,
-                              1.312749999999994,
-                              1.356207999999981,
-                              1.3717090000000098,
-                              1.317707999999982,
-                              1.3444999999999823,
-                              1.3599999999999568,
-                              1.1114160000000197,
-                              1.2065829999999664,
-                              1.2029169999999567,
+                              1.2169170000000236, 1.312749999999994,
+                              1.356207999999981, 1.3717090000000098,
+                              1.317707999999982, 1.3444999999999823,
+                              1.3599999999999568, 1.1114160000000197,
+                              1.2065829999999664, 1.2029169999999567,
                               1.1118340000000444
                             ],
                             "ownedSamples": [
-                              1.6353330000000028,
-                              3.7660829999999805,
-                              3.3473749999999995,
-                              1.5118330000000242,
-                              1.5432500000000005,
-                              1.540790999999956,
-                              4.913416999999981,
-                              1.46225000000004,
-                              1.3746249999999804,
-                              1.3439579999999864,
+                              1.6353330000000028, 3.7660829999999805,
+                              3.3473749999999995, 1.5118330000000242,
+                              1.5432500000000005, 1.540790999999956,
+                              4.913416999999981, 1.46225000000004,
+                              1.3746249999999804, 1.3439579999999864,
                               1.3567919999999845
                             ]
                           }
@@ -3813,12 +3770,1668 @@
       "limitations": [
         "Added ownership/compatibility checks are retained for their proved behavior; no CPU speedup is claimed for those guards.",
         "Final homepage compressed app inventory grows 0.9% (177697 to 179354 bytes); document inventory shrinks 0.5% (191766 to 190761 bytes). Both include the completed ownership guards.",
-        "The two-parent zero-I/O ancestor fixture adds 15–21 microseconds; bounded per-call reuse eliminates repeated provider requests and retains independent branch concurrency and next-call freshness.",
+        "The two-parent zero-I/O ancestor fixture adds 15\u201321 microseconds; bounded per-call reuse eliminates repeated provider requests and retains independent branch concurrency and next-call freshness.",
         "Synthetic provider latency, local SQL/codec measurements, bundle inventories and resource counts are not live end-to-end page latency.",
         "The deployed Cloudflare compatibility date remains unchanged; the installed local workerd supports 2026-08-18 for the loopback fixture.",
         "Fresh authority, encryption/key rotation, task locks, quotas, idempotency and admitted mutation semantics remain enforced.",
         "No physical maximum is claimed. Further workload-specific tuning needs production traces and representative data; reviewed regressions/tradeoffs are recorded rather than concealed."
       ]
+    },
+    {
+      "recordedAt": "2026-10-11",
+      "baselineRevision": "1f7fa8582235c6976f86538e282d4f9f30e1c5f4",
+      "name": "Additional measured frontend, backend and storage audit",
+      "passCount": 30,
+      "agentPassCount": 30,
+      "integrationPassCount": 0,
+      "counting": "Distinct new candidates with controlled measurements or causal regression proof across five agents. Accepted improvements and explicitly evidenced rejections count; repeated tests, builds, formatting, integration fixes and release administration count zero.",
+      "scopes": [
+        {
+          "scope": "backend-storage",
+          "report": "/private/tmp/sarj-wiki-perf-round3-storage.json",
+          "agent": "backend_storage",
+          "checkout": "/private/tmp/sarj-wiki-performance-20261010",
+          "branch": "codex/wiki-performance-round3-20261011",
+          "baseRevision": "1f7fa8582235c6976f86538e282d4f9f30e1c5f4",
+          "date": "2026-10-11",
+          "passCount": 6,
+          "acceptedCount": 4,
+          "rejectedCount": 2,
+          "priorPassesRecounted": 0,
+          "administrativeOrGateRerunsCounted": 0,
+          "passes": [
+            {
+              "id": "storage-r3-01",
+              "candidate": "Remove the redundant full User read before an isolated provider refresh snapshot",
+              "outcome": "accepted",
+              "evidence": "The independent refresh session used db.get(User) followed immediately by a fresh seven-field credential SELECT. Every lease/CAS operation only needs User.id. An identity-only User is never added to the session; the unchanged fresh snapshot still rejects missing users and revoked credentials and sees rotations. The isolated transaction, cancellation owner, committed snapshot synchronization and session close remain unchanged.",
+              "measurements": {
+                "method": "13 actual synchronous provider-bridge calls per implementation against the separate disposable PostgreSQL database; OAuth MockTransport only.",
+                "before": {
+                  "medianMs": 3.0869999900460243,
+                  "selectsPerRefresh": 2,
+                  "updatesPerRefresh": 2,
+                  "sqlStatementsPerRefresh": 4
+                },
+                "after": {
+                  "medianMs": 2.4653750006109476,
+                  "selectsPerRefresh": 1,
+                  "updatesPerRefresh": 2,
+                  "sqlStatementsPerRefresh": 3
+                },
+                "artifact": "/private/tmp/sarj-wiki-round3-storage-tokens.json"
+              },
+              "changedPaths": [
+                "backend/app/auth/google_tokens.py",
+                "backend/tests/test_storage_hot_paths_postgres.py"
+              ],
+              "validation": "Existing engine-bound and connection-bound owner-lock tests now assert exactly one fresh credential SELECT with no email/full-User projection. New deleted/revoked/rotated cases prove fresh state, no unexpected provider call, and preservation of caller-owned pending writes. All 200 focused tests and three type checkers pass.",
+              "limitations": [
+                "Measured rare provider refresh callbacks, not every authenticated request.",
+                "Local fixture latency excludes real OAuth network time; no WAN or production gain claim."
+              ]
+            },
+            {
+              "id": "storage-r3-02",
+              "candidate": "Skip doomed lease UPDATEs when a fresh token snapshot shows a live refresh lease",
+              "outcome": "accepted",
+              "evidence": "The UPDATE predicate requires an absent/expired lease. A fresh future lease_until cannot satisfy it, so its read transaction now commits and retries without sending that UPDATE. The absent/expired lease path still executes the full session-revision/generation/ciphertext lease CAS. Retry deadline/jitter, fresh snapshots, cancellation cleanup and provider session isolation are unchanged.",
+              "measurements": {
+                "method": "31 fresh-snapshot/lease-attempt polls per implementation while a disposable row has a live lease.",
+                "before": {
+                  "medianMs": 0.6169590633362532,
+                  "freshSelects": 31,
+                  "doomedUpdates": 31
+                },
+                "after": {
+                  "medianMs": 0.3566248342394829,
+                  "freshSelects": 31,
+                  "doomedUpdates": 0
+                },
+                "artifact": "/private/tmp/sarj-wiki-round3-storage-tokens.json"
+              },
+              "changedPaths": [
+                "backend/app/auth/google_tokens.py",
+                "backend/tests/test_storage_hot_paths_postgres.py"
+              ],
+              "validation": "New live versus expired lease cases check UPDATE avoidance/CAS retention and connection release. Two simultaneous real PostgreSQL waiters observe a separately persisted winning generation without OAuth calls or waiter UPDATEs. Existing timeout/cancellation/owner-lock and shared-flight tests pass.",
+              "limitations": [
+                "A lease cleared just after its snapshot can wait for the existing next jittered retry; it is never reused as an authorization cache.",
+                "The previously existing transaction boundary is preserved; this does not change general request transaction ownership."
+              ]
+            },
+            {
+              "id": "storage-r3-03",
+              "candidate": "Resolve original and alias idempotency keys through their indexes before reading retained task rows",
+              "outcome": "accepted",
+              "evidence": "OR(original key, alias task ID) forced owner-history filtering. A shared UNION ALL of two owner/kind/key-indexed ID lookups produces at most two candidate IDs, followed by unchanged outer owner, kind and expiry predicates. IN preserves a single row when both branches identify the same task. Both _maybe_existing and get_document_transform_admission use the same helper in one query.",
+              "measurements": {
+                "method": "20,000 retained task identities for one owner, 1,000 aliases, temporary tables with the matching primary/owner/key indexes; nine warm samples per case, separate forced custom and generic plans.",
+                "customPlan": {
+                  "direct": {
+                    "beforeMs": 1.299999887123704,
+                    "afterMs": 0.15695788897573948
+                  },
+                  "alias": {
+                    "beforeMs": 1.6373330727219582,
+                    "afterMs": 0.1644589938223362
+                  },
+                  "missing": {
+                    "beforeMs": 1.2761249672621489,
+                    "afterMs": 0.11370889842510223
+                  }
+                },
+                "genericPlan": {
+                  "direct": {
+                    "beforeMs": 1.3133750762790442,
+                    "afterMs": 0.08645793423056602
+                  },
+                  "alias": {
+                    "beforeMs": 1.715417020022869,
+                    "afterMs": 0.08166697807610035
+                  },
+                  "missing": {
+                    "beforeMs": 1.337583176791668,
+                    "afterMs": 0.07279193960130215
+                  }
+                },
+                "artifact": "/private/tmp/sarj-wiki-round3-storage-task-lookup.json"
+              },
+              "changedPaths": [
+                "backend/app/tasks/service.py",
+                "backend/tests/test_storage_hot_paths_postgres.py"
+              ],
+              "validation": "Twelve new real PostgreSQL cases cover original/alias/both keys across retained, expired, wrong-owner and wrong-kind rows for both public admission and replay lookup. Existing concurrent source and terminal replay, conflicts, checkpoints, task polling and owner-lock cases pass.",
+              "limitations": [
+                "Controlled large-owner-history query-plan measurements exclude ORM construction and network latency.",
+                "No migration or extra index was required; the existing unique key indexes are reused."
+              ]
+            },
+            {
+              "id": "storage-r3-04",
+              "candidate": "Bound opportunistic cache cleanup with ordered FOR UPDATE SKIP LOCKED batches",
+              "outcome": "rejected",
+              "evidence": "A concrete ordered cleanup experiment was slower despite deleting fewer rows. A separate two-writer PostgreSQL lock fixture then showed that disjoint skip-locked cleanup rows can create an inverse unique-index dependency when each atomic writer upserts the other's expired key. The equivalent unbounded cleanup-before-write fixture serialized and did not deadlock. No cleanup implementation was retained.",
+              "measurements": {
+                "orderedBacklogFixture": {
+                  "expiredRows": 5000,
+                  "samples": 7,
+                  "unbounded": {
+                    "medianMs": 1.4255829155445099,
+                    "removedRows": 5000
+                  },
+                  "bounded256": {
+                    "medianMs": 2.945000072941184,
+                    "removedRows": 256
+                  }
+                },
+                "lockWitness": {
+                  "unboundedDeadlock": false,
+                  "boundedSkipLockedDeadlock": true,
+                  "observedSqlstate": "40P01",
+                  "writers": [
+                    {
+                      "committed": true
+                    },
+                    {
+                      "committed": false,
+                      "error": "DeadlockDetectedError",
+                      "sqlstate": "40P01"
+                    }
+                  ]
+                },
+                "artifacts": [
+                  "/private/tmp/sarj-wiki-round3-storage-cleanup.json",
+                  "/private/tmp/sarj-wiki-round3-storage-cleanup-locks.json"
+                ]
+              },
+              "changedPaths": [],
+              "validation": "Disposable two-row/two-transaction fixture completed and dropped its owned table. Backlog benchmarks used temporary tables and rolled back every deletion.",
+              "limitations": [
+                "The lock witness explicitly separates cleanup and later upsert phases within each transaction; it demonstrates the required lock protocol, not a claim of observed production deadlocks or deterministic unreferenced-CTE execution order.",
+                "An alternative cleanup scheduler/lock protocol needs separate evidence before changing atomic cache writes."
+              ]
+            },
+            {
+              "id": "storage-r3-05",
+              "candidate": "Offload large encrypted cache-hit CPU work by ciphertext bytes even when there are few keys",
+              "outcome": "accepted",
+              "evidence": "The existing 256-key offload rule left single large values and small-key batches on the event loop. Single get and aggregate get_many now share an early-exit size check and offload at 512 KiB ciphertext. The read session closes before crypto. Small hits retain the inline path; validation, fallback rotation order, key/namespace binding, TTL filtering and hit/miss counters are unchanged. The initially investigated 64 KiB threshold was rejected because small-value scheduling overhead outweighed useful work.",
+              "measurements": {
+                "method": "Six concurrent hits, real Fernet encryption/validation, immediate purposeful database fake, 1ms event-loop heartbeat, seven interleaved rounds per implementation.",
+                "oneMiBPlaintextPerHit": {
+                  "before": {
+                    "medianBatchMs": 11.470041936263442,
+                    "medianLongestLoopGapMs": 11.448000092059374
+                  },
+                  "after": {
+                    "medianBatchMs": 10.062708053737879,
+                    "medianLongestLoopGapMs": 7.256041979417205
+                  }
+                },
+                "fourMiBPlaintextPerHit": {
+                  "before": {
+                    "medianBatchMs": 45.719125075265765,
+                    "medianLongestLoopGapMs": 45.69245898164809
+                  },
+                  "after": {
+                    "medianBatchMs": 35.22066702134907,
+                    "medianLongestLoopGapMs": 29.053084086626768
+                  }
+                },
+                "smallInlineCases": "1 KiB and 64 KiB plaintext cases remain inline; timing differences are within local scheduler noise.",
+                "artifacts": [
+                  "/private/tmp/sarj-wiki-round3-storage-cache-cpu.json",
+                  "/private/tmp/sarj-wiki-round3-storage-cache-contention.json"
+                ]
+              },
+              "changedPaths": [
+                "backend/app/cache/service.py",
+                "backend/tests/test_cache_service.py"
+              ],
+              "validation": "Four new cases prove single and small-key large values decrypt on a worker while small hits stay on the request thread. Existing bulk, collision, rotation, corrupt entry, null value, TTL and atomic-write tests pass. Native complexity remains within its gate using the shared early-exit workload predicate.",
+              "limitations": [
+                "Large valid generic cache values are controlled stress fixtures; this is not a claim that current production catalogs are 1\u20134 MiB.",
+                "The shared default thread pool can still contend under sustained CPU load; no new pool or background infrastructure was added.",
+                "Large-write offload continues to use the existing batch rule; this candidate changes reads only."
+              ]
+            },
+            {
+              "id": "storage-r3-06",
+              "candidate": "Subtract owner-only QA permission evidence in public task SQL projection before materialization",
+              "outcome": "rejected",
+              "evidence": "A realistic 767-byte evidence envelope saved little transfer work while SQL JSONB subtraction copied the public result. Raw PostgreSQL reads were slower in both evidence and no-evidence cases. Interleaved actual Task ORM/public validation fixtures produced no consistent useful improvement and added work to the common no-evidence path. No public projection, internal loader, dedicated evidence read, stored result, header attestation or permission behavior was changed.",
+              "measurements": {
+                "rawSqlFixture": {
+                  "publicJsonBytes": 13587,
+                  "privateEvidenceBytes": 767,
+                  "samples": 31,
+                  "noEvidence": {
+                    "beforeMs": 0.096459174528718,
+                    "afterMs": 0.09954208508133888
+                  },
+                  "withEvidence": {
+                    "beforeMs": 0.08612498641014099,
+                    "afterMs": 0.09762495756149292
+                  }
+                },
+                "ormCrossCheck": {
+                  "samples": 31,
+                  "noEvidence": {
+                    "storedResultBytes": 1063,
+                    "beforeMs": 0.7546660490334034,
+                    "afterMs": 0.8806250989437103
+                  },
+                  "withEvidence": {
+                    "storedResultBytes": 1858,
+                    "beforeMs": 0.7139171939343214,
+                    "afterMs": 0.6952499970793724
+                  },
+                  "conclusion": "Mixed small differences under local load; no consistent improvement justifying a new projected ORM result."
+                },
+                "artifacts": [
+                  "/private/tmp/sarj-wiki-round3-storage-public-result.json",
+                  "/private/tmp/sarj-wiki-round3-storage-public-result-orm.json"
+                ]
+              },
+              "changedPaths": [],
+              "validation": "Isolated SQLAlchemy projection compiled and read a real PostgreSQL Task with the same owner/expiry predicate. Public validated results matched in 31 interleaved pairs per case. Existing owner/kind/status/size-scoped evidence and public stripping tests pass.",
+              "limitations": [
+                "Microsecond-level fixture differences can vary with concurrent machine load.",
+                "Dedicated evidence/internal checkpoint/header paths remain complete because no projection change was retained."
+              ]
+            }
+          ],
+          "changedPaths": [
+            "backend/app/auth/google_tokens.py",
+            "backend/app/cache/service.py",
+            "backend/app/tasks/service.py",
+            "backend/tests/test_cache_service.py",
+            "backend/tests/test_storage_hot_paths_postgres.py"
+          ],
+          "validation": {
+            "focusedPytest": {
+              "passed": 200,
+              "seconds": 14.05,
+              "modules": [
+                "tests/test_cache_service.py",
+                "tests/test_google_token_manager.py",
+                "tests/test_tasks.py",
+                "tests/test_storage_hot_paths_postgres.py",
+                "tests/test_task_source_dedupe_postgres.py",
+                "tests/test_storage_performance_postgres.py"
+              ]
+            },
+            "ruff": "passed",
+            "formatting": "passed",
+            "mypy": "passed on five owned files with cache-dir=/dev/null",
+            "basedpyright": "passed, zero errors/warnings/notes",
+            "ty": "passed",
+            "scopedNativeStandards": "passed with zero blocking diagnostics; warning-only domain-carrier/default/collaborator findings are not suppressed",
+            "suppressionRatchet": "passed from repository root, 25 suppressions across 11 codes, baseline 25",
+            "diffCheck": "passed",
+            "wholeRepositoryPythonBaseline": "Earlier concurrent read-only verification returned stale/inflated: 1810 blocking diagnostics over 201 files, 293 warnings excluded. All five owned files have zero scoped blocking diagnostics. Root notified and owns integrated baseline verification; no baseline was edited."
+          },
+          "limitations": [
+            "Measurements use the separate root-owned loopback PostgreSQL database wiki_polish29_qa_round3_storage and purposeful fakes/MockTransport; no live user data or real Google credentials.",
+            "No production latency, Google latency, WAN gain or absolute optimization-limit claim is made.",
+            "No commits/staging/push, dependencies, documentation, hooks/workflows, git metadata, or original workspace changes by this agent.",
+            "The four original user-edited document_transform files were not changed.",
+            "Root owns final integration, full make check, baseline reconciliation, commit and release."
+          ],
+          "ownership": "Released to root after focused checks; no more tracked edits planned."
+        },
+        {
+          "scope": "backend routes / provider / templates round3",
+          "report": "/private/tmp/sarj-wiki-perf-round3-routes.json",
+          "baselineRevision": "1f7fa8582235c6976f86538e282d4f9f30e1c5f4",
+          "passCount": 6,
+          "acceptedCount": 5,
+          "rejectedCount": 1,
+          "counting": "Six distinct new candidates beyond the prior 199. Integration fixes, repeated tests/measurements, formatting, git and release work count as zero additional passes.",
+          "changedPaths": [
+            "backend/app/files/service.py",
+            "backend/app/files/dependencies.py",
+            "backend/app/aliases/service.py",
+            "backend/app/templates/service.py",
+            "backend/app/smart_create/creation.py",
+            "backend/tests/test_provider_round3.py",
+            "backend/tests/test_provider_performance_postgres.py",
+            "backend/tests/test_aliases.py",
+            "backend/tests/test_membership_gating.py"
+          ],
+          "originalWorkspaceTouched": false,
+          "protectedDocumentTransformFilesTouched": false,
+          "gitMetadataTouched": false,
+          "measurementsArtifact": "/private/tmp/sarj-wiki-perf-round3-routes-measurements.json",
+          "measurementScript": "/private/tmp/sarj-wiki-perf-round3-routes-measure.py",
+          "measurementMethod": "Alternating controlled offline provider fixtures; synthetic latency explicitly labeled; no production latency assertion.",
+          "passes": [
+            {
+              "id": "routes-round3-01",
+              "candidate": "Avoid scope/inventory resolution when every fresh metadata result was denied, missing, trashed or bound to another ID",
+              "outcome": "accepted",
+              "evidence": "Both GoogleFilesService bulk metadata and accessible-ID paths return their existing empty outputs before calling resolve_member_drives when the validated metadata batch has no accepted records. Fresh per-file GET subrequests and original error propagation remain intact.",
+              "measurements": {
+                "before_metadata": {
+                  "returned": 0,
+                  "inventoryReads": 1,
+                  "metadataBatches": 1,
+                  "freshSubrequests": 4
+                },
+                "before_ids": {
+                  "returned": 0,
+                  "inventoryReads": 1,
+                  "metadataBatches": 1,
+                  "freshSubrequests": 4
+                },
+                "after_metadata": {
+                  "returned": 0,
+                  "inventoryReads": 0,
+                  "metadataBatches": 1,
+                  "freshSubrequests": 4
+                },
+                "after_ids": {
+                  "returned": 0,
+                  "inventoryReads": 0,
+                  "metadataBatches": 1,
+                  "freshSubrequests": 4
+                }
+              },
+              "changedPaths": [
+                "backend/app/files/service.py",
+                "backend/tests/test_provider_round3.py"
+              ],
+              "validation": [
+                "Two parameterized causal regressions exercise metadata and ID paths with all four exclusion classes; four fresh GET subrequests/one batch remain, inventory reads fall 1 to 0, output remains empty.",
+                "Existing partial-access, provider-500, membership and real PostgreSQL regressions pass."
+              ],
+              "limitations": [
+                "This removes no provider work for positive/partial-positive metadata results. Empty input was already optimized and is not counted again."
+              ]
+            },
+            {
+              "id": "routes-round3-02",
+              "candidate": "Bounded overlap of independent large fresh metadata batches",
+              "outcome": "accepted",
+              "evidence": "More than 100 unique IDs now dispatch Google batches through at most four service-owned chunk workers. Each actual HTTP thread retains its semaphore slot even after its caller cancels. Tracked shielded workers consume late failures, own credential refresh, stop queued chunks after cancellation/failure, and publish the ordered result only after all admitted batches settle. The existing <=100 direct single-thread path stays intact. Batch size, per-user authority, projections, retries, exact response-ID filtering and final membership checks are unchanged.",
+              "measurements": [
+                {
+                  "items": 10,
+                  "simulatedPerBatchDelayMs": 0,
+                  "beforeMs": 0.16035349999999998,
+                  "afterMs": 0.18683349999999999,
+                  "peakBatchWorkers": {
+                    "before": 1,
+                    "after": 1
+                  },
+                  "batchCounts": {
+                    "before": 1,
+                    "after": 1
+                  },
+                  "samplesPerVersion": 10
+                },
+                {
+                  "items": 100,
+                  "simulatedPerBatchDelayMs": 0,
+                  "beforeMs": 0.4211665,
+                  "afterMs": 0.450979,
+                  "peakBatchWorkers": {
+                    "before": 1,
+                    "after": 1
+                  },
+                  "batchCounts": {
+                    "before": 1,
+                    "after": 1
+                  },
+                  "samplesPerVersion": 10
+                },
+                {
+                  "items": 101,
+                  "simulatedPerBatchDelayMs": 0,
+                  "beforeMs": 0.5009375,
+                  "afterMs": 0.7147920000000001,
+                  "peakBatchWorkers": {
+                    "before": 1,
+                    "after": 1
+                  },
+                  "batchCounts": {
+                    "before": 2,
+                    "after": 2
+                  },
+                  "samplesPerVersion": 10
+                },
+                {
+                  "items": 400,
+                  "simulatedPerBatchDelayMs": 0,
+                  "beforeMs": 1.726021,
+                  "afterMs": 2.0279999999999996,
+                  "peakBatchWorkers": {
+                    "before": 1,
+                    "after": 1
+                  },
+                  "batchCounts": {
+                    "before": 4,
+                    "after": 4
+                  },
+                  "samplesPerVersion": 10
+                },
+                {
+                  "items": 701,
+                  "simulatedPerBatchDelayMs": 0,
+                  "beforeMs": 3.1905415,
+                  "afterMs": 4.065833,
+                  "peakBatchWorkers": {
+                    "before": 1,
+                    "after": 1
+                  },
+                  "batchCounts": {
+                    "before": 8,
+                    "after": 8
+                  },
+                  "samplesPerVersion": 10
+                },
+                {
+                  "items": 10,
+                  "simulatedPerBatchDelayMs": 5.0,
+                  "beforeMs": 6.2674585,
+                  "afterMs": 6.547083,
+                  "peakBatchWorkers": {
+                    "before": 1,
+                    "after": 1
+                  },
+                  "batchCounts": {
+                    "before": 1,
+                    "after": 1
+                  },
+                  "samplesPerVersion": 10
+                },
+                {
+                  "items": 100,
+                  "simulatedPerBatchDelayMs": 5.0,
+                  "beforeMs": 6.9584790000000005,
+                  "afterMs": 6.841854,
+                  "peakBatchWorkers": {
+                    "before": 1,
+                    "after": 1
+                  },
+                  "batchCounts": {
+                    "before": 1,
+                    "after": 1
+                  },
+                  "samplesPerVersion": 10
+                },
+                {
+                  "items": 101,
+                  "simulatedPerBatchDelayMs": 5.0,
+                  "beforeMs": 13.324291500000001,
+                  "afterMs": 7.301417,
+                  "peakBatchWorkers": {
+                    "before": 1,
+                    "after": 2
+                  },
+                  "batchCounts": {
+                    "before": 2,
+                    "after": 2
+                  },
+                  "samplesPerVersion": 10
+                },
+                {
+                  "items": 400,
+                  "simulatedPerBatchDelayMs": 5.0,
+                  "beforeMs": 27.6759375,
+                  "afterMs": 8.5074165,
+                  "peakBatchWorkers": {
+                    "before": 1,
+                    "after": 4
+                  },
+                  "batchCounts": {
+                    "before": 4,
+                    "after": 4
+                  },
+                  "samplesPerVersion": 10
+                },
+                {
+                  "items": 701,
+                  "simulatedPerBatchDelayMs": 5.0,
+                  "beforeMs": 53.4180415,
+                  "afterMs": 15.6855835,
+                  "peakBatchWorkers": {
+                    "before": 1,
+                    "after": 4
+                  },
+                  "batchCounts": {
+                    "before": 8,
+                    "after": 8
+                  },
+                  "samplesPerVersion": 10
+                }
+              ],
+              "changedPaths": [
+                "backend/app/files/service.py",
+                "backend/tests/test_provider_round3.py"
+              ],
+              "validation": [
+                "Actual thread-affine client factory proves four separate worker threads use their own cached Google HTTP client; 701 unique items remain ordered and duplicate file-0 is fetched once.",
+                "First-batch upstream failure drains the other three admitted reads, admits no remaining chunk, propagates the existing FilesError and performs no membership/publication.",
+                "Caller-cancellation regressions cover late success and late provider failure: four physical threads keep their slots, queued chunks never start, credential owners survive the canceled caller, all tracked tasks finish and are consumed.",
+                "A later 403 on file-0 is fetched freshly and omitted; no earlier permission answer is reused."
+              ],
+              "limitations": [
+                "Latency measurements explicitly simulate 5 ms per batch and do not claim a production WAN gain. The batch/subrequest count and quota cost are unchanged.",
+                "Zero-latency multi-batch fixtures pay additional scheduling overhead; measured 701 items 3.190542 to 4.065833 ms. Real Google I/O is the intended workload.",
+                "The four-slot bound applies to large-batch chunk workers on one FilesService, not all per-request individual GETs or all requests across the deployment.",
+                "An already admitted blocking provider call cannot be forcefully stopped; it remains tracked/slot-owned until its HTTP operation settles."
+              ]
+            },
+            {
+              "id": "routes-round3-03",
+              "candidate": "Use a minimal fresh scope read when a route only needs access",
+              "outcome": "accepted",
+              "evidence": "FilesService.require_access defaults to the existing get for alternate implementations; Google specializes it to validated id,parents,driveId,trashed. Alias resolution/get-for-file, icon-write dependency and rename preflight use this method. Full metadata remains available for document detail, edit checks, copy/move/delete decisions and mutation responses. Exact ID, trash and member-drive checks remain fresh.",
+              "measurements": {
+                "responseJsonBytes": {
+                  "before": 32271,
+                  "after": 80
+                },
+                "parse1000JsonRecordsMs": {
+                  "before": 4.528875,
+                  "after": 0.59725
+                },
+                "fieldProjection": "id,parents,driveId,trashed",
+                "freshFileGetCountBefore": 1,
+                "freshFileGetCountAfter": 1
+              },
+              "changedPaths": [
+                "backend/app/files/service.py",
+                "backend/app/files/dependencies.py",
+                "backend/app/aliases/service.py",
+                "backend/tests/test_provider_round3.py",
+                "backend/tests/test_provider_performance_postgres.py",
+                "backend/tests/test_aliases.py",
+                "backend/tests/test_membership_gating.py"
+              ],
+              "validation": [
+                "A real GoogleFilesService fixture drives alias lookup and icon-write access dependency using only projected fields; each call rereads the personal ancestor, a subsequent 403 is propagated, wrong IDs and trashed records stop before membership.",
+                "Normal rename and file mutation tests remain passing; real one-connection PostgreSQL direct-alias resolution still releases its database connection before independent provider/cache work.",
+                "Accessible icon PUT remains 200; inaccessible icon PUT remains 404; OpenAPI contract unchanged. Alternate test doubles were extended with the new access interface."
+              ],
+              "limitations": [
+                "The transfer/parser gain is a synthetic 32,000-character description fixture, not measured browser transfer or API end-to-end speed.",
+                "The number of file GETs stays one and fresh permission/member checks stay in place; projection omits only metadata unused by these call sites."
+              ]
+            },
+            {
+              "id": "routes-round3-04",
+              "candidate": "Refresh only the selected template workspace during Smart Create validation",
+              "outcome": "accepted",
+              "evidence": "TemplateCatalogService.resolve_template retains a full-refresh fallback for alternate implementations. DriveTemplateCatalogService discovers only a selected current member workspace, bypasses catalog TTL values, and shares only a current user+workspace discovery flight. Smart Create retains destination-drive, template version and MIME validation plus fresh provider copy-time validation. Provider refresh belongs to the discovery task; ordinary all-workspace catalog listing remains unchanged.",
+              "measurements": {
+                "workspaces": 8,
+                "simulatedPerFolderDelayMs": 1,
+                "before": {
+                  "medianMs": 3.9176045000000004,
+                  "folderProviderReads": 17,
+                  "samples": 8
+                },
+                "after": {
+                  "medianMs": 3.7877704999999997,
+                  "folderProviderReads": 3,
+                  "samples": 8
+                },
+                "sameUserFiveConcurrentCallReadsBeforeWithoutSharing": 15,
+                "sameUserFiveConcurrentCallReadsWithPreservedSharing": 3
+              },
+              "changedPaths": [
+                "backend/app/templates/service.py",
+                "backend/app/smart_create/creation.py",
+                "backend/tests/test_provider_round3.py"
+              ],
+              "validation": [
+                "Eight-workspace measurement returns the same selected Product-category template while reducing fresh folder reads from 17 to 3.",
+                "Five same-user/same-workspace callers collapse into one 3-read flight; a subsequent call rereads modified visibility and returns None, with cumulative six reads.",
+                "Separate users retain different visible templates; separate workspaces for the same user use separate flights and return their own templates.",
+                "An actual Google folder-list provider changes to 403 after the first completed flight; the next lookup issues another list and returns None.",
+                "Absent/foreign workspace performs no folder discovery; existing unavailable/template-version-changed/source checks and Smart Create suites pass."
+              ],
+              "limitations": [
+                "No TTL permission cache is added. The member inventory uses the existing DriveService freshness policy; selected-folder discovery is fresh as before.",
+                "Latency improves only modestly in the labeled 1 ms/folder fixture because the old unrelated-workspace traversals already run concurrently. The principal gain is avoided provider work.",
+                "A selected workspace still requires its existing bounded template traversal; full catalog reads are unchanged."
+              ]
+            },
+            {
+              "id": "routes-round3-05",
+              "candidate": "Bind ordinary provider file GET results to their requested file ID before normalization",
+              "outcome": "accepted",
+              "evidence": "The previous bulk path already checked requested IDs, but ordinary get/can_edit used whatever ID appeared in the provider body. _to_accessible_response now rejects a mismatched ordinary response together with the existing trashed check before any member lookup or FileResponse publication. This preserves mutation preflight identity and avoids unrelated membership work on malformed provider results.",
+              "measurements": {
+                "before": {
+                  "returnedId": "wrong",
+                  "inventoryReads": 1,
+                  "fileGetCalls": 1
+                },
+                "after": {
+                  "returnedId": null,
+                  "inventoryReads": 0,
+                  "fileGetCalls": 1
+                }
+              },
+              "changedPaths": [
+                "backend/app/files/service.py",
+                "backend/tests/test_provider_round3.py"
+              ],
+              "validation": [
+                "Both get and can_edit reject a synthetically mismatched provider ID, retain one fresh file GET and make zero inventory reads.",
+                "The exact baseline module returns the wrong ID and performs one inventory lookup for the same fixture. All normal file reads/mutations and alias regressions pass."
+              ],
+              "limitations": [
+                "This is response-binding reliability and removal of malformed-result work, not a normal successful-request throughput claim.",
+                "Bulk requested-ID binding was completed previously and is not counted again."
+              ]
+            },
+            {
+              "id": "routes-round3-06",
+              "candidate": "Delay DriveNode conversion until a Drive preload is known complete",
+              "outcome": "rejected",
+              "evidence": "An isolated prototype preserves every GoogleFile validation and the complete visible output, retains validated GoogleFile objects until the page cap is known, then converts nodes only on completion. It saves discarded conversion work for truncated trees but retains significantly more objects and slows complete inventories. The production traversal is left unchanged.",
+              "measurements": [
+                {
+                  "items": 3000,
+                  "truncated": false,
+                  "medianMs": {
+                    "before": 7.648417,
+                    "candidate": 9.6575415
+                  },
+                  "peakAllocatedBytes": {
+                    "before": 3888622,
+                    "candidate": 9467384
+                  },
+                  "samplesPerVersion": 10,
+                  "completeVisibleOutputsEqual": true,
+                  "googleFileValidationsPerVersion": 3000,
+                  "candidateDriveNodeConversions": 3000
+                },
+                {
+                  "items": 3000,
+                  "truncated": true,
+                  "medianMs": {
+                    "before": 8.911979500000001,
+                    "candidate": 4.590542
+                  },
+                  "peakAllocatedBytes": {
+                    "before": 3890222,
+                    "candidate": 5551432
+                  },
+                  "samplesPerVersion": 10,
+                  "completeVisibleOutputsEqual": true,
+                  "googleFileValidationsPerVersion": 3000,
+                  "candidateDriveNodeConversions": 0
+                }
+              ],
+              "changedPaths": [],
+              "validation": [
+                "Baseline and prototype use the same three pages of 1,000 files, same provider retry wrapper, same complete/truncated verdict and same visible file count.",
+                "Ten-sample CPU medians and independent tracemalloc peaks quantify both complete and capped workloads; all 3,000 GoogleFile validations remain in both."
+              ],
+              "limitations": [
+                "Complete 3,000-item preload rises 7.648417 to 9.657542 ms and peak allocation 3,888,622 to 9,467,384 bytes.",
+                "Truncated CPU drops 8.911980 to 4.590542 ms, but peak allocation still rises 3,890,222 to 5,551,432 bytes. Without evidence that truncated inventories dominate, the tradeoff is rejected.",
+                "No production preload source or tests were changed for this experimental alternative."
+              ]
+            }
+          ],
+          "validation": {
+            "focusedTests": {
+              "passed": 282,
+              "skipped": 0,
+              "includesRealPostgres": true,
+              "database": "wiki_polish29_qa_round3_routes",
+              "log": "/private/tmp/sarj-wiki-perf-round3-routes-focused.log"
+            },
+            "scopedMypy": {
+              "scope": "five source files plus new provider-round3 regression and updated real PostgreSQL provider fixture",
+              "log": "/private/tmp/sarj-wiki-perf-round3-routes-mypy-qualified.log",
+              "status": "passed"
+            },
+            "scopedBasedpyright": {
+              "log": "/private/tmp/sarj-wiki-perf-round3-routes-pyright.log",
+              "status": "passed"
+            },
+            "scopedTy": {
+              "log": "/private/tmp/sarj-wiki-perf-round3-routes-ty.log",
+              "status": "passed"
+            },
+            "scopedRuffAndFormat": {
+              "scope": "all nine owned changed paths",
+              "log": "/private/tmp/sarj-wiki-perf-round3-routes-lint.log",
+              "status": "passed"
+            },
+            "gitDiffCheck": "passed",
+            "additionalBroaderMypyAudit": {
+              "diagnostics": 8,
+              "newDiagnostics": 0,
+              "files": [
+                "backend/tests/test_aliases.py",
+                "backend/tests/test_membership_gating.py"
+              ],
+              "reason": "Pre-existing missing override decorators and a bare list in existing fixture methods; those methods were not changed. No allowance/baseline edits. The focused seven-file type checks are clean.",
+              "log": "/private/tmp/sarj-wiki-perf-round3-routes-mypy.log"
+            },
+            "fullGate": "Root-owned normal pre-push make check after every agent releases."
+          },
+          "sharedLimits": [
+            "All timings are controlled offline provider/JSON fixtures compared with exact deployed baseline main; explicitly simulated delays are labeled. No production latency maximum is claimed.",
+            "The sampled six-icon production path fits one metadata batch, so the large-batch overlap does not directly remove those six fresh Google permission calls.",
+            "Fresh per-user access, credential refresh, provider retry budget, response identity, encrypted cache semantics, locks and existing mutation permission checks are retained."
+          ],
+          "ownershipReleased": true
+        },
+        {
+          "scope": "frontend loading, search, query lifecycle and browser-session recovery; six distinct candidates beyond the prior 199 passes",
+          "report": "/private/tmp/sarj-wiki-perf-round3-loading.json",
+          "passCount": 6,
+          "base": "1f7fa8582235c6976f86538e282d4f9f30e1c5f4",
+          "branch": "codex/wiki-performance-round3-20261011",
+          "repository": "/private/tmp/sarj-wiki-performance-20261010",
+          "outcomeCounts": {
+            "implemented": 6,
+            "rejected": 0
+          },
+          "passes": [
+            {
+              "id": "loading-round3-1",
+              "candidate": "Debounce snippet previews that were issuing an authorization/read request for each keystroke while main Drive search was still debounced.",
+              "outcome": "implemented",
+              "evidence": "The mounted hook fixture begins with qu, types thirteen further prefixes of quarterlyreport fifty milliseconds apart, and waits for the final term to settle. Untouched deployed source makes fourteen snippet reads. The changed hook makes two: the initial selection and the settled term. Live query equality and the existing two-to-2048-character bounds prevent an old term from being fetched for a newly selected file during the delay. TanStack still owns request cancellation.",
+              "measurements": {
+                "before": {
+                  "snippetRequests": 14
+                },
+                "after": {
+                  "snippetRequests": 2
+                },
+                "avoidedRequests": 12,
+                "relativeReductionPercent": 85.71428571428571,
+                "initialSelectionDelayMs": 0,
+                "changedTermDebounceMs": 250,
+                "typingIntervalMs": 50
+              },
+              "changedPaths": [
+                "frontend/src/hooks/use-drive-search.ts",
+                "frontend/src/hooks/use-drive-search.test.tsx"
+              ],
+              "validation": [
+                "Rapid-prefix causal fixture failed on deployed source with fourteen calls, then passes with two.",
+                "New file during unsettled input is not requested until its current term settles.",
+                "Live overlong terms remain disabled even while a prior valid debounced term exists.",
+                "Existing closed-palette shared-foreground cancellation test still passes.",
+                "Command palette integration tests still pass."
+              ],
+              "limitations": [
+                "Counts use mocked network reads and a controlled clock; they are not measured production latency.",
+                "Preview content for a changed term now waits up to 250 ms, matching the existing main search debounce."
+              ]
+            },
+            {
+              "id": "loading-round3-2",
+              "candidate": "Avoid snippet HTTP reads for MIME types the backend already declares non-exportable.",
+              "outcome": "implemented",
+              "evidence": "backend/app/drive/service.py _TEXT_EXPORTABLE_MIME_TYPES permits only Google document, spreadsheet and presentation. A known folder, PDF, HTML or Google form previously made a mounted snippet read that the backend resolves to an empty snippet. Each of the four actual hook fixtures now makes zero reads. An absent MIME hint still performs the read because backend metadata discovery is required; supported MIME types retain their reads.",
+              "measurements": {
+                "before": {
+                  "knownUnsupportedFixtures": 4,
+                  "snippetRequestsPerFixture": 1,
+                  "totalSnippetRequests": 4
+                },
+                "after": {
+                  "knownUnsupportedFixtures": 4,
+                  "snippetRequestsPerFixture": 0,
+                  "totalSnippetRequests": 0
+                },
+                "supportedAndUnknownFixtures": 4,
+                "supportedAndUnknownRequestsPerFixture": 1
+              },
+              "changedPaths": [
+                "frontend/src/hooks/use-drive-search.ts",
+                "frontend/src/hooks/use-drive-search.test.tsx"
+              ],
+              "validation": [
+                "Four MIME fixtures failed against deployed source with one request each, then pass with zero.",
+                "Google document, spreadsheet, presentation and undefined-MIME fixtures each retain one read.",
+                "Command palette preview and explicit navigation behavior continue to pass."
+              ],
+              "limitations": [
+                "This eliminates browser/BFF/backend requests; the backend already avoided Google-client work for these known unsupported MIME types, so no additional provider-call saving is claimed.",
+                "MIME hints remain those provided by authenticated search results."
+              ]
+            },
+            {
+              "id": "loading-round3-3",
+              "candidate": "Bound retained abandoned main-search terms, which inherited the provider twenty-four-hour query GC default.",
+              "outcome": "implemented",
+              "evidence": "A real QueryClient with the production twenty-four-hour GC default observes and retires one hundred distinct useDriveSearch terms, then keeps the last term displayed. Deployed source retains all one hundred queries after ten minutes. Explicit ten-minute GC now leaves the single observed query. A fresh remount within the original thirty-second stale window still reuses data with no additional read. The snippet cache already had ten-minute GC; both search families now share that constant.",
+              "measurements": {
+                "fixtureDistinctTerms": 100,
+                "virtualElapsedMs": 600001,
+                "before": {
+                  "retainedQueryEntries": 100,
+                  "readCallsBeforeAndAfterFreshRemount": 100
+                },
+                "after": {
+                  "retainedQueryEntries": 1,
+                  "readCallsBeforeAndAfterFreshRemount": 100
+                },
+                "abandonedEntriesCollected": 99,
+                "activeEntriesPreserved": 1,
+                "beforeInactiveGcMs": 86400000,
+                "afterInactiveGcMs": 600000,
+                "staleTimeMsUnchanged": 30000
+              },
+              "changedPaths": [
+                "frontend/src/hooks/use-drive-search.ts",
+                "frontend/src/hooks/use-drive-search.test.tsx"
+              ],
+              "validation": [
+                "Actual QueryClient cache-count test failed against deployed source with one hundred entries, then passes with one.",
+                "Observed current data remains available throughout collection.",
+                "Fresh repeat search does not increase request count.",
+                "Shared consumer cancellation checks still pass."
+              ],
+              "limitations": [
+                "Cache entries are counted directly; no heap-byte or GC CPU reduction is estimated.",
+                "A term revisited after ten minutes of inactivity requires a new read, instead of retaining an unobserved result for a day.",
+                "Other authenticated query lifetimes remain unchanged."
+              ]
+            },
+            {
+              "id": "loading-round3-4",
+              "candidate": "Prevent asynchronous quick-link pruning from overwriting newer visits and eliminate unchanged-history persistence.",
+              "outcome": "implemented",
+              "evidence": "The actual loader reads visits, waits on authorization, then receives a new alias and a newer visit for an alias that the old snapshot considered denied. Deployed source overwrites both newer records with its retained old snapshot. The fix rereads current history and removes only denied alias/timestamp pairs still owned by the snapshot. Unchanged authorized history now causes zero storage writes; fully revalidated items alone are rendered, and denied or newly unvalidated records remain absent from the UI.",
+              "measurements": {
+                "before": {
+                  "newerVisitRecordsLost": 2,
+                  "unchangedHistoryStorageWrites": 1
+                },
+                "after": {
+                  "newerVisitRecordsLost": 0,
+                  "unchangedHistoryStorageWrites": 0
+                },
+                "authorizationReadsPerLoadUnchanged": 1
+              },
+              "changedPaths": [
+                "frontend/src/components/quick-links/quick-links-loader.tsx",
+                "frontend/src/components/quick-links/quick-links-loader.test.tsx"
+              ],
+              "validation": [
+                "Pending authorization/new-visit test failed on deployed source, then preserves all newer records.",
+                "Unchanged-history storage spy failed with one write on deployed source, then observes zero.",
+                "Existing revoked-entry removal and fail-closed UI tests remain green."
+              ],
+              "limitations": [
+                "Concurrent mutation within the single browser task is preserved; localStorage does not offer a cross-tab atomic transaction for simultaneous writes.",
+                "Preserved newer records require authorization on a later load before they can appear in the UI."
+              ]
+            },
+            {
+              "id": "loading-round3-5",
+              "candidate": "Make optional browser storage failures unable to leak background-refresh ownership, timers or retired-session authorization events.",
+              "outcome": "implemented",
+              "evidence": "The isolated fixture executes frozen deployed source and current source with the same actual React root and captured refresh promise. Denying getItem or removeItem during cleanup makes deployed source throw before abort, retain its one interval and notify unauthorized after unmount. Current source aborts its waiter, clears the interval, emits no stale event and has no cleanup exception. Denied reads/writes during mount use the normal twenty-minute in-memory interval. An owned failed marker is ignored if removal alone is denied, so unavailable refreshes retry at the next minute; a later owner marker is still respected. Selective deletion denial additionally uses a compare-owned-marker expired-value write, so an abandoned marker cannot survive Strict Mode replay as a successful timestamp. A second ownership check preserves a marker written by another owner during the failed delete.",
+              "measurements": {
+                "before": {
+                  "cleanupStorageFailureFixtures": 2,
+                  "abortedWaiterPerFixture": false,
+                  "intervalsRemainingPerFixture": 1,
+                  "lateTerminalNotificationsPerFixture": 1,
+                  "cleanupExceptionsPerFixture": 1,
+                  "refreshCallsWhenInitialStorageReadOrWriteDenied": 0
+                },
+                "after": {
+                  "cleanupStorageFailureFixtures": 2,
+                  "abortedWaiterPerFixture": true,
+                  "intervalsRemainingPerFixture": 0,
+                  "lateTerminalNotificationsPerFixture": 0,
+                  "cleanupExceptionsPerFixture": 0,
+                  "refreshCallsWhenInitialStorageReadOrWriteDenied": 1
+                },
+                "successfulRefreshCallsThroughMinute19WithDeniedStorage": 1,
+                "successfulRefreshCallsAtMinute20WithDeniedStorage": 2,
+                "failedOwnedMarkerRetryDelayMs": 60000,
+                "strictModeActiveWaitersWithSelectiveRemoveDenial": 1,
+                "strictModeReadCallsWithSelectiveRemoveDenial": 2,
+                "strictModeReadCallsAtNextMinuteAfterFailureWithSelectiveRemoveDenial": 3
+              },
+              "changedPaths": [
+                "frontend/src/components/session-refresh.tsx",
+                "frontend/src/components/session-refresh.test.tsx"
+              ],
+              "validation": [
+                "Two cleanup failures and two mount failures were reproduced against deployed source before changes.",
+                "Frozen-source versus current-source public component fixture records cancellation, interval count, stale terminal events and cleanup exceptions.",
+                "Fourteen SessionRefresh cases cover Strict Mode including denied-remove replay, hidden tabs, active terminal auth, later-owner markers including an overlapping failed delete, denied storage, unavailable refresh retry and cross-tab marker removal.",
+                "Shared raw transport is never directly aborted by this component cleanup."
+              ],
+              "limitations": [
+                "Storage denial prevents reliable cross-tab marker coordination; the in-memory cadence and existing same-session shared refresh remain available.",
+                "Only the failing component waiter is canceled, preserving shared foreground authorization.",
+                "No background timer CPU improvement under normal storage is claimed."
+              ]
+            },
+            {
+              "id": "loading-round3-6",
+              "candidate": "Recover a fresh browser persistence identity after both server bootstrap/identity reads fail but current browser authorization succeeds.",
+              "outcome": "implemented",
+              "evidence": "The actual QueryProvider + boundary + account query + expansion hook fixture shows deployed source displaying Recovered user while context stays anonymous and saved All Team expansion is ignored. The changed boundary awaits a zero-stale-time QueryClient read using shared current-user options, then claims a weakly keyed identity only while its exact client session remains active. It restores the saved expansion using the same one in-flight account read. Cached other-user profiles alone cannot become identity; conflicting replayed profiles are hidden. Terminal cleanup resolves only this verified client owner before retiring it, and session abort notifications immediately hide recovered context.",
+              "measurements": {
+                "before": {
+                  "currentAccountReadCalls": 1,
+                  "accountVisible": "Recovered user",
+                  "browserIdentity": "anonymous",
+                  "myDriveExpanded": true,
+                  "allTeamExpanded": false,
+                  "recoveredNamespaceRemovedOnTerminalFailure": false,
+                  "freshReadsWithOnlyOtherUserCached": 0
+                },
+                "after": {
+                  "currentAccountReadCalls": 1,
+                  "accountVisible": "Recovered user",
+                  "browserIdentity": "recovered-user",
+                  "myDriveExpanded": false,
+                  "allTeamExpanded": true,
+                  "recoveredNamespaceRemovedOnTerminalFailure": true,
+                  "freshReadsWithOnlyOtherUserCached": 1
+                },
+                "serverVerifiedIdentityAdditionalAuthReads": 0,
+                "strictModeReads": 2,
+                "strictModeReadSignalsAborted": [true, false],
+                "sharedForegroundReadCallsAfterRecoveryUnmount": 1,
+                "sharedForegroundSignalAbortedAfterRecoveryUnmount": false
+              },
+              "changedPaths": [
+                "frontend/src/components/browser-session-boundary.tsx",
+                "frontend/src/components/browser-session-boundary.test.tsx",
+                "frontend/src/components/browser-session-recovery.test.tsx",
+                "frontend/src/components/query-provider.tsx",
+                "frontend/src/hooks/use-current-user.ts",
+                "frontend/src/lib/verified-browser-user.ts",
+                "frontend/src/lib/verified-browser-user.test.ts"
+              ],
+              "validation": [
+                "Four of the original six causal recovery cases fail against deployed source: missing namespace, missing cleanup, absent fresh cached-profile verification, and Strict Mode recovery.",
+                "Nine actual provider/account/boundary cases now pass: expansion restoration, terminal namespace cleanup, stale cached profile, retired-provider response, terminal-cleared pending response, conflicting cache replay, server identity no extra read, shared foreground unmount ownership and Strict Mode.",
+                "Three verified-identity helper tests prove QueryClient isolation, same-epoch conflict rejection and retired-epoch rejection.",
+                "Existing QueryProvider retired query/mutation, same-user replacement, HTTP StrictMode and boundary lifecycle tests remain green."
+              ],
+              "limitations": [
+                "The additional fresh read is intentional only when server identity is absent and a cached profile alone would otherwise be used; production identified bootstrap paths keep their existing behavior.",
+                "Identity remains tied to an immutable active QueryClient session. A conflicting identity does not silently migrate existing authenticated caches.",
+                "This fixes persistence, warmup ownership and cleanup correctness; no end-to-end load-time saving is estimated."
+              ]
+            }
+          ],
+          "changedPaths": [
+            "frontend/src/components/browser-session-boundary.test.tsx",
+            "frontend/src/components/browser-session-boundary.tsx",
+            "frontend/src/components/browser-session-recovery.test.tsx",
+            "frontend/src/components/query-provider.tsx",
+            "frontend/src/components/quick-links/quick-links-loader.test.tsx",
+            "frontend/src/components/quick-links/quick-links-loader.tsx",
+            "frontend/src/components/session-refresh.test.tsx",
+            "frontend/src/components/session-refresh.tsx",
+            "frontend/src/hooks/use-current-user.ts",
+            "frontend/src/hooks/use-drive-search.test.tsx",
+            "frontend/src/hooks/use-drive-search.ts",
+            "frontend/src/lib/verified-browser-user.test.ts",
+            "frontend/src/lib/verified-browser-user.ts"
+          ],
+          "measurementArtifacts": {
+            "baselineFiveCandidateTests": "/private/tmp/sarj-wiki-perf-round3-loading-before-tests.json",
+            "baselineBootstrapTests": "/private/tmp/sarj-wiki-perf-round3-loading-bootstrap-before-tests.json",
+            "afterTests": "/private/tmp/sarj-wiki-perf-round3-loading-after-tests.json",
+            "refreshFrozenSourceFixture": "/private/tmp/sarj-wiki-perf-round3-loading-refresh-fixture.mjs",
+            "refreshFrozenSourceMeasurements": "/private/tmp/sarj-wiki-perf-round3-loading-refresh-measurements.json",
+            "frozenDeployedSourceDirectory": "/private/tmp/sarj-wiki-perf-round3-loading-baseline",
+            "frozenSourceSha256": {
+              "use-drive-search.ts": "457a99dc252eab93515ebd5671f67bbad5117dbce1c23819eb9a7889b83b18a4",
+              "quick-links-loader.tsx": "4b7f0d6ef78b2b5cd1631eda11a8276b33d8812b8dd6a30a52139d1db49e463b",
+              "session-refresh.tsx": "1d6955987cf5b9e8ce832c9108478932fc4bd9a68bfa60487ebfbd8686bccc25",
+              "browser-session-boundary.tsx": "226c004f3579ce0bfefc0ebf16a167af3f4c1bbe019870caa748245ff7815da5",
+              "query-provider.tsx": "b370f372774ef773ada3d764bb601eca48b69c81c6a58cb4f2edf6f06f281592",
+              "use-current-user.ts": "b608828e9b7b1a282a2252f98943f70f2ac2ca7a374bc10edb9f359d3aaa5578"
+            },
+            "refreshSelectiveRemoveBeforeRefinement": "/private/tmp/sarj-wiki-perf-round3-loading-refresh-selective-remove-before.json"
+          },
+          "validation": {
+            "focusedTestFiles": 11,
+            "focusedTestsPassed": 71,
+            "focusedTestsFailed": 0,
+            "newMeaningfulTests": 35,
+            "fullTypecheck": "tsc --noEmit --incremental false passed",
+            "scopedESLint": "passed with no new suppression or baseline changes",
+            "prettier": "all 13 owned files passed",
+            "diffCheck": "git diff --check passed",
+            "productionBuild": "deferred to root combined final build"
+          },
+          "measurementLimits": [
+            "Controlled fixtures measure request/cache/storage/timer ownership counts and causal user-visible behavior, not network latency or production traffic.",
+            "No routine test, formatting, report, typecheck or admin work is included as a substantive pass.",
+            "No edits to sidebar mutation or transport client files, original workspace, protected document_transform files, docs, README, workflows or git metadata.",
+            "No build, installation, commit, stage or push performed by this agent."
+          ],
+          "ownershipReleased": true
+        },
+        {
+          "scope": "frontend-sidebar",
+          "report": "/private/tmp/sarj-wiki-perf-round3-sidebar.json",
+          "agent": "frontend_sidebar_round2",
+          "stage": "round-three-sidebar",
+          "worktree": "/private/tmp/sarj-wiki-performance-20261010",
+          "branch": "codex/wiki-performance-round3-20261011",
+          "baseCommit": "1f7fa858",
+          "passCount": 6,
+          "retainedCount": 5,
+          "rejectedCount": 1,
+          "countingPolicy": "Six distinct new candidates. Tests, measurements, formatting, administration and the previously counted session-recovery/ownership fixes count zero additional passes.",
+          "status": "complete",
+          "changedPaths": [
+            "frontend/src/components/wiki-sidebar/sidebar-resize-handle.tsx",
+            "frontend/src/components/wiki-sidebar/sidebar-resize-handle.test.tsx",
+            "frontend/src/components/wiki-sidebar/name-prompt-dialog.tsx",
+            "frontend/src/components/wiki-sidebar/name-prompt-dialog.test.tsx",
+            "frontend/src/components/wiki-sidebar/use-drive-tree-index.ts",
+            "frontend/src/components/wiki-sidebar/use-drive-tree-index.test.tsx",
+            "frontend/src/hooks/use-expanded-folders.ts",
+            "frontend/src/hooks/use-expanded-folder-subscriptions.test.tsx",
+            "frontend/src/hooks/use-wiki-mutations.ts",
+            "frontend/src/hooks/use-wiki-icon-mutations.test.tsx"
+          ],
+          "validation": {
+            "focusedTests": {
+              "passed": 77,
+              "failed": 0,
+              "files": 14,
+              "newCausalTests": 18,
+              "newCausalFiles": 5,
+              "command": "npx vitest run src/components/wiki-sidebar/sidebar-resize-handle.test.tsx src/components/wiki-sidebar/name-prompt-dialog.test.tsx src/components/wiki-sidebar/use-drive-tree-index.test.tsx src/components/wiki-sidebar/sidebar-subscriptions.test.tsx src/components/wiki-sidebar/deferred-sidebar-content.test.tsx src/components/wiki-sidebar/item-menu.test.tsx src/components/wiki-sidebar/ephemeral-operation-ownership.test.ts src/components/wiki-sidebar/use-wiki-reorder-session.test.tsx src/hooks/use-expanded-folder-subscriptions.test.tsx src/hooks/use-expanded-folders.test.ts src/hooks/use-expanded-drives.test.ts src/hooks/use-wiki-icon-mutations.test.tsx src/hooks/use-session-mutation.test.tsx src/components/browser-session-recovery.test.tsx --no-file-parallelism"
+            },
+            "typescript": "npx tsc --noEmit --incremental false: exit 0 on final source",
+            "eslint": "All ten changed paths: exit 0, zero errors, four warnings on unchanged DialogContent class and existing nominal-ID boundaries. Final prompt source checked again after its last guard change: exit 0.",
+            "format": "Prettier check passed for all ten changed paths.",
+            "diff": "git diff --check passed.",
+            "fullBuildAndNativeGates": "Not run by this subagent; root owns full production qualification and native standards gates.",
+            "dependencyOrCacheWrites": "No installs, full builds or disposable UV-cache writes. Small benchmark/audit artifacts live only under /private/tmp."
+          },
+          "passes": [
+            {
+              "id": "r3-sidebar-01",
+              "candidate": "Bound sidebar resize listeners, animation frames and temporary styles to the current pointer gesture",
+              "outcome": "retained",
+              "evidence": "Actual SidebarResizeHandle DOM events reproduced an abandoned drag retaining one pointermove listener, one pointerup listener, one queued RAF and body/transition styles after unmount. A second pointerdown retained both old and new pairs of handlers. The fix releases the prior gesture, handles pointercancel/window blur, matches pointer IDs, cancels pending frames and restores the previous styles.",
+              "measurements": {
+                "afterUnmount": {
+                  "before": {
+                    "pointermoveListeners": 1,
+                    "pointerupListeners": 1,
+                    "queuedFrames": 1,
+                    "cursor": "col-resize",
+                    "userSelect": "none",
+                    "transition": "none"
+                  },
+                  "after": {
+                    "pointermoveListeners": 0,
+                    "pointerupListeners": 0,
+                    "pointercancelListeners": 0,
+                    "queuedFrames": 0,
+                    "cursor": "crosshair",
+                    "userSelect": "text",
+                    "transition": "width 200ms"
+                  }
+                },
+                "afterReentrantPointerdown": {
+                  "before": {
+                    "pointermoveListeners": 2,
+                    "pointerupListeners": 2,
+                    "queuedFrames": 1
+                  },
+                  "after": {
+                    "pointermoveListeners": 1,
+                    "pointerupListeners": 1,
+                    "queuedFrames": 0
+                  }
+                },
+                "normalGesture": {
+                  "moves": 100,
+                  "queuedFrames": 1,
+                  "maxWidthPx": 576,
+                  "minWidthPx": 224
+                },
+                "abandonedCookieWrites": 0
+              },
+              "changedPaths": [
+                "frontend/src/components/wiki-sidebar/sidebar-resize-handle.tsx",
+                "frontend/src/components/wiki-sidebar/sidebar-resize-handle.test.tsx"
+              ],
+              "validation": "Five causal tests cover unmount, matching and foreign cancellation, reentrant gestures, foreign moves/releases, RAF coalescing, final-coordinate cookie persistence, both bounds, blur and preservation of a previous cookie/styles.",
+              "limitations": "Happy DOM exercises resource/event ownership, not native compositor timing. Normal RAF coalescing already existed; no normal-drag frame-rate improvement is claimed. The live gesture now has cancellation/blur listeners that are also released."
+            },
+            {
+              "id": "r3-sidebar-02",
+              "candidate": "Prevent duplicate name confirmations and retire autofocus/completion work when a prompt closes",
+              "outcome": "retained",
+              "evidence": "Two actual form submit events within one React batch called onConfirm twice before transition pending state rerendered. Closing/unmounting left one autofocus frame queued. A synchronous admission latch now admits one confirmation; a per-open prompt owner prevents a prior completion from closing a reopened prompt. Cleanup cancels focus work. Open ownership intentionally survives default-name refreshes so successful rename invalidation still closes the current prompt.",
+              "measurements": {
+                "sameBatchSubmitEvents": 2,
+                "onConfirmCalls": {
+                  "before": 2,
+                  "after": 1
+                },
+                "queuedFocusFramesAfterCloseOrUnmount": {
+                  "before": 1,
+                  "after": 0
+                },
+                "oldCompletionCloseCallsAfterReopen": 0,
+                "currentSuccessCloseCalls": 1,
+                "confirmationContinuesAfterUnmount": true
+              },
+              "changedPaths": [
+                "frontend/src/components/wiki-sidebar/name-prompt-dialog.tsx",
+                "frontend/src/components/wiki-sidebar/name-prompt-dialog.test.tsx"
+              ],
+              "validation": "Six actual Radix dialog tests cover duplicate admission, close/reopen ownership, successful default-name refresh, unmount, focus/select on reopen and current autofocus/submission after Strict Mode replay. Existing rename/create menu dialog tests also pass.",
+              "limitations": "This guards prompt admission, focus and close callbacks; it does not cancel an already admitted server mutation or alter existing error reporting. The old transition remains pending until admitted work completes, preserving current disabled-state semantics."
+            },
+            {
+              "id": "r3-sidebar-03",
+              "candidate": "Avoid constructing cold hierarchy/icon/rank indexes for cached collapsed drives",
+              "outcome": "retained",
+              "evidence": "The actual useDriveTreeIndex hook built five indexes even with enabled=false. A cached tree with 10,000 folders and 10,000 files plus 3,000 overlay entries produced 23,000 property reads while collapsed. The hook now supplies stable shared empty arrays to the index builders until expansion. Query data and filesComplete remain available, preserving collapsed drop metadata and lazy-file admission.",
+              "measurements": {
+                "cachedFolderCount": 10000,
+                "cachedFileCount": 10000,
+                "overlayCount": 3000,
+                "collapsedParentPropertyReads": {
+                  "before": 20000,
+                  "after": 0
+                },
+                "collapsedOverlayKeyReads": {
+                  "before": 3000,
+                  "after": 0
+                },
+                "firstExpandedReads": {
+                  "parents": 20000,
+                  "overlays": 3000
+                },
+                "additionalReadsOnCollapseAndReexpand": 0,
+                "additionalTreeRequests": 0
+              },
+              "changedPaths": [
+                "frontend/src/components/wiki-sidebar/use-drive-tree-index.ts",
+                "frontend/src/components/wiki-sidebar/use-drive-tree-index.test.tsx"
+              ],
+              "validation": "Two actual QueryClient/hook tests prove cold collapsed work elimination, empty maps, retained data identity/incomplete-file flag, complete current maps on expansion and weak index reuse. Five existing shared sidebar subscription/selection tests and current destination ordering/session tests pass.",
+              "limitations": "This avoids cold construction and subsequent cold replacement work only while collapsed. Existing warm weak-cache lookups were already cheap. Expanded-drive index cost is unchanged, and no production navigation latency percentage is claimed."
+            },
+            {
+              "id": "r3-sidebar-04",
+              "candidate": "Remove the constant expansion-action subscription from every mounted folder row",
+              "outcome": "retained",
+              "evidence": "useExpandedFolder subscribed independently to both an expanded boolean and the stable setExpanded action. Actual Zustand stores/hooks instrumented at subscribe delivered 1,000 notifications to 500 rows on one expansion. The setter now reads the action from its current bound store when invoked; the boolean retains its one React subscription.",
+              "measurements": {
+                "mountedFolderRows": 500,
+                "liveSubscriptions": {
+                  "before": 1000,
+                  "after": 500
+                },
+                "notificationsForOneStoreUpdate": {
+                  "before": 1000,
+                  "after": 500
+                },
+                "notificationsForUnchangedSetter": 0,
+                "liveSubscriptionsAfterUnmount": 0
+              },
+              "changedPaths": [
+                "frontend/src/hooks/use-expanded-folders.ts",
+                "frontend/src/hooks/use-expanded-folder-subscriptions.test.tsx"
+              ],
+              "validation": "Two actual React/Zustand/persist tests cover notification fanout, expansion/collapse, no-op writes, unmount release and account-switch subscription/setter isolation. Existing per-user persistence, drive default/collapsed-choice and browser recovery tests pass.",
+              "limitations": "The test decorates the real Zustand subscription API to count resources; it does not replace the store or its state transitions. Drive initialized/expanded subscriptions are unchanged. The previously counted same-user recovery and batched expansion-write fixes are not counted again."
+            },
+            {
+              "id": "r3-sidebar-05",
+              "candidate": "Fuse optimistic icon lookup/filter/array-copy work into one ordered scan",
+              "outcome": "retained",
+              "evidence": "The shared icon optimistic hook performed find, filter and spread for every icon change. One loop now captures the first matching item, retains nonmatching items in order and appends the updated item. Actual QueryClient/mutation execution on a target at the end of 10,000 entries confirms the ID-read reduction; document cover selection, duplicate cleanup, normal rollback and retired-session guards remain intact.",
+              "measurements": {
+                "actualHookOverlayEntries": 10000,
+                "actualHookIdReadsIncludingQueryStructuralSharing": {
+                  "before": 20001,
+                  "after": 10001
+                },
+                "standaloneAlgorithmBenchmark": {
+                  "artifact": "/private/tmp/sarj-wiki-round3-icon-overlay-measurements.json",
+                  "script": "/private/tmp/sarj-wiki-round3-icon-overlay-benchmark.mjs",
+                  "method": "Node 26/V8, exact config callback and array-builder algorithms, seven alternating trials after warmup, median aggregate duration",
+                  "tail10000": {
+                    "iterations": 500,
+                    "beforeMs": 35.355125,
+                    "afterMs": 22.335791,
+                    "ratio": 0.6317553961412934
+                  },
+                  "head10000": {
+                    "iterations": 500,
+                    "beforeMs": 15.996417,
+                    "afterMs": 16.144208,
+                    "ratio": 1.009239006460001
+                  },
+                  "tail1000": {
+                    "iterations": 5000,
+                    "beforeMs": 40.102542,
+                    "afterMs": 24.212958,
+                    "ratio": 0.6037761396771255
+                  },
+                  "head1000": {
+                    "iterations": 5000,
+                    "beforeMs": 20.635958,
+                    "afterMs": 18.510875,
+                    "ratio": 0.8970203854843994
+                  },
+                  "tail10": {
+                    "iterations": 500000,
+                    "beforeMs": 47.455208,
+                    "afterMs": 24.695125,
+                    "ratio": 0.520388088911126
+                  },
+                  "head10": {
+                    "iterations": 500000,
+                    "beforeMs": 34.894292,
+                    "afterMs": 24.005417,
+                    "ratio": 0.6879468137654152
+                  },
+                  "duplicateSemanticsEqual": true
+                }
+              },
+              "changedPaths": [
+                "frontend/src/hooks/use-wiki-mutations.ts",
+                "frontend/src/hooks/use-wiki-icon-mutations.test.tsx"
+              ],
+              "validation": "Three actual useSessionMutation/QueryClient/action tests prove one scan, first-cover selection, preserved unaffected identities/order, duplicate removal, null icon removal, current 403 rollback and no retired cache resurrection. The nineteen reorder/session ownership tests also pass.",
+              "limitations": "Local algorithm timings are not browser/server latency measurements. The 10,000-entry head-target cell was 0.9% slower in its median with overlapping samples; no uniform CPU speedup is claimed. The actual hook counter and tail-case benefit justify retaining the scan/copy reduction. No mutation lifetime or invalidation semantics changed."
+            },
+            {
+              "id": "r3-sidebar-06",
+              "candidate": "Gate retained closed destination/preferences dialog read queries to reduce foreground requests",
+              "outcome": "rejected",
+              "evidence": "An untracked audit loads the actual WikiSidebar, FolderPickerDialog, MoveFileDialog, PreferencesDialog and TanStack hooks. It compares current source against an in-memory enabled=open prototype for the dialog drive/preference hooks. The sidebar keeps the same shared keys active, so both versions fetch once per key and retain the same observers. No demonstrated foreground benefit justified changing those APIs.",
+              "measurements": {
+                "artifact": "/private/tmp/sarj-wiki-round3-closed-dialog-query-measurements.json",
+                "script": "/private/tmp/sarj-wiki-round3-closed-dialog-query-audit.mjs",
+                "driveRequestsAfterInvalidation": {
+                  "before": 1,
+                  "prototype": 1
+                },
+                "preferenceRequestsAfterInvalidation": {
+                  "before": 1,
+                  "prototype": 1
+                },
+                "driveObserverCount": {
+                  "before": 4,
+                  "prototype": 4
+                },
+                "preferenceObserverCount": {
+                  "before": 2,
+                  "prototype": 2
+                },
+                "sharedQueriesRemainActive": true,
+                "networkReduction": false,
+                "subscriberReduction": false
+              },
+              "changedPaths": [],
+              "validation": "Actual-source audit completed successfully for both fresh QueryClients with closed retained dialogs and live sidebar query readers. The proposed hook additions exist only in memory; no tracked source was changed.",
+              "limitations": "UI leaf components and mutation transport are stubbed because this candidate concerns shared read-query activity. A standalone retained dialog with no sidebar reader could avoid a request, but that is not the demonstrated foreground wiki topology. Existing lazy dialog/query sharing behavior is retained."
+            }
+          ],
+          "remainingLimits": [
+            "No claim of a physical maximum or of complete elimination of every possible performance improvement.",
+            "Production bundle/browser/Worker qualification and the normal mandatory gates remain root-owned.",
+            "Original workspace, protected document-transform paths, transport/provider ownership files, dependencies, baselines, docs and git metadata were not edited by this stage."
+          ]
+        },
+        {
+          "scope": "cross-stack",
+          "report": "/private/tmp/sarj-wiki-perf-round3-cross-stack.json",
+          "agent": "cross_stack_round3",
+          "baseCommit": "1f7fa8582235c6976f86538e282d4f9f30e1c5f4",
+          "branch": "codex/wiki-performance-round3-20261011",
+          "passCount": 6,
+          "acceptedCount": 6,
+          "rejectedCount": 0,
+          "countingPolicy": "Six distinct newly reproduced causes, not six reruns or generic reviews. Nine original failure fixtures cover those six causes. Broader preservation checks are qualification, not extra passes.",
+          "ownershipReleased": true,
+          "changedPaths": [
+            "frontend/src/lib/session-client.ts",
+            "frontend/src/lib/session-client.test.ts",
+            "frontend/src/lib/clients/transform-http.ts",
+            "frontend/src/lib/clients/transform-http.test.ts",
+            "frontend/src/lib/document-transform-api.ts",
+            "frontend/src/lib/document-transform-api.test.ts",
+            "frontend/src/lib/smart-create-client.ts",
+            "frontend/src/lib/smart-create-client.test.ts",
+            "frontend/src/app/api/perf/route.ts",
+            "frontend/src/app/api/perf/route.test.ts",
+            "frontend/src/lib/api-client.ts",
+            "frontend/src/lib/api-client.test.ts",
+            "frontend/src/lib/clients/wiki-read-http.ts",
+            "frontend/src/lib/clients/wiki-read-http.test.ts",
+            "frontend/src/lib/bounded-error-text.ts",
+            "frontend/src/lib/bounded-error-text.test.ts",
+            "frontend/src/lib/mcp-consent-client.ts",
+            "frontend/src/lib/mcp-consent-client.test.ts"
+          ],
+          "validation": {
+            "before": {
+              "tests": 103,
+              "failed": 9,
+              "report": "/private/tmp/sarj-wiki-perf-round3-cross-stack-before.json"
+            },
+            "after": {
+              "tests": 185,
+              "passed": 185,
+              "failed": 0,
+              "suites": 14,
+              "report": "/private/tmp/sarj-wiki-perf-round3-cross-stack-after.json"
+            },
+            "addedRegressionTests": 18,
+            "scopedEslint": {
+              "errors": 0,
+              "log": "/private/tmp/sarj-wiki-perf-round3-cross-stack-eslint.log"
+            },
+            "scopedTypecheck": {
+              "exitCode": 1,
+              "transportErrors": 0,
+              "errorsOutsideOwnershipOnly": true,
+              "path": "frontend/src/components/wiki-sidebar/sidebar-resize-handle.test.tsx",
+              "reportedTo": "frontend_sidebar_round2",
+              "log": "/private/tmp/sarj-wiki-perf-round3-cross-stack-types.log"
+            },
+            "rootFullQualification": "Pending root normal make check after all agent scopes finish; this agent did not bypass hooks or make commits."
+          },
+          "passes": [
+            {
+              "id": "round3-cross-stack-01",
+              "candidate": "Release a cancelled shared-refresh waiter\u2019s other abort listeners immediately instead of retaining them until the refresh settles.",
+              "outcome": "accepted",
+              "evidence": "Existing shared refresh retained cancelled waiter listeners on the live browser-session signal. The new cleanup runs on waiter cancellation or shared completion, once only; it does not cancel the shared refresh needed by other waiters.",
+              "measurements": {
+                "pendingSharedRefreshCancelledWaiters": 100,
+                "sessionListenerRemovalsBeforeSharedSettlement": {
+                  "before": 0,
+                  "after": 100
+                },
+                "remainingCancelledWaiterSessionListeners": {
+                  "before": 100,
+                  "after": 0
+                },
+                "sharedFetches": 1,
+                "retainedWaiterResult": "refreshed",
+                "sharedNetworkSignalAborted": false
+              },
+              "changedPaths": [
+                "frontend/src/lib/session-client.ts",
+                "frontend/src/lib/session-client.test.ts"
+              ],
+              "validation": [
+                "releases discarded waiters\u2019 listeners before the shared refresh settles",
+                "Existing concurrent refresh, prior-owner handoff, timeout/classification and independent caller cancellation cases pass."
+              ],
+              "limitations": "Promise continuations can remain until the already bounded ten-second shared refresh settles; the measured improvement is immediate listener release, not proof of zero retained allocations."
+            },
+            {
+              "id": "round3-cross-stack-02",
+              "candidate": "Own unsignalled transform GETs and response decoding with the browser session without aborting admitted POST requests.",
+              "outcome": "accepted",
+              "evidence": "Retiring the initial session previously left an unsignalled transform GET network signal live. Reads now compose the captured session into the request signal. POST network requests retain their existing timeout/caller signal; after headers, stale response bodies are cancelled rather than decoded or published.",
+              "measurements": {
+                "getNetworkSignalAbortedAfterRetirement": {
+                  "before": false,
+                  "after": true
+                },
+                "discardedUnfinishedReadBodyCancellations": 1,
+                "postNetworkSignalAbortedAfterRetirement": false,
+                "retiredPostResponseBodyCancellations": 1,
+                "postDispatches": 1
+              },
+              "changedPaths": [
+                "frontend/src/lib/clients/transform-http.ts",
+                "frontend/src/lib/clients/transform-http.test.ts"
+              ],
+              "validation": [
+                "Unsignalled GET retirement, stalled GET-body cancellation and admitted POST preservation regressions pass.",
+                "Existing replay metadata, source-change 409 guidance and malformed failure response tests pass."
+              ],
+              "limitations": "An admitted transform may still complete in the backend after its UI owner retires. This is preserved deliberately; no new cancellation, retry, admission or idempotency behavior was introduced."
+            },
+            {
+              "id": "round3-cross-stack-03",
+              "candidate": "Keep smart-create and document-transform polling under the same browser-session owner across sleeps and transient backoff.",
+              "outcome": "accepted",
+              "evidence": "Both loops previously recaptured a replacement account on the next transport call when retirement happened during an unsignalled sleep. Each loop now captures its owner once, combines an optional caller signal once, and uses that signal for waits, reads, backoff and terminal publication.",
+              "measurements": {
+                "pollIntervalMs": 1000,
+                "documentTransformRequestsAsReplacementSession": {
+                  "before": 1,
+                  "after": 0
+                },
+                "smartCreateRequestsAsReplacementSession": {
+                  "before": 1,
+                  "after": 0
+                },
+                "outcomeAfterRetirement": "AbortError"
+              },
+              "changedPaths": [
+                "frontend/src/lib/document-transform-api.ts",
+                "frontend/src/lib/document-transform-api.test.ts",
+                "frontend/src/lib/smart-create-client.ts",
+                "frontend/src/lib/smart-create-client.test.ts"
+              ],
+              "validation": [
+                "Both retirement-during-sleep causal regressions pass.",
+                "Existing typed tasks/results, cancelled/failed/review states, transient retry/backoff and poll-budget tests pass."
+              ],
+              "limitations": "Default one-second cadence, transform poll budget and retry thresholds are unchanged. This avoids obsolete work; it does not speed up the actual server transform task."
+            },
+            {
+              "id": "round3-cross-stack-04",
+              "candidate": "Put a finite ingestion deadline on the already byte-bounded performance beacon route.",
+              "outcome": "accepted",
+              "evidence": "A one-byte authenticated body that never closes stayed pending after five seconds under the baseline route. The route now composes the caller signal with a five-second body-ingestion deadline, cancels the stream without awaiting cleanup and returns 408 on expiry.",
+              "measurements": {
+                "bodyBytes": 1,
+                "bodyByteLimit": 2048,
+                "baselineAfter5000Ms": "pending; no finite ingestion deadline",
+                "afterAt5000Ms": {
+                  "httpStatus": 408,
+                  "bodyCancellations": 1
+                },
+                "ordinaryAllowlistedBeaconHttpStatus": 204,
+                "oversizedBeaconHttpStatus": 413
+              },
+              "changedPaths": [
+                "frontend/src/app/api/perf/route.ts",
+                "frontend/src/app/api/perf/route.test.ts"
+              ],
+              "validation": [
+                "A fake-clock stalled-body causal fixture crosses the deadline and proves completion/cancellation.",
+                "Existing authenticated schema/privacy allowlist, spoofed-length over-limit stream, invalid schema and unauthenticated rejection cases pass."
+              ],
+              "limitations": "Measurements use a deterministic fake clock. Very slow beacons can now expire, which is acceptable for optional telemetry; this is not a change to document writes or API read deadlines."
+            },
+            {
+              "id": "round3-cross-stack-05",
+              "candidate": "Bound and share error-body decoding across generated API, wiki BFF and transform clients; release late/retired responses before work.",
+              "outcome": "accepted",
+              "evidence": "Generated API error parsing previously consumed a 1 MiB message; wiki BFF errors used unbounded json(), while transform failures permitted the full 4 MiB success limit. The shared helper caps error guidance at 32 KiB and ten seconds with caller/session cancellation. The original HTTP status and existing generic fallback survive malformed, large or stalled errors; success schemas and transform success limits are unchanged.",
+              "measurements": {
+                "oversizedErrorStream": {
+                  "fixture": "1 MiB JSON error detail, 8 KiB chunks, zero prefetch",
+                  "before": {
+                    "bytes": 1048589,
+                    "chunks": 129,
+                    "cancellations": 0,
+                    "detailCharacters": 1048576
+                  },
+                  "after": {
+                    "bytes": 40960,
+                    "chunks": 5,
+                    "cancellations": 1,
+                    "rejection": "RangeError"
+                  },
+                  "streamBytesAvoidedPercent": 96.09379842817349,
+                  "warning": "Deterministic stream-work measurement, not production page latency"
+                },
+                "maxDecodedErrorBytes": 32768,
+                "errorIngestionDeadlineMs": 10000,
+                "stalledHelperAt9999Ms": "pending",
+                "stalledHelperAt10000Ms": {
+                  "outcome": "TimeoutError",
+                  "cancellations": 1
+                },
+                "retiredGeneratedMutationNetworkSignalAborted": false,
+                "retiredGeneratedMutationBodyCancellations": 1,
+                "retiredBffReplayBodyCancellations": 1
+              },
+              "changedPaths": [
+                "frontend/src/lib/api-client.ts",
+                "frontend/src/lib/api-client.test.ts",
+                "frontend/src/lib/clients/wiki-read-http.ts",
+                "frontend/src/lib/clients/wiki-read-http.test.ts",
+                "frontend/src/lib/bounded-error-text.ts",
+                "frontend/src/lib/bounded-error-text.test.ts",
+                "frontend/src/lib/clients/transform-http.ts",
+                "frontend/src/lib/clients/transform-http.test.ts"
+              ],
+              "validation": [
+                "1 MiB API error fallback and bounded streamed-work regression pass.",
+                "Oversized wiki/transform errors, caller cancellation during BFF error decoding, stale replay disposal and session cancellation of generated mutation error decoding pass.",
+                "Exact 32 KiB multi-byte guidance, ten-second deadline with stalled cancellation cleanup and existing normal detail/validation array/rate-limit/409 responses pass."
+              ],
+              "limitations": "Oversized error guidance now falls back to the existing generic copy. Streams can deliver an oversized chunk before the limit check; the helper bounds decoded/stored bytes and stops before decoding that chunk. The 96.09% reduction is deterministic stream work in an 8 KiB-chunk fixture, not production latency."
+            },
+            {
+              "id": "round3-cross-stack-06",
+              "candidate": "Dispose unused MCP consent/decision/disconnect failure bodies without waiting or retrying sensitive decisions.",
+              "outcome": "accepted",
+              "evidence": "MCP read, decision and disconnect rejection paths threw the stable error without cancelling their unused bodies. They now use the shared nonblocking stream-discard helper, and disconnect also discards unexpected non-204 response bodies.",
+              "measurements": {
+                "syntheticErrorHttpStatus": 503,
+                "readUnusedBodyCancellations": {
+                  "before": 0,
+                  "after": 1
+                },
+                "decisionUnusedBodyCancellations": {
+                  "before": 0,
+                  "after": 1
+                },
+                "disconnectUnusedBodyCancellations": {
+                  "before": 0,
+                  "after": 1
+                },
+                "requestsPerFlow": 1,
+                "cancellationPromisePendingWhileRejectionCompletes": true
+              },
+              "changedPaths": [
+                "frontend/src/lib/mcp-consent-client.ts",
+                "frontend/src/lib/mcp-consent-client.test.ts"
+              ],
+              "validation": [
+                "All three failures complete before an intentionally unsettled cancellation promise and issue exactly one request.",
+                "Existing no replay, exact 204 confirmation, browser credentials/CSRF, no referrer, no redirects and safe callback validation tests pass."
+              ],
+              "limitations": "MCP authentication and decision semantics are unchanged. This removes unused stream work/resource retention; it is not a speed claim for successful OAuth or consent operations."
+            }
+          ]
+        }
+      ],
+      "measurements": {
+        "inventoryBaselineRevision": "1f7fa8582235c6976f86538e282d4f9f30e1c5f4",
+        "basis": "Same locked local production-build toolchain. Synchronous client-reference inventory excludes framework and deferred chunks; this is not production transfer or page-load latency.",
+        "homeClientInventory": {
+          "before": {
+            "bytes": 551485,
+            "gzipBytes": 179354
+          },
+          "after": {
+            "bytes": 554465,
+            "gzipBytes": 180375
+          },
+          "gzipChangePercent": 0.569
+        },
+        "documentClientInventory": {
+          "before": {
+            "bytes": 583817,
+            "gzipBytes": 190761
+          },
+          "after": {
+            "bytes": 586823,
+            "gzipBytes": 191806
+          },
+          "gzipChangePercent": 0.548
+        }
+      },
+      "validation": {
+        "initialIntegratedLocalGate": {
+          "command": "make check",
+          "result": "passed",
+          "log": "/private/tmp/sarj-wiki-perf-round3-full-check.log",
+          "backendTestsPassed": 4251,
+          "backendCoveragePercent": 88.74,
+          "backendPostgresFixture": "Disposable loopback PostgreSQL, never production data; fixture-backed suites included without skips.",
+          "frontendTestsPassed": 803,
+          "frontendTestFiles": 104,
+          "frontendSecurityScriptTestsPassed": 13,
+          "frontendTypeCoveragePercent": 99.7,
+          "repositoryTestsPassed": 323,
+          "terraformTestsPassed": 11,
+          "nativeStandardsErrors": 0,
+          "nativeStandardsExecutionIssues": 0,
+          "pythonBaseline": "Unchanged: 1808 blocking diagnostics in 200 files; 292 warnings excluded.",
+          "suppressionRatchet": "Unchanged: 25 suppressions across 11 codes.",
+          "backendTypes": "mypy: 193 source files clean; basedpyright: zero errors, warnings or notes; ty passed.",
+          "frontendProductionBuild": "Next.js 16.3.8 production webpack build passed."
+        },
+        "integrationRepairsCountedAsPasses": 0,
+        "integrationRepairs": [
+          "Provider-client construction accepts a typed client factory for faithful tests instead of ambient monkeypatching; production refresh-handler behavior is preserved.",
+          "A real PostgreSQL token-manager regression verifies that four already-admitted worker threads retain prepared refresh scope after parent cancellation, refresh once, and do not start queued work.",
+          "The task ID helper uses the nominal UserId owner type instead of introducing a new standards warning."
+        ],
+        "agentSourceSnapshots": "Raw handoff reports retain agent source hashes. The integrated Git revision and exact-head gates qualify the final sources after the documented integration repairs; redundant path-keyed digest maps are omitted from this record.",
+        "releaseGate": "The normal pre-push make check and exact-head hosted checks must qualify the final commit. Release Main must pass both deploys and exact-revision health/proxy checks; the signed-in production UI and guarded workspace sync are verified after deployment and recorded in the final receipt."
+      },
+      "reproduce": [
+        "Set WIKI_POLISH29_QA_DATABASE_URL and WIKI_MCP_QA_DATABASE_URL to a disposable loopback postgresql+asyncpg database named wiki_polish29_qa*; run make check.",
+        "uv --directory backend run --locked pytest -q tests/test_storage_hot_paths_postgres.py tests/test_provider_performance_postgres.py tests/test_provider_round3.py tests/test_google_token_manager.py tests/test_cache_service.py",
+        "npm --prefix frontend test",
+        "node frontend/scripts/benchmark-bundle.mjs",
+        "node frontend/scripts/benchmark-bundle.mjs frontend/.next \"(app)/d/[driveId]/page\"",
+        "Candidate-specific fixture, timing and read-count methods are recorded in each scope; timing harnesses use controlled local or simulated provider costs."
+      ],
+      "limitations": [
+        "Controlled fixtures and client inventories do not establish production page-load latency.",
+        "Fresh authenticated principal scope, permissions, encryption/rotation, locks and response validation remain enforced.",
+        "No physical performance maximum is claimed.",
+        "Homepage compressed app inventory increases 0.569% (179354 to 180375 bytes), and document inventory increases 0.548% (190761 to 191806 bytes). Browser ownership/recovery and bounded-error guards are retained for proved behavior, not described as transfer reductions.",
+        "Provider batching retains at most four admitted workers per service instance, not a global concurrency limit; zero-I/O batching is slower (3.191 to 4.066 ms), while the 5 ms per-batch fixture improves 53.418 to 15.686 ms.",
+        "Task lookup timings measure SQL execution over 20000 retained tasks and 1000 aliases, excluding ORM and network cost. Provider-refresh savings apply to refresh paths, not every authenticated request.",
+        "Large cache crypto uses the default thread pool only from 512 KiB encrypted payloads. Small payloads retain inline work; thread-pool contention and production payload distribution remain workload dependent.",
+        "Icon overlay tail-of-list work improves in the fixture; the 10000-item head-match sample is 0.9% slower with overlapping variation. The one-pass reduction is recorded separately from end-to-end latency.",
+        "The 32 KiB error-body guard can receive one oversized chunk before cancellation, but caps stored/decoded input. Cancelled refresh waiters remove listeners; promise continuations remain until the bounded shared refresh settles.",
+        "Rejected candidates cover bounded cache cleanup (slower with a controlled writer deadlock), public-task SQL projection (slower), delayed DriveNode conversion (CPU/allocation regression), and closed-dialog query gating (no read/observer reduction in the actual shared sidebar topology).",
+        "The root fixed provider test construction and nominal task-owner typing without baseline growth, new suppressions or managed configuration changes. These integration repairs count as zero passes."
+      ],
+      "acceptedCount": 26,
+      "rejectedCount": 4
     }
   ]
 }

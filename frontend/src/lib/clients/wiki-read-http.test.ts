@@ -19,6 +19,63 @@ afterEach(() => {
 });
 
 describe("authenticated wiki read recovery", () => {
+  it("stops and redacts an oversized BFF error body", async () => {
+    const cancel = vi.fn();
+    const body = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(new Uint8Array(32 * 1024 + 1));
+      },
+      cancel,
+    });
+    fetchMock.mockResolvedValue(new Response(body, { status: 502 }));
+    await expect(wikiReadHttp("/files/first", PayloadSchema)).rejects.toMatchObject({
+      message: "The request could not be completed",
+      status: 502,
+    });
+    expect(cancel).toHaveBeenCalledOnce();
+  });
+
+  it("cancels error decoding when its caller leaves", async () => {
+    const controller = new AbortController();
+    const cancel = vi.fn();
+    const body = new ReadableStream<Uint8Array>({
+      start(stream) {
+        stream.enqueue(new TextEncoder().encode("{"));
+      },
+      cancel,
+    });
+    fetchMock.mockResolvedValue(new Response(body, { status: 502 }));
+    const pending = wikiReadHttp("/files/first", PayloadSchema, {}, controller.signal).catch(
+      (error: unknown) => error,
+    );
+    await vi.waitFor(() => {
+      expect(body.locked).toBe(true);
+    });
+    controller.abort();
+    await expect(pending).resolves.toMatchObject({ name: "AbortError" });
+    expect(cancel).toHaveBeenCalledOnce();
+  });
+
+  it("disposes a late replay response when the waiting caller has already left", async () => {
+    const controller = new AbortController();
+    const replay = Promise.withResolvers<Response>();
+    const cancel = vi.fn();
+    fetchMock
+      .mockResolvedValueOnce(new Response(null, { status: 401 }))
+      .mockResolvedValueOnce(new Response(null))
+      .mockReturnValueOnce(replay.promise);
+    const pending = wikiReadHttp("/files/first", PayloadSchema, {}, controller.signal).catch(
+      (error: unknown) => error,
+    );
+    await vi.waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledTimes(3);
+    });
+    controller.abort();
+    replay.resolve(new Response(new ReadableStream<Uint8Array>({ cancel })));
+    await expect(pending).resolves.toMatchObject({ name: "AbortError" });
+    expect(cancel).toHaveBeenCalledOnce();
+  });
+
   it("retires an unsignalled read without refreshing or notifying a replacement", async () => {
     const previous = {};
     const replacement = {};
