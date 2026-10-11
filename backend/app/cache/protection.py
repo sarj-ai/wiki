@@ -5,12 +5,14 @@ from collections.abc import Sequence
 from dataclasses import dataclass, field
 import hashlib
 import hmac
+import json
 from typing import Self
 
 from cryptography.fernet import Fernet, InvalidToken, MultiFernet
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.kdf.hkdf import HKDF
 from pydantic import BaseModel, ConfigDict, JsonValue, ValidationError
+from pydantic_core import PydanticSerializationError
 
 from app.config import parse_fernet_keys
 
@@ -111,11 +113,18 @@ class CacheEntryProtector:
         return physical
 
     def protect(self, namespace: str, logical_key: str, value: JsonValue) -> str:
-        plaintext = (
-            _CacheEnvelope(key=logical_key, namespace=namespace, value=value)
-            .model_dump_json()
-            .encode()
-        )
+        payload = _CacheEnvelope(key=logical_key, namespace=namespace, value=value)
+        try:
+            plaintext = payload.model_dump_json().encode()
+        except PydanticSerializationError:
+            # The typed serializer's nesting limit is slightly lower than
+            # JsonValue validation. Preserve previously supported deep values.
+            plaintext = json.dumps(
+                {"key": payload.key, "namespace": payload.namespace, "value": payload.value},
+                ensure_ascii=False,
+                separators=(",", ":"),
+                sort_keys=True,
+            ).encode()
         return _ENVELOPE_PREFIX + self._fernets[0].encrypt(plaintext).decode()
 
     def unprotect(self, namespace: str, logical_key: str, envelope: object) -> JsonValue:
@@ -123,8 +132,14 @@ class CacheEntryProtector:
             raise InvalidCacheEntryError
         token = envelope.removeprefix(_ENVELOPE_PREFIX)
         try:
-            payload = _CacheEnvelope.model_validate_json(self._decryptor.decrypt(token.encode()))
-        except (InvalidToken, ValidationError, UnicodeDecodeError) as error:
+            plaintext = self._decryptor.decrypt(token.encode())
+            try:
+                payload = _CacheEnvelope.model_validate_json(plaintext)
+            except ValidationError:
+                # jiter's parser stops before the legacy JsonValue nesting
+                # limit. Strict envelope validation still binds every field.
+                payload = _CacheEnvelope.model_validate(json.loads(plaintext))
+        except (InvalidToken, ValidationError, json.JSONDecodeError, UnicodeDecodeError) as error:
             raise InvalidCacheEntryError from error
         if payload.namespace != namespace or payload.key != logical_key:
             raise InvalidCacheEntryError

@@ -48,6 +48,7 @@ function trustedRequest(request: Request): boolean {
 async function post(request: Request, context: RouteContext): Promise<Response> {
   if (!trustedRequest(request)) return failure(403);
   const { path = [] } = await context.params;
+  if (request.signal.aborted) return failure(502);
   if (path.length === 1 && path[0] === "uploads") {
     if (request.headers.get("content-type")?.split(";", 1)[0]?.trim() !== "application/json")
       return failure(415);
@@ -58,7 +59,12 @@ async function post(request: Request, context: RouteContext): Promise<Response> 
   if (request.headers.get("content-type")?.split(";", 1)[0]?.trim() !== "application/json")
     return failure(415);
   try {
-    const body = await boundedTransformText(request.body);
+    const ingressSignal = AbortSignal.any([
+      request.signal,
+      AbortSignal.timeout(UPSTREAM_TIMEOUT_MS),
+    ]);
+    const body = await boundedTransformText(request.body, ingressSignal);
+    ingressSignal.throwIfAborted();
     // Invoke the existing server-side auth and fail-closed edge limiter directly;
     // the browser references this stable route, not a deployment-specific action ID.
     return resultResponse(await createDocumentTransformAction(body, key.data), true);

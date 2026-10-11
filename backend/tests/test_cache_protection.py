@@ -177,6 +177,32 @@ def test_typed_envelope_and_legacy_json_reader_are_compatible_for_nested_json() 
     assert decoded == {"key": "user", "namespace": "drive.list", "value": value}
 
 
+@pytest.mark.parametrize("depth", [199, 200, 210, 253, 254])
+def test_deep_json_values_preserve_legacy_round_trip_and_binding(depth: int) -> None:
+    key = _key()
+    fernet = Fernet(key.encode())
+    protector = CacheEntryProtector((key,))
+    value: JsonValue = None
+    for _ in range(depth):
+        value = [value]
+    legacy_plaintext = json.dumps(
+        {"key": "user", "namespace": "drive.list", "value": value},
+        ensure_ascii=False,
+        separators=(",", ":"),
+        sort_keys=True,
+    ).encode()
+    legacy = "f1." + fernet.encrypt(legacy_plaintext).decode()
+    assert protector.unprotect("drive.list", "user", legacy) == value
+    assert (
+        protector.unprotect("drive.list", "user", protector.protect("drive.list", "user", value))
+        == value
+    )
+    with pytest.raises(InvalidCacheEntryError):
+        protector.unprotect("drive.list", "different-user", legacy)
+    with pytest.raises(InvalidCacheEntryError):
+        protector.unprotect("template.catalog", "user", legacy)
+
+
 @pytest.mark.parametrize("count", [1, 8, 512])
 @pytest.mark.parametrize("rotation_count", [1, 3])
 def test_bulk_lookup_derivation_preserves_existing_key_bytes_and_rotation_order(

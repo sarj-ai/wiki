@@ -91,12 +91,10 @@ class DriveTemplateCatalogService(TemplateCatalogService):
         return catalog
 
     async def _discover_drive(self, drive: DriveSummary) -> list[TemplateRead]:
-        root_children = await self._list_folder_children(FileId(drive.id))
-        template_roots = [
-            child
-            for child in root_children
-            if child.mime_type == MIME_FOLDER and child.name == _TEMPLATES_FOLDER_NAME
-        ]
+        async with self._folder_reads:
+            template_roots = await self._drive.list_named_root_folders(
+                drive.id, name=_TEMPLATES_FOLDER_NAME
+            )
         discovered = await asyncio.gather(
             *(
                 self._walk_template_root(drive, root.id)

@@ -7,38 +7,69 @@ export type DropIntent = "above" | "below" | "into";
 interface DragOverState {
   activeContainerId: null | string;
   activeId: null | string;
+  activeOwner: null | symbol;
   intent: DropIntent | null;
   overContainerId: null | string;
   overId: null | string;
-  reset: () => void;
-  setActive: (active: { id: null | string; containerId: null | string }) => void;
-  setOver: (over: {
-    id: null | string;
-    containerId: null | string;
-    intent: DropIntent | null;
-  }) => void;
+  reset: (owner?: symbol) => void;
+  setActive: (
+    active: { id: null | string; containerId: null | string },
+    session?: AbortSignal,
+  ) => null | symbol;
+  setOver: (
+    over: {
+      id: null | string;
+      containerId: null | string;
+      intent: DropIntent | null;
+    },
+    owner?: symbol,
+  ) => void;
 }
 
-export const useDragOverStore = create<DragOverState>((set) => ({
+let releaseActive: (() => void) | undefined;
+
+export const useDragOverStore = create<DragOverState>((set, get) => ({
   activeContainerId: null,
   activeId: null,
+  activeOwner: null,
   intent: null,
   overContainerId: null,
   overId: null,
-  reset: () => {
+  reset: (owner) => {
+    set((state) => {
+      if (owner !== undefined && state.activeOwner !== owner) return state;
+      releaseActive?.();
+      releaseActive = undefined;
+      return {
+        activeContainerId: null,
+        activeId: null,
+        activeOwner: null,
+        intent: null,
+        overContainerId: null,
+        overId: null,
+      };
+    });
+  },
+  setActive: ({ containerId, id }, session) => {
+    if (session?.aborted) return null;
+    const owner = Symbol(id ?? "drag");
+    releaseActive?.();
+    const onAbort = () => get().reset(owner);
+    session?.addEventListener("abort", onAbort, { once: true });
+    releaseActive = session ? () => session.removeEventListener("abort", onAbort) : undefined;
     set({
-      activeContainerId: null,
-      activeId: null,
+      activeContainerId: containerId,
+      activeId: id,
+      activeOwner: owner,
       intent: null,
       overContainerId: null,
       overId: null,
     });
+    return owner;
   },
-  setActive: ({ containerId, id }) => {
-    set({ activeContainerId: containerId, activeId: id });
-  },
-  setOver: ({ containerId, id, intent }) => {
+  setOver: ({ containerId, id, intent }, owner) => {
     set((state) => {
+      if (owner !== undefined && state.activeOwner !== owner) return state;
       if (state.overId === id && state.overContainerId === containerId && state.intent === intent) {
         return state;
       }

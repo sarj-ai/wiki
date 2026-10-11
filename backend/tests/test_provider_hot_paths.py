@@ -3,7 +3,8 @@ from __future__ import annotations
 from collections import Counter
 from collections.abc import Callable
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Self, override
+import threading
+from typing import TYPE_CHECKING, Literal, Self, override
 import uuid
 
 from googleapiclient.errors import HttpError
@@ -11,9 +12,10 @@ from httplib2 import Response
 from pydantic import JsonValue
 import pytest
 
-from app.drive.schemas import MIME_DOC, MIME_FOLDER, MIME_SLIDE, DriveSummary
+from app.drive.schemas import MIME_DOC, MIME_FOLDER, MIME_SHORTCUT, MIME_SLIDE, DriveSummary
 from app.drive.service import GoogleDriveService
 from app.files.errors import DriveUpstreamError
+from app.files.schemas import FileResponse
 from app.files.service import GoogleFilesService
 from app.identifiers import DriveId, FileId, GoogleUserId, UserId
 from app.models.user import User
@@ -89,6 +91,47 @@ class _MembershipDrive(GoogleDriveService):
     @override
     def _client(self) -> DriveResource:
         return dependency(self.provider)
+
+
+class _ConcurrentRead(_ReadRequest):
+    def __init__(
+        self,
+        response: JsonValue | HttpError,
+        *,
+        file_id: FileId,
+        parents_ready: threading.Barrier,
+    ) -> None:
+        super().__init__(response)
+        self.file_id = file_id
+        self.parents_ready = parents_ready
+
+    @override
+    def execute(self) -> JsonValue:
+        if self.file_id in {"left", "right"}:
+            self.parents_ready.wait(timeout=3)
+        return super().execute()
+
+
+class _ConcurrentAncestorProvider(_AncestorProvider):
+    def __init__(self) -> None:
+        super().__init__()
+        self.locations = {
+            FileId("left"): {"id": "left", "parents": ["common"]},
+            FileId("right"): {"id": "right", "parents": ["common"]},
+            FileId("common"): {"id": "common", "parents": ["personal-root"]},
+        }
+        self.parents_ready = threading.Barrier(2)
+
+    @override
+    def get(self, **params: JsonValue) -> _ReadRequest:
+        original = super().get(**params)
+        file_id = params["fileId"]
+        assert isinstance(file_id, str)
+        return _ConcurrentRead(
+            original.response,
+            file_id=FileId(file_id),
+            parents_ready=self.parents_ready,
+        )
 
 
 @dataclass(frozen=True)
@@ -188,6 +231,136 @@ async def test_bulk_membership_checks_common_parent_once_and_remains_fresh(stric
         second = await drive.resolve_member_drives(files, parent_ids=parents)
         assert set(second) == {FileId("personal-root"), FileId("direct"), FileId("shared-file")}
         assert provider.reads[FileId("common-parent")] == 2
+    finally:
+        drive._bounded_drives.reset(token)
+
+
+@pytest.mark.parametrize("strict", [False, True], ids=["normal", "bounded"])
+async def test_distinct_parents_reuse_common_ancestors_only_within_current_call(
+    strict: bool,
+) -> None:
+    provider = _AncestorProvider()
+    provider.locations = {
+        **{
+            FileId(f"parent-{i}"): {"id": f"parent-{i}", "parents": ["common-parent"]}
+            for i in range(200)
+        },
+        FileId("common-parent"): {"id": "common-parent", "parents": ["personal-root"]},
+    }
+    drive = _MembershipDrive(provider)
+    files: dict[FileId, DriveId | None] = {FileId(f"file-{i}"): None for i in range(200)}
+    files[FileId("shared-file")] = DriveId("shared")
+    parents = {FileId(f"file-{i}"): FileId(f"parent-{i}") for i in range(200)}
+    token = drive._bounded_drives.set(drive.drives if strict else None)
+    try:
+        assert len(await drive.resolve_member_drives(files, parent_ids=parents)) == 201
+        assert sum(provider.reads.values()) == 201
+        assert provider.reads[FileId("common-parent")] == 1
+
+        provider.locations[FileId("common-parent")] = _http_error(403)
+        assert await drive.resolve_member_drives(files, parent_ids=parents) == {
+            FileId("shared-file"): DriveId("shared")
+        }
+        assert sum(provider.reads.values()) == 402
+        assert provider.reads[FileId("common-parent")] == 2
+    finally:
+        drive._bounded_drives.reset(token)
+
+
+async def test_ancestor_memo_keeps_independent_parent_provider_reads_concurrent() -> None:
+    provider = _ConcurrentAncestorProvider()
+    drive = _MembershipDrive(provider)
+    files: dict[FileId, DriveId | None] = {
+        FileId("left-child"): None,
+        FileId("right-child"): None,
+    }
+    parents = {FileId("left-child"): FileId("left"), FileId("right-child"): FileId("right")}
+
+    assert len(await drive.resolve_member_drives(files, parent_ids=parents)) == 2
+    assert provider.reads == {FileId("left"): 1, FileId("right"): 1, FileId("common"): 1}
+
+
+@pytest.mark.parametrize("strict", [False, True], ids=["normal", "bounded"])
+@pytest.mark.parametrize("status", [403, 404, 418])
+async def test_ancestor_memo_preserves_denials_partial_results_and_provider_errors(
+    strict: bool,
+    status: int,
+) -> None:
+    provider = _AncestorProvider()
+    provider.locations = {
+        FileId("left"): {"id": "left", "parents": ["common-parent"]},
+        FileId("right"): {"id": "right", "parents": ["common-parent"]},
+        FileId("common-parent"): _http_error(status),
+    }
+    drive = _MembershipDrive(provider)
+    files: dict[FileId, DriveId | None] = {
+        FileId("left-child"): None,
+        FileId("right-child"): None,
+        FileId("shared-file"): DriveId("shared"),
+    }
+    parents = {FileId("left-child"): FileId("left"), FileId("right-child"): FileId("right")}
+    token = drive._bounded_drives.set(drive.drives if strict else None)
+    try:
+        if strict and status == 418:
+            with pytest.raises(HttpError) as caught:
+                await drive.resolve_member_drives(files, parent_ids=parents)
+            assert caught.value.resp.status == status
+        else:
+            assert await drive.resolve_member_drives(files, parent_ids=parents) == {
+                FileId("shared-file"): DriveId("shared")
+            }
+        assert provider.reads[FileId("common-parent")] == 1
+    finally:
+        drive._bounded_drives.reset(token)
+
+
+async def test_strict_ancestor_memo_rejects_mismatched_response_identity() -> None:
+    provider = _AncestorProvider()
+    provider.locations = {
+        FileId("left"): {"id": "left", "parents": ["common-parent"]},
+        FileId("right"): {"id": "right", "parents": ["common-parent"]},
+        FileId("common-parent"): {"id": "different", "parents": ["personal-root"]},
+    }
+    drive = _MembershipDrive(provider)
+    files: dict[FileId, DriveId | None] = {
+        FileId("left-child"): None,
+        FileId("right-child"): None,
+    }
+    parents = {FileId("left-child"): FileId("left"), FileId("right-child"): FileId("right")}
+    token = drive._bounded_drives.set(drive.drives)
+    try:
+        with pytest.raises(ValueError, match="Invalid personal ancestry response"):
+            await drive.resolve_member_drives(files, parent_ids=parents)
+        assert provider.reads[FileId("common-parent")] == 1
+    finally:
+        drive._bounded_drives.reset(token)
+
+
+@pytest.mark.parametrize("cycle", [False, True], ids=["depth-cap", "cycle"])
+async def test_ancestor_reuse_does_not_bypass_walk_limits_or_cycles(cycle: bool) -> None:
+    provider = _AncestorProvider()
+    provider.locations = {
+        FileId("left"): {"id": "left", "parents": ["chain-0"]},
+        FileId("right"): {"id": "right", "parents": ["chain-0"]},
+        **{
+            FileId(f"chain-{i}"): {"id": f"chain-{i}", "parents": [f"chain-{i + 1}"]}
+            for i in range(70)
+        },
+    }
+    provider.locations[FileId("chain-69")] = {"id": "chain-69", "parents": ["personal-root"]}
+    if cycle:
+        provider.locations[FileId("chain-0")] = {"id": "chain-0", "parents": ["left"]}
+    drive = _MembershipDrive(provider)
+    files: dict[FileId, DriveId | None] = {
+        FileId("left-child"): None,
+        FileId("right-child"): None,
+    }
+    parents = {FileId("left-child"): FileId("left"), FileId("right-child"): FileId("right")}
+    token = drive._bounded_drives.set(drive.drives)
+    try:
+        assert await drive.resolve_member_drives(files, parent_ids=parents) == {}
+        assert sum(provider.reads.values()) == (3 if cycle else 65)
+        assert FileId("chain-63") not in provider.reads
     finally:
         drive._bounded_drives.reset(token)
 
@@ -292,3 +465,127 @@ async def test_template_child_read_filters_and_projects_without_losing_paginatio
     )
     assert second["pageToken"] == "second-page"
     assert provider.reads == {}
+
+
+@pytest.mark.parametrize("name", ["Templates", "Owner's \\ Templates"])
+async def test_named_template_roots_keep_all_pages_and_filter_name_and_mime(name: str) -> None:
+    provider = _AncestorProvider()
+    provider.pages = [
+        {
+            "nextPageToken": "second-page",
+            "files": [
+                {"id": "first", "name": name, "mimeType": MIME_FOLDER},
+                {"id": "wrong-case", "name": name.lower(), "mimeType": MIME_FOLDER},
+                {"id": "wrong-mime", "name": name, "mimeType": MIME_DOC},
+            ],
+        },
+        {"files": [{"id": "second", "name": name, "mimeType": MIME_FOLDER}]},
+    ]
+
+    nodes = await _MembershipDrive(provider).list_named_root_folders(DriveId("shared"), name=name)
+
+    assert [node.id for node in nodes] == ["first", "second"]
+    assert all(node.parent_id == "shared" for node in nodes)
+    first, second = provider.list_requests
+    assert first["fields"] == "nextPageToken,files(id,name,mimeType)"
+    escaped_name = name.replace("\\", "\\\\").replace("'", "\\'")
+    assert first["q"] == (
+        f"'shared' in parents and trashed=false and (mimeType='{MIME_FOLDER}') "
+        f"and name='{escaped_name}'"
+    )
+    assert second["q"] == first["q"]
+    assert second["pageToken"] == "second-page"
+    assert provider.reads == {}
+
+
+type _MetadataReadKind = Literal["full", "search", "qa", "access"]
+
+
+async def _read_metadata(
+    files: _MetadataFiles,
+    file_ids: list[FileId],
+    kind: _MetadataReadKind,
+) -> dict[FileId, FileResponse] | set[FileId]:
+    match kind:
+        case "search":
+            return await files.get_search_metadata_many(file_ids)
+        case "qa":
+            return await files.get_qa_corpus_metadata_many(file_ids)
+        case "access":
+            return await files.get_accessible_ids(file_ids)
+        case _:
+            return await files.get_accessible_many(file_ids)
+
+
+@pytest.mark.parametrize("kind", ["full", "search", "qa", "access"])
+async def test_bulk_metadata_binds_response_identity_before_membership(
+    kind: _MetadataReadKind,
+) -> None:
+    ancestors = _AncestorProvider()
+    provider = _MetadataProvider(
+        {
+            FileId("requested"): {
+                "id": "different",
+                "name": "Unrequested file",
+                "mimeType": MIME_DOC,
+                "parents": ["common-parent"],
+            },
+            FileId("different"): _http_error(403),
+            FileId("valid"): {
+                "id": "valid",
+                "name": "Valid file",
+                "mimeType": MIME_DOC,
+                "driveId": "shared",
+            },
+            FileId("shortcut"): {
+                "id": "shortcut",
+                "name": "Shortcut",
+                "mimeType": MIME_SHORTCUT,
+                "driveId": "shared",
+                "shortcutDetails": {"targetId": "different", "targetMimeType": MIME_DOC},
+            },
+            FileId("missing"): _http_error(404),
+            FileId("trashed"): {
+                "id": "trashed",
+                "name": "Trashed file",
+                "mimeType": MIME_DOC,
+                "driveId": "shared",
+                "trashed": True,
+            },
+        }
+    )
+    files = _MetadataFiles(_MembershipDrive(ancestors), provider)
+
+    result = await _read_metadata(files, [*provider.records, FileId("valid")], kind)
+
+    if isinstance(result, dict):
+        assert list(result) == [FileId("valid"), FileId("shortcut")]
+    else:
+        assert result == {FileId("valid"), FileId("shortcut")}
+    assert provider.batches == 1
+    assert [request.file_id for request in provider.requests] == list(provider.records)
+    assert ancestors.reads == {}
+
+
+@pytest.mark.parametrize("kind", ["full", "search", "qa", "access"])
+async def test_bulk_metadata_identity_filter_preserves_upstream_error(
+    kind: _MetadataReadKind,
+) -> None:
+    provider = _MetadataProvider(
+        {
+            FileId("requested"): {
+                "id": "different",
+                "name": "Unrequested file",
+                "mimeType": MIME_DOC,
+                "driveId": "shared",
+            },
+            FileId("failed"): _http_error(500),
+        }
+    )
+    files = _MetadataFiles(_MembershipDrive(_AncestorProvider()), provider)
+
+    with pytest.raises(DriveUpstreamError) as caught:
+        await _read_metadata(files, list(provider.records), kind)
+
+    assert caught.value.http_status == 502
+    assert provider.batches == 1

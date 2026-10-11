@@ -3,6 +3,7 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 import asyncio
 from collections.abc import AsyncGenerator, Callable, Iterable, Mapping
+from concurrent.futures import Future
 from contextlib import AbstractAsyncContextManager, asynccontextmanager
 from contextvars import ContextVar
 from datetime import UTC, timedelta
@@ -22,7 +23,7 @@ from loguru import logger
 from pydantic import RootModel, ValidationError
 
 from app.auth.encryption import decrypt_text
-from app.auth.google_tokens import GoogleRefreshResult
+from app.auth.google_tokens import GoogleRefreshResult, provider_refresh_scope
 from app.cache.service import CacheNamespace, CacheService
 from app.drive.errors import (
     DrivePermissionsError,
@@ -77,6 +78,7 @@ _SEARCH_PAGE_SIZE = 50
 _MAX_DRIVE_FILE_PAGES = 3
 
 _MAX_PERSONAL_ANCESTRY_NODES = 64
+_MAX_PERSONAL_ANCESTRY_MEMO_NODES = 256
 
 _NAVIGATOR_FOLDER_FIELDS = (
     "nextPageToken,files(id,name,mimeType,parents,modifiedTime,description,"
@@ -85,6 +87,7 @@ _NAVIGATOR_FOLDER_FIELDS = (
 
 _TEMPLATE_FOLDER_FIELDS = "nextPageToken,files(id,name,mimeType,modifiedTime,description)"
 _TEMPLATE_MIME_TYPES = (MIME_FOLDER, MIME_DOC, MIME_SLIDE)
+_NAMED_FOLDER_FIELDS = "nextPageToken,files(id,name,mimeType)"
 
 _DRIVE_TREE_FIELDS = (
     "nextPageToken,files(id,name,mimeType,parents,modifiedTime,driveId,"
@@ -193,6 +196,10 @@ class DriveService(ABC):
     async def list_template_children(self, folder_id: FileId) -> list[DriveNode]:
         return await self.list_folder_children(folder_id)
 
+    async def list_named_root_folders(self, drive_id: DriveId, *, name: str) -> list[DriveNode]:
+        nodes = await self.list_template_children(FileId(drive_id))
+        return _named_folders(nodes, name=name)
+
     async def list_folder_children_bounded(
         self,
         folder_id: FileId,
@@ -296,25 +303,28 @@ class GoogleDriveService(DriveService):
         return drives
 
     async def _load_drives(self) -> list[DriveSummary]:
-        cache_key = str(self._user.id)
-        if self._cache is not None:
-            cached = await self._cache.get(CacheNamespace.DRIVE_LIST, cache_key)
-            if cached is not None:
-                try:
-                    drives = _DriveList.model_validate(cached).root
-                except ValidationError:
-                    await self._cache.delete(CacheNamespace.DRIVE_LIST, cache_key)
-                else:
-                    return drives
-        drives = await asyncio.to_thread(self._list_drives_sync)
-        if self._cache is not None:
-            await self._cache.put(
-                CacheNamespace.DRIVE_LIST,
-                cache_key,
-                _DriveList(drives).model_dump(mode="json"),
-                ttl=_DRIVE_LIST_CACHE_TTL,
-            )
-        return drives
+        # This shielded flight can outlive the request that supplied its
+        # credentials. Provider refresh belongs to the shared work task.
+        with provider_refresh_scope():
+            cache_key = str(self._user.id)
+            if self._cache is not None:
+                cached = await self._cache.get(CacheNamespace.DRIVE_LIST, cache_key)
+                if cached is not None:
+                    try:
+                        drives = _DriveList.model_validate(cached).root
+                    except ValidationError:
+                        await self._cache.delete(CacheNamespace.DRIVE_LIST, cache_key)
+                    else:
+                        return drives
+            drives = await asyncio.to_thread(self._list_drives_sync)
+            if self._cache is not None:
+                await self._cache.put(
+                    CacheNamespace.DRIVE_LIST,
+                    cache_key,
+                    _DriveList(drives).model_dump(mode="json"),
+                    ttl=_DRIVE_LIST_CACHE_TTL,
+                )
+            return drives
 
     @override
     async def resolve_member_drive(
@@ -375,7 +385,9 @@ class GoogleDriveService(DriveService):
     async def _member_personal_parents(
         self, parent_ids: list[FileId], *, root_id: FileId
     ) -> set[FileId]:
-        if self._bounded_drives.get() is not None:
+        strict = self._bounded_drives.get() is not None
+        reads = _PersonalAncestryReads(strict=strict) if len(parent_ids) > 1 else None
+        if strict:
             members: set[FileId] = set()
             for parent_id in parent_ids:
                 if await asyncio.to_thread(
@@ -384,6 +396,7 @@ class GoogleDriveService(DriveService):
                     root_id=root_id,
                     parent_id=parent_id,
                     strict=True,
+                    reads=reads,
                 ):
                     members.add(parent_id)
             return members
@@ -394,6 +407,7 @@ class GoogleDriveService(DriveService):
                     file_id=parent_id,
                     root_id=root_id,
                     parent_id=parent_id,
+                    reads=reads,
                 )
                 for parent_id in parent_ids
             )
@@ -438,6 +452,21 @@ class GoogleDriveService(DriveService):
             navigator_fields=_TEMPLATE_FOLDER_FIELDS,
         )
         return parsed.members
+
+    @override
+    async def list_named_root_folders(self, drive_id: DriveId, *, name: str) -> list[DriveNode]:
+        parsed = await asyncio.to_thread(
+            self._list_members_sync,
+            FileId(drive_id),
+            max_pages=None,
+            max_children=None,
+            fail_closed=False,
+            include_unsupported=False,
+            navigator_mime_types=(MIME_FOLDER,),
+            navigator_fields=_NAMED_FOLDER_FIELDS,
+            name=name,
+        )
+        return _named_folders(parsed.members, name=name)
 
     @override
     async def list_folder_children_bounded(
@@ -857,6 +886,7 @@ class GoogleDriveService(DriveService):
         root_id: FileId,
         parent_id: FileId | None = None,
         strict: bool = False,
+        reads: _PersonalAncestryReads | None = None,
     ) -> bool:
         if file_id == root_id:
             return True
@@ -874,7 +904,11 @@ class GoogleDriveService(DriveService):
             if current == root_id:
                 return True
             visited.add(current)
-            location = _read_personal_ancestor(client, current, strict=strict)
+            location = (
+                _read_personal_ancestor(client, current, strict=strict)
+                if reads is None
+                else reads.read(client, current)
+            )
             if location is None:
                 return False
             if location.id == root_id:
@@ -966,6 +1000,7 @@ class GoogleDriveService(DriveService):
         max_metadata_bytes: int | None = None,
         navigator_mime_types: tuple[str, ...] = (*NAVIGATOR_SUPPORTED_MIME_TYPES, MIME_SHORTCUT),
         navigator_fields: str = _NAVIGATOR_FOLDER_FIELDS,
+        name: str | None = None,
     ) -> BoundedFolderMembers:
         client = self._client()
         out: list[DriveNode] = []
@@ -977,6 +1012,8 @@ class GoogleDriveService(DriveService):
         fields = _QA_CORPUS_FOLDER_FIELDS if include_unsupported else navigator_fields
         if not include_unsupported:
             query += f" and {_build_mime_clause(navigator_mime_types)}"
+        if name is not None:
+            query += f" and name='{escape_query_value(name)}'"
         while True:
             if max_pages is not None and pages >= max_pages:
                 raise DriveTraversalIncompleteError
@@ -1365,6 +1402,33 @@ def _file_permission_error(exc: HttpError) -> DrivePermissionsError:
     return DrivePermissionsUpstreamError()
 
 
+class _PersonalAncestryReads:
+    def __init__(self, *, strict: bool) -> None:
+        self._strict = strict
+        self._lock = threading.Lock()
+        self._locations: dict[FileId, Future[GoogleFileLocation | None]] = {}
+
+    def read(self, client: DriveResource, file_id: FileId) -> GoogleFileLocation | None:
+        leader = False
+        with self._lock:
+            pending = self._locations.get(file_id)
+            if pending is None and len(self._locations) < _MAX_PERSONAL_ANCESTRY_MEMO_NODES:
+                pending = Future[GoogleFileLocation | None]()
+                self._locations[file_id] = pending
+                leader = True
+        if pending is None:
+            return _read_personal_ancestor(client, file_id, strict=self._strict)
+        if not leader:
+            return pending.result()
+        try:
+            location = _read_personal_ancestor(client, file_id, strict=self._strict)
+        except BaseException as exc:
+            pending.set_exception(exc)
+            raise
+        pending.set_result(location)
+        return location
+
+
 def _read_personal_ancestor(
     client: DriveResource, file_id: FileId, *, strict: bool
 ) -> GoogleFileLocation | None:
@@ -1601,6 +1665,10 @@ def _folder_member_node(
         shortcut_target_id=details.target_id if details else None,
         shortcut_target_mime_type=target_mime,
     )
+
+
+def _named_folders(nodes: Iterable[DriveNode], *, name: str) -> list[DriveNode]:
+    return [node for node in nodes if node.mime_type == MIME_FOLDER and node.name == name]
 
 
 def _shared_member_drives(

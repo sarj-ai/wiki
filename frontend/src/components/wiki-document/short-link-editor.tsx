@@ -33,6 +33,7 @@ import {
 import { ApiError } from "@/lib/api-error";
 import { documentAliasError } from "@/lib/document-alias-error";
 import { documentShortLink, SHORT_LINK_DISPLAY_PREFIX } from "@/lib/document-short-link";
+import { isAbortError } from "@/lib/mutation-toast";
 
 import { useCopyFeedback } from "./use-copy-feedback";
 
@@ -58,9 +59,9 @@ export function ShortLinkEditor({ fileId, onOpenChange, open }: ShortLinkEditorP
       setDraft(result.alias);
       setSaveError(null);
       toast.success(savedAlias ? "Short link renamed" : "Short link created");
-    })().catch((error: unknown) =>
-      setSaveError(aliasErrorMessage(error, "Couldn't save short link")),
-    );
+    })().catch((error: unknown) => {
+      if (!isAbortError(error)) setSaveError(aliasErrorMessage(error, "Couldn't save short link"));
+    });
   };
 
   const handleCopy = () => {
@@ -77,9 +78,9 @@ export function ShortLinkEditor({ fileId, onOpenChange, open }: ShortLinkEditorP
       setConfirmingRemove(false);
       setDraft("");
       toast.success("Short link removed");
-    })().catch((error: unknown) =>
-      toast.error(aliasErrorMessage(error, "Couldn't remove short link")),
-    );
+    })().catch((error: unknown) => {
+      if (!isAbortError(error)) toast.error(aliasErrorMessage(error, "Couldn't remove short link"));
+    });
   };
 
   return (

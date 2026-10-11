@@ -1,7 +1,7 @@
 {
   "recordedAt": "2026-10-10",
   "baselineRevision": "f63e8f6f342a27d3b3f085e2150417ccd45756bf",
-  "totalPasses": 189,
+  "totalPasses": 199,
   "initialPasses": [
     {
       "pass": 1,
@@ -237,7 +237,7 @@
         },
         {
           "pass": 10,
-          "result": "Remove repeated bootstrap validation and DRY transforms. `zBootstrapRead` already validates every nested resource. Extracted shared pure transforms for Drive summaries, icons, preferences, profile, and sort order; standalone resource schemas retain their wire validation while bootstrap maps its already-validated data directly. This extends the first tranche's nested-tree improvement to the other metadata arrays. Tests preserve default values, nullable fields, and rejection of malformed nested data. A 1,409,370-byte fixture with 100 drives and 10,000 each of document icons, folder icons, and sort orders has deeply equal before/after output: median 4.190 \u2192 1.407 ms (66.4% less CPU), p95 7.302 \u2192 3.365 ms, 100 samples. The fixture has no tree, so the result isolates this additional metadata improvement. Converted wire-property reads to bracket access and constant-backed test/query keys so strict lint and Prettier agree without additional suppressions."
+          "result": "Remove repeated bootstrap validation and DRY transforms. `zBootstrapRead` already validates every nested resource. Extracted shared pure transforms for Drive summaries, icons, preferences, profile, and sort order; standalone resource schemas retain their wire validation while bootstrap maps its already-validated data directly. This extends the first tranche's nested-tree improvement to the other metadata arrays. Tests preserve default values, nullable fields, and rejection of malformed nested data. A 1,409,370-byte fixture with 100 drives and 10,000 each of document icons, folder icons, and sort orders has deeply equal before/after output: median 4.190 → 1.407 ms (66.4% less CPU), p95 7.302 → 3.365 ms, 100 samples. The fixture has no tree, so the result isolates this additional metadata improvement. Converted wire-property reads to bracket access and constant-backed test/query keys so strict lint and Prettier agree without additional suppressions."
         }
       ]
     },
@@ -1657,14 +1657,14 @@
           "cases": {
             "destinationPickerWarm": {
               "medianMillisecondsBefore": 0.16125042000000123,
-              "medianMillisecondsAfter": 8.334999999988213e-6,
+              "medianMillisecondsAfter": 8.334999999988213e-06,
               "alternatingSamples": 40,
               "iterationsPerSample": 100,
               "scope": "10,000 immutable mixed folder nodes; repeated selected-destination render"
             },
             "lazyClassificationWarm": {
               "medianMillisecondsBefore": 0.14228166499999928,
-              "medianMillisecondsAfter": 9.1650000001664e-6,
+              "medianMillisecondsAfter": 9.1650000001664e-06,
               "alternatingSamples": 40,
               "iterationsPerSample": 100,
               "scope": "10,000 immutable mixed lazy nodes; repeated folder-shortcut render"
@@ -1678,7 +1678,7 @@
             },
             "documentFilterWarm": {
               "medianMillisecondsBefore": 0.06447687499999802,
-              "medianMillisecondsAfter": 9.374999997362466e-6,
+              "medianMillisecondsAfter": 9.374999997362466e-06,
               "alternatingSamples": 40,
               "iterationsPerSample": 100,
               "scope": "8,000 immutable non-folder nodes; document-only collapsed child count"
@@ -1720,7 +1720,7 @@
             },
             "dragContainerValidation": {
               "medianMillisecondsBefore": 0.07058124500000304,
-              "medianMillisecondsAfter": 5.354500000066764e-5,
+              "medianMillisecondsAfter": 5.354500000066764e-05,
               "alternatingSamples": 40,
               "iterationsPerSample": 100,
               "scope": "Container lookup during drag hover with 10,000 sibling IDs; strict full list validation retained on drop commit"
@@ -2193,17 +2193,23 @@
                 {
                   "ms": 631.7329579032958,
                   "completed": 1,
-                  "errors": ["TimeoutError"]
+                  "errors": [
+                    "TimeoutError"
+                  ]
                 },
                 {
                   "ms": 613.3281660731882,
                   "completed": 1,
-                  "errors": ["TimeoutError"]
+                  "errors": [
+                    "TimeoutError"
+                  ]
                 },
                 {
                   "ms": 613.5858329944313,
                   "completed": 1,
-                  "errors": ["TimeoutError"]
+                  "errors": [
+                    "TimeoutError"
+                  ]
                 }
               ],
               "median_ms": 613.5858329944313
@@ -2882,13 +2888,14 @@
             }
           },
           "redirectDestinationRequests": 0
-        }
+        },
+        "completeCheckpointGate": "Normal pre-push make check passed at ba129bb: 4173 backend tests, 667 frontend tests plus three brace guard cases, 284 repository tests, full standards/types/lint/build and offline Terraform checks."
       },
       "productionIncident": {
         "symptom": "Failed to load drives",
         "cause": "The previous authenticated read proxy used redirect:error, which the deployed Cloudflare fetch implementation rejects before sending an upstream request. Both health endpoints still returned success.",
         "fix": "Share a server-only backend client using manual redirects, reject/redact 3xx responses, and preserve cancellation, deadlines, authentication and streaming. Use it for wiki/transform reads, HTML, alias reads, generated server requests and Smart Create/transform/reorganization writes.",
-        "verification": "Final compiled Worker local fixture returns 200 for synthetic authorized drives, 401 for a synthetic invalid session, and redacted 502 on redirects with zero destination requests. Exact production revision, invalid-session probes and an existing signed-in Wiki tab are verified after deployment."
+        "verification": "The compiled local Worker fixture passes authorized drives, invalid identity/drives, and redirect rejection. Exact production revision, invalid-session proxies, and a real signed-in drive/document must be verified after deployment; health alone is insufficient."
       },
       "reproduce": [
         "node frontend/scripts/benchmark-bundle.mjs",
@@ -2905,6 +2912,912 @@
         "Large-array read/write cutoffs are conservative and retain faster small-batch paths; an ANY read and a session ORM projection were rejected after regressions.",
         "Fresh permission/revocation reads, source before/after snapshots, encrypted envelopes, key rotation, task locks, quotas and idempotency stay enforced.",
         "Completed passes do not establish a physical maximum for all future workloads. Live provider latency and real usage remain inputs for further work."
+      ],
+      "measurementCheckpoint": "85-pass checkpoint before the final ownership/compatibility audit; final transfer inventories appear in the following tranche."
+    },
+    {
+      "recordedAt": "2026-10-10",
+      "baselineRevision": "ba129bb62507f35c331df99be491447e555ed5da",
+      "integratedMainRevision": "0954e3992a36cd4e603c3a26a3c8578912b7f804",
+      "name": "Final ownership, compatibility and provider-read audit",
+      "passCount": 10,
+      "agentPassCount": 10,
+      "integrationPassCount": 0,
+      "counting": "Ten distinct substantive candidates across the same five agents. Repeated tests, builds, formatting, integration repairs, measurements and release administration count as zero additional passes. This includes explicitly identified compatibility/reliability fixes, not just CPU optimizations.",
+      "scopes": [
+        {
+          "scope": "backend-routes",
+          "passCount": 3,
+          "passes": [
+            {
+              "pass": 1,
+              "outcome": "implemented",
+              "result": "Filter template-root folders at the provider",
+              "evidence": {
+                "fixture": "Local provider pagination/filtering fixture, not production timing",
+                "root_children": 2502,
+                "matching_roots": 2,
+                "before_pages": 3,
+                "after_pages": 1,
+                "before_rows": 2502,
+                "after_rows": 2,
+                "before_response_json_bytes": 830815,
+                "after_response_json_bytes": 187,
+                "unchanged_matching_root_ids": [
+                  "templates-a",
+                  "templates-b"
+                ]
+              }
+            },
+            {
+              "pass": 2,
+              "outcome": "implemented",
+              "result": "Bind every bulk metadata response to its requested ID before membership work",
+              "evidence": {
+                "fixture": "Local mismatched-ID provider fixture; identity correctness, not a valid-record throughput claim",
+                "before_accepted_ids": [
+                  "different"
+                ],
+                "after_accepted_ids": [],
+                "before_metadata_get_subrequests": 1,
+                "after_metadata_get_subrequests": 1,
+                "before_batches": 1,
+                "after_batches": 1,
+                "before_ancestor_get_subrequests": 1,
+                "after_ancestor_get_subrequests": 0
+              }
+            },
+            {
+              "pass": 3,
+              "outcome": "implemented",
+              "result": "Reuse common-ancestor metadata within one bulk membership call",
+              "evidence": {
+                "id": 18,
+                "retained": true,
+                "area": "Bulk personal-Drive ancestry across distinct parent folders",
+                "problem": "Within one bulk membership call, distinct parents sharing an ancestor each performed the same fresh Google metadata GET, even after identical-parent grouping.",
+                "change": "A small _PersonalAncestryReads helper exists only during one _member_personal_parents call with multiple parents. It shares validated metadata (including denied/unavailable None values), not membership verdicts. Each walk still performs its own visited-node accounting and cycle handling. A thread lock covers only selection of a node Future; provider I/O runs outside the lock, so distinct branches stay concurrent and overlapping reads share one leader.",
+                "bounded_retention": "At most 256 metadata-node Futures per call. Over-budget unseen nodes retain the original uncached read behavior. Single-parent calls create no memo helper.",
+                "measured_provider_gets": [
+                  {
+                    "distinct_parents": 2,
+                    "before": 4,
+                    "after": 3,
+                    "common_ancestor_before": 2,
+                    "common_ancestor_after": 1
+                  },
+                  {
+                    "distinct_parents": 200,
+                    "before": 400,
+                    "after": 201,
+                    "common_ancestor_before": 200,
+                    "common_ancestor_after": 1
+                  }
+                ],
+                "simulated_latency_ms": {
+                  "delay_per_get": 1,
+                  "samples": 5,
+                  "normal_200_parents": {
+                    "before_median": 32.342292,
+                    "after_median": 18.809875
+                  },
+                  "bounded_200_parents": {
+                    "before_median": 554.016584,
+                    "after_median": 289.913792
+                  },
+                  "bounded_2_parents": {
+                    "before_median": 5.201291,
+                    "after_median": 3.921958
+                  }
+                },
+                "zero_io_cpu_bookkeeping_ms": {
+                  "normal_2_parents": {
+                    "before_median": 0.197875,
+                    "after_median": 0.218875
+                  },
+                  "bounded_2_parents": {
+                    "before_median": 0.116917,
+                    "after_median": 0.131375
+                  },
+                  "normal_200_parents": {
+                    "before_median": 7.18625,
+                    "after_median": 5.862375
+                  },
+                  "bounded_200_parents": {
+                    "before_median": 12.028916,
+                    "after_median": 10.63
+                  }
+                },
+                "tradeoff": "Two-parent zero-I/O fixtures add about 15–21 microseconds of memo bookkeeping. Retained because repeated real provider reads/quotas are eliminated, fan-out CPU improves, and memo retention is bounded. Simulated latency is explicitly not production timing.",
+                "regression_coverage": [
+                  "200 distinct parents use one shared-ancestor GET in normal and bounded modes.",
+                  "Next-call parent revocation produces a new GET and drops personal files while retaining the permitted shared file.",
+                  "Causal threaded barrier requires independent parent provider reads to overlap; a lock around provider I/O would fail.",
+                  "403/404 remain denied per-call partial results, normal other HTTP failure remains unavailable, and strict upstream HTTP failure still propagates.",
+                  "Strict mismatched response IDs still raise before accepting ancestry.",
+                  "Cycle and 64-node per-walk limits remain enforced even when nodes are reused."
+                ],
+                "regression_cases": 12
+              }
+            }
+          ]
+        },
+        {
+          "scope": "backend-storage",
+          "passCount": 2,
+          "passes": [
+            {
+              "pass": 1,
+              "outcome": "implemented",
+              "result": "Restore legacy deep-JSON cache compatibility while retaining the typed common path",
+              "evidence": {
+                "issue": "Typed cache codec rejected valid deep JsonValue payloads accepted by the legacy implementation.",
+                "classification": "Round-two compatibility regression",
+                "proof": "At nested-list depths 200–253, 80b6e095 round-tripped while ba129bb unprotect raised InvalidCacheEntryError. At 254 ba129bb protect raised PydanticSerializationError. Both implementations already reject 255 in JsonValue validation.",
+                "fix": "Keep typed serialization/validation as the common path. Fall back to legacy json.dumps only on typed serialization failure and to json.loads plus strict _CacheEnvelope.model_validate on typed parse/validation failure. Namespace/key binding, extra-field rejection, authenticated ciphertext, legacy envelopes, NaN/Infinity/-0.0, Unicode and large integers remain tested.",
+                "tests": "Five new depth cases (199, 200, 210, 253, 254), each covering legacy and new envelopes plus wrong namespace/key rejection.",
+                "proof_artifact": "/private/tmp/sarj-wiki-storage-audit-nesting.json",
+                "common_case_measurement": {
+                  "payload_json_bytes": 15680,
+                  "interleaved_samples": 9,
+                  "calls_per_sample": 100,
+                  "units": "median milliseconds per call",
+                  "gated": {
+                    "protect": 0.120762,
+                    "unprotect": 0.071802
+                  },
+                  "fixed": {
+                    "protect": 0.121285,
+                    "unprotect": 0.070329
+                  },
+                  "conclusion": "No material common-case cost within local scheduling noise.",
+                  "artifact": "/private/tmp/sarj-wiki-storage-audit-codec-common-case.json"
+                }
+              }
+            },
+            {
+              "pass": 2,
+              "outcome": "implemented",
+              "result": "Isolate provider credential refresh from caller transactions and preserve actual work ownership",
+              "evidence": {
+                "issue": "A synchronous Google provider refresh could commit the request's task-owner transaction.",
+                "classification": "Pre-existing transaction ownership bug present at 80b6e095, found by cross-path audit",
+                "proof": "The actual provider refresh bridge with real lease/CAS methods and MockTransport committed its shared request session between owner-lock acquisition and admission limit checking. The owner advisory transaction lock was no longer held at the limit check.",
+                "fix": "Each provider callback creates its own AsyncSession from the bound engine, reads a fresh User and uses unchanged lease/CAS refresh logic. An AsyncConnection-bound request still gets a separate engine session. The isolated session closes before request User synchronization. Lease acquisition commits before OAuth HTTP, so it returns its connection during provider I/O. Caller pending writes and owner lock remain untouched.",
+                "snapshot_synchronization": "Use set_committed_value only for clean persisted credential attributes; preserve caller-owned pending attribute history. Apply a credential snapshot only when it does not regress a clean loaded generation. Callback-local latest token/generation is protected by a small thread lock, so late older callbacks return the newest observed token and subsequent forced refreshes use its generation.",
+                "cancellation": "Capture the preparing task as the normal callback owner. Its completion/cancellation cancels the isolated refresh coroutine and existing lease cleanup runs. Bridge timeout defaults to the existing 12 seconds, is explicitly injectable in prepare(), and cancels the scheduled future; no monkeypatch or suppression. The owner done callback is removed in finally.",
+                "detached_paths": "Only shared GoogleDriveService._load_drives and SidebarCache._refresh_in_background set provider_refresh_scope. Their actual work task owns cancellation, allowing request completion/cancellation with a surviving Drive waiter and stale sidebar work after request exit. Foreground/sidebar caller cancellation keeps its original behavior. Cancelling actual sidebar work clears its lease.",
+                "construction_paths_checked": [
+                  "backend/app/drive/dependencies.py",
+                  "backend/app/document_transform/dependencies.py",
+                  "backend/app/smart_create/executor.py",
+                  "backend/app/document_transform/task_executor.py",
+                  "backend/app/document_transform/qa_broker.py",
+                  "backend/app/mcp/context.py"
+                ],
+                "tests": {
+                  "postgres": [
+                    "Engine-bound and connection-bound request owner locks survive refresh; pending display-name writes remain private; caller commit preserves a later independent credential generation (2 cases).",
+                    "Cancelled preparing task rolls back pending request writes, clears isolated lease, preserves generation 0 and releases the owner lock (1 case).",
+                    "A surviving shared Drive waiter succeeds with one OAuth refresh after original request completion or cancellation (2 cases).",
+                    "Actual stale sidebar refresh starts after request exit; success updates tree/generation, actual work cancellation preserves stale tree and clears lease (2 cases)."
+                  ],
+                  "unit": [
+                    "Persisted credential snapshot synchronization adds no ORM dirty state.",
+                    "Pending caller credential/display-name writes keep their history.",
+                    "Injected bridge timeout actually cancels the pending coroutine.",
+                    "Deliberately out-of-order callbacks preserve request generation 2 and token 2, including the late first result and the next forced generation."
+                  ],
+                  "database": "Root-owned disposable PostgreSQL fixture only, two-connection pool, max_overflow=0, bounded UUID-owned rows cleaned by fixtures.",
+                  "network": "OAuth uses httpx.MockTransport; no real Google credentials or personal IDs."
+                },
+                "proof_artifact": "/private/tmp/sarj-wiki-storage-audit-provider-lock.json"
+              }
+            }
+          ]
+        },
+        {
+          "scope": "cross-stack",
+          "passCount": 2,
+          "passes": [
+            {
+              "pass": 1,
+              "outcome": "implemented",
+              "result": "Stop cancelled or stalled transform input before admission, preserving admitted mutations",
+              "evidence": {
+                "basis": "Actual HEAD source with synthetic admission action; proposed fix only in memory; no tracked changes",
+                "tests": [
+                  {
+                    "phase": "beforeAdmission",
+                    "before": {
+                      "status": 200,
+                      "admissions": 1,
+                      "cancels": 0,
+                      "elapsedMs": 1.848417000000012
+                    },
+                    "proposed": {
+                      "status": 502,
+                      "admissions": 0,
+                      "cancels": 0,
+                      "elapsedMs": 0.1721249999999941
+                    }
+                  },
+                  {
+                    "phase": "whileReading",
+                    "before": {
+                      "status": 200,
+                      "admissions": 1,
+                      "cancels": 0,
+                      "elapsedMs": 41.477667
+                    },
+                    "proposed": {
+                      "status": 502,
+                      "admissions": 0,
+                      "cancels": 1,
+                      "elapsedMs": 6.543292000000008
+                    }
+                  },
+                  {
+                    "phase": "uploadBeforeAdmission",
+                    "before": {
+                      "status": 200,
+                      "admissions": 1,
+                      "cancels": 0,
+                      "elapsedMs": 0.07579199999997854
+                    },
+                    "proposed": {
+                      "status": 502,
+                      "admissions": 0,
+                      "cancels": 0,
+                      "elapsedMs": 0.051375000000007276
+                    }
+                  },
+                  {
+                    "phase": "afterAdmission",
+                    "before": {
+                      "status": 200,
+                      "admissions": 1,
+                      "cancels": 0,
+                      "elapsedMs": 0.13433299999999804
+                    },
+                    "proposed": {
+                      "status": 200,
+                      "admissions": 1,
+                      "cancels": 0,
+                      "elapsedMs": 0.17779200000001083
+                    }
+                  }
+                ],
+                "helperDeadline": {
+                  "errorName": "TimeoutError",
+                  "cancels": 1,
+                  "elapsedMs": 5.923374999999993
+                }
+              }
+            },
+            {
+              "pass": 2,
+              "outcome": "implemented",
+              "result": "Bind browser transport recovery and terminal notifications to their originating session",
+              "evidence": [
+                {
+                  "scenario": "Unsignalled retired action returns 401 after either new-user or same-user keyed provider replacement",
+                  "action_calls": 1,
+                  "auth_recovery_requests": 0,
+                  "terminal_events": 0,
+                  "replacement_cache": "preserved"
+                },
+                {
+                  "scenario": "Generated mutation dispatched before retirement returns 401 afterward",
+                  "mutation_requests": 1,
+                  "mutation_network_signal_aborted": false,
+                  "auth_recovery_requests": 0,
+                  "replay_requests": 0,
+                  "terminal_events": 0
+                },
+                {
+                  "scenario": "Generated call's owner retires before asynchronous SDK dispatch",
+                  "network_requests": 0,
+                  "result": "AbortError"
+                },
+                {
+                  "scenario": "Mutation owner retires while raw refresh is pending",
+                  "mutation_requests": 1,
+                  "raw_refresh_requests": 1,
+                  "raw_refresh_aborted": true,
+                  "replay_requests": 0
+                },
+                {
+                  "scenario": "Two new-epoch refresh waiters overlap a retiring old-epoch refresh and its finalizer",
+                  "raw_refresh_requests": 2,
+                  "distribution": "one old plus one shared new",
+                  "old_waiter": "AbortError",
+                  "new_waiters": [
+                    "refreshed",
+                    "refreshed"
+                  ]
+                },
+                {
+                  "scenario": "Actual HTTP child reads through initial StrictMode mount/cleanup/remount",
+                  "read_requests": 2,
+                  "signals_aborted": [
+                    true,
+                    false
+                  ],
+                  "current_query_data": "loaded",
+                  "terminal_events": 0
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "scope": "frontend-loading",
+          "passCount": 2,
+          "passes": [
+            {
+              "pass": 1,
+              "outcome": "implemented",
+              "result": "Retire QueryProvider callbacks and reads without clearing a replacement session",
+              "evidence": {
+                "evidence_before": {
+                  "oldRequestAbortedAtHandoff": false,
+                  "notifications": 1,
+                  "clearedUserIds": [
+                    "user-b"
+                  ],
+                  "replacementLocation": "/login?redirect=%2Fd%2Fcurrent"
+                },
+                "evidence_after": {
+                  "oldRequestAbortedAtHandoff": true,
+                  "notifications": 0,
+                  "clearedUserIds": [],
+                  "replacementLocation": "/d/current",
+                  "retiredCacheSize": 0
+                },
+                "contracts_preserved": [
+                  "Current-provider terminal 401 handling",
+                  "Strict Mode retains hydrated data and resumes observed requests",
+                  "Same-user provider replacement fetches with only its current client",
+                  "Replacement cache and browser storage survive retired callbacks"
+                ]
+              }
+            },
+            {
+              "pass": 2,
+              "outcome": "implemented",
+              "result": "Suppress stale document-intent iframe publication after shared authorization",
+              "evidence": [
+                {
+                  "scenario": "Hover leaves after authorization starts",
+                  "stale_prewarm_publications_before": 1,
+                  "stale_prewarm_publications_after": 0,
+                  "authorization_signal_aborted_before": false,
+                  "authorization_signal_aborted_after": false,
+                  "authorized_cache_preserved_before": true,
+                  "authorized_cache_preserved_after": true,
+                  "route_prefetch_calls_before": 2,
+                  "route_prefetch_calls_after": 2
+                },
+                {
+                  "scenario": "Sidebar row unmounts while provider stays mounted",
+                  "stale_prewarm_publications_before": 1,
+                  "stale_prewarm_publications_after": 0,
+                  "authorization_signal_aborted_before": false,
+                  "authorization_signal_aborted_after": false,
+                  "authorized_cache_preserved_before": true,
+                  "authorized_cache_preserved_after": true,
+                  "route_prefetch_calls_before": 2,
+                  "route_prefetch_calls_after": 2
+                },
+                {
+                  "scenario": "Save-Data becomes enabled while authorization is pending",
+                  "stale_prewarm_publications_before": 1,
+                  "stale_prewarm_publications_after": 0,
+                  "authorization_signal_aborted_before": false,
+                  "authorization_signal_aborted_after": false,
+                  "authorized_cache_preserved_before": true,
+                  "authorized_cache_preserved_after": true,
+                  "route_prefetch_calls_before": 2,
+                  "route_prefetch_calls_after": 2
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "scope": "frontend-sidebar",
+          "passCount": 1,
+          "passes": [
+            {
+              "pass": 1,
+              "outcome": "implemented",
+              "result": "Bind mutation admission and UI/cache cleanup to their originating client and operation",
+              "evidence": {
+                "task": "final frontend mutation/session ownership candidate",
+                "agent": "frontend_sidebar_round2",
+                "repository": "/private/tmp/sarj-wiki-performance-20261010",
+                "distinctCandidateCount": 1,
+                "retainedCandidateCount": 1,
+                "testBuildAdministrationPassCredit": 0,
+                "paths": [
+                  "frontend/src/components/browser-session-boundary.tsx",
+                  "frontend/src/components/query-provider.tsx",
+                  "frontend/src/components/wiki-document/reorganize-document.tsx",
+                  "frontend/src/components/wiki-document/short-link-editor.tsx",
+                  "frontend/src/components/wiki-sidebar/ephemeral-operation-ownership.test.ts",
+                  "frontend/src/components/wiki-sidebar/use-drag-over-store.ts",
+                  "frontend/src/components/wiki-sidebar/use-in-flight-moves.ts",
+                  "frontend/src/components/wiki-sidebar/use-wiki-reorder-session.test.tsx",
+                  "frontend/src/components/wiki-sidebar/use-wiki-reorder.ts",
+                  "frontend/src/hooks/use-document-alias.ts",
+                  "frontend/src/hooks/use-session-mutation.test.tsx",
+                  "frontend/src/hooks/use-session-mutation.ts",
+                  "frontend/src/hooks/use-wiki-mutations.ts",
+                  "frontend/src/lib/mutation-session.ts",
+                  "frontend/src/lib/mutation-toast.test.ts",
+                  "frontend/src/lib/mutation-toast.ts",
+                  "frontend/src/lib/session-isolation.ts"
+                ],
+                "passes": [
+                  {
+                    "id": "final-mutation-ownership",
+                    "outcome": "retained",
+                    "problem": "Queued mutations adopted a replacement browser epoch after asynchronous TanStack admission. Retired optimistic callbacks recreated cleared caches, and same-file global finalizers cleared the replacement user's active move.",
+                    "implementation": [
+                      "Shared useSessionMutation binds its originating QueryClient epoch synchronously in mutate/mutateAsync, checks before hook onMutate/server dispatch and after resolution, guards hook/per-call callbacks, and preserves original public variables/data/context.",
+                      "All nine use-wiki-mutations useMutation sites and both document-alias mutation hooks share the wrapper. The already-captured session signal goes to runAction's existing optional guard, preventing recovery/replay after explicit clear without cancelling admitted writes.",
+                      "Provider mutation epoch lifecycle runs in layout effects so current child passive-effect mutation admission survives Strict Mode replay; explicit authenticated clear retires the epoch synchronously.",
+                      "Moves and drag globals use operation leases; session retirement or explicit clear releases their listeners/state, and late matching-file finalizers cannot release a replacement lease.",
+                      "Reorder catches, rollback, destination sort work and optimistic finalizers respect current session; same-container ordering finalizers also require their original optimistic array. Drag finish cleanup is shared between cancel/end while retaining destination, permission, shortcut and cross-drive validation.",
+                      "Shared cancellation guard keeps retirement AbortErrors quiet in common mutation feedback, alias editing and reorganization while current normal failures remain visible."
+                    ],
+                    "deterministicEvidence": {
+                      "originalBeforeSource": "frontend_loading_round2 actual-provider/useWikiReorder/useMoveFile/runAction/global-store fixtures, recorded before this candidate",
+                      "moveAfter": {
+                        "oldMovePending": true,
+                        "actionCalls": 2,
+                        "afterSessionClear": {
+                          "moving": false,
+                          "activeDrag": null,
+                          "overId": null
+                        },
+                        "beforeOldFinalizer": {
+                          "moving": true,
+                          "currentMovePending": true
+                        },
+                        "afterOldFinalizer": {
+                          "moving": true,
+                          "currentMovePending": true,
+                          "toasts": [],
+                          "retiredSortOrdersRecreated": false
+                        }
+                      },
+                      "moveBefore": {
+                        "afterSessionClear": {
+                          "moving": true,
+                          "activeDrag": "retired-drag",
+                          "overId": "destination"
+                        },
+                        "afterOldFinalizer": {
+                          "moving": false,
+                          "currentMovePending": true,
+                          "toasts": [
+                            {
+                              "type": "error",
+                              "message": "The browser session was retired"
+                            }
+                          ],
+                          "retiredSortOrdersRecreated": true
+                        }
+                      },
+                      "queuedAfter": {
+                        "actionCallsBeforeHandoff": 0,
+                        "actionCallsAfterHandoff": 0,
+                        "refreshCalls": 0,
+                        "redirects": [],
+                        "replacementCacheSurvived": true,
+                        "retiredCacheRecreated": false,
+                        "toasts": []
+                      },
+                      "queuedBefore": {
+                        "actionCallsBeforeHandoff": 0,
+                        "actionCallsAfterHandoff": 1,
+                        "refreshCalls": 1,
+                        "redirects": [
+                          "/login?redirect=%2F"
+                        ],
+                        "replacementCacheSurvived": false,
+                        "retiredCacheRecreated": true,
+                        "toasts": {
+                          "count": 1,
+                          "description": "One retired move error toast observed; exact rendered text was not retained in the original agent message."
+                        }
+                      },
+                      "explicitClearAfter": {
+                        "actionCalls": 1,
+                        "refreshCalls": 0,
+                        "redirects": [],
+                        "retiredCacheRecreated": false,
+                        "toasts": []
+                      },
+                      "explicitClearIntermediateBeforeSignalForwarding": {
+                        "scope": "Measured after initial epoch/UI guards, before threading the captured mutation signal into runAction",
+                        "actionCalls": 1,
+                        "refreshCalls": 1,
+                        "redirects": [
+                          "/login?redirect=%2F"
+                        ],
+                        "retiredCacheRecreated": false,
+                        "toasts": []
+                      },
+                      "currentBehavior": {
+                        "normal403MoveRollback": "original sort orders and original source parent restored; permission toast visible",
+                        "currentBulkDocIconFolderIconErrors": "previous optimistic data restored and current query invalidation retained",
+                        "normalDestinationOrder": [
+                          "sibling",
+                          "shared-file",
+                          "nested-folder"
+                        ],
+                        "currentStrictModeUserMutation": "one move action admitted, destination ordering retained",
+                        "childStrictModePassiveReplay": "two attempts observed; retired first attempt rejects AbortError, current replay dispatches exactly one action and updates the current tree",
+                        "staleHookCalls": "retired alias hook cannot dispatch",
+                        "publicCallbacks": "original variables, data and onMutate context forwarded to hook/per-call callbacks in a standalone QueryClientProvider",
+                        "admittedWrite": "underlying work completes once after retirement; retired result/callbacks suppressed",
+                        "listenerResources": "replaced move/drag listeners removed; normal end/reset releases listeners; aborted sessions release leases; stale lease finalizers preserve current ownership"
+                      }
+                    },
+                    "measurements": {
+                      "noProductionLatencyClaim": true,
+                      "eliminatedQueuedServerCallsPerReproduction": {
+                        "before": 1,
+                        "after": 0
+                      },
+                      "eliminatedRetiredAuthRefreshCallsPerReproduction": {
+                        "before": 1,
+                        "after": 0
+                      },
+                      "benchmark": {
+                        "node": "v26.7.0",
+                        "environment": "production",
+                        "cases": [
+                          {
+                            "case": "no optimistic callbacks",
+                            "operationsPerSample": 1000,
+                            "samples": 11,
+                            "bareMedianMicroseconds": 1.2266250000000127,
+                            "ownedMedianMicroseconds": 1.4520420000000058,
+                            "deltaMicroseconds": 0.2254169999999931,
+                            "bareSamples": [
+                              2.297499999999957,
+                              1.445083000000011,
+                              1.2266250000000127,
+                              1.2921249999999986,
+                              1.3017500000000268,
+                              3.481124999999963,
+                              1.0131250000000023,
+                              1.0505830000000174,
+                              1.1139590000000226,
+                              1.0453339999999685,
+                              1.087709000000018
+                            ],
+                            "ownedSamples": [
+                              5.1668750000000045,
+                              1.4520420000000058,
+                              5.541207999999983,
+                              1.7409590000000321,
+                              1.419499999999971,
+                              1.6224579999999946,
+                              1.1923330000000192,
+                              1.2350830000000315,
+                              1.2213749999999663,
+                              2.656833000000006,
+                              1.2821250000000077
+                            ]
+                          },
+                          {
+                            "case": "synchronous optimistic callbacks",
+                            "operationsPerSample": 1000,
+                            "samples": 11,
+                            "bareMedianMicroseconds": 1.312749999999994,
+                            "ownedMedianMicroseconds": 1.540790999999956,
+                            "deltaMicroseconds": 0.22804099999996197,
+                            "bareSamples": [
+                              1.2169170000000236,
+                              1.312749999999994,
+                              1.356207999999981,
+                              1.3717090000000098,
+                              1.317707999999982,
+                              1.3444999999999823,
+                              1.3599999999999568,
+                              1.1114160000000197,
+                              1.2065829999999664,
+                              1.2029169999999567,
+                              1.1118340000000444
+                            ],
+                            "ownedSamples": [
+                              1.6353330000000028,
+                              3.7660829999999805,
+                              3.3473749999999995,
+                              1.5118330000000242,
+                              1.5432500000000005,
+                              1.540790999999956,
+                              4.913416999999981,
+                              1.46225000000004,
+                              1.3746249999999804,
+                              1.3439579999999864,
+                              1.3567919999999845
+                            ]
+                          }
+                        ],
+                        "sessionLookupNanoseconds": 8.794579999999996,
+                        "retiredMutationCacheEntries": 0
+                      },
+                      "benchmarkPath": "/private/tmp/sarj-wiki-mutation-ownership-overhead.json",
+                      "benchmarkScript": "/private/tmp/sarj-wiki-mutation-ownership-overhead.mjs",
+                      "overheadInterpretation": "Actual final hook against bare TanStack useMutation in production-mode Node/happy-dom, 11 alternating samples of 1000 immediate mutations per case after four warmup pairs; includes final post-resolution ownership checks. Synthetic, network-free microbenchmark with GC/scheduling outliers; median overhead is not a worst-case bound or a browser/deployment latency measurement.",
+                      "resourceBound": "One epoch controller per originating QueryClient activation rather than per mutation; one additional owned-variable envelope per admitted call; one abort listener per active move lease or active drag. Same epoch signal retained across 100000 captures; benchmark mutation cache empty after clearing samples."
+                    },
+                    "validation": {
+                      "focusedVitest": {
+                        "passed": 80,
+                        "files": 13,
+                        "newRegressionTests": 28,
+                        "command": "npx vitest run src/hooks/use-session-mutation.test.tsx src/components/wiki-sidebar/use-wiki-reorder-session.test.tsx src/components/wiki-sidebar/ephemeral-operation-ownership.test.ts src/lib/mutation-toast.test.ts src/components/query-provider-session-ownership.test.tsx src/components/query-provider-lifecycle.test.tsx src/components/browser-session-boundary.test.tsx src/lib/session-isolation.test.ts src/lib/build-destination-sort-orders.test.ts src/lib/wiki-cache.test.ts src/components/wiki-document/short-link-dialog.test.tsx src/components/wiki-document/reorganize-document.test.tsx src/components/wiki-sidebar/item-menu.test.tsx --no-file-parallelism"
+                      },
+                      "typescript": {
+                        "command": "npx tsc --noEmit --incremental false",
+                        "exitCode": 0
+                      },
+                      "eslint": {
+                        "exitCode": 0,
+                        "errors": 0,
+                        "inheritedWarnings": 18,
+                        "baselineEdits": 0
+                      },
+                      "nativeStandards": {
+                        "exitCode": 0,
+                        "errors": 0,
+                        "inheritedWarnings": 9,
+                        "executionIssues": 0,
+                        "baselineEdits": 0
+                      },
+                      "prettier": {
+                        "exitCode": 0,
+                        "files": 17
+                      },
+                      "diffCheck": {
+                        "exitCode": 0
+                      },
+                      "actualAuditScripts": [
+                        "/private/tmp/sarj-wiki-sidebar-moves-final-audit.mjs",
+                        "/private/tmp/sarj-wiki-sidebar-queued-mutation-final-audit.mjs",
+                        "/private/tmp/sarj-wiki-sidebar-explicit-clear-final-audit.mjs"
+                      ]
+                    },
+                    "caveats": [
+                      "This candidate eliminates deterministic obsolete work and cache/UI ownership races; it does not establish a physical maximum frontend/backend speed.",
+                      "Current optimistic cache callbacks are synchronous. Future callbacks that perform side effects after their own awaits must themselves honor the supplied ownership signal; the helper can guard callback admission and returned mutation results.",
+                      "Strict Mode regression covers ordinary UI mutation and child passive-effect replay; no existing application mutation is started from a child layout effect.",
+                      "No full build, deploy, commit, production measurement, documentation or baseline edit performed by this agent. Root owns final gates/integration.",
+                      "The requested native standards command bootstrapped a disposable uv tool cache; its final process completed and root was explicitly notified that the cache is released for deletion."
+                    ]
+                  }
+                ],
+                "released": true
+              }
+            }
+          ]
+        }
+      ],
+      "measurements": {
+        "inventoryBaselineRevision": "80b6e095c8ae6bdb275569ad68b6d47b65abdd8a",
+        "homeClientInventory": {
+          "before": {
+            "bytes": 545031,
+            "gzipBytes": 177697
+          },
+          "after": {
+            "bytes": 551485,
+            "gzipBytes": 179354
+          }
+        },
+        "documentClientInventory": {
+          "before": {
+            "bytes": 586297,
+            "gzipBytes": 191766
+          },
+          "after": {
+            "bytes": 583817,
+            "gzipBytes": 190761
+          }
+        },
+        "basis": "Same locked local production-build toolchain. Sync client-reference inventory excludes framework/deferred chunks and does not establish actual browser transfer or production page-load latency."
+      },
+      "validation": {
+        "backendFullSuite": {
+          "passed": 4212,
+          "coveragePercent": 88.68,
+          "skips": 0,
+          "fixture": "Disposable local PostgreSQL, never production data"
+        },
+        "backendStorageFocused": {
+          "focused_pytest": {
+            "result": "passed",
+            "tests": 202,
+            "seconds": 3.55,
+            "modules": [
+              "tests/test_cache_protection.py",
+              "tests/test_cache_service.py",
+              "tests/test_google_token_manager.py",
+              "tests/test_storage_hot_paths_postgres.py",
+              "tests/test_provider_performance_postgres.py",
+              "tests/test_sidebar_cache.py",
+              "tests/test_drive_modules.py",
+              "tests/test_bootstrap.py",
+              "tests/test_mcp_context.py",
+              "tests/test_mcp_native_context.py"
+            ]
+          },
+          "ruff_check": "passed on seven owned files",
+          "ruff_format": "passed, seven files already formatted",
+          "mypy": "passed, seven files, cache-dir=/dev/null",
+          "basedpyright": "passed, zero errors/warnings/notes",
+          "ty": "passed",
+          "native_standards": "passed, only pre-existing nonblocking GoogleTokenManager/Drive warnings; no new suppression",
+          "python_baseline": "passed, 1808 blocking diagnostics in 200 files match existing baseline; 292 warnings excluded",
+          "suppression_ratchet": "passed from repository root, 25 suppressions across 11 codes, baseline 25",
+          "diff_check": "passed"
+        },
+        "backendRoutesFocused": {
+          "route_provider_suite": "169 passed, 1 existing Google genai DeprecationWarning, 1.10s",
+          "latest_template_provider_suite": "21 passed in 0.43s",
+          "additional_regression_cases": 11,
+          "ruff": "check --no-cache and format --check --no-cache clean across 5 changed files",
+          "mypy": "Success: no issues found in 3 source files, --no-incremental --cache-dir=/dev/null",
+          "basedpyright": "0 errors, 0 warnings, 0 notes across the 3 app files and 2 tests; final test-only rerun also clean",
+          "ty": "All checks passed across 3 application files",
+          "native_python_rules": "All registered rules pass with original baseline; no new warnings/allowances/suppressions. Three existing constructor-default warnings retained.",
+          "no_heavy_gates": "No full suite/build/deployment or PostgreSQL mutation performed by this agent"
+        },
+        "ancestryFocused": {
+          "targeted_pytest": "143 provider/Drive/files/bounded-search tests passed in 0.66s",
+          "command": ".venv/bin/pytest -q tests/test_provider_hot_paths.py tests/test_drive_modules.py tests/test_files_service.py tests/test_mcp_bounded_search.py",
+          "ruff": "Check and format --check clean with --no-cache; git diff --check clean",
+          "basedpyright": "0 errors, 0 warnings, 0 notes for Drive and provider regression tests",
+          "mypy": "Success: no issues found in 1 source file, --no-incremental --cache-dir=/dev/null",
+          "ty": "All checks passed for Drive",
+          "native_python": "All registered rules pass using the unchanged baseline; only two inherited constructor-default warnings in Drive, no new debt/suppressions.",
+          "memory_budget": "500 direct distinct metadata-node fixture reads retain exactly 256 Futures, execute all 500 reads. Node retention verified; no exact process RSS claim."
+        },
+        "frontendTransportFocused": {
+          "focused_tests": "89 tests across 12 files pass: browser session, session refresh transport, action client, generated API client, wiki HTTP reads, Provider ownership/lifecycle/events, SessionRefresh component, server API, MCP consent, and session isolation.",
+          "typecheck": "Full frontend tsc --noEmit --incremental false passes.",
+          "lint": "Scoped ESLint passes with 0 errors; existing 23 warnings remain in preexisting test fixtures. Scoped lint uses --pass-on-unpruned-suppressions because it does not inspect unrelated files in the global baseline. No baseline/config edits.",
+          "format": "Scoped Prettier check passes.",
+          "diff": "git diff --check passes.",
+          "logs": [
+            "/private/tmp/sarj-wiki-transport-ownership-tests.log",
+            "/private/tmp/sarj-wiki-transport-ownership-types.log",
+            "/private/tmp/sarj-wiki-transport-ownership-eslint.json"
+          ]
+        },
+        "documentIntentFocused": {
+          "tests": "35 tests / 3 files pass",
+          "typecheck": "Full tsc --noEmit --incremental false passes",
+          "lint": "Scoped ESLint 0 errors/0 warnings, no baseline edits",
+          "format": "Scoped Prettier pass",
+          "diff": "git diff --check pass"
+        },
+        "mutationOwnershipFocused": {
+          "focusedVitest": {
+            "passed": 80,
+            "files": 13,
+            "newRegressionTests": 28,
+            "command": "npx vitest run src/hooks/use-session-mutation.test.tsx src/components/wiki-sidebar/use-wiki-reorder-session.test.tsx src/components/wiki-sidebar/ephemeral-operation-ownership.test.ts src/lib/mutation-toast.test.ts src/components/query-provider-session-ownership.test.tsx src/components/query-provider-lifecycle.test.tsx src/components/browser-session-boundary.test.tsx src/lib/session-isolation.test.ts src/lib/build-destination-sort-orders.test.ts src/lib/wiki-cache.test.ts src/components/wiki-document/short-link-dialog.test.tsx src/components/wiki-document/reorganize-document.test.tsx src/components/wiki-sidebar/item-menu.test.tsx --no-file-parallelism"
+          },
+          "typescript": {
+            "command": "npx tsc --noEmit --incremental false",
+            "exitCode": 0
+          },
+          "eslint": {
+            "exitCode": 0,
+            "errors": 0,
+            "inheritedWarnings": 18,
+            "baselineEdits": 0
+          },
+          "nativeStandards": {
+            "exitCode": 0,
+            "errors": 0,
+            "inheritedWarnings": 9,
+            "executionIssues": 0,
+            "baselineEdits": 0
+          },
+          "prettier": {
+            "exitCode": 0,
+            "files": 17
+          },
+          "diffCheck": {
+            "exitCode": 0
+          },
+          "actualAuditScripts": [
+            "/private/tmp/sarj-wiki-sidebar-moves-final-audit.mjs",
+            "/private/tmp/sarj-wiki-sidebar-queued-mutation-final-audit.mjs",
+            "/private/tmp/sarj-wiki-sidebar-explicit-clear-final-audit.mjs"
+          ]
+        },
+        "retiredReplayCleanup": {
+          "passed": 19,
+          "scope": "API-client tests, including a retired admitted replay with stalled response-body cleanup; no write cancellation, refresh or terminal notification"
+        },
+        "compiledCloudflareWorker": {
+          "compiledFinalSource": true,
+          "runtimeCompatibilityDate": "2026-08-18",
+          "productionCompatibilityDateUnchanged": "2026-08-22",
+          "cases": {
+            "expiredDrive": {
+              "path": "/api/wiki/sidebar/drives",
+              "status": 401,
+              "body": {
+                "detail": "Your session has expired"
+              },
+              "location": null,
+              "cacheControl": "no-cache, must-revalidate"
+            },
+            "authorizedDrive": {
+              "path": "/api/wiki/sidebar/drives",
+              "status": 200,
+              "body": [
+                {
+                  "id": "fixture-drive",
+                  "name": "Fixture Drive",
+                  "is_personal": false
+                }
+              ],
+              "location": null,
+              "cacheControl": "no-cache, must-revalidate"
+            },
+            "redirectDrive": {
+              "path": "/api/wiki/sidebar/drives",
+              "status": 502,
+              "body": {
+                "detail": "The request could not be completed"
+              },
+              "location": null,
+              "cacheControl": "no-cache, must-revalidate"
+            },
+            "expiredIdentity": {
+              "path": "/api/wiki/auth/me",
+              "status": 401,
+              "body": {
+                "detail": "Your session has expired"
+              },
+              "location": null,
+              "cacheControl": "no-cache, must-revalidate"
+            }
+          },
+          "upstreamRequests": 4,
+          "redirectDestinationRequests": 0,
+          "limitation": "Loopback synthetic fixture in compiled OpenNext Worker; no live credentials or production latency claim."
+        },
+        "releaseGate": "The final normal pre-push make check and exact-head hosted checks qualify the integrated commit. Production deployment must pass exact-revision health, invalid-session real proxies, and a real signed-in drive/document UI check. Qualification receipts and the signed-in proof are recorded after deployment."
+      },
+      "reproduce": [
+        "node frontend/scripts/benchmark-bundle.mjs",
+        "node frontend/scripts/benchmark-bundle.mjs frontend/.next \"(app)/d/[driveId]/page\"",
+        "uv --directory backend run --locked pytest -q tests/test_provider_hot_paths.py tests/test_google_token_manager.py tests/test_cache_protection.py",
+        "WIKI_POLISH29_QA_DATABASE_URL=<disposable PostgreSQL DSN> uv --directory backend run --locked pytest -q tests/test_storage_hot_paths_postgres.py",
+        "npm --prefix frontend test",
+        "make check"
+      ],
+      "limitations": [
+        "Added ownership/compatibility checks are retained for their proved behavior; no CPU speedup is claimed for those guards.",
+        "Final homepage compressed app inventory grows 0.9% (177697 to 179354 bytes); document inventory shrinks 0.5% (191766 to 190761 bytes). Both include the completed ownership guards.",
+        "The two-parent zero-I/O ancestor fixture adds 15–21 microseconds; bounded per-call reuse eliminates repeated provider requests and retains independent branch concurrency and next-call freshness.",
+        "Synthetic provider latency, local SQL/codec measurements, bundle inventories and resource counts are not live end-to-end page latency.",
+        "The deployed Cloudflare compatibility date remains unchanged; the installed local workerd supports 2026-08-18 for the loopback fixture.",
+        "Fresh authority, encryption/key rotation, task locks, quotas, idempotency and admitted mutation semantics remain enforced.",
+        "No physical maximum is claimed. Further workload-specific tuning needs production traces and representative data; reviewed regressions/tradeoffs are recorded rather than concealed."
       ]
     }
   ]

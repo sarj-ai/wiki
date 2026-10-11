@@ -10,7 +10,11 @@ import {
   writeActiveBrowserUser,
 } from "@/lib/browser-storage";
 import { BrowserUserContext } from "@/lib/browser-user-context";
-import { broadcastSessionClear, resetDocumentViewer } from "@/lib/session-isolation";
+import {
+  broadcastSessionClear,
+  resetDocumentViewer,
+  resetSidebarState,
+} from "@/lib/session-isolation";
 
 export function BrowserSessionBoundary({
   children,
@@ -29,6 +33,7 @@ export function BrowserSessionBoundary({
       resetExpansionState(previousUserId);
       clearUserBrowserStorage(previousUserId);
       resetDocumentViewer();
+      resetSidebarState();
       broadcastSessionClear();
     }
     writeActiveBrowserUser(currentUserId);

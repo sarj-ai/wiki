@@ -3,13 +3,18 @@
 import type { QueryClient } from "@tanstack/react-query";
 
 import { useDocViewerStore } from "@/components/wiki-document/doc-viewer-store";
+import { useDragOverStore } from "@/components/wiki-sidebar/use-drag-over-store";
+import { useInFlightMovesStore } from "@/components/wiki-sidebar/use-in-flight-moves";
 import { resetExpansionState } from "@/hooks/use-expanded-folders";
 import { clearUserBrowserStorage } from "@/lib/browser-storage";
+import { retireMutationSession } from "@/lib/mutation-session";
 
 const SESSION_CLEAR_CHANNEL = "sarj-wiki:session-clear";
 let sharedSessionChannel: BroadcastChannel | null = null;
 
 export function clearAuthenticatedSession(queryClient: QueryClient, userId: null | string): void {
+  retireMutationSession(queryClient);
+  resetSidebarState();
   resetExpansionState(userId);
   if (userId) {
     clearUserBrowserStorage(userId);
@@ -17,6 +22,11 @@ export function clearAuthenticatedSession(queryClient: QueryClient, userId: null
   void queryClient.cancelQueries();
   queryClient.clear();
   resetDocumentViewer();
+}
+
+export function resetSidebarState(): void {
+  useDragOverStore.getState().reset();
+  useInFlightMovesStore.getState().reset();
 }
 
 export function resetDocumentViewer(): void {

@@ -2,14 +2,16 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import AsyncGenerator
-from datetime import timedelta
-from typing import NamedTuple
+from contextlib import AsyncExitStack
+from datetime import UTC, datetime, timedelta
+from typing import NamedTuple, override
 import uuid
 
 from cryptography.fernet import Fernet
+import httpx
 from pydantic import JsonValue
 import pytest
-from sqlalchemy import Text, column, delete, event, func, select, update
+from sqlalchemy import Text, column, delete, event, func, inspect, select, update
 from sqlalchemy.ext.asyncio import (
     AsyncEngine,
     AsyncSession,
@@ -17,15 +19,26 @@ from sqlalchemy.ext.asyncio import (
     create_async_engine,
 )
 
+from app.auth.encryption import decrypt_cache, encrypt_text
+from app.auth.google_tokens import (
+    GoogleRefreshResult,
+    GoogleTokenManager,
+    ManagedGoogleToken,
+)
 from app.cache.protection import CacheEntryProtector
 from app.cache.service import CacheNamespace, CachePSqlService
+from app.config import settings
 from app.document_transform.schemas import DocumentTransformRequest, DriveFileSource, TransformMode
+from app.drive.schemas import DriveSummary, DriveTree
+from app.drive.service import GoogleDriveService
 from app.extras.schemas import SortOrderWrite
 from app.extras.service import PostgresExtrasService
 from app.identifiers import DriveId, FileId, GoogleUserId, IdempotencyKey, UserId
 from app.models.task import Task
 from app.models.user import User
-from app.models.wiki import CacheEntry, UserSortOrder
+from app.models.wiki import CacheEntry, DriveTreeCache, UserSortOrder
+from app.sidebar.cache import PostgresSidebarCacheService
+from app.sidebar.singleflight import Singleflight
 from app.tasks.schemas import TaskKind
 from app.tasks.service import PostgresTaskService
 from tests.test_task_source_dedupe_postgres import _qa_engine
@@ -375,3 +388,351 @@ async def test_sort_order_bulk_writes_skip_unchanged_rows_and_keep_user_isolatio
         assert [(item.drive_id, item.sort_order) for item in other_rows] == [
             (items[0].drive_id, -7)
         ]
+
+
+async def _seed_google_credentials(database: _Database) -> None:
+    async with database.sessions() as db:
+        await db.execute(
+            update(User)
+            .where(User.id == database.owner)
+            .values(
+                encrypted_access_token=encrypt_text("storage-audit-initial-token"),
+                encrypted_refresh_token=encrypt_text("storage-audit-refresh-token"),
+                google_access_token_expires_at=datetime.now(UTC) + timedelta(hours=1),
+                google_token_generation=0,
+            )
+        )
+        await db.commit()
+
+
+def _observed_token_manager(
+    db: AsyncSession, http: httpx.AsyncClient, finished: asyncio.Event
+) -> GoogleTokenManager:
+    class ObservedTokenManager(GoogleTokenManager):
+        @override
+        async def _refresh_for_provider(
+            self,
+            user: User,
+            *,
+            user_id: uuid.UUID,
+            force_generation: int,
+            owner_task: asyncio.Task[object] | None,
+        ) -> ManagedGoogleToken:
+            try:
+                return await super()._refresh_for_provider(
+                    user, user_id=user_id, force_generation=force_generation, owner_task=owner_task
+                )
+            finally:
+                finished.set()
+
+    return ObservedTokenManager(db, http)
+
+
+@pytest.mark.parametrize("bind_to_connection", [False, True])
+async def test_provider_refresh_keeps_owner_lock_and_pending_writes_without_stale_token_flush(
+    database: _Database, bind_to_connection: bool
+) -> None:
+    await _seed_google_credentials(database)
+    refreshes = 0
+
+    async def oauth_response(request: httpx.Request) -> httpx.Response:
+        nonlocal refreshes
+        assert request.url.host == "oauth2.googleapis.com"
+        refreshes += 1
+        return httpx.Response(
+            200,
+            json={"access_token": "storage-audit-refreshed-token", "expires_in": 3600},
+        )
+
+    async with (
+        AsyncExitStack() as stack,
+        httpx.AsyncClient(transport=httpx.MockTransport(oauth_response)) as http,
+    ):
+        bind = (
+            await stack.enter_async_context(database.engine.connect())
+            if bind_to_connection
+            else database.engine
+        )
+        db = await stack.enter_async_context(AsyncSession(bind=bind, expire_on_commit=False))
+        user = await db.get(User, database.owner)
+        assert user is not None
+        prepared = await GoogleTokenManager(db, http).prepare(user)
+        await db.commit()
+        await PostgresTaskService(db=db)._lock_document_transform_owner(database.owner)
+        user.display_name = "Caller-owned change"
+
+        refreshed = await asyncio.to_thread(prepared.refresh_handler, object())
+        assert refreshed.token == "storage-audit-refreshed-token"
+        assert refreshes == 1
+        state = inspect(user)
+        assert state is not None
+        assert state.attrs.display_name.history.has_changes()
+        assert not state.attrs.encrypted_access_token.history.has_changes()
+        assert not state.attrs.google_token_generation.history.has_changes()
+        assert user.google_token_generation == 1
+        async with database.sessions() as observer:
+            assert (
+                await observer.scalar(
+                    select(func.pg_try_advisory_xact_lock(func.hashtextextended(str(user.id), 0)))
+                )
+            ) is False
+            assert (
+                await observer.scalar(select(User.display_name).where(User.id == database.owner))
+            ) is None
+            # A subsequent refresh generation must survive the caller commit.
+            await observer.execute(
+                update(User)
+                .where(User.id == database.owner)
+                .values(
+                    encrypted_access_token=encrypt_text("storage-audit-next-generation"),
+                    google_token_generation=2,
+                )
+            )
+            await observer.commit()
+        await db.commit()
+        async with database.sessions() as observer:
+            row = (
+                await observer.execute(
+                    select(User.display_name, User.google_token_generation).where(
+                        User.id == database.owner
+                    )
+                )
+            ).one()
+            assert row == ("Caller-owned change", 2)
+
+
+async def test_cancelled_provider_owner_clears_independent_lease_and_rolls_back_caller(
+    database: _Database,
+) -> None:
+    await _seed_google_credentials(database)
+    provider_started = asyncio.Event()
+    refresh_finished = asyncio.Event()
+    bridges: list[asyncio.Task[GoogleRefreshResult]] = []
+
+    async def oauth_response(request: httpx.Request) -> httpx.Response:
+        assert request.url.host == "oauth2.googleapis.com"
+        provider_started.set()
+        await asyncio.Event().wait()
+        raise AssertionError
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(oauth_response)) as http:
+
+        async def request() -> None:
+            async with database.sessions() as db:
+                user = await db.get(User, database.owner)
+                assert user is not None
+                prepared = await _observed_token_manager(db, http, refresh_finished).prepare(user)
+                await db.commit()
+                await PostgresTaskService(db=db)._lock_document_transform_owner(database.owner)
+                user.display_name = "Must remain uncommitted"
+                bridge = asyncio.create_task(asyncio.to_thread(prepared.refresh_handler, object()))
+                bridges.append(bridge)
+                try:
+                    await asyncio.shield(bridge)
+                finally:
+                    await db.rollback()
+
+        owner = asyncio.create_task(request())
+        await asyncio.wait_for(provider_started.wait(), timeout=2)
+        owner.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await owner
+        await asyncio.wait_for(refresh_finished.wait(), timeout=2)
+        assert len(bridges) == 1
+        with pytest.raises(asyncio.CancelledError):
+            await bridges[0]
+    async with database.sessions() as db:
+        row = (
+            await db.execute(
+                select(
+                    User.display_name,
+                    User.google_refresh_lease_owner,
+                    User.google_refresh_lease_until,
+                    User.google_token_generation,
+                ).where(User.id == database.owner)
+            )
+        ).one()
+        assert row == (None, None, None, 0)
+        assert (
+            await db.scalar(
+                select(
+                    func.pg_try_advisory_xact_lock(func.hashtextextended(str(database.owner), 0))
+                )
+            )
+        ) is True
+
+
+@pytest.mark.parametrize("request_exit", ["completed", "cancelled"])
+async def test_shared_drive_flight_refresh_survives_original_request_exit(
+    database: _Database, request_exit: str
+) -> None:
+    await _seed_google_credentials(database)
+    provider_started = asyncio.Event()
+    release_provider = asyncio.Event()
+    exit_request = asyncio.Event()
+    follower_started = asyncio.Event()
+    leaders: list[asyncio.Task[list[DriveSummary]]] = []
+    refreshes = 0
+    expected = [DriveSummary(id=DriveId("scope-fixture-drive"), name="Scope fixture")]
+
+    async def oauth_response(request: httpx.Request) -> httpx.Response:
+        nonlocal refreshes
+        assert request.url.host == "oauth2.googleapis.com"
+        refreshes += 1
+        provider_started.set()
+        await release_provider.wait()
+        return httpx.Response(200, json={"access_token": "scope-fixture-token", "expires_in": 3600})
+
+    class RefreshingDrive(GoogleDriveService):
+        @override
+        def _list_drives_sync(self) -> list[DriveSummary]:
+            handler = self.google_refresh_handler
+            assert handler is not None
+            handler(object())
+            return expected
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(oauth_response)) as http:
+
+        async def first_request() -> None:
+            async with database.sessions() as db:
+                user = await db.get(User, database.owner)
+                assert user is not None
+                prepared = await GoogleTokenManager(db, http).prepare(user)
+                await db.commit()
+                drive = RefreshingDrive(user, None, refresh_handler=prepared.refresh_handler)
+                leaders.append(asyncio.create_task(drive.list_drives()))
+                await exit_request.wait()
+
+        async def following_request() -> list[DriveSummary]:
+            async with database.sessions() as db:
+                user = await db.get(User, database.owner)
+                assert user is not None
+                prepared = await GoogleTokenManager(db, http).prepare(user)
+                await db.commit()
+                drive = RefreshingDrive(user, None, refresh_handler=prepared.refresh_handler)
+                follower_started.set()
+                return await drive.list_drives()
+
+        original = asyncio.create_task(first_request())
+        await asyncio.wait_for(provider_started.wait(), timeout=2)
+        surviving = asyncio.create_task(following_request())
+        await asyncio.wait_for(follower_started.wait(), timeout=2)
+        await asyncio.sleep(0)
+        if request_exit == "cancelled":
+            original.cancel()
+            with pytest.raises(asyncio.CancelledError):
+                await original
+            leaders[0].cancel()
+            with pytest.raises(asyncio.CancelledError):
+                await leaders[0]
+        else:
+            exit_request.set()
+            await original
+        release_provider.set()
+        assert await asyncio.wait_for(surviving, timeout=2) == expected
+        if request_exit == "completed":
+            assert await leaders[0] == expected
+        assert refreshes == 1
+    async with database.sessions() as db:
+        assert (
+            await db.scalar(select(User.google_token_generation).where(User.id == database.owner))
+        ) == 1
+
+
+@pytest.mark.parametrize("cancel_background", [False, True])
+async def test_stale_sidebar_refresh_owns_provider_lifetime_after_request_exit(
+    database: _Database, cancel_background: bool
+) -> None:
+    await _seed_google_credentials(database)
+    begin_walk = asyncio.Event()
+    provider_started = asyncio.Event()
+    release_provider = asyncio.Event()
+    refresh_finished = asyncio.Event()
+    background_tasks: set[asyncio.Task[None]] = set()
+    drive_id = DriveId("scope-fixture-sidebar")
+    stale = DriveTree(drive_id=drive_id, folders=[], files=[], files_complete=False)
+    updated = stale.model_copy(update={"files_complete": True})
+
+    async def oauth_response(request: httpx.Request) -> httpx.Response:
+        assert request.url.host == "oauth2.googleapis.com"
+        provider_started.set()
+        await release_provider.wait()
+        return httpx.Response(200, json={"access_token": "scope-fixture-token", "expires_in": 3600})
+
+    class RefreshingTreeDrive(GoogleDriveService):
+        @override
+        async def walk_drive_folders(self, drive_id: DriveId) -> DriveTree:
+            assert drive_id == updated.drive_id
+            await begin_walk.wait()
+            handler = self.google_refresh_handler
+            assert handler is not None
+            await asyncio.to_thread(handler, object())
+            return updated
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(oauth_response)) as http:
+
+        async def request() -> None:
+            async with database.sessions() as db:
+                user = await db.get(User, database.owner)
+                assert user is not None
+                prepared = await _observed_token_manager(db, http, refresh_finished).prepare(user)
+                await db.commit()
+                cache = PostgresSidebarCacheService(
+                    drive=RefreshingTreeDrive(user, None, refresh_handler=prepared.refresh_handler),
+                    user=user,
+                    singleflight=Singleflight(),
+                    bg_tasks=background_tasks,
+                    sessionmaker=database.sessions,
+                )
+                await cache._save_tree(db, stale)
+                await db.execute(
+                    update(DriveTreeCache)
+                    .where(
+                        DriveTreeCache.user_id == database.owner,
+                        DriveTreeCache.drive_id == drive_id,
+                    )
+                    .values(
+                        refreshed_at=datetime.now(UTC)
+                        - settings.SIDEBAR_CACHE_TTL
+                        - timedelta(seconds=1)
+                    )
+                )
+                await db.commit()
+                cached = await cache.peek_drive_tree(db, drive_id)
+                assert cached is not None
+                assert cached.tree == stale
+
+        original = asyncio.create_task(request())
+        await original
+        assert len(background_tasks) == 1
+        background = next(iter(background_tasks))
+        begin_walk.set()
+        await asyncio.wait_for(provider_started.wait(), timeout=2)
+        if cancel_background:
+            background.cancel()
+            with pytest.raises(asyncio.CancelledError):
+                await background
+        else:
+            release_provider.set()
+            await asyncio.wait_for(background, timeout=2)
+        await asyncio.wait_for(refresh_finished.wait(), timeout=2)
+    async with database.sessions() as db:
+        row = (
+            await db.execute(
+                select(
+                    User.google_token_generation,
+                    User.google_refresh_lease_owner,
+                    User.google_refresh_lease_until,
+                ).where(User.id == database.owner)
+            )
+        ).one()
+        assert row == (0 if cancel_background else 1, None, None)
+        tree_row = await db.scalar(
+            select(DriveTreeCache).where(
+                DriveTreeCache.user_id == database.owner, DriveTreeCache.drive_id == drive_id
+            )
+        )
+        assert tree_row is not None
+        plaintext = decrypt_cache(tree_row.tree)
+        assert isinstance(plaintext, str)
+        assert DriveTree.model_validate_json(plaintext) == (stale if cancel_background else updated)

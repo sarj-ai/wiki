@@ -15,6 +15,7 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.auth.encryption import decrypt_cache, encrypt_cache
+from app.auth.google_tokens import provider_refresh_scope
 from app.config import settings
 from app.drive.schemas import DriveNode, DriveTree
 from app.drive.service import DriveService
@@ -216,13 +217,14 @@ class PostgresSidebarCacheService(SidebarCacheService):
         task.add_done_callback(completed)
 
     async def _refresh_in_background(self, drive_id: DriveId) -> None:
-        outcomes = await asyncio.gather(
-            self._sf.do(
-                self._singleflight_key("drive", drive_id),
-                lambda: self._walk_and_save(drive_id),
-            ),
-            return_exceptions=True,
-        )
+        with provider_refresh_scope():
+            outcomes = await asyncio.gather(
+                self._sf.do(
+                    self._singleflight_key("drive", drive_id),
+                    lambda: self._walk_and_save(drive_id),
+                ),
+                return_exceptions=True,
+            )
         outcome = outcomes[0]
         match outcome:
             case Exception():

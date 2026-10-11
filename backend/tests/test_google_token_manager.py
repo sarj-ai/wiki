@@ -10,6 +10,7 @@ import uuid
 
 import pytest
 from sqlalchemy import inspect
+from sqlalchemy.orm import make_transient_to_detached
 from sqlalchemy.orm.attributes import set_committed_value
 
 from app.auth.encryption import encrypt_text
@@ -45,6 +46,18 @@ class _MemoryTokenManager(GoogleTokenManager):
             dependency(None),
         )
         self.state = state
+
+    @override
+    async def _refresh_for_provider(
+        self,
+        user: User,
+        *,
+        user_id: uuid.UUID,
+        force_generation: int,
+        owner_task: asyncio.Task[object] | None,
+    ) -> ManagedGoogleToken:
+        # The shared in-memory lease replaces independent database sessions.
+        return await self.ensure_valid(user, force_generation=force_generation)
 
     @override
     async def _snapshot(self, user: User) -> TokenSnapshot:
@@ -220,3 +233,139 @@ async def test_missing_refresh_token_requires_reauthentication() -> None:
 
     with pytest.raises(GoogleReauthenticationRequiredError):
         await _MemoryTokenManager(state).ensure_valid(_user())
+
+
+def _persisted_user() -> User:
+    user = _user()
+    user.encrypted_access_token = encrypt_text("initial-token")
+    user.google_access_token_expires_at = datetime.now(UTC) + timedelta(hours=1)
+    make_transient_to_detached(user)
+    return user
+
+
+def test_persisted_credential_snapshot_does_not_mark_request_user_dirty() -> None:
+    user = _persisted_user()
+    ciphertext = encrypt_text("fresh-token")
+    expiry = datetime.now(UTC) + timedelta(hours=2)
+    GoogleTokenManager._apply_to_user(
+        user, ManagedGoogleToken("fresh-token", expiry, 1, ciphertext)
+    )
+
+    assert user.encrypted_access_token == ciphertext
+    assert user.google_access_token_expires_at == expiry
+    assert user.google_token_generation == 1
+    state = inspect(user)
+    assert state is not None
+    assert not state.modified
+
+
+def test_persisted_credential_snapshot_preserves_caller_pending_writes() -> None:
+    user = _persisted_user()
+    pending_ciphertext = encrypt_text("caller-token")
+    user.encrypted_access_token = pending_ciphertext
+    user.google_token_generation = 3
+    user.display_name = "Caller-owned change"
+    ciphertext = encrypt_text("fresh-token")
+    expiry = datetime.now(UTC) + timedelta(hours=2)
+    GoogleTokenManager._apply_to_user(
+        user, ManagedGoogleToken("fresh-token", expiry, 1, ciphertext)
+    )
+
+    assert user.encrypted_access_token == pending_ciphertext
+    assert user.google_token_generation == 3
+    assert user.display_name == "Caller-owned change"
+    assert user.google_access_token_expires_at == expiry
+    state = inspect(user)
+    assert state is not None
+    assert state.attrs.encrypted_access_token.history.has_changes()
+    assert state.attrs.google_token_generation.history.has_changes()
+    assert not state.attrs.google_access_token_expires_at.history.has_changes()
+
+
+async def test_refresh_bridge_timeout_cancels_its_pending_coroutine() -> None:
+    started = asyncio.Event()
+    finished = asyncio.Event()
+
+    class BlockingTokenManager(_MemoryTokenManager):
+        @override
+        async def _refresh_for_provider(
+            self,
+            user: User,
+            *,
+            user_id: uuid.UUID,
+            force_generation: int,
+            owner_task: asyncio.Task[object] | None,
+        ) -> ManagedGoogleToken:
+            started.set()
+            try:
+                await asyncio.Event().wait()
+                raise AssertionError
+            finally:
+                finished.set()
+
+    state = _SharedTokenState(
+        access_token=secrets.token_urlsafe(),
+        refresh_token=secrets.token_urlsafe(),
+        expires_at=datetime.now(UTC) + timedelta(hours=1),
+    )
+    prepared = await BlockingTokenManager(state).prepare(
+        _user(), refresh_timeout=timedelta(milliseconds=30)
+    )
+    with pytest.raises(TimeoutError):
+        await asyncio.to_thread(prepared.refresh_handler, object())
+    assert started.is_set()
+    await asyncio.wait_for(finished.wait(), timeout=1)
+
+
+async def test_out_of_order_provider_callbacks_keep_snapshot_and_generation_monotonic() -> None:
+    first_started = asyncio.Event()
+    release_first = asyncio.Event()
+    forced_generations: list[int] = []
+    expiry = datetime.now(UTC) + timedelta(hours=2)
+    old = ManagedGoogleToken("snapshot-1", expiry, 1, encrypt_text("snapshot-1"))
+    newest = ManagedGoogleToken("snapshot-2", expiry, 2, encrypt_text("snapshot-2"))
+
+    class OutOfOrderTokenManager(_MemoryTokenManager):
+        @override
+        async def _refresh_for_provider(
+            self,
+            user: User,
+            *,
+            user_id: uuid.UUID,
+            force_generation: int,
+            owner_task: asyncio.Task[object] | None,
+        ) -> ManagedGoogleToken:
+            forced_generations.append(force_generation)
+            if len(forced_generations) == 1:
+                first_started.set()
+                await release_first.wait()
+                selected = old
+            else:
+                selected = newest
+            self._apply_to_user(user, selected)
+            return selected
+
+    user = _persisted_user()
+    state = _SharedTokenState(
+        access_token=secrets.token_urlsafe(),
+        refresh_token=secrets.token_urlsafe(),
+        expires_at=datetime.now(UTC) + timedelta(hours=1),
+    )
+    prepared = await OutOfOrderTokenManager(state).prepare(user)
+    user.display_name = "Caller-owned change"
+    first = asyncio.create_task(asyncio.to_thread(prepared.refresh_handler, object()))
+    await asyncio.wait_for(first_started.wait(), timeout=1)
+    second = await asyncio.to_thread(prepared.refresh_handler, object())
+    assert second.token == newest.token
+    release_first.set()
+    assert (await first).token == newest.token
+    assert user.google_token_generation == 2
+    assert user.encrypted_access_token == newest.access_ciphertext
+    assert user.google_access_token_expires_at == newest.expires_at
+    assert (await asyncio.to_thread(prepared.refresh_handler, object())).token == newest.token
+    assert forced_generations == [0, 0, 2]
+    mapped = inspect(user)
+    assert mapped is not None
+    assert mapped.attrs.display_name.history.has_changes()
+    assert not mapped.attrs.encrypted_access_token.history.has_changes()
+    assert not mapped.attrs.google_token_generation.history.has_changes()

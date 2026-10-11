@@ -9,7 +9,7 @@ while IFS= read -r native_path; do
 done <"$GITHUB_PATH"
 uvx --no-config --isolated --python 3.14 --from sarj-standards-bootstrap code-standards setup --tools-only
 
-if [[ -z "$BASE_SHA" ]]; then
+if [[ "${FORCE_FULL:-false}" == true || -z "$BASE_SHA" ]]; then
   uvx --python 3.14.7 'pre-commit==4.6.2' run --all-files --show-diff-on-failure
   exit 0
 elif [[ "$BASE_SHA" =~ ^0+$ ]]; then

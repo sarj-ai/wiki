@@ -16,7 +16,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import { useMoveFile } from "@/hooks/use-wiki-mutations";
-import { toErrorMessage } from "@/lib/mutation-toast";
+import { isAbortError, toErrorMessage } from "@/lib/mutation-toast";
 import {
   proposeFileReorganization,
   type ReorganizationDestination,
@@ -68,7 +68,7 @@ function ReorganizeDocumentForFile({
       }
       setProposalState({ fileId: requestedFileId, proposal: result });
     } catch (error: unknown) {
-      if (mounted.current) {
+      if (mounted.current && !isAbortError(error)) {
         toast.error(toErrorMessage(error, "Couldn’t check this document’s location"));
       }
     } finally {
@@ -95,7 +95,7 @@ function ReorganizeDocumentForFile({
       toast.success(`Moved “${fileName}” to ${destinationLabel(destination)}`);
       setProposalState(null);
     } catch (error: unknown) {
-      if (mounted.current) {
+      if (mounted.current && !isAbortError(error)) {
         toast.error(toErrorMessage(error, "Couldn’t move this document"));
       }
     } finally {

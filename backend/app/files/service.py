@@ -249,14 +249,13 @@ class GoogleFilesService(FilesService):
             fields=_ACCESS_FIELDS,
             model=GoogleFileAccessLocation,
         )
-        locations = {file_id: file for file_id, file in fetched.items() if file.id == file_id}
         member_drives = await self._drive.resolve_member_drives(
-            {file.id: file.drive_id for file in locations.values()},
+            {file.id: file.drive_id for file in fetched.values()},
             parent_ids={
-                file.id: file.parents[0] if file.parents else None for file in locations.values()
+                file.id: file.parents[0] if file.parents else None for file in fetched.values()
             },
         )
-        return {file_id for file_id in locations if file_id in member_drives}
+        return {file_id for file_id in fetched if file_id in member_drives}
 
     async def _get_accessible_many(
         self,
@@ -426,7 +425,7 @@ class GoogleFilesService(FilesService):
                     failures.append(exception)
                 return
             file = model.model_validate(response)
-            if file.trashed:
+            if file.id != FileId(request_id) or file.trashed:
                 return
             responses[FileId(request_id)] = file
 

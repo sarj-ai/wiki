@@ -1,15 +1,19 @@
 name: Deploy Frontend
 
 "on":
-  push:
-    branches: [main]
-    paths:
-      - "frontend/**"
-      - ".github/workflows/ci-frontend.yml"
-      - ".github/workflows/deploy-frontend.yml"
-      - "scripts/github/release_gate.py"
-      - "scripts/github/verify-release-gate.sh"
-      - "scripts/frontend_release/**"
+  workflow_call:
+    inputs:
+      release_needs:
+        description: Exact qualification results from the trusted main release DAG
+        type: string
+        required: true
+    secrets:
+      NEXT_PUBLIC_API_URL:
+        required: true
+      CLOUDFLARE_API_TOKEN:
+        required: true
+      CLOUDFLARE_ACCOUNT_ID:
+        required: true
   workflow_dispatch:
 
 permissions:
@@ -25,31 +29,31 @@ defaults:
 
 jobs:
   ci-backend:
-    if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+    if: inputs.release_needs == '' && github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
     permissions:
       contents: read
     uses: ./.github/workflows/ci-backend.yml
 
   ci-frontend:
-    if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+    if: inputs.release_needs == '' && github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
     permissions:
       contents: read
     uses: ./.github/workflows/ci-frontend.yml
 
   ci-quality:
-    if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+    if: inputs.release_needs == '' && github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
     permissions:
       contents: read
     uses: ./.github/workflows/ci-quality.yml
 
   ci-iac:
-    if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+    if: inputs.release_needs == '' && github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
     permissions:
       contents: read
     uses: ./.github/workflows/ci-iac.yml
 
   standards-receipt:
-    if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+    if: inputs.release_needs == '' && github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
     runs-on: blacksmith-2vcpu-ubuntu-2404
     timeout-minutes: 25
     permissions:
@@ -76,7 +80,7 @@ jobs:
         run: bash scripts/github/verify-release-gate.sh standards frontend
 
   deploy:
-    if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+    if: ${{ !cancelled() && github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && (inputs.release_needs != '' || (needs.ci-backend.result == 'success' && needs.ci-frontend.result == 'success' && needs.ci-quality.result == 'success' && needs.ci-iac.result == 'success' && needs.standards-receipt.result == 'success')) }}
     needs: [ci-backend, ci-frontend, ci-quality, ci-iac, standards-receipt]
     runs-on: blacksmith-2vcpu-ubuntu-2404
 
@@ -94,7 +98,7 @@ jobs:
         working-directory: .
         env:
           GH_TOKEN: ${{ github.token }}
-          RELEASE_NEEDS: ${{ toJSON(needs) }}
+          RELEASE_NEEDS: ${{ inputs.release_needs || toJSON(needs) }}
         run: bash scripts/github/verify-release-gate.sh ready frontend
 
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
@@ -117,7 +121,7 @@ jobs:
         working-directory: .
         env:
           GH_TOKEN: ${{ github.token }}
-          RELEASE_NEEDS: ${{ toJSON(needs) }}
+          RELEASE_NEEDS: ${{ inputs.release_needs || toJSON(needs) }}
         run: bash scripts/github/verify-release-gate.sh ready frontend
 
       - name: Capture current production version

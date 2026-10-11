@@ -9,6 +9,7 @@ import {
   DOCUMENT_INTENT_PREWARM_MS,
   useDocumentIntent,
 } from "@/components/wiki-sidebar/use-document-intent";
+import { claimBrowserSession, retireBrowserSession } from "@/lib/browser-session";
 import { MIME_DOC } from "@/types/wiki";
 
 const MOCKS = vi.hoisted(() => ({
@@ -47,7 +48,7 @@ describe("predictive document intent", () => {
     setNavigatorHint("connection", undefined);
     setNavigatorHint("deviceMemory", undefined);
     useDocViewerStore.getState().reset();
-    MOCKS.prefetchQuery.mockClear();
+    MOCKS.prefetchQuery.mockReset().mockResolvedValue(undefined);
     MOCKS.prefetchRoute.mockClear();
     MOCKS.strongIntent.mockClear();
     container = document.createElement("div");
@@ -125,6 +126,99 @@ describe("predictive document intent", () => {
     root = null;
     advance(DOCUMENT_INTENT_PREWARM_MS);
     expect(MOCKS.prefetchQuery).not.toHaveBeenCalled();
+  });
+
+  it.each(["hover leaves", "row unmounts", "Save-Data", "hidden tab", "disabled row"])(
+    "discards authorized weak prewarm after %s while retaining its reusable authorization",
+    async (scenario) => {
+      const authorization = Promise.withResolvers<undefined>();
+      MOCKS.prefetchQuery.mockReturnValue(authorization.promise);
+      renderHarness(root);
+      const link = getLink(container);
+      dispatchPointer(link, "pointerover", { pointerType: "mouse" });
+      advance(DOCUMENT_INTENT_PREWARM_MS);
+      expect(MOCKS.prefetchQuery).toHaveBeenCalledTimes(2);
+
+      switch (scenario) {
+        case "hover leaves": {
+          dispatchPointer(link, "pointerout", { pointerType: "mouse" });
+          break;
+        }
+        case "row unmounts": {
+          flushSync(() => root?.unmount());
+          root = null;
+          break;
+        }
+        case "Save-Data": {
+          setNavigatorHint("connection", { saveData: true });
+          break;
+        }
+        case "hidden tab": {
+          vi.spyOn(document, "visibilityState", "get").mockReturnValue("hidden");
+          break;
+        }
+        case "disabled row": {
+          renderHarness(root, true);
+          break;
+        }
+        default: {
+          throw new Error(`Unexpected prewarm retirement scenario: ${scenario}`);
+        }
+      }
+      authorization.resolve(undefined);
+      await flushAsync();
+
+      expect(useDocViewerStore.getState().prewarm).toBeNull();
+      expect(MOCKS.prefetchQuery).toHaveBeenCalledTimes(2);
+    },
+  );
+
+  it("does not attach an old hover authorization to a new hover generation", async () => {
+    const authorization = Promise.withResolvers<undefined>();
+    MOCKS.prefetchQuery.mockReturnValue(authorization.promise);
+    renderHarness(root);
+    const link = getLink(container);
+    dispatchPointer(link, "pointerover", { pointerType: "mouse" });
+    advance(DOCUMENT_INTENT_PREWARM_MS);
+    dispatchPointer(link, "pointerout", { pointerType: "mouse" });
+    dispatchPointer(link, "pointerover", { pointerType: "mouse" });
+
+    authorization.resolve(undefined);
+    await flushAsync();
+    expect(useDocViewerStore.getState().prewarm).toBeNull();
+
+    advance(DOCUMENT_INTENT_PREWARM_MS);
+    await flushAsync();
+    expect(useDocViewerStore.getState().prewarm).toMatchObject({ fileId: "doc-1" });
+  });
+
+  it("lets committed navigation publish after its sidebar row unmounts", async () => {
+    const authorization = Promise.withResolvers<undefined>();
+    MOCKS.prefetchQuery.mockReturnValue(authorization.promise);
+    renderHarness(root);
+    dispatchPointer(getLink(container), "pointerdown", { button: 0, pointerType: "mouse" });
+    flushSync(() => root?.unmount());
+    root = null;
+    authorization.resolve(undefined);
+    await flushAsync();
+
+    expect(useDocViewerStore.getState().prewarm).toMatchObject({ fileId: "doc-1" });
+    expect(MOCKS.prefetchQuery).toHaveBeenCalledOnce();
+  });
+
+  it("discards committed prewarm when its browser session retires", async () => {
+    const owner = {};
+    claimBrowserSession(owner);
+    const authorization = Promise.withResolvers<undefined>();
+    MOCKS.prefetchQuery.mockReturnValue(authorization.promise);
+    renderHarness(root);
+    dispatchPointer(getLink(container), "pointerdown", { button: 0, pointerType: "mouse" });
+    retireBrowserSession(owner);
+    authorization.resolve(undefined);
+    await flushAsync();
+
+    expect(useDocViewerStore.getState().prewarm).toBeNull();
+    expect(MOCKS.prefetchQuery).toHaveBeenCalledOnce();
   });
 
   it("flushes all stages for an unmodified primary pointerdown without rescheduling on focus", async () => {

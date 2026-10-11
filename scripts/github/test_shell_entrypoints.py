@@ -288,3 +288,33 @@ def test_pre_commit_native_bootstrap_failure_stops_before_hook_execution(
     with pytest.raises(ReleaseBlockedError):
         command_output(["bash", str(ROOT / "scripts/github/run-pre-commit.sh")])
     assert not marker.exists()
+
+
+@pytest.mark.parametrize("force_full", ["true", "false"])
+def test_cumulative_release_checks_every_file_without_weakening_normal_diff_checks(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, force_full: str
+) -> None:
+    initialization = tmp_path / "commands.sh"
+    trace = tmp_path / "trace"
+    paths = tmp_path / "paths"
+    paths.write_text("")
+    initialization.write_text(
+        'uv() { return 0; }\nuvx() { printf "%s\\n" "$*" >> "$HOOK_TRACE"; }\n'
+    )
+    for name, value in {
+        "BASH_ENV": str(initialization),
+        "HOOK_TRACE": str(trace),
+        "GITHUB_PATH": str(paths),
+        "FORCE_FULL": force_full,
+        "BASE_SHA": "a" * 40,
+        "HEAD_SHA": "b" * 40,
+    }.items():
+        monkeypatch.setenv(name, value)
+    command_output(["bash", str(ROOT / "scripts/github/run-pre-commit.sh")])
+    invocation = trace.read_text().splitlines()[-1]
+    if force_full == "true":
+        assert "run --all-files --show-diff-on-failure" in invocation
+        assert "--from-ref" not in invocation
+    else:
+        assert f"run --from-ref {'a' * 40} --to-ref {'b' * 40}" in invocation
+        assert "--all-files" not in invocation

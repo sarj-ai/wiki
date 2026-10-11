@@ -35,6 +35,129 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
+it("skips create admission when the request is already aborted", async () => {
+  const controller = new AbortController();
+  controller.abort();
+  const response = await POST(
+    new Request(URL, {
+      method: "POST",
+      headers: HEADERS,
+      body: "{}",
+      signal: controller.signal,
+    }),
+    { params: Promise.resolve({}) },
+  );
+
+  expect(response.status).toBe(502);
+  expect(response.headers.get("cache-control")).toBe("private, no-store");
+  expect(MOCKS.create).not.toHaveBeenCalled();
+  expect(MOCKS.upload).not.toHaveBeenCalled();
+});
+
+it("skips upload admission when the request aborts while awaiting params", async () => {
+  const controller = new AbortController();
+  const params = Promise.withResolvers<{ path: string[] }>();
+  const pending = POST(
+    new Request(`${URL}/uploads`, {
+      method: "POST",
+      headers: HEADERS,
+      body: "{}",
+      signal: controller.signal,
+    }),
+    { params: params.promise },
+  );
+
+  controller.abort();
+  params.resolve({ path: ["uploads"] });
+  const response = await pending;
+  expect(response.status).toBe(502);
+  expect(MOCKS.upload).not.toHaveBeenCalled();
+  expect(MOCKS.create).not.toHaveBeenCalled();
+});
+
+it("cancels unfinished request ingress before create admission", async () => {
+  const controller = new AbortController();
+  const cancel = vi.fn();
+  const pull = vi.fn();
+  const body = new ReadableStream<Uint8Array>({
+    start(stream) {
+      stream.enqueue(new TextEncoder().encode("{"));
+    },
+    pull,
+    cancel,
+  });
+  const options = {
+    method: "POST",
+    headers: HEADERS,
+    body,
+    duplex: "half",
+    signal: controller.signal,
+  };
+  const pending = POST(new Request(URL, options), { params: Promise.resolve({}) });
+  await vi.waitFor(() => {
+    expect(pull).toHaveBeenCalled();
+  });
+
+  controller.abort();
+  const response = await pending;
+  expect(response.status).toBe(502);
+  expect(cancel).toHaveBeenCalledOnce();
+  expect(MOCKS.create).not.toHaveBeenCalled();
+});
+
+it("bounds unfinished request ingress with the existing 30-second deadline", async () => {
+  const deadline = new AbortController();
+  const timeout = vi.spyOn(AbortSignal, "timeout").mockReturnValue(deadline.signal);
+  const cancel = vi.fn();
+  const body = new ReadableStream<Uint8Array>({
+    start(stream) {
+      stream.enqueue(new TextEncoder().encode("{"));
+    },
+    cancel,
+  });
+  const options = { method: "POST", headers: HEADERS, body, duplex: "half" };
+  try {
+    const pending = POST(new Request(URL, options), { params: Promise.resolve({}) });
+    await vi.waitFor(() => {
+      expect(timeout).toHaveBeenCalledExactlyOnceWith(30_000);
+    });
+
+    deadline.abort(new DOMException("Ingress timed out", "TimeoutError"));
+    const response = await pending;
+    expect(response.status).toBe(502);
+    expect(cancel).toHaveBeenCalledOnce();
+    expect(MOCKS.create).not.toHaveBeenCalled();
+  } finally {
+    timeout.mockRestore();
+  }
+});
+
+it("preserves a started admission and its replay result after request abort", async () => {
+  const controller = new AbortController();
+  const admission = Promise.withResolvers<{ data: string; ok: true; replayed: boolean }>();
+  MOCKS.create.mockReturnValueOnce(admission.promise);
+  const pending = POST(
+    new Request(URL, {
+      method: "POST",
+      headers: HEADERS,
+      body: "{}",
+      signal: controller.signal,
+    }),
+    { params: Promise.resolve({}) },
+  );
+  await vi.waitFor(() => {
+    expect(MOCKS.create).toHaveBeenCalledExactlyOnceWith("{}", KEY);
+  });
+
+  controller.abort();
+  admission.resolve({ ok: true, data: '{"id":"task"}', replayed: true });
+  const response = await pending;
+  expect(response.status).toBe(200);
+  expect(response.headers.get("idempotency-replayed")).toBe("true");
+  await expect(response.text()).resolves.toBe('{"id":"task"}');
+  expect(MOCKS.create).toHaveBeenCalledOnce();
+});
+
 it("issues an upload through the authenticated limited action", async () => {
   const response = await POST(
     new Request(`${URL}/uploads`, { method: "POST", headers: HEADERS, body: "{}" }),

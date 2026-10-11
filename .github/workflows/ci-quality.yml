@@ -2,9 +2,14 @@ name: CI Quality
 
 "on":
   workflow_call:
+    inputs:
+      force_full:
+        description: Check all files when qualifying a cumulative main release
+        type: boolean
+        default: false
   push:
     branches: [main]
-    # Domain deploys call this workflow as an exact-SHA prerequisite. Avoid a
+    # Main releases call this workflow once as an exact-SHA prerequisite. Avoid a
     # second standalone copy when every changed path is already routed there.
     paths-ignore:
       - "backend/.dockerignore"
@@ -32,6 +37,7 @@ name: CI Quality
       - "scripts/github/verify-smart-create-queue.sh"
       - "scripts/backend_release/**"
       - "scripts/frontend_release/**"
+      - ".github/workflows/release-main.yml"
   pull_request:
 
 permissions:
@@ -100,6 +106,7 @@ jobs:
 
       - name: Run pre-commit
         env:
+          FORCE_FULL: ${{ inputs.force_full }}
           BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
         run: bash scripts/github/run-pre-commit.sh

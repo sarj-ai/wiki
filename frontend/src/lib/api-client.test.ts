@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { ZodError } from "zod";
 
+import { claimBrowserSession, retireBrowserSession } from "@/lib/browser-session";
 import { TERMINAL_UNAUTHORIZED_EVENT } from "@/lib/session-events";
 import { ApiError, makeWikiApi } from "@/lib/wiki-api";
 
@@ -165,6 +166,97 @@ describe("error mapping", () => {
 });
 
 describe("401 refresh-and-replay", () => {
+  it("captures ownership before asynchronous SDK work can dispatch a mutation", async () => {
+    const previous = {};
+    const replacement = {};
+    claimBrowserSession(previous);
+    const fetchMock = vi.fn<typeof fetch>();
+    vi.stubGlobal("fetch", fetchMock);
+    const pending = wikiApi.renameFile("file-1", "Old draft").catch((error: unknown) => error);
+    retireBrowserSession(previous);
+    claimBrowserSession(replacement);
+    try {
+      await expect(pending).resolves.toMatchObject({ name: "AbortError" });
+      expect(fetchMock).not.toHaveBeenCalled();
+    } finally {
+      retireBrowserSession(replacement);
+    }
+  });
+
+  it("lets a dispatched mutation finish without refreshing, replaying, or notifying its replacement", async () => {
+    const previous = {};
+    const replacement = {};
+    claimBrowserSession(previous);
+    const response = Promise.withResolvers<Response>();
+    const fetchMock = vi.fn<typeof fetch>().mockReturnValue(response.promise);
+    vi.stubGlobal("fetch", fetchMock);
+    const listener = vi.fn<() => void>();
+    window.addEventListener(TERMINAL_UNAUTHORIZED_EVENT, listener);
+    try {
+      const pending = wikiApi.renameFile("file-1", "Old draft").catch((error: unknown) => error);
+      await vi.waitFor(() => {
+        expect(fetchMock).toHaveBeenCalledOnce();
+      });
+      const request = fetchMock.mock.calls[0]?.[0];
+      if (!(request instanceof Request)) throw new Error("Expected the generated mutation request");
+      retireBrowserSession(previous);
+      claimBrowserSession(replacement);
+      expect(request.signal.aborted).toBe(false);
+      response.resolve(jsonResponse({ detail: "old session expired" }, 401));
+
+      await expect(pending).resolves.toMatchObject({ name: "AbortError" });
+      expect(fetchMock).toHaveBeenCalledOnce();
+      expect(listener).not.toHaveBeenCalled();
+    } finally {
+      retireBrowserSession(replacement);
+      window.removeEventListener(TERMINAL_UNAUTHORIZED_EVENT, listener);
+    }
+  });
+
+  it("cancels an unsignalled generated read when its provider retires", async () => {
+    const owner = {};
+    claimBrowserSession(owner);
+    const response = Promise.withResolvers<Response>();
+    const fetchMock = vi.fn<typeof fetch>().mockReturnValue(response.promise);
+    vi.stubGlobal("fetch", fetchMock);
+    const pending = wikiApi.getFile("file-1").catch((error: unknown) => error);
+    await vi.waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledOnce();
+    });
+    const request = fetchMock.mock.calls[0]?.[0];
+    if (!(request instanceof Request)) throw new Error("Expected the generated read request");
+    retireBrowserSession(owner);
+    expect(request.signal.aborted).toBe(true);
+    response.resolve(jsonResponse({ detail: "old session expired" }, 401));
+
+    await expect(pending).resolves.toMatchObject({ name: "AbortError" });
+    expect(fetchMock).toHaveBeenCalledOnce();
+  });
+
+  it("does not replay a generated mutation whose refresh owner retires", async () => {
+    const owner = {};
+    claimBrowserSession(owner);
+    const refresh = Promise.withResolvers<Response>();
+    const fetchMock = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(jsonResponse({ detail: "old session expired" }, 401))
+      .mockReturnValueOnce(refresh.promise);
+    vi.stubGlobal("fetch", fetchMock);
+    const pending = wikiApi.renameFile("file-1", "Old draft").catch((error: unknown) => error);
+    await vi.waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+    });
+    const mutationRequest = fetchMock.mock.calls[0]?.[0];
+    if (!(mutationRequest instanceof Request))
+      throw new Error("Expected the generated mutation request");
+    retireBrowserSession(owner);
+    expect(mutationRequest.signal.aborted).toBe(false);
+    expect(fetchMock.mock.calls[1]?.[1]?.signal?.aborted).toBe(true);
+    await expect(pending).resolves.toMatchObject({ name: "AbortError" });
+    refresh.resolve(new Response(null));
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
   it("cancels a discarded generated read waiting for refresh without replaying it", async () => {
     const refresh = Promise.withResolvers<Response>();
     const cancel = vi.fn();
@@ -186,6 +278,45 @@ describe("401 refresh-and-replay", () => {
     refresh.resolve(new Response(null));
     expect(fetchMock).toHaveBeenCalledTimes(2);
   });
+
+  it("releases a retired mutation replay body without cancelling its dispatched write", async () => {
+    const owner = {};
+    const replacement = {};
+    claimBrowserSession(owner);
+    const replay = Promise.withResolvers<Response>();
+    const cleanup = Promise.withResolvers<undefined>();
+    const cancel = vi.fn(async () => await cleanup.promise);
+    const fetchMock = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(jsonResponse({ detail: "expired" }, 401))
+      .mockResolvedValueOnce(new Response(null))
+      .mockReturnValueOnce(replay.promise);
+    vi.stubGlobal("fetch", fetchMock);
+    const listener = vi.fn<() => void>();
+    window.addEventListener(TERMINAL_UNAUTHORIZED_EVENT, listener);
+    try {
+      const pending = wikiApi.renameFile("file-1", "Old draft").catch((error: unknown) => error);
+      await vi.waitFor(() => {
+        expect(fetchMock).toHaveBeenCalledTimes(3);
+      });
+      const request = fetchMock.mock.calls[2]?.[0];
+      if (!(request instanceof Request)) throw new Error("Expected the replay mutation request");
+      retireBrowserSession(owner);
+      claimBrowserSession(replacement);
+      expect(request.signal.aborted).toBe(false);
+      replay.resolve(new Response(new ReadableStream({ cancel })));
+
+      await expect(pending).resolves.toMatchObject({ name: "AbortError" });
+      expect(cancel).toHaveBeenCalledOnce();
+      expect(fetchMock).toHaveBeenCalledTimes(3);
+      expect(listener).not.toHaveBeenCalled();
+    } finally {
+      cleanup.resolve(undefined);
+      retireBrowserSession(replacement);
+      window.removeEventListener(TERMINAL_UNAUTHORIZED_EVENT, listener);
+    }
+  });
+
   it("refreshes once, replays the original request, and resolves", async () => {
     const calls: string[] = [];
     const fetchMock = vi.fn((input: Request | string | URL) => {

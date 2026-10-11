@@ -1,6 +1,7 @@
 import { z } from "zod";
 
 import { ApiError, SESSION_REFRESH_UNAVAILABLE_MESSAGE } from "@/lib/api-error";
+import { captureBrowserSession } from "@/lib/browser-session";
 import { discardStream } from "@/lib/discard-stream";
 import { deduplicatedRefresh } from "@/lib/session-client";
 import { notifyTerminalUnauthorized } from "@/lib/session-events";
@@ -14,16 +15,19 @@ export async function wikiReadHttp<S extends z.ZodType>(
   query: Record<string, number | string | undefined> = {},
   signal?: AbortSignal,
 ): Promise<z.output<S>> {
+  const session = captureBrowserSession();
   const params = new URLSearchParams();
   for (const [key, value] of Object.entries(query)) {
     if (value !== undefined) params.set(key, String(value));
   }
   const search = params.size > 0 ? `?${params.toString()}` : "";
-  const requestSignal = signal
-    ? AbortSignal.any([signal, AbortSignal.timeout(30_000)])
-    : AbortSignal.timeout(30_000);
+  const requestSignal = AbortSignal.any([
+    session,
+    AbortSignal.timeout(30_000),
+    ...(signal === undefined ? [] : [signal]),
+  ]);
   requestSignal.throwIfAborted();
-  if (sessionNeedsRefresh()) await refreshWikiSession(requestSignal);
+  if (sessionNeedsRefresh()) await refreshWikiSession(requestSignal, session);
   const read = async () =>
     await fetch(`/api/wiki${path}${search}`, {
       cache: "no-store",
@@ -31,15 +35,20 @@ export async function wikiReadHttp<S extends z.ZodType>(
       signal: requestSignal,
     });
   let response = await read();
+  if (requestSignal.aborted) {
+    discardStream(response.body);
+    requestSignal.throwIfAborted();
+  }
   if (response.status === 401) {
     discardStream(response.body);
-    await refreshWikiSession(requestSignal);
+    await refreshWikiSession(requestSignal, session);
     response = await read();
   }
   requestSignal.throwIfAborted();
   if (!response.ok) {
-    if (response.status === 401) notifyTerminalUnauthorized();
+    if (response.status === 401) notifyTerminalUnauthorized(session);
     const payload: unknown = await response.json().catch(() => null);
+    requestSignal.throwIfAborted();
     const error = ErrorSchema.safeParse(payload);
     throw new ApiError(
       response.status,
@@ -53,12 +62,12 @@ export async function wikiReadHttp<S extends z.ZodType>(
   return schema.parse(payload);
 }
 
-async function refreshWikiSession(signal: AbortSignal): Promise<void> {
-  const refresh = await deduplicatedRefresh(signal);
+async function refreshWikiSession(signal: AbortSignal, session: AbortSignal): Promise<void> {
+  const refresh = await deduplicatedRefresh(signal, session);
   signal.throwIfAborted();
   if (refresh === "unavailable") throw new ApiError(503, SESSION_REFRESH_UNAVAILABLE_MESSAGE);
   if (refresh === "unauthorized") {
-    notifyTerminalUnauthorized();
+    notifyTerminalUnauthorized(session);
     throw new ApiError(401, "Your session has expired");
   }
 }

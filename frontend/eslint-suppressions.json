@@ -258,11 +258,6 @@
       "count": 1
     }
   },
-  "src/lib/api-client.ts": {
-    "@sarj/no-conditional-empty-object-spread": {
-      "count": 1
-    }
-  },
   "src/lib/clients/transform-http.ts": {
     "@sarj/no-conditional-empty-object-spread": {
       "count": 5
