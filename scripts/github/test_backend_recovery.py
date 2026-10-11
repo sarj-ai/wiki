@@ -127,6 +127,52 @@ def test_historical_attempt_34209018888_authorizes_read_only_verification() -> N
     assert recovery.verify_source(data.__getitem__, RUN_ID, RUN_ATTEMPT) == SOURCE_SHA
 
 
+@pytest.mark.parametrize(
+    "fault",
+    [
+        None,
+        "workflow-disabled",
+        "workflow-id",
+        "workflow-path",
+        "deploy-name",
+        "missing-ci",
+        "failed-migration",
+    ],
+)
+def test_shared_main_release_attempt_preserves_recovery_receipt_boundaries(
+    fault: str | None,
+) -> None:
+    data = receipts()
+    run = data[recovery.source_attempt_endpoint(RUN_ID, RUN_ATTEMPT)]
+    run.update(workflow_id=303, path=recovery.MAIN_RELEASE_PATH)
+    data[recovery.MAIN_RELEASE_WORKFLOW] = {
+        "id": 303,
+        "path": recovery.MAIN_RELEASE_PATH,
+        "state": "active",
+    }
+    page = data[recovery.source_jobs_endpoint(RUN_ID, RUN_ATTEMPT)]
+    page["jobs"][0]["name"] = "backend-deploy / deploy"
+    if fault == "workflow-disabled":
+        data[recovery.MAIN_RELEASE_WORKFLOW]["state"] = "disabled_manually"
+    elif fault == "workflow-id":
+        run["workflow_id"] = 999
+    elif fault == "workflow-path":
+        data[recovery.MAIN_RELEASE_WORKFLOW]["path"] = "other.yml"
+    elif fault == "deploy-name":
+        page["jobs"][0]["name"] = "frontend-deploy / deploy"
+    elif fault == "missing-ci":
+        page["jobs"][1]["name"] = "untrusted ci"
+    elif fault == "failed-migration":
+        page["jobs"][0]["steps"][1]["conclusion"] = "failure"
+    if fault in {None, "workflow-disabled"}:
+        assert (
+            recovery.verify_source(data.__getitem__, RUN_ID, RUN_ATTEMPT) == SOURCE_SHA
+        )
+    else:
+        with pytest.raises(recovery.ReleaseBlockedError):
+            recovery.verify_source(data.__getitem__, RUN_ID, RUN_ATTEMPT)
+
+
 def test_obsolete_cleanup_failure_does_not_block_read_only_verification() -> None:
     data = receipts()
     page = data[recovery.source_jobs_endpoint(RUN_ID, RUN_ATTEMPT)]
@@ -446,9 +492,13 @@ def test_recovery_job_is_exclusive_and_contains_no_deployment_mutations() -> Non
         "ci-quality",
         "ci-iac",
         "standards-receipt",
-        "deploy",
     ):
-        assert jobs[job_name]["if"] == deployment_condition
+        assert (
+            jobs[job_name]["if"]
+            == f"inputs.release_needs == '' && {deployment_condition}"
+        )
+    assert deployment_condition in jobs["deploy"]["if"]
+    assert "inputs.release_needs != ''" in jobs["deploy"]["if"]
     assert verification["if"] == (
         "github.ref == 'refs/heads/main' && github.event_name == 'workflow_dispatch' && "
         "inputs.verification_run_id != '' && inputs.verification_run_attempt != ''"
