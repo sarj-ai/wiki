@@ -123,7 +123,9 @@ class NativeDispatchMiddleware:
         self._rest = app
         self._slot = slot
         self._native = SecurityHeadersMiddleware(
-            MaintenanceModeMiddleware(RequestIDMiddleware(self._dispatch), enabled=maintenance),
+            MaintenanceModeMiddleware(
+                RequestIDMiddleware(self._dispatch, static_routes=NATIVE_PATHS), enabled=maintenance
+            ),
             enable_hsts=True,
         )
 

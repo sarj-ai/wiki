@@ -49,17 +49,17 @@ make standards-check
 `make check` mirrors CI. `make audit` performs network-backed dependency audits, and
 `make standards-check` verifies generated standards configuration, version pins, and code.
 
-See the [104-pass performance record and reproduction commands](docs/performance.json) for
+See the [199-pass performance record and reproduction commands](docs/performance.json) for
 frontend loading and backend latency work.
 
 Local production-build measurements against the same locked main toolchain:
 
-| Measurement | Before | After |
-| ---------------------------------- | --------- | --------- |
-| Initial app JavaScript, raw | 676,364 B | 545,058 B |
-| Initial app JavaScript, gzip | 216,381 B | 177,713 B |
-| Gzip CPU for a 10,000-node tree | 25.034 ms | 7.796 ms |
-| Sidebar extras database round trips | 3 | 1 |
+| Measurement                         | Before    | After     |
+| ----------------------------------- | --------- | --------- |
+| Initial app JavaScript, raw         | 676,364 B | 545,058 B |
+| Initial app JavaScript, gzip        | 216,381 B | 177,713 B |
+| Gzip CPU for a 10,000-node tree     | 25.034 ms | 7.796 ms  |
+| Sidebar extras database round trips | 3         | 1         |
 
 Client chunks exclude shared framework assets and deferred dialogs in both builds.
 The compression benchmark compares levels 9 and 4 on the same fixture; compressed
@@ -67,6 +67,36 @@ size grows 3.9%. These measurements isolate application costs, not overall live
 page-load time. Backend responses expose request timing and byte metrics for
 production follow-up. PostgreSQL CI covers connection release, task projections,
 bounded result reads, and large encrypted cache batches.
+
+The follow-up work adds 95 new passes, including 88 across five agents. Against
+the deployed `80b6e095` baseline, controlled measurements include:
+
+| Measurement                                     | Before    | After     |
+| ----------------------------------------------- | --------- | --------- |
+| Document app JavaScript, gzip                   | 191,766 B | 190,761 B |
+| SQL construction/write, 1,000 cache entries     | 31.586 ms | 10.812 ms |
+| Cache envelope decrypt, 10,000-item fixture     | 9.694 ms  | 4.276 ms  |
+| Document-icon observers, 20 drives              | 20        | 1         |
+| Geometry reads, 100 resize events               | 100       | 1         |
+| Provider reads, 200 parents sharing an ancestor | 400       | 201       |
+
+Small cache batches retain the faster `VALUES`/`IN` paths. New indexes cover legacy
+cache cleanup, task expiry, and pending dispatch. Fresh permissions, encryption,
+key rotation, idempotency, and task admission locks remain enforced. Final homepage
+gzip inventory grows 0.9% (177,697 to 179,354 B), including guards against retired
+sessions dispatching queued mutations, refreshing credentials, publishing speculative
+iframes, or repopulating cleared state. Credential refresh uses an independent
+transaction so it cannot release the caller's admission lock or commit pending
+changes. Resource and CPU reductions are measured separately from transfer size and
+production page-load time. Rejected regressions and remaining tradeoffs are recorded;
+these passes do not establish a physical performance maximum.
+
+The drive-loading regression was reproduced in the compiled Cloudflare Worker:
+server `fetch` rejects `redirect: "error"` before reaching the API. Server clients
+now inspect manual redirects and reject them without following or exposing their
+destination. Deployment verification checks both the exact health revision and
+the real authentication/drive proxies with an invalid synthetic session, requiring
+their expected redacted `401` responses.
 
 ## Saudi production topology
 
@@ -457,7 +487,7 @@ redirect alone is not a working connection.
   ambiguous timeout, use `wiki_get_polish_admission` with that key before retrying, then
   poll the task. Do not create a fresh key to bypass recovery.
 - `wiki_import_markdown` accepts `request: {content, name, destination_folder_id, mode,
-  idempotency_key}`. Use `mode` `format`, `unslop`, or `both`; the result is always a new
+idempotency_key}`. Use `mode` `format`, `unslop`, or `both`; the result is always a new
   Google Doc in the accessible destination folder. Markdown is limited to 512 KiB of
   UTF-8 text. Keep the same key and exact content when recovering an ambiguous import
   through `wiki_get_polish_admission`, then poll `wiki_get_task` with its task ID.
@@ -494,16 +524,16 @@ or the existing CI database `wiki_polish29_qa` are allowed; never use production
 Skipped cases are not concurrency verification.
 Every gate below needs recorded evidence for the exact release before OAuth is enabled:
 
-| Gate | Required evidence |
-| --- | --- |
-| Transport | Real authenticated Streamable HTTP calls; exact HTTPS resource, issuer, discovery, challenge and path; bounded requests; hostile hosts/origins rejected, CLI requests without Origin accepted. |
-| Runtime | Composed lifespans and shutdown; REST cookie/CSRF unchanged; Wiki session tokens rejected by MCP; maintenance and disabled states fail closed. |
-| Identity and consent | Existing user matched by Google subject; strict audience, verified-email and expiry checks; separate read/write consent; no credential passthrough or silent elevation. |
-| Shared OAuth state | Encrypted PostgreSQL and stable keys; two-instance one-use code exchange, callback/refresh/revoke races, crash recovery and generation fences; reconnect never revives revoked tokens. |
-| Access and privacy | Two-user document/task/alias isolation, fresh access-loss and failed-copy checks; bounded output; logs contain no credentials, codes, document bodies or provider URLs. |
-| Transformations | Shared HTTP/MCP admission, stale-source and mode/strategy guards, same-key deduplication, ambiguous-submit recovery, queue retry and task readback on private QA copies. |
-| Codex setup | Actual add/login/read test, denied write before consent, approved write afterward, correct account, collision-safe configuration and verified revoke/reconnect. |
-| Deployment | Migrations and full CI pass; deployed revision and queue health verified; private output independently rendered/reviewed; operator rollback rehearsed. |
+| Gate                 | Required evidence                                                                                                                                                                              |
+| -------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Transport            | Real authenticated Streamable HTTP calls; exact HTTPS resource, issuer, discovery, challenge and path; bounded requests; hostile hosts/origins rejected, CLI requests without Origin accepted. |
+| Runtime              | Composed lifespans and shutdown; REST cookie/CSRF unchanged; Wiki session tokens rejected by MCP; maintenance and disabled states fail closed.                                                 |
+| Identity and consent | Existing user matched by Google subject; strict audience, verified-email and expiry checks; separate read/write consent; no credential passthrough or silent elevation.                        |
+| Shared OAuth state   | Encrypted PostgreSQL and stable keys; two-instance one-use code exchange, callback/refresh/revoke races, crash recovery and generation fences; reconnect never revives revoked tokens.         |
+| Access and privacy   | Two-user document/task/alias isolation, fresh access-loss and failed-copy checks; bounded output; logs contain no credentials, codes, document bodies or provider URLs.                        |
+| Transformations      | Shared HTTP/MCP admission, stale-source and mode/strategy guards, same-key deduplication, ambiguous-submit recovery, queue retry and task readback on private QA copies.                       |
+| Codex setup          | Actual add/login/read test, denied write before consent, approved write afterward, correct account, collision-safe configuration and verified revoke/reconnect.                                |
+| Deployment           | Migrations and full CI pass; deployed revision and queue health verified; private output independently rendered/reviewed; operator rollback rehearsed.                                         |
 
 The native provider uses the maintained public FastMCP `OAuthProvider` interface and
 existing Wiki sign-in. MCP credentials are opaque, purpose-separated and backed by

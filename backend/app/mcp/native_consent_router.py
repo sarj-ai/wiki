@@ -110,7 +110,7 @@ _ERROR_RESPONSES: dict[int | str, dict[str, Any]] = {
 def create_native_consent_router(
     *,
     settings: NativeConsentSettings,
-    core_dependency: Callable[..., NativeOAuthCore],
+    core_dependency: Callable[..., NativeOAuthCore | Awaitable[NativeOAuthCore]],
     auth_dependency: Callable[..., AuthService | Awaitable[AuthService]] = auth_service_dep,
 ) -> APIRouter:
     class ConsentRoute(APIRoute):

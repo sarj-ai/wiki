@@ -102,8 +102,9 @@ export function useFolderIcons() {
   });
 }
 
-export function useDocIcons() {
+export function useDocIcons(enabled = true) {
   return useQuery<DocIcon[]>({
+    enabled,
     queryFn: async ({ signal }) => await WIKI_READ_API.listDocIcons(signal),
     queryKey: wikiKeys.docIcons,
     staleTime: TREE_STALE_MS,

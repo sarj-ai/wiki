@@ -1,5 +1,7 @@
 import "server-only";
 
+import { fetchBackend } from "@/lib/clients/fetch-backend";
+import { discardStream } from "@/lib/discard-stream";
 import { API_URL } from "@/lib/env";
 import { zDocumentAliasRead, zRecentDocumentAlias } from "@/lib/generated/zod.gen";
 
@@ -26,13 +28,13 @@ export async function resolveDocumentAlias(
   alias: string,
   accessToken: string,
 ): Promise<AliasResolution> {
-  const upstream = await fetch(`${API_URL}/aliases/${encodeURIComponent(alias)}`, {
+  const upstream = await fetchBackend(`${API_URL}/aliases/${encodeURIComponent(alias)}`, {
     cache: "no-store",
     headers: { Authorization: `Bearer ${accessToken}` },
     signal: AbortSignal.timeout(10_000),
   });
   if (!upstream.ok) {
-    upstream.body?.cancel().catch(() => null);
+    discardStream(upstream.body);
     if (upstream.status === 401) return { status: "unauthorized" };
     if (upstream.status === 404) return { status: "not_found" };
     return { status: "unavailable" };
@@ -47,7 +49,7 @@ export async function getRecentDocumentAliases(
   accessToken: string,
   aliases: string[],
 ): Promise<RecentDocumentAliasesResult> {
-  const upstream = await fetch(`${API_URL}/aliases/recent`, {
+  const upstream = await fetchBackend(`${API_URL}/aliases/recent`, {
     body: JSON.stringify({ aliases }),
     cache: "no-store",
     headers: {
@@ -58,7 +60,7 @@ export async function getRecentDocumentAliases(
     signal: AbortSignal.timeout(10_000),
   });
   if (!upstream.ok) {
-    upstream.body?.cancel().catch(() => null);
+    discardStream(upstream.body);
     if (upstream.status === 401) return { status: "unauthorized" };
     return { status: "unavailable" };
   }

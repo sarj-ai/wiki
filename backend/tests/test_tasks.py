@@ -55,6 +55,9 @@ class _Result:
     def scalar_one_or_none(self) -> Any:
         return self._row
 
+    def scalar_one(self) -> Any:
+        return self._row
+
     def one_or_none(self) -> Any:
         if isinstance(self._row, Task):
             return (self._row, False)
@@ -70,6 +73,9 @@ class _Session:
         self.commits = 0
         self.rollbacks = 0
         self.statements: list[object] = []
+        self.new: set[object] = set()
+        self.dirty: set[object] = set()
+        self.deleted: set[object] = set()
 
     async def execute(self, statement: object) -> _Result:
         self.statements.append(statement)
@@ -273,7 +279,7 @@ def _transform_success_result(task_id: TaskId, mode: TransformMode) -> DocumentT
 async def test_in_place_admission_reserves_target_before_queueing() -> None:
     row = _task(request_hash="0" * 64)
     row.kind = TaskKind.FILE_DOCUMENT_TRANSFORM
-    session = _Session(None, None, None, None, (0, 0), row)
+    session = _Session(True, None, None, None, (0, 0), row)
 
     reservation = await _service(session).create_or_replay(
         kind=TaskKind.FILE_DOCUMENT_TRANSFORM,
@@ -284,7 +290,7 @@ async def test_in_place_admission_reserves_target_before_queueing() -> None:
 
     assert reservation.created is True
     statements = "\n".join(str(statement) for statement in session.statements)
-    assert "pg_advisory_xact_lock" in statements
+    assert "pg_try_advisory_xact_lock" in statements
     assert "in_place_target" in statements
     assert session.commits == 1
 
@@ -292,7 +298,7 @@ async def test_in_place_admission_reserves_target_before_queueing() -> None:
 async def test_admission_finishes_before_dispatch_intent_is_committed() -> None:
     row = _task(request_hash="0" * 64)
     row.kind = TaskKind.FILE_DOCUMENT_TRANSFORM
-    session = _Session(None, None, None, None, (0, 0), row)
+    session = _Session(True, None, None, None, (0, 0), row)
 
     async def admit() -> None:
         assert session.commits == 0
@@ -313,7 +319,7 @@ async def test_admission_finishes_before_dispatch_intent_is_committed() -> None:
 
 async def test_failed_admission_never_publishes_or_discards_a_reservation() -> None:
     row = _task(request_hash="0" * 64)
-    session = _Session(None, None, None, 0, 0)
+    session = _Session(True, None, None, 0, 0)
 
     async def admit() -> None:
         message = "Admission denied"
@@ -338,7 +344,7 @@ async def test_admitted_replay_does_not_revalidate_changed_provider_state() -> N
         request_hash=task_service_module._request_hash(task_service_module._serialize(payload))
     )
     row.kind = TaskKind.FILE_DOCUMENT_TRANSFORM
-    session = _Session(None, row)
+    session = _Session(True, row)
 
     async def admit() -> None:
         pytest.fail("An already admitted replay must not inspect changed provider state")
@@ -355,7 +361,7 @@ async def test_admitted_replay_does_not_revalidate_changed_provider_state() -> N
 
 async def test_distinct_active_in_place_task_for_same_target_is_rejected() -> None:
     row = _task(request_hash="0" * 64)
-    session = _Session(None, None, None, None, (0, 0), None, None, None)
+    session = _Session(True, None, None, None, (0, 0), None, None, None)
 
     with pytest.raises(TaskTargetBusyError):
         await _service(session).create_or_replay(
@@ -378,7 +384,7 @@ async def test_document_transform_admission_caps_all_active_owner_tasks() -> Non
         ),
         mode=TransformMode.UNSLOP,
     )
-    session = _Session(None, None, None, None, (20, 0))
+    session = _Session(True, None, None, None, (20, 0))
 
     with pytest.raises(TaskAdmissionLimitError):
         await _service(session).create_or_replay(
@@ -396,7 +402,7 @@ async def test_document_transform_admission_replay_precedes_owner_cap() -> None:
     serialized = task_service_module._serialize(payload)
     row = _task(request_hash=task_service_module._request_hash(serialized))
     row.kind = TaskKind.FILE_DOCUMENT_TRANSFORM
-    session = _Session(None, row)
+    session = _Session(True, row)
 
     reservation = await _service(session).create_or_replay(
         kind=TaskKind.FILE_DOCUMENT_TRANSFORM,
@@ -421,7 +427,7 @@ async def test_different_key_same_source_reuses_active_task(
         status=task_status,
     )
     row.kind = TaskKind.FILE_DOCUMENT_TRANSFORM
-    session = _Session(None, None, row, row, None)
+    session = _Session(True, None, row, row, None)
     if task_status is TaskStatus.RUNNING:
         row.started_at = datetime.now(UTC)
         row.attempt_count = 1
@@ -431,7 +437,7 @@ async def test_different_key_same_source_reuses_active_task(
         nonlocal admitted
         admitted = True
         assert session.commits == 0
-        assert "pg_advisory_xact_lock" in str(session.statements[0])
+        assert "pg_try_advisory_xact_lock" in str(session.statements[0])
 
     def admit_new() -> None:
         pytest.fail("Active replay must not run new-task freshness admission")
@@ -481,7 +487,7 @@ async def test_active_source_different_intent_is_busy(change: str) -> None:
             changed = payload.model_copy(update={"output_strategy": OutputStrategy.COPY})
         case _:
             changed = payload.model_copy(update={"output_name": "Different name"})
-    session = _Session(None, None, row, row)
+    session = _Session(True, None, row, row)
     with pytest.raises(TaskTargetBusyError):
         await _service(session).create_or_replay(
             kind=TaskKind.FILE_DOCUMENT_TRANSFORM,
@@ -498,7 +504,7 @@ async def test_active_source_reuse_rechecks_revoked_access() -> None:
     row = _task(
         request_hash=task_service_module._request_hash(task_service_module._serialize(payload))
     )
-    session = _Session(None, None, row)
+    session = _Session(True, None, row)
 
     async def admit() -> None:
         message = "Source access revoked"
@@ -524,7 +530,7 @@ async def test_secondary_key_replay_query_retains_owner_and_terminal_history() -
     )
     row.finished_at = datetime.now(UTC)
     row.kind = TaskKind.FILE_DOCUMENT_TRANSFORM
-    session = _Session(None, row)
+    session = _Session(True, row)
     reservation = await _service(session).create_or_replay(
         kind=TaskKind.FILE_DOCUMENT_TRANSFORM,
         owner_user_id=row.owner_user_id,
@@ -551,7 +557,7 @@ async def test_retained_verified_terminal_transform_replays_after_fresh_admissio
     row.finished_at = datetime.now(UTC)
     row.attempt_count = 1
     row.result = _transform_success_result(row.id, payload.mode).model_dump(mode="json")
-    session = _Session(None, None, None, row, row, None)
+    session = _Session(True, None, None, row, row, None)
     admissions: list[bool] = []
     retained_output_checks: list[TaskId] = []
 
@@ -685,7 +691,7 @@ async def test_terminal_changed_during_output_admission_creates_replacement(
     terminal.result = _transform_success_result(terminal.id, payload.mode).model_dump(mode="json")
     replacement = _task(request_hash=request_hash)
     replacement.kind = TaskKind.FILE_DOCUMENT_TRANSFORM
-    session = _Session(None, None, None, terminal, None, (0, 0), replacement)
+    session = _Session(True, None, None, terminal, None, (0, 0), replacement)
     new_admissions: list[bool] = []
 
     async def admit_terminal_replay(_task: TaskRead) -> bool:
@@ -732,7 +738,7 @@ async def test_missing_terminal_output_creates_exactly_one_replacement() -> None
     terminal.result = _transform_success_result(terminal.id, payload.mode).model_dump(mode="json")
     replacement = _task(request_hash=request_hash)
     replacement.kind = TaskKind.FILE_DOCUMENT_TRANSFORM
-    session = _Session(None, None, None, terminal, (0, 0), replacement)
+    session = _Session(True, None, None, terminal, (0, 0), replacement)
     output_checks: list[TaskId] = []
     new_admissions: list[bool] = []
 
@@ -772,7 +778,7 @@ async def test_terminal_output_check_failure_rolls_back_without_binding_or_repla
     terminal.finished_at = datetime.now(UTC)
     terminal.attempt_count = 1
     terminal.result = _transform_success_result(terminal.id, payload.mode).model_dump(mode="json")
-    session = _Session(None, None, None, terminal)
+    session = _Session(True, None, None, terminal)
 
     async def admit_terminal_replay(_task: TaskRead) -> bool:
         message = "Provider unavailable"
@@ -804,7 +810,7 @@ async def test_terminal_replay_without_output_admission_fails_closed() -> None:
     terminal.finished_at = datetime.now(UTC)
     terminal.attempt_count = 1
     terminal.result = _transform_success_result(terminal.id, payload.mode).model_dump(mode="json")
-    session = _Session(None, None, None, terminal)
+    session = _Session(True, None, None, terminal)
 
     with pytest.raises(RuntimeError, match="requires an admission callback"):
         await _service(session).create_or_replay(
@@ -828,7 +834,7 @@ async def test_markdown_task_persists_ciphertext_and_hash_without_plaintext() ->
     serialized = task_service_module._serialize(payload)
     row = _task(request_hash=task_service_module._request_hash(serialized))
     row.kind = TaskKind.FILE_DOCUMENT_TRANSFORM
-    session = _Session(None, None, None, None, (0, 0), row)
+    session = _Session(True, None, None, None, (0, 0), row)
 
     reservation = await _service(session).create_or_replay(
         kind=TaskKind.FILE_DOCUMENT_TRANSFORM,
@@ -893,7 +899,7 @@ async def test_markdown_active_hash_reuse_authorizes_before_recording_new_key(
         request_hash=task_service_module._request_hash(task_service_module._serialize(payload))
     )
     row.kind = TaskKind.FILE_DOCUMENT_TRANSFORM
-    session = _Session(None, None, (row, expired), (row, expired), None)
+    session = _Session(True, None, (row, expired), (row, expired), None)
     admissions: list[bool] = []
 
     async def admit() -> None:
@@ -945,7 +951,7 @@ async def test_expired_transform_key_retries_identical_insert_once(
 ) -> None:
     row = _task(request_hash="0" * 64)
     row.kind = TaskKind.FILE_DOCUMENT_TRANSFORM
-    session = _Session(None, None, None, None, (0, 0), None, None, row if insert_succeeds else None)
+    session = _Session(True, None, None, None, (0, 0), None, None, row if insert_succeeds else None)
     admissions: list[bool] = []
 
     async def admit() -> None:

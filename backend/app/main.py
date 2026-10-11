@@ -195,7 +195,7 @@ def create_app(
         CookieOriginMiddleware,
         allowed_origin=app_settings.frontend_origin,
     )
-    application.add_middleware(RequestIDMiddleware)
+    application.add_middleware(RequestIDMiddleware, static_routes=frozenset())
     application.add_middleware(
         MaintenanceModeMiddleware,
         enabled=app_settings.MAINTENANCE_MODE,
@@ -228,7 +228,7 @@ def create_app(
 
     if app_settings.MCP_NATIVE_ENABLED:
 
-        def native_core_dependency() -> NativeOAuthCore:
+        async def native_core_dependency() -> NativeOAuthCore:
             if native_slot.value is None:
                 raise HTTPException(status_code=503)
             return native_slot.value.core

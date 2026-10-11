@@ -43,7 +43,8 @@ async def _run(
     request_id: bytes | None = None,
     *,
     path: str = "/health",
-    route_template: str = "/health",
+    route_template: str | None = "/health",
+    static_routes: frozenset[str] = frozenset(),
 ) -> _RunResult:
     messages: list[Message] = []
     records: list[loguru.Record] = []
@@ -52,7 +53,8 @@ async def _run(
         return Response()
 
     async def app(scope: Scope, _receive: Receive, send: Send) -> None:
-        scope["route"] = Route(route_template, endpoint)
+        if route_template is not None:
+            scope["route"] = Route(route_template, endpoint)
         add_duration("auth", 2.5)
         increment("db_query_count")
         await send({"headers": [], "status": 204, "type": "http.response.start"})
@@ -66,7 +68,9 @@ async def _run(
         filter=lambda record: record["message"] == "request.complete",
     )
     try:
-        await RequestIDMiddleware(app)(_scope(request_id, path=path), _receive, send)
+        await RequestIDMiddleware(app, static_routes=static_routes)(
+            _scope(request_id, path=path), _receive, send
+        )
     finally:
         logger.remove(sink_id)
     return _RunResult(messages=messages, records=records)
@@ -111,6 +115,17 @@ async def test_logs_route_template_without_concrete_resource_identifier() -> Non
     assert resource_id not in str(result.records[0])
 
 
+@pytest.mark.parametrize(
+    ("path", "expected"),
+    [("/token", "/token"), ("/token/private-id", "unmatched"), ("/files/private-id", "unmatched")],
+)
+async def test_only_logs_whitelisted_unmatched_static_routes(path: str, expected: str) -> None:
+    result = await _run(path=path, route_template=None, static_routes=frozenset({"/token"}))
+    assert result.records[0]["extra"]["request_route"] == expected
+    assert "private-id" not in str(result.records[0])
+    assert "secret" not in str(result.records[0]["extra"])
+
+
 @pytest.mark.asyncio
 async def test_preserves_valid_request_id_exactly() -> None:
     result = await _run(b"wiki-abcdef012345-2")
@@ -146,7 +161,9 @@ async def test_logs_one_500_completion_when_application_raises() -> None:
     )
     try:
         with pytest.raises(RuntimeError, match="boom"):
-            await RequestIDMiddleware(failing_app)(_scope(), _receive, send)
+            await RequestIDMiddleware(failing_app, static_routes=frozenset())(
+                _scope(), _receive, send
+            )
     finally:
         logger.remove(sink_id)
 

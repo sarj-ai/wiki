@@ -5,6 +5,7 @@ import {
   expandPath,
   requestReveal,
   resetExpansionState,
+  setDriveExpanded,
 } from "@/hooks/use-expanded-folders";
 import {
   clearUserBrowserStorage,
@@ -33,6 +34,26 @@ describe("per-user sidebar expansion", () => {
     expandPath(null, "drive-a", ["folder-a"]);
 
     expect(window.localStorage.length).toBe(0);
+  });
+
+  it("expands a breadcrumb with one folder persistence write and skips unchanged paths", () => {
+    const writes = vi.spyOn(window.localStorage, "setItem");
+    const folders = Array.from({ length: 10 }, (_, index) => `folder-${index}`);
+    expandPath("user-batch", "drive-batch", folders);
+    expect(writes).toHaveBeenCalledTimes(2);
+    expect(
+      writes.mock.calls.filter(([key]) => key === expandedFoldersStorageKey("user-batch")),
+    ).toHaveLength(1);
+    for (const id of folders) {
+      expect(window.localStorage.getItem(expandedFoldersStorageKey("user-batch"))).toContain(id);
+    }
+    writes.mockClear();
+    expandPath("user-batch", "drive-batch", [...folders, folders[0] ?? ""]);
+    setDriveExpanded("user-batch", "drive-batch", true);
+    setDriveExpanded("user-batch", "already-collapsed", false);
+    expect(writes).not.toHaveBeenCalled();
+    writes.mockRestore();
+    resetExpansionState("user-batch");
   });
 
   it("resets persisted, in-memory, and pending reveal state on termination", () => {

@@ -16,6 +16,7 @@ import { SarjLogo } from "@/components/sarj-logo";
 import { Sidebar, SidebarContent, SidebarHeader, SidebarSeparator } from "@/components/ui/sidebar";
 import { consumeRevealFor, expandPath } from "@/hooks/use-expanded-folders";
 import {
+  useDocIcons,
   useDrives,
   useFile,
   useFolderIcons,
@@ -24,6 +25,7 @@ import {
 } from "@/hooks/use-wiki-tree";
 import { useBrowserUserId } from "@/lib/browser-user-context";
 import { renderNodeIcon } from "@/lib/file-icons";
+import { EMPTY_DOC_ICONS, EMPTY_FOLDER_ICONS, EMPTY_SORT_ORDERS } from "@/lib/wiki-indexes";
 
 import { DriveSearchBox } from "./drive-search-box";
 import { DriveSection } from "./drive-section";
@@ -60,6 +62,7 @@ export function WikiSidebar() {
   const showNonDocFiles = prefsQuery.data?.showNonDocFiles ?? true;
   const hiddenWorkspaceIds = new Set(prefsQuery.data?.hiddenWorkspaceIds);
   const visibleDrives = (drivesQuery.data ?? []).filter((d) => !hiddenWorkspaceIds.has(d.id));
+  const docIconsQuery = useDocIcons(visibleDrives.length > 0);
 
   const activeFileQuery = useFile(activeDriveId);
   const breadcrumb = activeFileQuery.data?.breadcrumb;
@@ -125,11 +128,13 @@ export function WikiSidebar() {
                 <DriveSection
                   activeDriveId={activeDriveId}
                   defaultExpanded={index === 0}
+                  docIcons={docIconsQuery.data ?? EMPTY_DOC_ICONS}
                   drive={drive}
-                  folderIcons={folderIconsQuery.data ?? []}
+                  folderIcons={folderIconsQuery.data ?? EMPTY_FOLDER_ICONS}
                   optimisticByContainer={reorder.optimisticByContainer}
+                  pathname={pathname}
                   showNonDocFiles={showNonDocFiles}
-                  sortOrders={sortOrdersQuery.data ?? []}
+                  sortOrders={sortOrdersQuery.data ?? EMPTY_SORT_ORDERS}
                 />
                 {index < visibleDrives.length - 1 && <SidebarSeparator />}
               </div>

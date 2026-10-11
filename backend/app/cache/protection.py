@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from base64 import urlsafe_b64decode, urlsafe_b64encode
+from collections.abc import Sequence
 from dataclasses import dataclass, field
 import hashlib
 import hmac
@@ -10,18 +11,24 @@ from typing import Self
 from cryptography.fernet import Fernet, InvalidToken, MultiFernet
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.kdf.hkdf import HKDF
-from pydantic import JsonValue, RootModel, ValidationError
+from pydantic import BaseModel, ConfigDict, JsonValue, ValidationError
+from pydantic_core import PydanticSerializationError
 
 from app.config import parse_fernet_keys
 
 
-class _CacheValue(RootModel[JsonValue]):
-    """Validate the JSON value stored inside the authenticated cache envelope."""
+class _CacheEnvelope(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True, ser_json_inf_nan="constants")
+
+    key: str
+    namespace: str
+    value: JsonValue
 
 
 _LOOKUP_KEY_INFO = b"sarj.cache-entry.h1.lookup-key"
 _ENVELOPE_PREFIX = "f1."
 _MAX_ROTATION_KEYS = 3
+_BULK_LOOKUP_PREFIX_THRESHOLD = 8
 
 
 class InvalidCacheEntryError(ValueError):
@@ -32,6 +39,7 @@ class InvalidCacheEntryError(ValueError):
 class CacheEntryProtector:
     _fernets: tuple[Fernet, ...] = field(init=False, repr=False)
     _lookup_keys: tuple[bytes, ...] = field(init=False, repr=False)
+    _decryptor: MultiFernet = field(init=False, repr=False)
 
     def __init__(self, keys: tuple[str, ...]) -> None:
         if not keys:
@@ -51,6 +59,7 @@ class CacheEntryProtector:
             raise ValueError(msg) from error
         object.__setattr__(self, "_fernets", fernets)
         object.__setattr__(self, "_lookup_keys", lookup_keys)
+        object.__setattr__(self, "_decryptor", MultiFernet(list(fernets)))
 
     @classmethod
     def from_key_string(cls, raw: str) -> Self:
@@ -73,17 +82,49 @@ class CacheEntryProtector:
             for key in self._lookup_keys
         )
 
+    def physical_keys_many(
+        self,
+        namespace: str,
+        logical_keys: Sequence[str],
+        *,
+        include_rotation: bool,
+    ) -> dict[str, tuple[str, ...]]:
+        limit = len(self._lookup_keys) if include_rotation else 1
+        if len(logical_keys) < _BULK_LOOKUP_PREFIX_THRESHOLD:
+            return {
+                logical_key: self.physical_keys(namespace, logical_key)[:limit]
+                for logical_key in logical_keys
+            }
+        namespace_bytes = namespace.encode()
+        prefix = len(namespace_bytes).to_bytes(8, "big") + namespace_bytes
+        initial_states = tuple(
+            hmac.new(key, prefix, hashlib.sha256) for key in self._lookup_keys[:limit]
+        )
+        physical: dict[str, tuple[str, ...]] = {}
+        for logical_key in logical_keys:
+            logical_bytes = logical_key.encode()
+            suffix = len(logical_bytes).to_bytes(8, "big") + logical_bytes
+            candidates: list[str] = []
+            for initial in initial_states:
+                state = initial.copy()
+                state.update(suffix)
+                candidates.append("h1." + urlsafe_b64encode(state.digest()).rstrip(b"=").decode())
+            physical[logical_key] = tuple(candidates)
+        return physical
+
     def protect(self, namespace: str, logical_key: str, value: JsonValue) -> str:
-        plaintext = json.dumps(
-            {
-                "key": logical_key,
-                "namespace": namespace,
-                "value": _CacheValue.model_validate(value).root,
-            },
-            ensure_ascii=False,
-            separators=(",", ":"),
-            sort_keys=True,
-        ).encode()
+        payload = _CacheEnvelope(key=logical_key, namespace=namespace, value=value)
+        try:
+            plaintext = payload.model_dump_json().encode()
+        except PydanticSerializationError:
+            # The typed serializer's nesting limit is slightly lower than
+            # JsonValue validation. Preserve previously supported deep values.
+            plaintext = json.dumps(
+                {"key": payload.key, "namespace": payload.namespace, "value": payload.value},
+                ensure_ascii=False,
+                separators=(",", ":"),
+                sort_keys=True,
+            ).encode()
         return _ENVELOPE_PREFIX + self._fernets[0].encrypt(plaintext).decode()
 
     def unprotect(self, namespace: str, logical_key: str, envelope: object) -> JsonValue:
@@ -91,18 +132,18 @@ class CacheEntryProtector:
             raise InvalidCacheEntryError
         token = envelope.removeprefix(_ENVELOPE_PREFIX)
         try:
-            plaintext = MultiFernet(list(self._fernets)).decrypt(token.encode())
-            payload = json.loads(plaintext)
-            if (
-                not isinstance(payload, dict)
-                or set(payload) != {"key", "namespace", "value"}
-                or payload["namespace"] != namespace
-                or payload["key"] != logical_key
-            ):
-                raise InvalidCacheEntryError
-            return _CacheValue.model_validate(payload["value"]).root
-        except (InvalidToken, json.JSONDecodeError, ValidationError, UnicodeDecodeError) as error:
+            plaintext = self._decryptor.decrypt(token.encode())
+            try:
+                payload = _CacheEnvelope.model_validate_json(plaintext)
+            except ValidationError:
+                # jiter's parser stops before the legacy JsonValue nesting
+                # limit. Strict envelope validation still binds every field.
+                payload = _CacheEnvelope.model_validate(json.loads(plaintext))
+        except (InvalidToken, ValidationError, json.JSONDecodeError, UnicodeDecodeError) as error:
             raise InvalidCacheEntryError from error
+        if payload.namespace != namespace or payload.key != logical_key:
+            raise InvalidCacheEntryError
+        return payload.value
 
     @staticmethod
     def _derive_lookup_key(key: str) -> bytes:

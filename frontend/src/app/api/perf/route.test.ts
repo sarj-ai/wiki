@@ -1,3 +1,4 @@
+// @vitest-environment node
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { POST } from "./route";
@@ -7,6 +8,24 @@ afterEach(() => {
 });
 
 describe("performance ingestion", () => {
+  it("rejects streamed bytes over the limit before reading an unbounded body", async () => {
+    const cancel = vi.fn();
+    const body = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(new Uint8Array(2049));
+      },
+      cancel,
+    });
+    const options = {
+      method: "POST",
+      body,
+      duplex: "half",
+      headers: { cookie: "access_token=test-session", "content-length": "1" },
+    };
+    const response = await POST(new Request("https://wiki.sarj.ai/api/perf", options));
+    expect(response.status).toBe(413);
+    expect(cancel).toHaveBeenCalledOnce();
+  });
   it("accepts only the bounded allow-listed schema", async () => {
     const log = vi.spyOn(console, "warn").mockImplementation(vi.fn());
     const response = await POST(

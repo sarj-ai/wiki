@@ -7,6 +7,22 @@ describe("smartCreateServerClient", () => {
     vi.unstubAllGlobals();
   });
 
+  it("rejects a backend redirect without replaying an authenticated mutation", async () => {
+    const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(
+      new Response("private redirect", {
+        headers: { location: "https://other-origin.test/private" },
+        status: 307,
+      }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    await expect(
+      smartCreateServerClient("/document-transforms", "{}", "token", "key"),
+    ).resolves.toEqual({ body: "", ok: false, status: 502 });
+    expect(fetchMock).toHaveBeenCalledOnce();
+    expect(fetchMock.mock.calls[0]?.[1]?.redirect).toBe("manual");
+    expect(new Headers(fetchMock.mock.calls[0]?.[1]?.headers).get("idempotency-key")).toBe("key");
+  });
+
   it.each(["true", "false"])("captures an exact idempotency replay header: %s", async (value) => {
     vi.stubGlobal(
       "fetch",

@@ -1,18 +1,22 @@
 from __future__ import annotations
 
 import asyncio
-from collections.abc import Callable
+from collections.abc import Callable, Generator
+from contextlib import contextmanager
+from contextvars import ContextVar
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 import secrets
+import threading
 from typing import TYPE_CHECKING, NamedTuple, TypeIs
 import uuid
 
 import httpx
 from loguru import logger
 from pydantic import ValidationError
-from sqlalchemy import or_, select, update
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import inspect, or_, select, update
+from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
+from sqlalchemy.orm.attributes import set_committed_value
 from sqlalchemy.sql.elements import ColumnElement
 
 from app.auth.encryption import decrypt_text, encrypt_text
@@ -32,6 +36,22 @@ _LEASE_DURATION = timedelta(seconds=10)
 _WAITER_TIMEOUT = timedelta(seconds=6)
 _REFRESH_HANDLER_TIMEOUT = timedelta(seconds=12)
 _HTTP_OK = 200
+_PROVIDER_WORK_TASK: ContextVar[asyncio.Task[object] | None] = ContextVar(
+    "google_provider_work_task", default=None
+)
+
+
+@contextmanager
+def provider_refresh_scope() -> Generator[None]:
+    task = asyncio.current_task()
+    if task is None:
+        msg = "Provider refresh ownership requires an asyncio task"
+        raise RuntimeError(msg)
+    token = _PROVIDER_WORK_TASK.set(task)
+    try:
+        yield
+    finally:
+        _PROVIDER_WORK_TASK.reset(token)
 
 
 class GoogleReauthenticationRequiredError(Exception):
@@ -79,10 +99,18 @@ class GoogleTokenManager:
         self._http = http
         self._lock = asyncio.Lock()
 
-    async def prepare(self, user: User) -> PreparedGoogleCredentials:
+    async def prepare(
+        self,
+        user: User,
+        *,
+        refresh_timeout: timedelta = _REFRESH_HANDLER_TIMEOUT,
+    ) -> PreparedGoogleCredentials:
         token = await self.ensure_valid(user)
         loop = asyncio.get_running_loop()
-        generation = token.generation
+        owner_task = asyncio.current_task()
+        user_id = user.id
+        latest_token = token
+        snapshot_lock = threading.Lock()
 
         def refresh_handler(
             _request: object,
@@ -90,21 +118,79 @@ class GoogleTokenManager:
             scopes: Sequence[str] | None = None,
         ) -> GoogleRefreshResult:
             del scopes
-            nonlocal generation
+            nonlocal latest_token
+            with snapshot_lock:
+                force_generation = latest_token.generation
             future = asyncio.run_coroutine_threadsafe(
-                self.ensure_valid(user, force_generation=generation),
+                self._refresh_for_provider(
+                    user,
+                    user_id=user_id,
+                    force_generation=force_generation,
+                    owner_task=_PROVIDER_WORK_TASK.get() or owner_task,
+                ),
                 loop,
             )
-            refreshed = future.result(timeout=_REFRESH_HANDLER_TIMEOUT.total_seconds())
-            generation = refreshed.generation
+            try:
+                refreshed = future.result(timeout=refresh_timeout.total_seconds())
+            except BaseException:
+                future.cancel()
+                raise
+            with snapshot_lock:
+                if refreshed.generation >= latest_token.generation:
+                    latest_token = refreshed
+                selected = latest_token
             # google-auth still requires a timezone-naive UTC expiry even
             # though persistence and application logic use aware datetimes.
             return GoogleRefreshResult(
-                refreshed.token,
-                refreshed.expires_at.astimezone(UTC).replace(tzinfo=None),
+                selected.token,
+                selected.expires_at.astimezone(UTC).replace(tzinfo=None),
             )
 
         return PreparedGoogleCredentials(user=user, refresh_handler=refresh_handler)
+
+    async def _refresh_for_provider(
+        self,
+        user: User,
+        *,
+        user_id: uuid.UUID,
+        force_generation: int,
+        owner_task: asyncio.Task[object] | None,
+    ) -> ManagedGoogleToken:
+        refresh_task = asyncio.current_task()
+        if refresh_task is None:
+            msg = "Google credential refresh requires an asyncio task"
+            raise RuntimeError(msg)
+
+        def owner_finished(_task: asyncio.Task[object]) -> None:
+            refresh_task.cancel()
+
+        if owner_task is not None:
+            if owner_task.done():
+                raise asyncio.CancelledError
+            owner_task.add_done_callback(owner_finished)
+        try:
+            sessions = self._provider_sessions()
+            async with sessions() as db:
+                if (fresh_user := await db.get(User, user_id)) is None:
+                    raise GoogleReauthenticationRequiredError
+                token = await GoogleTokenManager(db, self._http).ensure_valid(
+                    fresh_user,
+                    force_generation=force_generation,
+                )
+            # Credential commits belong to the independent session. Mirror
+            # their persisted snapshot without making caller state dirty.
+            self._apply_to_user(user, token)
+            return token
+        finally:
+            if owner_task is not None:
+                owner_task.remove_done_callback(owner_finished)
+
+    def _provider_sessions(self) -> async_sessionmaker[AsyncSession]:
+        bind = self._db.bind
+        # A caller may bind its session to an existing transaction. Use its
+        # engine, never that connection, for the credential lease and CAS.
+        engine = bind if isinstance(bind, AsyncEngine) else bind.engine
+        return async_sessionmaker(engine, expire_on_commit=False)
 
     async def ensure_valid(
         self,
@@ -412,9 +498,30 @@ class GoogleTokenManager:
     def _apply_to_user(user: User, token: ManagedGoogleToken) -> None:
         # Reuse the fresh database ciphertext. Re-encrypting an unchanged token
         # would make the ORM issue an UPDATE on every authenticated Drive read.
-        user.encrypted_access_token = token.access_ciphertext or encrypt_text(token.token)
-        user.google_access_token_expires_at = token.expires_at
-        user.google_token_generation = token.generation
+        values = (
+            ("encrypted_access_token", token.access_ciphertext or encrypt_text(token.token)),
+            ("google_access_token_expires_at", token.expires_at),
+            ("google_token_generation", token.generation),
+        )
+        state = inspect(user)
+        generation_state = state.attrs.google_token_generation
+        current_generation = generation_state.loaded_value
+        if (
+            not generation_state.history.has_changes()
+            and isinstance(current_generation, int)
+            and current_generation > token.generation
+        ):
+            # Independent callbacks can finish closing their sessions in a
+            # different order. An older snapshot must not replace a newer one.
+            return
+        for name, value in values:
+            if state.transient:
+                setattr(user, name, value)
+            elif not state.attrs[name].history.has_changes():
+                # The token is already persisted by the lease/CAS flow. A
+                # later caller commit must not overwrite a newer generation
+                # or discard credential writes the caller already owns.
+                set_committed_value(user, name, value)
 
 
 def _retry_after(response: httpx.Response) -> int | None:

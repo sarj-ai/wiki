@@ -189,6 +189,7 @@ jobs:
           tests/test_route_performance_postgres.py
           tests/test_provider_performance_postgres.py
           tests/test_storage_performance_postgres.py
+          tests/test_storage_hot_paths_postgres.py
           tests/test_document_transform_qa_grants.py
           tests/test_document_transform_qa_submit_postgres.py
           tests/test_document_transform_qa_corpus_postgres.py -q -rA

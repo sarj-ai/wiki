@@ -117,6 +117,7 @@ class _Cache(CacheService):
 
 async def test_discovers_only_native_templates_under_exact_root_folder() -> None:
     drive = _TemplateDrive()
+    drive._children[FileId("drive-1")].append(_node("document", "Templates", MIME_DOC, "drive-1"))
     service = DriveTemplateCatalogService(drive=drive, user_id=uuid7())
 
     catalog = await service.list_templates()
@@ -127,6 +128,27 @@ async def test_discovers_only_native_templates_under_exact_root_folder() -> None
     assert prd.description == "Product brief"
     assert prd.mime_type == MIME_DOC
     assert drive.calls[FileId("other")] == 0
+    assert drive.calls[FileId("document")] == 0
+
+
+async def test_discovers_each_duplicate_named_template_root() -> None:
+    drive = _TemplateDrive()
+    drive._children[FileId("drive-1")].append(
+        _node("templates-2", "Templates", MIME_FOLDER, "drive-1")
+    )
+    drive._children[FileId("templates-2")] = [
+        _node("duplicate-root-doc", "Additional template", MIME_DOC, "templates-2")
+    ]
+
+    catalog = await DriveTemplateCatalogService(drive=drive, user_id=uuid7()).list_templates()
+
+    assert {template.file_id for template in catalog.templates} == {
+        "slides",
+        "prd",
+        "duplicate-root-doc",
+    }
+    assert drive.calls[FileId("templates")] == 1
+    assert drive.calls[FileId("templates-2")] == 1
 
 
 async def test_caches_catalog_until_explicit_refresh() -> None:

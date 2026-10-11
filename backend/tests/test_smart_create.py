@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from typing import override
 
 from pydantic import ValidationError
@@ -177,6 +178,71 @@ class _Templates(TemplateCatalogService):
         )
 
 
+class _RecordingCache(_Cache):
+    def __init__(self) -> None:
+        self.loaded: list[DriveId] = []
+
+    @override
+    async def peek_drive_tree(self, db: AsyncSession, drive_id: DriveId) -> CachedDriveTree | None:
+        self.loaded.append(drive_id)
+        return await super().peek_drive_tree(db, drive_id)
+
+
+class _PendingTemplates(_Templates):
+    def __init__(self) -> None:
+        self.started = asyncio.Event()
+        self.cancelled = asyncio.Event()
+
+    @override
+    async def list_templates(self, *, refresh: bool = False) -> TemplateCatalogRead:
+        self.started.set()
+        try:
+            await asyncio.Event().wait()
+        except asyncio.CancelledError:
+            self.cancelled.set()
+            raise
+        raise AssertionError
+
+
+class _BlockingCache(_Cache):
+    def __init__(self, templates: _PendingTemplates, *, fail: bool) -> None:
+        self.templates = templates
+        self.fail = fail
+
+    @override
+    async def peek_drive_tree(self, db: AsyncSession, drive_id: DriveId) -> CachedDriveTree | None:
+        await self.templates.started.wait()
+        if self.fail:
+            raise ValueError
+        await asyncio.Event().wait()
+        raise AssertionError
+
+
+class _OverlappingDrive(_Drive):
+    def __init__(self, content_started: asyncio.Event, tree_started: asyncio.Event) -> None:
+        super().__init__()
+        self.content_started = content_started
+        self.tree_started = tree_started
+
+    @override
+    async def fetch_document_text(self, file_id: FileId) -> str | None:
+        self.content_started.set()
+        await self.tree_started.wait()
+        return await super().fetch_document_text(file_id)
+
+
+class _OverlappingCache(_Cache):
+    def __init__(self, content_started: asyncio.Event, tree_started: asyncio.Event) -> None:
+        self.content_started = content_started
+        self.tree_started = tree_started
+
+    @override
+    async def get_drive_tree(self, db: AsyncSession, drive_id: DriveId) -> CachedDriveTree:
+        self.tree_started.set()
+        await self.content_started.wait()
+        return await super().get_drive_tree(db, drive_id)
+
+
 class _Generator(ProposalGenerator):
     def __init__(self, proposal: GeneratedProposal | Exception) -> None:
         self.proposal = proposal
@@ -294,10 +360,11 @@ async def test_smart_create_only_exposes_the_invoking_drive() -> None:
             template_file_id=FileId("prd"),
         )
     )
+    cache = _RecordingCache()
     service = GeminiSmartProposalService(
         db=AsyncSession(),
         drive=_Drive(),
-        sidebar_cache=_Cache(),
+        sidebar_cache=cache,
         templates=_Templates(),
         generator=generator,
     )
@@ -309,6 +376,26 @@ async def test_smart_create_only_exposes_the_invoking_drive() -> None:
     assert "roadmap-archive" in folder_ids
     assert "roadmap-deep" not in folder_ids
     assert {template.drive_id for template in generator.templates} == {"product"}
+    assert cache.loaded == [DriveId("product")]
+
+
+@pytest.mark.parametrize("fail", [False, True], ids=["request-cancelled", "cache-failure"])
+async def test_smart_create_cleans_up_pending_catalog_when_primary_read_aborts(fail: bool) -> None:
+    templates = _PendingTemplates()
+    service = GeminiSmartProposalService(
+        db=AsyncSession(),
+        drive=_Drive(),
+        sidebar_cache=_BlockingCache(templates, fail=fail),
+        templates=templates,
+        generator=_Generator(RuntimeError("The generator must not be called")),
+    )
+    task = asyncio.create_task(service.propose(_request()))
+    await asyncio.wait_for(templates.started.wait(), timeout=1)
+    if not fail:
+        task.cancel()
+    with pytest.raises(ValueError if fail else asyncio.CancelledError):
+        await task
+    assert templates.cancelled.is_set()
 
 
 @pytest.mark.parametrize(
@@ -534,6 +621,32 @@ async def test_reorganization_passes_content_and_metadata_to_generator() -> None
     assert generator.evidence is not None
     assert generator.evidence.content == "Customer interview findings and roadmap tradeoffs"
     assert generator.evidence.file_name == "Quarterly product roadmap"
+
+
+async def test_reorganization_overlaps_export_with_independent_tree_read() -> None:
+    content_started = asyncio.Event()
+    tree_started = asyncio.Event()
+    generator = _ReorganizationGenerator(
+        GeneratedReorganization(
+            destination_folder_id=FileId("roadmaps"),
+            reason="Roadmaps belong with the product planning documents.",
+        )
+    )
+    drive = _OverlappingDrive(content_started, tree_started)
+    service = GeminiReorganizationService(
+        db=AsyncSession(),
+        drive=drive,
+        files=dependency(_Files()),
+        sidebar_cache=_OverlappingCache(content_started, tree_started),
+        generator=generator,
+    )
+    proposal = await asyncio.wait_for(service.propose(FileId("document")), timeout=1)
+
+    assert drive.document_fetches == 1
+    assert generator.evidence is not None
+    assert generator.evidence.content == "Product roadmap priorities and milestones"
+    assert proposal.suggested_destination is not None
+    assert proposal.suggested_destination.folder_id == "roadmaps"
 
 
 async def test_reorganization_uses_name_and_metadata_for_non_google_docs() -> None:

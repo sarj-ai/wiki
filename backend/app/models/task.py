@@ -84,6 +84,13 @@ class Task(Base):
         ),
         Index("ix_tasks_owner_created", "owner_user_id", "created_at"),
         Index("ix_tasks_status_lease", "status", "lease_expires_at"),
+        Index("ix_tasks_expires_at", "expires_at"),
+        Index(
+            "ix_tasks_pending_document_dispatch",
+            "dispatch_ready_at",
+            "id",
+            postgresql_where=text("kind = 'file.document_transform' AND status = 'pending'"),
+        ),
         Index(
             "ix_tasks_doc_transform_terminal_semantic",
             "owner_user_id",

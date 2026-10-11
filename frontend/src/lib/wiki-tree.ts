@@ -24,6 +24,25 @@ export interface KindedNode {
   type: NodeKind;
 }
 
+export function buildSiblingItems(
+  folders: readonly DriveNode[],
+  files: readonly DriveNode[],
+): KindedNode[] {
+  return [
+    ...folders.map((node): KindedNode => ({ node, type: "folder" })),
+    ...files.map((node): KindedNode => ({ node, type: "file" })),
+  ];
+}
+
+export function orderSiblingItems(
+  items: KindedNode[],
+  sortOrderMap: Map<string, number>,
+  optimisticOrder: null | readonly string[],
+): readonly KindedNode[] {
+  if (optimisticOrder) return applyOptimisticOrder(items, optimisticOrder, sortOrderMap);
+  return items.toSorted((a, b) => compareNodeOrder(a, b, sortOrderMap));
+}
+
 export function compareNodeOrder(
   a: KindedNode,
   b: KindedNode,
@@ -41,9 +60,18 @@ export function compareNodeOrder(
 export function applyOptimisticOrder(
   items: readonly KindedNode[],
   order: null | readonly string[],
+  fallbackSortOrderMap?: Map<string, number>,
 ): readonly KindedNode[] {
-  if (!order) return items;
-  const byId = new Map<string, KindedNode>(items.map((item) => [item.node.id, item]));
+  if (!order || order.length === 0) {
+    return fallbackSortOrderMap
+      ? items.toSorted((a, b) => compareNodeOrder(a, b, fallbackSortOrderMap))
+      : items;
+  }
+  if (order.length === items.length && order.every((id, index) => items[index]?.node.id === id)) {
+    return items;
+  }
+  const byId = new Map<string, KindedNode>();
+  for (const item of items) byId.set(item.node.id, item);
   const ordered: KindedNode[] = [];
   const seen = new Set<string>();
   for (const id of order) {
@@ -53,8 +81,14 @@ export function applyOptimisticOrder(
       seen.add(id);
     }
   }
-  for (const item of items) {
-    if (!seen.has(item.node.id)) ordered.push(item);
+  if (fallbackSortOrderMap) {
+    const remaining = items.filter((item) => !seen.has(item.node.id));
+    const sorted = remaining.toSorted((a, b) => compareNodeOrder(a, b, fallbackSortOrderMap));
+    for (const item of sorted) ordered.push(item);
+  } else {
+    for (const item of items) {
+      if (!seen.has(item.node.id)) ordered.push(item);
+    }
   }
   return ordered;
 }

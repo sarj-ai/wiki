@@ -17,21 +17,43 @@ export function DocWarmup() {
   const queryClient = useQueryClient();
   const userId = useBrowserUserId();
   const setWarm = useDocViewerStore((s) => s.setWarm);
-  const hasWarmed = useRef(false);
+  const warmedUser = useRef<null | string>(null);
 
   useEffect(() => {
-    if (hasWarmed.current) return;
+    if (!userId || warmedUser.current === userId) return;
+    let cancelled = false;
+    let unsubscribe: (() => void) | undefined;
     const run = () => {
       if (document.visibilityState !== "visible" || useDocViewerStore.getState().active) return;
-      hasWarmed.current = true;
+      warmedUser.current = userId;
       const limit = warmCountFor(readNavigatorHints(navigator));
       if (limit === 0) return;
-      const recents = userId ? readRecentDocs(userId) : [];
+      const recents = readRecentDocs(userId);
       const targets =
         recents.length > 0 ? recents.slice(0, limit) : firstWorkspaceDocs(queryClient, limit);
-      if (targets.length > 0) void authorizeAndWarm(queryClient, targets, setWarm);
+      if (targets.length === 0) return;
+      unsubscribe = useDocViewerStore.subscribe((state) => {
+        if (state.active !== null) cancelled = true;
+      });
+      // A foreground query may share this authorization request. Let it finish,
+      // but never publish idle iframe work after its owner has moved on.
+      void authorizeAndWarm(
+        queryClient,
+        targets,
+        setWarm,
+        () =>
+          !cancelled &&
+          document.visibilityState === "visible" &&
+          useDocViewerStore.getState().active === null &&
+          warmCountFor(readNavigatorHints(navigator)) > 0,
+      ).finally(() => unsubscribe?.());
     };
-    return scheduleWarmup(run);
+    const cancelTimer = scheduleWarmup(run);
+    return () => {
+      cancelled = true;
+      cancelTimer();
+      unsubscribe?.();
+    };
   }, [queryClient, setWarm, userId]);
 
   return null;
@@ -41,10 +63,12 @@ async function authorizeAndWarm(
   queryClient: QueryClient,
   targets: LastDoc[],
   setWarm: ReturnType<typeof useDocViewerStore.getState>["setWarm"],
+  canPublish: () => boolean,
 ): Promise<void> {
   const settled = await Promise.allSettled(
     targets.map(async (target) => await queryClient.fetchQuery(fileQueryOptions(target.fileId))),
   );
+  if (!canPublish()) return;
   setWarm(
     settled.flatMap((result) =>
       result.status === "fulfilled"

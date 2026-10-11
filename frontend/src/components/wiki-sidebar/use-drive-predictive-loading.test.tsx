@@ -4,6 +4,7 @@ import { flushSync } from "react-dom";
 import { createRoot, type Root } from "react-dom/client";
 
 import type { WIKI_READ_API } from "@/lib/wiki-read-api";
+import type { DriveTree } from "@/types/wiki";
 
 import { DRIVE_PREFETCH_DELAY_MS, useDrivePredictiveLoading } from "./use-drive-predictive-loading";
 
@@ -113,6 +114,52 @@ describe("useDrivePredictiveLoading", () => {
     pointer("pointerdown", "mouse", { ctrlKey: true });
     await settleQueries();
 
+    expect(API.getDriveFolders).not.toHaveBeenCalled();
+  });
+
+  it.each(["leave", "hidden", "expanded", "unmounted"])(
+    "does not start a second speculative read after intent becomes %s",
+    async (mode) => {
+      const pending = Promise.withResolvers<DriveTree>();
+      API.getDriveFolders.mockReturnValue(pending.promise);
+      mount();
+      pointer("pointerover", "mouse");
+      await advance(DRIVE_PREFETCH_DELAY_MS);
+      expect(API.getDriveFolders).toHaveBeenCalledOnce();
+      const [, signal] = API.getDriveFolders.mock.calls[0] ?? [];
+      switch (mode) {
+        case "leave": {
+          pointer("pointerout", "mouse");
+          break;
+        }
+        case "hidden": {
+          vi.spyOn(document, "visibilityState", "get").mockReturnValue("hidden");
+          break;
+        }
+        case "expanded": {
+          mount(true);
+          break;
+        }
+        case "unmounted": {
+          flushSync(() => root.render(null));
+          break;
+        }
+        default: {
+          throw new Error("Unknown intent transition");
+        }
+      }
+      pending.resolve({ driveId: "drive-1", files: [], folders: [], filesComplete: false });
+      await advance(0);
+      expect(API.getFolderFiles).not.toHaveBeenCalled();
+      expect(signal?.aborted).toBe(false);
+    },
+  );
+
+  it("rechecks page visibility when a speculative timer fires", async () => {
+    mount();
+    pointer("pointerover", "mouse");
+    vi.spyOn(document, "visibilityState", "get").mockReturnValue("hidden");
+    await advance(DRIVE_PREFETCH_DELAY_MS);
     expect(API.getDriveFolders).not.toHaveBeenCalled();
   });
 

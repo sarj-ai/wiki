@@ -11,7 +11,7 @@ from typing import TYPE_CHECKING, Any, override
 from googleapiclient.errors import HttpError
 from pydantic import BaseModel, Field, ValidationError
 
-from app.drive.google_schemas import GoogleFile
+from app.drive.google_schemas import GoogleFile, GoogleFileAccessLocation
 from app.drive.retry import execute_batch_with_retry, execute_mutation, execute_with_retry
 from app.drive.schemas import MIME_FOLDER, MIME_HTML, NAVIGATOR_SUPPORTED_MIME_TYPES
 from app.drive.service import DriveService, reuse_drive_client
@@ -38,6 +38,8 @@ _FIELDS = (
     "capabilities(canEdit,canAddChildren)"
 )
 _QA_CORPUS_FIELDS = "id,name,mimeType,parents,driveId,modifiedTime,version,trashed"
+_ACCESS_FIELDS = "id,parents,driveId,trashed"
+_SEARCH_FIELDS = "id,name,mimeType,parents,driveId,modifiedTime,trashed"
 _SMART_TASK_PROPERTY = "sarjWikiTaskId"
 _MAX_HTML_BYTES = 5 * 1024 * 1024
 _FILE_GET_BATCH_SIZE = 100
@@ -106,6 +108,12 @@ class FilesService(ABC):
     async def get_qa_corpus_metadata_many(
         self, file_ids: list[FileId]
     ) -> dict[FileId, FileResponse]:
+        return await self.get_accessible_many(file_ids)
+
+    async def get_accessible_ids(self, file_ids: list[FileId]) -> set[FileId]:
+        return set(await self.get_accessible_many(file_ids))
+
+    async def get_search_metadata_many(self, file_ids: list[FileId]) -> dict[FileId, FileResponse]:
         return await self.get_accessible_many(file_ids)
 
     @abstractmethod
@@ -221,10 +229,33 @@ class GoogleFilesService(FilesService):
         return await self._get_accessible_many(file_ids, fields=_FIELDS)
 
     @override
+    async def get_search_metadata_many(self, file_ids: list[FileId]) -> dict[FileId, FileResponse]:
+        return await self._get_accessible_many(file_ids, fields=_SEARCH_FIELDS)
+
+    @override
     async def get_qa_corpus_metadata_many(
         self, file_ids: list[FileId]
     ) -> dict[FileId, FileResponse]:
         return await self._get_accessible_many(file_ids, fields=_QA_CORPUS_FIELDS)
+
+    @override
+    async def get_accessible_ids(self, file_ids: list[FileId]) -> set[FileId]:
+        unique_ids = list(dict.fromkeys(file_ids))
+        if not unique_ids:
+            return set()
+        fetched = await asyncio.to_thread(
+            self._get_accessible_records_many_sync,
+            unique_ids,
+            fields=_ACCESS_FIELDS,
+            model=GoogleFileAccessLocation,
+        )
+        member_drives = await self._drive.resolve_member_drives(
+            {file.id: file.drive_id for file in fetched.values()},
+            parent_ids={
+                file.id: file.parents[0] if file.parents else None for file in fetched.values()
+            },
+        )
+        return {file_id for file_id in fetched if file_id in member_drives}
 
     async def _get_accessible_many(
         self,
@@ -373,8 +404,18 @@ class GoogleFilesService(FilesService):
         *,
         fields: str = _FIELDS,
     ) -> dict[FileId, FileResponse]:
+        records = self._get_accessible_records_many_sync(file_ids, fields=fields, model=GoogleFile)
+        return {file_id: _file_response(file) for file_id, file in records.items()}
+
+    def _get_accessible_records_many_sync[Record: (GoogleFile, GoogleFileAccessLocation)](
+        self,
+        file_ids: list[FileId],
+        *,
+        fields: str,
+        model: type[Record],
+    ) -> dict[FileId, Record]:
         client = self._client()
-        responses: dict[FileId, FileResponse] = {}
+        responses: dict[FileId, Record] = {}
         failures: list[BaseException] = []
 
         def collect(request_id: str, response: Any, exception: BaseException | None) -> None:
@@ -383,10 +424,10 @@ class GoogleFilesService(FilesService):
                 if status not in {403, 404}:
                     failures.append(exception)
                 return
-            file = GoogleFile.model_validate(response)
-            if file.trashed:
+            file = model.model_validate(response)
+            if file.id != FileId(request_id) or file.trashed:
                 return
-            responses[FileId(request_id)] = _file_response(file)
+            responses[FileId(request_id)] = file
 
         with _translated_drive_errors():
             for chunk in batched(file_ids, _FILE_GET_BATCH_SIZE, strict=False):

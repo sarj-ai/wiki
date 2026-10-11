@@ -113,10 +113,13 @@ class _Result:
     def scalar_one_or_none(self) -> DocumentAlias | None:
         return self.row
 
-    def all(self) -> list[DocumentAlias]:
-        return self.rows
+    def all(self) -> list[tuple[str, FileId]]:
+        return [(row.alias, row.file_id) for row in self.rows]
 
     def scalars(self) -> Self:
+        return self
+
+    def tuples(self) -> Self:
         return self
 
 

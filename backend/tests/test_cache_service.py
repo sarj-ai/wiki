@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+from collections.abc import Sequence
 from datetime import timedelta
 from threading import get_ident
 from types import TracebackType
@@ -96,6 +97,11 @@ def _service(*sessions: _Session, protector: CacheEntryProtector | None = None) 
 class _CollidingProtector:
     def physical_keys(self, namespace: str, logical_key: str) -> tuple[str, ...]:
         return ("h1.collision",)
+
+    def physical_keys_many(
+        self, namespace: str, logical_keys: Sequence[str], *, include_rotation: bool
+    ) -> dict[str, tuple[str, ...]]:
+        return dict.fromkeys(logical_keys, ("h1.collision",))
 
     def protect(self, namespace: str, logical_key: str, value: object) -> str:
         raise AssertionError
@@ -247,7 +253,8 @@ async def test_concurrent_reads_use_independent_sessions() -> None:
         service.get(CacheNamespace.DRIVE_LIST, "user-2"),
     )
 
-    assert values == [{"name": "First"}, {"name": "Second"}]
+    assert values[0] == {"name": "First"}
+    assert values[1] == {"name": "Second"}
     assert factory.calls == 2
 
 
@@ -405,6 +412,17 @@ class _ObservedProtector:
         self.lookup_keys.append(logical_key)
         self.lookup_threads.add(get_ident())
         return self.wrapped.physical_keys(namespace, logical_key)
+
+    def physical_keys_many(
+        self, namespace: str, logical_keys: Sequence[str], *, include_rotation: bool
+    ) -> dict[str, tuple[str, ...]]:
+        self.lookup_keys.extend(logical_keys)
+        self.lookup_threads.add(get_ident())
+        return self.wrapped.physical_keys_many(
+            namespace,
+            logical_keys,
+            include_rotation=include_rotation,
+        )
 
     def protect(self, namespace: str, logical_key: str, value: JsonValue) -> str:
         self.protection_threads.add(get_ident())

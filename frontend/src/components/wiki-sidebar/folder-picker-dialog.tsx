@@ -15,9 +15,8 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { useDrives, useDriveTree } from "@/hooks/use-wiki-tree";
 import type { SmartDestination } from "@/lib/smart-create-types";
 import { cn } from "@/lib/utils";
-import { buildChildrenIndex } from "@/lib/wiki-tree";
+import { EMPTY_NODES, indexDestinationFolders } from "@/lib/wiki-indexes";
 import type { DriveNode } from "@/types/wiki";
-import { MIME_SHORTCUT } from "@/types/wiki";
 
 export function FolderPickerDialog({
   allowedDriveId,
@@ -78,9 +77,8 @@ interface DriveFolderRowProps {
 function DriveFolderRow({ driveId, driveName, onSelect }: DriveFolderRowProps) {
   const [expanded, setExpanded] = useState(false);
   const tree = useDriveTree(expanded ? driveId : null);
-  const folders = (tree.data?.folders ?? []).filter((folder) => folder.mimeType !== MIME_SHORTCUT);
-  const children = buildChildrenIndex(folders);
-  const roots = children.get("__root__") ?? [];
+  const children = indexDestinationFolders(tree.data?.folders ?? EMPTY_NODES);
+  const roots = children.get("__root__") ?? EMPTY_NODES;
 
   return (
     <>
@@ -147,7 +145,7 @@ function FolderRow({
   onSelect,
 }: FolderRowProps) {
   const [expanded, setExpanded] = useState(false);
-  const descendants = childrenByParent.get(folder.id) ?? [];
+  const descendants = childrenByParent.get(folder.id) ?? EMPTY_NODES;
   const path = [...ancestors, folder.name];
   return (
     <>

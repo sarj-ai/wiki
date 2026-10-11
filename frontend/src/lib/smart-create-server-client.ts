@@ -4,6 +4,7 @@ import * as z from "zod";
 
 import type { ActionErrorCode } from "@/lib/action-result";
 import { boundedTransformText } from "@/lib/bounded-transform-text";
+import { fetchBackend } from "@/lib/clients/fetch-backend";
 import { API_URL } from "@/lib/env";
 
 const ErrorResponseSchema = z.object({ detail: z.string().optional() });
@@ -31,7 +32,7 @@ export async function smartCreateServerClient(
   if (idempotencyKey !== undefined) headers.set("idempotency-key", idempotencyKey);
 
   try {
-    const response = await fetch(`${API_URL}${path}`, {
+    const response = await fetchBackend(`${API_URL}${path}`, {
       body,
       cache: "no-store",
       headers,

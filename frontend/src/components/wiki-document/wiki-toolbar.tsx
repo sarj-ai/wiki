@@ -1,7 +1,7 @@
 "use client";
 
 import { Check, ChevronRight, Copy, ExternalLink, RefreshCw, Sparkles } from "lucide-react";
-import { Fragment, useState } from "react";
+import { Fragment } from "react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
@@ -20,6 +20,7 @@ import { LazyDocumentPolishDialog } from "./lazy-document-polish-dialog";
 import { ReadOnlyShortLink } from "./read-only-short-link";
 import { ReorganizeDocument } from "./reorganize-document";
 import { ShortLinkDialog } from "./short-link-dialog";
+import { useCopyFeedback } from "./use-copy-feedback";
 
 interface WikiToolbarProps {
   authority?: "pending" | "resolved";
@@ -36,8 +37,6 @@ interface WikiToolbarProps {
   title: string;
 }
 
-const COPY_FEEDBACK_MS = 2000;
-
 export function WikiToolbar({
   authority = "resolved",
   breadcrumb,
@@ -53,7 +52,7 @@ export function WikiToolbar({
 }: WikiToolbarProps) {
   const openUrl = openUrlFor(mimeType, fileId);
   const openLabel = openInGoogleLabel(mimeType);
-  const [copied, setCopied] = useState(false);
+  const { copied, showCopied } = useCopyFeedback(fileId);
   const polishDialog = useDeferredDialog();
   const displayTitle = displayFileName(title, mimeType);
 
@@ -64,10 +63,7 @@ export function WikiToolbar({
   const handleCopy = (): void => {
     void (async () => {
       await navigator.clipboard.writeText(window.location.href);
-      setCopied(true);
-      window.setTimeout(() => {
-        setCopied(false);
-      }, COPY_FEEDBACK_MS);
+      showCopied();
     })().catch((err: unknown) => {
       const message = err instanceof Error ? err.message : "Failed to copy link";
       toast.error(message);

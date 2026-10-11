@@ -2,7 +2,10 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 import asyncio
-from collections.abc import Iterable
+from collections.abc import Awaitable, Iterable
+from dataclasses import dataclass
+from heapq import nsmallest
+from itertools import islice
 import json
 import re
 from types import MappingProxyType
@@ -18,8 +21,9 @@ from app.config import settings
 from app.drive.schemas import MIME_DOC, MIME_SLIDE, DriveNode, DriveSummary, DriveTree
 from app.drive.service import DriveService
 from app.files.errors import FileNotInScopeError
+from app.files.schemas import FileResponse
 from app.files.service import FilesService
-from app.identifiers import FileId
+from app.identifiers import DriveId, FileId
 from app.sidebar.cache import SidebarCacheService
 from app.smart_create.errors import ReorganizationUnavailableError
 from app.smart_create.schemas import (
@@ -205,20 +209,17 @@ class GeminiReorganizationService(ReorganizationService):
         if drive is None:
             msg = "File not available in a Drive workspace"
             raise FileNotInScopeError(msg)
-        content = ""
-        if file.mime_type == MIME_DOC:
-            exported_content = await self._drive.fetch_document_text(file_id)
-            if exported_content is None:
-                logger.warning("Re-organize content unavailable")
-                raise ReorganizationUnavailableError
-            content = exported_content
+        reads = await _parallel_reads(
+            self._document_content(file),
+            self._sidebar_cache.get_drive_tree(self._db, drive.id),
+        )
+        content, cached = reads.primary, reads.secondary
         evidence = ReorganizationEvidence(
             content=content,
             description=file.description,
             file_name=file.name,
             modified_time=file.modified_time,
         )
-        cached = await self._sidebar_cache.get_drive_tree(self._db, drive.id)
         folders = organization_candidates(evidence, file.parent_folder_id, drive, cached.tree)
         current_id = file.parent_folder_id or FileId(drive.id)
         current = next((item for item in folders if item.folder_id == current_id), None)
@@ -248,6 +249,15 @@ class GeminiReorganizationService(ReorganizationService):
                 error_type=type(exc).__name__,
             )
             raise ReorganizationUnavailableError from exc
+
+    async def _document_content(self, file: FileResponse) -> str:
+        if file.mime_type != MIME_DOC:
+            return ""
+        content = await self._drive.fetch_document_text(file.id)
+        if content is None:
+            logger.warning("Re-organize content unavailable")
+            raise ReorganizationUnavailableError
+        return content
 
 
 class GeneratedProposal(BaseModel):
@@ -345,15 +355,17 @@ class GeminiSmartProposalService(SmartProposalService):
     @override
     async def propose(self, request: AIMode) -> SmartProposalRead:
         drives = await self._drive.list_drives()
-        template_task = asyncio.create_task(self._templates.list_templates())
-        trees = await self._load_cached_trees(drives)
-        catalog = await template_task
+        reads = await _parallel_reads(
+            self._load_cached_trees(
+                [drive for drive in drives if drive.id == request.invoking_drive_id]
+            ),
+            self._templates.list_templates(),
+        )
+        trees, catalog = reads.primary, reads.secondary
         folders = smart_create_candidates(request, drives, trees, candidate_depth=1)
-        compatible_templates = [
-            template
-            for template in _compatible_templates(request.file_type, catalog.templates)
-            if template.drive_id == request.invoking_drive_id
-        ][:_MAX_TEMPLATE_CANDIDATES]
+        compatible_templates = _compatible_templates(
+            request.file_type, catalog.templates, drive_id=request.invoking_drive_id
+        )
         fallback = _fallback_proposal(request, folders)
         try:
             generated = await self._generator.generate(request, folders, compatible_templates)
@@ -380,6 +392,24 @@ class GeminiSmartProposalService(SmartProposalService):
             if cached is not None:
                 trees.append(cached.tree)
         return trees
+
+
+@dataclass(frozen=True, slots=True)
+class _ParallelReads[Primary, Secondary]:
+    primary: Primary
+    secondary: Secondary
+
+
+async def _parallel_reads[Primary, Secondary](
+    primary: Awaitable[Primary], secondary: Awaitable[Secondary]
+) -> _ParallelReads[Primary, Secondary]:
+    secondary_task = asyncio.ensure_future(secondary)
+    try:
+        return _ParallelReads(await primary, await secondary_task)
+    except BaseException:
+        secondary_task.cancel()
+        await asyncio.gather(secondary_task, return_exceptions=True)
+        raise
 
 
 def _build_reorganization_prompt(
@@ -424,7 +454,9 @@ def organization_candidates(
     title_terms = _significant_terms(evidence.file_name)
     description_terms = _significant_terms(evidence.description or "")
     content_terms = _significant_terms(evidence.content)
-    destinations.sort(
+    return nsmallest(
+        _MAX_FOLDER_CANDIDATES,
+        destinations,
         key=lambda destination: (
             destination.folder_id != current_id,
             -_destination_evidence_score(
@@ -435,9 +467,8 @@ def organization_candidates(
             ),
             tuple(part.casefold() for part in destination.folder_path),
             destination.folder_id,
-        )
+        ),
     )
-    return destinations[:_MAX_FOLDER_CANDIDATES]
 
 
 def _significant_terms(value: str) -> frozenset[str]:
@@ -539,14 +570,15 @@ def smart_create_candidates(
         candidate_depth=candidate_depth,
     )
     terms = frozenset(_WORD_PATTERN.findall(request.description.casefold()))
-    destinations.sort(
+    return nsmallest(
+        _MAX_FOLDER_CANDIDATES,
+        destinations,
         key=lambda destination: (
             -_folder_score(destination, request, terms),
             tuple(part.casefold() for part in destination.folder_path),
             destination.folder_id,
-        )
+        ),
     )
-    return destinations[:_MAX_FOLDER_CANDIDATES]
 
 
 def _smart_create_destinations(
@@ -644,9 +676,20 @@ def _folder_score(
 def _compatible_templates(
     file_type: SmartFileType,
     templates: Iterable[TemplateRead],
+    *,
+    drive_id: DriveId | None,
 ) -> list[TemplateRead]:
     mime_type = MIME_DOC if file_type == "document" else MIME_SLIDE
-    return [template for template in templates if template.mime_type == mime_type]
+    return list(
+        islice(
+            (
+                template
+                for template in templates
+                if template.mime_type == mime_type and template.drive_id == drive_id
+            ),
+            _MAX_TEMPLATE_CANDIDATES,
+        )
+    )
 
 
 def _validated_proposal(

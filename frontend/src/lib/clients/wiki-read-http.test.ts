@@ -1,6 +1,7 @@
 import { z } from "zod";
 
 import { ApiError, SESSION_REFRESH_UNAVAILABLE_MESSAGE } from "@/lib/api-error";
+import { claimBrowserSession, retireBrowserSession } from "@/lib/browser-session";
 import { wikiReadHttp } from "@/lib/clients/wiki-read-http";
 import { TERMINAL_UNAUTHORIZED_EVENT } from "@/lib/session-events";
 
@@ -14,9 +15,72 @@ beforeEach(() => {
 
 afterEach(() => {
   vi.unstubAllGlobals();
+  vi.restoreAllMocks();
 });
 
 describe("authenticated wiki read recovery", () => {
+  it("retires an unsignalled read without refreshing or notifying a replacement", async () => {
+    const previous = {};
+    const replacement = {};
+    claimBrowserSession(previous);
+    const response = Promise.withResolvers<Response>();
+    fetchMock.mockReturnValueOnce(response.promise);
+    const listener = vi.fn<() => void>();
+    window.addEventListener(TERMINAL_UNAUTHORIZED_EVENT, listener);
+    try {
+      const pending = wikiReadHttp("/files/old-user", PayloadSchema).catch(
+        (error: unknown) => error,
+      );
+      retireBrowserSession(previous);
+      claimBrowserSession(replacement);
+      expect(fetchMock.mock.calls[0]?.[1]?.signal?.aborted).toBe(true);
+      response.resolve(new Response(null, { status: 401 }));
+
+      await expect(pending).resolves.toMatchObject({ name: "AbortError" });
+      expect(fetchMock).toHaveBeenCalledOnce();
+      expect(listener).not.toHaveBeenCalled();
+      fetchMock.mockResolvedValueOnce(Response.json({ value: "replacement" }));
+      await expect(wikiReadHttp("/files/new-user", PayloadSchema)).resolves.toEqual({
+        value: "replacement",
+      });
+      expect(fetchMock.mock.calls[1]?.[1]?.signal?.aborted).toBe(false);
+    } finally {
+      retireBrowserSession(replacement);
+      window.removeEventListener(TERMINAL_UNAUTHORIZED_EVENT, listener);
+    }
+  });
+
+  it("refreshes a known expiring session once before concurrent GETs", async () => {
+    vi.spyOn(document, "cookie", "get").mockReturnValue(`session_exp=${Date.now() - 1}`);
+    const refresh = Promise.withResolvers<Response>();
+    fetchMock.mockImplementation(async (input) => {
+      const url = requestUrl(input);
+      return url.endsWith("/auth/refresh") ? await refresh.promise : Response.json({ value: url });
+    });
+    const first = wikiReadHttp("/files/first", PayloadSchema);
+    const second = wikiReadHttp("/files/second", PayloadSchema);
+    expect(fetchMock).toHaveBeenCalledOnce();
+    refresh.resolve(new Response(null));
+    await expect(Promise.all([first, second])).resolves.toHaveLength(2);
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+  });
+
+  it("starts refresh without waiting for a stalled 401 body cleanup", async () => {
+    const cleanup = Promise.withResolvers<undefined>();
+    const body = new ReadableStream<Uint8Array>({ cancel: async () => await cleanup.promise });
+    fetchMock
+      .mockResolvedValueOnce(new Response(body, { status: 401 }))
+      .mockResolvedValueOnce(new Response(null))
+      .mockResolvedValueOnce(Response.json({ value: "ready" }));
+    try {
+      await expect(wikiReadHttp("/files/first", PayloadSchema)).resolves.toEqual({
+        value: "ready",
+      });
+      expect(fetchMock).toHaveBeenCalledTimes(3);
+    } finally {
+      cleanup.resolve(undefined);
+    }
+  });
   it("refreshes one expired session for concurrent reads and replays each GET once", async () => {
     const refresh = Promise.withResolvers<Response>();
     const attempts = new Map<string, number>();

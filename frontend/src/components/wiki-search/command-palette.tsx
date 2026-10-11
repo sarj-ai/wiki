@@ -18,7 +18,9 @@ import { ApiError, RATE_LIMIT_MESSAGE } from "@/lib/api-error";
 import { useBrowserUserId } from "@/lib/browser-user-context";
 import { displayFileName, isGoogleWorkspaceType, renderNodeIcon } from "@/lib/file-icons";
 import { openUrlFor } from "@/lib/file-urls";
+import { folderAncestorIds } from "@/lib/folder-ancestor-ids";
 import { resolveShortcutTarget, SHORTCUT_INACCESSIBLE_TOOLTIP } from "@/lib/shortcut-resolver";
+import { allowsReusableSpeculation, readNavigatorHints } from "@/lib/speculation-policy";
 import { cn } from "@/lib/utils";
 import type { DriveSearchResult, DriveTree } from "@/types/wiki";
 import { MIME_FOLDER, MIME_FORM } from "@/types/wiki";
@@ -46,7 +48,7 @@ export function CommandPalette() {
   const [selectedResultId, setSelectedResultId] = useState<null | string>(null);
   const inputRef = useRef<HTMLInputElement | null>(null);
 
-  const searchQuery = useDriveSearch(query);
+  const searchQuery = useDriveSearch(query, open);
   const results = searchQuery.data ?? [];
 
   const selectedId =
@@ -63,7 +65,14 @@ export function CommandPalette() {
     void qc.prefetchQuery(fileQueryOptions(target.targetId));
     router.prefetch(`/d/${encodeURIComponent(target.targetId)}`);
   };
-  const schedulePrepareResult = useDebouncedCallback(prepareResult, 150);
+  const schedulePrepareResult = useDebouncedCallback((result: DriveSearchResult) => {
+    if (
+      document.visibilityState !== "visible" ||
+      !allowsReusableSpeculation(readNavigatorHints(navigator))
+    )
+      return;
+    prepareResult(result);
+  }, 150);
 
   useEffect(() => {
     schedulePrepareResult.cancel();
@@ -239,15 +248,7 @@ export function CommandPalette() {
 
 function ancestorChain(qc: QueryClient, driveId: string, nodeId: string): string[] {
   const tree = qc.getQueryData<DriveTree>(wikiKeys.driveTree(driveId));
-  if (!tree) return [];
-  const byId = new Map(tree.folders.map((f) => [f.id, f]));
-  const chain: string[] = [];
-  let current = byId.get(nodeId);
-  while (current?.parentId) {
-    chain.unshift(current.parentId);
-    current = byId.get(current.parentId);
-  }
-  return chain;
+  return tree ? folderAncestorIds(tree.folders, nodeId) : [];
 }
 
 function Highlighted({ term, text }: { text: string; term: null | string }) {

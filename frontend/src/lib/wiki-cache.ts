@@ -120,16 +120,19 @@ export function removeFileFromCaches(
   if (parentKey) {
     qc.setQueryData<DriveNode[] | undefined>(wikiKeys.folderFiles(parentKey), (prev) => {
       if (!prev) return prev;
-      return prev.filter((n) => n.id !== fileId);
+      return removeNode(prev, fileId);
     });
   }
   if (driveId) {
     qc.setQueryData<DriveTree | undefined>(wikiKeys.driveTree(driveId), (prev) => {
       if (!prev) return prev;
+      const files = removeNode(prev.files, fileId);
+      const folders = removeNode(prev.folders, fileId);
+      if (files === prev.files && folders === prev.folders) return prev;
       return {
         ...prev,
-        files: prev.files.filter((f) => f.id !== fileId),
-        folders: prev.folders.filter((f) => f.id !== fileId),
+        files,
+        folders,
       };
     });
   }
@@ -137,6 +140,17 @@ export function removeFileFromCaches(
   if (options.removeFileQuery !== false) {
     qc.removeQueries({ queryKey: wikiKeys.file(fileId) });
   }
+}
+
+function removeNode(nodes: DriveNode[], fileId: string): DriveNode[] {
+  const first = nodes.findIndex((node) => node.id === fileId);
+  if (first === -1) return nodes;
+  const remaining = nodes.slice(0, first);
+  for (let i = first + 1; i < nodes.length; i += 1) {
+    const node = nodes[i];
+    if (node && node.id !== fileId) remaining.push(node);
+  }
+  return remaining;
 }
 
 function metaFromNodes(

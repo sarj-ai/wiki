@@ -187,7 +187,21 @@ def test_pre_commit_failure_is_not_swallowed(
         command_output(["bash", str(ROOT / "scripts/github/run-pre-commit.sh")])
 
 
-@pytest.mark.parametrize("fault", ["none", "http", "body", "request-id", "cache", "transport"])
+@pytest.mark.parametrize(
+    "fault",
+    [
+        "none",
+        "http",
+        "body",
+        "request-id",
+        "cache",
+        "transport",
+        "proxy-http",
+        "proxy-body",
+        "proxy-transport",
+        "drives-http",
+    ],
+)
 def test_health_requires_all_release_receipts(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path, fault: str
 ) -> None:
@@ -197,13 +211,29 @@ def test_health_requires_all_release_receipts(
 sleep() { test "$1" = 10; }
 curl() {
   printf '%s\\n' call >> "$RUNNER_TEMP/calls"
+  case "$*" in
+    *'/api/wiki/'*)
+      printf '{"detail":"Your session has expired"}' > "$RUNNER_TEMP/frontend-proxy-body.json"
+      case "$*" in
+        *'/sidebar/drives')
+          if test "$FAULT" = drives-http; then printf 502; return 0; fi ;;
+      esac
+      if test "$FAULT" = proxy-http; then printf 502; else printf 401; fi
+      test "$FAULT" != proxy-transport
+      return ;;
+  esac
   printf '{"status":"ok","revision":"sha"}' > "$RUNNER_TEMP/frontend-health-body.json"
   printf 'X-Request-ID: %s\\r\\nCache-Control: %s\\r\\n' \\
     "$RESPONSE_ID" "$CACHE_CONTROL" > "$RUNNER_TEMP/frontend-health-headers.txt"
   printf '%s' "$HTTP_STATUS"
   test "$FAULT" != transport
 }
-jq() { test "$FAULT" != body; }
+jq() {
+  case "$*" in
+    *'frontend-proxy-body.json') test "$FAULT" != proxy-body ;;
+    *) test "$FAULT" != body ;;
+  esac
+}
 """
     )
     monkeypatch.setenv("BASH_ENV", str(initialization))
@@ -219,9 +249,13 @@ jq() { test "$FAULT" != body; }
     else:
         with pytest.raises(ReleaseBlockedError):
             command_output(command)
-    assert (tmp_path / "calls").read_text().splitlines() == ["call"] * (1 if fault == "none" else 6)
+    expected_calls = 3 if fault == "none" else 18 if fault == "drives-http" else 6
+    if fault.startswith("proxy-"):
+        expected_calls = 12
+    assert (tmp_path / "calls").read_text().splitlines() == ["call"] * expected_calls
     assert not (tmp_path / "frontend-health-body.json").exists()
     assert not (tmp_path / "frontend-health-headers.txt").exists()
+    assert not (tmp_path / "frontend-proxy-body.json").exists()
 
 
 @pytest.mark.parametrize(

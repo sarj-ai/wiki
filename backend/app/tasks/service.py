@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
+import asyncio
 from collections.abc import Awaitable, Callable, Mapping
 from datetime import UTC, datetime, timedelta
 import hashlib
@@ -88,6 +89,9 @@ _TERMINAL_REDACTED_PAYLOAD: dict[str, JsonValue] = {"redacted": True}
 _LEASE_RETENTION_GRACE = timedelta(minutes=10)
 _COPY_CHECKPOINT_CIPHERTEXT_FIELD = "checkpoint_ciphertext"
 _MAX_DISPATCH_RECONCILIATION_BATCH = 100
+_OWNER_LOCK_RETRY_DELAY = 0.01
+_MAX_OWNER_LOCK_RETRY_DELAY = 0.2
+_OWNER_LOCK_TIMEOUT_SECONDS = 120
 _PUBLIC_TASK_COLUMNS = (
     Task.id,
     Task.kind,
@@ -267,8 +271,8 @@ class PostgresTaskService(TaskService):
         statement = (
             select(Task.id)
             .where(
-                Task.kind == TaskKind.FILE_DOCUMENT_TRANSFORM,
-                Task.status == TaskStatus.PENDING,
+                Task.kind == literal(TaskKind.FILE_DOCUMENT_TRANSFORM.value, literal_execute=True),
+                Task.status == literal(TaskStatus.PENDING.value, literal_execute=True),
                 Task.dispatch_ready_at <= func.now() - timedelta(minutes=2),
                 Task.expires_at > func.now(),
             )
@@ -391,9 +395,7 @@ class PostgresTaskService(TaskService):
         admit_terminal_replay: Callable[[TaskRead], Awaitable[bool]] | None,
     ) -> TaskReservation | None:
         kind = TaskKind.FILE_DOCUMENT_TRANSFORM
-        await self._db.execute(
-            select(func.pg_advisory_xact_lock(func.hashtextextended(str(owner_user_id), 0)))
-        )
+        await self._lock_document_transform_owner(owner_user_id)
         existing = await self._maybe_existing(owner_user_id, kind, idempotency_key)
         if existing is not None:
             if existing.request_hash != request_hash:
@@ -437,6 +439,54 @@ class PostgresTaskService(TaskService):
             raise
         await self._check_document_transform_limits(owner_user_id, payload)
         return None
+
+    async def _lock_document_transform_owner(
+        self,
+        owner_user_id: uuid.UUID,
+        *,
+        timeout_seconds: float = _OWNER_LOCK_TIMEOUT_SECONDS,
+    ) -> None:
+        try:
+            async with asyncio.timeout(timeout_seconds):
+                await self._wait_for_document_transform_owner(owner_user_id)
+        except BaseException:
+            await self._db.rollback()
+            raise
+
+    async def _wait_for_document_transform_owner(self, owner_user_id: uuid.UUID) -> None:
+        delay = _OWNER_LOCK_RETRY_DELAY
+        while True:
+            acquired = (
+                await self._db.execute(
+                    select(
+                        func.pg_try_advisory_xact_lock(func.hashtextextended(str(owner_user_id), 0))
+                    )
+                )
+            ).scalar_one()
+            if not isinstance(acquired, bool):
+                msg = "Document-transform owner lock returned an invalid value"
+                raise TypeError(msg)
+            if acquired:
+                return
+            pending_writes = bool(self._db.new or self._db.dirty or self._db.deleted)
+            if not pending_writes:
+                transaction_id = (
+                    await self._db.execute(select(func.pg_current_xact_id_if_assigned()))
+                ).scalar_one()
+                pending_writes = transaction_id is not None
+            if pending_writes:
+                # Caller writes, including already-flushed/Core writes,
+                # must remain atomic with admission. Keep their transaction.
+                await self._db.execute(
+                    select(func.pg_advisory_xact_lock(func.hashtextextended(str(owner_user_id), 0)))
+                )
+                return
+            # Read-only waiters must not consume the pool while the owner
+            # performs checks that need an independent cache connection.
+            await self._db.commit()
+            jitter = 0.5 + uuid.uuid7().bytes[-1] / 510
+            await asyncio.sleep(delay * jitter)
+            delay = min(delay * 2, _MAX_OWNER_LOCK_RETRY_DELAY)
 
     async def _find_active_transform(
         self,

@@ -17,6 +17,21 @@ it("returns empty text for a missing body", async () => {
   await expect(boundedTransformText(null)).resolves.toBe("");
 });
 
+it("reports a decoding failure without waiting for a stalled cleanup", async () => {
+  const cleanup = Promise.withResolvers<undefined>();
+  const body = new ReadableStream<Uint8Array>({
+    start(controller) {
+      controller.enqueue(new Uint8Array([0xff]));
+    },
+    cancel: async () => await cleanup.promise,
+  });
+  try {
+    await expect(boundedTransformText(body)).rejects.toBeInstanceOf(TypeError);
+  } finally {
+    cleanup.resolve(undefined);
+  }
+});
+
 it("releases an empty stream", async () => {
   const body = streamOf([]);
   await expect(boundedTransformText(body)).resolves.toBe("");

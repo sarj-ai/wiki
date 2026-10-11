@@ -1,6 +1,12 @@
 import { describe, expect, it } from "vitest";
 
-import { applyOptimisticOrder, buildChildrenIndex, compareNodeOrder } from "@/lib/wiki-tree";
+import {
+  applyOptimisticOrder,
+  buildChildrenIndex,
+  buildSiblingItems,
+  compareNodeOrder,
+  orderSiblingItems,
+} from "@/lib/wiki-tree";
 import type { DriveNode } from "@/types/wiki";
 import { MIME_DOC, MIME_FOLDER } from "@/types/wiki";
 
@@ -96,6 +102,11 @@ describe("applyOptimisticOrder", () => {
     expect(applyOptimisticOrder(items, null)).toBe(items);
   });
 
+  it("shares unchanged empty and exact optimistic orders", () => {
+    expect(applyOptimisticOrder(items, [])).toBe(items);
+    expect(applyOptimisticOrder(items, ["a", "b", "c"])).toBe(items);
+  });
+
   it("reorders items to match the supplied id list", () => {
     const out = applyOptimisticOrder(items, ["c", "a", "b"]);
     expect(out.map((i) => i.node.id)).toEqual(["c", "a", "b"]);
@@ -109,5 +120,42 @@ describe("applyOptimisticOrder", () => {
   it("ignores ids in the order that have no matching item", () => {
     const out = applyOptimisticOrder(items, ["ghost", "a"]);
     expect(out.map((i) => i.node.id)).toEqual(["a", "b", "c"]);
+  });
+});
+
+describe("sibling construction and root optimistic order", () => {
+  it("retains folders and files as separate kinds without mutating provider nodes", () => {
+    const folders = [folder("f")];
+    const files = [file("d")];
+    expect(buildSiblingItems(folders, files)).toEqual([
+      { node: folders[0], type: "folder" },
+      { node: files[0], type: "file" },
+    ]);
+    expect(folders).toHaveLength(1);
+    expect(files).toHaveLength(1);
+  });
+
+  it("does not collate a complete optimistic root order", () => {
+    const items = buildSiblingItems([folder("z")], [file("b"), file("a")]);
+    const compare = vi.spyOn(String.prototype, "localeCompare");
+    try {
+      expect(
+        orderSiblingItems(items, new Map(), ["a", "z", "b"]).map((item) => item.node.id),
+      ).toEqual(["a", "z", "b"]);
+      expect(compare).not.toHaveBeenCalled();
+    } finally {
+      compare.mockRestore();
+    }
+  });
+
+  it("keeps the sorted fallback for a partial or stale optimistic root order", () => {
+    const items = buildSiblingItems([folder("z")], [file("b"), file("a")]);
+    expect(
+      orderSiblingItems(items, new Map(), ["missing", "b"]).map((item) => item.node.id),
+    ).toEqual(["b", "z", "a"]);
+    const ranked = buildSiblingItems([folder("z")], [file("b"), file("a")]);
+    expect(
+      orderSiblingItems(ranked, new Map([["a", 1]]), ["b"]).map((item) => item.node.id),
+    ).toEqual(["b", "a", "z"]);
   });
 });

@@ -1,5 +1,10 @@
 // @vitest-environment happy-dom
 
+import {
+  captureBrowserSession,
+  claimBrowserSession,
+  retireBrowserSession,
+} from "@/lib/browser-session";
 import { deduplicatedRefresh } from "@/lib/session-client";
 
 afterEach(() => {
@@ -7,6 +12,57 @@ afterEach(() => {
 });
 
 describe("session refresh classification", () => {
+  it("retires the shared refresh without reusing it or clearing a new owner's pending refresh", async () => {
+    const previous = {};
+    const next = {};
+    claimBrowserSession(previous);
+    const oldSession = captureBrowserSession();
+    const oldResponse = Promise.withResolvers<Response>();
+    const nextResponse = Promise.withResolvers<Response>();
+    const fetchMock = vi
+      .fn<typeof fetch>()
+      .mockReturnValueOnce(oldResponse.promise)
+      .mockReturnValueOnce(nextResponse.promise);
+    vi.stubGlobal("fetch", fetchMock);
+    const oldWaiter = deduplicatedRefresh(undefined, oldSession).catch((error: unknown) => error);
+    retireBrowserSession(previous);
+    claimBrowserSession(next);
+    expect(fetchMock.mock.calls[0]?.[1]?.signal?.aborted).toBe(true);
+    await expect(oldWaiter).resolves.toMatchObject({ name: "AbortError" });
+    const firstNewWaiter = deduplicatedRefresh();
+    oldResponse.resolve(new Response(null, { status: 401 }));
+    await Promise.resolve();
+    await Promise.resolve();
+    const secondNewWaiter = deduplicatedRefresh();
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(fetchMock.mock.calls[1]?.[1]?.signal?.aborted).toBe(false);
+    nextResponse.resolve(new Response(null));
+    await expect(Promise.all([firstNewWaiter, secondNewWaiter])).resolves.toEqual([
+      "refreshed",
+      "refreshed",
+    ]);
+    await expect(deduplicatedRefresh(undefined, oldSession)).rejects.toMatchObject({
+      name: "AbortError",
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    retireBrowserSession(next);
+  });
+
+  it("drops unused refresh bodies without waiting and prohibits cached/redirected recovery", async () => {
+    const cleanup = Promise.withResolvers<undefined>();
+    const cancel = vi.fn<() => Promise<undefined>>().mockReturnValue(cleanup.promise);
+    const body = new ReadableStream<Uint8Array>({ cancel });
+    const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(new Response(body));
+    vi.stubGlobal("fetch", fetchMock);
+    try {
+      await expect(deduplicatedRefresh()).resolves.toBe("refreshed");
+      expect(cancel).toHaveBeenCalledOnce();
+      expect(fetchMock.mock.calls[0]?.[1]?.cache).toBe("no-store");
+      expect(fetchMock.mock.calls[0]?.[1]?.redirect).toBe("error");
+    } finally {
+      cleanup.resolve(undefined);
+    }
+  });
   it.each([
     [200, "refreshed"],
     [401, "unauthorized"],

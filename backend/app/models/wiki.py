@@ -13,7 +13,14 @@ from app.identifiers import DriveId, FileId, TaskId, UserId
 
 class CacheEntry(Base):
     __tablename__ = "cache_entries"
-    __table_args__ = (Index("ix_cache_entries_expires_at", "expires_at"),)
+    __table_args__ = (
+        Index("ix_cache_entries_expires_at", "expires_at"),
+        Index(
+            "ix_cache_entries_legacy_namespace",
+            "namespace",
+            postgresql_where=text(r"key !~ '^h[0-9]+\.'"),
+        ),
+    )
 
     namespace: Mapped[str] = mapped_column(Text, primary_key=True)
     key: Mapped[str] = mapped_column(Text, primary_key=True)

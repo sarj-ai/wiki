@@ -6,6 +6,7 @@ import { useEffect, useRef } from "react";
 
 import { useDocViewerStore } from "@/components/wiki-document/doc-viewer-store";
 import { fileQueryOptions } from "@/hooks/use-wiki-tree";
+import { captureBrowserSession } from "@/lib/browser-session";
 import {
   allowsIframeSpeculation,
   allowsReusableSpeculation,
@@ -37,6 +38,7 @@ interface DocumentIntentHandlers {
 interface IntentState {
   committed: boolean;
   focused: boolean;
+  generation: number;
   hovered: boolean;
   prefetchTimer: null | number;
   prewarmTimer: null | number;
@@ -53,6 +55,7 @@ export function useDocumentIntent({
   const stateRef = useRef<IntentState>({
     committed: false,
     focused: false,
+    generation: 0,
     hovered: false,
     prefetchTimer: null,
     prewarmTimer: null,
@@ -64,9 +67,20 @@ export function useDocumentIntent({
     return queryClient.getQueryData<FileDetail>(wikiKeys.file(fileId)) ?? null;
   };
 
-  const prewarm = async () => {
+  const prewarm = async (committed = false) => {
+    const generation = stateRef.current.generation;
+    const session = captureBrowserSession();
     const file = await prefetch();
-    if (file === null) return;
+    if (file === null || session.aborted) return;
+    const state = stateRef.current;
+    if (
+      !committed &&
+      (state.generation !== generation ||
+        (!state.focused && !state.hovered) ||
+        !allowsIframeIntentSpeculation())
+    ) {
+      return;
+    }
     setPrewarm({
       fileId: file.id,
       mimeType: file.mimeType,
@@ -93,6 +107,7 @@ export function useDocumentIntent({
   const endSpeculationIfIdle = () => {
     const state = stateRef.current;
     if (!state.hovered && !state.focused) {
+      state.generation += 1;
       state.committed = false;
       clearIntentTimers(state);
     }
@@ -103,19 +118,21 @@ export function useDocumentIntent({
     stateRef.current.committed = true;
     clearIntentTimers(stateRef.current);
     onStrongIntent?.();
-    void prewarm();
+    void prewarm(true);
   };
 
   useEffect(() => {
     const state = stateRef.current;
+    state.generation += 1;
     clearIntentTimers(state);
     state.committed = false;
     state.focused = false;
     state.hovered = false;
     return () => {
+      state.generation += 1;
       clearIntentTimers(state);
     };
-  }, [disabled, fileId]);
+  }, [disabled, fileId, queryClient]);
 
   return {
     onBlur: () => {

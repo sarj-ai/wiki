@@ -21,6 +21,7 @@ describe("alias server client", () => {
       expect.stringContaining("/aliases/team-handbook"),
       expect.not.objectContaining({ method: "POST" }),
     );
+    expect(fetchMock.mock.calls[0]?.[1]?.redirect).toBe("manual");
   });
 
   it("maps permission-filtered recent aliases from API fields to UI fields", async () => {

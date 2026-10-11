@@ -82,11 +82,6 @@
       "count": 3
     }
   },
-  "src/components/session-refresh.tsx": {
-    "@typescript-eslint/no-floating-promises": {
-      "count": 1
-    }
-  },
   "src/components/ui/sidebar.tsx": {
     "@typescript-eslint/no-floating-promises": {
       "count": 1
@@ -156,14 +151,6 @@
   "src/components/wiki-document/reorganize-document.tsx": {
     "@typescript-eslint/no-floating-promises": {
       "count": 2
-    }
-  },
-  "src/components/wiki-document/short-link-dialog.tsx": {
-    "@sarj/no-excessive-cognitive-complexity": {
-      "count": 1
-    },
-    "@typescript-eslint/no-floating-promises": {
-      "count": 3
     }
   },
   "src/components/wiki-search/command-palette.test.tsx": {
@@ -244,9 +231,6 @@
     }
   },
   "src/components/wiki-sidebar/use-wiki-reorder.ts": {
-    "@sarj/require-pascal-case-zod-schema-name": {
-      "count": 2
-    },
     "@sarj/stepdown": {
       "count": 1
     }
@@ -271,11 +255,6 @@
   },
   "src/lib/api-client.test.ts": {
     "@typescript-eslint/naming-convention": {
-      "count": 1
-    }
-  },
-  "src/lib/api-client.ts": {
-    "@sarj/no-conditional-empty-object-spread": {
       "count": 1
     }
   },

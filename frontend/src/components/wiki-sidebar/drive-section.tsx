@@ -33,15 +33,9 @@ import { useRefreshDrive } from "@/hooks/use-wiki-mutations";
 import { useFolderFiles } from "@/hooks/use-wiki-tree";
 import { folderUrlFor } from "@/lib/file-urls";
 import { cn } from "@/lib/utils";
-import { EMPTY_NODES } from "@/lib/wiki-indexes";
-import {
-  applyOptimisticOrder,
-  compareNodeOrder,
-  isFolderLikeNode,
-  type KindedNode,
-} from "@/lib/wiki-tree";
-import type { DriveNode, DriveSummary, FolderIcon, SortOrder } from "@/types/wiki";
-import { MIME_DOC, MIME_HTML } from "@/types/wiki";
+import { EMPTY_NODES, indexSidebarNodes, indexVisibleDocuments } from "@/lib/wiki-indexes";
+import { buildSiblingItems, type KindedNode, orderSiblingItems } from "@/lib/wiki-tree";
+import type { DocIcon, DriveNode, DriveSummary, FolderIcon, SortOrder } from "@/types/wiki";
 
 import { CreateFileMenu } from "./create-file-menu";
 import { DriveAccessSheet } from "./drive-access-sheet";
@@ -59,9 +53,11 @@ const EMPTY_ROOT_ITEMS: readonly KindedNode[] = [];
 export function DriveSection({
   activeDriveId,
   defaultExpanded,
+  docIcons,
   drive,
   folderIcons,
   optimisticByContainer,
+  pathname,
   showNonDocFiles,
   sortOrders,
 }: DriveSectionProps) {
@@ -75,7 +71,7 @@ export function DriveSection({
     iconOverrides,
     sortOrderMap,
     treeQuery,
-  } = useDriveTreeIndex(drive.id, folderIcons, sortOrders, expanded);
+  } = useDriveTreeIndex(drive.id, docIcons, folderIcons, sortOrders, expanded);
   const lazyRootFiles = useFolderFiles(drive.id, expanded && !filesComplete);
   const refreshDrive = useRefreshDrive();
 
@@ -98,13 +94,17 @@ export function DriveSection({
   const rootFiles = filesComplete
     ? (filesByParent.get("__root__") ?? EMPTY_NODES)
     : (lazyRootFiles.data ?? EMPTY_NODES);
-  const rootItems = expanded
-    ? buildRootItems({ childrenByParent, rootFiles, showNonDocFiles, sortOrderMap })
-    : EMPTY_ROOT_ITEMS;
   const optimisticOrder = optimisticByContainer.get(rootContainerId) ?? null;
-  const displayItems = expanded
-    ? applyOptimisticOrder(rootItems, optimisticOrder)
+  const rootItems = expanded
+    ? buildRootItems({
+        childrenByParent,
+        optimisticOrder,
+        rootFiles,
+        showNonDocFiles,
+        sortOrderMap,
+      })
     : EMPTY_ROOT_ITEMS;
+  const displayItems = rootItems;
   const displayItemIds = displayItems.map((item) => item.node.id);
 
   const contextValue: DriveSectionValue = {
@@ -115,6 +115,7 @@ export function DriveSection({
     filesByParent,
     iconOverrides,
     optimisticByContainer,
+    pathname,
     showNonDocFiles,
     sortOrderMap,
     treeFilesComplete: filesComplete,
@@ -233,6 +234,7 @@ export function DriveSection({
                           iconOverride={docIconOverrides.get(node.id)}
                           node={node}
                           parentFolderId={undefined}
+                          pathname={pathname}
                         />
                       )}
                     </SortableItem>
@@ -258,15 +260,18 @@ export function DriveSection({
 interface DriveSectionProps {
   activeDriveId: null | string;
   defaultExpanded: boolean;
+  docIcons: readonly DocIcon[];
   drive: DriveSummary;
-  folderIcons: FolderIcon[];
+  folderIcons: readonly FolderIcon[];
   optimisticByContainer: Map<string, string[]>;
+  pathname: string;
   showNonDocFiles: boolean;
-  sortOrders: SortOrder[];
+  sortOrders: readonly SortOrder[];
 }
 
 interface BuildRootItemsArgs {
   childrenByParent: Map<string, DriveNode[]>;
+  optimisticOrder: null | readonly string[];
   rootFiles: readonly DriveNode[];
   showNonDocFiles: boolean;
   sortOrderMap: Map<string, number>;
@@ -274,21 +279,15 @@ interface BuildRootItemsArgs {
 
 function buildRootItems({
   childrenByParent,
+  optimisticOrder,
   rootFiles,
   showNonDocFiles,
   sortOrderMap,
-}: BuildRootItemsArgs): KindedNode[] {
-  const folders: KindedNode[] = (childrenByParent.get("__root__") ?? []).map((node) => ({
-    node,
-    type: "folder",
-  }));
-
-  const rawFiles = rootFiles.filter((n) => !isFolderLikeNode(n));
-  const visibleFiles = showNonDocFiles
-    ? rawFiles
-    : rawFiles.filter((n) => n.mimeType === MIME_DOC || n.mimeType === MIME_HTML);
-  const files: KindedNode[] = visibleFiles.map((node) => ({ node, type: "file" }));
-  return [...folders, ...files].toSorted((a, b) => compareNodeOrder(a, b, sortOrderMap));
+}: BuildRootItemsArgs): readonly KindedNode[] {
+  const folders = childrenByParent.get("__root__") ?? EMPTY_NODES;
+  const rawFiles = indexSidebarNodes(rootFiles).files;
+  const visibleFiles = showNonDocFiles ? rawFiles : indexVisibleDocuments(rawFiles);
+  return orderSiblingItems(buildSiblingItems(folders, visibleFiles), sortOrderMap, optimisticOrder);
 }
 
 function DriveTreeSkeleton() {

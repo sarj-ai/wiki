@@ -19,9 +19,8 @@ import { useDrives, useDriveTree } from "@/hooks/use-wiki-tree";
 import { ApiError } from "@/lib/api-error";
 import { runWithErrorToast, toErrorMessage } from "@/lib/mutation-toast";
 import { cn } from "@/lib/utils";
-import { buildChildrenIndex } from "@/lib/wiki-tree";
+import { EMPTY_NODES, indexDestinationFolders } from "@/lib/wiki-indexes";
 import type { DriveNode } from "@/types/wiki";
-import { MIME_SHORTCUT } from "@/types/wiki";
 
 import { rowIndent } from "./layout-constants";
 
@@ -157,7 +156,7 @@ function FolderRow({
   selectedId,
 }: FolderRowProps) {
   const [expanded, setExpanded] = useState(false);
-  const subFolders = childrenByParent.get(folder.id) ?? [];
+  const subFolders = childrenByParent.get(folder.id) ?? EMPTY_NODES;
   const isDisabled = folder.id === disabledId;
 
   return (
@@ -217,10 +216,8 @@ function DriveRow({ disabledId, driveId, driveName, onSelect, selectedId }: Driv
 
   const treeQuery = useDriveTree(expanded ? driveId : null);
 
-  const childrenByParent = buildChildrenIndex(
-    (treeQuery.data?.folders ?? []).filter((n) => n.mimeType !== MIME_SHORTCUT),
-  );
-  const rootFolders = childrenByParent.get("__root__") ?? [];
+  const childrenByParent = indexDestinationFolders(treeQuery.data?.folders ?? EMPTY_NODES);
+  const rootFolders = childrenByParent.get("__root__") ?? EMPTY_NODES;
   const isDriveDisabled = driveId === disabledId;
 
   return (

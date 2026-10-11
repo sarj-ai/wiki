@@ -38,7 +38,7 @@ export function FilePageClient({ driveId }: { driveId: string }) {
     if (htmlMimeType !== MIME_HTML) return;
     const interval = window.setInterval(
       () => {
-        void refetchFile();
+        if (document.visibilityState === "visible") void refetchFile();
       },
       5 * 60 * 1000,
     );

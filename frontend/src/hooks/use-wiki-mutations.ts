@@ -1,6 +1,6 @@
 "use client";
 
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useQueryClient } from "@tanstack/react-query";
 
 import {
   bulkSetSortOrdersAction,
@@ -14,6 +14,7 @@ import {
   setFolderIconAction,
   setPreferencesAction,
 } from "@/app/actions/wiki-actions";
+import { useSessionMutation } from "@/hooks/use-session-mutation";
 import { wikiKeys } from "@/hooks/use-wiki-tree";
 import { runAction } from "@/lib/action-client";
 import type { CreateFileInput, PreferencesInput } from "@/lib/wiki-api";
@@ -22,9 +23,9 @@ import type { DocIcon, DriveTree, FolderIcon, SortOrder } from "@/types/wiki";
 
 export function useCreateFile() {
   const qc = useQueryClient();
-  return useMutation({
-    mutationFn: async (input: CreateFileInput) =>
-      await runAction(async () => await createFileAction(input)),
+  return useSessionMutation({
+    mutationFn: async (input: CreateFileInput, _context, session) =>
+      await runAction(async () => await createFileAction(input), session),
     onSuccess: (file) => {
       injectNewFileIntoCaches(qc, file);
     },
@@ -34,9 +35,9 @@ export function useCreateFile() {
 export function useRenameFile() {
   const invalidate = useInvalidateTrees();
   const qc = useQueryClient();
-  return useMutation({
-    mutationFn: async ({ fileId, name }: { fileId: string; name: string }) =>
-      runAction(async () => await renameFileAction(fileId, name)),
+  return useSessionMutation({
+    mutationFn: async ({ fileId, name }: { fileId: string; name: string }, _context, session) =>
+      runAction(async () => await renameFileAction(fileId, name), session),
     onSuccess: (file) => {
       invalidate([file.driveId]);
       void qc.invalidateQueries({ queryKey: wikiKeys.file(file.id) });
@@ -46,20 +47,27 @@ export function useRenameFile() {
 
 export function useMoveFile() {
   const qc = useQueryClient();
-  return useMutation({
-    mutationFn: async ({
-      fileId,
-      newParentFolderId,
-      sourceDriveId,
-      sourceParentFolderId,
-    }: {
-      fileId: string;
-      newParentFolderId: string;
+  return useSessionMutation({
+    mutationFn: async (
+      {
+        fileId,
+        newParentFolderId,
+        sourceDriveId,
+        sourceParentFolderId,
+      }: {
+        fileId: string;
+        newParentFolderId: string;
 
-      sourceDriveId: string | undefined;
-      sourceParentFolderId: string | undefined;
-    }) => {
-      const result = await runAction(async () => await moveFileAction(fileId, newParentFolderId));
+        sourceDriveId: string | undefined;
+        sourceParentFolderId: string | undefined;
+      },
+      _context,
+      session,
+    ) => {
+      const result = await runAction(
+        async () => await moveFileAction(fileId, newParentFolderId),
+        session,
+      );
       return { result, sourceDriveId, sourceParentFolderId };
     },
     onError: (_err, _vars, context: { previousSortOrders?: SortOrder[] } | undefined) => {
@@ -85,9 +93,9 @@ export function useMoveFile() {
 
 export function useCopyFile() {
   const qc = useQueryClient();
-  return useMutation({
-    mutationFn: async ({ fileId, name }: { fileId: string; name: string }) =>
-      runAction(async () => await copyFileAction(fileId, name)),
+  return useSessionMutation({
+    mutationFn: async ({ fileId, name }: { fileId: string; name: string }, _context, session) =>
+      runAction(async () => await copyFileAction(fileId, name), session),
     onSuccess: (file) => {
       injectNewFileIntoCaches(qc, file);
     },
@@ -96,9 +104,9 @@ export function useCopyFile() {
 
 export function useRefreshDrive() {
   const qc = useQueryClient();
-  return useMutation({
-    mutationFn: async (driveId: string) =>
-      await runAction(async () => await refreshDriveAction(driveId)),
+  return useSessionMutation({
+    mutationFn: async (driveId: string, _context, session) =>
+      await runAction(async () => await refreshDriveAction(driveId), session),
     onSuccess: (tree: DriveTree) => {
       qc.setQueryData<DriveTree>(wikiKeys.driveTree(tree.driveId), tree);
       void qc.invalidateQueries({ queryKey: wikiKeys.folderFilesPrefix });
@@ -108,16 +116,20 @@ export function useRefreshDrive() {
 
 export function useDeleteFile() {
   const qc = useQueryClient();
-  return useMutation({
-    mutationFn: async ({
-      driveId: _driveId,
-      fileId,
-      parentFolderId: _parentFolderId,
-    }: {
-      fileId: string;
-      driveId: string | undefined;
-      parentFolderId: string | undefined;
-    }) => runAction(async () => await deleteFileAction(fileId)),
+  return useSessionMutation({
+    mutationFn: async (
+      {
+        driveId: _driveId,
+        fileId,
+        parentFolderId: _parentFolderId,
+      }: {
+        fileId: string;
+        driveId: string | undefined;
+        parentFolderId: string | undefined;
+      },
+      _context,
+      session,
+    ) => runAction(async () => await deleteFileAction(fileId), session),
     onSuccess: (_void, { driveId, fileId, parentFolderId }) => {
       removeFileFromCaches(qc, fileId, parentFolderId, driveId);
     },
@@ -126,9 +138,9 @@ export function useDeleteFile() {
 
 export function useBulkSetSortOrders() {
   const qc = useQueryClient();
-  return useMutation({
-    mutationFn: async (items: SortOrder[]) =>
-      await runAction(async () => await bulkSetSortOrdersAction(items)),
+  return useSessionMutation({
+    mutationFn: async (items: SortOrder[], _context, session) =>
+      await runAction(async () => await bulkSetSortOrdersAction(items), session),
 
     onError: (_err, _items, context: { previous: SortOrder[] } | undefined) => {
       if (context) {
@@ -150,9 +162,9 @@ export function useBulkSetSortOrders() {
 
 export function useSetPreferences() {
   const qc = useQueryClient();
-  return useMutation({
-    mutationFn: async (input: PreferencesInput) =>
-      await runAction(async () => await setPreferencesAction(input)),
+  return useSessionMutation({
+    mutationFn: async (input: PreferencesInput, _context, session) =>
+      await runAction(async () => await setPreferencesAction(input), session),
     onSuccess: (prefs) => {
       qc.setQueryData(wikiKeys.preferences, prefs);
     },
@@ -167,8 +179,8 @@ export function useSetDocIcon() {
       icon: icon ?? undefined,
     }),
     matches: (item, { driveId }) => item.driveId === driveId,
-    mutationFn: async ({ driveId, icon }) =>
-      await runAction(async () => await setDocIconAction(driveId, { icon })),
+    mutationFn: async ({ driveId, icon }, session) =>
+      await runAction(async () => await setDocIconAction(driveId, { icon }), session),
 
     queryKey: wikiKeys.docIcons,
   });
@@ -178,8 +190,8 @@ export function useSetFolderIcon() {
   return useIconMutation<FolderIcon, { folderDriveId: string; icon: null | string }>({
     buildItem: ({ folderDriveId, icon }) => ({ folderDriveId, icon: icon ?? undefined }),
     matches: (item, { folderDriveId }) => item.folderDriveId === folderDriveId,
-    mutationFn: async ({ folderDriveId, icon }) =>
-      await runAction(async () => await setFolderIconAction(folderDriveId, icon)),
+    mutationFn: async ({ folderDriveId, icon }, session) =>
+      await runAction(async () => await setFolderIconAction(folderDriveId, icon), session),
     queryKey: wikiKeys.folderIcons,
   });
 }
@@ -210,13 +222,13 @@ function useInvalidateTrees() {
 
 function useIconMutation<TItem, TVars>(config: {
   queryKey: readonly unknown[];
-  mutationFn: (vars: TVars) => Promise<unknown>;
+  mutationFn: (vars: TVars, session: AbortSignal) => Promise<unknown>;
   matches: (item: TItem, vars: TVars) => boolean;
   buildItem: (vars: TVars, existing: TItem | undefined) => TItem;
 }) {
   const qc = useQueryClient();
-  return useMutation({
-    mutationFn: config.mutationFn,
+  return useSessionMutation({
+    mutationFn: async (vars: TVars, _context, session) => await config.mutationFn(vars, session),
     onError: (_err, _vars, context: { previous?: TItem[] } | undefined) => {
       if (context?.previous) qc.setQueryData(config.queryKey, context.previous);
     },

@@ -28,6 +28,36 @@ function jsonResponse(body: unknown, status = 200): Response {
 }
 
 describe("serverWikiApi", () => {
+  it("rejects backend redirects without forwarding their destination", async () => {
+    cookieValue.token = "jwt-token";
+    const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(
+      new Response(null, {
+        headers: { location: "https://other-origin.test/private" },
+        status: 307,
+      }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    await expect(serverWikiApi.getDrives()).rejects.toMatchObject({ status: 502 });
+    expect(fetchMock).toHaveBeenCalledOnce();
+    expect(fetchMock.mock.calls[0]?.[1]?.redirect).toBe("manual");
+  });
+
+  it("releases an unused HTTP error body without waiting for cleanup", async () => {
+    cookieValue.token = "jwt-token";
+    const cleanup = Promise.withResolvers<undefined>();
+    const cancel = vi.fn<() => Promise<undefined>>().mockReturnValue(cleanup.promise);
+    const body = new ReadableStream<Uint8Array>({ cancel });
+    vi.stubGlobal(
+      "fetch",
+      vi.fn<typeof fetch>().mockResolvedValue(new Response(body, { status: 403 })),
+    );
+    try {
+      await expect(serverWikiApi.getFile("file-1")).rejects.toMatchObject({ status: 403 });
+      expect(cancel).toHaveBeenCalledOnce();
+    } finally {
+      cleanup.resolve(undefined);
+    }
+  });
   it("fails fast with 401 when no access token cookie exists", async () => {
     await expect(serverWikiApi.getDrives()).rejects.toMatchObject({
       name: "ServerApiError",

@@ -1,7 +1,7 @@
 {
   "recordedAt": "2026-10-10",
   "baselineRevision": "f63e8f6f342a27d3b3f085e2150417ccd45756bf",
-  "totalPasses": 104,
+  "totalPasses": 199,
   "initialPasses": [
     {
       "pass": 1,
@@ -237,7 +237,7 @@
         },
         {
           "pass": 10,
-          "result": "Remove repeated bootstrap validation and DRY transforms. `zBootstrapRead` already validates every nested resource. Extracted shared pure transforms for Drive summaries, icons, preferences, profile, and sort order; standalone resource schemas retain their wire validation while bootstrap maps its already-validated data directly. This extends the first tranche's nested-tree improvement to the other metadata arrays. Tests preserve default values, nullable fields, and rejection of malformed nested data. A 1,409,370-byte fixture with 100 drives and 10,000 each of document icons, folder icons, and sort orders has deeply equal before/after output: median 4.190 \u2192 1.407 ms (66.4% less CPU), p95 7.302 \u2192 3.365 ms, 100 samples. The fixture has no tree, so the result isolates this additional metadata improvement. Converted wire-property reads to bracket access and constant-backed test/query keys so strict lint and Prettier agree without additional suppressions."
+          "result": "Remove repeated bootstrap validation and DRY transforms. `zBootstrapRead` already validates every nested resource. Extracted shared pure transforms for Drive summaries, icons, preferences, profile, and sort order; standalone resource schemas retain their wire validation while bootstrap maps its already-validated data directly. This extends the first tranche's nested-tree improvement to the other metadata arrays. Tests preserve default values, nullable fields, and rejection of malformed nested data. A 1,409,370-byte fixture with 100 drives and 10,000 each of document icons, folder icons, and sort orders has deeply equal before/after output: median 4.190 → 1.407 ms (66.4% less CPU), p95 7.302 → 3.365 ms, 100 samples. The fixture has no tree, so the result isolates this additional metadata improvement. Converted wire-property reads to bracket access and constant-backed test/query keys so strict lint and Prettier agree without additional suppressions."
         }
       ]
     },
@@ -810,5 +810,3015 @@
     "compressionDecision": "Retain level 4: the fixed-seed, opaque-ID 1,000-node default-metadata tree at level 1 adds 7.4% bytes for 0.628 ms CPU saved. Those bytes take approximately 4.373 ms at 10 Mbps; transfer estimates exclude round trips and queueing.",
     "taskFactory": "Remove an unnecessary event-loop yield from the already-async task dependency while retaining the running event loop required by the Cloud Tasks client.",
     "drivePageCpuTradeoff": "Isolated 1,000-node helper separation adds approximately 0.055 ms for navigator reads and 0.128 ms for strict QA reads; provider requests and public/internal results are preserved."
-  }
+  },
+  "followupTranches": [
+    {
+      "recordedAt": "2026-10-10",
+      "baselineRevision": "80b6e095c8ae6bdb275569ad68b6d47b65abdd8a",
+      "passCount": 85,
+      "agentPassCount": 78,
+      "integrationPassCount": 7,
+      "counting": "Distinct new optimization/DRY/reliability candidates; retained and rejected candidates are identified. Repeated tests, builds, formatting, administration and measurements are not extra passes. Shared ancestry/warmup work is counted once.",
+      "scopes": [
+        {
+          "scope": "frontend-loading",
+          "passCount": 14,
+          "passes": [
+            {
+              "number": 1,
+              "candidate": "Idle document authorization publishes iframe targets after navigation, unmount, user changes, or tab hiding",
+              "outcome": "implemented",
+              "change": "Guard publication with effect ownership, navigation subscription, current visibility, and network/device policy; warm once per verified identity. Let shared QueryClient authorization finish instead of aborting a foreground consumer.",
+              "evidence": [
+                "Six lifecycle tests cover normal publication, navigation and return, unmount, hidden tab, absent identity, and replacement user.",
+                "Actual deployed-source comparison: one late warmed viewer becomes zero; shared authorization remains un-aborted."
+              ],
+              "preserved": "Fresh file authorization, user-keyed recent metadata, successful-result-only publication, and matching-key query coalescing."
+            },
+            {
+              "number": 2,
+              "candidate": "HTML revision polling reads metadata every five minutes in hidden tabs",
+              "outcome": "implemented",
+              "change": "Keep the existing interval but skip its fetch unless visible.",
+              "evidence": [
+                "A simulated 30 hidden minutes produces six metadata reads in deployed source and zero after.",
+                "A visible interval still performs one check and unmount releases the poll."
+              ],
+              "preserved": "Same five-minute cadence when visible, refetch function, version identity, and foreground/manual reload behavior."
+            },
+            {
+              "number": 3,
+              "candidate": "Every pooled iframe subscribes separately to the same reduced-motion query",
+              "outcome": "implemented",
+              "change": "Share the preference subscription in the pooled-frame parent and pass its current value down.",
+              "evidence": [
+                "Four mounted viewers use four subscriptions before and one after.",
+                "No preference subscription exists while the viewer pool is empty; unmount releases it.",
+                "Existing loading-overlay, reduced-motion, timing, and Strict Mode tests pass."
+              ],
+              "preserved": "Live media preference updates, four-viewer cap, iframe identities, and accessibility announcements."
+            },
+            {
+              "number": 4,
+              "candidate": "Window resize bursts repeatedly read viewer-slot geometry",
+              "outcome": "implemented",
+              "change": "Coalesce window resize events into one animation-frame read; retain synchronous ResizeObserver handling and the initial layout read; cancel pending frames on cleanup.",
+              "evidence": [
+                "Actual before/after component comparison: 100 resize events cause 100 geometry reads before and one after.",
+                "Cleanup test proves no queued animation frame remains."
+              ],
+              "preserved": "Slot-relative dimensions and ResizeObserver updates before paint."
+            },
+            {
+              "number": 5,
+              "candidate": "Unopened short-link editors eagerly allocate alias/mutation observers and import full dialog UI",
+              "outcome": "implemented",
+              "change": "Keep a lightweight trigger and dynamically load a controlled editor on its first activation. Reset per document; keep it mounted across ordinary close/reopen.",
+              "evidence": [
+                "An unopened document has one disabled alias query before and zero after, with zero provider reads in both.",
+                "Four interaction tests cover initial deferral, navigation reset, save/cache update, and explicit removal confirmation."
+              ],
+              "preserved": "Copy, create/rename/remove controls, validation, permission routing, cache updates, and keyboard/dialog behavior. Bundle impact will be measured by root's integrated build."
+            },
+            {
+              "number": 6,
+              "candidate": "Repeated copy actions create overlapping timers and publish late feedback into replacement documents",
+              "outcome": "implemented",
+              "change": "Share a document-scoped feedback hook across toolbar, reader link, and editor; keep one timer, reset the duration on repeat, reject stale owner results, and clear on identity change/unmount.",
+              "evidence": [
+                "Ten successful copies create ten active timers before and one after; raw remaining timers after unmount are ten before and zero after.",
+                "Four hook tests cover repeat duration, cleanup, late result, and returning identity."
+              ],
+              "preserved": "Clipboard writes, exact two-second feedback, existing success/error copy, and user-facing labels."
+            },
+            {
+              "number": 7,
+              "candidate": "Quick-link visit effects rewrite browser storage when the profile object changes or Strict Mode replays",
+              "outcome": "implemented",
+              "change": "Depend on the stable user ID and guard the recorded user/alias pair.",
+              "evidence": [
+                "Strict Mode plus five profile rerenders writes the same visit seven times before and once after.",
+                "Handoff query removal and preserving unrelated URL parameters still pass."
+              ],
+              "preserved": "Per-user visit namespace, one real visit update, and removal of only the go parameter."
+            },
+            {
+              "number": 8,
+              "candidate": "An abandoned background refresh can clear a replacement owner's marker or emit a stale unauthorized redirect",
+              "outcome": "implemented",
+              "change": "Release this component's shared-refresh waiter on cleanup, guard terminal handling, and remove only its still-pending matching timestamp. Preserve successful refresh markers.",
+              "evidence": [
+                "Five causal tests cover late denial after unmount, current-owner denial, hidden tab, later-owner marker preservation, and Strict Mode remount/failure/next-minute retry."
+              ],
+              "preserved": "Globally shared raw refresh, twenty-minute refresh policy, minute checks, visibility checks, and active-session unauthorized handling."
+            },
+            {
+              "number": 9,
+              "candidate": "Closed search palettes retain an enabled observer and can refetch stale search results",
+              "outcome": "implemented",
+              "change": "Add an optional enabled argument to useDriveSearch and pass palette open state. Retain TanStack ownership; do not directly cancel shared queries.",
+              "evidence": [
+                "A closed observer makes zero provider requests after invalidation.",
+                "A pending shared foreground read remains un-aborted when the palette closes.",
+                "Component test verifies the retained palette toggles its observer enabled flag."
+              ],
+              "preserved": "Default enabled behavior for existing callers, debounce/query keys, thirty-second freshness, and both 2/2048-character bounds."
+            },
+            {
+              "number": 10,
+              "candidate": "Selected-result prefetch ignores hidden-tab and Save-Data policy",
+              "outcome": "implemented",
+              "change": "Check current visibility and the existing reusable-speculation policy when the delayed speculative callback fires; leave explicit result opening immediate.",
+              "evidence": [
+                "Save-Data comparison: one speculative file read plus one route prefetch becomes zero of both.",
+                "Both hidden and Save-Data interaction tests confirm explicit Enter still prepares and opens the document."
+              ],
+              "preserved": "Selection intent delay, shortcut access guards, folder/form routing, and explicit click/keyboard navigation."
+            },
+            {
+              "number": 11,
+              "candidate": "Global root layout mounts a toast presenter on login and MCP pages with no toast producers",
+              "outcome": "implemented",
+              "change": "Place the eager Toaster in authenticated AppLayout, where every existing toast producer is rendered.",
+              "evidence": [
+                "Source search found all toast calls under Wiki/sidebar/document components; MCP/login use inline errors.",
+                "Authenticated presenter keeps the same theme/provider context and bottom-right position."
+              ],
+              "preserved": "Immediate authenticated notifications and inline login/MCP feedback.",
+              "measurementCaveat": "The existing sync-reference benchmark inventory includes modules registered for other routes. Root must compare actual rendered route script references before claiming login transfer savings."
+            },
+            {
+              "number": 12,
+              "candidate": "QueryProvider initializer and BrowserSessionBoundary duplicate legacy-storage cleanup",
+              "outcome": "implemented",
+              "change": "Keep cleanup at the browser session boundary and remove initializer I/O.",
+              "evidence": [
+                "Actual deployed-source composition removes the same four legacy keys eight times before and four after.",
+                "A regression test confirms every legacy key is still purged; session identity and hydration-order tests pass."
+              ],
+              "preserved": "Legacy metadata cleanup, per-user identity isolation, authenticated QueryClient creation, and session event handlers."
+            },
+            {
+              "number": 13,
+              "candidate": "Add manual memoization to stop repeated iframe load-listener callback/ref creation",
+              "outcome": "retained",
+              "change": "Retain current callback code.",
+              "evidence": [
+                "Deployed production chunk stores load-listener bound refs in React Compiler slots keyed by file ID and reuses them.",
+                "Viewer identity tests prove stable Google embeds and required HTML-version/manual reload remounts."
+              ],
+              "rejected": "Manual memoization is redundant with compiled production behavior, adds maintenance, and conflicts with the repository's React Compiler convention."
+            },
+            {
+              "number": 14,
+              "candidate": "Preload all font weights or add another long-lived font/static-asset cache",
+              "outcome": "retained",
+              "change": "Keep current WOFF2 fonts, swap rendering, selective preload policy, and Next immutable hashed-asset caching.",
+              "evidence": [
+                "Four local Nunito WOFF2 files are 20,084/20,352/20,232/20,400 bytes, already compressed.",
+                "Built CSS points to hashed _next/static/media WOFF2 URLs.",
+                "Installed Next router already sets public,max-age=31536000,immutable for production static assets; custom page headers deliberately exclude these.",
+                "SarjLogo is inline SVG, so unused public raster variants do not create logo fetches."
+              ],
+              "rejected": "Preloading four separate weights forces approximately 81 KB of font transfer before the browser needs them. An extra cache rule adds no benefit to immutable hashed resources, and a font replacement could change appearance without a measured loading improvement."
+            }
+          ]
+        },
+        {
+          "scope": "frontend-sidebar",
+          "passCount": 16,
+          "passes": [
+            {
+              "pass": 1,
+              "outcome": "implemented",
+              "result": "Share document-icon query observers across Drive sections",
+              "evidence": "WikiSidebar owns one enabled document-icon query and supplies its immutable data to all Drive indexes. The real QueryClient regression sees one observer for 20 Drive indexes; an all-hidden-drive case performs no icon read. No request-count reduction is claimed for previously coalesced reads."
+            },
+            {
+              "pass": 2,
+              "outcome": "implemented",
+              "result": "Read the sidebar pathname once for normal file rows",
+              "evidence": "The parent passes its pathname through Drive context and row props. A 500-row render calls no additional pathname hooks. An exported direct-call wrapper still reads pathname when none was supplied; encoded IDs, null parsed IDs, shortcut targets, and external Forms remain covered."
+            },
+            {
+              "pass": 3,
+              "outcome": "implemented",
+              "result": "Share filtered destination-picker folder indexes",
+              "evidence": "Both folder picker and move dialog use one weakly keyed immutable-array index that excludes shortcut destinations. Repeated 10,000-node picker derivation measures 0.161250 ms before versus 0.000008 ms after; replacement arrays produce current names and indexes."
+            },
+            {
+              "pass": 4,
+              "outcome": "implemented",
+              "result": "Stabilize missing folder-icon and sort-order inputs",
+              "evidence": "The sidebar supplies shared readonly empty arrays while each overlay query is unresolved, instead of creating one new array per Drive on every render. This keeps the existing shared index keys reusable during pending reads."
+            },
+            {
+              "pass": 5,
+              "outcome": "implemented",
+              "result": "Classify lazy folder and shortcut listings once per query array",
+              "evidence": "A single classification pass produces files and folder-like nodes for incomplete trees and folder shortcuts. The new weak cache preserves node order and shortcut classification. Cold 10,000-node classification measures 0.143263 ms before versus 0.041439 ms after; repeated classification avoids both filters."
+            },
+            {
+              "pass": 6,
+              "outcome": "implemented",
+              "result": "Cache document-only visibility lists for collapsed counts",
+              "evidence": "Document-only child counts reuse a filtered immutable array when showNonDocFiles is false. Existing MIME_DOC/MIME_HTML policy is preserved, including the prior exclusion of document shortcuts in this mode. Warm 8,000-node filtering measures 0.064477 ms before versus 0.000009 ms after; cold filtering is effectively unchanged."
+            },
+            {
+              "pass": 7,
+              "outcome": "implemented",
+              "result": "Skip root collation when an optimistic order already specifies every item",
+              "evidence": "Root construction uses the complete optimistic ID sequence directly and sorts only leftover items for partial or stale sequences. Tests prove zero locale comparisons for a complete order and retained alphabetical/custom-rank fallback for partial orders. The 10,000-sibling construction/order fixture measures 1.287004 ms before versus 0.793054 ms after."
+            },
+            {
+              "pass": 8,
+              "outcome": "implemented",
+              "result": "Avoid unchanged optimistic output and temporary map tuples",
+              "evidence": "Empty or already-matching valid sibling orders retain their input reference. Changed orders build the lookup by direct insertion instead of allocating one tuple per item. A matching 10,000-item order measures 0.799492 ms before versus 0.060336 ms after; reverse order measures 0.771033 ms before versus 0.730128 ms after. Missing-ID and partial-order behavior is covered."
+            },
+            {
+              "pass": 9,
+              "outcome": "implemented",
+              "result": "Batch breadcrumb expansion into one folder-state update",
+              "evidence": "expandPath opens its Drive and expands all requested folders in one immutable folder-state update. The persisted 10-folder breadcrumb now produces two writes total (one Drive plus one folder state), rather than one Drive plus ten folder writes. The per-user storage schema and default first-Drive initialization remain intact."
+            },
+            {
+              "pass": 10,
+              "outcome": "implemented",
+              "result": "Avoid persistence writes for unchanged expansion requests",
+              "evidence": "Folder and Drive setters check their current state before entering the persist middleware. Zustand no-op state returns still caused storage writes previously. Repeated path reveals, unchanged expanded Drives, and already-collapsed initialized Drives now produce zero writes, confirmed by a localStorage spy."
+            },
+            {
+              "pass": 11,
+              "outcome": "implemented",
+              "result": "Validate only drag container IDs during hover",
+              "evidence": "Container lookup uses a small derived Zod schema and reuses the already-read over-container result. Full sibling-list validation remains in commit/order paths; destination scope validation and backend permission enforcement are unchanged. A getter regression proves hover does not read the sibling list, while malformed full drop metadata remains rejected. A 10,000-ID fixture measures 0.070581 ms before versus 0.000054 ms after."
+            },
+            {
+              "pass": 12,
+              "outcome": "implemented",
+              "result": "Reuse destination metadata for shortcut validation and toast naming",
+              "evidence": "Move handling reads the cached destination folder once, then uses the same record for shortcut rejection and display naming. This removes the second linear scan without changing cross-Drive folder restrictions, shortcut rejection, optimistic rollback, or fresh provider authorization."
+            },
+            {
+              "pass": 13,
+              "outcome": "implemented",
+              "result": "Scope move ordering to actual destination siblings and current ranks",
+              "evidence": "The new helper reads parent-index buckets instead of filtering/scanning the entire Drive and reuses the current custom-rank index. Complete nested trees supply their own files, complete roots exclude files in other folders, and incomplete trees use the lazy listing with folder-like duplicates removed. Tests cover root/nested complete/incomplete cases, mixed ranked folders/files, absent anchors, already-present moved nodes, metadata replacement, and a known lazy listing without a tree. This corrects ordering as well as reducing unnecessary work; no equivalent baseline latency claim is made for the prior incorrect all-file scope."
+            },
+            {
+              "pass": 14,
+              "outcome": "implemented",
+              "result": "Stop obsolete follow-up Drive speculation",
+              "evidence": "Delayed hover preparation rechecks visibility, connection policy, and current intent before fetching. After the shared tree fetch, lifecycle ownership is checked again before an incomplete-root read. Leave, hidden-page, expansion, and unmount cases do not start a second read; the existing shared tree request is not cancelled. Direct primary pointer intent remains allowed."
+            },
+            {
+              "pass": 15,
+              "outcome": "implemented",
+              "result": "Reuse search folder ancestry and bound cyclic traversal",
+              "evidence": "The loading agent consumes the shared folderAncestorIds helper without separate pass credit. It uses a weakly keyed node lookup, keeps root-to-parent order and final unknown-parent behavior, and stops self/two-node cycles. New immutable and separately scoped arrays replace prior ancestry. A warm 10,000-folder reveal fixture measures 0.337322 ms before versus 0.000186 ms after."
+            },
+            {
+              "pass": 16,
+              "outcome": "rejected",
+              "result": "Reject the fused Array.from/push sibling builder after measurement",
+              "evidence": "The proposed fused construction regressed the 10,000-node cold wrapper fixture from 0.052012 ms to 0.065265 ms (40 alternating samples), so it was removed. The established map/spread algorithm is retained behind a shared helper for DRY consistency. The final shared-helper fixture is 0.052368 ms versus 0.056490 ms; no construction speedup is claimed. Immutable toSorted remains required by the repository lint rules."
+            }
+          ]
+        },
+        {
+          "scope": "backend-routes",
+          "passCount": 15,
+          "passes": [
+            {
+              "id": 1,
+              "area": "Files / document icons",
+              "decision": "retained",
+              "review": "Bulk icon visibility previously fetched and converted complete FileResponse metadata although callers only need accessible IDs.",
+              "change": "Added FilesService.get_accessible_ids(list[FileId]) -> set[FileId]. Google projects id,parents,driveId,trashed and validates GoogleFileAccessLocation; shared batching/retries/errors remain in one generic bulk reader.",
+              "evidence": "100 synthetic description-heavy records: 439880 -> 8690 uncompressed JSON bytes; parser median 0.110250 -> 0.052917 ms. The 100 GET subrequests are unchanged. New real request fixture checks duplicate IDs, 403/404, trashed records, mismatched ID, outside parents, 500 propagation and empty input.",
+              "limits": "Results remain fresh per request and per user. Integration call site in extras belongs to storage agent."
+            },
+            {
+              "id": 2,
+              "area": "Drive / bulk personal membership",
+              "decision": "retained",
+              "review": "Every file with a common parent independently traversed the same ancestry.",
+              "change": "Group personal parents within one resolve_member_drives call and check each unique parent once; retain strict bounded sequencing and existing ancestry validation/node caps.",
+              "evidence": "Actual fake Google metadata GET count for 200 common-parent files: 200 -> 1 in both normal and bounded modes. With explicitly simulated 1 ms provider latency: normal median 21.203 -> 1.807 ms; bounded 341.016 -> 1.669 ms.",
+              "security": "A second call after changing the parent to 403 excludes the personal files and increments the fresh ancestor read. Root/direct-root and shared/foreign/orphan cases remain covered. No cross-request permission cache."
+            },
+            {
+              "id": 3,
+              "area": "Authentication / optional cookie token",
+              "decision": "rejected",
+              "review": "Candidate sync -> async conversion was investigated using the actual call graph.",
+              "evidence": "rg shows the only call at auth/router.py logout: request.cookies.get('refresh_token') or optional_access_token(request). The helper is directly called, never installed with Depends.",
+              "result": "Restored the original synchronous helper. There is no real FastAPI thread-pool dispatch to remove; conversion would add await overhead and break logout without a caller change. Native consent dependency is a separate root-owned optimization."
+            },
+            {
+              "id": 4,
+              "area": "Smart create / cached tree fan-out",
+              "decision": "retained",
+              "review": "Proposal generation loaded cached trees for every Drive before filtering destinations to the invoking Drive.",
+              "change": "Load only the invoking Drive tree before ranking; preserve fresh Drive inventory and candidate filtering.",
+              "evidence": "30-Drive fixture: 30 -> 1 cache peeks per proposal. With explicitly simulated 1 ms per peek: median 40.002 -> 2.317 ms. Extended existing proposal test asserts only the Product tree loads and enumerated output remains identical."
+            },
+            {
+              "id": 5,
+              "area": "Smart create / cancellation lifecycle",
+              "decision": "retained",
+              "review": "Failure or cancellation during cached-tree reads left the independently launched template task outstanding.",
+              "change": "Shared typed _parallel_reads helper overlaps independent operations, preserves primary exception precedence, and cancels/drains the companion when primary read/request aborts.",
+              "evidence": "Two causal Event regressions cover primary cache failure and request cancellation. Both assert catalog cancellation finishes before proposal exits; zero abandoned catalog tasks. Shared result is a frozen typed dataclass, no new lint exceptions.",
+              "limits": "Underlying asyncio.to_thread work cannot be forcibly stopped; behavior follows existing provider threading and shielded singleflight semantics."
+            },
+            {
+              "id": 6,
+              "area": "Reorganization / independent provider and tree reads",
+              "decision": "retained",
+              "review": "Document export and sidebar tree fetch ran sequentially after permission validation.",
+              "change": "Overlap fresh document text export with the independent cache tree read, after file/edit/Drive checks; preserve content-unavailable failure priority and non-Doc behavior.",
+              "evidence": "Causal Events prove both reads start without wall-clock assertions. Existing read-only and missing export regressions still pass. Explicitly simulated independent 20 ms reads: median 44.400 -> 22.323 ms.",
+              "security": "No export or new tree work starts before file edit access is accepted."
+            },
+            {
+              "id": 7,
+              "area": "Smart create/reorganization / bounded ranking",
+              "decision": "retained",
+              "review": "Both candidate functions sorted every destination although they return at most 80.",
+              "change": "Use heapq.nsmallest(80, ..., identical key), preserving deterministic ordering and tie behavior.",
+              "evidence": "Exact output equality against deployed code for 10000 folders. Already ordered names: smart 21.606 -> 20.808 ms and reorg 23.055 -> 22.274 ms. Mixed names/shuffled order: smart 28.387 -> 20.504 ms and reorg 29.787 -> 22.408 ms. Ranking key/model construction still dominates small/ordered inputs."
+            },
+            {
+              "id": 8,
+              "area": "Smart create / template candidate filtering",
+              "decision": "retained",
+              "review": "Two complete filtered lists were constructed before slicing the first 80 compatible same-Drive templates.",
+              "change": "Combine MIME/Drive predicates in a lazy iterator and stop at 80 using islice.",
+              "evidence": "Exact ordered output equality against deployed code; 10000-compatible-template fixture median 0.635667 -> 0.004875 ms, 80 returned. The fixture is favorable early matches; late/no matches still scan the catalog but avoid extra lists."
+            },
+            {
+              "id": 9,
+              "area": "Template catalog / provider selection and projection",
+              "decision": "retained",
+              "review": "Template discovery requested navigator MIME types/parents/shortcut details that its consumers discard.",
+              "change": "Add DriveService.list_template_children fallback and Google specialization with only folders/Docs/Slides and id,name,mimeType,modifiedTime,description. Reuse shared paginated child reader; retain existing semaphore and catalog behavior.",
+              "evidence": "Actual provider request regression verifies exact MIME query/projection, two-page token propagation, category parent assignment, descriptions/timestamps and no ancestry/shortcut GET. Synthetic 2000 mixed items / 100 templates: 211760 -> 17180 response JSON bytes, 2 -> 1 pages at 1000.",
+              "limits": "Savings depend on folder contents. Template code previously ignored shortcut MIME nodes; shortcut navigation/QA projections remain unchanged."
+            },
+            {
+              "id": 10,
+              "area": "Drive / static MIME predicates",
+              "decision": "retained",
+              "review": "Repeated route/page setup rebuilt the same immutable MIME query strings.",
+              "change": "Memoize only synchronous _build_mime_clause with immutable internal MIME tuples (navigator and template variants).",
+              "evidence": "Identical clause text; 10000 calls median 13.418 -> 0.190 ms.",
+              "security": "Cache contains static query strings only, no tokens, metadata, users or permission answers."
+            },
+            {
+              "id": 11,
+              "area": "MCP search / fresh metadata projection",
+              "decision": "retained",
+              "review": "Search hydration read descriptions/version/capabilities although SearchResult consumes only ID/name/MIME/timestamp.",
+              "change": "Dedicated get_search_metadata_many projects id,name,mimeType,parents,driveId,modifiedTime,trashed. MCP search uses it while ordinary get_document/mutation callers keep the full metadata read.",
+              "evidence": "100 description-heavy records: 439880 -> 20580 uncompressed JSON bytes, 100 GET subrequests unchanged. Parser CPU is effectively unchanged (0.109250 vs 0.110583 ms), so gain is transfer/projection. Regression proves a subsequent 404 removes the result.",
+              "partial_defaults": "GoogleFile capabilities default false when omitted, but search serializer _document never reads them or description/version. The projection is used only in MCP search; get_document still calls full files.get and exposes current can_edit. Access-only never constructs FileResponse."
+            },
+            {
+              "id": 12,
+              "area": "Drive search snippets / prefix scans",
+              "decision": "retained",
+              "review": "Descending one-character prefix fallback repeatedly scanned whole document text for every missing suffix.",
+              "change": "Check exact/minimum prefix then binary-search the monotonic longest-prefix predicate; retain earliest offset of the longest matching prefix.",
+              "evidence": "Exact baseline output equality. 480000 chars / absent 400-char word: 7.518 -> 0.446 ms. 498009 chars / existing 8-char prefix: 6.615 -> 1.079 ms. Ordinary 17-char query: 0.342 -> 0.337 ms. Five new public snippet regressions cover longest prefix, later exact match, minimum prefix, absence and four-character boundary."
+            },
+            {
+              "id": 13,
+              "area": "File detail / root breadcrumb",
+              "decision": "retained",
+              "review": "Root or parent-less file breadcrumbs fetched/decoded the cached Drive tree although only the current Drive name is used.",
+              "change": "Skip tree peek for missing parent or parent equal to FileId(drive_id), record file_tree_cache_not_needed; nested-folder path unchanged.",
+              "evidence": "Existing nested route still peeks once and returns full three-part breadcrumb. Two root/parent-less regressions prove fresh file GET remains and cache peeks fall 1 -> 0 while the root breadcrumb stays correct.",
+              "limits": "Count measured at the route cache boundary, not claimed as a PostgreSQL timing. No cached metadata substitutes for fresh file access."
+            },
+            {
+              "id": 14,
+              "area": "HTML viewer / current Drive membership",
+              "decision": "rejected",
+              "review": "The metadata scope check followed by drives.get looked duplicative.",
+              "evidence": "get_html_content normalizes scoped metadata, obtains inventory, then _ensure_current_drive_membership_sync calls fresh drives.get(id,hidden) before download for a shared Drive. list_drives may use cached inventory.",
+              "result": "Keep the fresh Drive membership check. Removing it would weaken visibility/revocation freshness. HTML bytes remain bounded and never cached across authority changes."
+            },
+            {
+              "id": 15,
+              "area": "Document transformation / fresh source/output snapshots",
+              "decision": "rejected",
+              "review": "Audited Docs, Slides and Word metadata/export reads for projected fields and overlap opportunities.",
+              "evidence": "Docs already overlaps independent document+metadata reads. Presentation MIME/capability/version/size/checksum validation precedes selecting native Slides versus PPTX paths. Word _read_word_sync deliberately brackets bounded media download with fresh metadata bindings, and verify_word checks the current output binding/properties again.",
+              "result": "Keep validation reads and complete document/presentation structures needed by formatting/source verification. Generic provider response caching or parallelizing the before/after snapshot checks would weaken source-change/output identity contracts. No document_transform edits."
+            }
+          ]
+        },
+        {
+          "scope": "backend-storage",
+          "passCount": 18,
+          "passes": [
+            {
+              "pass": 1,
+              "candidate": "Replace expanded cache bulk INSERT VALUES with typed array UNNEST",
+              "result": "retained",
+              "evidence": "Batch preparation preserves paired equal-length arrays and encrypted JSONB strings via to_jsonb(text). Existing 1,000-row chunk cap, one atomic transaction, first-chunk expiry CTE, and shared expiry remain. Real PostgreSQL round trips and later-chunk rollback tests pass."
+            },
+            {
+              "pass": 2,
+              "candidate": "Use array INSERT for every cache write, including tiny batches",
+              "result": "rejected below eight rows",
+              "evidence": "A single-row VALUES write is faster than the array construction path. Retain VALUES below eight rows; use arrays at eight or more based on the ten-row improvement. Regression runs cover counts 1, 8, 1,001 and 4,096."
+            },
+            {
+              "pass": 3,
+              "candidate": "Replace bulk cache IN with key = ANY(array)",
+              "result": "rejected",
+              "evidence": "Prepared-plan behavior is unstable with sparse or unanalysed table statistics. A 10,000-key ANY read was dramatically slower than expanded IN. Do not ship this candidate."
+            },
+            {
+              "pass": 4,
+              "candidate": "Replace only large bulk cache IN with JOIN UNNEST(array)",
+              "result": "retained at 4,096 physical keys",
+              "evidence": "Measured fresh unanalysed and analysed 20,000-row temporary fixtures under forced custom and generic plans, seven samples per query. 32/1,000-key custom plans can regress, so expanded IN remains below 4,096. Every tested 4,096/10,000-key combination improved. Identity/namespace/TTL predicates, 10,000-key chunks, collision rejection, deduplication and newest-first rotation are preserved."
+            },
+            {
+              "pass": 5,
+              "candidate": "Index legacy-cache namespace cleanup rather than scanning modern encrypted entries",
+              "result": "retained",
+              "evidence": "Add a partial namespace index for legacy plaintext lookup keys, retaining the existing expiry index. Inline only the fixed regex literal so generic prepared plans can match the partial-index predicate. Global expired-row deletion and namespace-local legacy cleanup semantics remain."
+            },
+            {
+              "pass": 6,
+              "candidate": "Index expired-task cleanup",
+              "result": "retained",
+              "evidence": "Task admission includes a DELETE CTE filtered by expires_at and running-lease retention. Existing owner/status indexes do not serve expiry lookup. Add expires_at index while retaining exact expiry/lease-grace predicates."
+            },
+            {
+              "pass": 7,
+              "candidate": "Index pending transform dispatch reconciliation and make generic plans eligible",
+              "result": "retained",
+              "evidence": "Add partial (dispatch_ready_at,id) index for pending document transforms and inline only fixed kind/status literals in the matching read. Initial empty-ready fixture and later 190-ready-row mixed-kind fixture both improve. Bounded 50-row ordering and expiry checks remain."
+            },
+            {
+              "pass": 8,
+              "candidate": "Avoid repeated MultiFernet construction and JSON parse plus validation on cache reads",
+              "result": "retained",
+              "evidence": "Cache the immutable protector's MultiFernet decoder and validate decrypted JSON directly into a strict envelope model. Enforce required fields, reject unknown members, preserve authenticated namespace/logical-key binding and rotation. New malformed authenticated plaintext cases and legacy-value compatibility tests pass."
+            },
+            {
+              "pass": 9,
+              "candidate": "Use the same validated envelope model for direct cache JSON serialization",
+              "result": "retained",
+              "evidence": "Replace value validation plus Python JSON dumping with strict envelope model validation and JSON serialization. Explicit ser_json_inf_nan=constants preserves previous NaN/Infinity behavior. Unicode, null, large integer, negative zero, nesting and old/new reader compatibility are tested. Ciphertext stays f1 Fernet; nested member order is not part of a lookup/hash contract."
+            },
+            {
+              "pass": 10,
+              "candidate": "Reuse HMAC namespace-prefix state within bulk lookup derivation",
+              "result": "retained",
+              "evidence": "New physical_keys_many copies per-call HMAC prefix states for eight or more keys. No state is cached between requests; every physical key remains byte-identical to prior derivation. Unicode, namespace separation and one/three-key rotation order regressions pass."
+            },
+            {
+              "pass": 11,
+              "candidate": "Stop deriving unused rotation lookup keys for bulk writes",
+              "result": "retained",
+              "evidence": "Bulk writes now explicitly request only the active HMAC key while bulk reads request all rotation candidates. Three-key writes drop two unused derivations per entry. A PostgreSQL rotation test confirms old rows remain readable, writes create only active-key rows, and deletion removes all candidates."
+            },
+            {
+              "pass": 12,
+              "candidate": "Keep owner-lock waiters from exhausting the task/cache connection pool",
+              "result": "retained",
+              "evidence": "Use nonblocking transaction advisory lock attempts with capped jittered delay and a 120-second total deadline. Failed attempts commit only clean read transactions: ORM new/dirty/deleted state and PostgreSQL assigned transaction ID detect pending, flushed and Core writes; those callers retain their transaction and use the original blocking lock path. Lock acquisition still precedes replay/admission/cap/insert. Timeout/cancellation rolls back. Eight real PostgreSQL interruption cases and concurrent dedupe suites pass."
+            },
+            {
+              "pass": 13,
+              "candidate": "Give overlapping cache bulk writes a consistent physical row-lock order",
+              "result": "retained",
+              "evidence": "Sort prepared cache entries by their HMAC physical key before chunking, covering the entire transaction. Opposite-order 1,001-key concurrent writes complete without deadlock, each emitted array has sorted keys, and the final data belongs wholly to one atomic writer. Sorting also applies to sort-order writes by drive_id."
+            },
+            {
+              "pass": 14,
+              "candidate": "Reduce sort-order bulk SQL construction and parameter count",
+              "result": "retained at 32 items",
+              "evidence": "Use typed drive-ID and float arrays plus one owner UUID in INSERT SELECT for larger sort-order lists; retain VALUES below 32. The request cap stays 10,000, finite-number validation and user-scoped composite keys remain. A separate 1/8/32/64-item cutoff benchmark keeps small requests out of slower array paths."
+            },
+            {
+              "pass": 15,
+              "candidate": "Avoid rewriting unchanged sort-order rows",
+              "result": "retained",
+              "evidence": "ON CONFLICT updates only IS DISTINCT FROM sort_order. This table has no update timestamp/audit field to preserve. PostgreSQL xmin tests prove unchanged rows retain their version and exactly a changed row receives a new version; another user's identical drive ID is isolated. The route still reports the number of requested items."
+            },
+            {
+              "pass": 16,
+              "candidate": "Use freshly authorized ID-only reads when filtering document icons",
+              "result": "retained",
+              "evidence": "Wire extras.list_accessible_doc_icons to FilesService.get_accessible_ids, coordinated with route-agent's minimal Google metadata projection and within-call ancestry deduplication. No cached identity/permissions. Existing hidden/private bootstrap filtering and a one-connection real PostgreSQL regression verify transaction release before independent permission-cache checkouts. Files/Drive implementation and its provider measurements belong to backend_routes report, not this pass's speed claim."
+            },
+            {
+              "pass": 17,
+              "candidate": "Convert cached protector factory to an async dependency to avoid thread dispatch",
+              "result": "rejected as inapplicable",
+              "evidence": "Call-graph inspection proves cache_entry_protector_dep is directly invoked inside already-async cache_service_dep; it is not used in Depends. There is no worker-thread dispatch to remove. Retain its synchronous @cache initializer and cached key setup."
+            },
+            {
+              "pass": 18,
+              "candidate": "Replace encrypted checkpoint JSON serialization/parsing with direct Pydantic operations",
+              "result": "rejected/deferred",
+              "evidence": "Seven-sample controlled fixtures show direct model_validate_json is slower: retain existing parser and validation. Direct model_dump_json saves only about 0.265 ms for a 152 KiB fixture and changes persisted canonical byte ordering/size; defer that encoding contract change after prioritizing measured material storage gains. Nested marker numeric parity was checked and no semantic drift was observed in those tested cases; this is a scope/risk decision, not a claimed failure."
+            }
+          ]
+        },
+        {
+          "scope": "cross-stack",
+          "passCount": 15,
+          "passes": [
+            {
+              "number": 1,
+              "candidate": "HTML content fetches continue after iframe/client disconnect",
+              "outcome": "implemented",
+              "change": "Combine inbound request cancellation with the existing 15 s timeout; skip a pre-aborted request; return a safe no-store 502 for transport failure; reject upstream redirects.",
+              "evidence": [
+                "content route test proves pre-aborted requests cause zero upstream fetches",
+                "pending upstream fetch receives the client abort",
+                "an open successful stream returns headers before EOF and keeps CSP/header filtering"
+              ],
+              "preserved": "Token lookup, allowlisted Drive IDs, HTTP error status, whitelisted security headers, and body streaming."
+            },
+            {
+              "number": 2,
+              "candidate": "Authenticated Wiki/transform BFF spends cookie and upstream work on already-cancelled requests",
+              "outcome": "implemented",
+              "change": "Return before cookie lookup for a pre-aborted request and recheck cancellation after asynchronous cookies.",
+              "evidence": [
+                "Wiki BFF pre-abort test verifies fetch is never called",
+                "shared helper is also used by transform GETs"
+              ],
+              "preserved": "Existing path allowlists, request IDs, credentials, timeouts, no-store policy, and error redaction."
+            },
+            {
+              "number": 3,
+              "candidate": "BFF error responses wait for unused upstream body cancellation",
+              "outcome": "implemented",
+              "change": "Use a shared nonblocking stream discard helper; retain the upstream HTTP status even if cancellation stalls or fails.",
+              "evidence": [
+                "BFF stalled-cancel test returns stable redacted 429 without resolving the cancel promise"
+              ],
+              "preserved": "HTTP status and redacted response details; no upstream body is forwarded on an error."
+            },
+            {
+              "number": 4,
+              "candidate": "Wiki GET recovery waits for the entire discarded 401 stream",
+              "outcome": "implemented",
+              "change": "Start shared session refresh without awaiting 401 body cleanup.",
+              "evidence": [
+                "HTTP client stalled-cleanup test resolves the replayed read with cleanup still pending",
+                "existing concurrent and terminal/unavailable refresh tests pass"
+              ],
+              "preserved": "One replay, shared refresh, cancellation, expiry notifications, and unavailable/unauthorized classification."
+            },
+            {
+              "number": 5,
+              "candidate": "Bounded transform decoding waits on cleanup after size or UTF-8 failure",
+              "outcome": "implemented",
+              "change": "Extract shared bounded UTF-8 text reading and make final stream cleanup nonblocking.",
+              "evidence": [
+                "Malformed UTF-8 and size/cancellation cases retain their error classes",
+                "actual helper benchmark compares deployed source against changed source"
+              ],
+              "preserved": "The transform 4 MiB byte limit and its exact limit error message; signal handling and strict UTF-8 decoding."
+            },
+            {
+              "number": 6,
+              "candidate": "Performance ingestion reads/reencodes an unbounded body before applying its 2 KiB limit",
+              "outcome": "implemented",
+              "change": "Use shared byte-bounded streaming text reader before JSON parsing; stop at the first chunk exceeding 2048 bytes.",
+              "evidence": [
+                "Chunked request declaring Content-Length: 1 rejects 2049 actual bytes before EOF and cancels the body",
+                "actual route benchmark with a delayed later 1 MB chunk preserves 413 and avoids that chunk"
+              ],
+              "preserved": "Allowlisted event schema, accepted logging shape, session-cookie gate, declared-length fast rejection, and no-store 204 response."
+            },
+            {
+              "number": 7,
+              "candidate": "Wiki GETs send predictable failing requests when the session_exp cookie is already near expiry",
+              "outcome": "implemented",
+              "change": "Share the existing generated client's 30 s proactive-refresh policy and apply it before Wiki GETs.",
+              "evidence": [
+                "Two concurrent near-expiry reads share one refresh before either GET",
+                "fresh, missing, invalid, and exact 30 s boundary cookie tests",
+                "actual transport benchmark"
+              ],
+              "preserved": "The pre-existing proactive policy, refresh deduplication, and reactive 401 fallback; requests without a valid expiry hint still start immediately."
+            },
+            {
+              "number": 8,
+              "candidate": "Generated API reads waiting for session refresh keep cancelled consumers and can replay abandoned requests",
+              "outcome": "implemented",
+              "change": "Pass each request signal to refresh waiters, recheck before dispatch/replay, and discard abandoned 401 bodies on cancelled recovery.",
+              "evidence": [
+                "Cancellation during shared refresh settles AbortError with two requests and no replay",
+                "cancelled recovery body cleanup is asserted",
+                "bodied request replay and denied-refresh HTTP detail tests remain intact"
+              ],
+              "preserved": "Shared refresh continues for other consumers; mutation body clone/idempotency/replay behavior stays intact."
+            },
+            {
+              "number": 9,
+              "candidate": "Generated API error parsing tees the response although no second consumer exists",
+              "outcome": "implemented",
+              "change": "Read the original error body directly instead of cloning it before an interceptor throws.",
+              "evidence": [
+                "Existing string/validation/fallback HTTP error details pass",
+                "denied refresh explicitly preserves the original 'expired' HTTP detail",
+                "actual 1 MB error fixture benchmark"
+              ],
+              "preserved": "Status, user-facing detail, schema validation, and rate-limit copy."
+            },
+            {
+              "number": 10,
+              "candidate": "Session refresh leaves unused response bodies open and may follow needless redirects",
+              "outcome": "implemented",
+              "change": "Discard unused refresh bodies without delaying the result; explicitly use no-store and redirect:error.",
+              "evidence": [
+                "Successful refresh returns while cancellation is stalled",
+                "existing shared, unavailable, unauthorized, timeout, and waiter-cancellation tests pass"
+              ],
+              "preserved": "Cookie credentials, 10 s refresh timeout, shared refresh promise, and result classification."
+            },
+            {
+              "number": 11,
+              "candidate": "Server API error interception throws before releasing the unused error stream",
+              "outcome": "implemented",
+              "change": "Discard failed response bodies before throwing the existing ServerApiError; no wait is introduced.",
+              "evidence": [
+                "403 server-client test rejects with unchanged status while cancellation is unresolved",
+                "existing action transport tests pass"
+              ],
+              "preserved": "Existing status-only server error boundary and authenticated request behavior."
+            },
+            {
+              "number": 12,
+              "candidate": "Server alias reads can add unexpected redirect hops and repeat stream cleanup logic",
+              "outcome": "implemented",
+              "change": "Use shared nonblocking body cleanup and the Cloudflare-compatible backend client; manual redirects are rejected and redacted.",
+              "evidence": [
+                "Alias resolve/recent tests retain result/status shapes",
+                "Resolve test asserts explicit redirect rejection alongside authenticated no-store request options"
+              ],
+              "preserved": "Token authority, schema parsing, existing read POST body, ten-second deadline, and unavailable/not-found/unauthorized handling.",
+              "integrationNote": "Root found redirect:error unsupported in Cloudflare; the final implementation uses manual inspection for all server backend clients."
+            },
+            {
+              "number": 13,
+              "candidate": "Cache removals copy and structurally compare arrays even when the node is absent",
+              "outcome": "implemented",
+              "change": "Return unchanged array/tree references on misses, and remove all matching IDs with one prefix scan and a remaining-tail loop.",
+              "evidence": [
+                "QueryClient with structuralSharing:false retains original references for absent removals",
+                "Duplicate IDs are all removed and ordering is preserved",
+                "Actual 10,000-node QueryClient benchmarks include absent, first, and final-node removal"
+              ],
+              "rejected": "The initial some+filter approach saved misses but added about 0.12 ms for tail removals. It was replaced and measured again.",
+              "preserved": "Per-file invalidation options, optimistic move rollback, and duplicate removal semantics."
+            },
+            {
+              "number": 14,
+              "candidate": "Search snippets issue backend reads for queries exceeding the endpoint's 2048-character contract",
+              "outcome": "implemented",
+              "change": "Use the same upper-bound guard already present on main Drive search before enabling snippet queries.",
+              "evidence": [
+                "React hook test renders a 2049-character query: fetch stays idle with zero calls; rerendering a valid query makes exactly one call"
+              ],
+              "preserved": "Exact query keys/text, cancellation, stale time, retry behavior, and valid query results."
+            },
+            {
+              "number": 15,
+              "candidate": "Add a second transport-level dedup/cache layer for simultaneous warmup and navigation reads",
+              "outcome": "retained",
+              "change": "Keep existing matching-key QueryClient coalescing; do not add a global transport cache.",
+              "evidence": [
+                "DocWarmup and useFile both call the existing fileQueryOptions",
+                "Measurement using the actual fileQueryOptions and QueryClient observes two concurrent consumers with one provider read"
+              ],
+              "rejected": "A transport-level shared request would duplicate existing deduplication and complicate caller-specific cancellation, user isolation, and access freshness."
+            }
+          ]
+        },
+        {
+          "scope": "root",
+          "passCount": 7,
+          "passes": [
+            {
+              "pass": 1,
+              "candidate": "Recent-alias database projection",
+              "result": "Retained: fetch the two columns used by recent links instead of six columns and ORM entities. Keep active-alias filtering, input order/deduplication, fresh provider authorization and connection release. Alternating 50-row PostgreSQL measurements (100 samples) reduced SELECT/materialization/commit median from 0.6246 ms to 0.5672 ms; this small database gain excludes provider latency. Existing permission/order tests and real single-connection PostgreSQL cases passed."
+            },
+            {
+              "pass": 2,
+              "candidate": "Native MCP consent dependency dispatch",
+              "result": "Retained: the lifespan-slot lookup now runs as an async FastAPI dependency, removing a worker-thread dispatch on consent and connection-management routes. The router accepts synchronous and asynchronous dependency callables. Preserve fail-closed behavior before startup and after shutdown; native composition, consent and runtime regressions passed."
+            },
+            {
+              "pass": 3,
+              "candidate": "Coverage of native MCP route measurements",
+              "result": "Retained: Starlette native routing does not populate the FastAPI route metadata, so existing request metrics labeled public OAuth and MCP paths unmatched. Feed the existing fixed NATIVE_PATHS whitelist into request metrics. Templates still take precedence; unknown paths and resource identifiers are never emitted. Three new privacy cases plus native integration tests passed. This improves measurement coverage, not request latency."
+            },
+            {
+              "pass": 4,
+              "candidate": "Singleflight follower allocation and dictionary synchronization",
+              "result": "Retained: only leaders allocate the shared Future, and dictionary updates remain atomic on one event loop without an asyncio.Lock. Followers retain cancellation shielding. Existing concurrency, exception, principal-scope and cache tests plus a new leader-cancellation retry case pass (90 tests). One leader plus 1,000 followers now allocates 1,000 fewer futures; 40 alternating-order fixture samples reduced median scheduling/coalescing time from 5.5996 ms to 5.1629 ms. This isolates coalescing overhead, excluding provider latency."
+            },
+            {
+              "pass": 5,
+              "candidate": "Authenticated session ORM projection",
+              "result": "Rejected: loading only four of eight session columns preserves fresh user/session revocation semantics, but the query-option construction costs more than the avoided small row fields in the measured hot path. One active session, fresh AsyncSession and alternating 100-sample lookup/JWT/commit measurements increased median from 0.5262 ms to 0.5672 ms. The candidate and its projection-specific test were removed; keep the existing one-query fresh identity join. The 22 focused auth and disposable PostgreSQL cases passed before removal."
+            },
+            {
+              "pass": 6,
+              "candidate": "Cloudflare-compatible authenticated backend redirect handling",
+              "result": "Retained: the production sidebar/drives and auth/me proxy returned 502 before contacting the backend. The existing compiled Worker reproduces the same TypeError: Cloudflare fetch rejects redirect:error. Replace server-only backend fetches with one shared client using redirect:manual, discard any 3xx body and return a redacted 502 without forwarding Location. Apply to parallel wiki reads, HTML content, aliases, Smart Create/transform/reorganization server writes and generated server reads. Keep browser redirect:error calls, authentication, timeouts, streaming and cancellation unchanged. A local Cloudflare fixture changes the invalid-session drive proxy from 502 with zero origin calls to 401 with one origin call; 56 focused tests and 13 new redirect/runtime cases pass. Local runtime supports 2026-08-18; production stays at its existing 2026-08-22 compatibility date."
+            },
+            {
+              "pass": 7,
+              "candidate": "Functional frontend deployment verification",
+              "result": "Retained: health checks alone accepted the broken drive proxy. After the exact-revision health receipt, probe auth/me and sidebar/drives with a deliberately invalid, non-secret session token and require the expected redacted 401. This verifies the backend transport is reachable without possessing a user credential. A failed probe uses the existing deployment rollback path. Add proxy HTTP, body, transport and drive-specific failure cases to shell entrypoint tests; 37 shell tests pass. This is a reliability and measurement pass, not a latency improvement or authenticated data test."
+            }
+          ]
+        }
+      ],
+      "measurements": {
+        "homeClientInventory": {
+          "before": {
+            "bytes": 545031,
+            "gzipBytes": 177697
+          },
+          "after": {
+            "bytes": 546330,
+            "gzipBytes": 177618
+          }
+        },
+        "documentClientInventory": {
+          "before": {
+            "bytes": 586297,
+            "gzipBytes": 191766
+          },
+          "after": {
+            "bytes": 578638,
+            "gzipBytes": 189001
+          }
+        },
+        "frontend-loading": {
+          "basis": "Actual deployed-main 80b6e095 source and changed source, same local fixtures; deterministic work counts, not production elapsed-time claims",
+          "lateWarmup_before": {
+            "warmViewers": 1,
+            "sharedAuthorizationAborted": false
+          },
+          "lateWarmup_after": {
+            "warmViewers": 0,
+            "sharedAuthorizationAborted": false
+          },
+          "viewer_before": {
+            "mounted": 4,
+            "reducedMotionSubscriptions": 4,
+            "resizeEvents": 100,
+            "eventGeometryReads": 100
+          },
+          "viewer_after": {
+            "mounted": 4,
+            "reducedMotionSubscriptions": 1,
+            "resizeEvents": 100,
+            "eventGeometryReads": 1
+          },
+          "unopenedEditor_before": {
+            "aliasQueries": 1,
+            "providerReads": 0
+          },
+          "unopenedEditor_after": {
+            "aliasQueries": 0,
+            "providerReads": 0
+          },
+          "copyTimers_before": {
+            "successfulCopies": 10,
+            "activeTimers": 10,
+            "afterUnmount": 10,
+            "backgroundTimers": 1
+          },
+          "copyTimers_after": {
+            "successfulCopies": 10,
+            "activeTimers": 1,
+            "afterUnmount": 0,
+            "backgroundTimers": 1
+          },
+          "hiddenHtml_before": {
+            "simulatedHiddenMinutes": 30,
+            "metadataReads": 6
+          },
+          "hiddenHtml_after": {
+            "simulatedHiddenMinutes": 30,
+            "metadataReads": 0
+          },
+          "visits_before": {
+            "strictMode": true,
+            "profileRerenders": 5,
+            "storageWrites": 7
+          },
+          "visits_after": {
+            "strictMode": true,
+            "profileRerenders": 5,
+            "storageWrites": 1
+          },
+          "paletteSpeculation_before": {
+            "saveData": true,
+            "fileReads": 1,
+            "routePrefetches": 1
+          },
+          "paletteSpeculation_after": {
+            "saveData": true,
+            "fileReads": 0,
+            "routePrefetches": 0
+          },
+          "legacyStorage_before": {
+            "legacyKeyRemovals": 8
+          },
+          "legacyStorage_after": {
+            "legacyKeyRemovals": 4
+          }
+        },
+        "frontend-sidebar": {
+          "baselineRevision": "80b6e095c8ae6bdb275569ad68b6d47b65abdd8a",
+          "fixtureNodes": 10000,
+          "benchmark": "Actual baseline Git source and current helpers, Node CPU fixtures; no network or browser latency",
+          "cases": {
+            "destinationPickerWarm": {
+              "medianMillisecondsBefore": 0.16125042000000123,
+              "medianMillisecondsAfter": 8.334999999988213e-06,
+              "alternatingSamples": 40,
+              "iterationsPerSample": 100,
+              "scope": "10,000 immutable mixed folder nodes; repeated selected-destination render"
+            },
+            "lazyClassificationWarm": {
+              "medianMillisecondsBefore": 0.14228166499999928,
+              "medianMillisecondsAfter": 9.1650000001664e-06,
+              "alternatingSamples": 40,
+              "iterationsPerSample": 100,
+              "scope": "10,000 immutable mixed lazy nodes; repeated folder-shortcut render"
+            },
+            "lazyClassificationCold": {
+              "medianMillisecondsBefore": 0.14326252500000008,
+              "medianMillisecondsAfter": 0.041438549999998034,
+              "alternatingSamples": 40,
+              "iterationsPerSample": 20,
+              "scope": "New 10,000-node query array every iteration; cache misses included"
+            },
+            "documentFilterWarm": {
+              "medianMillisecondsBefore": 0.06447687499999802,
+              "medianMillisecondsAfter": 9.374999997362466e-06,
+              "alternatingSamples": 40,
+              "iterationsPerSample": 100,
+              "scope": "8,000 immutable non-folder nodes; document-only collapsed child count"
+            },
+            "documentFilterCold": {
+              "medianMillisecondsBefore": 0.06565729999999803,
+              "medianMillisecondsAfter": 0.06498122499999681,
+              "alternatingSamples": 40,
+              "iterationsPerSample": 20,
+              "scope": "New 8,000-node query array every iteration; cache misses included"
+            },
+            "siblingConstruction": {
+              "medianMillisecondsBefore": 0.052368330000003877,
+              "medianMillisecondsAfter": 0.05649042000000008,
+              "alternatingSamples": 40,
+              "iterationsPerSample": 50,
+              "scope": "2,000 folders/shortcuts and 8,000 files; wrapper construction only"
+            },
+            "optimisticRoot": {
+              "medianMillisecondsBefore": 1.2870041500000071,
+              "medianMillisecondsAfter": 0.7930541500000117,
+              "alternatingSamples": 40,
+              "iterationsPerSample": 10,
+              "scope": "10,000 sibling wrappers and complete reverse optimistic ID order; construction and ordering included"
+            },
+            "optimisticAlreadyMatched": {
+              "medianMillisecondsBefore": 0.7994923666666637,
+              "medianMillisecondsAfter": 0.060336116666682454,
+              "alternatingSamples": 40,
+              "iterationsPerSample": 30,
+              "scope": "10,000 prebuilt siblings; matching full ID order"
+            },
+            "optimisticChangedOrder": {
+              "medianMillisecondsBefore": 0.7710333499999857,
+              "medianMillisecondsAfter": 0.7301277833333492,
+              "alternatingSamples": 40,
+              "iterationsPerSample": 30,
+              "scope": "10,000 prebuilt siblings; reverse ID order"
+            },
+            "dragContainerValidation": {
+              "medianMillisecondsBefore": 0.07058124500000304,
+              "medianMillisecondsAfter": 5.354500000066764e-05,
+              "alternatingSamples": 40,
+              "iterationsPerSample": 100,
+              "scope": "Container lookup during drag hover with 10,000 sibling IDs; strict full list validation retained on drop commit"
+            },
+            "searchFolderAncestorsWarm": {
+              "medianMillisecondsBefore": 0.33732221666667406,
+              "medianMillisecondsAfter": 0.00018611666667614675,
+              "alternatingSamples": 40,
+              "iterationsPerSample": 30,
+              "scope": "10,000 immutable cached folders; root-to-parent reveal ancestry including cycle guard"
+            }
+          }
+        },
+        "cross-stack": {
+          "basis": "Deployed main 80b6e095; actual local helper code; no live provider calls",
+          "nearExpiryConcurrentReadRequests": {
+            "before": 5,
+            "after": 3
+          },
+          "failedDecodeSettlement": {
+            "simulatedCleanupDelayMs": 40,
+            "samples": 20,
+            "beforeMedianMs": 42.206833000000074,
+            "afterMedianMs": 0.016916000000037457
+          },
+          "errorBodyRead": {
+            "fixtureBytes": 1000039,
+            "samples": 20,
+            "beforeMedianMs": 0.5741660000001048,
+            "afterMedianMs": 0.4648329999999987
+          },
+          "absentCacheRemoval": {
+            "nodes": 10000,
+            "operationsPerSample": 100,
+            "samples": 20,
+            "beforeMedianMs": 0.6799179099999992,
+            "afterMedianMs": 0.10012874999999895
+          },
+          "existingCacheRemoval": {
+            "file-0": {
+              "beforeMedianMs": 3.2714579999997113,
+              "afterMedianMs": 3.127209000000221
+            },
+            "file-9999": {
+              "beforeMedianMs": 0.6473339999997734,
+              "afterMedianMs": 0.5363330000000133
+            }
+          },
+          "oversizedTelemetry": {
+            "limitBytes": 2048,
+            "firstChunkBytes": 2049,
+            "laterChunkBytes": 1000000,
+            "simulatedLaterChunkDelayMs": 40,
+            "samples": 10,
+            "before": {
+              "medianMs": 42.30204099999992,
+              "chunksRead": 20
+            },
+            "after": {
+              "medianMs": 0.0317920000002232,
+              "chunksRead": 10
+            }
+          },
+          "matchingFileQueryCoalescing": {
+            "concurrentConsumers": 2,
+            "providerReads": 1
+          }
+        },
+        "root": {
+          "recentAliasProjection": {
+            "columnsBefore": 6,
+            "columnsAfter": 2,
+            "medianMillisecondsBefore": 0.6246,
+            "medianMillisecondsAfter": 0.5672,
+            "samples": 100,
+            "rows": 50,
+            "fixture": "Disposable PostgreSQL 18.6; alternating order; fresh AsyncSession per read; SELECT, materialization and commit only"
+          },
+          "singleflightFanout": {
+            "fixture": "one leader plus 1000 same-key followers on one event loop; futures include asyncio.shield and Event overhead; 40 alternating-order samples after 5 warmups; no provider latency",
+            "before": {
+              "median_ms": 5.5996,
+              "future_creations": 2003.0
+            },
+            "after": {
+              "median_ms": 5.1629,
+              "future_creations": 1003.0
+            }
+          },
+          "rejectedSessionProjection": {
+            "baseline": "80b6e095",
+            "fixture": "One active session; fresh AsyncSession per authenticated lookup; JWT validation, SELECT/materialization and commit; alternating order, 5 warmups; no provider calls",
+            "samplesPerVariant": 100,
+            "sessionColumnsBefore": 8,
+            "sessionColumnsAfter": 4,
+            "beforeMedianMs": 0.526166521012783,
+            "afterMedianMs": 0.5672499537467957
+          },
+          "cloudflareProxyRegression": {
+            "fixture": "Baseline compiled Worker under local Cloudflare workerd with loopback 401 origin and invalid synthetic session; only redirect mode changed for causal reproduction. Actual final source Worker is verified separately.",
+            "before": {
+              "status": 502,
+              "originRequests": 0
+            },
+            "after": {
+              "status": 401,
+              "originRequests": 1
+            }
+          },
+          "eslintBaselineShrink": {
+            "removedAllowances": 7,
+            "increases": 0
+          }
+        },
+        "storage": {
+          "fixture": "Disposable PostgreSQL 18.6 and local CPU fixtures, seven samples unless noted; no production latency claim.",
+          "cacheSQL1000": {
+            "values_insert": {
+              "median_ms": 31.585667049512267,
+              "bind_params": 3001,
+              "sql_bytes": 71063
+            },
+            "unnest_insert": {
+              "median_ms": 10.812333086505532,
+              "bind_params": 4,
+              "sql_bytes": 337
+            },
+            "in_read": {
+              "median_ms": 2.7784579433500767,
+              "bind_params": 1001,
+              "sql_bytes": 15069
+            },
+            "any_read": {
+              "median_ms": 5.565250059589744,
+              "bind_params": 2,
+              "sql_bytes": 188
+            }
+          },
+          "largeLookupPlanMatrix": {
+            "unanalysed": {
+              "force_custom_plan": {
+                "32": {
+                  "expanded_in": {
+                    "cold_ms": 1.0928749106824398,
+                    "warm_median_ms": 0.25512510910630226,
+                    "samples": 7
+                  },
+                  "join_unnest": {
+                    "cold_ms": 2.8084591031074524,
+                    "warm_median_ms": 1.7389580607414246,
+                    "samples": 7
+                  }
+                },
+                "1000": {
+                  "expanded_in": {
+                    "cold_ms": 3.598167095333338,
+                    "warm_median_ms": 2.310332842171192,
+                    "samples": 7
+                  },
+                  "join_unnest": {
+                    "cold_ms": 3.9976248517632484,
+                    "warm_median_ms": 3.840374993160367,
+                    "samples": 7
+                  }
+                },
+                "4096": {
+                  "expanded_in": {
+                    "cold_ms": 14.30879207327962,
+                    "warm_median_ms": 9.502375032752752,
+                    "samples": 7
+                  },
+                  "join_unnest": {
+                    "cold_ms": 6.963750114664435,
+                    "warm_median_ms": 6.753165973350406,
+                    "samples": 7
+                  }
+                },
+                "10000": {
+                  "expanded_in": {
+                    "cold_ms": 30.732083832845092,
+                    "warm_median_ms": 23.060375126078725,
+                    "samples": 7
+                  },
+                  "join_unnest": {
+                    "cold_ms": 12.482833117246628,
+                    "warm_median_ms": 12.303416850045323,
+                    "samples": 7
+                  }
+                }
+              },
+              "force_generic_plan": {
+                "32": {
+                  "expanded_in": {
+                    "cold_ms": 0.4475000314414501,
+                    "warm_median_ms": 0.22233393974602222,
+                    "samples": 7
+                  },
+                  "join_unnest": {
+                    "cold_ms": 0.37008291110396385,
+                    "warm_median_ms": 0.1972089521586895,
+                    "samples": 7
+                  }
+                },
+                "1000": {
+                  "expanded_in": {
+                    "cold_ms": 2.619624836370349,
+                    "warm_median_ms": 2.27162498049438,
+                    "samples": 7
+                  },
+                  "join_unnest": {
+                    "cold_ms": 1.7124998848885298,
+                    "warm_median_ms": 1.5162078198045492,
+                    "samples": 7
+                  }
+                },
+                "4096": {
+                  "expanded_in": {
+                    "cold_ms": 9.8109170794487,
+                    "warm_median_ms": 8.984084008261561,
+                    "samples": 7
+                  },
+                  "join_unnest": {
+                    "cold_ms": 6.096499972045422,
+                    "warm_median_ms": 5.985041847452521,
+                    "samples": 7
+                  }
+                },
+                "10000": {
+                  "expanded_in": {
+                    "cold_ms": 24.006749968975782,
+                    "warm_median_ms": 21.41016605310142,
+                    "samples": 7
+                  },
+                  "join_unnest": {
+                    "cold_ms": 14.124375069513917,
+                    "warm_median_ms": 14.706125017255545,
+                    "samples": 7
+                  }
+                }
+              }
+            },
+            "analysed": {
+              "force_custom_plan": {
+                "32": {
+                  "expanded_in": {
+                    "cold_ms": 0.5184579640626907,
+                    "warm_median_ms": 0.19866693764925003,
+                    "samples": 7
+                  },
+                  "join_unnest": {
+                    "cold_ms": 0.32029091380536556,
+                    "warm_median_ms": 0.1574999187141657,
+                    "samples": 7
+                  }
+                },
+                "1000": {
+                  "expanded_in": {
+                    "cold_ms": 3.021875163540244,
+                    "warm_median_ms": 2.621083054691553,
+                    "samples": 7
+                  },
+                  "join_unnest": {
+                    "cold_ms": 3.6200000904500484,
+                    "warm_median_ms": 3.4937909804284573,
+                    "samples": 7
+                  }
+                },
+                "4096": {
+                  "expanded_in": {
+                    "cold_ms": 11.434916872531176,
+                    "warm_median_ms": 9.862500010058284,
+                    "samples": 7
+                  },
+                  "join_unnest": {
+                    "cold_ms": 6.475958973169327,
+                    "warm_median_ms": 6.499832961708307,
+                    "samples": 7
+                  }
+                },
+                "10000": {
+                  "expanded_in": {
+                    "cold_ms": 25.31220903620124,
+                    "warm_median_ms": 22.847791900858283,
+                    "samples": 7
+                  },
+                  "join_unnest": {
+                    "cold_ms": 12.549082981422544,
+                    "warm_median_ms": 12.37070793285966,
+                    "samples": 7
+                  }
+                }
+              },
+              "force_generic_plan": {
+                "32": {
+                  "expanded_in": {
+                    "cold_ms": 0.4402501508593559,
+                    "warm_median_ms": 0.31466712243855,
+                    "samples": 7
+                  },
+                  "join_unnest": {
+                    "cold_ms": 0.3436659462749958,
+                    "warm_median_ms": 0.22954191081225872,
+                    "samples": 7
+                  }
+                },
+                "1000": {
+                  "expanded_in": {
+                    "cold_ms": 2.611458068713546,
+                    "warm_median_ms": 2.235833089798689,
+                    "samples": 7
+                  },
+                  "join_unnest": {
+                    "cold_ms": 1.6978750936686993,
+                    "warm_median_ms": 1.4945839066058397,
+                    "samples": 7
+                  }
+                },
+                "4096": {
+                  "expanded_in": {
+                    "cold_ms": 10.03258302807808,
+                    "warm_median_ms": 8.730625035241246,
+                    "samples": 7
+                  },
+                  "join_unnest": {
+                    "cold_ms": 6.313958903774619,
+                    "warm_median_ms": 5.9001250192523,
+                    "samples": 7
+                  }
+                },
+                "10000": {
+                  "expanded_in": {
+                    "cold_ms": 23.605540860444307,
+                    "warm_median_ms": 21.87604084610939,
+                    "samples": 7
+                  },
+                  "join_unnest": {
+                    "cold_ms": 14.28695791400969,
+                    "warm_median_ms": 14.006457990035415,
+                    "samples": 7
+                  }
+                }
+              }
+            }
+          },
+          "cleanupIndexes": [
+            {
+              "candidate": "Index legacy-cache namespace cleanup rather than scanning modern encrypted entries",
+              "measurements": {
+                "fixture_rows": 20000,
+                "before_execution_ms": 4.469,
+                "after_execution_ms": 0.015,
+                "before_node": "Seq Scan",
+                "after_node": "Bitmap Heap Scan"
+              }
+            },
+            {
+              "candidate": "Index expired-task cleanup",
+              "measurements": {
+                "fixture_rows": 20000,
+                "before_execution_ms": 0.862,
+                "after_execution_ms": 0.016,
+                "qualifying_rows": 0
+              }
+            },
+            {
+              "candidate": "Index pending transform dispatch reconciliation and make generic plans eligible",
+              "measurements": {
+                "empty_ready_before_ms": 1.244,
+                "empty_ready_after_ms": 0.02,
+                "generic_ready_rows": 190,
+                "generic_result_limit": 50,
+                "generic_before_ms": 1.175,
+                "generic_after_ms": 0.05,
+                "generic_before": "Sort/Seq Scan",
+                "generic_after": "Index Scan"
+              }
+            }
+          ],
+          "cacheEnvelopeCodec": {
+            "samples": 7,
+            "base_revision": "80b6e095",
+            "codec": {
+              "1": {
+                "encrypted_bytes": 251,
+                "old_protect_ms": 0.010721581988036633,
+                "new_protect_ms": 0.009043250232934952,
+                "old_unprotect_ms": 0.008816500194370747,
+                "new_unprotect_ms": 0.006859582383185625
+              },
+              "1000": {
+                "encrypted_bytes": 86543,
+                "old_protect_ms": 1.0841187555342913,
+                "new_protect_ms": 0.7592207984998822,
+                "old_unprotect_ms": 0.930914597120136,
+                "new_unprotect_ms": 0.4049854585900903
+              },
+              "10000": {
+                "encrypted_bytes": 890535,
+                "old_protect_ms": 11.166708311066031,
+                "new_protect_ms": 7.980708343287309,
+                "old_unprotect_ms": 9.694208313400546,
+                "new_unprotect_ms": 4.276208346709609
+              }
+            }
+          },
+          "bulkHmac": {
+            "samples": 7,
+            "key_derivation": {
+              "1": {
+                "1": {
+                  "old_read_ms": 0.0018330756574869156,
+                  "new_read_ms": 0.0017909333109855652,
+                  "old_active_write_ms": 0.0017080456018447876,
+                  "new_active_write_ms": 0.0017080456018447876
+                },
+                "8": {
+                  "old_read_ms": 0.012625008821487427,
+                  "new_read_ms": 0.00995793379843235,
+                  "old_active_write_ms": 0.012665987014770508,
+                  "new_active_write_ms": 0.010041985660791397
+                },
+                "1000": {
+                  "old_read_ms": 1.4531249180436134,
+                  "new_read_ms": 1.023750053718686,
+                  "old_active_write_ms": 1.4330418780446053,
+                  "new_active_write_ms": 0.9400420822203159
+                },
+                "10000": {
+                  "old_read_ms": 15.26575000025332,
+                  "new_read_ms": 9.710040874779224,
+                  "old_active_write_ms": 15.363374957814813,
+                  "new_active_write_ms": 9.92475007660687
+                }
+              },
+              "3": {
+                "1": {
+                  "old_read_ms": 0.003375113010406494,
+                  "new_read_ms": 0.0034580007195472717,
+                  "old_active_write_ms": 0.003375113010406494,
+                  "new_active_write_ms": 0.003459164872765541
+                },
+                "8": {
+                  "old_read_ms": 0.026250025257468224,
+                  "new_read_ms": 0.021875137463212013,
+                  "old_active_write_ms": 0.026625115424394608,
+                  "new_active_write_ms": 0.008417060598731041
+                },
+                "1000": {
+                  "old_read_ms": 3.303667064756155,
+                  "new_read_ms": 2.6226250920444727,
+                  "old_active_write_ms": 3.2649580389261246,
+                  "new_active_write_ms": 0.912833958864212
+                },
+                "10000": {
+                  "old_read_ms": 33.68624998256564,
+                  "new_read_ms": 25.927208131179214,
+                  "old_active_write_ms": 34.205291885882616,
+                  "new_active_write_ms": 9.887584019452333
+                }
+              }
+            }
+          },
+          "ownerLockContention": {
+            "pool_size": 2,
+            "pool_timeout_s": 0.5,
+            "permission_check_delay_s": 0.05,
+            "samples": 3,
+            "blocking_baseline": {
+              "runs": [
+                {
+                  "ms": 631.7329579032958,
+                  "completed": 1,
+                  "errors": [
+                    "TimeoutError"
+                  ]
+                },
+                {
+                  "ms": 613.3281660731882,
+                  "completed": 1,
+                  "errors": [
+                    "TimeoutError"
+                  ]
+                },
+                {
+                  "ms": 613.5858329944313,
+                  "completed": 1,
+                  "errors": [
+                    "TimeoutError"
+                  ]
+                }
+              ],
+              "median_ms": 613.5858329944313
+            },
+            "release_read_only_waiters": {
+              "runs": [
+                {
+                  "ms": 178.281333995983,
+                  "completed": 2,
+                  "errors": []
+                },
+                {
+                  "ms": 120.63245894387364,
+                  "completed": 2,
+                  "errors": []
+                },
+                {
+                  "ms": 125.21425005979836,
+                  "completed": 2,
+                  "errors": []
+                }
+              ],
+              "median_ms": 125.21425005979836
+            }
+          },
+          "sortOrderCutoffs": {
+            "large_lists": {
+              "1": {
+                "changed": {
+                  "values": {
+                    "median_ms": 0.260709086433053,
+                    "samples": 7,
+                    "bind_params": 3,
+                    "sql_bytes": 186
+                  },
+                  "arrays": {
+                    "median_ms": 0.4341669846326113,
+                    "samples": 7,
+                    "bind_params": 3,
+                    "sql_bytes": 287
+                  },
+                  "arrays_noop_filter": {
+                    "median_ms": 0.616417033597827,
+                    "samples": 7,
+                    "bind_params": 3,
+                    "sql_bytes": 363
+                  }
+                },
+                "unchanged": {
+                  "values": {
+                    "median_ms": 0.2562499139457941,
+                    "samples": 7,
+                    "bind_params": 3,
+                    "sql_bytes": 186
+                  },
+                  "arrays": {
+                    "median_ms": 0.3779169637709856,
+                    "samples": 7,
+                    "bind_params": 3,
+                    "sql_bytes": 287
+                  },
+                  "arrays_noop_filter": {
+                    "median_ms": 0.3650418948382139,
+                    "samples": 7,
+                    "bind_params": 3,
+                    "sql_bytes": 363
+                  }
+                }
+              },
+              "10": {
+                "changed": {
+                  "values": {
+                    "median_ms": 0.36375015042722225,
+                    "samples": 7,
+                    "bind_params": 30,
+                    "sql_bytes": 531
+                  },
+                  "arrays": {
+                    "median_ms": 0.36104186438024044,
+                    "samples": 7,
+                    "bind_params": 3,
+                    "sql_bytes": 287
+                  },
+                  "arrays_noop_filter": {
+                    "median_ms": 0.3914590924978256,
+                    "samples": 7,
+                    "bind_params": 3,
+                    "sql_bytes": 363
+                  }
+                },
+                "unchanged": {
+                  "values": {
+                    "median_ms": 0.3610828425735235,
+                    "samples": 7,
+                    "bind_params": 30,
+                    "sql_bytes": 531
+                  },
+                  "arrays": {
+                    "median_ms": 0.42975018732249737,
+                    "samples": 7,
+                    "bind_params": 3,
+                    "sql_bytes": 287
+                  },
+                  "arrays_noop_filter": {
+                    "median_ms": 0.3680409863591194,
+                    "samples": 7,
+                    "bind_params": 3,
+                    "sql_bytes": 363
+                  }
+                }
+              },
+              "1000": {
+                "changed": {
+                  "values": {
+                    "median_ms": 18.897041911259294,
+                    "samples": 7,
+                    "bind_params": 3000,
+                    "sql_bytes": 44043
+                  },
+                  "arrays": {
+                    "median_ms": 5.591459106653929,
+                    "samples": 7,
+                    "bind_params": 3,
+                    "sql_bytes": 287
+                  },
+                  "arrays_noop_filter": {
+                    "median_ms": 8.459792006760836,
+                    "samples": 7,
+                    "bind_params": 3,
+                    "sql_bytes": 363
+                  }
+                },
+                "unchanged": {
+                  "values": {
+                    "median_ms": 25.77929198741913,
+                    "samples": 7,
+                    "bind_params": 3000,
+                    "sql_bytes": 44043
+                  },
+                  "arrays": {
+                    "median_ms": 9.880000026896596,
+                    "samples": 7,
+                    "bind_params": 3,
+                    "sql_bytes": 287
+                  },
+                  "arrays_noop_filter": {
+                    "median_ms": 5.521291866898537,
+                    "samples": 7,
+                    "bind_params": 3,
+                    "sql_bytes": 363
+                  }
+                }
+              }
+            },
+            "cutoff": {
+              "1": {
+                "changed": {
+                  "values": {
+                    "median_ms": 0.22558285854756832,
+                    "samples": 7,
+                    "bind_params": 3,
+                    "sql_bytes": 186
+                  },
+                  "values_noop_filter": {
+                    "median_ms": 0.23066694848239422,
+                    "samples": 7,
+                    "bind_params": 3,
+                    "sql_bytes": 262
+                  },
+                  "arrays_noop_filter": {
+                    "median_ms": 0.4038750194013119,
+                    "samples": 7,
+                    "bind_params": 3,
+                    "sql_bytes": 363
+                  }
+                },
+                "unchanged": {
+                  "values": {
+                    "median_ms": 0.19641593098640442,
+                    "samples": 7,
+                    "bind_params": 3,
+                    "sql_bytes": 186
+                  },
+                  "values_noop_filter": {
+                    "median_ms": 0.20612496882677078,
+                    "samples": 7,
+                    "bind_params": 3,
+                    "sql_bytes": 262
+                  },
+                  "arrays_noop_filter": {
+                    "median_ms": 0.35058287903666496,
+                    "samples": 7,
+                    "bind_params": 3,
+                    "sql_bytes": 363
+                  }
+                }
+              },
+              "8": {
+                "changed": {
+                  "values": {
+                    "median_ms": 0.3939999733120203,
+                    "samples": 7,
+                    "bind_params": 24,
+                    "sql_bytes": 453
+                  },
+                  "values_noop_filter": {
+                    "median_ms": 0.36399997770786285,
+                    "samples": 7,
+                    "bind_params": 24,
+                    "sql_bytes": 529
+                  },
+                  "arrays_noop_filter": {
+                    "median_ms": 0.3629170823842287,
+                    "samples": 7,
+                    "bind_params": 3,
+                    "sql_bytes": 363
+                  }
+                },
+                "unchanged": {
+                  "values": {
+                    "median_ms": 0.326208071783185,
+                    "samples": 7,
+                    "bind_params": 24,
+                    "sql_bytes": 453
+                  },
+                  "values_noop_filter": {
+                    "median_ms": 0.341624952852726,
+                    "samples": 7,
+                    "bind_params": 24,
+                    "sql_bytes": 529
+                  },
+                  "arrays_noop_filter": {
+                    "median_ms": 0.36879186518490314,
+                    "samples": 7,
+                    "bind_params": 3,
+                    "sql_bytes": 363
+                  }
+                }
+              },
+              "32": {
+                "changed": {
+                  "values": {
+                    "median_ms": 0.7568749133497477,
+                    "samples": 7,
+                    "bind_params": 96,
+                    "sql_bytes": 1389
+                  },
+                  "values_noop_filter": {
+                    "median_ms": 0.7620840333402157,
+                    "samples": 7,
+                    "bind_params": 96,
+                    "sql_bytes": 1465
+                  },
+                  "arrays_noop_filter": {
+                    "median_ms": 0.484667019918561,
+                    "samples": 7,
+                    "bind_params": 3,
+                    "sql_bytes": 363
+                  }
+                },
+                "unchanged": {
+                  "values": {
+                    "median_ms": 0.7967089768499136,
+                    "samples": 7,
+                    "bind_params": 96,
+                    "sql_bytes": 1389
+                  },
+                  "values_noop_filter": {
+                    "median_ms": 0.7218329701572657,
+                    "samples": 7,
+                    "bind_params": 96,
+                    "sql_bytes": 1465
+                  },
+                  "arrays_noop_filter": {
+                    "median_ms": 0.4108748398721218,
+                    "samples": 7,
+                    "bind_params": 3,
+                    "sql_bytes": 363
+                  }
+                }
+              },
+              "64": {
+                "changed": {
+                  "values": {
+                    "median_ms": 1.3181250542402267,
+                    "samples": 7,
+                    "bind_params": 192,
+                    "sql_bytes": 2730
+                  },
+                  "values_noop_filter": {
+                    "median_ms": 1.4993748627603054,
+                    "samples": 7,
+                    "bind_params": 192,
+                    "sql_bytes": 2806
+                  },
+                  "arrays_noop_filter": {
+                    "median_ms": 0.8406250271946192,
+                    "samples": 7,
+                    "bind_params": 3,
+                    "sql_bytes": 363
+                  }
+                },
+                "unchanged": {
+                  "values": {
+                    "median_ms": 1.411166973412037,
+                    "samples": 7,
+                    "bind_params": 192,
+                    "sql_bytes": 2730
+                  },
+                  "values_noop_filter": {
+                    "median_ms": 1.324790995568037,
+                    "samples": 7,
+                    "bind_params": 192,
+                    "sql_bytes": 2806
+                  },
+                  "arrays_noop_filter": {
+                    "median_ms": 0.5253329873085022,
+                    "samples": 7,
+                    "bind_params": 3,
+                    "sql_bytes": 363
+                  }
+                }
+              }
+            }
+          },
+          "noOpSortOrder": {
+            "1000_items": {
+              "changed": {
+                "values": {
+                  "median_ms": 18.897041911259294,
+                  "samples": 7,
+                  "bind_params": 3000,
+                  "sql_bytes": 44043
+                },
+                "arrays": {
+                  "median_ms": 5.591459106653929,
+                  "samples": 7,
+                  "bind_params": 3,
+                  "sql_bytes": 287
+                },
+                "arrays_noop_filter": {
+                  "median_ms": 8.459792006760836,
+                  "samples": 7,
+                  "bind_params": 3,
+                  "sql_bytes": 363
+                }
+              },
+              "unchanged": {
+                "values": {
+                  "median_ms": 25.77929198741913,
+                  "samples": 7,
+                  "bind_params": 3000,
+                  "sql_bytes": 44043
+                },
+                "arrays": {
+                  "median_ms": 9.880000026896596,
+                  "samples": 7,
+                  "bind_params": 3,
+                  "sql_bytes": 287
+                },
+                "arrays_noop_filter": {
+                  "median_ms": 5.521291866898537,
+                  "samples": 7,
+                  "bind_params": 3,
+                  "sql_bytes": 363
+                }
+              }
+            },
+            "write_amplification_regression": "test_sort_order_bulk_writes_skip_unchanged_rows_and_keep_user_isolation"
+          }
+        },
+        "providerRoutes": {
+          "baseline_revision": "80b6e095c8ae6bdb275569ad68b6d47b65abdd8a",
+          "fixture_note": "Local deterministic provider/client fixtures. Stated sleep latencies are simulated, not production measurements.",
+          "measurements": {
+            "per_call_parent_membership": {
+              "normal": {
+                "before": {
+                  "provider_ancestor_reads_per_call": 200,
+                  "simulated_1ms_each": {
+                    "median_ms": 21.203333,
+                    "min_ms": 20.383167,
+                    "samples": 5
+                  }
+                },
+                "after": {
+                  "provider_ancestor_reads_per_call": 1,
+                  "simulated_1ms_each": {
+                    "median_ms": 1.806708,
+                    "min_ms": 1.753209,
+                    "samples": 5
+                  }
+                }
+              },
+              "bounded": {
+                "before": {
+                  "provider_ancestor_reads_per_call": 200,
+                  "simulated_1ms_each": {
+                    "median_ms": 341.016166,
+                    "min_ms": 338.62875,
+                    "samples": 5
+                  }
+                },
+                "after": {
+                  "provider_ancestor_reads_per_call": 1,
+                  "simulated_1ms_each": {
+                    "median_ms": 1.669041,
+                    "min_ms": 1.196041,
+                    "samples": 5
+                  }
+                }
+              }
+            },
+            "access_metadata_projection": {
+              "records": 100,
+              "before_bytes": 439880,
+              "after_bytes": 8690,
+              "before_parse": {
+                "median_ms": 0.11025,
+                "min_ms": 0.107667,
+                "samples": 15
+              },
+              "after_parse": {
+                "median_ms": 0.052917,
+                "min_ms": 0.05125,
+                "samples": 15
+              },
+              "provider_batch_requests": "same 100 file GET subrequests; JSON projection reduced"
+            },
+            "search_metadata_projection": {
+              "records": 100,
+              "before_bytes": 439880,
+              "after_bytes": 20580,
+              "before_parse": {
+                "median_ms": 0.10925,
+                "min_ms": 0.10825,
+                "samples": 15
+              },
+              "after_parse": {
+                "median_ms": 0.110583,
+                "min_ms": 0.109209,
+                "samples": 15
+              }
+            },
+            "invoking_drive_tree_reads": {
+              "before": {
+                "tree_peeks_per_proposal": 30,
+                "simulated_1ms_per_tree": {
+                  "median_ms": 40.002125,
+                  "min_ms": 39.3875,
+                  "samples": 5
+                }
+              },
+              "after": {
+                "tree_peeks_per_proposal": 1,
+                "simulated_1ms_per_tree": {
+                  "median_ms": 2.317459,
+                  "min_ms": 2.06475,
+                  "samples": 5
+                }
+              }
+            },
+            "reorganization_overlap": {
+              "before": {
+                "simulated_20ms_each": {
+                  "median_ms": 44.400375,
+                  "min_ms": 42.520542,
+                  "samples": 7
+                }
+              },
+              "after": {
+                "simulated_20ms_each": {
+                  "median_ms": 22.322958,
+                  "min_ms": 21.042959,
+                  "samples": 7
+                }
+              }
+            },
+            "optional_cookie_dependency": {
+              "status": "rejected",
+              "reason": "Actual logout calls the synchronous helper directly; no FastAPI thread dispatch exists to remove."
+            },
+            "bounded_candidate_ranking": {
+              "smart_create": {
+                "folders": 10000,
+                "returned": 80,
+                "before": {
+                  "median_ms": 21.606375,
+                  "min_ms": 21.310208,
+                  "samples": 7
+                },
+                "after": {
+                  "median_ms": 20.808333,
+                  "min_ms": 20.214625,
+                  "samples": 7
+                }
+              },
+              "reorganization": {
+                "folders": 10000,
+                "returned": 80,
+                "before": {
+                  "median_ms": 23.05525,
+                  "min_ms": 22.71525,
+                  "samples": 7
+                },
+                "after": {
+                  "median_ms": 22.273875,
+                  "min_ms": 21.897083,
+                  "samples": 7
+                }
+              }
+            },
+            "lazy_compatible_templates": {
+              "catalog_size": 10000,
+              "returned": 80,
+              "before": {
+                "median_ms": 0.635667,
+                "min_ms": 0.608791,
+                "samples": 50
+              },
+              "after": {
+                "median_ms": 0.004875,
+                "min_ms": 0.00475,
+                "samples": 50
+              }
+            },
+            "static_mime_clause": {
+              "10000_calls": {
+                "before": {
+                  "median_ms": 13.418042,
+                  "min_ms": 13.05575,
+                  "samples": 7
+                },
+                "after": {
+                  "median_ms": 0.190167,
+                  "min_ms": 0.187792,
+                  "samples": 7
+                }
+              }
+            },
+            "prefix_fallback": {
+              "absent_long_word": {
+                "text_chars": 480000,
+                "query_chars": 400,
+                "before": {
+                  "median_ms": 7.518291,
+                  "min_ms": 7.445292,
+                  "samples": 7
+                },
+                "after": {
+                  "median_ms": 0.446209,
+                  "min_ms": 0.438625,
+                  "samples": 7
+                }
+              },
+              "longest_short_prefix": {
+                "text_chars": 498009,
+                "query_chars": 400,
+                "before": {
+                  "median_ms": 6.615333,
+                  "min_ms": 6.449959,
+                  "samples": 7
+                },
+                "after": {
+                  "median_ms": 1.079375,
+                  "min_ms": 1.036125,
+                  "samples": 7
+                }
+              },
+              "ordinary_query": {
+                "text_chars": 620000,
+                "query_chars": 17,
+                "before": {
+                  "median_ms": 0.342375,
+                  "min_ms": 0.335125,
+                  "samples": 7
+                },
+                "after": {
+                  "median_ms": 0.336583,
+                  "min_ms": 0.333792,
+                  "samples": 7
+                }
+              }
+            },
+            "template_child_projection": {
+              "mixed_folder_items": 2000,
+              "relevant_templates": 100,
+              "before_response_bytes": 211760,
+              "after_response_bytes": 17180,
+              "before_pages_at_1000": 2,
+              "after_pages_at_1000": 1,
+              "note": "Synthetic mixed-content folder; savings depend on content mix. Template MIME/fresh query verified with provider request regressions."
+            },
+            "bounded_candidate_ranking_shuffled": {
+              "smart_create": {
+                "folders": 10000,
+                "fixture": "mixed names in shuffled order",
+                "returned": 80,
+                "before": {
+                  "median_ms": 28.387,
+                  "min_ms": 27.527042,
+                  "samples": 15
+                },
+                "after": {
+                  "median_ms": 20.503667,
+                  "min_ms": 19.625167,
+                  "samples": 15
+                }
+              },
+              "reorganization": {
+                "folders": 10000,
+                "fixture": "mixed names in shuffled order",
+                "returned": 80,
+                "before": {
+                  "median_ms": 29.786833,
+                  "min_ms": 29.012,
+                  "samples": 15
+                },
+                "after": {
+                  "median_ms": 22.40825,
+                  "min_ms": 21.553833,
+                  "samples": 15
+                }
+              }
+            },
+            "root_breadcrumb_cache_reads": {
+              "before": 1,
+              "after": 0,
+              "verification": "Existing nested-folder route plus new root/parent-less route regression: fresh file metadata is always fetched, cache.loaded remains empty for root."
+            },
+            "proposal_cancellation": {
+              "abandoned_catalog_tasks_after_primary_failure": 0,
+              "abandoned_catalog_tasks_after_request_cancellation": 0,
+              "verification": "Causal asyncio Events assert cancellation completes before the proposal exits."
+            }
+          }
+        }
+      },
+      "validation": {
+        "frontend": "666 tests in 90 files passed before the final Smart Create redirect case; integrated Next build passed. Final complete CI mirror is required by pre-push and hosted checks.",
+        "backendFocused": "173 provider-route tests; 108 storage offline tests and 90 PostgreSQL tests (20 new hot-path cases); root auth, native route, singleflight and PostgreSQL cases pass.",
+        "deploymentGate": "37 shell entrypoint tests; release verification additionally requires redacted 401 responses from the real auth/me and sidebar/drives proxies with an invalid synthetic credential.",
+        "typesAndLint": "Agent scoped type/lint/format checks passed. Python baseline remains exactly 1808 diagnostics; seven now-unused ESLint error allowances removed, zero added.",
+        "migration": "0023 adds three indexes; disposable PostgreSQL upgrade/downgrade/upgrade passed. Existing unrelated Alembic metadata drift is retained.",
+        "cloudflareRuntime": {
+          "compiledFinalSource": true,
+          "runtimeCompatibilityDate": "2026-08-18",
+          "cases": {
+            "wiki-perf-invalid": {
+              "status": 401,
+              "body": {
+                "detail": "Your session has expired"
+              },
+              "location": null,
+              "cacheControl": "no-cache, must-revalidate"
+            },
+            "wiki-perf-success": {
+              "status": 200,
+              "body": [
+                {
+                  "id": "fixture-drive",
+                  "name": "Fixture Drive",
+                  "is_personal": false
+                }
+              ],
+              "location": null,
+              "cacheControl": "no-cache, must-revalidate"
+            },
+            "wiki-perf-redirect": {
+              "status": 502,
+              "body": {
+                "detail": "The request could not be completed"
+              },
+              "location": null,
+              "cacheControl": "no-cache, must-revalidate"
+            }
+          },
+          "redirectDestinationRequests": 0
+        },
+        "completeCheckpointGate": "Normal pre-push make check passed at ba129bb: 4173 backend tests, 667 frontend tests plus three brace guard cases, 284 repository tests, full standards/types/lint/build and offline Terraform checks."
+      },
+      "productionIncident": {
+        "symptom": "Failed to load drives",
+        "cause": "The previous authenticated read proxy used redirect:error, which the deployed Cloudflare fetch implementation rejects before sending an upstream request. Both health endpoints still returned success.",
+        "fix": "Share a server-only backend client using manual redirects, reject/redact 3xx responses, and preserve cancellation, deadlines, authentication and streaming. Use it for wiki/transform reads, HTML, alias reads, generated server requests and Smart Create/transform/reorganization writes.",
+        "verification": "The compiled local Worker fixture passes authorized drives, invalid identity/drives, and redirect rejection. Exact production revision, invalid-session proxies, and a real signed-in drive/document must be verified after deployment; health alone is insufficient."
+      },
+      "reproduce": [
+        "node frontend/scripts/benchmark-bundle.mjs",
+        "node frontend/scripts/benchmark-bundle.mjs frontend/.next \"(app)/d/[driveId]/page\"",
+        "npm --prefix frontend test",
+        "uv --directory backend run --locked pytest -q tests/test_provider_hot_paths.py tests/test_cache_protection.py tests/test_singleflight.py",
+        "WIKI_POLISH29_QA_DATABASE_URL=<disposable PostgreSQL DSN> uv --directory backend run --locked pytest -q tests/test_storage_hot_paths_postgres.py tests/test_storage_performance_postgres.py tests/test_task_source_dedupe_postgres.py",
+        "make check"
+      ],
+      "limitations": [
+        "CPU/SQL figures and resource counts use controlled local fixtures, not live end-to-end page latency. Provider-latency simulations are labeled.",
+        "Home sync client inventory grows 0.24% raw and shrinks only 0.04% gzip; document inventory shrinks 1.31% raw and 1.44% gzip. Do not claim material homepage transfer savings from this tranche.",
+        "Sync-reference inventory excludes framework and deferred chunks; login inventory registers authenticated modules and is not reported as login transfer size.",
+        "Large-array read/write cutoffs are conservative and retain faster small-batch paths; an ANY read and a session ORM projection were rejected after regressions.",
+        "Fresh permission/revocation reads, source before/after snapshots, encrypted envelopes, key rotation, task locks, quotas and idempotency stay enforced.",
+        "Completed passes do not establish a physical maximum for all future workloads. Live provider latency and real usage remain inputs for further work."
+      ],
+      "measurementCheckpoint": "85-pass checkpoint before the final ownership/compatibility audit; final transfer inventories appear in the following tranche."
+    },
+    {
+      "recordedAt": "2026-10-10",
+      "baselineRevision": "ba129bb62507f35c331df99be491447e555ed5da",
+      "integratedMainRevision": "0954e3992a36cd4e603c3a26a3c8578912b7f804",
+      "name": "Final ownership, compatibility and provider-read audit",
+      "passCount": 10,
+      "agentPassCount": 10,
+      "integrationPassCount": 0,
+      "counting": "Ten distinct substantive candidates across the same five agents. Repeated tests, builds, formatting, integration repairs, measurements and release administration count as zero additional passes. This includes explicitly identified compatibility/reliability fixes, not just CPU optimizations.",
+      "scopes": [
+        {
+          "scope": "backend-routes",
+          "passCount": 3,
+          "passes": [
+            {
+              "pass": 1,
+              "outcome": "implemented",
+              "result": "Filter template-root folders at the provider",
+              "evidence": {
+                "fixture": "Local provider pagination/filtering fixture, not production timing",
+                "root_children": 2502,
+                "matching_roots": 2,
+                "before_pages": 3,
+                "after_pages": 1,
+                "before_rows": 2502,
+                "after_rows": 2,
+                "before_response_json_bytes": 830815,
+                "after_response_json_bytes": 187,
+                "unchanged_matching_root_ids": [
+                  "templates-a",
+                  "templates-b"
+                ]
+              }
+            },
+            {
+              "pass": 2,
+              "outcome": "implemented",
+              "result": "Bind every bulk metadata response to its requested ID before membership work",
+              "evidence": {
+                "fixture": "Local mismatched-ID provider fixture; identity correctness, not a valid-record throughput claim",
+                "before_accepted_ids": [
+                  "different"
+                ],
+                "after_accepted_ids": [],
+                "before_metadata_get_subrequests": 1,
+                "after_metadata_get_subrequests": 1,
+                "before_batches": 1,
+                "after_batches": 1,
+                "before_ancestor_get_subrequests": 1,
+                "after_ancestor_get_subrequests": 0
+              }
+            },
+            {
+              "pass": 3,
+              "outcome": "implemented",
+              "result": "Reuse common-ancestor metadata within one bulk membership call",
+              "evidence": {
+                "id": 18,
+                "retained": true,
+                "area": "Bulk personal-Drive ancestry across distinct parent folders",
+                "problem": "Within one bulk membership call, distinct parents sharing an ancestor each performed the same fresh Google metadata GET, even after identical-parent grouping.",
+                "change": "A small _PersonalAncestryReads helper exists only during one _member_personal_parents call with multiple parents. It shares validated metadata (including denied/unavailable None values), not membership verdicts. Each walk still performs its own visited-node accounting and cycle handling. A thread lock covers only selection of a node Future; provider I/O runs outside the lock, so distinct branches stay concurrent and overlapping reads share one leader.",
+                "bounded_retention": "At most 256 metadata-node Futures per call. Over-budget unseen nodes retain the original uncached read behavior. Single-parent calls create no memo helper.",
+                "measured_provider_gets": [
+                  {
+                    "distinct_parents": 2,
+                    "before": 4,
+                    "after": 3,
+                    "common_ancestor_before": 2,
+                    "common_ancestor_after": 1
+                  },
+                  {
+                    "distinct_parents": 200,
+                    "before": 400,
+                    "after": 201,
+                    "common_ancestor_before": 200,
+                    "common_ancestor_after": 1
+                  }
+                ],
+                "simulated_latency_ms": {
+                  "delay_per_get": 1,
+                  "samples": 5,
+                  "normal_200_parents": {
+                    "before_median": 32.342292,
+                    "after_median": 18.809875
+                  },
+                  "bounded_200_parents": {
+                    "before_median": 554.016584,
+                    "after_median": 289.913792
+                  },
+                  "bounded_2_parents": {
+                    "before_median": 5.201291,
+                    "after_median": 3.921958
+                  }
+                },
+                "zero_io_cpu_bookkeeping_ms": {
+                  "normal_2_parents": {
+                    "before_median": 0.197875,
+                    "after_median": 0.218875
+                  },
+                  "bounded_2_parents": {
+                    "before_median": 0.116917,
+                    "after_median": 0.131375
+                  },
+                  "normal_200_parents": {
+                    "before_median": 7.18625,
+                    "after_median": 5.862375
+                  },
+                  "bounded_200_parents": {
+                    "before_median": 12.028916,
+                    "after_median": 10.63
+                  }
+                },
+                "tradeoff": "Two-parent zero-I/O fixtures add about 15–21 microseconds of memo bookkeeping. Retained because repeated real provider reads/quotas are eliminated, fan-out CPU improves, and memo retention is bounded. Simulated latency is explicitly not production timing.",
+                "regression_coverage": [
+                  "200 distinct parents use one shared-ancestor GET in normal and bounded modes.",
+                  "Next-call parent revocation produces a new GET and drops personal files while retaining the permitted shared file.",
+                  "Causal threaded barrier requires independent parent provider reads to overlap; a lock around provider I/O would fail.",
+                  "403/404 remain denied per-call partial results, normal other HTTP failure remains unavailable, and strict upstream HTTP failure still propagates.",
+                  "Strict mismatched response IDs still raise before accepting ancestry.",
+                  "Cycle and 64-node per-walk limits remain enforced even when nodes are reused."
+                ],
+                "regression_cases": 12
+              }
+            }
+          ]
+        },
+        {
+          "scope": "backend-storage",
+          "passCount": 2,
+          "passes": [
+            {
+              "pass": 1,
+              "outcome": "implemented",
+              "result": "Restore legacy deep-JSON cache compatibility while retaining the typed common path",
+              "evidence": {
+                "issue": "Typed cache codec rejected valid deep JsonValue payloads accepted by the legacy implementation.",
+                "classification": "Round-two compatibility regression",
+                "proof": "At nested-list depths 200–253, 80b6e095 round-tripped while ba129bb unprotect raised InvalidCacheEntryError. At 254 ba129bb protect raised PydanticSerializationError. Both implementations already reject 255 in JsonValue validation.",
+                "fix": "Keep typed serialization/validation as the common path. Fall back to legacy json.dumps only on typed serialization failure and to json.loads plus strict _CacheEnvelope.model_validate on typed parse/validation failure. Namespace/key binding, extra-field rejection, authenticated ciphertext, legacy envelopes, NaN/Infinity/-0.0, Unicode and large integers remain tested.",
+                "tests": "Five new depth cases (199, 200, 210, 253, 254), each covering legacy and new envelopes plus wrong namespace/key rejection.",
+                "proof_artifact": "/private/tmp/sarj-wiki-storage-audit-nesting.json",
+                "common_case_measurement": {
+                  "payload_json_bytes": 15680,
+                  "interleaved_samples": 9,
+                  "calls_per_sample": 100,
+                  "units": "median milliseconds per call",
+                  "gated": {
+                    "protect": 0.120762,
+                    "unprotect": 0.071802
+                  },
+                  "fixed": {
+                    "protect": 0.121285,
+                    "unprotect": 0.070329
+                  },
+                  "conclusion": "No material common-case cost within local scheduling noise.",
+                  "artifact": "/private/tmp/sarj-wiki-storage-audit-codec-common-case.json"
+                }
+              }
+            },
+            {
+              "pass": 2,
+              "outcome": "implemented",
+              "result": "Isolate provider credential refresh from caller transactions and preserve actual work ownership",
+              "evidence": {
+                "issue": "A synchronous Google provider refresh could commit the request's task-owner transaction.",
+                "classification": "Pre-existing transaction ownership bug present at 80b6e095, found by cross-path audit",
+                "proof": "The actual provider refresh bridge with real lease/CAS methods and MockTransport committed its shared request session between owner-lock acquisition and admission limit checking. The owner advisory transaction lock was no longer held at the limit check.",
+                "fix": "Each provider callback creates its own AsyncSession from the bound engine, reads a fresh User and uses unchanged lease/CAS refresh logic. An AsyncConnection-bound request still gets a separate engine session. The isolated session closes before request User synchronization. Lease acquisition commits before OAuth HTTP, so it returns its connection during provider I/O. Caller pending writes and owner lock remain untouched.",
+                "snapshot_synchronization": "Use set_committed_value only for clean persisted credential attributes; preserve caller-owned pending attribute history. Apply a credential snapshot only when it does not regress a clean loaded generation. Callback-local latest token/generation is protected by a small thread lock, so late older callbacks return the newest observed token and subsequent forced refreshes use its generation.",
+                "cancellation": "Capture the preparing task as the normal callback owner. Its completion/cancellation cancels the isolated refresh coroutine and existing lease cleanup runs. Bridge timeout defaults to the existing 12 seconds, is explicitly injectable in prepare(), and cancels the scheduled future; no monkeypatch or suppression. The owner done callback is removed in finally.",
+                "detached_paths": "Only shared GoogleDriveService._load_drives and SidebarCache._refresh_in_background set provider_refresh_scope. Their actual work task owns cancellation, allowing request completion/cancellation with a surviving Drive waiter and stale sidebar work after request exit. Foreground/sidebar caller cancellation keeps its original behavior. Cancelling actual sidebar work clears its lease.",
+                "construction_paths_checked": [
+                  "backend/app/drive/dependencies.py",
+                  "backend/app/document_transform/dependencies.py",
+                  "backend/app/smart_create/executor.py",
+                  "backend/app/document_transform/task_executor.py",
+                  "backend/app/document_transform/qa_broker.py",
+                  "backend/app/mcp/context.py"
+                ],
+                "tests": {
+                  "postgres": [
+                    "Engine-bound and connection-bound request owner locks survive refresh; pending display-name writes remain private; caller commit preserves a later independent credential generation (2 cases).",
+                    "Cancelled preparing task rolls back pending request writes, clears isolated lease, preserves generation 0 and releases the owner lock (1 case).",
+                    "A surviving shared Drive waiter succeeds with one OAuth refresh after original request completion or cancellation (2 cases).",
+                    "Actual stale sidebar refresh starts after request exit; success updates tree/generation, actual work cancellation preserves stale tree and clears lease (2 cases)."
+                  ],
+                  "unit": [
+                    "Persisted credential snapshot synchronization adds no ORM dirty state.",
+                    "Pending caller credential/display-name writes keep their history.",
+                    "Injected bridge timeout actually cancels the pending coroutine.",
+                    "Deliberately out-of-order callbacks preserve request generation 2 and token 2, including the late first result and the next forced generation."
+                  ],
+                  "database": "Root-owned disposable PostgreSQL fixture only, two-connection pool, max_overflow=0, bounded UUID-owned rows cleaned by fixtures.",
+                  "network": "OAuth uses httpx.MockTransport; no real Google credentials or personal IDs."
+                },
+                "proof_artifact": "/private/tmp/sarj-wiki-storage-audit-provider-lock.json"
+              }
+            }
+          ]
+        },
+        {
+          "scope": "cross-stack",
+          "passCount": 2,
+          "passes": [
+            {
+              "pass": 1,
+              "outcome": "implemented",
+              "result": "Stop cancelled or stalled transform input before admission, preserving admitted mutations",
+              "evidence": {
+                "basis": "Actual HEAD source with synthetic admission action; proposed fix only in memory; no tracked changes",
+                "tests": [
+                  {
+                    "phase": "beforeAdmission",
+                    "before": {
+                      "status": 200,
+                      "admissions": 1,
+                      "cancels": 0,
+                      "elapsedMs": 1.848417000000012
+                    },
+                    "proposed": {
+                      "status": 502,
+                      "admissions": 0,
+                      "cancels": 0,
+                      "elapsedMs": 0.1721249999999941
+                    }
+                  },
+                  {
+                    "phase": "whileReading",
+                    "before": {
+                      "status": 200,
+                      "admissions": 1,
+                      "cancels": 0,
+                      "elapsedMs": 41.477667
+                    },
+                    "proposed": {
+                      "status": 502,
+                      "admissions": 0,
+                      "cancels": 1,
+                      "elapsedMs": 6.543292000000008
+                    }
+                  },
+                  {
+                    "phase": "uploadBeforeAdmission",
+                    "before": {
+                      "status": 200,
+                      "admissions": 1,
+                      "cancels": 0,
+                      "elapsedMs": 0.07579199999997854
+                    },
+                    "proposed": {
+                      "status": 502,
+                      "admissions": 0,
+                      "cancels": 0,
+                      "elapsedMs": 0.051375000000007276
+                    }
+                  },
+                  {
+                    "phase": "afterAdmission",
+                    "before": {
+                      "status": 200,
+                      "admissions": 1,
+                      "cancels": 0,
+                      "elapsedMs": 0.13433299999999804
+                    },
+                    "proposed": {
+                      "status": 200,
+                      "admissions": 1,
+                      "cancels": 0,
+                      "elapsedMs": 0.17779200000001083
+                    }
+                  }
+                ],
+                "helperDeadline": {
+                  "errorName": "TimeoutError",
+                  "cancels": 1,
+                  "elapsedMs": 5.923374999999993
+                }
+              }
+            },
+            {
+              "pass": 2,
+              "outcome": "implemented",
+              "result": "Bind browser transport recovery and terminal notifications to their originating session",
+              "evidence": [
+                {
+                  "scenario": "Unsignalled retired action returns 401 after either new-user or same-user keyed provider replacement",
+                  "action_calls": 1,
+                  "auth_recovery_requests": 0,
+                  "terminal_events": 0,
+                  "replacement_cache": "preserved"
+                },
+                {
+                  "scenario": "Generated mutation dispatched before retirement returns 401 afterward",
+                  "mutation_requests": 1,
+                  "mutation_network_signal_aborted": false,
+                  "auth_recovery_requests": 0,
+                  "replay_requests": 0,
+                  "terminal_events": 0
+                },
+                {
+                  "scenario": "Generated call's owner retires before asynchronous SDK dispatch",
+                  "network_requests": 0,
+                  "result": "AbortError"
+                },
+                {
+                  "scenario": "Mutation owner retires while raw refresh is pending",
+                  "mutation_requests": 1,
+                  "raw_refresh_requests": 1,
+                  "raw_refresh_aborted": true,
+                  "replay_requests": 0
+                },
+                {
+                  "scenario": "Two new-epoch refresh waiters overlap a retiring old-epoch refresh and its finalizer",
+                  "raw_refresh_requests": 2,
+                  "distribution": "one old plus one shared new",
+                  "old_waiter": "AbortError",
+                  "new_waiters": [
+                    "refreshed",
+                    "refreshed"
+                  ]
+                },
+                {
+                  "scenario": "Actual HTTP child reads through initial StrictMode mount/cleanup/remount",
+                  "read_requests": 2,
+                  "signals_aborted": [
+                    true,
+                    false
+                  ],
+                  "current_query_data": "loaded",
+                  "terminal_events": 0
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "scope": "frontend-loading",
+          "passCount": 2,
+          "passes": [
+            {
+              "pass": 1,
+              "outcome": "implemented",
+              "result": "Retire QueryProvider callbacks and reads without clearing a replacement session",
+              "evidence": {
+                "evidence_before": {
+                  "oldRequestAbortedAtHandoff": false,
+                  "notifications": 1,
+                  "clearedUserIds": [
+                    "user-b"
+                  ],
+                  "replacementLocation": "/login?redirect=%2Fd%2Fcurrent"
+                },
+                "evidence_after": {
+                  "oldRequestAbortedAtHandoff": true,
+                  "notifications": 0,
+                  "clearedUserIds": [],
+                  "replacementLocation": "/d/current",
+                  "retiredCacheSize": 0
+                },
+                "contracts_preserved": [
+                  "Current-provider terminal 401 handling",
+                  "Strict Mode retains hydrated data and resumes observed requests",
+                  "Same-user provider replacement fetches with only its current client",
+                  "Replacement cache and browser storage survive retired callbacks"
+                ]
+              }
+            },
+            {
+              "pass": 2,
+              "outcome": "implemented",
+              "result": "Suppress stale document-intent iframe publication after shared authorization",
+              "evidence": [
+                {
+                  "scenario": "Hover leaves after authorization starts",
+                  "stale_prewarm_publications_before": 1,
+                  "stale_prewarm_publications_after": 0,
+                  "authorization_signal_aborted_before": false,
+                  "authorization_signal_aborted_after": false,
+                  "authorized_cache_preserved_before": true,
+                  "authorized_cache_preserved_after": true,
+                  "route_prefetch_calls_before": 2,
+                  "route_prefetch_calls_after": 2
+                },
+                {
+                  "scenario": "Sidebar row unmounts while provider stays mounted",
+                  "stale_prewarm_publications_before": 1,
+                  "stale_prewarm_publications_after": 0,
+                  "authorization_signal_aborted_before": false,
+                  "authorization_signal_aborted_after": false,
+                  "authorized_cache_preserved_before": true,
+                  "authorized_cache_preserved_after": true,
+                  "route_prefetch_calls_before": 2,
+                  "route_prefetch_calls_after": 2
+                },
+                {
+                  "scenario": "Save-Data becomes enabled while authorization is pending",
+                  "stale_prewarm_publications_before": 1,
+                  "stale_prewarm_publications_after": 0,
+                  "authorization_signal_aborted_before": false,
+                  "authorization_signal_aborted_after": false,
+                  "authorized_cache_preserved_before": true,
+                  "authorized_cache_preserved_after": true,
+                  "route_prefetch_calls_before": 2,
+                  "route_prefetch_calls_after": 2
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "scope": "frontend-sidebar",
+          "passCount": 1,
+          "passes": [
+            {
+              "pass": 1,
+              "outcome": "implemented",
+              "result": "Bind mutation admission and UI/cache cleanup to their originating client and operation",
+              "evidence": {
+                "task": "final frontend mutation/session ownership candidate",
+                "agent": "frontend_sidebar_round2",
+                "repository": "/private/tmp/sarj-wiki-performance-20261010",
+                "distinctCandidateCount": 1,
+                "retainedCandidateCount": 1,
+                "testBuildAdministrationPassCredit": 0,
+                "paths": [
+                  "frontend/src/components/browser-session-boundary.tsx",
+                  "frontend/src/components/query-provider.tsx",
+                  "frontend/src/components/wiki-document/reorganize-document.tsx",
+                  "frontend/src/components/wiki-document/short-link-editor.tsx",
+                  "frontend/src/components/wiki-sidebar/ephemeral-operation-ownership.test.ts",
+                  "frontend/src/components/wiki-sidebar/use-drag-over-store.ts",
+                  "frontend/src/components/wiki-sidebar/use-in-flight-moves.ts",
+                  "frontend/src/components/wiki-sidebar/use-wiki-reorder-session.test.tsx",
+                  "frontend/src/components/wiki-sidebar/use-wiki-reorder.ts",
+                  "frontend/src/hooks/use-document-alias.ts",
+                  "frontend/src/hooks/use-session-mutation.test.tsx",
+                  "frontend/src/hooks/use-session-mutation.ts",
+                  "frontend/src/hooks/use-wiki-mutations.ts",
+                  "frontend/src/lib/mutation-session.ts",
+                  "frontend/src/lib/mutation-toast.test.ts",
+                  "frontend/src/lib/mutation-toast.ts",
+                  "frontend/src/lib/session-isolation.ts"
+                ],
+                "passes": [
+                  {
+                    "id": "final-mutation-ownership",
+                    "outcome": "retained",
+                    "problem": "Queued mutations adopted a replacement browser epoch after asynchronous TanStack admission. Retired optimistic callbacks recreated cleared caches, and same-file global finalizers cleared the replacement user's active move.",
+                    "implementation": [
+                      "Shared useSessionMutation binds its originating QueryClient epoch synchronously in mutate/mutateAsync, checks before hook onMutate/server dispatch and after resolution, guards hook/per-call callbacks, and preserves original public variables/data/context.",
+                      "All nine use-wiki-mutations useMutation sites and both document-alias mutation hooks share the wrapper. The already-captured session signal goes to runAction's existing optional guard, preventing recovery/replay after explicit clear without cancelling admitted writes.",
+                      "Provider mutation epoch lifecycle runs in layout effects so current child passive-effect mutation admission survives Strict Mode replay; explicit authenticated clear retires the epoch synchronously.",
+                      "Moves and drag globals use operation leases; session retirement or explicit clear releases their listeners/state, and late matching-file finalizers cannot release a replacement lease.",
+                      "Reorder catches, rollback, destination sort work and optimistic finalizers respect current session; same-container ordering finalizers also require their original optimistic array. Drag finish cleanup is shared between cancel/end while retaining destination, permission, shortcut and cross-drive validation.",
+                      "Shared cancellation guard keeps retirement AbortErrors quiet in common mutation feedback, alias editing and reorganization while current normal failures remain visible."
+                    ],
+                    "deterministicEvidence": {
+                      "originalBeforeSource": "frontend_loading_round2 actual-provider/useWikiReorder/useMoveFile/runAction/global-store fixtures, recorded before this candidate",
+                      "moveAfter": {
+                        "oldMovePending": true,
+                        "actionCalls": 2,
+                        "afterSessionClear": {
+                          "moving": false,
+                          "activeDrag": null,
+                          "overId": null
+                        },
+                        "beforeOldFinalizer": {
+                          "moving": true,
+                          "currentMovePending": true
+                        },
+                        "afterOldFinalizer": {
+                          "moving": true,
+                          "currentMovePending": true,
+                          "toasts": [],
+                          "retiredSortOrdersRecreated": false
+                        }
+                      },
+                      "moveBefore": {
+                        "afterSessionClear": {
+                          "moving": true,
+                          "activeDrag": "retired-drag",
+                          "overId": "destination"
+                        },
+                        "afterOldFinalizer": {
+                          "moving": false,
+                          "currentMovePending": true,
+                          "toasts": [
+                            {
+                              "type": "error",
+                              "message": "The browser session was retired"
+                            }
+                          ],
+                          "retiredSortOrdersRecreated": true
+                        }
+                      },
+                      "queuedAfter": {
+                        "actionCallsBeforeHandoff": 0,
+                        "actionCallsAfterHandoff": 0,
+                        "refreshCalls": 0,
+                        "redirects": [],
+                        "replacementCacheSurvived": true,
+                        "retiredCacheRecreated": false,
+                        "toasts": []
+                      },
+                      "queuedBefore": {
+                        "actionCallsBeforeHandoff": 0,
+                        "actionCallsAfterHandoff": 1,
+                        "refreshCalls": 1,
+                        "redirects": [
+                          "/login?redirect=%2F"
+                        ],
+                        "replacementCacheSurvived": false,
+                        "retiredCacheRecreated": true,
+                        "toasts": {
+                          "count": 1,
+                          "description": "One retired move error toast observed; exact rendered text was not retained in the original agent message."
+                        }
+                      },
+                      "explicitClearAfter": {
+                        "actionCalls": 1,
+                        "refreshCalls": 0,
+                        "redirects": [],
+                        "retiredCacheRecreated": false,
+                        "toasts": []
+                      },
+                      "explicitClearIntermediateBeforeSignalForwarding": {
+                        "scope": "Measured after initial epoch/UI guards, before threading the captured mutation signal into runAction",
+                        "actionCalls": 1,
+                        "refreshCalls": 1,
+                        "redirects": [
+                          "/login?redirect=%2F"
+                        ],
+                        "retiredCacheRecreated": false,
+                        "toasts": []
+                      },
+                      "currentBehavior": {
+                        "normal403MoveRollback": "original sort orders and original source parent restored; permission toast visible",
+                        "currentBulkDocIconFolderIconErrors": "previous optimistic data restored and current query invalidation retained",
+                        "normalDestinationOrder": [
+                          "sibling",
+                          "shared-file",
+                          "nested-folder"
+                        ],
+                        "currentStrictModeUserMutation": "one move action admitted, destination ordering retained",
+                        "childStrictModePassiveReplay": "two attempts observed; retired first attempt rejects AbortError, current replay dispatches exactly one action and updates the current tree",
+                        "staleHookCalls": "retired alias hook cannot dispatch",
+                        "publicCallbacks": "original variables, data and onMutate context forwarded to hook/per-call callbacks in a standalone QueryClientProvider",
+                        "admittedWrite": "underlying work completes once after retirement; retired result/callbacks suppressed",
+                        "listenerResources": "replaced move/drag listeners removed; normal end/reset releases listeners; aborted sessions release leases; stale lease finalizers preserve current ownership"
+                      }
+                    },
+                    "measurements": {
+                      "noProductionLatencyClaim": true,
+                      "eliminatedQueuedServerCallsPerReproduction": {
+                        "before": 1,
+                        "after": 0
+                      },
+                      "eliminatedRetiredAuthRefreshCallsPerReproduction": {
+                        "before": 1,
+                        "after": 0
+                      },
+                      "benchmark": {
+                        "node": "v26.7.0",
+                        "environment": "production",
+                        "cases": [
+                          {
+                            "case": "no optimistic callbacks",
+                            "operationsPerSample": 1000,
+                            "samples": 11,
+                            "bareMedianMicroseconds": 1.2266250000000127,
+                            "ownedMedianMicroseconds": 1.4520420000000058,
+                            "deltaMicroseconds": 0.2254169999999931,
+                            "bareSamples": [
+                              2.297499999999957,
+                              1.445083000000011,
+                              1.2266250000000127,
+                              1.2921249999999986,
+                              1.3017500000000268,
+                              3.481124999999963,
+                              1.0131250000000023,
+                              1.0505830000000174,
+                              1.1139590000000226,
+                              1.0453339999999685,
+                              1.087709000000018
+                            ],
+                            "ownedSamples": [
+                              5.1668750000000045,
+                              1.4520420000000058,
+                              5.541207999999983,
+                              1.7409590000000321,
+                              1.419499999999971,
+                              1.6224579999999946,
+                              1.1923330000000192,
+                              1.2350830000000315,
+                              1.2213749999999663,
+                              2.656833000000006,
+                              1.2821250000000077
+                            ]
+                          },
+                          {
+                            "case": "synchronous optimistic callbacks",
+                            "operationsPerSample": 1000,
+                            "samples": 11,
+                            "bareMedianMicroseconds": 1.312749999999994,
+                            "ownedMedianMicroseconds": 1.540790999999956,
+                            "deltaMicroseconds": 0.22804099999996197,
+                            "bareSamples": [
+                              1.2169170000000236,
+                              1.312749999999994,
+                              1.356207999999981,
+                              1.3717090000000098,
+                              1.317707999999982,
+                              1.3444999999999823,
+                              1.3599999999999568,
+                              1.1114160000000197,
+                              1.2065829999999664,
+                              1.2029169999999567,
+                              1.1118340000000444
+                            ],
+                            "ownedSamples": [
+                              1.6353330000000028,
+                              3.7660829999999805,
+                              3.3473749999999995,
+                              1.5118330000000242,
+                              1.5432500000000005,
+                              1.540790999999956,
+                              4.913416999999981,
+                              1.46225000000004,
+                              1.3746249999999804,
+                              1.3439579999999864,
+                              1.3567919999999845
+                            ]
+                          }
+                        ],
+                        "sessionLookupNanoseconds": 8.794579999999996,
+                        "retiredMutationCacheEntries": 0
+                      },
+                      "benchmarkPath": "/private/tmp/sarj-wiki-mutation-ownership-overhead.json",
+                      "benchmarkScript": "/private/tmp/sarj-wiki-mutation-ownership-overhead.mjs",
+                      "overheadInterpretation": "Actual final hook against bare TanStack useMutation in production-mode Node/happy-dom, 11 alternating samples of 1000 immediate mutations per case after four warmup pairs; includes final post-resolution ownership checks. Synthetic, network-free microbenchmark with GC/scheduling outliers; median overhead is not a worst-case bound or a browser/deployment latency measurement.",
+                      "resourceBound": "One epoch controller per originating QueryClient activation rather than per mutation; one additional owned-variable envelope per admitted call; one abort listener per active move lease or active drag. Same epoch signal retained across 100000 captures; benchmark mutation cache empty after clearing samples."
+                    },
+                    "validation": {
+                      "focusedVitest": {
+                        "passed": 80,
+                        "files": 13,
+                        "newRegressionTests": 28,
+                        "command": "npx vitest run src/hooks/use-session-mutation.test.tsx src/components/wiki-sidebar/use-wiki-reorder-session.test.tsx src/components/wiki-sidebar/ephemeral-operation-ownership.test.ts src/lib/mutation-toast.test.ts src/components/query-provider-session-ownership.test.tsx src/components/query-provider-lifecycle.test.tsx src/components/browser-session-boundary.test.tsx src/lib/session-isolation.test.ts src/lib/build-destination-sort-orders.test.ts src/lib/wiki-cache.test.ts src/components/wiki-document/short-link-dialog.test.tsx src/components/wiki-document/reorganize-document.test.tsx src/components/wiki-sidebar/item-menu.test.tsx --no-file-parallelism"
+                      },
+                      "typescript": {
+                        "command": "npx tsc --noEmit --incremental false",
+                        "exitCode": 0
+                      },
+                      "eslint": {
+                        "exitCode": 0,
+                        "errors": 0,
+                        "inheritedWarnings": 18,
+                        "baselineEdits": 0
+                      },
+                      "nativeStandards": {
+                        "exitCode": 0,
+                        "errors": 0,
+                        "inheritedWarnings": 9,
+                        "executionIssues": 0,
+                        "baselineEdits": 0
+                      },
+                      "prettier": {
+                        "exitCode": 0,
+                        "files": 17
+                      },
+                      "diffCheck": {
+                        "exitCode": 0
+                      },
+                      "actualAuditScripts": [
+                        "/private/tmp/sarj-wiki-sidebar-moves-final-audit.mjs",
+                        "/private/tmp/sarj-wiki-sidebar-queued-mutation-final-audit.mjs",
+                        "/private/tmp/sarj-wiki-sidebar-explicit-clear-final-audit.mjs"
+                      ]
+                    },
+                    "caveats": [
+                      "This candidate eliminates deterministic obsolete work and cache/UI ownership races; it does not establish a physical maximum frontend/backend speed.",
+                      "Current optimistic cache callbacks are synchronous. Future callbacks that perform side effects after their own awaits must themselves honor the supplied ownership signal; the helper can guard callback admission and returned mutation results.",
+                      "Strict Mode regression covers ordinary UI mutation and child passive-effect replay; no existing application mutation is started from a child layout effect.",
+                      "No full build, deploy, commit, production measurement, documentation or baseline edit performed by this agent. Root owns final gates/integration.",
+                      "The requested native standards command bootstrapped a disposable uv tool cache; its final process completed and root was explicitly notified that the cache is released for deletion."
+                    ]
+                  }
+                ],
+                "released": true
+              }
+            }
+          ]
+        }
+      ],
+      "measurements": {
+        "inventoryBaselineRevision": "80b6e095c8ae6bdb275569ad68b6d47b65abdd8a",
+        "homeClientInventory": {
+          "before": {
+            "bytes": 545031,
+            "gzipBytes": 177697
+          },
+          "after": {
+            "bytes": 551485,
+            "gzipBytes": 179354
+          }
+        },
+        "documentClientInventory": {
+          "before": {
+            "bytes": 586297,
+            "gzipBytes": 191766
+          },
+          "after": {
+            "bytes": 583817,
+            "gzipBytes": 190761
+          }
+        },
+        "basis": "Same locked local production-build toolchain. Sync client-reference inventory excludes framework/deferred chunks and does not establish actual browser transfer or production page-load latency."
+      },
+      "validation": {
+        "backendFullSuite": {
+          "passed": 4212,
+          "coveragePercent": 88.68,
+          "skips": 0,
+          "fixture": "Disposable local PostgreSQL, never production data"
+        },
+        "backendStorageFocused": {
+          "focused_pytest": {
+            "result": "passed",
+            "tests": 202,
+            "seconds": 3.55,
+            "modules": [
+              "tests/test_cache_protection.py",
+              "tests/test_cache_service.py",
+              "tests/test_google_token_manager.py",
+              "tests/test_storage_hot_paths_postgres.py",
+              "tests/test_provider_performance_postgres.py",
+              "tests/test_sidebar_cache.py",
+              "tests/test_drive_modules.py",
+              "tests/test_bootstrap.py",
+              "tests/test_mcp_context.py",
+              "tests/test_mcp_native_context.py"
+            ]
+          },
+          "ruff_check": "passed on seven owned files",
+          "ruff_format": "passed, seven files already formatted",
+          "mypy": "passed, seven files, cache-dir=/dev/null",
+          "basedpyright": "passed, zero errors/warnings/notes",
+          "ty": "passed",
+          "native_standards": "passed, only pre-existing nonblocking GoogleTokenManager/Drive warnings; no new suppression",
+          "python_baseline": "passed, 1808 blocking diagnostics in 200 files match existing baseline; 292 warnings excluded",
+          "suppression_ratchet": "passed from repository root, 25 suppressions across 11 codes, baseline 25",
+          "diff_check": "passed"
+        },
+        "backendRoutesFocused": {
+          "route_provider_suite": "169 passed, 1 existing Google genai DeprecationWarning, 1.10s",
+          "latest_template_provider_suite": "21 passed in 0.43s",
+          "additional_regression_cases": 11,
+          "ruff": "check --no-cache and format --check --no-cache clean across 5 changed files",
+          "mypy": "Success: no issues found in 3 source files, --no-incremental --cache-dir=/dev/null",
+          "basedpyright": "0 errors, 0 warnings, 0 notes across the 3 app files and 2 tests; final test-only rerun also clean",
+          "ty": "All checks passed across 3 application files",
+          "native_python_rules": "All registered rules pass with original baseline; no new warnings/allowances/suppressions. Three existing constructor-default warnings retained.",
+          "no_heavy_gates": "No full suite/build/deployment or PostgreSQL mutation performed by this agent"
+        },
+        "ancestryFocused": {
+          "targeted_pytest": "143 provider/Drive/files/bounded-search tests passed in 0.66s",
+          "command": ".venv/bin/pytest -q tests/test_provider_hot_paths.py tests/test_drive_modules.py tests/test_files_service.py tests/test_mcp_bounded_search.py",
+          "ruff": "Check and format --check clean with --no-cache; git diff --check clean",
+          "basedpyright": "0 errors, 0 warnings, 0 notes for Drive and provider regression tests",
+          "mypy": "Success: no issues found in 1 source file, --no-incremental --cache-dir=/dev/null",
+          "ty": "All checks passed for Drive",
+          "native_python": "All registered rules pass using the unchanged baseline; only two inherited constructor-default warnings in Drive, no new debt/suppressions.",
+          "memory_budget": "500 direct distinct metadata-node fixture reads retain exactly 256 Futures, execute all 500 reads. Node retention verified; no exact process RSS claim."
+        },
+        "frontendTransportFocused": {
+          "focused_tests": "89 tests across 12 files pass: browser session, session refresh transport, action client, generated API client, wiki HTTP reads, Provider ownership/lifecycle/events, SessionRefresh component, server API, MCP consent, and session isolation.",
+          "typecheck": "Full frontend tsc --noEmit --incremental false passes.",
+          "lint": "Scoped ESLint passes with 0 errors; existing 23 warnings remain in preexisting test fixtures. Scoped lint uses --pass-on-unpruned-suppressions because it does not inspect unrelated files in the global baseline. No baseline/config edits.",
+          "format": "Scoped Prettier check passes.",
+          "diff": "git diff --check passes.",
+          "logs": [
+            "/private/tmp/sarj-wiki-transport-ownership-tests.log",
+            "/private/tmp/sarj-wiki-transport-ownership-types.log",
+            "/private/tmp/sarj-wiki-transport-ownership-eslint.json"
+          ]
+        },
+        "documentIntentFocused": {
+          "tests": "35 tests / 3 files pass",
+          "typecheck": "Full tsc --noEmit --incremental false passes",
+          "lint": "Scoped ESLint 0 errors/0 warnings, no baseline edits",
+          "format": "Scoped Prettier pass",
+          "diff": "git diff --check pass"
+        },
+        "mutationOwnershipFocused": {
+          "focusedVitest": {
+            "passed": 80,
+            "files": 13,
+            "newRegressionTests": 28,
+            "command": "npx vitest run src/hooks/use-session-mutation.test.tsx src/components/wiki-sidebar/use-wiki-reorder-session.test.tsx src/components/wiki-sidebar/ephemeral-operation-ownership.test.ts src/lib/mutation-toast.test.ts src/components/query-provider-session-ownership.test.tsx src/components/query-provider-lifecycle.test.tsx src/components/browser-session-boundary.test.tsx src/lib/session-isolation.test.ts src/lib/build-destination-sort-orders.test.ts src/lib/wiki-cache.test.ts src/components/wiki-document/short-link-dialog.test.tsx src/components/wiki-document/reorganize-document.test.tsx src/components/wiki-sidebar/item-menu.test.tsx --no-file-parallelism"
+          },
+          "typescript": {
+            "command": "npx tsc --noEmit --incremental false",
+            "exitCode": 0
+          },
+          "eslint": {
+            "exitCode": 0,
+            "errors": 0,
+            "inheritedWarnings": 18,
+            "baselineEdits": 0
+          },
+          "nativeStandards": {
+            "exitCode": 0,
+            "errors": 0,
+            "inheritedWarnings": 9,
+            "executionIssues": 0,
+            "baselineEdits": 0
+          },
+          "prettier": {
+            "exitCode": 0,
+            "files": 17
+          },
+          "diffCheck": {
+            "exitCode": 0
+          },
+          "actualAuditScripts": [
+            "/private/tmp/sarj-wiki-sidebar-moves-final-audit.mjs",
+            "/private/tmp/sarj-wiki-sidebar-queued-mutation-final-audit.mjs",
+            "/private/tmp/sarj-wiki-sidebar-explicit-clear-final-audit.mjs"
+          ]
+        },
+        "retiredReplayCleanup": {
+          "passed": 19,
+          "scope": "API-client tests, including a retired admitted replay with stalled response-body cleanup; no write cancellation, refresh or terminal notification"
+        },
+        "compiledCloudflareWorker": {
+          "compiledFinalSource": true,
+          "runtimeCompatibilityDate": "2026-08-18",
+          "productionCompatibilityDateUnchanged": "2026-08-22",
+          "cases": {
+            "expiredDrive": {
+              "path": "/api/wiki/sidebar/drives",
+              "status": 401,
+              "body": {
+                "detail": "Your session has expired"
+              },
+              "location": null,
+              "cacheControl": "no-cache, must-revalidate"
+            },
+            "authorizedDrive": {
+              "path": "/api/wiki/sidebar/drives",
+              "status": 200,
+              "body": [
+                {
+                  "id": "fixture-drive",
+                  "name": "Fixture Drive",
+                  "is_personal": false
+                }
+              ],
+              "location": null,
+              "cacheControl": "no-cache, must-revalidate"
+            },
+            "redirectDrive": {
+              "path": "/api/wiki/sidebar/drives",
+              "status": 502,
+              "body": {
+                "detail": "The request could not be completed"
+              },
+              "location": null,
+              "cacheControl": "no-cache, must-revalidate"
+            },
+            "expiredIdentity": {
+              "path": "/api/wiki/auth/me",
+              "status": 401,
+              "body": {
+                "detail": "Your session has expired"
+              },
+              "location": null,
+              "cacheControl": "no-cache, must-revalidate"
+            }
+          },
+          "upstreamRequests": 4,
+          "redirectDestinationRequests": 0,
+          "limitation": "Loopback synthetic fixture in compiled OpenNext Worker; no live credentials or production latency claim."
+        },
+        "releaseGate": "The final normal pre-push make check and exact-head hosted checks qualify the integrated commit. Production deployment must pass exact-revision health, invalid-session real proxies, and a real signed-in drive/document UI check. Qualification receipts and the signed-in proof are recorded after deployment."
+      },
+      "reproduce": [
+        "node frontend/scripts/benchmark-bundle.mjs",
+        "node frontend/scripts/benchmark-bundle.mjs frontend/.next \"(app)/d/[driveId]/page\"",
+        "uv --directory backend run --locked pytest -q tests/test_provider_hot_paths.py tests/test_google_token_manager.py tests/test_cache_protection.py",
+        "WIKI_POLISH29_QA_DATABASE_URL=<disposable PostgreSQL DSN> uv --directory backend run --locked pytest -q tests/test_storage_hot_paths_postgres.py",
+        "npm --prefix frontend test",
+        "make check"
+      ],
+      "limitations": [
+        "Added ownership/compatibility checks are retained for their proved behavior; no CPU speedup is claimed for those guards.",
+        "Final homepage compressed app inventory grows 0.9% (177697 to 179354 bytes); document inventory shrinks 0.5% (191766 to 190761 bytes). Both include the completed ownership guards.",
+        "The two-parent zero-I/O ancestor fixture adds 15–21 microseconds; bounded per-call reuse eliminates repeated provider requests and retains independent branch concurrency and next-call freshness.",
+        "Synthetic provider latency, local SQL/codec measurements, bundle inventories and resource counts are not live end-to-end page latency.",
+        "The deployed Cloudflare compatibility date remains unchanged; the installed local workerd supports 2026-08-18 for the loopback fixture.",
+        "Fresh authority, encryption/key rotation, task locks, quotas, idempotency and admitted mutation semantics remain enforced.",
+        "No physical maximum is claimed. Further workload-specific tuning needs production traces and representative data; reviewed regressions/tradeoffs are recorded rather than concealed."
+      ]
+    }
+  ]
 }

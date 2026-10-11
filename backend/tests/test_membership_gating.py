@@ -74,9 +74,9 @@ class _FakeExtras:
 
 
 class _FakeFiles:
-    async def get_accessible_many(self, file_ids: list[FileId]) -> dict[FileId, FileResponse]:
+    async def get_accessible_ids(self, file_ids: list[FileId]) -> set[FileId]:
         assert file_ids == [ACCESSIBLE_DOC, INACCESSIBLE_DOC]
-        return {ACCESSIBLE_DOC: await self.get(ACCESSIBLE_DOC)}
+        return {ACCESSIBLE_DOC}
 
     async def get(self, file_id: str) -> FileResponse:
         if file_id == ACCESSIBLE_DOC:
