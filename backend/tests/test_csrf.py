@@ -181,3 +181,45 @@ async def test_bearer_logout_without_origin_is_allowed_and_revokes_token() -> No
 
     assert response.status_code == 200
     assert auth.revocations == ["server-action-token"]
+
+
+@pytest.mark.parametrize(
+    ("headers", "status"),
+    [
+        (
+            [("Cookie", "unrelated=a"), ("Cookie", "access_token="), ("Origin", FRONTEND_ORIGIN)],
+            204,
+        ),
+        (
+            [("Cookie", "unrelated=a"), ("Cookie", "refresh_token=")],
+            403,
+        ),
+        (
+            [
+                ("Cookie", 'access_token="a\\073b"'),
+                ("Origin", HOSTILE_SIBLING_ORIGIN),
+                ("Origin", FRONTEND_ORIGIN),
+            ],
+            403,
+        ),
+        (
+            [
+                ("Cookie", "access_token=a"),
+                ("Origin", FRONTEND_ORIGIN),
+                ("Origin", HOSTILE_SIBLING_ORIGIN),
+            ],
+            204,
+        ),
+    ],
+    ids=[
+        "later-empty-access-cookie",
+        "later-empty-refresh-cookie",
+        "first-origin-denied",
+        "first-origin-allowed",
+    ],
+)
+async def test_native_cookie_headers_merge_and_first_origin_is_authoritative(
+    client: AsyncClient, headers: list[tuple[str, str]], status: int
+) -> None:
+    response = await client.post("/mutation", headers=headers)
+    assert response.status_code == status

@@ -49,7 +49,6 @@ export function useDocumentIntent({
 }: DocumentIntentOptions): DocumentIntentHandlers {
   const queryClient = useQueryClient();
   const router = useRouter();
-  const setPrewarm = useDocViewerStore((state) => state.setPrewarm);
   const stateRef = useRef<IntentState>({
     committed: false,
     focused: false,
@@ -78,7 +77,7 @@ export function useDocumentIntent({
     ) {
       return;
     }
-    setPrewarm({
+    useDocViewerStore.getState().setPrewarm({
       fileId: file.id,
       mimeType: file.mimeType,
       reloadKey: 0,

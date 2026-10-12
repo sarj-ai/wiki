@@ -8,9 +8,13 @@ export function isFolderLikeNode(node: DriveNode): boolean {
   );
 }
 
-export function buildChildrenIndex(folders: readonly DriveNode[]): Map<string, DriveNode[]> {
+export function buildChildrenIndex(
+  folders: readonly DriveNode[],
+  excludedMimeType?: string,
+): Map<string, DriveNode[]> {
   const map = new Map<string, DriveNode[]>();
   for (const folder of folders) {
+    if (excludedMimeType !== undefined && folder.mimeType === excludedMimeType) continue;
     const key = folder.parentId ?? "__root__";
     const bucket = map.get(key);
     if (bucket) bucket.push(folder);

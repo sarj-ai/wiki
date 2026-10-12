@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from starlette.requests import Request
+from starlette.datastructures import Headers
+from starlette.requests import cookie_parser
 from starlette.responses import JSONResponse
 from starlette.types import ASGIApp, Receive, Scope, Send
 
@@ -19,9 +20,12 @@ class CookieOriginMiddleware:
             await self._app(scope, receive, send)
             return
 
-        request = Request(scope)
-        uses_auth_cookie = any(name in request.cookies for name in _AUTH_COOKIE_NAMES)
-        if not uses_auth_cookie or request.headers.get("origin") == self._allowed_origin:
+        headers = Headers(scope=scope)
+        cookies: dict[str, str] = {}
+        for value in headers.getlist("cookie"):
+            cookies.update(cookie_parser(value))
+        uses_auth_cookie = not _AUTH_COOKIE_NAMES.isdisjoint(cookies)
+        if not uses_auth_cookie or headers.get("origin") == self._allowed_origin:
             await self._app(scope, receive, send)
             return
 

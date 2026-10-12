@@ -214,9 +214,6 @@
     "SARJ447": 1,
     "SARJ451": 1
   },
-  "backend/app/mcp/native_http_guard.py": {
-    "SARJ444": 2
-  },
   "backend/app/mcp/server.py": {
     "SARJ442": 1
   },

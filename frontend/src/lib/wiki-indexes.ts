@@ -39,7 +39,7 @@ export const indexNodes = memoizeIndex((items: readonly DriveNode[]) =>
   ),
 );
 export const indexDestinationFolders = memoizeIndex((items: readonly DriveNode[]) =>
-  buildChildrenIndex(items.filter((node) => node.mimeType !== MIME_SHORTCUT)),
+  buildChildrenIndex(items, MIME_SHORTCUT),
 );
 export const indexSidebarNodes = memoizeIndex((items: readonly DriveNode[]) => {
   const files: DriveNode[] = [];
