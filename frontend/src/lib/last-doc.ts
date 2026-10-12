@@ -11,30 +11,39 @@ export interface LastDoc {
 
 export function saveLastDoc(userId: string, doc: LastDoc): void {
   try {
-    const next = [doc, ...readRecentDocs(userId).filter((d) => d.fileId !== doc.fileId)].slice(
+    const key = recentDocsStorageKey(userId);
+    const stored = readStoredRecentDocs(key);
+    const raw = stored.ok ? stored.raw : null;
+    const next = [doc, ...decodeRecentDocs(raw).filter((d) => d.fileId !== doc.fileId)].slice(
       0,
       MAX_RECENT,
     );
-    localStorage.setItem(recentDocsStorageKey(userId), JSON.stringify(next));
+    const serialized = JSON.stringify(next);
+    if (raw !== serialized) localStorage.setItem(key, serialized);
   } catch {
     // localStorage unavailable (private mode / quota) — warm-up just skips.
   }
 }
 
 export function readRecentDocs(userId: string): LastDoc[] {
-  const result = parseRecentDocs(userId);
-  return result.ok ? result.value : [];
+  const stored = readStoredRecentDocs(recentDocsStorageKey(userId));
+  return stored.ok ? decodeRecentDocs(stored.raw) : [];
 }
 
-type RecentDocsResult = { ok: false } | { ok: true; value: LastDoc[] };
+type StoredRecentDocs = { ok: false } | { ok: true; raw: null | string };
 
-function parseRecentDocs(userId: string): RecentDocsResult {
+function readStoredRecentDocs(key: string): StoredRecentDocs {
   try {
-    const value = RecentDocsSchema.parse(
-      JSON.parse(localStorage.getItem(recentDocsStorageKey(userId)) ?? "[]"),
-    );
-    return { ok: true, value };
+    return { ok: true, raw: localStorage.getItem(key) };
   } catch {
     return { ok: false };
+  }
+}
+
+function decodeRecentDocs(raw: null | string): LastDoc[] {
+  try {
+    return RecentDocsSchema.parse(JSON.parse(raw ?? "[]"));
+  } catch {
+    return [];
   }
 }

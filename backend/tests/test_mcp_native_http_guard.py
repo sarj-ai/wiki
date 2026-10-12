@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from base64 import urlsafe_b64encode
+from dataclasses import dataclass
 from datetime import timedelta
 import hashlib
 import logging
@@ -549,3 +550,113 @@ async def test_final_registered_code_redirect_gets_issuer_only_once() -> None:
         "code": ["synthetic-code"],
         "iss": ["https://wiki.test/"],
     }
+
+
+@pytest.mark.parametrize(
+    ("extra_headers", "expected_reads", "expected_provider_reads"),
+    [
+        ([(b"Content-Type", b"application/x-www-form-urlencoded")], 0, 0),
+        ([(b"AuThOrIzAtIoN", b"Bearer synthetic")], 0, 0),
+        ([(b"Cookie", b"one"), (b"cookie", b"two")], 0, 0),
+        ([(b"host", b"wiki.test"), (b"Host", b"wiki.test")], 1, 1),
+        ([(f"x-extra-{index}".encode(), b"x") for index in range(63)], 1, 1),
+        ([(f"x-extra-{index}".encode(), b"x") for index in range(64)], 0, 0),
+    ],
+    ids=[
+        "mixed-type-duplicate",
+        "mixed-bearer",
+        "mixed-cookie-duplicate",
+        "ordinary-duplicates",
+        "64-headers",
+        "65-headers",
+    ],
+)
+async def test_native_header_boundary_uses_original_case_sensitive_content_type(
+    extra_headers: list[tuple[bytes, bytes]],
+    expected_reads: int,
+    expected_provider_reads: int,
+) -> None:
+    headers = [(b"content-type", b"application/x-www-form-urlencoded"), *extra_headers]
+    result = await _raw_exchange(headers)
+    assert result.status == (401 if expected_provider_reads else 400)
+    assert result.reads == expected_reads
+    assert result.provider_reads == expected_provider_reads
+
+
+@pytest.mark.parametrize(("extra_bytes", "expected_reads"), [(0, 1), (1, 0)])
+async def test_native_header_total_byte_budget_is_exact(
+    extra_bytes: int, expected_reads: int
+) -> None:
+    content_type = (b"content-type", b"application/x-www-form-urlencoded")
+    available = 16_384 - sum(len(part) for part in content_type) - len(b"x")
+    result = await _raw_exchange([content_type, (b"x", b"x" * (available + extra_bytes))])
+    assert result.status == (400 if extra_bytes else 401)
+    assert result.reads == expected_reads
+    assert result.provider_reads == expected_reads
+
+
+async def test_uppercase_only_content_type_keeps_native_exact_name_lookup() -> None:
+    result = await _raw_exchange([(b"Content-Type", b"application/x-www-form-urlencoded")])
+    assert result.status == 400
+    assert result.reads == 1
+    assert result.provider_reads == 0
+
+
+@dataclass(frozen=True, slots=True)
+class _ExchangeProbe:
+    status: int
+    reads: int
+    provider_reads: int
+
+
+async def _raw_exchange(headers: list[tuple[bytes, bytes]]) -> _ExchangeProbe:
+    from starlette.types import Message, Scope
+
+    provider = Provider()
+    guarded = NativeOAuthHTTPGuard(
+        Starlette(routes=provider.get_routes()),
+        NativeOAuthGuardSettings(
+            issuer="https://wiki.test/",
+            resource=RESOURCE,
+            redirect_policy=McpRedirectPolicy(loopback_paths=("/callback",)),
+        ),
+    )
+    scope: Scope = {
+        "type": "http",
+        "asgi": {"version": "3.0"},
+        "http_version": "1.1",
+        "scheme": "https",
+        "method": "POST",
+        "path": "/token",
+        "raw_path": b"/token",
+        "query_string": b"",
+        "root_path": "",
+        "headers": headers,
+        "server": ("wiki.test", 443),
+        "client": ("127.0.0.1", 4321),
+    }
+    reads = 0
+    status = 0
+
+    async def receive() -> Message:
+        nonlocal reads
+        reads += 1
+        return {"type": "http.request", "body": urlencode(exchange()).encode()}
+
+    async def send(message: Message) -> None:
+        nonlocal status
+        if message["type"] == "http.response.start":
+            status = message["status"]
+
+    await guarded(scope, receive, send)
+    return _ExchangeProbe(status=status, reads=reads, provider_reads=len(provider.seen))
+
+
+@pytest.mark.parametrize("overflow", [0, 1, 1_048_576])
+async def test_native_header_name_budget_is_bounded_before_body_read(overflow: int) -> None:
+    content_type = (b"content-type", b"application/x-www-form-urlencoded")
+    available = 16_384 - sum(len(part) for part in content_type)
+    result = await _raw_exchange([content_type, (b"X" * (available + overflow), b"")])
+    assert result.status == (400 if overflow else 401)
+    assert result.reads == (0 if overflow else 1)
+    assert result.provider_reads == result.reads

@@ -1,3 +1,4 @@
+from typing import override
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 from fastmcp.server.auth import OAuthProvider
@@ -6,6 +7,8 @@ from mcp.server.auth.routes import build_metadata, cors_middleware
 from mcp.server.auth.settings import ClientRegistrationOptions, RevocationOptions
 from mcp.shared.auth import OAuthMetadata
 from pydantic import AnyHttpUrl
+from starlette.requests import Request
+from starlette.responses import Response
 from starlette.routing import Route
 
 from app.mcp.native_request_context import NativeOAuthRequestError
@@ -18,6 +21,20 @@ _MAX_REDIRECT_LENGTH = 8192
 class NativeOAuthMetadata(OAuthMetadata):
     authorization_response_iss_parameter_supported: bool = False
     client_id_metadata_document_supported: bool | None = False
+
+
+class _ComposedMetadataHandler(MetadataHandler):
+    def __init__(self, metadata: OAuthMetadata) -> None:
+        super().__init__(metadata)
+        self._body = metadata.model_dump_json(exclude_none=True).encode("utf-8")
+
+    @override
+    async def handle(self, request: Request) -> Response:
+        return Response(
+            self._body,
+            media_type="application/json",
+            headers={"Cache-Control": "public, max-age=3600"},
+        )
 
 
 def canonical_issuer(value: str) -> str:
@@ -92,7 +109,7 @@ def native_metadata_routes(
     return [
         Route(
             _METADATA_PATH,
-            endpoint=cors_middleware(MetadataHandler(metadata).handle, ["GET", "OPTIONS"]),
+            endpoint=cors_middleware(_ComposedMetadataHandler(metadata).handle, ["GET", "OPTIONS"]),
             methods=["GET", "OPTIONS"],
         )
         if route.path == _METADATA_PATH

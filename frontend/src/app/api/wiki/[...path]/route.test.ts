@@ -102,6 +102,35 @@ describe("authenticated parallel wiki reads", () => {
     expect(response.headers.get("x-request-id")).toMatch(/^[0-9a-f-]{36}$/u);
     expect(fetchMock).not.toHaveBeenCalled();
   });
+
+  it.each([401, 429, 503])(
+    "owns separate failure bodies and trace headers for %i",
+    async (status) => {
+      const upstream = { detail: "Private provider failure" };
+      fetchMock
+        .mockResolvedValueOnce(Response.json(upstream, { status }))
+        .mockResolvedValueOnce(Response.json(upstream, { status }));
+      const first = await GET(
+        request("sidebar/drives", { "x-request-id": "failure-first" }),
+        context("sidebar/drives"),
+      );
+      const second = await GET(
+        request("sidebar/drives", { "x-request-id": "failure-second" }),
+        context("sidebar/drives"),
+      );
+
+      expect(first).not.toBe(second);
+      expect(first.body).not.toBe(second.body);
+      expect(first.headers).not.toBe(second.headers);
+      expect(first.headers.get("x-request-id")).toBe("failure-first");
+      expect(second.headers.get("x-request-id")).toBe("failure-second");
+      first.headers.set("x-only-first", "1");
+      expect(second.headers.get("x-only-first")).toBeNull();
+      const body: unknown = await first.json();
+      await expect(second.json()).resolves.toEqual(body);
+      expect(JSON.stringify(body)).not.toContain("Private provider failure");
+    },
+  );
   it.each(["disconnect", "deadline"] as const)(
     "discards a late successful upstream body after %s without exposing it",
     async (reason) => {

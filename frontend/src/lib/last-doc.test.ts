@@ -63,4 +63,32 @@ describe("recent document warmup metadata", () => {
     );
     expect(readRecentDocs("user-a")).toEqual([]);
   });
+
+  it("retains canonical recent bytes without repeating an identical storage write", () => {
+    const doc = { fileId: "file-1", mimeType: "text/plain", title: "Page" };
+    saveLastDoc("user-a", doc);
+    const write = vi.spyOn(window.localStorage, "setItem");
+
+    saveLastDoc("user-a", doc);
+    expect(write).not.toHaveBeenCalled();
+
+    saveLastDoc("user-a", { ...doc, title: "Renamed" });
+    expect(write).toHaveBeenCalledOnce();
+    expect(readRecentDocs("user-a")).toEqual([{ ...doc, title: "Renamed" }]);
+  });
+
+  it("keeps a write available when storage reads fail", () => {
+    const doc = { fileId: "file-1", mimeType: "text/plain", title: "Page" };
+    const read = vi.spyOn(window.localStorage, "getItem").mockImplementation(() => {
+      throw new Error("Storage read unavailable");
+    });
+    const write = vi.spyOn(window.localStorage, "setItem");
+    saveLastDoc("user-a", doc);
+    expect(write).toHaveBeenCalledExactlyOnceWith(
+      recentDocsStorageKey("user-a"),
+      JSON.stringify([doc]),
+    );
+    read.mockRestore();
+    expect(readRecentDocs("user-a")).toEqual([doc]);
+  });
 });

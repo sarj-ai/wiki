@@ -49,7 +49,7 @@ make standards-check
 `make check` mirrors CI. `make audit` performs network-backed dependency audits, and
 `make standards-check` verifies generated standards configuration, version pins, and code.
 
-See the [409-pass performance record and reproduction commands](docs/performance.json) for
+See the [419-pass performance record and reproduction commands](docs/performance.json) for
 frontend loading and backend latency work.
 
 Original-tranche production-build measurements against the same locked main toolchain:
@@ -272,6 +272,46 @@ Compressed app inventory changes by +1,599 B on home
 (201,768 to 203,367 B, +0.79%).
 These inventories exclude framework and deferred chunks. Controlled measurements
 do not establish production load time or an absolute optimization maximum.
+
+The October 12 (UTC) final follow-up evaluates [ten more candidates across two agents](docs/performance/round8-20261012.json),
+bringing the preserved record from 409 to 419: 8 retained improvements
+and 2 evidenced rejections. Each agent measures five new mechanisms
+against deployed `5343c4e8`; repeated probes, fixture repairs, review and release
+administration count zero. Representative controlled results are:
+
+| Measurement | Before | After |
+| ----------- | ------ | ----- |
+| Native OAuth authorize, 64 headers (median µs) | 99.3277 | 90.4752 |
+| Normal native metadata response (median µs) | 10.5254 | 7.27906 |
+| Native cookie origin middleware, two auth cookies (median µs) | 6.1787 | 5.73698 |
+| Viewer-action subscriptions retained by1,000 intent links (native subscriptions) | 1,000 | 0 |
+| Cold destination folder index,10,000 nodes (median µs) | 153.884 | 116.638 |
+| Storage writes for100 same-page recordings (native storage writes) | 100 | 1 |
+
+Both scope records include native entrypoint controls, paired measurements,
+small-input costs, rejected prototypes, reproduction commands and exact source
+and artifact hashes. Request handling retains authentication, request bounds,
+cookie parsing, privacy headers and native OAuth behavior. Frontend controls
+cover compiler output, session retirement, denied authorization, mutable inputs,
+storage failures and independent response bodies. Cached native metadata adds
+673 retained bytes per normal two-scope route composition and 5,393 bytes for
+256 scopes; one-time composition adds 3.20 and 7.99 microseconds respectively.
+The native model remains alongside its serialized bytes. The recent-page landing
+continues to show up to five permission-checked pages.
+
+The unchanged local CI mirror passes 4,461 backend tests
+(89.32% coverage), 997 frontend tests,
+323 repository tests and 11 infrastructure tests,
+plus the production build. Frontend type coverage is 99.72%.
+Compressed app inventory changes by -148 B on home
+(191,740 to 191,592 B, -0.08%) and
+-127 B on the document route
+(203,231 to 203,104 B, -0.06%).
+These inventories exclude shared framework and deferred chunks. The regenerable
+task-owned webpack cache was cleared after baseline capture for disk headroom;
+source snapshots, original build chunks and raw evidence were retained. Local
+CPU and resource reductions do not establish live load time or an absolute
+optimization maximum. Small-input regressions remain explicit in the records.
 
 The drive-loading regression was reproduced in the compiled Cloudflare Worker:
 server `fetch` rejects `redirect: "error"` before reaching the API. Server clients

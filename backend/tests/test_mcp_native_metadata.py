@@ -178,3 +178,78 @@ def test_missing_metadata_route_and_split_issuer_fail_closed() -> None:
     provider.issuer_url = AnyHttpUrl("https://other.test/")
     with pytest.raises(NativeOAuthRequestError):
         native_metadata_routes(provider, original)
+
+
+async def test_composed_metadata_snapshot_and_recomposition_preserve_native_cors() -> None:
+    provider = Provider()
+    routes = native_metadata_routes(provider, provider.get_routes(), issuer_responses_enabled=True)
+    transport = httpx.ASGITransport(app=Starlette(routes=routes))
+    path = "/.well-known/oauth-authorization-server"
+    async with httpx.AsyncClient(transport=transport, base_url=_ISSUER) as client:
+        first = await client.get(path, headers={"Origin": "https://client.test"})
+        options = provider.client_registration_options
+        assert options is not None
+        assert options.valid_scopes is not None
+        options.valid_scopes.append("wiki:future-fixture")
+        second = await client.get(path, headers={"Origin": "https://other.test"})
+        preflight = await client.options(
+            path,
+            headers={
+                "Origin": "https://client.test",
+                "Access-Control-Request-Method": "GET",
+            },
+        )
+        denied = await client.post(path)
+    assert first.content == second.content
+    assert first.headers["cache-control"] == "public, max-age=3600"
+    assert first.headers["content-type"] == "application/json"
+    assert first.headers["access-control-allow-origin"] == "*"
+    assert preflight.status_code == 200
+    assert "GET" in preflight.headers["access-control-allow-methods"]
+    assert denied.status_code == 405
+    rebuilt = native_metadata_routes(provider, provider.get_routes(), issuer_responses_enabled=True)
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=Starlette(routes=rebuilt)), base_url=_ISSUER
+    ) as client:
+        third = await client.get(path)
+    assert "wiki:future-fixture" not in first.json()["scopes_supported"]
+    assert "wiki:future-fixture" in third.json()["scopes_supported"]
+
+
+async def test_metadata_native_unicode_escaping_and_documentation_are_exact() -> None:
+    from mcp.server.auth.handlers.metadata import MetadataHandler
+    from mcp.server.auth.routes import build_metadata
+    from starlette.requests import Request
+
+    from app.mcp.native_metadata import NativeOAuthMetadata
+
+    provider = Provider()
+    options = provider.client_registration_options
+    assert options is not None
+    scopes = ["wiki:read", 'wikï:quote"slash\\tab\tnewline\nemoji🙂separator\u2028']
+    options.valid_scopes = scopes
+    provider.service_documentation_url = AnyHttpUrl("https://wiki.test/文档?emoji=🙂&name=a%20b")
+    base = build_metadata(
+        AnyHttpUrl(_ISSUER),
+        provider.service_documentation_url,
+        options,
+        provider.revocation_options or RevocationOptions(),
+    )
+    expected_model = NativeOAuthMetadata.model_validate(
+        {
+            **base.model_dump(),
+            "authorization_response_iss_parameter_supported": True,
+            "client_id_metadata_document_supported": False,
+            "token_endpoint_auth_methods_supported": ["none"],
+            "revocation_endpoint_auth_methods_supported": ["none"],
+        }
+    )
+    native_response = await MetadataHandler(expected_model).handle(Request({"type": "http"}))
+    routes = native_metadata_routes(provider, provider.get_routes(), issuer_responses_enabled=True)
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=Starlette(routes=routes)), base_url=_ISSUER
+    ) as client:
+        response = await client.get("/.well-known/oauth-authorization-server")
+    assert response.content == native_response.body
+    assert response.json()["scopes_supported"] == scopes
+    assert response.json()["service_documentation"] == str(provider.service_documentation_url)

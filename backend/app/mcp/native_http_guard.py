@@ -31,6 +31,7 @@ from app.mcp.redirect_policy import McpRedirectPolicy, validate_registered_clien
 
 _BODY_LIMIT = 16_384
 _HEADER_LIMIT = 64
+_UNIQUE_HEADERS = frozenset({b"content-type", b"content-length", b"authorization", b"cookie"})
 _NAME_LIMIT = 64
 _PRINTABLE_START = 32
 _DELETE_CHARACTER = 127
@@ -268,25 +269,43 @@ def _pairs(pairs: list[tuple[str, object]]) -> dict[str, object]:
     return result
 
 
+def _validate_headers(headers: list[tuple[bytes, bytes]]) -> None:
+    if len(headers) > _HEADER_LIMIT:
+        raise NativeOAuthRequestError
+    header_bytes = 0
+    seen: set[bytes] = set()
+    for key, value in headers:
+        header_bytes += len(key) + len(value)
+        if header_bytes > _BODY_LIMIT:
+            raise NativeOAuthRequestError
+        lowered = key.lower()
+        if lowered == b"authorization":
+            raise NativeOAuthRequestError
+        if lowered in _UNIQUE_HEADERS:
+            if lowered in seen:
+                raise NativeOAuthRequestError
+            seen.add(lowered)
+
+
 class NativeOAuthHTTPGuard:
     # Unmounted finite OAuth boundary; consent and traffic quotas are separate.
 
     def __init__(self, app: ASGIApp, settings: NativeOAuthGuardSettings) -> None:
         self._app = app
         self._settings = settings
+        self._endpoints = {
+            settings.authorize_path: NativeOAuthEndpoint.AUTHORIZE,
+            settings.token_path: NativeOAuthEndpoint.TOKEN,
+            settings.register_path: NativeOAuthEndpoint.REGISTER,
+            settings.revoke_path: NativeOAuthEndpoint.REVOKE,
+        }
         # Installed MCP 1.29.1 authorize handler logs provider exceptions. Filter
         # that exact logger only during guarded requests, before handler sinks.
         logging.getLogger("mcp.server.auth.handlers.authorize").addFilter(_LOG_FILTER)
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
         settings = self._settings
-        endpoints = {
-            settings.authorize_path: NativeOAuthEndpoint.AUTHORIZE,
-            settings.token_path: NativeOAuthEndpoint.TOKEN,
-            settings.register_path: NativeOAuthEndpoint.REGISTER,
-            settings.revoke_path: NativeOAuthEndpoint.REVOKE,
-        }
-        endpoint = endpoints.get(scope.get("path", ""))
+        endpoint = self._endpoints.get(scope.get("path", ""))
         if scope["type"] != "http" or endpoint is None:
             await self._app(scope, receive, send)
             return
@@ -402,16 +421,7 @@ class NativeOAuthHTTPGuard:
     @staticmethod
     async def _read(scope: Scope, receive: Receive, endpoint: NativeOAuthEndpoint) -> bytes:
         headers = scope.get("headers", [])
-        if (
-            len(headers) > _HEADER_LIMIT
-            or sum(len(key) + len(value) for key, value in headers) > _BODY_LIMIT
-        ):
-            raise NativeOAuthRequestError
-        for name in (b"content-type", b"content-length", b"authorization", b"cookie"):
-            if sum(key.lower() == name for key, _value in headers) > 1:
-                raise NativeOAuthRequestError
-        if any(key.lower() == b"authorization" for key, _value in headers):
-            raise NativeOAuthRequestError
+        _validate_headers(headers)
         method = scope.get("method")
         if method != ("GET" if endpoint == "authorize" else "POST"):
             raise NativeOAuthRequestError
@@ -457,37 +467,9 @@ class NativeOAuthHTTPGuard:
         if endpoint in {"authorize", "token"} and values.get("resource") != settings.resource:
             raise NativeOAuthRequestError
         if endpoint == "authorize":
-            if (
-                not set(values) <= _AUTHORIZE
-                or values.get("response_type") != "code"
-                or values.get("code_challenge_method") != "S256"
-                or not _NONCE.fullmatch(values.get("code_challenge", ""))
-            ):
-                raise NativeOAuthRequestError
-            settings.redirect_policy.validate_callback(values.get("redirect_uri", ""))
-            cookie = dict(scope.get("headers", [])).get(b"cookie", b"").decode("ascii")
-            matches = [
-                stripped.split("=", 1)[1]
-                for part in cookie.split(";")
-                if (stripped := part.strip()).startswith(settings.cookie_name + "=")
-            ]
-            if len(matches) > 1 or (matches and not _NONCE.fullmatch(matches[0])):
-                raise NativeOAuthRequestError
-            return matches[0] if matches else secrets.token_urlsafe(32)
+            return self._validate_authorize(scope, values)
         if endpoint == "token":
-            if values.get("grant_type") == "authorization_code":
-                if set(values) != _CODE or not _VERIFIER.fullmatch(values.get("code_verifier", "")):
-                    raise NativeOAuthRequestError
-                settings.redirect_policy.validate_callback(values["redirect_uri"])
-            elif values.get("grant_type") == "refresh_token":
-                if (
-                    not {"client_id", "grant_type", "refresh_token", "resource"}
-                    <= set(values)
-                    <= _REFRESH
-                ):
-                    raise NativeOAuthRequestError
-            else:
-                raise NativeOAuthRequestError
+            self._validate_token(values)
         elif not {"client_id", "token"} <= set(values) <= {
             "client_id",
             "token",
@@ -496,3 +478,38 @@ class NativeOAuthHTTPGuard:
         } or values.get("client_secret", ""):
             raise NativeOAuthRequestError
         return None
+
+    def _validate_authorize(self, scope: Scope, values: dict[str, str]) -> str:
+        settings = self._settings
+        if (
+            not set(values) <= _AUTHORIZE
+            or values.get("response_type") != "code"
+            or values.get("code_challenge_method") != "S256"
+            or not _NONCE.fullmatch(values.get("code_challenge", ""))
+        ):
+            raise NativeOAuthRequestError
+        settings.redirect_policy.validate_callback(values.get("redirect_uri", ""))
+        cookie = dict(scope.get("headers", [])).get(b"cookie", b"").decode("ascii")
+        matches = [
+            stripped.split("=", 1)[1]
+            for part in cookie.split(";")
+            if (stripped := part.strip()).startswith(settings.cookie_name + "=")
+        ]
+        if len(matches) > 1 or (matches and not _NONCE.fullmatch(matches[0])):
+            raise NativeOAuthRequestError
+        return matches[0] if matches else secrets.token_urlsafe(32)
+
+    def _validate_token(self, values: dict[str, str]) -> None:
+        if values.get("grant_type") == "authorization_code":
+            if set(values) != _CODE or not _VERIFIER.fullmatch(values.get("code_verifier", "")):
+                raise NativeOAuthRequestError
+            self._settings.redirect_policy.validate_callback(values["redirect_uri"])
+        elif values.get("grant_type") == "refresh_token":
+            if (
+                not {"client_id", "grant_type", "refresh_token", "resource"}
+                <= set(values)
+                <= _REFRESH
+            ):
+                raise NativeOAuthRequestError
+        else:
+            raise NativeOAuthRequestError

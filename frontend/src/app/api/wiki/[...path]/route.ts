@@ -24,6 +24,9 @@ const RESPONSE_HEADERS = {
   "content-type": "application/json",
   "x-content-type-options": "nosniff",
 } as const;
+const EXPIRED_BODY = JSON.stringify({ detail: "Your session has expired" });
+const RATE_LIMIT_BODY = JSON.stringify({ detail: RATE_LIMIT_MESSAGE });
+const FAILURE_BODY = JSON.stringify({ detail: "The request could not be completed" });
 
 async function get(request: Request, context: RouteContext): Promise<Response> {
   const site = request.headers.get("sec-fetch-site");
@@ -48,15 +51,8 @@ function withinReadPathLimit(path: string[]): boolean {
 }
 
 function failure(status: number): Response {
-  return Response.json(
-    {
-      detail:
-        status === 401
-          ? "Your session has expired"
-          : status === 429
-            ? RATE_LIMIT_MESSAGE
-            : "The request could not be completed",
-    },
+  return new Response(
+    status === 401 ? EXPIRED_BODY : status === 429 ? RATE_LIMIT_BODY : FAILURE_BODY,
     { status, headers: RESPONSE_HEADERS },
   );
 }
