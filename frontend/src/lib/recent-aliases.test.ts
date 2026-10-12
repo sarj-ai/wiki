@@ -42,4 +42,62 @@ describe("recent aliases", () => {
       "launch-roadmap",
     ]);
   });
+
+  it("keeps the whole-list empty fallback when a newly recorded alias is invalid", () => {
+    recordRecentAlias("user-1", "team-handbook");
+    recordRecentAlias("user-1", "INVALID");
+
+    expect(readRecentAliases("user-1")).toEqual([]);
+    expect(window.localStorage.getItem("sarj-wiki:recent-go:user-1")).toBe("[]");
+  });
+
+  it("continues validating arbitrary caller-provided visits before writing them", () => {
+    recordRecentAlias("user-1", "team-handbook");
+    writeRecentAliases("user-1", [{ alias: "team-handbook", visitedAt: "yesterday" }]);
+
+    expect(readRecentAliases("user-1")).toEqual([]);
+    expect(window.localStorage.getItem("sarj-wiki:recent-go:user-1")).toBe("[]");
+  });
+
+  it("records a new visit when the optional history read fails but writes work", () => {
+    const read = vi.spyOn(window.localStorage, "getItem").mockImplementation(() => {
+      throw new Error("Storage read unavailable");
+    });
+
+    recordRecentAlias("user-1", "team-handbook");
+    read.mockRestore();
+
+    expect(readRecentAliases("user-1")).toEqual([
+      { alias: "team-handbook", visitedAt: "2026-08-04T12:00:00.000Z" },
+    ]);
+  });
+
+  it("keeps an unavailable visit write optional", () => {
+    const write = vi.spyOn(window.localStorage, "setItem").mockImplementation(() => {
+      throw new Error("Storage write unavailable");
+    });
+
+    expect(() => recordRecentAlias("user-1", "team-handbook")).not.toThrow();
+    write.mockRestore();
+    expect(readRecentAliases("user-1")).toEqual([]);
+  });
+
+  it("owns each invalid-history fallback even when a caller mutates a returned array", () => {
+    window.localStorage.setItem(
+      "sarj-wiki:recent-go:user-1",
+      JSON.stringify([{ alias: "INVALID", visitedAt: "yesterday" }]),
+    );
+    window.localStorage.setItem("sarj-wiki:recent-go:user-2", "null");
+    const rejected = readRecentAliases("user-1");
+    expect(rejected).toEqual([]);
+
+    rejected.push({ alias: "INVALID", visitedAt: "yesterday" });
+
+    expect(readRecentAliases("user-1")).toEqual([]);
+    expect(readRecentAliases("user-2")).toEqual([]);
+    recordRecentAlias("user-2", "team-handbook");
+    expect(readRecentAliases("user-2")).toEqual([
+      { alias: "team-handbook", visitedAt: "2026-08-04T12:00:00.000Z" },
+    ]);
+  });
 });

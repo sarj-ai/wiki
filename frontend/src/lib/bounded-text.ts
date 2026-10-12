@@ -18,7 +18,7 @@ export async function boundedText(
     void reader.cancel().catch(() => null);
   };
   const chunks: AsyncIterable<Uint8Array> = {
-    [Symbol.asyncIterator]: () => ({ next: async () => await reader.read() }),
+    [Symbol.asyncIterator]: () => ({ next: reader.read.bind(reader) }),
   };
   signal?.addEventListener("abort", discard, { once: true });
   try {

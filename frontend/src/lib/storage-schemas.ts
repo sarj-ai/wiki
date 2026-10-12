@@ -12,7 +12,7 @@ const DocRefSchema = z.object({
 
 export const RecentDocsSchema = z.array(DocRefSchema).max(6).catch([]);
 
-const RecentAliasVisitSchema = z.object({
+export const RecentAliasVisitSchema = z.object({
   alias: z
     .string()
     .min(5)
@@ -21,7 +21,10 @@ const RecentAliasVisitSchema = z.object({
   visitedAt: z.iso.datetime(),
 });
 
-export const RecentAliasVisitsSchema = z.array(RecentAliasVisitSchema).max(50).catch([]);
+export const RecentAliasVisitsSchema = z
+  .array(RecentAliasVisitSchema)
+  .max(50)
+  .catch(() => []);
 
 export const SidebarWidthCssSchema = z
   .string()

@@ -132,20 +132,21 @@ class NativeStateStore(NativeStatePort):
                 McpNativeState.expires_at > func.clock_timestamp(),
             )
         )
-        count = await db.scalar(
-            select(func.count())
-            .select_from(McpNativeState)
-            .where(
-                McpNativeState.purpose == purpose,
-                McpNativeState.expires_at > func.clock_timestamp(),
+        if existing is None:
+            count = await db.scalar(
+                select(func.count())
+                .select_from(McpNativeState)
+                .where(
+                    McpNativeState.purpose == purpose,
+                    McpNativeState.expires_at > func.clock_timestamp(),
+                )
             )
-        )
-        if existing is None and (count or 0) >= (
-            _CLIENT_STATE_LIMIT
-            if purpose in {NativePurpose.CLIENT, NativePurpose.INTENT}
-            else _TOKEN_STATE_LIMIT
-        ):
-            raise NativeOAuthError
+            if (count or 0) >= (
+                _CLIENT_STATE_LIMIT
+                if purpose in {NativePurpose.CLIENT, NativePurpose.INTENT}
+                else _TOKEN_STATE_LIMIT
+            ):
+                raise NativeOAuthError
         await db.execute(
             delete(McpNativeState).where(
                 McpNativeState.purpose == purpose, McpNativeState.key_digest.in_(digests[1:])

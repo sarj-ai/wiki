@@ -1,0 +1,4919 @@
+{
+  "baselineRevision": "a2aedf971f86227e33769da272b721e3bc2bded0",
+  "baselineTree": "fb53ca9a7a5c6bb3cd3d8fb64577b7b716ac186e",
+  "scope": "Five new native backend OAuth storage, registration admission, callback-policy and credential-admission candidates beyond419 immutable historical candidates.",
+  "agent": "/root/backend_final_round8",
+  "round": 9,
+  "sealedAtUtc": "2026-10-12T12:30:28.983921+00:00",
+  "passCount": 5,
+  "acceptedCount": 2,
+  "rejectedCount": 3,
+  "passes": [
+    {
+      "id": "round9-backend-01",
+      "candidate": "Skip the unused live-purpose quota COUNT for a freshly present native-state update",
+      "mechanism": "Retain the caller-owned transaction, stable quota advisory lock, bounded expired cleanup and fresh existing-key lookup. Run the exact old quota COUNT only when that lookup is absent; preserve rotated-key deletion and protected upsert.",
+      "outcome": "accepted",
+      "reason": "Accepted: one unused SQL roundtrip is removed from every freshly present update. At the real 10,000 active ACCESS-state quota all three native transaction pairs improve35.8\u201344.2%. One-row timings are noisy, so no universal small-update latency claim is made.",
+      "priorWorkAudit": {
+        "closestEarlierCandidate": {
+          "id": "docs/performance.json:backend-storage:11",
+          "scope": "backend-storage",
+          "record": "docs/performance.json",
+          "result": "Compute both in-place admission counts in one aggregate query"
+        },
+        "whyNew": "The earlier task-admission aggregate combined two counts; this native-state candidate eliminates a count whose result is unused for an existing update and keeps new-key admission intact.",
+        "fullPriorCatalogAndRecords": {
+          "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/prior-and-source-audit.json",
+          "sha256": "ebac87a7f82add4011fcbea84620e2e3c094491e0433bf45220873743b10bb85"
+        }
+      },
+      "workload": {
+        "nativeEntryPoints": [
+          "PostgresOAuthStorage.operation",
+          "NativeStateStore.put",
+          "NativeStateStore.get"
+        ],
+        "parameters": {
+          "put-existing-1-active": 20,
+          "put-existing-10000-active": 20,
+          "put-new-negative-control": 20
+        },
+        "fixtures": "Native PostgreSQL18 on synthetic loopback15488, fresh owned schemas in wiki_round7_reads_bench; native cryptography/Pydantic/SQLAlchemy/MCP/Starlette installed dependencies.",
+        "isolatedOneCandidate": true,
+        "timingPrivateMonkeypatchCount": 0
+      },
+      "representativeMetric": {
+        "workload": "put-existing-10000-active",
+        "unit": "microseconds/complete public operation",
+        "baseline": 7278.44375,
+        "candidate": 4112.0251499999995,
+        "medianChangePercent": -43.50406087839863,
+        "pairedChangePercent": [
+          -35.791242898813714,
+          -44.20945548971235,
+          -40.51634031791167
+        ],
+        "aggregate": "Median of the three process medians; each process median is based on nine samples.",
+        "summary": {
+          "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-01-summary.json",
+          "sha256": "117c3b0ff3b40f2f9a7c62d2bee8a84c38dffade00f84450a16bfc875a835535"
+        }
+      },
+      "measurements": [
+        {
+          "workload": "put-existing-1-active",
+          "unit": "ns/operation",
+          "baselineProcessMedians": [
+            2563308.35,
+            3433749.95,
+            2957312.55
+          ],
+          "candidateProcessMedians": [
+            2702912.7,
+            2718108.35,
+            3021135.25
+          ],
+          "baselineMedian": 2957312.55,
+          "candidateMedian": 2718108.35,
+          "pairedChangePercent": [
+            5.446256592578891,
+            -20.841401104352396,
+            2.1581317132002287
+          ],
+          "baselineSqlCounts": [
+            {
+              "DELETE": 1.0,
+              "INSERT": 1.0,
+              "SELECT": 4.0,
+              "SET": 2.0,
+              "WITH": 1.0,
+              "quotaCount": 1.0
+            },
+            {
+              "DELETE": 1.0,
+              "INSERT": 1.0,
+              "SELECT": 4.0,
+              "SET": 2.0,
+              "WITH": 1.0,
+              "quotaCount": 1.0
+            },
+            {
+              "DELETE": 1.0,
+              "INSERT": 1.0,
+              "SELECT": 4.0,
+              "SET": 2.0,
+              "WITH": 1.0,
+              "quotaCount": 1.0
+            },
+            {
+              "DELETE": 1.0,
+              "INSERT": 1.0,
+              "SELECT": 4.0,
+              "SET": 2.0,
+              "WITH": 1.0,
+              "quotaCount": 1.0
+            },
+            {
+              "DELETE": 1.0,
+              "INSERT": 1.0,
+              "SELECT": 4.0,
+              "SET": 2.0,
+              "WITH": 1.0,
+              "quotaCount": 1.0
+            },
+            {
+              "DELETE": 1.0,
+              "INSERT": 1.0,
+              "SELECT": 4.0,
+              "SET": 2.0,
+              "WITH": 1.0,
+              "quotaCount": 1.0
+            },
+            {
+              "DELETE": 1.0,
+              "INSERT": 1.0,
+              "SELECT": 4.0,
+              "SET": 2.0,
+              "WITH": 1.0,
+              "quotaCount": 1.0
+            },
+            {
+              "DELETE": 1.0,
+              "INSERT": 1.0,
+              "SELECT": 4.0,
+              "SET": 2.0,
+              "WITH": 1.0,
+              "quotaCount": 1.0
+            },
+            {
+              "DELETE": 1.0,
+              "INSERT": 1.0,
+              "SELECT": 4.0,
+              "SET": 2.0,
+              "WITH": 1.0,
+              "quotaCount": 1.0
+            }
+          ],
+          "candidateSqlCounts": [
+            {
+              "DELETE": 1.0,
+              "INSERT": 1.0,
+              "SELECT": 4.0,
+              "SET": 2.0,
+              "WITH": 1.0
+            },
+            {
+              "DELETE": 1.0,
+              "INSERT": 1.0,
+              "SELECT": 4.0,
+              "SET": 2.0,
+              "WITH": 1.0
+            },
+            {
+              "DELETE": 1.0,
+              "INSERT": 1.0,
+              "SELECT": 4.0,
+              "SET": 2.0,
+              "WITH": 1.0
+            },
+            {
+              "DELETE": 1.0,
+              "INSERT": 1.0,
+              "SELECT": 4.0,
+              "SET": 2.0,
+              "WITH": 1.0
+            },
+            {
+              "DELETE": 1.0,
+              "INSERT": 1.0,
+              "SELECT": 4.0,
+              "SET": 2.0,
+              "WITH": 1.0
+            },
+            {
+              "DELETE": 1.0,
+              "INSERT": 1.0,
+              "SELECT": 4.0,
+              "SET": 2.0,
+              "WITH": 1.0
+            },
+            {
+              "DELETE": 1.0,
+              "INSERT": 1.0,
+              "SELECT": 4.0,
+              "SET": 2.0,
+              "WITH": 1.0
+            },
+            {
+              "DELETE": 1.0,
+              "INSERT": 1.0,
+              "SELECT": 4.0,
+              "SET": 2.0,
+              "WITH": 1.0
+            },
+            {
+              "DELETE": 1.0,
+              "INSERT": 1.0,
+              "SELECT": 4.0,
+              "SET": 2.0,
+              "WITH": 1.0
+            }
+          ],
+          "baselinePeakPythonBytes": [
+            [
+              349798,
+              349332,
+              349497
+            ],
+            [
+              349374,
+              349314,
+              349161
+            ],
+            [
+              349554,
+              349050,
+              349149
+            ]
+          ],
+          "candidatePeakPythonBytes": [
+            [
+              349586,
+              349047,
+              348999
+            ],
+            [
+              349106,
+              349062,
+              348897
+            ],
+            [
+              349403,
+              348843,
+              348846
+            ]
+          ],
+          "baselinePeakPythonMedianBytes": 349332,
+          "candidatePeakPythonMedianBytes": 349047
+        },
+        {
+          "workload": "put-existing-10000-active",
+          "unit": "ns/operation",
+          "baselineProcessMedians": [
+            6404150.05,
+            7278443.75,
+            7347704.35
+          ],
+          "candidateProcessMedians": [
+            4112025.15,
+            4060683.4,
+            4370683.45
+          ],
+          "baselineMedian": 7278443.75,
+          "candidateMedian": 4112025.15,
+          "pairedChangePercent": [
+            -35.791242898813714,
+            -44.20945548971235,
+            -40.51634031791167
+          ],
+          "baselineSqlCounts": [
+            {
+              "DELETE": 1.0,
+              "INSERT": 1.0,
+              "SELECT": 4.0,
+              "SET": 2.0,
+              "WITH": 1.0,
+              "quotaCount": 1.0
+            },
+            {
+              "DELETE": 1.0,
+              "INSERT": 1.0,
+              "SELECT": 4.0,
+              "SET": 2.0,
+              "WITH": 1.0,
+              "quotaCount": 1.0
+            },
+            {
+              "DELETE": 1.0,
+              "INSERT": 1.0,
+              "SELECT": 4.0,
+              "SET": 2.0,
+              "WITH": 1.0,
+              "quotaCount": 1.0
+            },
+            {
+              "DELETE": 1.0,
+              "INSERT": 1.0,
+              "SELECT": 4.0,
+              "SET": 2.0,
+              "WITH": 1.0,
+              "quotaCount": 1.0
+            },
+            {
+              "DELETE": 1.0,
+              "INSERT": 1.0,
+              "SELECT": 4.0,
+              "SET": 2.0,
+              "WITH": 1.0,
+              "quotaCount": 1.0
+            },
+            {
+              "DELETE": 1.0,
+              "INSERT": 1.0,
+              "SELECT": 4.0,
+              "SET": 2.0,
+              "WITH": 1.0,
+              "quotaCount": 1.0
+            },
+            {
+              "DELETE": 1.0,
+              "INSERT": 1.0,
+              "SELECT": 4.0,
+              "SET": 2.0,
+              "WITH": 1.0,
+              "quotaCount": 1.0
+            },
+            {
+              "DELETE": 1.0,
+              "INSERT": 1.0,
+              "SELECT": 4.0,
+              "SET": 2.0,
+              "WITH": 1.0,
+              "quotaCount": 1.0
+            },
+            {
+              "DELETE": 1.0,
+              "INSERT": 1.0,
+              "SELECT": 4.0,
+              "SET": 2.0,
+              "WITH": 1.0,
+              "quotaCount": 1.0
+            }
+          ],
+          "candidateSqlCounts": [
+            {
+              "DELETE": 1.0,
+              "INSERT": 1.0,
+              "SELECT": 4.0,
+              "SET": 2.0,
+              "WITH": 1.0
+            },
+            {
+              "DELETE": 1.0,
+              "INSERT": 1.0,
+              "SELECT": 4.0,
+              "SET": 2.0,
+              "WITH": 1.0
+            },
+            {
+              "DELETE": 1.0,
+              "INSERT": 1.0,
+              "SELECT": 4.0,
+              "SET": 2.0,
+              "WITH": 1.0
+            },
+            {
+              "DELETE": 1.0,
+              "INSERT": 1.0,
+              "SELECT": 4.0,
+              "SET": 2.0,
+              "WITH": 1.0
+            },
+            {
+              "DELETE": 1.0,
+              "INSERT": 1.0,
+              "SELECT": 4.0,
+              "SET": 2.0,
+              "WITH": 1.0
+            },
+            {
+              "DELETE": 1.0,
+              "INSERT": 1.0,
+              "SELECT": 4.0,
+              "SET": 2.0,
+              "WITH": 1.0
+            },
+            {
+              "DELETE": 1.0,
+              "INSERT": 1.0,
+              "SELECT": 4.0,
+              "SET": 2.0,
+              "WITH": 1.0
+            },
+            {
+              "DELETE": 1.0,
+              "INSERT": 1.0,
+              "SELECT": 4.0,
+              "SET": 2.0,
+              "WITH": 1.0
+            },
+            {
+              "DELETE": 1.0,
+              "INSERT": 1.0,
+              "SELECT": 4.0,
+              "SET": 2.0,
+              "WITH": 1.0
+            }
+          ],
+          "baselinePeakPythonBytes": [
+            [
+              349169,
+              349730,
+              349584
+            ],
+            [
+              349104,
+              349689,
+              349741
+            ],
+            [
+              349113,
+              349530,
+              349587
+            ]
+          ],
+          "candidatePeakPythonBytes": [
+            [
+              349147,
+              348933,
+              349320
+            ],
+            [
+              348894,
+              349039,
+              349235
+            ],
+            [
+              349041,
+              349254,
+              349450
+            ]
+          ],
+          "baselinePeakPythonMedianBytes": 349584,
+          "candidatePeakPythonMedianBytes": 349147
+        },
+        {
+          "workload": "put-new-negative-control",
+          "unit": "ns/operation",
+          "baselineProcessMedians": [
+            3890475.1,
+            4167697.85,
+            4288095.75
+          ],
+          "candidateProcessMedians": [
+            3841791.7,
+            3965018.65,
+            3977018.75
+          ],
+          "baselineMedian": 4167697.85,
+          "candidateMedian": 3965018.65,
+          "pairedChangePercent": [
+            -1.2513484535603303,
+            -4.863097261237403,
+            -7.254432226705754
+          ],
+          "baselineSqlCounts": [
+            {
+              "DELETE": 1.0,
+              "INSERT": 1.0,
+              "SELECT": 4.0,
+              "SET": 2.0,
+              "WITH": 1.0,
+              "quotaCount": 1.0
+            },
+            {
+              "DELETE": 1.0,
+              "INSERT": 1.0,
+              "SELECT": 4.0,
+              "SET": 2.0,
+              "WITH": 1.0,
+              "quotaCount": 1.0
+            },
+            {
+              "DELETE": 1.0,
+              "INSERT": 1.0,
+              "SELECT": 4.0,
+              "SET": 2.0,
+              "WITH": 1.0,
+              "quotaCount": 1.0
+            },
+            {
+              "DELETE": 1.0,
+              "INSERT": 1.0,
+              "SELECT": 4.0,
+              "SET": 2.0,
+              "WITH": 1.0,
+              "quotaCount": 1.0
+            },
+            {
+              "DELETE": 1.0,
+              "INSERT": 1.0,
+              "SELECT": 4.0,
+              "SET": 2.0,
+              "WITH": 1.0,
+              "quotaCount": 1.0
+            },
+            {
+              "DELETE": 1.0,
+              "INSERT": 1.0,
+              "SELECT": 4.0,
+              "SET": 2.0,
+              "WITH": 1.0,
+              "quotaCount": 1.0
+            },
+            {
+              "DELETE": 1.0,
+              "INSERT": 1.0,
+              "SELECT": 4.0,
+              "SET": 2.0,
+              "WITH": 1.0,
+              "quotaCount": 1.0
+            },
+            {
+              "DELETE": 1.0,
+              "INSERT": 1.0,
+              "SELECT": 4.0,
+              "SET": 2.0,
+              "WITH": 1.0,
+              "quotaCount": 1.0
+            },
+            {
+              "DELETE": 1.0,
+              "INSERT": 1.0,
+              "SELECT": 4.0,
+              "SET": 2.0,
+              "WITH": 1.0,
+              "quotaCount": 1.0
+            }
+          ],
+          "candidateSqlCounts": [
+            {
+              "DELETE": 1.0,
+              "INSERT": 1.0,
+              "SELECT": 4.0,
+              "SET": 2.0,
+              "WITH": 1.0,
+              "quotaCount": 1.0
+            },
+            {
+              "DELETE": 1.0,
+              "INSERT": 1.0,
+              "SELECT": 4.0,
+              "SET": 2.0,
+              "WITH": 1.0,
+              "quotaCount": 1.0
+            },
+            {
+              "DELETE": 1.0,
+              "INSERT": 1.0,
+              "SELECT": 4.0,
+              "SET": 2.0,
+              "WITH": 1.0,
+              "quotaCount": 1.0
+            },
+            {
+              "DELETE": 1.0,
+              "INSERT": 1.0,
+              "SELECT": 4.0,
+              "SET": 2.0,
+              "WITH": 1.0,
+              "quotaCount": 1.0
+            },
+            {
+              "DELETE": 1.0,
+              "INSERT": 1.0,
+              "SELECT": 4.0,
+              "SET": 2.0,
+              "WITH": 1.0,
+              "quotaCount": 1.0
+            },
+            {
+              "DELETE": 1.0,
+              "INSERT": 1.0,
+              "SELECT": 4.0,
+              "SET": 2.0,
+              "WITH": 1.0,
+              "quotaCount": 1.0
+            },
+            {
+              "DELETE": 1.0,
+              "INSERT": 1.0,
+              "SELECT": 4.0,
+              "SET": 2.0,
+              "WITH": 1.0,
+              "quotaCount": 1.0
+            },
+            {
+              "DELETE": 1.0,
+              "INSERT": 1.0,
+              "SELECT": 4.0,
+              "SET": 2.0,
+              "WITH": 1.0,
+              "quotaCount": 1.0
+            },
+            {
+              "DELETE": 1.0,
+              "INSERT": 1.0,
+              "SELECT": 4.0,
+              "SET": 2.0,
+              "WITH": 1.0,
+              "quotaCount": 1.0
+            }
+          ],
+          "baselinePeakPythonBytes": [
+            [
+              349696,
+              349307,
+              349410
+            ],
+            [
+              349525,
+              349254,
+              349192
+            ],
+            [
+              349760,
+              348962,
+              349357
+            ]
+          ],
+          "candidatePeakPythonBytes": [
+            [
+              349474,
+              348959,
+              349183
+            ],
+            [
+              349315,
+              349245,
+              349189
+            ],
+            [
+              349639,
+              349236,
+              349177
+            ]
+          ],
+          "baselinePeakPythonMedianBytes": 349357,
+          "candidatePeakPythonMedianBytes": 349236
+        }
+      ],
+      "controls": {
+        "notes": [
+          "Real quota1,000 denies a new client and permits the existing client update.",
+          "Three rotated aliases are replaced by one current encrypted row and decode to the same typed value.",
+          "Caller rollback leaves no persisted write; past or >31-day expiry is rejected before writes.",
+          "New-key negative control retains all ten SQL statements including quota COUNT.",
+          "Existing native QA covers fresh browser identity, logout/disconnect/grant expiry, code/refresh replay races, bounded expired backlog recovery, cancellation and rollback."
+        ],
+        "nativeBaselineOutputs": {
+          "new-client-at-quota": "Wiki authorization unavailable",
+          "existing-client-at-quota": "updated",
+          "rotation-row-count": 1,
+          "caller-rollback": "no write committed",
+          "invalid-expiry-before-write": "past and >31 days rejected"
+        },
+        "finalCurrentSourceNativeParity": {
+          "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/qualified-public-parity.json",
+          "sha256": "a723b441e565e15b50b9a8f418a30bd4b8be166f7272751a981150dbb858026c"
+        }
+      },
+      "resourceAndCompositionCosts": {
+        "persistentStateAdded": false,
+        "existingSqlStatements": {
+          "baseline": 10,
+          "candidate": 9
+        },
+        "newKeySqlStatements": {
+          "baseline": 10,
+          "candidate": 10
+        },
+        "newKeyQuotaCountUnchanged": true,
+        "oneRowLatencyVariance": [
+          5.446256592578891,
+          -20.841401104352396,
+          2.1581317132002287
+        ]
+      },
+      "evidence": {
+        "summary": {
+          "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-01-summary.json",
+          "sha256": "117c3b0ff3b40f2f9a7c62d2bee8a84c38dffade00f84450a16bfc875a835535"
+        },
+        "nativeRaw": [
+          {
+            "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-01-block1-baseline.json",
+            "sha256": "f36b043fb62b2e4178e2f3089cee17324164a930d8845ee52dd6810bcd5cf274"
+          },
+          {
+            "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-01-block1-candidate.json",
+            "sha256": "a7f981b2847baddfc4419f358a2958ee15926dbc76912383e805ab9a520a7c7c"
+          },
+          {
+            "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-01-block2-baseline.json",
+            "sha256": "fb7196638691ff7575c92185fe55bb4ca6bde710a96ebbcc0104b563abc0dcf3"
+          },
+          {
+            "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-01-block2-candidate.json",
+            "sha256": "cb0189250a2ced4db63175988e7a9cdc5e9d15f6880cdb52912666806a9aa962"
+          },
+          {
+            "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-01-block3-baseline.json",
+            "sha256": "f6f5d8f0df0cce1cff2bcb3756db1e0bbcf68dbad87c4137251071717b955557"
+          },
+          {
+            "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-01-block3-candidate.json",
+            "sha256": "3d018ad3133561c66c34c2c41b1e5d51db30d060a51bf5d332f738133861e0f3"
+          }
+        ],
+        "nativeProcesses": [
+          {
+            "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-01-block1-baseline-process.json",
+            "sha256": "613cb3fcdd7ab0165e10bf207c29d5b22cdbdfb6f6374bd06b1a0af3b77d8a5f"
+          },
+          {
+            "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-01-block1-candidate-process.json",
+            "sha256": "92eb19c229f02fe2547b60568d4d17e1287e06f33d179d33b0b9ece5be9dab7d"
+          },
+          {
+            "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-01-block2-candidate-process.json",
+            "sha256": "e5ccc1de6456335a0f1ada3573b3a9c72b80d2ba873d7c5a03c88f86117f8f22"
+          },
+          {
+            "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-01-block2-baseline-process.json",
+            "sha256": "38ce0ca8eaa32001f20ff18c3f5ff7fe1a4c2bcd31487ae74861d7e172b623c6"
+          },
+          {
+            "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-01-block3-baseline-process.json",
+            "sha256": "968293dff9eeec0a53dde736d160f3bc3818bb7b27173fd16d55242f270e6ee0"
+          },
+          {
+            "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-01-block3-candidate-process.json",
+            "sha256": "5cff0bd2521c3af63f1361853584617db01531b3246d90527aeb5a93c2147a9b"
+          }
+        ],
+        "resourceControls": {
+          "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/resource-controls.json",
+          "sha256": "681fad9b6be40db0c14ef06c9eeae4a107140218f44f07d21083f8ee65e6200c"
+        },
+        "finalResourceControls": {
+          "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/qualified-final-resource-controls.json",
+          "sha256": "69f60431c31b568b87a04a6cab7031049e7f11e793a437e8e678aeaa813bfcab"
+        }
+      }
+    },
+    {
+      "id": "round9-backend-02",
+      "candidate": "Use binary search for sorted registration-admission sliding-window cutoffs",
+      "mechanism": "Prototype bisect_right on sorted live history for strict value > cutoff, replacing two allocated active-history lists while preserving duplicate timestamps and retry indexing.",
+      "outcome": "rejected",
+      "reason": "Rejected: native PostgreSQL admission timing variance exceeds the small algorithm-only opportunity. The 290-entry realistic history has mixed paired directions; preserve the simpler deployed loop.",
+      "priorWorkAudit": {
+        "closestEarlierCandidate": {
+          "id": 12,
+          "scope": "backend-routes",
+          "record": "docs/performance.json",
+          "area": "Drive search snippets / prefix scans",
+          "change": "Check exact/minimum prefix then binary-search the monotonic longest-prefix predicate; retain earliest offset of the longest matching prefix.",
+          "review": "Descending one-character prefix fallback repeatedly scanned whole document text for every missing suffix.",
+          "decision": "retained"
+        },
+        "whyNew": "The earlier Drive snippet prefix binary search operated on text; this temporal native-registration accounting candidate preserves strict SQL-clock window boundaries and owned commit/rollback.",
+        "fullPriorCatalogAndRecords": {
+          "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/prior-and-source-audit.json",
+          "sha256": "ebac87a7f82add4011fcbea84620e2e3c094491e0433bf45220873743b10bb85"
+        }
+      },
+      "workload": {
+        "nativeEntryPoints": [
+          "PostgresRegistrationAdmission.admit"
+        ],
+        "parameters": {
+          "admit-history-0": 20,
+          "admit-history-290": 20,
+          "admit-history-300": 20
+        },
+        "fixtures": "Native PostgreSQL18 on synthetic loopback15488, fresh owned schemas in wiki_round7_reads_bench; native cryptography/Pydantic/SQLAlchemy/MCP/Starlette installed dependencies.",
+        "isolatedOneCandidate": true,
+        "timingPrivateMonkeypatchCount": 0
+      },
+      "representativeMetric": {
+        "workload": "admit-history-290",
+        "unit": "microseconds/complete public operation",
+        "baseline": 1652.01875,
+        "candidate": 1637.13125,
+        "medianChangePercent": -0.901170159236997,
+        "pairedChangePercent": [
+          7.861473370082095,
+          2.249349055819816,
+          -4.0221032600265545
+        ],
+        "aggregate": "Median of the three process medians; each process median is based on nine samples.",
+        "summary": {
+          "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-02-summary.json",
+          "sha256": "51c58fac9b9be0141c1b5f9b882b77bbd93d9af497a0baeae67b29fdfaeaee92"
+        }
+      },
+      "measurements": [
+        {
+          "workload": "admit-history-0",
+          "unit": "ns/operation",
+          "baselineProcessMedians": [
+            1211285.45,
+            1310281.25,
+            1440233.4
+          ],
+          "candidateProcessMedians": [
+            1692737.6,
+            1321972.95,
+            1356435.5
+          ],
+          "baselineMedian": 1310281.25,
+          "candidateMedian": 1356435.5,
+          "pairedChangePercent": [
+            39.747208224122566,
+            0.8923046101743326,
+            -5.8183555526486135
+          ],
+          "baselineSqlCounts": [
+            {
+              "SELECT": 3.0,
+              "SET": 2.0,
+              "UPDATE": 1.0
+            },
+            {
+              "SELECT": 3.0,
+              "SET": 2.0,
+              "UPDATE": 1.0
+            },
+            {
+              "SELECT": 3.0,
+              "SET": 2.0,
+              "UPDATE": 1.0
+            },
+            {
+              "SELECT": 3.0,
+              "SET": 2.0,
+              "UPDATE": 1.0
+            },
+            {
+              "SELECT": 3.0,
+              "SET": 2.0,
+              "UPDATE": 1.0
+            },
+            {
+              "SELECT": 3.0,
+              "SET": 2.0,
+              "UPDATE": 1.0
+            },
+            {
+              "SELECT": 3.0,
+              "SET": 2.0,
+              "UPDATE": 1.0
+            },
+            {
+              "SELECT": 3.0,
+              "SET": 2.0,
+              "UPDATE": 1.0
+            },
+            {
+              "SELECT": 3.0,
+              "SET": 2.0,
+              "UPDATE": 1.0
+            }
+          ],
+          "candidateSqlCounts": [
+            {
+              "SELECT": 3.0,
+              "SET": 2.0,
+              "UPDATE": 1.0
+            },
+            {
+              "SELECT": 3.0,
+              "SET": 2.0,
+              "UPDATE": 1.0
+            },
+            {
+              "SELECT": 3.0,
+              "SET": 2.0,
+              "UPDATE": 1.0
+            },
+            {
+              "SELECT": 3.0,
+              "SET": 2.0,
+              "UPDATE": 1.0
+            },
+            {
+              "SELECT": 3.0,
+              "SET": 2.0,
+              "UPDATE": 1.0
+            },
+            {
+              "SELECT": 3.0,
+              "SET": 2.0,
+              "UPDATE": 1.0
+            },
+            {
+              "SELECT": 3.0,
+              "SET": 2.0,
+              "UPDATE": 1.0
+            },
+            {
+              "SELECT": 3.0,
+              "SET": 2.0,
+              "UPDATE": 1.0
+            },
+            {
+              "SELECT": 3.0,
+              "SET": 2.0,
+              "UPDATE": 1.0
+            }
+          ],
+          "baselinePeakPythonBytes": [
+            [
+              313309,
+              313661,
+              313341
+            ],
+            [
+              313309,
+              313661,
+              313341
+            ],
+            [
+              313309,
+              313661,
+              313341
+            ]
+          ],
+          "candidatePeakPythonBytes": [
+            [
+              313293,
+              313645,
+              313325
+            ],
+            [
+              313293,
+              313645,
+              313325
+            ],
+            [
+              313293,
+              313645,
+              313325
+            ]
+          ],
+          "baselinePeakPythonMedianBytes": 313341,
+          "candidatePeakPythonMedianBytes": 313325
+        },
+        {
+          "workload": "admit-history-290",
+          "unit": "ns/operation",
+          "baselineProcessMedians": [
+            1676954.1,
+            1601116.55,
+            1652018.75
+          ],
+          "candidateProcessMedians": [
+            1808787.4,
+            1637131.25,
+            1585572.85
+          ],
+          "baselineMedian": 1652018.75,
+          "candidateMedian": 1637131.25,
+          "pairedChangePercent": [
+            7.861473370082095,
+            2.249349055819816,
+            -4.0221032600265545
+          ],
+          "baselineSqlCounts": [
+            {
+              "SELECT": 3.0,
+              "SET": 2.0,
+              "UPDATE": 1.0
+            },
+            {
+              "SELECT": 3.0,
+              "SET": 2.0,
+              "UPDATE": 1.0
+            },
+            {
+              "SELECT": 3.0,
+              "SET": 2.0,
+              "UPDATE": 1.0
+            },
+            {
+              "SELECT": 3.0,
+              "SET": 2.0,
+              "UPDATE": 1.0
+            },
+            {
+              "SELECT": 3.0,
+              "SET": 2.0,
+              "UPDATE": 1.0
+            },
+            {
+              "SELECT": 3.0,
+              "SET": 2.0,
+              "UPDATE": 1.0
+            },
+            {
+              "SELECT": 3.0,
+              "SET": 2.0,
+              "UPDATE": 1.0
+            },
+            {
+              "SELECT": 3.0,
+              "SET": 2.0,
+              "UPDATE": 1.0
+            },
+            {
+              "SELECT": 3.0,
+              "SET": 2.0,
+              "UPDATE": 1.0
+            }
+          ],
+          "candidateSqlCounts": [
+            {
+              "SELECT": 3.0,
+              "SET": 2.0,
+              "UPDATE": 1.0
+            },
+            {
+              "SELECT": 3.0,
+              "SET": 2.0,
+              "UPDATE": 1.0
+            },
+            {
+              "SELECT": 3.0,
+              "SET": 2.0,
+              "UPDATE": 1.0
+            },
+            {
+              "SELECT": 3.0,
+              "SET": 2.0,
+              "UPDATE": 1.0
+            },
+            {
+              "SELECT": 3.0,
+              "SET": 2.0,
+              "UPDATE": 1.0
+            },
+            {
+              "SELECT": 3.0,
+              "SET": 2.0,
+              "UPDATE": 1.0
+            },
+            {
+              "SELECT": 3.0,
+              "SET": 2.0,
+              "UPDATE": 1.0
+            },
+            {
+              "SELECT": 3.0,
+              "SET": 2.0,
+              "UPDATE": 1.0
+            },
+            {
+              "SELECT": 3.0,
+              "SET": 2.0,
+              "UPDATE": 1.0
+            }
+          ],
+          "baselinePeakPythonBytes": [
+            [
+              409313,
+              408893,
+              413893
+            ],
+            [
+              409413,
+              410693,
+              409243
+            ],
+            [
+              409213,
+              408843,
+              408843
+            ]
+          ],
+          "candidatePeakPythonBytes": [
+            [
+              407983,
+              406713,
+              406463
+            ],
+            [
+              408983,
+              407513,
+              407113
+            ],
+            [
+              406683,
+              406363,
+              406363
+            ]
+          ],
+          "baselinePeakPythonMedianBytes": 409243,
+          "candidatePeakPythonMedianBytes": 406713
+        },
+        {
+          "workload": "admit-history-300",
+          "unit": "ns/operation",
+          "baselineProcessMedians": [
+            1412350.15,
+            1226429.25,
+            1335143.85
+          ],
+          "candidateProcessMedians": [
+            1503904.25,
+            1224214.5,
+            1157126.95
+          ],
+          "baselineMedian": 1335143.85,
+          "candidateMedian": 1224214.5,
+          "pairedChangePercent": [
+            6.482393902107075,
+            -0.18058522332209392,
+            -13.333162565217238
+          ],
+          "baselineSqlCounts": [
+            {
+              "SELECT": 3.0,
+              "SET": 2.0
+            },
+            {
+              "SELECT": 3.0,
+              "SET": 2.0
+            },
+            {
+              "SELECT": 3.0,
+              "SET": 2.0
+            },
+            {
+              "SELECT": 3.0,
+              "SET": 2.0
+            },
+            {
+              "SELECT": 3.0,
+              "SET": 2.0
+            },
+            {
+              "SELECT": 3.0,
+              "SET": 2.0
+            },
+            {
+              "SELECT": 3.0,
+              "SET": 2.0
+            },
+            {
+              "SELECT": 3.0,
+              "SET": 2.0
+            },
+            {
+              "SELECT": 3.0,
+              "SET": 2.0
+            }
+          ],
+          "candidateSqlCounts": [
+            {
+              "SELECT": 3.0,
+              "SET": 2.0
+            },
+            {
+              "SELECT": 3.0,
+              "SET": 2.0
+            },
+            {
+              "SELECT": 3.0,
+              "SET": 2.0
+            },
+            {
+              "SELECT": 3.0,
+              "SET": 2.0
+            },
+            {
+              "SELECT": 3.0,
+              "SET": 2.0
+            },
+            {
+              "SELECT": 3.0,
+              "SET": 2.0
+            },
+            {
+              "SELECT": 3.0,
+              "SET": 2.0
+            },
+            {
+              "SELECT": 3.0,
+              "SET": 2.0
+            },
+            {
+              "SELECT": 3.0,
+              "SET": 2.0
+            }
+          ],
+          "baselinePeakPythonBytes": [
+            [
+              327857,
+              327857,
+              328305
+            ],
+            [
+              327857,
+              327857,
+              328305
+            ],
+            [
+              327857,
+              327857,
+              328305
+            ]
+          ],
+          "candidatePeakPythonBytes": [
+            [
+              325377,
+              325377,
+              325825
+            ],
+            [
+              325377,
+              325377,
+              325825
+            ],
+            [
+              325377,
+              325377,
+              325825
+            ]
+          ],
+          "baselinePeakPythonMedianBytes": 327857,
+          "candidatePeakPythonMedianBytes": 325377
+        }
+      ],
+      "controls": {
+        "notes": [
+          "Native histories0,290 and300 include admitted and denied outcomes.",
+          "Unsorted history exhausts both windows with retry100; denied transaction preserves its ledger.",
+          "Fourteen native concurrent admissions commit exactly10 and deny4.",
+          "Existing QA exact window boundaries\u00b11 microsecond, duplicate timestamps, cancellation/deadline and SQL failure redaction all pass."
+        ],
+        "nativeBaselineOutputs": {
+          "unsorted-dual-window": "retry100 and denied transaction preserves 300 timestamps",
+          "fourteen-concurrent-admissions": "exactly10 committed and4 denied"
+        },
+        "finalCurrentSourceNativeParity": {
+          "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/qualified-public-parity.json",
+          "sha256": "a723b441e565e15b50b9a8f418a30bd4b8be166f7272751a981150dbb858026c"
+        }
+      },
+      "resourceAndCompositionCosts": {
+        "persistentStateAdded": false,
+        "sqlCountsUnchanged": true,
+        "boundedHistoryMaximum": 300,
+        "compositionCosts": "One added bisect import in rejected prototype; no retained production change."
+      },
+      "evidence": {
+        "summary": {
+          "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-02-summary.json",
+          "sha256": "51c58fac9b9be0141c1b5f9b882b77bbd93d9af497a0baeae67b29fdfaeaee92"
+        },
+        "nativeRaw": [
+          {
+            "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-02-block1-baseline.json",
+            "sha256": "5b70da172a91fd38c7cf7d80e8aeaf692868d0af635a20e2cf13d5649317a615"
+          },
+          {
+            "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-02-block1-candidate.json",
+            "sha256": "88a4c0c097d673e3eb0721cd07faac643789fdfe7b932e6c5d2a84376ecf9803"
+          },
+          {
+            "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-02-block2-baseline.json",
+            "sha256": "1641a48edbd5d07b1d64476adde15931d4a7e6dfd9b18d500b19f8c2b7820ead"
+          },
+          {
+            "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-02-block2-candidate.json",
+            "sha256": "024677e44bcdc91dcefacb103325d4b74543b89459a6bc4e71796af44e7882ec"
+          },
+          {
+            "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-02-block3-baseline.json",
+            "sha256": "16ba7da983f5e6e164e0a8a3b88f99f7330e26f01d7456868369e7913ceb0564"
+          },
+          {
+            "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-02-block3-candidate.json",
+            "sha256": "1bdb196b2d91f2e180d0f10b48ff7aefb781392f8aa1af0977b7b96fb298bf01"
+          }
+        ],
+        "nativeProcesses": [
+          {
+            "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-02-block1-baseline-process.json",
+            "sha256": "56f7cb0f722fa12bdde416b0b723d5e0278065d41c8dfe9cf24ea9cab2bbe02e"
+          },
+          {
+            "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-02-block1-candidate-process.json",
+            "sha256": "773f13f81547ffb9042fa7227196876bac4254755ab33c76963bec1b36788c62"
+          },
+          {
+            "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-02-block2-candidate-process.json",
+            "sha256": "6a55b59d3c26a8b59642ee5aa2e1315172a4b17b2e38a06524c8a69ae7684671"
+          },
+          {
+            "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-02-block2-baseline-process.json",
+            "sha256": "ed84ec79c0d1b86c32dd61a0ac9a55a74ff9875bcd19253a10c86feb05acfd25"
+          },
+          {
+            "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-02-block3-baseline-process.json",
+            "sha256": "56f8ced710deddff2a428e6480ac10b6ce9d69e846b4974da495d9e09d94854e"
+          },
+          {
+            "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-02-block3-candidate-process.json",
+            "sha256": "2adfa0e852c431f51eac096c3e5061503bc5cfb78080127be4600737b6caf54f"
+          }
+        ],
+        "resourceControls": {
+          "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/resource-controls.json",
+          "sha256": "681fad9b6be40db0c14ef06c9eeae4a107140218f44f07d21083f8ee65e6200c"
+        },
+        "finalResourceControls": {
+          "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/qualified-final-resource-controls.json",
+          "sha256": "69f60431c31b568b87a04a6cab7031049e7f11e793a437e8e678aeaa813bfcab"
+        }
+      }
+    },
+    {
+      "id": "round9-backend-03",
+      "candidate": "Reuse validated callback parses within exact native authorization-policy calls",
+      "mechanism": "Validate every registered callback before the requested callback, hold at most sixteen parsed callbacks within that single call, and match using those validated objects. Preserve public validator dispatch and original lazy match/error order for subclasses through an AST-identical fallback body.",
+      "outcome": "accepted",
+      "reason": "Accepted on consistent native public policy CPU and actual parse-count reduction. Final exact-class16-callback policy is40.5\u201341.9% faster,34\u219217 parser calls. Complete PostgreSQL provider timings vary in both directions; no stable full-provider latency improvement is claimed. The subclass control retains the original dispatch/body and has small mixed timing variation.",
+      "priorWorkAudit": {
+        "closestEarlierCandidate": {
+          "id": "round7-rendering-05",
+          "scope": "rendering",
+          "record": "docs/performance/round7-20261011-rendering.json",
+          "candidate": "Pass the already constructed document href through RowButton rather than percent-encoding the same target twice",
+          "mechanism": null,
+          "outcome": "accepted"
+        },
+        "whyNew": "Earlier frontend href reuse and round8 OAuth dispatch/header/cookie/metadata changes did not change callback parsing. This candidate shares validated parses within one authorization call, with no cross-request authority cache.",
+        "fullPriorCatalogAndRecords": {
+          "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/prior-and-source-audit.json",
+          "sha256": "ebac87a7f82add4011fcbea84620e2e3c094491e0433bf45220873743b10bb85"
+        }
+      },
+      "workload": {
+        "nativeEntryPoints": [
+          "McpRedirectPolicy.validate_authorization",
+          "NativeWikiOAuthProvider.authorize"
+        ],
+        "parameters": {
+          "policy-authorize-1-callbacks": 500,
+          "provider-authorize-1-callbacks-native-postgres": 10,
+          "policy-authorize-16-callbacks": 500,
+          "provider-authorize-16-callbacks-native-postgres": 10,
+          "subclass-policy-authorize-1-callback-negative-control": 500
+        },
+        "fixtures": "Native PostgreSQL18 on synthetic loopback15488, fresh owned schemas in wiki_round7_reads_bench; native cryptography/Pydantic/SQLAlchemy/MCP/Starlette installed dependencies.",
+        "isolatedOneCandidate": true,
+        "timingPrivateMonkeypatchCount": 0
+      },
+      "representativeMetric": {
+        "workload": "policy-authorize-16-callbacks",
+        "unit": "microseconds/complete public operation",
+        "baseline": 102.02856,
+        "candidate": 59.324588000000006,
+        "medianChangePercent": -41.854919838131586,
+        "pairedChangePercent": [
+          -41.9114510682107,
+          -40.518319692674744,
+          -41.85525949534753
+        ],
+        "aggregate": "Median of the three process medians; each process median is based on nine samples.",
+        "summary": {
+          "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-v4-03-summary.json",
+          "sha256": "507a4e2e1093ce1e94918abcaa8a5587abb676cddfee5017c2498c6dd2a501aa"
+        }
+      },
+      "measurements": [
+        {
+          "workload": "policy-authorize-1-callbacks",
+          "unit": "ns/operation",
+          "baselineProcessMedians": [
+            11916.982,
+            11635.138,
+            11614.792
+          ],
+          "candidateProcessMedians": [
+            6857.13,
+            6965.756,
+            6986.85
+          ],
+          "baselineMedian": 11635.138,
+          "candidateMedian": 6965.756,
+          "pairedChangePercent": [
+            -42.45917296845795,
+            -40.13172856222247,
+            -39.845242170501194
+          ],
+          "baselineSqlCounts": [
+            {},
+            {},
+            {},
+            {},
+            {},
+            {},
+            {},
+            {},
+            {}
+          ],
+          "candidateSqlCounts": [
+            {},
+            {},
+            {},
+            {},
+            {},
+            {},
+            {},
+            {},
+            {}
+          ],
+          "baselinePeakPythonBytes": [
+            [
+              1830,
+              1858,
+              1858
+            ],
+            [
+              1830,
+              1858,
+              1858
+            ],
+            [
+              1830,
+              1858,
+              1858
+            ]
+          ],
+          "candidatePeakPythonBytes": [
+            [
+              1918,
+              1946,
+              1946
+            ],
+            [
+              1918,
+              1946,
+              1946
+            ],
+            [
+              1918,
+              1946,
+              1946
+            ]
+          ],
+          "baselinePeakPythonMedianBytes": 1858,
+          "candidatePeakPythonMedianBytes": 1946
+        },
+        {
+          "workload": "provider-authorize-1-callbacks-native-postgres",
+          "unit": "ns/operation",
+          "baselineProcessMedians": [
+            3539033.3,
+            3783837.7,
+            3451416.6
+          ],
+          "candidateProcessMedians": [
+            3612437.5,
+            3597641.7,
+            3504775.1
+          ],
+          "baselineMedian": 3539033.3,
+          "candidateMedian": 3597641.7,
+          "pairedChangePercent": [
+            2.074131373672028,
+            -4.920824167484772,
+            1.5459883921286055
+          ],
+          "baselineSqlCounts": [
+            {
+              "DELETE": 1.0,
+              "INSERT": 1.0,
+              "SELECT": 6.0,
+              "SET": 2.0,
+              "WITH": 1.0,
+              "quotaCount": 1.0
+            },
+            {
+              "DELETE": 1.0,
+              "INSERT": 1.0,
+              "SELECT": 6.0,
+              "SET": 2.0,
+              "WITH": 1.0,
+              "quotaCount": 1.0
+            },
+            {
+              "DELETE": 1.0,
+              "INSERT": 1.0,
+              "SELECT": 6.0,
+              "SET": 2.0,
+              "WITH": 1.0,
+              "quotaCount": 1.0
+            },
+            {
+              "DELETE": 1.0,
+              "INSERT": 1.0,
+              "SELECT": 6.0,
+              "SET": 2.0,
+              "WITH": 1.0,
+              "quotaCount": 1.0
+            },
+            {
+              "DELETE": 1.0,
+              "INSERT": 1.0,
+              "SELECT": 6.0,
+              "SET": 2.0,
+              "WITH": 1.0,
+              "quotaCount": 1.0
+            },
+            {
+              "DELETE": 1.0,
+              "INSERT": 1.0,
+              "SELECT": 6.0,
+              "SET": 2.0,
+              "WITH": 1.0,
+              "quotaCount": 1.0
+            },
+            {
+              "DELETE": 1.0,
+              "INSERT": 1.0,
+              "SELECT": 6.0,
+              "SET": 2.0,
+              "WITH": 1.0,
+              "quotaCount": 1.0
+            },
+            {
+              "DELETE": 1.0,
+              "INSERT": 1.0,
+              "SELECT": 6.0,
+              "SET": 2.0,
+              "WITH": 1.0,
+              "quotaCount": 1.0
+            },
+            {
+              "DELETE": 1.0,
+              "INSERT": 1.0,
+              "SELECT": 6.0,
+              "SET": 2.0,
+              "WITH": 1.0,
+              "quotaCount": 1.0
+            }
+          ],
+          "candidateSqlCounts": [
+            {
+              "DELETE": 1.0,
+              "INSERT": 1.0,
+              "SELECT": 6.0,
+              "SET": 2.0,
+              "WITH": 1.0,
+              "quotaCount": 1.0
+            },
+            {
+              "DELETE": 1.0,
+              "INSERT": 1.0,
+              "SELECT": 6.0,
+              "SET": 2.0,
+              "WITH": 1.0,
+              "quotaCount": 1.0
+            },
+            {
+              "DELETE": 1.0,
+              "INSERT": 1.0,
+              "SELECT": 6.0,
+              "SET": 2.0,
+              "WITH": 1.0,
+              "quotaCount": 1.0
+            },
+            {
+              "DELETE": 1.0,
+              "INSERT": 1.0,
+              "SELECT": 6.0,
+              "SET": 2.0,
+              "WITH": 1.0,
+              "quotaCount": 1.0
+            },
+            {
+              "DELETE": 1.0,
+              "INSERT": 1.0,
+              "SELECT": 6.0,
+              "SET": 2.0,
+              "WITH": 1.0,
+              "quotaCount": 1.0
+            },
+            {
+              "DELETE": 1.0,
+              "INSERT": 1.0,
+              "SELECT": 6.0,
+              "SET": 2.0,
+              "WITH": 1.0,
+              "quotaCount": 1.0
+            },
+            {
+              "DELETE": 1.0,
+              "INSERT": 1.0,
+              "SELECT": 6.0,
+              "SET": 2.0,
+              "WITH": 1.0,
+              "quotaCount": 1.0
+            },
+            {
+              "DELETE": 1.0,
+              "INSERT": 1.0,
+              "SELECT": 6.0,
+              "SET": 2.0,
+              "WITH": 1.0,
+              "quotaCount": 1.0
+            },
+            {
+              "DELETE": 1.0,
+              "INSERT": 1.0,
+              "SELECT": 6.0,
+              "SET": 2.0,
+              "WITH": 1.0,
+              "quotaCount": 1.0
+            }
+          ],
+          "baselinePeakPythonBytes": [
+            [
+              359715,
+              359261,
+              359939
+            ],
+            [
+              359418,
+              359035,
+              359701
+            ],
+            [
+              359368,
+              359362,
+              359521
+            ]
+          ],
+          "candidatePeakPythonBytes": [
+            [
+              359545,
+              359480,
+              359713
+            ],
+            [
+              359368,
+              358814,
+              359551
+            ],
+            [
+              359592,
+              359306,
+              359760
+            ]
+          ],
+          "baselinePeakPythonMedianBytes": 359418,
+          "candidatePeakPythonMedianBytes": 359545
+        },
+        {
+          "workload": "policy-authorize-16-callbacks",
+          "unit": "ns/operation",
+          "baselineProcessMedians": [
+            102028.56,
+            99735.898,
+            102344.648
+          ],
+          "candidateProcessMedians": [
+            59266.91,
+            59324.588,
+            59508.03
+          ],
+          "baselineMedian": 102028.56,
+          "candidateMedian": 59324.588,
+          "pairedChangePercent": [
+            -41.9114510682107,
+            -40.518319692674744,
+            -41.85525949534753
+          ],
+          "baselineSqlCounts": [
+            {},
+            {},
+            {},
+            {},
+            {},
+            {},
+            {},
+            {},
+            {}
+          ],
+          "candidateSqlCounts": [
+            {},
+            {},
+            {},
+            {},
+            {},
+            {},
+            {},
+            {},
+            {}
+          ],
+          "baselinePeakPythonBytes": [
+            [
+              1858,
+              1858,
+              1858
+            ],
+            [
+              1858,
+              1858,
+              1858
+            ],
+            [
+              1858,
+              1858,
+              1858
+            ]
+          ],
+          "candidatePeakPythonBytes": [
+            [
+              2042,
+              2042,
+              2042
+            ],
+            [
+              2042,
+              2042,
+              2042
+            ],
+            [
+              2042,
+              2042,
+              2042
+            ]
+          ],
+          "baselinePeakPythonMedianBytes": 1858,
+          "candidatePeakPythonMedianBytes": 2042
+        },
+        {
+          "workload": "provider-authorize-16-callbacks-native-postgres",
+          "unit": "ns/operation",
+          "baselineProcessMedians": [
+            3628262.4,
+            3839233.3,
+            3645700.1
+          ],
+          "candidateProcessMedians": [
+            3711820.8,
+            3712904.4,
+            3678262.7
+          ],
+          "baselineMedian": 3645700.1,
+          "candidateMedian": 3711820.8,
+          "pairedChangePercent": [
+            2.3029866858582215,
+            -3.2904720846216873,
+            0.8931782403056143
+          ],
+          "baselineSqlCounts": [
+            {
+              "DELETE": 1.0,
+              "INSERT": 1.0,
+              "SELECT": 6.0,
+              "SET": 2.0,
+              "WITH": 1.0,
+              "quotaCount": 1.0
+            },
+            {
+              "DELETE": 1.0,
+              "INSERT": 1.0,
+              "SELECT": 6.0,
+              "SET": 2.0,
+              "WITH": 1.0,
+              "quotaCount": 1.0
+            },
+            {
+              "DELETE": 1.0,
+              "INSERT": 1.0,
+              "SELECT": 6.0,
+              "SET": 2.0,
+              "WITH": 1.0,
+              "quotaCount": 1.0
+            },
+            {
+              "DELETE": 1.0,
+              "INSERT": 1.0,
+              "SELECT": 6.0,
+              "SET": 2.0,
+              "WITH": 1.0,
+              "quotaCount": 1.0
+            },
+            {
+              "DELETE": 1.0,
+              "INSERT": 1.0,
+              "SELECT": 6.0,
+              "SET": 2.0,
+              "WITH": 1.0,
+              "quotaCount": 1.0
+            },
+            {
+              "DELETE": 1.0,
+              "INSERT": 1.0,
+              "SELECT": 6.0,
+              "SET": 2.0,
+              "WITH": 1.0,
+              "quotaCount": 1.0
+            },
+            {
+              "DELETE": 1.0,
+              "INSERT": 1.0,
+              "SELECT": 6.0,
+              "SET": 2.0,
+              "WITH": 1.0,
+              "quotaCount": 1.0
+            },
+            {
+              "DELETE": 1.0,
+              "INSERT": 1.0,
+              "SELECT": 6.0,
+              "SET": 2.0,
+              "WITH": 1.0,
+              "quotaCount": 1.0
+            },
+            {
+              "DELETE": 1.0,
+              "INSERT": 1.0,
+              "SELECT": 6.0,
+              "SET": 2.0,
+              "WITH": 1.0,
+              "quotaCount": 1.0
+            }
+          ],
+          "candidateSqlCounts": [
+            {
+              "DELETE": 1.0,
+              "INSERT": 1.0,
+              "SELECT": 6.0,
+              "SET": 2.0,
+              "WITH": 1.0,
+              "quotaCount": 1.0
+            },
+            {
+              "DELETE": 1.0,
+              "INSERT": 1.0,
+              "SELECT": 6.0,
+              "SET": 2.0,
+              "WITH": 1.0,
+              "quotaCount": 1.0
+            },
+            {
+              "DELETE": 1.0,
+              "INSERT": 1.0,
+              "SELECT": 6.0,
+              "SET": 2.0,
+              "WITH": 1.0,
+              "quotaCount": 1.0
+            },
+            {
+              "DELETE": 1.0,
+              "INSERT": 1.0,
+              "SELECT": 6.0,
+              "SET": 2.0,
+              "WITH": 1.0,
+              "quotaCount": 1.0
+            },
+            {
+              "DELETE": 1.0,
+              "INSERT": 1.0,
+              "SELECT": 6.0,
+              "SET": 2.0,
+              "WITH": 1.0,
+              "quotaCount": 1.0
+            },
+            {
+              "DELETE": 1.0,
+              "INSERT": 1.0,
+              "SELECT": 6.0,
+              "SET": 2.0,
+              "WITH": 1.0,
+              "quotaCount": 1.0
+            },
+            {
+              "DELETE": 1.0,
+              "INSERT": 1.0,
+              "SELECT": 6.0,
+              "SET": 2.0,
+              "WITH": 1.0,
+              "quotaCount": 1.0
+            },
+            {
+              "DELETE": 1.0,
+              "INSERT": 1.0,
+              "SELECT": 6.0,
+              "SET": 2.0,
+              "WITH": 1.0,
+              "quotaCount": 1.0
+            },
+            {
+              "DELETE": 1.0,
+              "INSERT": 1.0,
+              "SELECT": 6.0,
+              "SET": 2.0,
+              "WITH": 1.0,
+              "quotaCount": 1.0
+            }
+          ],
+          "baselinePeakPythonBytes": [
+            [
+              363172,
+              362969,
+              362692
+            ],
+            [
+              363040,
+              362852,
+              362571
+            ],
+            [
+              363376,
+              362864,
+              362642
+            ]
+          ],
+          "candidatePeakPythonBytes": [
+            [
+              363267,
+              363500,
+              362919
+            ],
+            [
+              363447,
+              363335,
+              362919
+            ],
+            [
+              363553,
+              363093,
+              363016
+            ]
+          ],
+          "baselinePeakPythonMedianBytes": 362864,
+          "candidatePeakPythonMedianBytes": 363267
+        },
+        {
+          "workload": "subclass-policy-authorize-1-callback-negative-control",
+          "unit": "ns/operation",
+          "baselineProcessMedians": [
+            11565.328,
+            11839.93,
+            11553.518
+          ],
+          "candidateProcessMedians": [
+            11747.356,
+            11699.058,
+            11942.66
+          ],
+          "baselineMedian": 11565.328,
+          "candidateMedian": 11747.356,
+          "pairedChangePercent": [
+            1.5739112630441587,
+            -1.1898043316134421,
+            3.368168898858337
+          ],
+          "baselineSqlCounts": [
+            {},
+            {},
+            {},
+            {},
+            {},
+            {},
+            {},
+            {},
+            {}
+          ],
+          "candidateSqlCounts": [
+            {},
+            {},
+            {},
+            {},
+            {},
+            {},
+            {},
+            {},
+            {}
+          ],
+          "baselinePeakPythonBytes": [
+            [
+              1946,
+              1946,
+              1946
+            ],
+            [
+              1946,
+              1946,
+              1946
+            ],
+            [
+              1946,
+              1946,
+              1946
+            ]
+          ],
+          "candidatePeakPythonBytes": [
+            [
+              1946,
+              1946,
+              1946
+            ],
+            [
+              1946,
+              1946,
+              1946
+            ],
+            [
+              1946,
+              1946,
+              1946
+            ]
+          ],
+          "baselinePeakPythonMedianBytes": 1946,
+          "candidatePeakPythonMedianBytes": 1946
+        }
+      ],
+      "controls": {
+        "notes": [
+          "Invalid registered tail is rejected before both a matching requested URI and an invalid requested URI.",
+          "Client ID and registration bound errors preserve precedence; Unicode, escaped paths and noncanonical ports reject.",
+          "Exact HTTPS and permitted loopback variable ports preserve matching, while wrong host rejects.",
+          "Native provider constructs fresh opaque protected intent state under the same real PostgreSQL operation and request guard.",
+          "Subclass public-validator call order, registration and callback rejection, and lazy earlier matching before a custom-admitted invalid later URI match baseline."
+        ],
+        "nativeBaselineOutputs": {
+          "1-callbacks": "native provider emits fresh opaque consent intent",
+          "16-callbacks": "native provider emits fresh opaque consent intent",
+          "bad-id": "An opaque registered MCP client ID is required",
+          "empty-registration": "MCP client registration requires bounded explicit callbacks",
+          "too-many": "MCP client registration requires bounded explicit callbacks",
+          "invalid-tail-before-request": "MCP callback URI is not allowed",
+          "bad-request-after-invalid-tail": "MCP callback URI is not allowed",
+          "wrong-host": "MCP callback URI is not registered for this client",
+          "canonical-port": "MCP callback URI must use canonical spelling",
+          "encoded-path": "Invalid MCP callback URI",
+          "unicode": "Invalid MCP callback URI",
+          "exact-https": "accepted",
+          "subclass-public-validator-order": [
+            "registration",
+            "http://127.0.0.1:4567/callback",
+            "http://127.0.0.1:9876/callback"
+          ],
+          "subclass-registration-rejection": "Extra registration policy rejected",
+          "subclass-callback-rejection": "Extra callback policy rejected",
+          "subclass-lazy-registered-parse": "first match preserves public registration override contract before invalid later callback"
+        },
+        "finalCurrentSourceNativeParity": {
+          "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/qualified-public-parity.json",
+          "sha256": "a723b441e565e15b50b9a8f418a30bd4b8be166f7272751a981150dbb858026c"
+        }
+      },
+      "resourceAndCompositionCosts": {
+        "persistentPolicyInstanceBytes": {
+          "baseline": 48,
+          "candidate": 48
+        },
+        "newPersistentFields": 0,
+        "requestLocalParsedReferencesMaximum": 16,
+        "crossRequestParsedCache": false,
+        "actualFinalParseCalls": [
+          {
+            "callbackCount": 1,
+            "baselineParseCalls": 4,
+            "baselinePolicyInstanceBytes": 48,
+            "finalParseCalls": 2,
+            "finalPolicyInstanceBytes": 48
+          },
+          {
+            "callbackCount": 16,
+            "baselineParseCalls": 34,
+            "baselinePolicyInstanceBytes": 48,
+            "finalParseCalls": 17,
+            "finalPolicyInstanceBytes": 48
+          }
+        ],
+        "newCompositionWork": "No model/body cache or new policy instance fields. Helper function/code objects are module-scoped.",
+        "sqlCountsUnchanged": true,
+        "fullProviderLatencyStableGain": false,
+        "subclassControl": {
+          "workload": "subclass-policy-authorize-1-callback-negative-control",
+          "unit": "microseconds/complete public operation",
+          "baseline": 11.565328,
+          "candidate": 11.747356,
+          "medianChangePercent": 1.5739112630441587,
+          "pairedChangePercent": [
+            1.5739112630441587,
+            -1.1898043316134421,
+            3.368168898858337
+          ],
+          "aggregate": "Median of the three process medians; each process median is based on nine samples.",
+          "summary": {
+            "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-v4-03-summary.json",
+            "sha256": "507a4e2e1093ce1e94918abcaa8a5587abb676cddfee5017c2498c6dd2a501aa"
+          }
+        }
+      },
+      "evidence": {
+        "summary": {
+          "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-v4-03-summary.json",
+          "sha256": "507a4e2e1093ce1e94918abcaa8a5587abb676cddfee5017c2498c6dd2a501aa"
+        },
+        "nativeRaw": [
+          {
+            "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-v4-03-block1-baseline.json",
+            "sha256": "ff3c5bdbc8e6e715f3fe7fe732a8af4ecfb3a3d5d2808a307c5388723b431b46"
+          },
+          {
+            "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-v4-03-block1-candidate.json",
+            "sha256": "c204a058e2e4f39781f25a51156067a1737a598e14a75507bea02385521af9da"
+          },
+          {
+            "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-v4-03-block2-baseline.json",
+            "sha256": "466cb46d21102b6fa2c39c825210e36ab2b3fd120be90933c37015bd5a93a062"
+          },
+          {
+            "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-v4-03-block2-candidate.json",
+            "sha256": "596a185e3c4cded4d6eaa09799b74f082151c581cccd3082b16698f474e74b06"
+          },
+          {
+            "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-v4-03-block3-baseline.json",
+            "sha256": "4a519f7dd7c4b0eadd6c6a6626e9ffcfae58449d5405bd92b413b263d06ac9cf"
+          },
+          {
+            "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-v4-03-block3-candidate.json",
+            "sha256": "295f2ba7fb903c8cbf95ceedc63f1a0121502ce0d87be9a54cd6787e2c9780b3"
+          }
+        ],
+        "nativeProcesses": [
+          {
+            "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-v4-03-block1-baseline-process.json",
+            "sha256": "a7f0e655e24abd6c2417720ce86f8ddae369676ff32dc90bac0918bc47f8ae9f"
+          },
+          {
+            "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-v4-03-block1-candidate-process.json",
+            "sha256": "3890c6774246570fac004702b9478f27cc479f3bdd49ad67033fb1c27506460f"
+          },
+          {
+            "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-v4-03-block2-candidate-process.json",
+            "sha256": "377c69251c358e1f3fa62e3344734d60fb9e05446e9269bc3a2575de31a5d2d3"
+          },
+          {
+            "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-v4-03-block2-baseline-process.json",
+            "sha256": "bd865188fa9ce4c3069f96583ecf3bb22c0934b7b5ab733e7e6c0b60f4406bcd"
+          },
+          {
+            "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-v4-03-block3-baseline-process.json",
+            "sha256": "c3724a393e363bdfb44c18947605c7b9097fff851a7da7c84950ed87c0543444"
+          },
+          {
+            "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-v4-03-block3-candidate-process.json",
+            "sha256": "38010a85bdf66f26cd377f0fda5be106237fe1fecbc04879e06fd27ef109d79f"
+          }
+        ],
+        "resourceControls": {
+          "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/resource-controls.json",
+          "sha256": "681fad9b6be40db0c14ef06c9eeae4a107140218f44f07d21083f8ee65e6200c"
+        },
+        "finalResourceControls": {
+          "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/qualified-final-resource-controls.json",
+          "sha256": "69f60431c31b568b87a04a6cab7031049e7f11e793a437e8e678aeaa813bfcab"
+        }
+      }
+    },
+    {
+      "id": "round9-backend-04",
+      "candidate": "Precompile the five opaque native-secret grammar patterns",
+      "mechanism": "Prototype an eager map from the five NativePurpose members to compiled full-match regex objects, with the old regex path retained for unknown compatible runtime string purposes.",
+      "outcome": "rejected",
+      "reason": "Rejected: complete native protected-MCP invalid-token work saves only about0.28\u20130.33 microseconds. Baseline re already retains compiled patterns after first use; eager composition adds five compilation calls and an owning map, with no stable valid-syntax SQL-path improvement.",
+      "priorWorkAudit": {
+        "closestEarlierCandidate": {
+          "id": "provider-round5-06",
+          "scope": "provider",
+          "record": "docs/performance/round5-20261011.json",
+          "candidate": "Match snippets with case-insensitive regexes to avoid a full-document lowercase allocation",
+          "outcome": "rejected"
+        },
+        "whyNew": "Earlier MIME-clause memoization and snippet regex prototypes did not precompile purpose-specific opaque native-secret admission grammars. This candidate is rejected because native benefit is tiny and baseline re already caches compilation.",
+        "fullPriorCatalogAndRecords": {
+          "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/prior-and-source-audit.json",
+          "sha256": "ebac87a7f82add4011fcbea84620e2e3c094491e0433bf45220873743b10bb85"
+        }
+      },
+      "workload": {
+        "nativeEntryPoints": [
+          "NativeWikiOAuthProvider.load_access_token",
+          "ProviderTokenVerifier.verify_token",
+          "AuthenticationMiddleware",
+          "RequireAuthMiddleware"
+        ],
+        "parameters": {
+          "protected-mcp-short-invalid": 1000,
+          "protected-mcp-oversized-invalid": 1000,
+          "protected-mcp-wrong-purpose": 1000,
+          "protected-mcp-no-bearer-negative-control": 1000,
+          "provider-valid-syntax-missing-state-negative-control": 20
+        },
+        "fixtures": "Native PostgreSQL18 on synthetic loopback15488, fresh owned schemas in wiki_round7_reads_bench; native cryptography/Pydantic/SQLAlchemy/MCP/Starlette installed dependencies.",
+        "isolatedOneCandidate": true,
+        "timingPrivateMonkeypatchCount": 0
+      },
+      "representativeMetric": {
+        "workload": "protected-mcp-wrong-purpose",
+        "unit": "microseconds/complete public operation",
+        "baseline": 5.112828,
+        "candidate": 4.779585,
+        "medianChangePercent": -6.517782331030897,
+        "pairedChangePercent": [
+          -5.892492374083391,
+          -8.522920954077385,
+          -4.3854289946155145
+        ],
+        "aggregate": "Median of the three process medians; each process median is based on nine samples.",
+        "summary": {
+          "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-04-summary.json",
+          "sha256": "dca2b2b06fff848a1a2bc9253155af1566687a946f506e45ec26ffcbd344561c"
+        }
+      },
+      "measurements": [
+        {
+          "workload": "protected-mcp-short-invalid",
+          "unit": "ns/operation",
+          "baselineProcessMedians": [
+            5095.348,
+            4925.447,
+            4799.373
+          ],
+          "candidateProcessMedians": [
+            4507.434,
+            4646.168,
+            4766.178
+          ],
+          "baselineMedian": 4925.447,
+          "candidateMedian": 4646.168,
+          "pairedChangePercent": [
+            -11.538250184285737,
+            -5.670124965307721,
+            -0.6916528471531569
+          ],
+          "baselineSqlCounts": [
+            {},
+            {},
+            {},
+            {},
+            {},
+            {},
+            {},
+            {},
+            {}
+          ],
+          "candidateSqlCounts": [
+            {},
+            {},
+            {},
+            {},
+            {},
+            {},
+            {},
+            {},
+            {}
+          ],
+          "baselinePeakPythonBytes": [
+            [
+              6320,
+              6320,
+              6320
+            ],
+            [
+              6320,
+              6320,
+              6320
+            ],
+            [
+              6320,
+              6320,
+              6320
+            ]
+          ],
+          "candidatePeakPythonBytes": [
+            [
+              6180,
+              6180,
+              6180
+            ],
+            [
+              6180,
+              6180,
+              6180
+            ],
+            [
+              6180,
+              6180,
+              6180
+            ]
+          ],
+          "baselinePeakPythonMedianBytes": 6320,
+          "candidatePeakPythonMedianBytes": 6180
+        },
+        {
+          "workload": "protected-mcp-oversized-invalid",
+          "unit": "ns/operation",
+          "baselineProcessMedians": [
+            11577.22,
+            11092.825,
+            11061.456
+          ],
+          "candidateProcessMedians": [
+            10826.489,
+            10997.63,
+            10959.957
+          ],
+          "baselineMedian": 11092.825,
+          "candidateMedian": 10959.957,
+          "pairedChangePercent": [
+            -6.4845532865402955,
+            -0.8581673288815206,
+            -0.9175916805165607
+          ],
+          "baselineSqlCounts": [
+            {},
+            {},
+            {},
+            {},
+            {},
+            {},
+            {},
+            {},
+            {}
+          ],
+          "candidateSqlCounts": [
+            {},
+            {},
+            {},
+            {},
+            {},
+            {},
+            {},
+            {},
+            {}
+          ],
+          "baselinePeakPythonBytes": [
+            [
+              55481,
+              55481,
+              55481
+            ],
+            [
+              55481,
+              55481,
+              55481
+            ],
+            [
+              55481,
+              55481,
+              55481
+            ]
+          ],
+          "candidatePeakPythonBytes": [
+            [
+              55341,
+              55341,
+              55341
+            ],
+            [
+              55341,
+              55341,
+              55341
+            ],
+            [
+              55341,
+              55341,
+              55341
+            ]
+          ],
+          "baselinePeakPythonMedianBytes": 55481,
+          "candidatePeakPythonMedianBytes": 55341
+        },
+        {
+          "workload": "protected-mcp-wrong-purpose",
+          "unit": "ns/operation",
+          "baselineProcessMedians": [
+            5112.828,
+            5204.19,
+            4998.804
+          ],
+          "candidateProcessMedians": [
+            4811.555,
+            4760.641,
+            4779.585
+          ],
+          "baselineMedian": 5112.828,
+          "candidateMedian": 4779.585,
+          "pairedChangePercent": [
+            -5.892492374083391,
+            -8.522920954077385,
+            -4.3854289946155145
+          ],
+          "baselineSqlCounts": [
+            {},
+            {},
+            {},
+            {},
+            {},
+            {},
+            {},
+            {},
+            {}
+          ],
+          "candidateSqlCounts": [
+            {},
+            {},
+            {},
+            {},
+            {},
+            {},
+            {},
+            {},
+            {}
+          ],
+          "baselinePeakPythonBytes": [
+            [
+              6461,
+              6461,
+              6461
+            ],
+            [
+              6461,
+              6461,
+              6461
+            ],
+            [
+              6461,
+              6461,
+              6461
+            ]
+          ],
+          "candidatePeakPythonBytes": [
+            [
+              6321,
+              6321,
+              6321
+            ],
+            [
+              6321,
+              6321,
+              6321
+            ],
+            [
+              6321,
+              6321,
+              6321
+            ]
+          ],
+          "baselinePeakPythonMedianBytes": 6461,
+          "candidatePeakPythonMedianBytes": 6321
+        },
+        {
+          "workload": "protected-mcp-no-bearer-negative-control",
+          "unit": "ns/operation",
+          "baselineProcessMedians": [
+            3000.437,
+            2954.995,
+            3033.585
+          ],
+          "candidateProcessMedians": [
+            2975.126,
+            3068.84,
+            2992.839
+          ],
+          "baselineMedian": 3000.437,
+          "candidateMedian": 2992.839,
+          "pairedChangePercent": [
+            -0.8435771189330032,
+            3.8526291922659883,
+            -1.3431632870020138
+          ],
+          "baselineSqlCounts": [
+            {},
+            {},
+            {},
+            {},
+            {},
+            {},
+            {},
+            {},
+            {}
+          ],
+          "candidateSqlCounts": [
+            {},
+            {},
+            {},
+            {},
+            {},
+            {},
+            {},
+            {},
+            {}
+          ],
+          "baselinePeakPythonBytes": [
+            [
+              5380,
+              5380,
+              5380
+            ],
+            [
+              5380,
+              5380,
+              5380
+            ],
+            [
+              5380,
+              5380,
+              5380
+            ]
+          ],
+          "candidatePeakPythonBytes": [
+            [
+              5380,
+              5380,
+              5380
+            ],
+            [
+              5380,
+              5380,
+              5380
+            ],
+            [
+              5380,
+              5380,
+              5380
+            ]
+          ],
+          "baselinePeakPythonMedianBytes": 5380,
+          "candidatePeakPythonMedianBytes": 5380
+        },
+        {
+          "workload": "provider-valid-syntax-missing-state-negative-control",
+          "unit": "ns/operation",
+          "baselineProcessMedians": [
+            1176620.9,
+            1109883.4,
+            1185187.55
+          ],
+          "candidateProcessMedians": [
+            1184166.55,
+            1120543.8,
+            1115597.95
+          ],
+          "baselineMedian": 1176620.9,
+          "candidateMedian": 1120543.8,
+          "pairedChangePercent": [
+            0.6412983145208662,
+            0.9604972918777044,
+            -5.871610784301618
+          ],
+          "baselineSqlCounts": [
+            {
+              "SELECT": 2.0,
+              "SET": 2.0
+            },
+            {
+              "SELECT": 2.0,
+              "SET": 2.0
+            },
+            {
+              "SELECT": 2.0,
+              "SET": 2.0
+            },
+            {
+              "SELECT": 2.0,
+              "SET": 2.0
+            },
+            {
+              "SELECT": 2.0,
+              "SET": 2.0
+            },
+            {
+              "SELECT": 2.0,
+              "SET": 2.0
+            },
+            {
+              "SELECT": 2.0,
+              "SET": 2.0
+            },
+            {
+              "SELECT": 2.0,
+              "SET": 2.0
+            },
+            {
+              "SELECT": 2.0,
+              "SET": 2.0
+            }
+          ],
+          "candidateSqlCounts": [
+            {
+              "SELECT": 2.0,
+              "SET": 2.0
+            },
+            {
+              "SELECT": 2.0,
+              "SET": 2.0
+            },
+            {
+              "SELECT": 2.0,
+              "SET": 2.0
+            },
+            {
+              "SELECT": 2.0,
+              "SET": 2.0
+            },
+            {
+              "SELECT": 2.0,
+              "SET": 2.0
+            },
+            {
+              "SELECT": 2.0,
+              "SET": 2.0
+            },
+            {
+              "SELECT": 2.0,
+              "SET": 2.0
+            },
+            {
+              "SELECT": 2.0,
+              "SET": 2.0
+            },
+            {
+              "SELECT": 2.0,
+              "SET": 2.0
+            }
+          ],
+          "baselinePeakPythonBytes": [
+            [
+              307846,
+              308006,
+              307558
+            ],
+            [
+              307846,
+              308006,
+              307558
+            ],
+            [
+              307846,
+              308006,
+              307558
+            ]
+          ],
+          "candidatePeakPythonBytes": [
+            [
+              307846,
+              308006,
+              307558
+            ],
+            [
+              307846,
+              308006,
+              307558
+            ],
+            [
+              307846,
+              308006,
+              307558
+            ]
+          ],
+          "baselinePeakPythonMedianBytes": 307846,
+          "candidatePeakPythonMedianBytes": 307846
+        }
+      ],
+      "controls": {
+        "notes": [
+          "All five purposes accept exact43-character ASCII grammars and reject42/44, Unicode and trailing-newline values.",
+          "Compatible unknown string-purpose fallback remains accepted in the prototype.",
+          "Native SDK ProviderTokenVerifier\u2192Starlette AuthenticationMiddleware\u2192MCP RequireAuthMiddleware returns401 with identical body and zero SQL for invalid tokens.",
+          "No-bearer negative control keeps identical work; valid syntax with missing state retains its fresh native transaction/read."
+        ],
+        "nativeBaselineOutputs": {
+          "short-invalid": {
+            "responseStatus": 401,
+            "sqlCount": 0
+          },
+          "oversized-invalid": {
+            "responseStatus": 401,
+            "sqlCount": 0
+          },
+          "wrong-purpose": {
+            "responseStatus": 401,
+            "sqlCount": 0
+          },
+          "no-bearer-negative-control": {
+            "responseStatus": 401,
+            "sqlCount": 0
+          },
+          "grammar:client:0e60d656bd4b": true,
+          "grammar:client:c1d87de277dc": false,
+          "grammar:client:ccb8f6fa2c06": false,
+          "grammar:client:e9536d53e1ec": false,
+          "grammar:client:c6cdcac1b1b1": true,
+          "grammar:client:6265e6a0a789": true,
+          "grammar:client:4787ad274a11": false,
+          "grammar:intent:face04363d76": true,
+          "grammar:intent:9361b9976940": false,
+          "grammar:intent:d43fdb5dac47": false,
+          "grammar:intent:c630737bb702": false,
+          "grammar:intent:5cd48a564f52": true,
+          "grammar:intent:f0cf4ee9a511": true,
+          "grammar:intent:cc05077a0384": false,
+          "grammar:code:b5c111a93826": true,
+          "grammar:code:99d814237492": false,
+          "grammar:code:2813cf5e8729": false,
+          "grammar:code:2e2bb47f67df": false,
+          "grammar:code:92ed72d0bad8": true,
+          "grammar:code:e1e90bbef4a6": true,
+          "grammar:code:ba87b0256efb": false,
+          "grammar:access:912c310c0230": true,
+          "grammar:access:2b825770bfef": false,
+          "grammar:access:a4afbd7842d8": false,
+          "grammar:access:8c648d84fe89": false,
+          "grammar:access:16903598335b": true,
+          "grammar:access:f16df537d540": true,
+          "grammar:access:5bd9e69df6ae": false,
+          "grammar:refresh:ff29017b4580": true,
+          "grammar:refresh:6057af9e2045": false,
+          "grammar:refresh:4ef509e31129": false,
+          "grammar:refresh:0ba182db5612": false,
+          "grammar:refresh:78277855ac02": true,
+          "grammar:refresh:acce0937511c": true,
+          "grammar:refresh:08a84f82e703": false,
+          "unknown-purpose-runtime-compatibility": true,
+          "valid-syntax-missing-state": "fresh transaction/state lookup remains"
+        },
+        "finalCurrentSourceNativeParity": {
+          "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/qualified-public-parity.json",
+          "sha256": "a723b441e565e15b50b9a8f418a30bd4b8be166f7272751a981150dbb858026c"
+        }
+      },
+      "resourceAndCompositionCosts": {
+        "eagerTableColdMedianMicroseconds": 130.666,
+        "coldSamples": [
+          {
+            "tableBuildNs": 160917,
+            "exactFivePatternsInitiallyUncached": true,
+            "mappingBytes": 224,
+            "compiledPatternObjectBytes": 1844,
+            "eagerCompileCalls": 5,
+            "note": "Patterns also enter standard re cache; after all purposes have been seen baseline retains compiled patterns there too."
+          },
+          {
+            "tableBuildNs": 118500,
+            "exactFivePatternsInitiallyUncached": true,
+            "mappingBytes": 224,
+            "compiledPatternObjectBytes": 1844,
+            "eagerCompileCalls": 5,
+            "note": "Patterns also enter standard re cache; after all purposes have been seen baseline retains compiled patterns there too."
+          },
+          {
+            "tableBuildNs": 130666,
+            "exactFivePatternsInitiallyUncached": true,
+            "mappingBytes": 224,
+            "compiledPatternObjectBytes": 1844,
+            "eagerCompileCalls": 5,
+            "note": "Patterns also enter standard re cache; after all purposes have been seen baseline retains compiled patterns there too."
+          }
+        ],
+        "tableMappingBytes": 224,
+        "compiledPatternObjectBytes": 1844,
+        "compilerCalls": 5,
+        "ownershipQualification": "Compiled objects also live in the existing standard re cache after first use in baseline; the new owning map is an additional224B and forces all five compiles at composition.",
+        "wholeModuleImportTimes": "Full dependency import times are present in native raw receipts but are not causally attributed to the regex table."
+      },
+      "evidence": {
+        "summary": {
+          "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-04-summary.json",
+          "sha256": "dca2b2b06fff848a1a2bc9253155af1566687a946f506e45ec26ffcbd344561c"
+        },
+        "nativeRaw": [
+          {
+            "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-04-block1-baseline.json",
+            "sha256": "b708733d4bdc7c27f160e4f7659c4c1af27661a8f42183fbb6ebac31725939d2"
+          },
+          {
+            "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-04-block1-candidate.json",
+            "sha256": "13d767710fb154a931f07d78b38b7c0aa8ec24cc7133ad14985eab1c72215b15"
+          },
+          {
+            "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-04-block2-baseline.json",
+            "sha256": "716c9cd62e1e8d211048cccd30247941f101956a76be05c2bd977a0ce21590e7"
+          },
+          {
+            "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-04-block2-candidate.json",
+            "sha256": "0865904df284e3c4c2356358b3a7f2e2e8eaa01067ddea17aafbbd193784fea9"
+          },
+          {
+            "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-04-block3-baseline.json",
+            "sha256": "cb0617deeea375662878eda68c12250c07e8b2292f5ca437c5cde40e9c80e019"
+          },
+          {
+            "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-04-block3-candidate.json",
+            "sha256": "db8efe1b635e8137e5f3d3afda49cb78058d0ba2becbc31c1d97aff018fa6aec"
+          }
+        ],
+        "nativeProcesses": [
+          {
+            "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-04-block1-baseline-process.json",
+            "sha256": "930e4a90d25194b11585768a825bb685d2365149a9149c59411e70c1f9860107"
+          },
+          {
+            "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-04-block1-candidate-process.json",
+            "sha256": "4300e36d0567c6bf698de718187a22120d625287ca648baffb676226215bcc5d"
+          },
+          {
+            "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-04-block2-candidate-process.json",
+            "sha256": "10c290d217bb4d26bec78a8e016c6e00d4785963597301f2d57684ed9c3ef855"
+          },
+          {
+            "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-04-block2-baseline-process.json",
+            "sha256": "69053e3fe9151d1f59421499d0b9febcdfab9cd6c757b6682b8125ad0a0b9307"
+          },
+          {
+            "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-04-block3-baseline-process.json",
+            "sha256": "eeea5d502da4b9e0aefa738004fbc2ccf3d39478df12471ce3e94fdcfac54631"
+          },
+          {
+            "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-04-block3-candidate-process.json",
+            "sha256": "8d453db0a9c8c8b76d188e673eda8c52b90971b850e693c72d79091cdd59b4da"
+          }
+        ],
+        "resourceControls": {
+          "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/resource-controls.json",
+          "sha256": "681fad9b6be40db0c14ef06c9eeae4a107140218f44f07d21083f8ee65e6200c"
+        },
+        "finalResourceControls": {
+          "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/qualified-final-resource-controls.json",
+          "sha256": "69f60431c31b568b87a04a6cab7031049e7f11e793a437e8e678aeaa813bfcab"
+        }
+      }
+    },
+    {
+      "id": "round9-backend-05",
+      "candidate": "Cap native rotation-read materialization at the two rows needed to detect duplicates",
+      "mechanism": "Prototype LIMIT2 on the same fresh bounded physical-key query: zero is absent, one is decrypted/validated and two or more still raise the same redacted duplicate error.",
+      "outcome": "rejected",
+      "reason": "Rejected: the error query already has at most three physical aliases. LIMIT2 materializes two instead of three, but duplicate-state error latency is slower in all three pairs and normal reads have no stable improvement.",
+      "priorWorkAudit": {
+        "closestEarlierCandidate": {
+          "id": "round7-reads-09",
+          "scope": "reads",
+          "record": "docs/performance/round7-20261011-reads.json",
+          "candidate": "Select only the best-present physical rotation candidate per logical key in PostgreSQL DISTINCT ON.",
+          "mechanism": "Select only the best-present physical rotation candidate per logical key in PostgreSQL DISTINCT ON.",
+          "outcome": "rejected"
+        },
+        "whyNew": "The earlier rotation DISTINCT ON candidate preferred one physical cache row and could hide corrupt preferred-state behavior. This candidate still rejects multiple native aliases and only caps materialization at the cardinality required to prove that error.",
+        "fullPriorCatalogAndRecords": {
+          "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/prior-and-source-audit.json",
+          "sha256": "ebac87a7f82add4011fcbea84620e2e3c094491e0433bf45220873743b10bb85"
+        }
+      },
+      "workload": {
+        "nativeEntryPoints": [
+          "PostgresOAuthStorage.operation",
+          "NativeStateStore.get"
+        ],
+        "parameters": {
+          "get-0-rotation-rows": 20,
+          "get-1-rotation-rows": 20,
+          "get-3-rotation-rows": 20
+        },
+        "fixtures": "Native PostgreSQL18 on synthetic loopback15488, fresh owned schemas in wiki_round7_reads_bench; native cryptography/Pydantic/SQLAlchemy/MCP/Starlette installed dependencies.",
+        "isolatedOneCandidate": true,
+        "timingPrivateMonkeypatchCount": 0
+      },
+      "representativeMetric": {
+        "workload": "get-3-rotation-rows",
+        "unit": "microseconds/complete public operation",
+        "baseline": 1015.2916,
+        "candidate": 1143.13325,
+        "medianChangePercent": 12.591618998916164,
+        "pairedChangePercent": [
+          10.126905741682801,
+          2.0367744596724746,
+          13.847607902392012
+        ],
+        "aggregate": "Median of the three process medians; each process median is based on nine samples.",
+        "summary": {
+          "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-05-summary.json",
+          "sha256": "1abdd2d36a03a84a5d6110f49d302717a3069e745d47832690c7522c87fe2cbf"
+        }
+      },
+      "measurements": [
+        {
+          "workload": "get-0-rotation-rows",
+          "unit": "ns/operation",
+          "baselineProcessMedians": [
+            1211962.55,
+            1206947.9,
+            1213608.4
+          ],
+          "candidateProcessMedians": [
+            1312864.6,
+            1147047.95,
+            1059400.0
+          ],
+          "baselineMedian": 1211962.55,
+          "candidateMedian": 1147047.95,
+          "pairedChangePercent": [
+            8.32550890289474,
+            -4.962927562987596,
+            -12.706602887718965
+          ],
+          "baselineSqlCounts": [
+            {
+              "SELECT": 2.0,
+              "SET": 2.0
+            },
+            {
+              "SELECT": 2.0,
+              "SET": 2.0
+            },
+            {
+              "SELECT": 2.0,
+              "SET": 2.0
+            },
+            {
+              "SELECT": 2.0,
+              "SET": 2.0
+            },
+            {
+              "SELECT": 2.0,
+              "SET": 2.0
+            },
+            {
+              "SELECT": 2.0,
+              "SET": 2.0
+            },
+            {
+              "SELECT": 2.0,
+              "SET": 2.0
+            },
+            {
+              "SELECT": 2.0,
+              "SET": 2.0
+            },
+            {
+              "SELECT": 2.0,
+              "SET": 2.0
+            }
+          ],
+          "candidateSqlCounts": [
+            {
+              "SELECT": 2.0,
+              "SET": 2.0
+            },
+            {
+              "SELECT": 2.0,
+              "SET": 2.0
+            },
+            {
+              "SELECT": 2.0,
+              "SET": 2.0
+            },
+            {
+              "SELECT": 2.0,
+              "SET": 2.0
+            },
+            {
+              "SELECT": 2.0,
+              "SET": 2.0
+            },
+            {
+              "SELECT": 2.0,
+              "SET": 2.0
+            },
+            {
+              "SELECT": 2.0,
+              "SET": 2.0
+            },
+            {
+              "SELECT": 2.0,
+              "SET": 2.0
+            },
+            {
+              "SELECT": 2.0,
+              "SET": 2.0
+            }
+          ],
+          "baselinePeakPythonBytes": [
+            [
+              305746,
+              305906,
+              305458
+            ],
+            [
+              305746,
+              305906,
+              305458
+            ],
+            [
+              305746,
+              305906,
+              305458
+            ]
+          ],
+          "candidatePeakPythonBytes": [
+            [
+              306625,
+              306785,
+              306337
+            ],
+            [
+              306625,
+              306785,
+              306337
+            ],
+            [
+              306625,
+              306785,
+              306337
+            ]
+          ],
+          "baselinePeakPythonMedianBytes": 305746,
+          "candidatePeakPythonMedianBytes": 306625
+        },
+        {
+          "workload": "get-1-rotation-rows",
+          "unit": "ns/operation",
+          "baselineProcessMedians": [
+            1293699.85,
+            1204097.8,
+            1296495.9
+          ],
+          "candidateProcessMedians": [
+            1302306.25,
+            1176995.9,
+            1077483.4
+          ],
+          "baselineMedian": 1293699.85,
+          "candidateMedian": 1176995.9,
+          "pairedChangePercent": [
+            0.6652547729676161,
+            -2.250805540878831,
+            -16.892648869927008
+          ],
+          "baselineSqlCounts": [
+            {
+              "SELECT": 2.0,
+              "SET": 2.0
+            },
+            {
+              "SELECT": 2.0,
+              "SET": 2.0
+            },
+            {
+              "SELECT": 2.0,
+              "SET": 2.0
+            },
+            {
+              "SELECT": 2.0,
+              "SET": 2.0
+            },
+            {
+              "SELECT": 2.0,
+              "SET": 2.0
+            },
+            {
+              "SELECT": 2.0,
+              "SET": 2.0
+            },
+            {
+              "SELECT": 2.0,
+              "SET": 2.0
+            },
+            {
+              "SELECT": 2.0,
+              "SET": 2.0
+            },
+            {
+              "SELECT": 2.0,
+              "SET": 2.0
+            }
+          ],
+          "candidateSqlCounts": [
+            {
+              "SELECT": 2.0,
+              "SET": 2.0
+            },
+            {
+              "SELECT": 2.0,
+              "SET": 2.0
+            },
+            {
+              "SELECT": 2.0,
+              "SET": 2.0
+            },
+            {
+              "SELECT": 2.0,
+              "SET": 2.0
+            },
+            {
+              "SELECT": 2.0,
+              "SET": 2.0
+            },
+            {
+              "SELECT": 2.0,
+              "SET": 2.0
+            },
+            {
+              "SELECT": 2.0,
+              "SET": 2.0
+            },
+            {
+              "SELECT": 2.0,
+              "SET": 2.0
+            },
+            {
+              "SELECT": 2.0,
+              "SET": 2.0
+            }
+          ],
+          "baselinePeakPythonBytes": [
+            [
+              305458,
+              305490,
+              305810
+            ],
+            [
+              305458,
+              305490,
+              305810
+            ],
+            [
+              305458,
+              305490,
+              305810
+            ]
+          ],
+          "candidatePeakPythonBytes": [
+            [
+              306337,
+              306369,
+              306689
+            ],
+            [
+              306337,
+              306369,
+              306689
+            ],
+            [
+              306337,
+              306369,
+              306689
+            ]
+          ],
+          "baselinePeakPythonMedianBytes": 305490,
+          "candidatePeakPythonMedianBytes": 306369
+        },
+        {
+          "workload": "get-3-rotation-rows",
+          "unit": "ns/operation",
+          "baselineProcessMedians": [
+            1038014.5,
+            1015291.6,
+            1014826.9
+          ],
+          "candidateProcessMedians": [
+            1143133.25,
+            1035970.8,
+            1155356.15
+          ],
+          "baselineMedian": 1015291.6,
+          "candidateMedian": 1143133.25,
+          "pairedChangePercent": [
+            10.126905741682801,
+            2.0367744596724746,
+            13.847607902392012
+          ],
+          "baselineSqlCounts": [
+            {
+              "SELECT": 2.0,
+              "SET": 2.0
+            },
+            {
+              "SELECT": 2.0,
+              "SET": 2.0
+            },
+            {
+              "SELECT": 2.0,
+              "SET": 2.0
+            },
+            {
+              "SELECT": 2.0,
+              "SET": 2.0
+            },
+            {
+              "SELECT": 2.0,
+              "SET": 2.0
+            },
+            {
+              "SELECT": 2.0,
+              "SET": 2.0
+            },
+            {
+              "SELECT": 2.0,
+              "SET": 2.0
+            },
+            {
+              "SELECT": 2.0,
+              "SET": 2.0
+            },
+            {
+              "SELECT": 2.0,
+              "SET": 2.0
+            }
+          ],
+          "candidateSqlCounts": [
+            {
+              "SELECT": 2.0,
+              "SET": 2.0
+            },
+            {
+              "SELECT": 2.0,
+              "SET": 2.0
+            },
+            {
+              "SELECT": 2.0,
+              "SET": 2.0
+            },
+            {
+              "SELECT": 2.0,
+              "SET": 2.0
+            },
+            {
+              "SELECT": 2.0,
+              "SET": 2.0
+            },
+            {
+              "SELECT": 2.0,
+              "SET": 2.0
+            },
+            {
+              "SELECT": 2.0,
+              "SET": 2.0
+            },
+            {
+              "SELECT": 2.0,
+              "SET": 2.0
+            },
+            {
+              "SELECT": 2.0,
+              "SET": 2.0
+            }
+          ],
+          "baselinePeakPythonBytes": [
+            [
+              305874,
+              305458,
+              305458
+            ],
+            [
+              305874,
+              305458,
+              305458
+            ],
+            [
+              305874,
+              305458,
+              305458
+            ]
+          ],
+          "candidatePeakPythonBytes": [
+            [
+              306753,
+              306337,
+              306337
+            ],
+            [
+              306753,
+              306337,
+              306337
+            ],
+            [
+              306753,
+              306337,
+              306337
+            ]
+          ],
+          "baselinePeakPythonMedianBytes": 305458,
+          "candidatePeakPythonMedianBytes": 306337
+        }
+      ],
+      "controls": {
+        "notes": [
+          "Zero/one/two/three active rotated aliases preserve absent/typed-value/redacted-duplicate results.",
+          "Expired state is absent; corrupt protected state keeps the same redacted protection error.",
+          "Public SQLAlchemy loaded_as_persistent event confirms3\u21922 materialized native ORM models for the rejected duplicate-state prototype.",
+          "No preferred-row selection, decryption fallback, authority cache or suppression is introduced."
+        ],
+        "nativeBaselineOutputs": {
+          "aliases-0": "none",
+          "aliases-1": "typed fresh value",
+          "aliases-3": "redacted duplicate error",
+          "two-rotation-rows": "Wiki authorization unavailable",
+          "expired": "none",
+          "corrupt": "Invalid OAuth state"
+        },
+        "finalCurrentSourceNativeParity": {
+          "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/qualified-public-parity.json",
+          "sha256": "a723b441e565e15b50b9a8f418a30bd4b8be166f7272751a981150dbb858026c"
+        }
+      },
+      "resourceAndCompositionCosts": {
+        "nativeDuplicateOrmModels": {
+          "baseline": {
+            "materializedNativeStateModels": 3,
+            "error": "Wiki authorization unavailable"
+          },
+          "candidate": {
+            "materializedNativeStateModels": 2,
+            "error": "Wiki authorization unavailable"
+          },
+          "ownedSchemasBeforeResourceCleanup": [
+            "round9_backend_resource_01a130054d7d75d2a26fa0a2e121ac5e"
+          ],
+          "resourceSchemaDropped": true
+        },
+        "physicalAliasesMaximum": 3,
+        "sqlCountsUnchanged": true,
+        "noRetainedProductionLimit": true
+      },
+      "evidence": {
+        "summary": {
+          "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-05-summary.json",
+          "sha256": "1abdd2d36a03a84a5d6110f49d302717a3069e745d47832690c7522c87fe2cbf"
+        },
+        "nativeRaw": [
+          {
+            "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-05-block1-baseline.json",
+            "sha256": "7048b135063f32d38e4c48a6a23f54e264d00143144a993764def33e58710a8c"
+          },
+          {
+            "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-05-block1-candidate.json",
+            "sha256": "3ca7d6e34457001c437a6e3897fde78204e49751d6017933daaea03d595bc9b0"
+          },
+          {
+            "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-05-block2-baseline.json",
+            "sha256": "b9f25f93569c3b592b1daa4e21db51295f9c943016faaebac19205142c15a182"
+          },
+          {
+            "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-05-block2-candidate.json",
+            "sha256": "e404937bb74f1c65046d9a11b6ab5143b4bdb808ad262d9f2d3ef5de0dac6cca"
+          },
+          {
+            "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-05-block3-baseline.json",
+            "sha256": "e24aebf326f1fffccb028946b01680d6e4e02bb3779c01061d5fd5fdf6fe9659"
+          },
+          {
+            "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-05-block3-candidate.json",
+            "sha256": "6c98f936e7d69f44fd9b5ec977389d462b7f3b03a7f698287b97d6e1fc51e9d7"
+          }
+        ],
+        "nativeProcesses": [
+          {
+            "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-05-block1-baseline-process.json",
+            "sha256": "bc617dbec6c921aab0fbbdd2587c7930659e045248328e7e31903fe121ad1182"
+          },
+          {
+            "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-05-block1-candidate-process.json",
+            "sha256": "41d30e40fefc233ecbd5bf84087e0d8e5f02c7729d2924d8dec51a13af0c6505"
+          },
+          {
+            "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-05-block2-candidate-process.json",
+            "sha256": "7a24d572b96eb11ac0dc88d2c08c11101ca90db9a4b2eee3e4bde9317fec73fa"
+          },
+          {
+            "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-05-block2-baseline-process.json",
+            "sha256": "24ad0a278ef40b84d8cb16a726754feb7d71edce47823b2e52a682ba5e66370d"
+          },
+          {
+            "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-05-block3-baseline-process.json",
+            "sha256": "320f754d5f6bc94a8708dfcad372ec33082f140550281b44dd657724ebe6fe59"
+          },
+          {
+            "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-05-block3-candidate-process.json",
+            "sha256": "c5c90e2bbc05ff15fd86bb622cb171663c032727d1d6ead43158e67834a34287"
+          }
+        ],
+        "resourceControls": {
+          "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/resource-controls.json",
+          "sha256": "681fad9b6be40db0c14ef06c9eeae4a107140218f44f07d21083f8ee65e6200c"
+        },
+        "finalResourceControls": {
+          "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/qualified-final-resource-controls.json",
+          "sha256": "69f60431c31b568b87a04a6cab7031049e7f11e793a437e8e678aeaa813bfcab"
+        }
+      }
+    }
+  ],
+  "changedPaths": [
+    "backend/app/mcp/native_state.py",
+    "backend/app/mcp/redirect_policy.py",
+    "backend/tests/test_native_mcp_core.py",
+    "backend/tests/test_mcp_redirect_policy.py"
+  ],
+  "sourceHashes": [
+    {
+      "path": "backend/app/mcp/native_state.py",
+      "sha256": "a1cfc85cdd62037348cb1fe8501c088ba6443ef72a58a9006c290cef383bf868"
+    },
+    {
+      "path": "backend/app/mcp/redirect_policy.py",
+      "sha256": "b3a7fbeb7172cbd2d498d086650a1aa8e9057426e007199671780708eb992e7c"
+    },
+    {
+      "path": "backend/tests/test_native_mcp_core.py",
+      "sha256": "b3a4c91d49b88caae17e0b02fc8dd268e98f988b8ac7f7d339d887cbf6eafff5"
+    },
+    {
+      "path": "backend/tests/test_mcp_redirect_policy.py",
+      "sha256": "f7d5494f3b624ed074467043a336a450225247d6096e6426384ea2641336334a"
+    }
+  ],
+  "qualifiedSourceSnapshots": [
+    {
+      "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/qualified-native_state.py",
+      "sha256": "a1cfc85cdd62037348cb1fe8501c088ba6443ef72a58a9006c290cef383bf868"
+    },
+    {
+      "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/qualified-redirect_policy.py",
+      "sha256": "b3a7fbeb7172cbd2d498d086650a1aa8e9057426e007199671780708eb992e7c"
+    },
+    {
+      "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/qualified-test_native_mcp_core.py",
+      "sha256": "b3a4c91d49b88caae17e0b02fc8dd268e98f988b8ac7f7d339d887cbf6eafff5"
+    },
+    {
+      "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/qualified-test_mcp_redirect_policy.py",
+      "sha256": "f7d5494f3b624ed074467043a336a450225247d6096e6426384ea2641336334a"
+    }
+  ],
+  "nativeDependencyClosure": {
+    "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/native-dependency-source-closure.json",
+    "sha256": "520a9b59ce8b9c7a7f620f85cb1ca7595f7805b3484e26ca75873c7f7dbe59a1"
+  },
+  "sampleDesign": {
+    "processPairsPerCandidate": 3,
+    "orders": [
+      "baseline,candidate",
+      "candidate,baseline",
+      "baseline,candidate"
+    ],
+    "samplesPerProcessPerWorkload": 9,
+    "warmupOperationsPerProcessPerWorkload": 3,
+    "aggregation": "Each sample averages the documented full public operations. Each process median is the median of nine samples. Reported before/after is the median of three process medians; all three pair changes are retained.",
+    "resourceSamplesPerProcess": 3,
+    "timingUnitInRaw": "nanoseconds/operation",
+    "allCpuAndNativePgProbesSerialized": true,
+    "guard": {
+      "path": "/private/tmp/sarj-wiki-perf-round9-benchmark-guard.py",
+      "sha256": "5d3f1affdd4cb40f301efda581e48a36621a9e940039df2881b4fd3f967da2e7"
+    },
+    "runtimeAndDependencyVersions": {
+      "mcp": "1.29.1",
+      "starlette": "1.6.0",
+      "sqlalchemy": "2.0.52",
+      "asyncpg": "0.31.0",
+      "cryptography": "50.0.0",
+      "pydantic": "2.13.4"
+    },
+    "python": "3.14.7 (main, Sep 24 2026, 17:46:50) [Clang 22.1.3 ]",
+    "unchangedDependencyBaselinePinnedForFinalPass03": {
+      "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/baseline-native_state.py",
+      "sha256": "f1216397d706a8599d48ac1750d65b6406578dc257f0a5830d1443b3ad851258"
+    }
+  },
+  "validation": {
+    "gates": [
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/ruff-v5-process.json",
+        "sha256": "7b16442dc9b7b6e5dd94cf00230eb90f4a4bcc34a50da9f44b4c7e28d7c21dba"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/format-v5-process.json",
+        "sha256": "02875a60d48b92f05b0490ea8eb97e820731dbbf4060f50c9b2ebc2ede894bb7"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/mypy-v5-process.json",
+        "sha256": "5fbabd5984519f0f4758bc58dfe5d1aedf6fccdadf4c9c94d2b9b3e84b48ee59"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/pyright-v5-process.json",
+        "sha256": "31deeb6caec51168c7f0e2bd13b51bccaca0914c6e36503d7e2de5a06e84c76b"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/ty-v5-process.json",
+        "sha256": "ea2dc6522a1cfd6cd235ad602ddd071a2ec2e5246ace4e0d07a525a43a237600"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/native-tests-v5-process.json",
+        "sha256": "07e528a87128958ea79fe674761de873bc6f18c773ec39c6ae2d45eddaabb540"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/focused-standards-v5-process.json",
+        "sha256": "5c7d3e9b13edcb19db8b4c3ebfaeea867eb660f66134fc08eef5e748a699dfe6"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/exact-python-baseline-v5-process.json",
+        "sha256": "43f1f3bc0c1dcabdc437f05988481ee4945700784eb21e0e2d339691cd47253b"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/ratchet-v5-process.json",
+        "sha256": "66edda363d0fc9a9628ada97995346f7e1688564c289f08c768bd0514f906140"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/central-full-root-v6-process.json",
+        "sha256": "1033b00d15f7263997d2554c8a077362c95eda77a72b5db510b38df782d42141"
+      }
+    ],
+    "nativeTestsPassed": 291,
+    "nativeWarnings": 1,
+    "currentPublicParityCases": 70,
+    "finalPublicParity": {
+      "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/qualified-public-parity.json",
+      "sha256": "a723b441e565e15b50b9a8f418a30bd4b8be166f7272751a981150dbb858026c"
+    },
+    "fullRootCentralStandards": {
+      "errors": 0,
+      "warnings": 311,
+      "executionIssues": 0
+    },
+    "legacyPythonBlockingBaseline": 1806,
+    "suppressionRatchet": {
+      "current": 25,
+      "baseline": 25
+    },
+    "newSuppressions": 0,
+    "baselineOrThresholdGrowth": 0,
+    "managedConfigurationChanges": 0,
+    "protectedUserFilesEdited": false,
+    "commitsOrStagesByAgent": false
+  },
+  "countZeroRefinements": [
+    {
+      "action": "Format one new long assertion; preserve the failed scoped format receipt and exact prior test bytes.",
+      "evidence": {
+        "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/pre-format-source-mapping.json",
+        "sha256": "c37ead16a0f4182d5b2377d35fa12e636d817bb8deff3ac70e69bb086e991731"
+      }
+    },
+    {
+      "action": "Keep subclass public-validator dispatch and exact original lazy loop; initial generator-sharing fallback had unnecessary subclass iterator overhead and was replaced by the exact original body.",
+      "preservedEarlierScopes": [
+        {
+          "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-03-summary.json",
+          "sha256": "0744aa7eaed99d205f3f9334a87f759ca50adc1cf79da1d36cb4d6aa1db2e16a"
+        },
+        {
+          "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-v2-03-summary.json",
+          "sha256": "056b809b22f9e70694671c8ea0ce826a8d6d330046cfbf7c802cead8255d1b3b"
+        },
+        {
+          "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-v3-03-summary.json",
+          "sha256": "b041289e223663f4202cc6c095bf287a8f8a5c99f8ecd0c94e577152b89087b9"
+        }
+      ],
+      "qualifiedFinalMeasurement": {
+        "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-v4-03-summary.json",
+        "sha256": "507a4e2e1093ce1e94918abcaa8a5587abb676cddfee5017c2498c6dd2a501aa"
+      }
+    },
+    {
+      "action": "Fix a new test exception-message style issue without a suppression; preserve prior Ruff receipt and exact test bytes.",
+      "evidence": {
+        "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/ruff-v4-process.json",
+        "sha256": "7192445189bde7864275d8a95c03199f8a89e8a43f7c1814f93441b6cbe12666"
+      }
+    },
+    {
+      "action": "Central uv-cache access failure and frontend-owned stream lint failure were preserved, followed by unchanged successful final central invocation.",
+      "evidence": [
+        {
+          "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/central-full-root-v2-process.json",
+          "sha256": "e5be9c7a6f6600ca41a28d02d0ff19be0611c0c3c007bf5262916dade5bc4d47"
+        },
+        {
+          "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/central-full-root-v3-process.json",
+          "sha256": "8869ca53e7b68b97e65e0df50e86dcec3bd4cbd38cdc7b1bab6eeee2682c51cc"
+        },
+        {
+          "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/central-full-root-v6-process.json",
+          "sha256": "1033b00d15f7263997d2554c8a077362c95eda77a72b5db510b38df782d42141"
+        }
+      ]
+    },
+    {
+      "action": "Pin unchanged native-state dependency explicitly for revised callback measurements; no additional candidate or cumulative-source latency claim.",
+      "evidence": {
+        "path": "/private/tmp/sarj-wiki-perf-round9-backend-worker-v4.py",
+        "sha256": "06dbf16d6bf95d9cf101d14195be7797b439052edf7ff4becb427e511c3787ec"
+      }
+    }
+  ],
+  "historicalMutableSourceReferenceMapping": {
+    "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/historical-mutable-source-mapping.json",
+    "sha256": "ac267ad5f4e2ef1bcdc877cb83e4a23a72b59eb9d3b3758aac3d52f6bb056f13"
+  },
+  "artifactManifest": [
+    {
+      "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/01-native_state.py",
+      "sha256": "a1cfc85cdd62037348cb1fe8501c088ba6443ef72a58a9006c290cef383bf868"
+    },
+    {
+      "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/02-native_admission.py",
+      "sha256": "03ed8389ee9abcee4c9f825a156440c010dbfd88d99d698ee9d420ef28342f64"
+    },
+    {
+      "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/03-redirect_policy.py",
+      "sha256": "2f4767eb854a59a9d7f8d3875cb54ab34767d0b10471a5b26d6df215d7108e44"
+    },
+    {
+      "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/03-v2-redirect_policy.py",
+      "sha256": "1e93d57a94e0fc9e21300546a034d96195dfec79f05736c9b47696b350c8a97d"
+    },
+    {
+      "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/03-v3-redirect_policy.py",
+      "sha256": "b3a7fbeb7172cbd2d498d086650a1aa8e9057426e007199671780708eb992e7c"
+    },
+    {
+      "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/04-native_state.py",
+      "sha256": "232ec8d7c25e71366d6a0ca4c72c7b2fbd044f01980b95ed59c5230c29f953b7"
+    },
+    {
+      "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/04-v2-native_state.py",
+      "sha256": "c96692b77dc1fba08c28ee9000a29e2721bb678cdd2e8b8fa5c6a1204df24331"
+    },
+    {
+      "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/05-native_state.py",
+      "sha256": "2a66deb90222fe81b36247f388bd770d5549f41ed7c88d73776e5027236448bd"
+    },
+    {
+      "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/baseline-mcp_native_state.py",
+      "sha256": "002eddd09a36618b8fbcb6398ceb553562b1794e6048445160d37dc640a3c503"
+    },
+    {
+      "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/baseline-mcp_registration_admission.py",
+      "sha256": "bc8055eedb57c2045bb366c7a44c15d27338e6abde79ec5f2ce725e3eb2447cc"
+    },
+    {
+      "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/baseline-native_admission.py",
+      "sha256": "5855e0c1eec69296a07408cee785f506d2e3dddf38f54d3b69557d2b95793961"
+    },
+    {
+      "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/baseline-native_core.py",
+      "sha256": "1b170603c66f0077121e51694eaf142f837e5a1e9671bc3f7919fc39576c4513"
+    },
+    {
+      "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/baseline-native_provider.py",
+      "sha256": "e5d3d2d5abcba58f214ff8a8514d6e84e09a24d00e9cf28ecb236673ee26c95d"
+    },
+    {
+      "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/baseline-native_schemas.py",
+      "sha256": "acb663942619a57691412e65c9009c02fce3ed949a8d5d8affa0453335e793d9"
+    },
+    {
+      "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/baseline-native_state.py",
+      "sha256": "f1216397d706a8599d48ac1750d65b6406578dc257f0a5830d1443b3ad851258"
+    },
+    {
+      "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/baseline-native_state_port.py",
+      "sha256": "8657d8ccdd5a798804c09193cf24aaefb8654744fcbba91ffe8dd79516b027d8"
+    },
+    {
+      "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/baseline-protection.py",
+      "sha256": "83dcf1a9e823522d2b2f34a4e677f0608e1ddff1e7223e64e5824b9167682d87"
+    },
+    {
+      "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/baseline-redirect_policy.py",
+      "sha256": "beac64f5deae0c6a70a7b5f942321760e69d9795f29c659c9716707beedc61cd"
+    },
+    {
+      "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/baseline-storage.py",
+      "sha256": "0f242e236e83e837ef7423234dac55e484806a8eb188806ed615bdcc42283910"
+    },
+    {
+      "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/central-full-root-v2-process.json",
+      "sha256": "e5be9c7a6f6600ca41a28d02d0ff19be0611c0c3c007bf5262916dade5bc4d47"
+    },
+    {
+      "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/central-full-root-v2.log",
+      "sha256": "b7f8946002cb8e30bb1c929363acede84f0cb2159a618f8815b7cf896076cea9"
+    },
+    {
+      "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/central-full-root-v3-process.json",
+      "sha256": "8869ca53e7b68b97e65e0df50e86dcec3bd4cbd38cdc7b1bab6eeee2682c51cc"
+    },
+    {
+      "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/central-full-root-v3.log",
+      "sha256": "edb3fb900a3f9b3d0c5b88963c566d62402d0706d0312fe94dd8fdf51093d473"
+    },
+    {
+      "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/central-full-root-v6-process.json",
+      "sha256": "1033b00d15f7263997d2554c8a077362c95eda77a72b5db510b38df782d42141"
+    },
+    {
+      "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/central-full-root-v6.log",
+      "sha256": "9b0e9cac1f91e10f604fa2cd7065a7b44b1209ea1f41eead8caf39b03b80cbde"
+    },
+    {
+      "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/exact-python-baseline-v2-process.json",
+      "sha256": "67d72f675664cdcf1958f09afb69284ed3833185ccae9d325d1248e1d8f9962a"
+    },
+    {
+      "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/exact-python-baseline-v2.log",
+      "sha256": "9e6ba074515e2e43de59e68a079a51ef128e40845c5ae53540616e2462784459"
+    },
+    {
+      "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/exact-python-baseline-v5-process.json",
+      "sha256": "43f1f3bc0c1dcabdc437f05988481ee4945700784eb21e0e2d339691cd47253b"
+    },
+    {
+      "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/exact-python-baseline-v5.log",
+      "sha256": "078ab0cc9e1dfc6d11311e34265381c762262dd18aaa7600128045df0b9ba7e8"
+    },
+    {
+      "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/final-dependency-grants.py",
+      "sha256": "6a2dc5d0e6bf28d9c4479507fae7df7fe49852c3d2c31496b96e2145a45a837a"
+    },
+    {
+      "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/final-dependency-identity.py",
+      "sha256": "fbcea3606e317be4ca58104f77616e097b156442905d282533dc2b3e82a5703f"
+    },
+    {
+      "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/final-dependency-mcp_grant.py",
+      "sha256": "1747111ccc741ea04fbf280dc73064c944a8ddca3bac9d280b9ec6cf72b073d2"
+    },
+    {
+      "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/final-dependency-mcp_native_state.py",
+      "sha256": "002eddd09a36618b8fbcb6398ceb553562b1794e6048445160d37dc640a3c503"
+    },
+    {
+      "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/final-dependency-mcp_registration_admission.py",
+      "sha256": "bc8055eedb57c2045bb366c7a44c15d27338e6abde79ec5f2ce725e3eb2447cc"
+    },
+    {
+      "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/final-dependency-native_core.py",
+      "sha256": "1b170603c66f0077121e51694eaf142f837e5a1e9671bc3f7919fc39576c4513"
+    },
+    {
+      "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/final-dependency-native_metadata.py",
+      "sha256": "86dcb942c62381697c82159e72e243909bd76818c36ceb1ab09ec28da2f8071c"
+    },
+    {
+      "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/final-dependency-native_provider.py",
+      "sha256": "e5d3d2d5abcba58f214ff8a8514d6e84e09a24d00e9cf28ecb236673ee26c95d"
+    },
+    {
+      "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/final-dependency-native_request_context.py",
+      "sha256": "3c3cde07b618d05b9e470a204133e6b2936a01a98e30bee96991beb8bba898d0"
+    },
+    {
+      "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/final-dependency-native_schemas.py",
+      "sha256": "acb663942619a57691412e65c9009c02fce3ed949a8d5d8affa0453335e793d9"
+    },
+    {
+      "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/final-dependency-native_state_port.py",
+      "sha256": "8657d8ccdd5a798804c09193cf24aaefb8654744fcbba91ffe8dd79516b027d8"
+    },
+    {
+      "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/final-dependency-protection.py",
+      "sha256": "83dcf1a9e823522d2b2f34a4e677f0608e1ddff1e7223e64e5824b9167682d87"
+    },
+    {
+      "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/final-dependency-schemas.py",
+      "sha256": "a7977a240b8a468906cacf1b5ec2c02b9d6d180734595bdb4b92b09430c5580b"
+    },
+    {
+      "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/final-dependency-storage.py",
+      "sha256": "0f242e236e83e837ef7423234dac55e484806a8eb188806ed615bdcc42283910"
+    },
+    {
+      "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/final-dependency-user.py",
+      "sha256": "b9ba4dc74bafc75e7bb3c25fd047eccb41233ee30c9672812a3fba09606b0d2a"
+    },
+    {
+      "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/final-native_state.py",
+      "sha256": "a1cfc85cdd62037348cb1fe8501c088ba6443ef72a58a9006c290cef383bf868"
+    },
+    {
+      "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/final-public-01-process.json",
+      "sha256": "5a2f709abb9e5b909e52d8f25fe0d335210793c86b85b4b0b917c6833f5e4b7f"
+    },
+    {
+      "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/final-public-01.json",
+      "sha256": "d8b8d13f56928aa1149b61a60a97a942e43721748d1391fd2f1e41c18ba10cab"
+    },
+    {
+      "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/final-public-01.log",
+      "sha256": "d7c43d724880de5015697c209cb335a88905ef878e8e7cb5c68ce3b51967a56f"
+    },
+    {
+      "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/final-public-02-process.json",
+      "sha256": "7e0d686f00e8475dd1401ef67f76541fc6b03d75ed05be23e728efcd9bb2d8ad"
+    },
+    {
+      "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/final-public-02.json",
+      "sha256": "7624981b9437e56a0f5701723531279c122d2e6b70ce1929bd3ab81bd8388496"
+    },
+    {
+      "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/final-public-02.log",
+      "sha256": "9da95a0dccfa2185e3b5533cf505d5a022e3793e722cdfe3cda84d4b31198578"
+    },
+    {
+      "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/final-public-03-process.json",
+      "sha256": "aa766c063c3a08a3a4009b5952a4aa39c8224d09da00ddefa7b3bb9a10f58ead"
+    },
+    {
+      "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/final-public-03.json",
+      "sha256": "d9553a38c595dd4cff21e5de1c938d80bc55c81bf49b6b72ffbfefd3afd89f5d"
+    },
+    {
+      "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/final-public-03.log",
+      "sha256": "f517e39f7fe32660182f410ad494146614d54a437f7eaf10aa4caf0359f7f124"
+    },
+    {
+      "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/final-public-04-process.json",
+      "sha256": "cea8d9d82faa56f531210bef3d1cca5a153f8abae144d941b0718cb386a45bc5"
+    },
+    {
+      "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/final-public-04.json",
+      "sha256": "573bb05dc7f4fff05d660f986e3561110cdb0646a0c49f69d19dfcda05f9f6ad"
+    },
+    {
+      "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/final-public-04.log",
+      "sha256": "6281dc0a527e249b18098600e17d97193f2266b95669a895b8c08094b409a3ed"
+    },
+    {
+      "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/final-public-05-process.json",
+      "sha256": "4bb23e6b5e2e1c92211c9e1fd28686a49442f74de4c5f2674538f6e3d9b7b610"
+    },
+    {
+      "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/final-public-05.json",
+      "sha256": "61dd7fa83ef577aaff4a40b36c1ac4e4d2209e483c3a8646c3e16add38bc77e2"
+    },
+    {
+      "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/final-public-05.log",
+      "sha256": "196f5a38574e1a2e12804183cd44849381bd9c7f181a587ea2dfd8dd0a0bdff7"
+    },
+    {
+      "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/final-public-parity.json",
+      "sha256": "8a5a63460de8d6d5ed5a6812970249bc042dad3864740de0cd1ad184331cfca4"
+    },
+    {
+      "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/final-redirect_policy.py",
+      "sha256": "2f4767eb854a59a9d7f8d3875cb54ab34767d0b10471a5b26d6df215d7108e44"
+    },
+    {
+      "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/final-test_mcp_redirect_policy.py",
+      "sha256": "493eb0ee085e81ff7106392165f93ee1f5ca76ca3194e9035405b88521950516"
+    },
+    {
+      "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/final-test_native_mcp_core.py",
+      "sha256": "b3a4c91d49b88caae17e0b02fc8dd268e98f988b8ac7f7d339d887cbf6eafff5"
+    },
+    {
+      "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/focused-standards-v2-process.json",
+      "sha256": "ea2551d75f2c69857fced15cd9896a7585c0cc89479beeec41e1886e84c0c138"
+    },
+    {
+      "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/focused-standards-v2.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/focused-standards-v5-process.json",
+      "sha256": "5c7d3e9b13edcb19db8b4c3ebfaeea867eb660f66134fc08eef5e748a699dfe6"
+    },
+    {
+      "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/focused-standards-v5.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/format-v1-process.json",
+      "sha256": "27fd9e8628f20e385b92a6b8128f10b46e6da201d983ae6bf2f5659623f323c5"
+    },
+    {
+      "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/format-v1.log",
+      "sha256": "d4404ae4ef75443dc978ebaad5232afee9db0def30c7ec13a6b02c54d9febf57"
+    },
+    {
+      "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/format-v2-process.json",
+      "sha256": "35b2d19b810d0cee35c6799cc6cf0df82692f7de5faac6b03412c35dddd50437"
+    },
+    {
+      "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/format-v2.log",
+      "sha256": "177f260a5645724013185e4b140c7045cc39e56c0c97b120f5cb23599f85f0de"
+    },
+    {
+      "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/format-v5-process.json",
+      "sha256": "02875a60d48b92f05b0490ea8eb97e820731dbbf4060f50c9b2ebc2ede894bb7"
+    },
+    {
+      "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/format-v5.log",
+      "sha256": "177f260a5645724013185e4b140c7045cc39e56c0c97b120f5cb23599f85f0de"
+    },
+    {
+      "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/historical-mutable-source-mapping.json",
+      "sha256": "ac267ad5f4e2ef1bcdc877cb83e4a23a72b59eb9d3b3758aac3d52f6bb056f13"
+    },
+    {
+      "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/historical-performance.json",
+      "sha256": "4b9da261be4c787313e348e55b99fcc5598aab07158166fe039765f093b72528"
+    },
+    {
+      "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/historical-round5-20261011.json",
+      "sha256": "197966475964b02c702329eeec00ed3ec11ae4beb973c618885248cc72ca978c"
+    },
+    {
+      "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/historical-round7-20261011-reads.json",
+      "sha256": "ce04883bf47bf7f4efb9e8ed4003619676c1fcd90597595413df7b84447e1583"
+    },
+    {
+      "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/historical-round7-20261011-rendering.json",
+      "sha256": "a1c4118ffc64e984dac0c3cf56207fdcf310c1448b5900ea62295de98626dd2f"
+    },
+    {
+      "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/mypy-v2-process.json",
+      "sha256": "c4abe7d9eea38d597178a4f9c12785d7b0fb131ded94b3f65bd4083c0bddcb85"
+    },
+    {
+      "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/mypy-v2.log",
+      "sha256": "f9b031e5c45aa702cd4fef028d465551cb20a2c4698e0913c7b00766b20ac4d8"
+    },
+    {
+      "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/mypy-v5-process.json",
+      "sha256": "5fbabd5984519f0f4758bc58dfe5d1aedf6fccdadf4c9c94d2b9b3e84b48ee59"
+    },
+    {
+      "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/mypy-v5.log",
+      "sha256": "f9b031e5c45aa702cd4fef028d465551cb20a2c4698e0913c7b00766b20ac4d8"
+    },
+    {
+      "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/native-dependency-source-closure.json",
+      "sha256": "520a9b59ce8b9c7a7f620f85cb1ca7595f7805b3484e26ca75873c7f7dbe59a1"
+    },
+    {
+      "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/native-tests-v2-process.json",
+      "sha256": "2bcae9aa1ae556b42b0314f171a798b7d2b913c990b8d23addc6c1ac62d88e76"
+    },
+    {
+      "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/native-tests-v2.log",
+      "sha256": "ff819659e467692f8631dba7da1ede189503cca641836a286e792d4468fdb98c"
+    },
+    {
+      "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/native-tests-v5-process.json",
+      "sha256": "07e528a87128958ea79fe674761de873bc6f18c773ec39c6ae2d45eddaabb540"
+    },
+    {
+      "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/native-tests-v5.log",
+      "sha256": "de612111c6fd08a7271013ea35a514d1661e0c53760633e31f6577c93f0488ed"
+    },
+    {
+      "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-01-block1-baseline-process.json",
+      "sha256": "613cb3fcdd7ab0165e10bf207c29d5b22cdbdfb6f6374bd06b1a0af3b77d8a5f"
+    },
+    {
+      "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-01-block1-baseline.json",
+      "sha256": "f36b043fb62b2e4178e2f3089cee17324164a930d8845ee52dd6810bcd5cf274"
+    },
+    {
+      "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-01-block1-baseline.log",
+      "sha256": "cc52f81777b176d1e68919abdc3fa588046ab0ee87e2b7f011819413e687d528"
+    },
+    {
+      "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-01-block1-candidate-process.json",
+      "sha256": "92eb19c229f02fe2547b60568d4d17e1287e06f33d179d33b0b9ece5be9dab7d"
+    },
+    {
+      "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-01-block1-candidate.json",
+      "sha256": "a7f981b2847baddfc4419f358a2958ee15926dbc76912383e805ab9a520a7c7c"
+    },
+    {
+      "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-01-block1-candidate.log",
+      "sha256": "7caefe8c9db1817a82fdb6442d4d2a1145263bbe25b0d6f4f24e3b22491288db"
+    },
+    {
+      "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-01-block2-baseline-process.json",
+      "sha256": "38ce0ca8eaa32001f20ff18c3f5ff7fe1a4c2bcd31487ae74861d7e172b623c6"
+    },
+    {
+      "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-01-block2-baseline.json",
+      "sha256": "fb7196638691ff7575c92185fe55bb4ca6bde710a96ebbcc0104b563abc0dcf3"
+    },
+    {
+      "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-01-block2-baseline.log",
+      "sha256": "87fb988b4920b5242df9b26d1b0980b8b36fe2526c74fcd795a269d46666ff48"
+    },
+    {
+      "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-01-block2-candidate-process.json",
+      "sha256": "e5ccc1de6456335a0f1ada3573b3a9c72b80d2ba873d7c5a03c88f86117f8f22"
+    },
+    {
+      "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-01-block2-candidate.json",
+      "sha256": "cb0189250a2ced4db63175988e7a9cdc5e9d15f6880cdb52912666806a9aa962"
+    },
+    {
+      "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-01-block2-candidate.log",
+      "sha256": "b4f7287517927dbdc8fd583978536f9d454800fe87d3fe3620afd5ee205f8f57"
+    },
+    {
+      "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-01-block3-baseline-process.json",
+      "sha256": "968293dff9eeec0a53dde736d160f3bc3818bb7b27173fd16d55242f270e6ee0"
+    },
+    {
+      "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-01-block3-baseline.json",
+      "sha256": "f6f5d8f0df0cce1cff2bcb3756db1e0bbcf68dbad87c4137251071717b955557"
+    },
+    {
+      "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-01-block3-baseline.log",
+      "sha256": "307153eb24eaed5e4302c40d111911b61643af286c58910558a4072bc67688ce"
+    },
+    {
+      "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-01-block3-candidate-process.json",
+      "sha256": "5cff0bd2521c3af63f1361853584617db01531b3246d90527aeb5a93c2147a9b"
+    },
+    {
+      "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-01-block3-candidate.json",
+      "sha256": "3d018ad3133561c66c34c2c41b1e5d51db30d060a51bf5d332f738133861e0f3"
+    },
+    {
+      "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-01-block3-candidate.log",
+      "sha256": "7834f58ce7a1e89d5dfa62d05c8d886fad1eefd9cfbb759e18ecdd2777c26811"
+    },
+    {
+      "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-01-summary.json",
+      "sha256": "117c3b0ff3b40f2f9a7c62d2bee8a84c38dffade00f84450a16bfc875a835535"
+    },
+    {
+      "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-02-block1-baseline-process.json",
+      "sha256": "56f7cb0f722fa12bdde416b0b723d5e0278065d41c8dfe9cf24ea9cab2bbe02e"
+    },
+    {
+      "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-02-block1-baseline.json",
+      "sha256": "5b70da172a91fd38c7cf7d80e8aeaf692868d0af635a20e2cf13d5649317a615"
+    },
+    {
+      "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-02-block1-baseline.log",
+      "sha256": "47a65ab1653c4d3d83bcf31271f5f6f31d18422fd63d5112a0de41bbde7a6596"
+    },
+    {
+      "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-02-block1-candidate-process.json",
+      "sha256": "773f13f81547ffb9042fa7227196876bac4254755ab33c76963bec1b36788c62"
+    },
+    {
+      "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-02-block1-candidate.json",
+      "sha256": "88a4c0c097d673e3eb0721cd07faac643789fdfe7b932e6c5d2a84376ecf9803"
+    },
+    {
+      "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-02-block1-candidate.log",
+      "sha256": "a007f410ea0f5e6aa4ec2e51ff12acb966ae0644497694d1af58cf20f73c56ff"
+    },
+    {
+      "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-02-block2-baseline-process.json",
+      "sha256": "ed84ec79c0d1b86c32dd61a0ac9a55a74ff9875bcd19253a10c86feb05acfd25"
+    },
+    {
+      "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-02-block2-baseline.json",
+      "sha256": "1641a48edbd5d07b1d64476adde15931d4a7e6dfd9b18d500b19f8c2b7820ead"
+    },
+    {
+      "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-02-block2-baseline.log",
+      "sha256": "19a712cd5d37d0a20cfd46368b126b2c40fdc2151e0c7b79a06963b8eb0b7822"
+    },
+    {
+      "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-02-block2-candidate-process.json",
+      "sha256": "6a55b59d3c26a8b59642ee5aa2e1315172a4b17b2e38a06524c8a69ae7684671"
+    },
+    {
+      "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-02-block2-candidate.json",
+      "sha256": "024677e44bcdc91dcefacb103325d4b74543b89459a6bc4e71796af44e7882ec"
+    },
+    {
+      "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-02-block2-candidate.log",
+      "sha256": "7dcfd9bcd33e272ac95b78447adbc06855f77d161ebaa23cc6a0ae5f0cbc0154"
+    },
+    {
+      "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-02-block3-baseline-process.json",
+      "sha256": "56f8ced710deddff2a428e6480ac10b6ce9d69e846b4974da495d9e09d94854e"
+    },
+    {
+      "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-02-block3-baseline.json",
+      "sha256": "16ba7da983f5e6e164e0a8a3b88f99f7330e26f01d7456868369e7913ceb0564"
+    },
+    {
+      "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-02-block3-baseline.log",
+      "sha256": "6fb47d521291e509da394dc2c99fd3c613aac803f69a1ef607338484263dc597"
+    },
+    {
+      "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-02-block3-candidate-process.json",
+      "sha256": "2adfa0e852c431f51eac096c3e5061503bc5cfb78080127be4600737b6caf54f"
+    },
+    {
+      "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-02-block3-candidate.json",
+      "sha256": "1bdb196b2d91f2e180d0f10b48ff7aefb781392f8aa1af0977b7b96fb298bf01"
+    },
+    {
+      "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-02-block3-candidate.log",
+      "sha256": "3ccb205482268f4c87398eb38fcb0bbe74fe29dd928c02582ca1b09836bbc28d"
+    },
+    {
+      "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-02-summary.json",
+      "sha256": "51c58fac9b9be0141c1b5f9b882b77bbd93d9af497a0baeae67b29fdfaeaee92"
+    },
+    {
+      "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-03-block1-baseline-process.json",
+      "sha256": "ad31f39696d3e28785dd59ad0e4837d8f01eed2a27fb63dd1c7da740a570b6c4"
+    },
+    {
+      "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-03-block1-baseline.json",
+      "sha256": "3ac54fa1419b3450e74dbf6c23d3e5983babf649cfef3228b55b41cdd9541241"
+    },
+    {
+      "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-03-block1-baseline.log",
+      "sha256": "fec23b06400d384feb636583b3416017297a96a1e7c191f4456581732503f564"
+    },
+    {
+      "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-03-block1-candidate-process.json",
+      "sha256": "cad18c0e0daa991ab7156bdd424b7f08f4b56659f8f841baff5078345247d47a"
+    },
+    {
+      "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-03-block1-candidate.json",
+      "sha256": "f622cbdf5f858aa5a37ea74c7f6711f50f8da8a0f98657ab86d95464d5f1c355"
+    },
+    {
+      "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-03-block1-candidate.log",
+      "sha256": "0ada3f109d3095c9c3dbd75472594035ede4e63e78adf751d7ea8079b50c0ff0"
+    },
+    {
+      "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-03-block2-baseline-process.json",
+      "sha256": "e6946cba3f3fc8934d49148be2ced1a05063c8be6798a360b4fa7c9e28c601e1"
+    },
+    {
+      "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-03-block2-baseline.json",
+      "sha256": "216668693b918b0897befa2f6b0c79c542d361068bcf39638717bf14333d1f3d"
+    },
+    {
+      "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-03-block2-baseline.log",
+      "sha256": "32692447b858604184bbc51d7d1460bc834c065a8e2b62be5a82a84076c2cb9e"
+    },
+    {
+      "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-03-block2-candidate-process.json",
+      "sha256": "87c1b7c40ac02a7adfe9a2a1ba93c5e11f41c06200a63f246ad3559ef1528da4"
+    },
+    {
+      "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-03-block2-candidate.json",
+      "sha256": "6033eba98b27eae3edfea47fd834f00da326e19abcc0a0d21547237d8be6d22d"
+    },
+    {
+      "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-03-block2-candidate.log",
+      "sha256": "2d2c7ed71c152b9ab727c4d46da5400620c8a93a7f98d799201e6f40503dc2e3"
+    },
+    {
+      "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-03-block3-baseline-process.json",
+      "sha256": "df0d5c77831bc84bab3b1478813da6e5c686299a780b951031048bfdfc8e5172"
+    },
+    {
+      "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-03-block3-baseline.json",
+      "sha256": "627d1b5dc9fa89fbc5af91d5c5c2c756cbcea668757ecad1dca3858a41f2d64f"
+    },
+    {
+      "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-03-block3-baseline.log",
+      "sha256": "f31f06c0a93155bae160b4f25bc80c7d30b2266a62a02b967e48313192324175"
+    },
+    {
+      "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-03-block3-candidate-process.json",
+      "sha256": "f246f08e178940a1c263cb62e99baf9af57354a7fd3725c899497086846ccedf"
+    },
+    {
+      "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-03-block3-candidate.json",
+      "sha256": "8a101eef817058f5416e0d5cbe588bc2a18d42e6086eae2692ccb3c3632e4d54"
+    },
+    {
+      "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-03-block3-candidate.log",
+      "sha256": "c17dd16244c5bbbebe4ebd9b8078afdca00842d024ef5153cc2fce9a614c2897"
+    },
+    {
+      "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-03-summary.json",
+      "sha256": "0744aa7eaed99d205f3f9334a87f759ca50adc1cf79da1d36cb4d6aa1db2e16a"
+    },
+    {
+      "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-04-block1-baseline-process.json",
+      "sha256": "930e4a90d25194b11585768a825bb685d2365149a9149c59411e70c1f9860107"
+    },
+    {
+      "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-04-block1-baseline.json",
+      "sha256": "b708733d4bdc7c27f160e4f7659c4c1af27661a8f42183fbb6ebac31725939d2"
+    },
+    {
+      "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-04-block1-baseline.log",
+      "sha256": "1f135be7400297be623d9a7f676692929a41ea0ea364e07da46c13c600b6519b"
+    },
+    {
+      "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-04-block1-candidate-process.json",
+      "sha256": "4300e36d0567c6bf698de718187a22120d625287ca648baffb676226215bcc5d"
+    },
+    {
+      "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-04-block1-candidate.json",
+      "sha256": "13d767710fb154a931f07d78b38b7c0aa8ec24cc7133ad14985eab1c72215b15"
+    },
+    {
+      "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-04-block1-candidate.log",
+      "sha256": "69a4cd0df6e9ba966c7173165c170b912c4734eb399dba998952ab8bc73005e8"
+    },
+    {
+      "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-04-block2-baseline-process.json",
+      "sha256": "69053e3fe9151d1f59421499d0b9febcdfab9cd6c757b6682b8125ad0a0b9307"
+    },
+    {
+      "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-04-block2-baseline.json",
+      "sha256": "716c9cd62e1e8d211048cccd30247941f101956a76be05c2bd977a0ce21590e7"
+    },
+    {
+      "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-04-block2-baseline.log",
+      "sha256": "eb1bf6e29347c4a6f6ac1721c94849cbda8df6bcdd3a5bc43c14368fb1c775b1"
+    },
+    {
+      "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-04-block2-candidate-process.json",
+      "sha256": "10c290d217bb4d26bec78a8e016c6e00d4785963597301f2d57684ed9c3ef855"
+    },
+    {
+      "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-04-block2-candidate.json",
+      "sha256": "0865904df284e3c4c2356358b3a7f2e2e8eaa01067ddea17aafbbd193784fea9"
+    },
+    {
+      "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-04-block2-candidate.log",
+      "sha256": "335a3589c748880a0060921f699c3e01de9e045847d5b2433ce856d129091f9f"
+    },
+    {
+      "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-04-block3-baseline-process.json",
+      "sha256": "eeea5d502da4b9e0aefa738004fbc2ccf3d39478df12471ce3e94fdcfac54631"
+    },
+    {
+      "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-04-block3-baseline.json",
+      "sha256": "cb0617deeea375662878eda68c12250c07e8b2292f5ca437c5cde40e9c80e019"
+    },
+    {
+      "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-04-block3-baseline.log",
+      "sha256": "ece95901629ec4681794dc9b68edc6b576f5f361f7aa543fdd737e2300f52659"
+    },
+    {
+      "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-04-block3-candidate-process.json",
+      "sha256": "8d453db0a9c8c8b76d188e673eda8c52b90971b850e693c72d79091cdd59b4da"
+    },
+    {
+      "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-04-block3-candidate.json",
+      "sha256": "db8efe1b635e8137e5f3d3afda49cb78058d0ba2becbc31c1d97aff018fa6aec"
+    },
+    {
+      "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-04-block3-candidate.log",
+      "sha256": "4f7bcb281c26711fd56d88f9b602532fb85f754899eda0e372717d199bfa8b2f"
+    },
+    {
+      "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-04-summary.json",
+      "sha256": "dca2b2b06fff848a1a2bc9253155af1566687a946f506e45ec26ffcbd344561c"
+    },
+    {
+      "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-05-block1-baseline-process.json",
+      "sha256": "bc617dbec6c921aab0fbbdd2587c7930659e045248328e7e31903fe121ad1182"
+    },
+    {
+      "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-05-block1-baseline.json",
+      "sha256": "7048b135063f32d38e4c48a6a23f54e264d00143144a993764def33e58710a8c"
+    },
+    {
+      "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-05-block1-baseline.log",
+      "sha256": "f06bdf8c1014bec84ff46dc51969fddb6d86b0c72c5a9483d6d93fc8df968607"
+    },
+    {
+      "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-05-block1-candidate-process.json",
+      "sha256": "41d30e40fefc233ecbd5bf84087e0d8e5f02c7729d2924d8dec51a13af0c6505"
+    },
+    {
+      "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-05-block1-candidate.json",
+      "sha256": "3ca7d6e34457001c437a6e3897fde78204e49751d6017933daaea03d595bc9b0"
+    },
+    {
+      "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-05-block1-candidate.log",
+      "sha256": "dc56e712dc727898e3f956ce1b1f497bc412f8b17cab9a651c8e4caa60632e12"
+    },
+    {
+      "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-05-block2-baseline-process.json",
+      "sha256": "24ad0a278ef40b84d8cb16a726754feb7d71edce47823b2e52a682ba5e66370d"
+    },
+    {
+      "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-05-block2-baseline.json",
+      "sha256": "b9f25f93569c3b592b1daa4e21db51295f9c943016faaebac19205142c15a182"
+    },
+    {
+      "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-05-block2-baseline.log",
+      "sha256": "13350cda7c23e9cb1d8a4b7a7590432cfc477fe3e3f278ba3efdc5b909496e44"
+    },
+    {
+      "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-05-block2-candidate-process.json",
+      "sha256": "7a24d572b96eb11ac0dc88d2c08c11101ca90db9a4b2eee3e4bde9317fec73fa"
+    },
+    {
+      "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-05-block2-candidate.json",
+      "sha256": "e404937bb74f1c65046d9a11b6ab5143b4bdb808ad262d9f2d3ef5de0dac6cca"
+    },
+    {
+      "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-05-block2-candidate.log",
+      "sha256": "8d357df51e6b9a662309914ff04d6eda61e7c9feaeb67dba356cd4b4f5190efa"
+    },
+    {
+      "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-05-block3-baseline-process.json",
+      "sha256": "320f754d5f6bc94a8708dfcad372ec33082f140550281b44dd657724ebe6fe59"
+    },
+    {
+      "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-05-block3-baseline.json",
+      "sha256": "e24aebf326f1fffccb028946b01680d6e4e02bb3779c01061d5fd5fdf6fe9659"
+    },
+    {
+      "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-05-block3-baseline.log",
+      "sha256": "ee85c7d6883fe58044245d9447783d21c20be07d28aa837fed7196dd48dcbb3f"
+    },
+    {
+      "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-05-block3-candidate-process.json",
+      "sha256": "c5c90e2bbc05ff15fd86bb622cb171663c032727d1d6ead43158e67834a34287"
+    },
+    {
+      "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-05-block3-candidate.json",
+      "sha256": "6c98f936e7d69f44fd9b5ec977389d462b7f3b03a7f698287b97d6e1fc51e9d7"
+    },
+    {
+      "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-05-block3-candidate.log",
+      "sha256": "4d4075ee6ce930d8290066aeac511181d67344e705e597beb97964e6d61e5d6a"
+    },
+    {
+      "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-05-summary.json",
+      "sha256": "1abdd2d36a03a84a5d6110f49d302717a3069e745d47832690c7522c87fe2cbf"
+    },
+    {
+      "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-v2-03-block1-baseline-process.json",
+      "sha256": "8741869288a194afc72f282d5f2a0b80090626ba793c05c3e90b3e704ab79783"
+    },
+    {
+      "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-v2-03-block1-baseline.json",
+      "sha256": "bdf96b3718f97d9ec2199d579b43d1b805a357d2cca186a23f17f69b5828f952"
+    },
+    {
+      "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-v2-03-block1-baseline.log",
+      "sha256": "d8ac172b70e93b3a6efb7d36f148b5c73e9579b7c3f6f0da1ba1c606d3041f3f"
+    },
+    {
+      "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-v2-03-block1-candidate-process.json",
+      "sha256": "e849ba9b04323275a22df288cd685f2cca6f888e641350d9f1b80d397ab4f3f0"
+    },
+    {
+      "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-v2-03-block1-candidate.json",
+      "sha256": "23b18ac3fb9a374ba7178af95435dd02ff57e2d8fc6d34032396848bea546afd"
+    },
+    {
+      "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-v2-03-block1-candidate.log",
+      "sha256": "4842f25381ee9169d6d12f370022e6d9f106ff0d7154f70d3865a86dc4d7f2d6"
+    },
+    {
+      "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-v2-03-block2-baseline-process.json",
+      "sha256": "6a3fa99f4dc2acc166116498dd2b5afe92a0253d924867730f55ad4dd547546c"
+    },
+    {
+      "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-v2-03-block2-baseline.json",
+      "sha256": "010e044ef7ac27fc767b58ee44e1eb985e30bf0f19976252aaf64355b7952a51"
+    },
+    {
+      "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-v2-03-block2-baseline.log",
+      "sha256": "224262e10d9238debb288207fa8a9a4d7901f2465607417aa676878c3c2d6d07"
+    },
+    {
+      "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-v2-03-block2-candidate-process.json",
+      "sha256": "9e04b4e37b90f68be079275b1ab9006de0c07009b693f1059d7bcbe605d18ce7"
+    },
+    {
+      "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-v2-03-block2-candidate.json",
+      "sha256": "3933fd01749e5e3d2f6e0016c475c7f1852f973464472ac514b4e5183fa43981"
+    },
+    {
+      "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-v2-03-block2-candidate.log",
+      "sha256": "bdbf79be25ad63549d964fde59960779e4d894a33ca0711ddfa868a5a99dafec"
+    },
+    {
+      "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-v2-03-block3-baseline-process.json",
+      "sha256": "7fb491997d963712923de9b08a24c62a14d6c6c6c4218159d89d747f1b771a83"
+    },
+    {
+      "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-v2-03-block3-baseline.json",
+      "sha256": "7c42e5a49780598523fc0c3c0fdbe5a4b278f2815877e35bf28775141fe91908"
+    },
+    {
+      "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-v2-03-block3-baseline.log",
+      "sha256": "781ab4406107f038ebc49f7f4cdd31970a9b32c773898ff73a425bd89a2579e5"
+    },
+    {
+      "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-v2-03-block3-candidate-process.json",
+      "sha256": "ec672a15200dd6bdd8ffb3c9a33c58e0aee19e3f30b229fdea2aedd3c0eef8ea"
+    },
+    {
+      "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-v2-03-block3-candidate.json",
+      "sha256": "8612d3b482470ef02bd3319a1857df0d9b1a7183dd6087d9181f24f2e13d19d2"
+    },
+    {
+      "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-v2-03-block3-candidate.log",
+      "sha256": "e82c88b15f86f57842db8c225e82bdaf02886ca7eeb38a0f83710c0c566b074b"
+    },
+    {
+      "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-v2-03-summary.json",
+      "sha256": "056b809b22f9e70694671c8ea0ce826a8d6d330046cfbf7c802cead8255d1b3b"
+    },
+    {
+      "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-v3-03-block1-baseline-process.json",
+      "sha256": "70dd5efb56825c1b59b824552383f552a83448ec333ce5de44ef7d351956d9d8"
+    },
+    {
+      "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-v3-03-block1-baseline.json",
+      "sha256": "3d8d9156dff6d8d402200e124139ec58fb14c6d18eb9119d0ee3eff3fe31fd7e"
+    },
+    {
+      "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-v3-03-block1-baseline.log",
+      "sha256": "19ac3ebf33716733b324123f86c84ae9311a0e7dd64d7b9034a94d29108152ca"
+    },
+    {
+      "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-v3-03-block1-candidate-process.json",
+      "sha256": "d9b9244f6a300a6ca4c758d0bc6b9682e4a580392ef62765f51eb7cfcb6e2887"
+    },
+    {
+      "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-v3-03-block1-candidate.json",
+      "sha256": "8e6119e7d9851ecaf7ef94a75bc48a2c3cc43cba6bde182ebe0d0e0f3b58dd4d"
+    },
+    {
+      "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-v3-03-block1-candidate.log",
+      "sha256": "88c1e066e20440fcd8b3068298fc0d7c9e1770f85ebb479b67b1190c3c1b6fbd"
+    },
+    {
+      "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-v3-03-block2-baseline-process.json",
+      "sha256": "cc923b3aeb893977f8dfbd0bc1fdca2d11c15c292d2304e5034072fab1586782"
+    },
+    {
+      "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-v3-03-block2-baseline.json",
+      "sha256": "531f20158514fae55b3e0142415552b8367a7fc995f4cc20f7811b9bcb926725"
+    },
+    {
+      "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-v3-03-block2-baseline.log",
+      "sha256": "3b6d21d025abb2cc7a66c3c26dcf141cec10bfacf8a3dcf1daef97d35b48b3df"
+    },
+    {
+      "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-v3-03-block2-candidate-process.json",
+      "sha256": "c86d08981fcaa87f8a67e86979ad3a65e5ac9c688daa7c162fe9a50c68718ef9"
+    },
+    {
+      "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-v3-03-block2-candidate.json",
+      "sha256": "654ac0eecfc28aa94e074b900993a4ab5853daa7356a01eb5e87bb34ca11e833"
+    },
+    {
+      "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-v3-03-block2-candidate.log",
+      "sha256": "89d047fbc017edf107a9fe50eb709ccfbd48db08fd818cb223cc907239be218c"
+    },
+    {
+      "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-v3-03-block3-baseline-process.json",
+      "sha256": "ee0553e4e94fd7cc654c274336559f42d23965479fd0a93a0a70610bf9bd0386"
+    },
+    {
+      "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-v3-03-block3-baseline.json",
+      "sha256": "5fef417c3e85fe6a5287f0ecd70e67b83e48ee6068cb3e4b2d80bdee322c6056"
+    },
+    {
+      "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-v3-03-block3-baseline.log",
+      "sha256": "ee4850d047f8ae1acf712f22de69e84c4dbbf2d36607260e19190830571f25c8"
+    },
+    {
+      "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-v3-03-block3-candidate-process.json",
+      "sha256": "debe61a434f1cdb4a01bc083945a53c34b013876182ffb7de7a87249cab3221c"
+    },
+    {
+      "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-v3-03-block3-candidate.json",
+      "sha256": "6fd2bb34593dfac67bb4445637fb53c478b4ec68d8f50d4a2cbe36dea20c386d"
+    },
+    {
+      "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-v3-03-block3-candidate.log",
+      "sha256": "23b52de05de0df31640426a4b74a9f4f3c4897d5eca616948f2d25a67c124f39"
+    },
+    {
+      "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-v3-03-summary.json",
+      "sha256": "b041289e223663f4202cc6c095bf287a8f8a5c99f8ecd0c94e577152b89087b9"
+    },
+    {
+      "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-v4-03-block1-baseline-process.json",
+      "sha256": "a7f0e655e24abd6c2417720ce86f8ddae369676ff32dc90bac0918bc47f8ae9f"
+    },
+    {
+      "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-v4-03-block1-baseline.json",
+      "sha256": "ff3c5bdbc8e6e715f3fe7fe732a8af4ecfb3a3d5d2808a307c5388723b431b46"
+    },
+    {
+      "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-v4-03-block1-baseline.log",
+      "sha256": "a13d3a35c2eabd21311c914682e7340fec05046481ede70e6ac15de1bfdac265"
+    },
+    {
+      "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-v4-03-block1-candidate-process.json",
+      "sha256": "3890c6774246570fac004702b9478f27cc479f3bdd49ad67033fb1c27506460f"
+    },
+    {
+      "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-v4-03-block1-candidate.json",
+      "sha256": "c204a058e2e4f39781f25a51156067a1737a598e14a75507bea02385521af9da"
+    },
+    {
+      "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-v4-03-block1-candidate.log",
+      "sha256": "675ef039db7d25dab6801dec3033e23c05b6a4351d4ed3bb7638836e263f13c0"
+    },
+    {
+      "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-v4-03-block2-baseline-process.json",
+      "sha256": "bd865188fa9ce4c3069f96583ecf3bb22c0934b7b5ab733e7e6c0b60f4406bcd"
+    },
+    {
+      "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-v4-03-block2-baseline.json",
+      "sha256": "466cb46d21102b6fa2c39c825210e36ab2b3fd120be90933c37015bd5a93a062"
+    },
+    {
+      "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-v4-03-block2-baseline.log",
+      "sha256": "a74cc55dad5d8a48594bf071fe52c12048cce908aefe29ff22e5d3a2c5e0e024"
+    },
+    {
+      "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-v4-03-block2-candidate-process.json",
+      "sha256": "377c69251c358e1f3fa62e3344734d60fb9e05446e9269bc3a2575de31a5d2d3"
+    },
+    {
+      "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-v4-03-block2-candidate.json",
+      "sha256": "596a185e3c4cded4d6eaa09799b74f082151c581cccd3082b16698f474e74b06"
+    },
+    {
+      "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-v4-03-block2-candidate.log",
+      "sha256": "47c631b0312c44b706e061ebcfdf0aa909191ebeeb2b89c8dbad7d8c39e63a29"
+    },
+    {
+      "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-v4-03-block3-baseline-process.json",
+      "sha256": "c3724a393e363bdfb44c18947605c7b9097fff851a7da7c84950ed87c0543444"
+    },
+    {
+      "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-v4-03-block3-baseline.json",
+      "sha256": "4a519f7dd7c4b0eadd6c6a6626e9ffcfae58449d5405bd92b413b263d06ac9cf"
+    },
+    {
+      "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-v4-03-block3-baseline.log",
+      "sha256": "47516dad93b9757ba4b9a12dcf02b20bfb754b90b723f184397fb0a8607e2c67"
+    },
+    {
+      "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-v4-03-block3-candidate-process.json",
+      "sha256": "38010a85bdf66f26cd377f0fda5be106237fe1fecbc04879e06fd27ef109d79f"
+    },
+    {
+      "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-v4-03-block3-candidate.json",
+      "sha256": "295f2ba7fb903c8cbf95ceedc63f1a0121502ce0d87be9a54cd6787e2c9780b3"
+    },
+    {
+      "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-v4-03-block3-candidate.log",
+      "sha256": "3b21c8d16c7ba8662df723e5b159dc4326e58a60b87273ccaa5237ff69a51d9c"
+    },
+    {
+      "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-v4-03-summary.json",
+      "sha256": "507a4e2e1093ce1e94918abcaa8a5587abb676cddfee5017c2498c6dd2a501aa"
+    },
+    {
+      "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/pilot-01-baseline.json",
+      "sha256": "6d25938569fc8c32660f0bcc0851ee8eaf76973853197cf48e9cb9e8045057bb"
+    },
+    {
+      "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/pilot-03-candidate.json",
+      "sha256": "14ed4fd9201e92291e24c441b50aea36ebab15d8a28465111040a8a66b1351e0"
+    },
+    {
+      "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/pre-exception-message-test_mcp_redirect_policy.py",
+      "sha256": "4601fd3efc6d6bcd3a513d3796f17b85a74acedc66846cbdb866aaadab80de82"
+    },
+    {
+      "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/pre-format-source-mapping.json",
+      "sha256": "c37ead16a0f4182d5b2377d35fa12e636d817bb8deff3ac70e69bb086e991731"
+    },
+    {
+      "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/pre-format-test_native_mcp_core.py",
+      "sha256": "ce64b1878a10553f27bcb3b5a75561900f90ab912ebea909b9c8687c7c6b1fed"
+    },
+    {
+      "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/prior-and-source-audit.json",
+      "sha256": "ebac87a7f82add4011fcbea84620e2e3c094491e0433bf45220873743b10bb85"
+    },
+    {
+      "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/pyright-v2-process.json",
+      "sha256": "f2b4b4d950bf4cf4096f88cc325c2713a1cb7a6b0c9651491a82878dd8b72ea2"
+    },
+    {
+      "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/pyright-v2.log",
+      "sha256": "56882e01cb80173ef053c4096e4ee43e3123a15f5c0a06715f96988d48fbd91c"
+    },
+    {
+      "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/pyright-v5-process.json",
+      "sha256": "31deeb6caec51168c7f0e2bd13b51bccaca0914c6e36503d7e2de5a06e84c76b"
+    },
+    {
+      "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/pyright-v5.log",
+      "sha256": "56882e01cb80173ef053c4096e4ee43e3123a15f5c0a06715f96988d48fbd91c"
+    },
+    {
+      "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/qualified-final-resource-controls.json",
+      "sha256": "69f60431c31b568b87a04a6cab7031049e7f11e793a437e8e678aeaa813bfcab"
+    },
+    {
+      "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/qualified-native_state.py",
+      "sha256": "a1cfc85cdd62037348cb1fe8501c088ba6443ef72a58a9006c290cef383bf868"
+    },
+    {
+      "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/qualified-public-01-process.json",
+      "sha256": "b9cdde7ae2d40dfcb6f2aed526946d2698d5cec7e74dbcc37d900369d923350e"
+    },
+    {
+      "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/qualified-public-01.json",
+      "sha256": "fcf0b70d28dee9c351cb36de5a6605cba539b3103094ec339256ce2d9490e07f"
+    },
+    {
+      "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/qualified-public-01.log",
+      "sha256": "12bc072e41093dd78cf2ab560c8f92eead1cdabb284049a150e4d864f6d1aea5"
+    },
+    {
+      "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/qualified-public-02-process.json",
+      "sha256": "16dbc7c7fb5301f0b0b20ff1befb0158bb2920afc53a89541c9777826695fbfb"
+    },
+    {
+      "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/qualified-public-02.json",
+      "sha256": "cf3cad9ad2b9399db0f8fc0b8e2eeca484343809349be4f0cd0d47ee475d8268"
+    },
+    {
+      "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/qualified-public-02.log",
+      "sha256": "90f31e3292dba4862faf89e5d98fb751c230b91323a35d1f975e5f30ff157c91"
+    },
+    {
+      "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/qualified-public-03-process.json",
+      "sha256": "0135f6aa3fca9493a6954cdb259da08affc71170a77e81a163545f2a8356f8dd"
+    },
+    {
+      "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/qualified-public-03.json",
+      "sha256": "c1aae65c1c93c3fadfd9110fb997020b09688738a5fbab6b1874d98fbf21f39a"
+    },
+    {
+      "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/qualified-public-03.log",
+      "sha256": "95dde7c93db1e835bc4875c463b61e3deb734e1b763b12494563f23dd514b7a0"
+    },
+    {
+      "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/qualified-public-04-process.json",
+      "sha256": "4fdf888ff3fc95aa400b1899bd9ad43065379c42cd734b44594c5ba2dabf0b5e"
+    },
+    {
+      "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/qualified-public-04.json",
+      "sha256": "967e2f2771b76d65283ff08c0da8a4192a5e5aee93878984baf5cc16494fc96c"
+    },
+    {
+      "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/qualified-public-04.log",
+      "sha256": "0addb66b4249978b57634e9bfe980eee131d74287b2dde86dcb62d3e7e2d72d5"
+    },
+    {
+      "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/qualified-public-05-process.json",
+      "sha256": "0b396ab87e39ba65e897df0cf946a7c8a0fb5c6b3a8bdca69b96d72d0b1bd70d"
+    },
+    {
+      "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/qualified-public-05.json",
+      "sha256": "19b2296d2deba4c093a7ac94d02aa595bfc9b19812d38a470f48277522a13c27"
+    },
+    {
+      "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/qualified-public-05.log",
+      "sha256": "fd0a3b2011059a3fe8a801b490a62da392ea6a4c150dee70f562138d2f393964"
+    },
+    {
+      "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/qualified-public-parity.json",
+      "sha256": "a723b441e565e15b50b9a8f418a30bd4b8be166f7272751a981150dbb858026c"
+    },
+    {
+      "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/qualified-redirect_policy.py",
+      "sha256": "b3a7fbeb7172cbd2d498d086650a1aa8e9057426e007199671780708eb992e7c"
+    },
+    {
+      "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/qualified-test_mcp_redirect_policy.py",
+      "sha256": "f7d5494f3b624ed074467043a336a450225247d6096e6426384ea2641336334a"
+    },
+    {
+      "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/qualified-test_native_mcp_core.py",
+      "sha256": "b3a4c91d49b88caae17e0b02fc8dd268e98f988b8ac7f7d339d887cbf6eafff5"
+    },
+    {
+      "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/ratchet-v2-process.json",
+      "sha256": "748c179d2df482b5a2e956ab183b1663517335c2c7221f96a7e0b65b4d001e40"
+    },
+    {
+      "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/ratchet-v2.log",
+      "sha256": "ce7d992e34d103d008b66b04f766690aea2fe14109212dae57144aa958effce8"
+    },
+    {
+      "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/ratchet-v5-process.json",
+      "sha256": "66edda363d0fc9a9628ada97995346f7e1688564c289f08c768bd0514f906140"
+    },
+    {
+      "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/ratchet-v5.log",
+      "sha256": "ce7d992e34d103d008b66b04f766690aea2fe14109212dae57144aa958effce8"
+    },
+    {
+      "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/resource-controls.json",
+      "sha256": "681fad9b6be40db0c14ef06c9eeae4a107140218f44f07d21083f8ee65e6200c"
+    },
+    {
+      "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/ruff-v1-process.json",
+      "sha256": "f195ab8db5b599c27964acda1a8e86d1b077ee1c24fa17d4e7783b7ea8aa305c"
+    },
+    {
+      "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/ruff-v1.log",
+      "sha256": "82b3e6a6c090a57601d22943bd23fca9218d1031dbe5a7b754092f9a156b4f18"
+    },
+    {
+      "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/ruff-v2-process.json",
+      "sha256": "5bdcb43b9a0cd1e04c5ca335aac775e3d216de841c08a49c33b2c16e4db0c6ef"
+    },
+    {
+      "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/ruff-v2.log",
+      "sha256": "82b3e6a6c090a57601d22943bd23fca9218d1031dbe5a7b754092f9a156b4f18"
+    },
+    {
+      "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/ruff-v4-process.json",
+      "sha256": "7192445189bde7864275d8a95c03199f8a89e8a43f7c1814f93441b6cbe12666"
+    },
+    {
+      "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/ruff-v4.log",
+      "sha256": "d2c0cc4af6dd38ac918adc5bacb8f42a5cfbde01a847dc3c0db417c6390d9974"
+    },
+    {
+      "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/ruff-v5-process.json",
+      "sha256": "7b16442dc9b7b6e5dd94cf00230eb90f4a4bcc34a50da9f44b4c7e28d7c21dba"
+    },
+    {
+      "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/ruff-v5.log",
+      "sha256": "82b3e6a6c090a57601d22943bd23fca9218d1031dbe5a7b754092f9a156b4f18"
+    },
+    {
+      "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/sdk-fastmcp-auth.py",
+      "sha256": "94405db4b54afb041e41c7ba70ac31781f67f1f769c017d9213238edd0cd8b86"
+    },
+    {
+      "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/sdk-mcp-bearer_auth.py",
+      "sha256": "90451121f43c0d6f44d56339897ec5f022f77de89b9a7d258da1b4f6d6f2f8f4"
+    },
+    {
+      "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/sdk-mcp-provider.py",
+      "sha256": "32c497b64bc8f3ecdeac33376405c397bd3ad2f8cf44463768cb6f2b5473a007"
+    },
+    {
+      "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/sdk-mcp-shared_auth.py",
+      "sha256": "491c6ce44e7c264b28ea96654f2fac0c55f10c28b6a73601ffc8066f3cf6e664"
+    },
+    {
+      "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/sdk-starlette-authentication.py",
+      "sha256": "f914b0c09d29224accd2ffb6229f075d5076e31b52a7b39bcd1dce7d30bcc120"
+    },
+    {
+      "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/sdk-starlette-requests.py",
+      "sha256": "8691b01ae49ecfa085fe6419343678f73b77c92fc63a411106a77d8e9bf0ac44"
+    },
+    {
+      "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/seal-v1-source-reference-failure.json",
+      "sha256": "2a2de4021b474c2abf7e9c6366ac2924319d83e0c8fc16f861e9995258eb2dc1"
+    },
+    {
+      "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/ty-v2-process.json",
+      "sha256": "efa31564a9afc2d6fd939e39898247306a5bf88502b9407999f852f2e0bc149a"
+    },
+    {
+      "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/ty-v2.log",
+      "sha256": "82b3e6a6c090a57601d22943bd23fca9218d1031dbe5a7b754092f9a156b4f18"
+    },
+    {
+      "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/ty-v5-process.json",
+      "sha256": "ea2dc6522a1cfd6cd235ad602ddd071a2ec2e5246ace4e0d07a525a43a237600"
+    },
+    {
+      "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/ty-v5.log",
+      "sha256": "82b3e6a6c090a57601d22943bd23fca9218d1031dbe5a7b754092f9a156b4f18"
+    }
+  ],
+  "reproductionScripts": [
+    {
+      "path": "/private/tmp/sarj-wiki-perf-round9-backend-central-v3.py",
+      "sha256": "59a1e2fa254afae2b8b0f30c4b5ca25baebc3a2999e72ead77aa67a82998e476"
+    },
+    {
+      "path": "/private/tmp/sarj-wiki-perf-round9-backend-central-v6.py",
+      "sha256": "511e63e315feb9e3a90d56a4e62819dd361d7e44b7d790619361e86f288731c8"
+    },
+    {
+      "path": "/private/tmp/sarj-wiki-perf-round9-backend-final-resources.py",
+      "sha256": "c826ef61286078643b1cd019d3ac91afb646e60383c8d88efe4814d196be87ca"
+    },
+    {
+      "path": "/private/tmp/sarj-wiki-perf-round9-backend-final-verify-v2.py",
+      "sha256": "8a580e4e2aeecadc624feb270cef45e540e5311f2c8c30727ec70c56c549fdfd"
+    },
+    {
+      "path": "/private/tmp/sarj-wiki-perf-round9-backend-final-verify.py",
+      "sha256": "1edc04504d309b938501c9ccbfcb6acebfec96d15aef3d7a94d67ae4d44513ab"
+    },
+    {
+      "path": "/private/tmp/sarj-wiki-perf-round9-backend-gates-v2.py",
+      "sha256": "cfedce0b10a8041fe87eb1c89ab331e6788ca003f4c46ef6e45c5205d4c60018"
+    },
+    {
+      "path": "/private/tmp/sarj-wiki-perf-round9-backend-gates-v4.py",
+      "sha256": "faae9be3483386fa4d704f08c4ee6499da905045e39b437fe647b0464fe28374"
+    },
+    {
+      "path": "/private/tmp/sarj-wiki-perf-round9-backend-gates-v5.py",
+      "sha256": "bd82465bd6e36ee324afff428bc7a11c48d7f08ddb6cc3ac1d52b540a899dc7a"
+    },
+    {
+      "path": "/private/tmp/sarj-wiki-perf-round9-backend-gates.py",
+      "sha256": "9cd218bd69ef3e9b5a38e26281a542af08acb351e1e93808bc574efa94416c55"
+    },
+    {
+      "path": "/private/tmp/sarj-wiki-perf-round9-backend-pairs-v2.py",
+      "sha256": "89cc5e262f00e52cb7cc78a776506e832775fce5ecd20f3c1e704e1e1826c558"
+    },
+    {
+      "path": "/private/tmp/sarj-wiki-perf-round9-backend-pairs-v3.py",
+      "sha256": "decf16fcd15ae1c93934107b9456188776c9d6e1ef1ef46b4978797a25578d35"
+    },
+    {
+      "path": "/private/tmp/sarj-wiki-perf-round9-backend-pairs-v4.py",
+      "sha256": "c10023ea6a90e0ed511ac53c8490eb04a92ef00577ad0ecc74b65ae632df94fa"
+    },
+    {
+      "path": "/private/tmp/sarj-wiki-perf-round9-backend-pairs.py",
+      "sha256": "42706973b59963a931e6d9a1715462374772de654ad7a778c9cd52d7fff3a381"
+    },
+    {
+      "path": "/private/tmp/sarj-wiki-perf-round9-backend-prepare.py",
+      "sha256": "6bd00fdb3ced55e8916644b8d69fd15dbd93db61f96973f4cf26c28e4409a3e4"
+    },
+    {
+      "path": "/private/tmp/sarj-wiki-perf-round9-backend-resources.py",
+      "sha256": "ab35b89005152f0acac14cbe5c66de2acfb43a1a5edf63e668940b9cdb73640e"
+    },
+    {
+      "path": "/private/tmp/sarj-wiki-perf-round9-backend-seal-v2.py",
+      "sha256": "51526980e2591b031b93a2d9a3dd4d6743048a271af9c063cb54397033ac062d"
+    },
+    {
+      "path": "/private/tmp/sarj-wiki-perf-round9-backend-seal.py",
+      "sha256": "a205aa3deebfbbf91c006295748dab5fb696e5cc78c29fa6f41c344a70485b0b"
+    },
+    {
+      "path": "/private/tmp/sarj-wiki-perf-round9-backend-worker-v2.py",
+      "sha256": "c221e45e1accfb64a8666c580dd13e4ea99a432bf16743e784eb386c5f0b024f"
+    },
+    {
+      "path": "/private/tmp/sarj-wiki-perf-round9-backend-worker-v3.py",
+      "sha256": "0d6b89279145589d87b5920cbf7a480ab45b166bea9128b516eabc017ba2d54f"
+    },
+    {
+      "path": "/private/tmp/sarj-wiki-perf-round9-backend-worker-v4.py",
+      "sha256": "06dbf16d6bf95d9cf101d14195be7797b439052edf7ff4becb427e511c3787ec"
+    },
+    {
+      "path": "/private/tmp/sarj-wiki-perf-round9-backend-worker.py",
+      "sha256": "6a07868eab47e7463c1f7c2992e831f8753ba0c5b9840ecefcadf203c76198f8"
+    }
+  ],
+  "reproduce": [
+    "backend/.venv/bin/python /private/tmp/sarj-wiki-perf-round9-benchmark-guard.py backend/.venv/bin/python /private/tmp/sarj-wiki-perf-round9-backend-worker.py --pass-id 1 --variant baseline --output FRESH_OWNED_RECEIPT.json --samples 9 --iterations 20",
+    "For callback candidate03 use backend-worker-v4.py and --variant baseline/candidate; its immutable03-v3 prototype and baseline-native_state dependency must remain exact.",
+    "Repeat in alternating baseline,candidate / candidate,baseline / baseline,candidate process order with fresh output/log/receipt paths. Existing evidence writers deliberately reject overwriting prior paths.",
+    "The recorded gate receipts contain exact cwd, command and synthetic local fixture environment. Use fresh receipt prefixes for reproduction, never replace sealed evidence."
+  ],
+  "limitations": [
+    "Measurements are synthetic native local PostgreSQL18 and installed SDK workloads, not production p95 or browser navigation claims.",
+    "The one-row quota update has mixed paired latency variation; the robust benefit is one unused query removed and the near-quota large-case gain.",
+    "Callback policy CPU/parse-count gain is consistent; full database-backed provider authorization is dominated by SQL variability and has no stable final latency gain.",
+    "Subclass policy retains its public extensibility and original loop; the final negative control has small mixed timing variation.",
+    "All owned measurement schemas are dropped by fixture teardown; no real credentials, production authority cache, PG lifecycle operation or dependency/config change is introduced.",
+    "Root owns full unchanged make check, normal hooks, hosted CI, admin merge/deploy, original workspace sync and authenticated live verification after both scopes seal.",
+    "These five measured candidates do not prove that no future optimization is possible."
+  ]
+}

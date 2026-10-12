@@ -49,7 +49,7 @@ make standards-check
 `make check` mirrors CI. `make audit` performs network-backed dependency audits, and
 `make standards-check` verifies generated standards configuration, version pins, and code.
 
-See the [419-pass performance record and reproduction commands](docs/performance.json) for
+See the [429-pass performance record and reproduction commands](docs/performance.json) for
 frontend loading and backend latency work.
 
 Original-tranche production-build measurements against the same locked main toolchain:
@@ -312,6 +312,38 @@ task-owned webpack cache was cleared after baseline capture for disk headroom;
 source snapshots, original build chunks and raw evidence were retained. Local
 CPU and resource reductions do not establish live load time or an absolute
 optimization maximum. Small-input regressions remain explicit in the records.
+
+The next October 12 (UTC) follow-up evaluates [ten new candidates across two agents](docs/performance/round9-20261012.json),
+preserving the previous 419 entries and bringing the record to 429:
+4 retained improvements and 6 evidenced rejections.
+Each agent evaluates five mechanisms against deployed `a2aedf97` and audits
+earlier candidate text. Repeated probes, repairs, reviews, tests and release
+administration count zero. Representative controlled results are:
+
+| Measurement | Before | After |
+| ----------- | ------ | ----- |
+| Native-state update with 10,000 live states (median ms) | 7.27844 | 4.11203 |
+| Exact-class authorization policy with 16 callbacks (median µs) | 102.029 | 59.3246 |
+| Record a recent alias with 50 stored visits (median µs) | 24.8574 | 16.2574 |
+| Native Promise initialization events for 4 MiB / 512 chunks (events per completed response) | 3,088 | 2,062 |
+
+Both scope records retain complete native entrypoint controls, paired samples,
+small and negative workloads, explicit costs, reproduction commands and exact
+source and artifact hashes. Authentication, quota boundaries, request ownership,
+storage validation and recovery behavior remain qualified. Recent-page navigation
+continues to show up to five permission-checked pages from native account history.
+
+The unchanged local CI mirror passes 4,467 backend tests
+(89.32% coverage), 1,002 frontend tests,
+323 repository tests and 11 infrastructure tests,
+plus the production build. Frontend type coverage is 99.72%.
+Home and document app inventories change by +4 and
++93 raw bytes; gzip changes are +7 and
++44 bytes (+0.00% and +0.02%).
+The previous qualified build and task-owned webpack cache were retained.
+These inventories exclude shared framework and deferred chunks; local CPU,
+resource and query reductions do not establish live page-load latency or an
+absolute optimization ceiling. Every earlier ledger entry remains unchanged.
 
 The drive-loading regression was reproduced in the compiled Cloudflare Worker:
 server `fetch` rejects `redirect: "error"` before reaching the API. Server clients

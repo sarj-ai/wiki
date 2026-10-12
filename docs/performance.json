@@ -1,7 +1,7 @@
 {
   "recordedAt": "2026-10-11",
   "baselineRevision": "f63e8f6f342a27d3b3f085e2150417ccd45756bf",
-  "totalPasses": 419,
+  "totalPasses": 429,
   "initialPasses": [
     {
       "pass": 1,
@@ -8616,6 +8616,34 @@
         }
       ],
       "record": "docs/performance/round8-20261012.json"
+    },
+    {
+      "recordedAt": "2026-10-12",
+      "baselineRevision": "a2aedf971f86227e33769da272b721e3bc2bded0",
+      "name": "Ten final backend request and frontend interaction candidates",
+      "passCount": 10,
+      "agentPassCount": 10,
+      "integrationPassCount": 0,
+      "acceptedCount": 4,
+      "rejectedCount": 6,
+      "counting": "Five distinct new measured candidates from each of two agents. A retained improvement or evidenced rejection counts once. Prototype tuning, correctness repairs, tests, builds, review, documentation and release administration count zero.",
+      "scopeCounts": [
+        {
+          "scope": "backend",
+          "agent": "/root/backend_final_round8",
+          "passCount": 5,
+          "acceptedCount": 2,
+          "rejectedCount": 3
+        },
+        {
+          "scope": "frontend",
+          "agent": "/root/frontend_final_round8",
+          "passCount": 5,
+          "acceptedCount": 2,
+          "rejectedCount": 3
+        }
+      ],
+      "record": "docs/performance/round9-20261012.json"
     }
   ]
 }

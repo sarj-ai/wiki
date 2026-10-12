@@ -1,0 +1,4030 @@
+{
+  "recordedAt": "2026-10-12",
+  "baselineRevision": "a2aedf971f86227e33769da272b721e3bc2bded0",
+  "name": "Ten final backend request and frontend interaction candidates",
+  "passCount": 10,
+  "agentPassCount": 10,
+  "integrationPassCount": 0,
+  "acceptedCount": 4,
+  "rejectedCount": 6,
+  "counting": "Five distinct new measured candidates from each of two agents. A retained improvement or evidenced rejection counts once. Prototype tuning, correctness repairs, tests, builds, review, documentation and release administration count zero.",
+  "scopeCounts": [
+    {
+      "scope": "backend",
+      "agent": "/root/backend_final_round8",
+      "passCount": 5,
+      "acceptedCount": 2,
+      "rejectedCount": 3
+    },
+    {
+      "scope": "frontend",
+      "agent": "/root/frontend_final_round8",
+      "passCount": 5,
+      "acceptedCount": 2,
+      "rejectedCount": 3
+    }
+  ],
+  "record": "docs/performance/round9-20261012.json",
+  "priorPasses": 419,
+  "totalPasses": 429,
+  "priorLedgerPreserved": true,
+  "scopes": [
+    {
+      "scope": "backend",
+      "agent": "/root/backend_final_round8",
+      "passCount": 5,
+      "acceptedCount": 2,
+      "rejectedCount": 3,
+      "record": "docs/performance/round9-20261012-backend.json",
+      "recordSha256": "d829dd891b3940a1c2ceabbdc63e464596b60f9cd8d0082bcf8e0f7d3956bca1",
+      "changedPaths": [
+        "backend/app/mcp/native_state.py",
+        "backend/app/mcp/redirect_policy.py",
+        "backend/tests/test_native_mcp_core.py",
+        "backend/tests/test_mcp_redirect_policy.py"
+      ],
+      "passes": [
+        {
+          "id": "round9-backend-01",
+          "candidate": "Skip the unused live-purpose quota COUNT for a freshly present native-state update",
+          "outcome": "accepted",
+          "record": "docs/performance/round9-20261012-backend.json"
+        },
+        {
+          "id": "round9-backend-02",
+          "candidate": "Use binary search for sorted registration-admission sliding-window cutoffs",
+          "outcome": "rejected",
+          "record": "docs/performance/round9-20261012-backend.json"
+        },
+        {
+          "id": "round9-backend-03",
+          "candidate": "Reuse validated callback parses within exact native authorization-policy calls",
+          "outcome": "accepted",
+          "record": "docs/performance/round9-20261012-backend.json"
+        },
+        {
+          "id": "round9-backend-04",
+          "candidate": "Precompile the five opaque native-secret grammar patterns",
+          "outcome": "rejected",
+          "record": "docs/performance/round9-20261012-backend.json"
+        },
+        {
+          "id": "round9-backend-05",
+          "candidate": "Cap native rotation-read materialization at the two rows needed to detect duplicates",
+          "outcome": "rejected",
+          "record": "docs/performance/round9-20261012-backend.json"
+        }
+      ]
+    },
+    {
+      "scope": "frontend",
+      "agent": "/root/frontend_final_round8",
+      "passCount": 5,
+      "acceptedCount": 2,
+      "rejectedCount": 3,
+      "record": "docs/performance/round9-20261012-frontend.json",
+      "recordSha256": "d81778f0024c8f32282ac94192619bce96af57dc0baa113f3f7fc224d27c876c",
+      "changedPaths": [
+        "frontend/src/lib/bounded-text.ts",
+        "frontend/src/lib/recent-aliases.test.ts",
+        "frontend/src/lib/recent-aliases.ts",
+        "frontend/src/lib/storage-schemas.ts"
+      ],
+      "passes": [
+        {
+          "id": "round9-frontend-01",
+          "candidate": "Lazily initialize document-intent ref state instead of supplying an eager object literal.",
+          "outcome": "rejected",
+          "record": "docs/performance/round9-20261012-frontend.json"
+        },
+        {
+          "id": "round9-frontend-02",
+          "candidate": "Share six top-level array schema instances between browser read and generated-SDK API modules.",
+          "outcome": "rejected",
+          "record": "docs/performance/round9-20261012-frontend.json"
+        },
+        {
+          "id": "round9-frontend-03",
+          "candidate": "Avoid validating and cloning all stored quick-link visits a second time during an admitted visit.",
+          "outcome": "accepted",
+          "record": "docs/performance/round9-20261012-frontend.json"
+        },
+        {
+          "id": "round9-frontend-04",
+          "candidate": "Return the native owned reader Promise directly from the bounded stream adapter.",
+          "outcome": "accepted",
+          "record": "docs/performance/round9-20261012-frontend.json"
+        },
+        {
+          "id": "round9-frontend-05",
+          "candidate": "Validate a constructed Markdown recovery object without parsing its serialized JSON snapshot.",
+          "outcome": "rejected",
+          "record": "docs/performance/round9-20261012-frontend.json"
+        }
+      ]
+    }
+  ],
+  "scopeRecords": [
+    "docs/performance/round9-20261012-backend.json",
+    "docs/performance/round9-20261012-frontend.json"
+  ],
+  "changedPaths": [
+    "backend/app/mcp/native_state.py",
+    "backend/app/mcp/redirect_policy.py",
+    "backend/tests/test_mcp_redirect_policy.py",
+    "backend/tests/test_native_mcp_core.py",
+    "frontend/src/lib/bounded-text.ts",
+    "frontend/src/lib/recent-aliases.test.ts",
+    "frontend/src/lib/recent-aliases.ts",
+    "frontend/src/lib/storage-schemas.ts"
+  ],
+  "integrationChangedPaths": [],
+  "generatedArtifacts": [
+    "frontend/src/lib/generated/sdk.gen.ts",
+    "frontend/src/lib/generated/types.gen.ts",
+    "frontend/src/lib/generated/zod.gen.ts"
+  ],
+  "sourceHashes": [
+    {
+      "path": "backend/app/mcp/native_state.py",
+      "sha256": "a1cfc85cdd62037348cb1fe8501c088ba6443ef72a58a9006c290cef383bf868"
+    },
+    {
+      "path": "backend/app/mcp/redirect_policy.py",
+      "sha256": "b3a7fbeb7172cbd2d498d086650a1aa8e9057426e007199671780708eb992e7c"
+    },
+    {
+      "path": "backend/tests/test_mcp_redirect_policy.py",
+      "sha256": "f7d5494f3b624ed074467043a336a450225247d6096e6426384ea2641336334a"
+    },
+    {
+      "path": "backend/tests/test_native_mcp_core.py",
+      "sha256": "b3a4c91d49b88caae17e0b02fc8dd268e98f988b8ac7f7d339d887cbf6eafff5"
+    },
+    {
+      "path": "frontend/src/lib/bounded-text.ts",
+      "sha256": "fdaabea1ef548213fb20fe1c860733f8f4f3de13eb89a03ccf15707dca70c813"
+    },
+    {
+      "path": "frontend/src/lib/recent-aliases.test.ts",
+      "sha256": "f315e4b068f9d635a90886df4a51334646922c05cf600c1b7c24f7d2aea164bd"
+    },
+    {
+      "path": "frontend/src/lib/recent-aliases.ts",
+      "sha256": "a5c4f49883c67e7836c4a165cee65cd4123c1dad002b31a3b1d43ec8b5543f0f"
+    },
+    {
+      "path": "frontend/src/lib/storage-schemas.ts",
+      "sha256": "9d61d879605fd3925c1b4ed87fdb0c7fdce13a12e5eab2fbfa6c7d105e0d8e27"
+    }
+  ],
+  "integrationSourceHashes": [],
+  "originalBaselineSyncPolicy": "No baseline changes; preserve the original baseline byte-exact.",
+  "measurements": {
+    "selectedFixtures": [
+      {
+        "candidate": "round9-backend-01",
+        "record": "docs/performance/round9-20261012-backend.json",
+        "measurement": "Native-state update with 10,000 live states",
+        "before": 7.27844375,
+        "after": 4.112025149999999,
+        "unit": "median ms",
+        "workload": "put-existing-10000-active",
+        "controlsAndLimits": "Three alternating process pairs, nine samples per process. Owned transaction fixture includes its timeouts and verification read; SQL statements fall10→9 because one unused quota COUNT is skipped only for a live existing key. New-key count/quotas, rotation, expiry, lock and caller transaction ownership remain controlled. One-row timings vary from+5.45% to-20.84%; no universal latency claim or new persistent state."
+      },
+      {
+        "candidate": "round9-backend-03",
+        "record": "docs/performance/round9-20261012-backend.json",
+        "measurement": "Exact-class authorization policy with 16 callbacks",
+        "before": 102.02856,
+        "after": 59.324588000000006,
+        "unit": "median µs",
+        "workload": "policy-authorize-16-callbacks",
+        "controlsAndLimits": "Three alternating process pairs, nine samples per process. Parses fall34→17; all registered callbacks remain checked before the requested URI. Existing public subclass override dispatch/lazy matching is preserved. Subclass median adds0.182µs with mixed paired direction. Complete PostgreSQL provider latency shows no stable gain. Policy instances remain48bytes; up to16 parsed references are retained for the call, with traced peaks in the full report."
+      },
+      {
+        "candidate": "round9-frontend-03",
+        "record": "docs/performance/round9-20261012-frontend.json",
+        "measurement": "Record a recent alias with 50 stored visits",
+        "before": 24.85738142857112,
+        "after": 16.257381428571144,
+        "unit": "median µs",
+        "workload": "recordRecentAlias with50 stored visits, same1read/1write, final fresh fallback",
+        "controlsAndLimits": "41 alternating pairs of the complete native public recorder; 41 candidate medians are lower. Both arms perform one read and one write with exact ordinary output/fallback parity. Stored entries validate once and the new entry validates separately; arbitrary public writes keep their full validator. A count-zero correctness repair gives invalid-history reads fresh owned fallbacks; native public returned-array mutation and cross-user controls distinguish the intentionally fixed poisoned legacy state. Native compiled lifecycle/session controls pass. Isolated module gzip changes+44bytes; startup changes+1.590µs and synthetic retained heap changes+154.4bytes, with variance and small workloads in the full scope."
+      },
+      {
+        "candidate": "round9-frontend-04",
+        "record": "docs/performance/round9-20261012-frontend.json",
+        "measurement": "Native Promise initialization events for 4 MiB / 512 chunks",
+        "before": 3088,
+        "after": 2062,
+        "unit": "events per completed response",
+        "workload": "transformHttp4MiB/512chunks, native Promise init events",
+        "controlsAndLimits": "Seven identical alternating resource pairs through complete native transformHttp, streams, readers and Responses. Node async_hooks observes3,088→2,062 PROMISE events: two removed per read including EOF. Null/pre-aborted controls are unchanged. Ordinary-GC4MiB timing704.278→701.993µs is noise-sensitive;1KiB5.596→5.664µs has no useful gain. GC-outside timings are separately labeled; the rejected while/await prototype is excluded. Final module saves2gzip bytes; private native reader method ownership is fixed for the body lifetime."
+      }
+    ],
+    "clientBundleInventory": {
+      "home": {
+        "before": {
+          "files": [
+            {
+              "file": "static/chunks/3549-0962241baa87ed46.js",
+              "bytes": 8663,
+              "gzipBytes": 3583
+            },
+            {
+              "file": "static/chunks/app/(app)/not-found-d06f6d83539247ca.js",
+              "bytes": 1278,
+              "gzipBytes": 742
+            },
+            {
+              "file": "static/chunks/app/layout-6c764b2a87e4fcac.js",
+              "bytes": 4433,
+              "gzipBytes": 2009
+            },
+            {
+              "file": "static/chunks/app/global-error-4699291d9cd6a8b0.js",
+              "bytes": 1221,
+              "gzipBytes": 741
+            },
+            {
+              "file": "static/chunks/9577-0467d7ff5a01f9b0.js",
+              "bytes": 75365,
+              "gzipBytes": 20750
+            },
+            {
+              "file": "static/chunks/6325-d67c0ff50280111f.js",
+              "bytes": 27319,
+              "gzipBytes": 8606
+            },
+            {
+              "file": "static/chunks/9494-1cd34046d5c2b45d.js",
+              "bytes": 68834,
+              "gzipBytes": 21226
+            },
+            {
+              "file": "static/chunks/3508-8807ce197bd83e94.js",
+              "bytes": 12398,
+              "gzipBytes": 4500
+            },
+            {
+              "file": "static/chunks/7114-404c80ce77af26a9.js",
+              "bytes": 37830,
+              "gzipBytes": 12674
+            },
+            {
+              "file": "static/chunks/3616-fa2885bd8d5e9229.js",
+              "bytes": 7170,
+              "gzipBytes": 2696
+            },
+            {
+              "file": "static/chunks/7686-026b8e0206314b85.js",
+              "bytes": 141004,
+              "gzipBytes": 47157
+            },
+            {
+              "file": "static/chunks/3376-815d68387625c4cb.js",
+              "bytes": 31026,
+              "gzipBytes": 9522
+            },
+            {
+              "file": "static/chunks/5256-429e1e94a953b5f1.js",
+              "bytes": 26689,
+              "gzipBytes": 9140
+            },
+            {
+              "file": "static/chunks/app/(app)/layout-625426a0e3bf48c9.js",
+              "bytes": 123624,
+              "gzipBytes": 41490
+            },
+            {
+              "file": "static/chunks/app/(app)/page-36381129fcb63489.js",
+              "bytes": 16942,
+              "gzipBytes": 6756
+            }
+          ],
+          "bytes": 583796,
+          "gzipBytes": 191592
+        },
+        "after": {
+          "files": [
+            {
+              "file": "static/chunks/3549-0962241baa87ed46.js",
+              "bytes": 8663,
+              "gzipBytes": 3583
+            },
+            {
+              "file": "static/chunks/app/(app)/not-found-d06f6d83539247ca.js",
+              "bytes": 1278,
+              "gzipBytes": 742
+            },
+            {
+              "file": "static/chunks/app/layout-6c764b2a87e4fcac.js",
+              "bytes": 4433,
+              "gzipBytes": 2009
+            },
+            {
+              "file": "static/chunks/app/global-error-4699291d9cd6a8b0.js",
+              "bytes": 1221,
+              "gzipBytes": 741
+            },
+            {
+              "file": "static/chunks/9577-0467d7ff5a01f9b0.js",
+              "bytes": 75365,
+              "gzipBytes": 20750
+            },
+            {
+              "file": "static/chunks/6325-d67c0ff50280111f.js",
+              "bytes": 27319,
+              "gzipBytes": 8606
+            },
+            {
+              "file": "static/chunks/9494-1cd34046d5c2b45d.js",
+              "bytes": 68834,
+              "gzipBytes": 21226
+            },
+            {
+              "file": "static/chunks/3508-8807ce197bd83e94.js",
+              "bytes": 12398,
+              "gzipBytes": 4500
+            },
+            {
+              "file": "static/chunks/7114-404c80ce77af26a9.js",
+              "bytes": 37830,
+              "gzipBytes": 12674
+            },
+            {
+              "file": "static/chunks/3616-fa2885bd8d5e9229.js",
+              "bytes": 7170,
+              "gzipBytes": 2696
+            },
+            {
+              "file": "static/chunks/7686-026b8e0206314b85.js",
+              "bytes": 141004,
+              "gzipBytes": 47157
+            },
+            {
+              "file": "static/chunks/3376-a1ae52a3ab691b38.js",
+              "bytes": 31030,
+              "gzipBytes": 9529
+            },
+            {
+              "file": "static/chunks/5256-429e1e94a953b5f1.js",
+              "bytes": 26689,
+              "gzipBytes": 9140
+            },
+            {
+              "file": "static/chunks/app/(app)/layout-625426a0e3bf48c9.js",
+              "bytes": 123624,
+              "gzipBytes": 41490
+            },
+            {
+              "file": "static/chunks/app/(app)/page-36381129fcb63489.js",
+              "bytes": 16942,
+              "gzipBytes": 6756
+            }
+          ],
+          "bytes": 583800,
+          "gzipBytes": 191599
+        },
+        "rawChangeBytes": 4,
+        "gzipChangeBytes": 7,
+        "gzipChangePercent": 0.0037
+      },
+      "document": {
+        "before": {
+          "files": [
+            {
+              "file": "static/chunks/3549-0962241baa87ed46.js",
+              "bytes": 8663,
+              "gzipBytes": 3583
+            },
+            {
+              "file": "static/chunks/app/(app)/not-found-d06f6d83539247ca.js",
+              "bytes": 1278,
+              "gzipBytes": 742
+            },
+            {
+              "file": "static/chunks/app/layout-6c764b2a87e4fcac.js",
+              "bytes": 4433,
+              "gzipBytes": 2009
+            },
+            {
+              "file": "static/chunks/app/global-error-4699291d9cd6a8b0.js",
+              "bytes": 1221,
+              "gzipBytes": 741
+            },
+            {
+              "file": "static/chunks/9577-0467d7ff5a01f9b0.js",
+              "bytes": 75365,
+              "gzipBytes": 20750
+            },
+            {
+              "file": "static/chunks/6325-d67c0ff50280111f.js",
+              "bytes": 27319,
+              "gzipBytes": 8606
+            },
+            {
+              "file": "static/chunks/9494-1cd34046d5c2b45d.js",
+              "bytes": 68834,
+              "gzipBytes": 21226
+            },
+            {
+              "file": "static/chunks/3508-8807ce197bd83e94.js",
+              "bytes": 12398,
+              "gzipBytes": 4500
+            },
+            {
+              "file": "static/chunks/7114-404c80ce77af26a9.js",
+              "bytes": 37830,
+              "gzipBytes": 12674
+            },
+            {
+              "file": "static/chunks/3616-fa2885bd8d5e9229.js",
+              "bytes": 7170,
+              "gzipBytes": 2696
+            },
+            {
+              "file": "static/chunks/3376-815d68387625c4cb.js",
+              "bytes": 31026,
+              "gzipBytes": 9522
+            },
+            {
+              "file": "static/chunks/5256-429e1e94a953b5f1.js",
+              "bytes": 26689,
+              "gzipBytes": 9140
+            },
+            {
+              "file": "static/chunks/6334-af34c3b69277bfb6.js",
+              "bytes": 30467,
+              "gzipBytes": 10507
+            },
+            {
+              "file": "static/chunks/app/(app)/d/%5BdriveId%5D/page-7526f4031df08f5c.js",
+              "bytes": 2155,
+              "gzipBytes": 1005
+            },
+            {
+              "file": "static/chunks/7686-026b8e0206314b85.js",
+              "bytes": 141004,
+              "gzipBytes": 47157
+            },
+            {
+              "file": "static/chunks/app/(app)/layout-625426a0e3bf48c9.js",
+              "bytes": 123624,
+              "gzipBytes": 41490
+            },
+            {
+              "file": "static/chunks/app/(app)/page-36381129fcb63489.js",
+              "bytes": 16942,
+              "gzipBytes": 6756
+            }
+          ],
+          "bytes": 616418,
+          "gzipBytes": 203104
+        },
+        "after": {
+          "files": [
+            {
+              "file": "static/chunks/3549-0962241baa87ed46.js",
+              "bytes": 8663,
+              "gzipBytes": 3583
+            },
+            {
+              "file": "static/chunks/app/(app)/not-found-d06f6d83539247ca.js",
+              "bytes": 1278,
+              "gzipBytes": 742
+            },
+            {
+              "file": "static/chunks/app/layout-6c764b2a87e4fcac.js",
+              "bytes": 4433,
+              "gzipBytes": 2009
+            },
+            {
+              "file": "static/chunks/app/global-error-4699291d9cd6a8b0.js",
+              "bytes": 1221,
+              "gzipBytes": 741
+            },
+            {
+              "file": "static/chunks/9577-0467d7ff5a01f9b0.js",
+              "bytes": 75365,
+              "gzipBytes": 20750
+            },
+            {
+              "file": "static/chunks/6325-d67c0ff50280111f.js",
+              "bytes": 27319,
+              "gzipBytes": 8606
+            },
+            {
+              "file": "static/chunks/9494-1cd34046d5c2b45d.js",
+              "bytes": 68834,
+              "gzipBytes": 21226
+            },
+            {
+              "file": "static/chunks/3508-8807ce197bd83e94.js",
+              "bytes": 12398,
+              "gzipBytes": 4500
+            },
+            {
+              "file": "static/chunks/7114-404c80ce77af26a9.js",
+              "bytes": 37830,
+              "gzipBytes": 12674
+            },
+            {
+              "file": "static/chunks/3616-fa2885bd8d5e9229.js",
+              "bytes": 7170,
+              "gzipBytes": 2696
+            },
+            {
+              "file": "static/chunks/3376-a1ae52a3ab691b38.js",
+              "bytes": 31030,
+              "gzipBytes": 9529
+            },
+            {
+              "file": "static/chunks/5256-429e1e94a953b5f1.js",
+              "bytes": 26689,
+              "gzipBytes": 9140
+            },
+            {
+              "file": "static/chunks/6334-af34c3b69277bfb6.js",
+              "bytes": 30467,
+              "gzipBytes": 10507
+            },
+            {
+              "file": "static/chunks/app/(app)/d/%5BdriveId%5D/page-b1611c86643a917d.js",
+              "bytes": 2244,
+              "gzipBytes": 1042
+            },
+            {
+              "file": "static/chunks/7686-026b8e0206314b85.js",
+              "bytes": 141004,
+              "gzipBytes": 47157
+            },
+            {
+              "file": "static/chunks/app/(app)/layout-625426a0e3bf48c9.js",
+              "bytes": 123624,
+              "gzipBytes": 41490
+            },
+            {
+              "file": "static/chunks/app/(app)/page-36381129fcb63489.js",
+              "bytes": 16942,
+              "gzipBytes": 6756
+            }
+          ],
+          "bytes": 616511,
+          "gzipBytes": 203148
+        },
+        "rawChangeBytes": 93,
+        "gzipChangeBytes": 44,
+        "gzipChangePercent": 0.0217
+      }
+    },
+    "limitation": "Controlled local work, allocations and native resources plus locked app inventory do not establish live page-load latency or a physical optimization maximum. Shared framework assets and deferred chunks are excluded."
+  },
+  "validation": {
+    "initialIntegratedLocalGate": {
+      "startedAt": "2026-10-12T13:14:10.148301+00:00",
+      "completedAt": "2026-10-12T13:19:29.924684+00:00",
+      "seconds": 319.775,
+      "command": [
+        "backend/.venv/bin/python",
+        "/private/tmp/sarj-wiki-perf-round9-benchmark-guard.py",
+        "make",
+        "check"
+      ],
+      "exitCode": 0,
+      "log": "/private/tmp/sarj-wiki-perf-round9-integrated-check-1.log",
+      "logSha256": "fb0c06de5081f9670a0b489660c5e66cc32ab2dd67145f6f8f397cd67c7f2455",
+      "repositoryTestsPassed": 323,
+      "backendTestsPassed": 4467,
+      "backendCoveragePercent": 89.32,
+      "frontendTestFilesPassed": 122,
+      "frontendTestsPassed": 1002,
+      "frontendTypeCoveragePercent": 99.72,
+      "existingNodeSecurityBackportTestsPassed": 13,
+      "infrastructureTestsPassed": 11,
+      "productionBuild": "passed",
+      "toolchain": "Pinned uv 0.12.24, locked Python 3.14.7, Node >=26.7 and locked npm dependencies",
+      "databaseFixtures": "Owned loopback PostgreSQL QA, round6 bulk/cache and round7 read/provider databases explicitly enabled; fixture-owned rows only"
+    },
+    "scopeReportsVerified": 2,
+    "distinctCandidateIdsVerified": 10,
+    "priorCandidateCount": 419,
+    "newCandidateIdsDisjointFromPriorLedger": true,
+    "qualifiedSourceHashCount": 8,
+    "referencedArtifactsWithExplicitHashesVerified": 684,
+    "scopeSourceHashes": [
+      {
+        "path": "backend/app/mcp/native_state.py",
+        "sha256": "a1cfc85cdd62037348cb1fe8501c088ba6443ef72a58a9006c290cef383bf868"
+      },
+      {
+        "path": "backend/app/mcp/redirect_policy.py",
+        "sha256": "b3a7fbeb7172cbd2d498d086650a1aa8e9057426e007199671780708eb992e7c"
+      },
+      {
+        "path": "backend/tests/test_mcp_redirect_policy.py",
+        "sha256": "f7d5494f3b624ed074467043a336a450225247d6096e6426384ea2641336334a"
+      },
+      {
+        "path": "backend/tests/test_native_mcp_core.py",
+        "sha256": "b3a4c91d49b88caae17e0b02fc8dd268e98f988b8ac7f7d339d887cbf6eafff5"
+      },
+      {
+        "path": "frontend/src/lib/bounded-text.ts",
+        "sha256": "fdaabea1ef548213fb20fe1c860733f8f4f3de13eb89a03ccf15707dca70c813"
+      },
+      {
+        "path": "frontend/src/lib/recent-aliases.test.ts",
+        "sha256": "f315e4b068f9d635a90886df4a51334646922c05cf600c1b7c24f7d2aea164bd"
+      },
+      {
+        "path": "frontend/src/lib/recent-aliases.ts",
+        "sha256": "a5c4f49883c67e7836c4a165cee65cd4123c1dad002b31a3b1d43ec8b5543f0f"
+      },
+      {
+        "path": "frontend/src/lib/storage-schemas.ts",
+        "sha256": "9d61d879605fd3925c1b4ed87fdb0c7fdce13a12e5eab2fbfa6c7d105e0d8e27"
+      }
+    ],
+    "referencedArtifactHashes": [
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/01-native_state.py",
+        "sha256": "a1cfc85cdd62037348cb1fe8501c088ba6443ef72a58a9006c290cef383bf868"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/02-native_admission.py",
+        "sha256": "03ed8389ee9abcee4c9f825a156440c010dbfd88d99d698ee9d420ef28342f64"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/03-redirect_policy.py",
+        "sha256": "2f4767eb854a59a9d7f8d3875cb54ab34767d0b10471a5b26d6df215d7108e44"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/03-v2-redirect_policy.py",
+        "sha256": "1e93d57a94e0fc9e21300546a034d96195dfec79f05736c9b47696b350c8a97d"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/03-v3-redirect_policy.py",
+        "sha256": "b3a7fbeb7172cbd2d498d086650a1aa8e9057426e007199671780708eb992e7c"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/04-native_state.py",
+        "sha256": "232ec8d7c25e71366d6a0ca4c72c7b2fbd044f01980b95ed59c5230c29f953b7"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/04-v2-native_state.py",
+        "sha256": "c96692b77dc1fba08c28ee9000a29e2721bb678cdd2e8b8fa5c6a1204df24331"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/05-native_state.py",
+        "sha256": "2a66deb90222fe81b36247f388bd770d5549f41ed7c88d73776e5027236448bd"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/baseline-mcp_native_state.py",
+        "sha256": "002eddd09a36618b8fbcb6398ceb553562b1794e6048445160d37dc640a3c503"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/baseline-mcp_registration_admission.py",
+        "sha256": "bc8055eedb57c2045bb366c7a44c15d27338e6abde79ec5f2ce725e3eb2447cc"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/baseline-native_admission.py",
+        "sha256": "5855e0c1eec69296a07408cee785f506d2e3dddf38f54d3b69557d2b95793961"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/baseline-native_core.py",
+        "sha256": "1b170603c66f0077121e51694eaf142f837e5a1e9671bc3f7919fc39576c4513"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/baseline-native_provider.py",
+        "sha256": "e5d3d2d5abcba58f214ff8a8514d6e84e09a24d00e9cf28ecb236673ee26c95d"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/baseline-native_schemas.py",
+        "sha256": "acb663942619a57691412e65c9009c02fce3ed949a8d5d8affa0453335e793d9"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/baseline-native_state.py",
+        "sha256": "f1216397d706a8599d48ac1750d65b6406578dc257f0a5830d1443b3ad851258"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/baseline-native_state_port.py",
+        "sha256": "8657d8ccdd5a798804c09193cf24aaefb8654744fcbba91ffe8dd79516b027d8"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/baseline-protection.py",
+        "sha256": "83dcf1a9e823522d2b2f34a4e677f0608e1ddff1e7223e64e5824b9167682d87"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/baseline-redirect_policy.py",
+        "sha256": "beac64f5deae0c6a70a7b5f942321760e69d9795f29c659c9716707beedc61cd"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/baseline-storage.py",
+        "sha256": "0f242e236e83e837ef7423234dac55e484806a8eb188806ed615bdcc42283910"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/central-full-root-v2-process.json",
+        "sha256": "e5be9c7a6f6600ca41a28d02d0ff19be0611c0c3c007bf5262916dade5bc4d47"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/central-full-root-v2.log",
+        "sha256": "b7f8946002cb8e30bb1c929363acede84f0cb2159a618f8815b7cf896076cea9"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/central-full-root-v3-process.json",
+        "sha256": "8869ca53e7b68b97e65e0df50e86dcec3bd4cbd38cdc7b1bab6eeee2682c51cc"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/central-full-root-v3.log",
+        "sha256": "edb3fb900a3f9b3d0c5b88963c566d62402d0706d0312fe94dd8fdf51093d473"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/central-full-root-v6-process.json",
+        "sha256": "1033b00d15f7263997d2554c8a077362c95eda77a72b5db510b38df782d42141"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/central-full-root-v6.log",
+        "sha256": "9b0e9cac1f91e10f604fa2cd7065a7b44b1209ea1f41eead8caf39b03b80cbde"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/exact-python-baseline-v2-process.json",
+        "sha256": "67d72f675664cdcf1958f09afb69284ed3833185ccae9d325d1248e1d8f9962a"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/exact-python-baseline-v2.log",
+        "sha256": "9e6ba074515e2e43de59e68a079a51ef128e40845c5ae53540616e2462784459"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/exact-python-baseline-v5-process.json",
+        "sha256": "43f1f3bc0c1dcabdc437f05988481ee4945700784eb21e0e2d339691cd47253b"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/exact-python-baseline-v5.log",
+        "sha256": "078ab0cc9e1dfc6d11311e34265381c762262dd18aaa7600128045df0b9ba7e8"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/final-dependency-grants.py",
+        "sha256": "6a2dc5d0e6bf28d9c4479507fae7df7fe49852c3d2c31496b96e2145a45a837a"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/final-dependency-identity.py",
+        "sha256": "fbcea3606e317be4ca58104f77616e097b156442905d282533dc2b3e82a5703f"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/final-dependency-mcp_grant.py",
+        "sha256": "1747111ccc741ea04fbf280dc73064c944a8ddca3bac9d280b9ec6cf72b073d2"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/final-dependency-mcp_native_state.py",
+        "sha256": "002eddd09a36618b8fbcb6398ceb553562b1794e6048445160d37dc640a3c503"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/final-dependency-mcp_registration_admission.py",
+        "sha256": "bc8055eedb57c2045bb366c7a44c15d27338e6abde79ec5f2ce725e3eb2447cc"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/final-dependency-native_core.py",
+        "sha256": "1b170603c66f0077121e51694eaf142f837e5a1e9671bc3f7919fc39576c4513"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/final-dependency-native_metadata.py",
+        "sha256": "86dcb942c62381697c82159e72e243909bd76818c36ceb1ab09ec28da2f8071c"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/final-dependency-native_provider.py",
+        "sha256": "e5d3d2d5abcba58f214ff8a8514d6e84e09a24d00e9cf28ecb236673ee26c95d"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/final-dependency-native_request_context.py",
+        "sha256": "3c3cde07b618d05b9e470a204133e6b2936a01a98e30bee96991beb8bba898d0"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/final-dependency-native_schemas.py",
+        "sha256": "acb663942619a57691412e65c9009c02fce3ed949a8d5d8affa0453335e793d9"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/final-dependency-native_state_port.py",
+        "sha256": "8657d8ccdd5a798804c09193cf24aaefb8654744fcbba91ffe8dd79516b027d8"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/final-dependency-protection.py",
+        "sha256": "83dcf1a9e823522d2b2f34a4e677f0608e1ddff1e7223e64e5824b9167682d87"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/final-dependency-schemas.py",
+        "sha256": "a7977a240b8a468906cacf1b5ec2c02b9d6d180734595bdb4b92b09430c5580b"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/final-dependency-storage.py",
+        "sha256": "0f242e236e83e837ef7423234dac55e484806a8eb188806ed615bdcc42283910"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/final-dependency-user.py",
+        "sha256": "b9ba4dc74bafc75e7bb3c25fd047eccb41233ee30c9672812a3fba09606b0d2a"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/final-native_state.py",
+        "sha256": "a1cfc85cdd62037348cb1fe8501c088ba6443ef72a58a9006c290cef383bf868"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/final-public-01-process.json",
+        "sha256": "5a2f709abb9e5b909e52d8f25fe0d335210793c86b85b4b0b917c6833f5e4b7f"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/final-public-01.json",
+        "sha256": "d8b8d13f56928aa1149b61a60a97a942e43721748d1391fd2f1e41c18ba10cab"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/final-public-01.log",
+        "sha256": "d7c43d724880de5015697c209cb335a88905ef878e8e7cb5c68ce3b51967a56f"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/final-public-02-process.json",
+        "sha256": "7e0d686f00e8475dd1401ef67f76541fc6b03d75ed05be23e728efcd9bb2d8ad"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/final-public-02.json",
+        "sha256": "7624981b9437e56a0f5701723531279c122d2e6b70ce1929bd3ab81bd8388496"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/final-public-02.log",
+        "sha256": "9da95a0dccfa2185e3b5533cf505d5a022e3793e722cdfe3cda84d4b31198578"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/final-public-03-process.json",
+        "sha256": "aa766c063c3a08a3a4009b5952a4aa39c8224d09da00ddefa7b3bb9a10f58ead"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/final-public-03.json",
+        "sha256": "d9553a38c595dd4cff21e5de1c938d80bc55c81bf49b6b72ffbfefd3afd89f5d"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/final-public-03.log",
+        "sha256": "f517e39f7fe32660182f410ad494146614d54a437f7eaf10aa4caf0359f7f124"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/final-public-04-process.json",
+        "sha256": "cea8d9d82faa56f531210bef3d1cca5a153f8abae144d941b0718cb386a45bc5"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/final-public-04.json",
+        "sha256": "573bb05dc7f4fff05d660f986e3561110cdb0646a0c49f69d19dfcda05f9f6ad"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/final-public-04.log",
+        "sha256": "6281dc0a527e249b18098600e17d97193f2266b95669a895b8c08094b409a3ed"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/final-public-05-process.json",
+        "sha256": "4bb23e6b5e2e1c92211c9e1fd28686a49442f74de4c5f2674538f6e3d9b7b610"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/final-public-05.json",
+        "sha256": "61dd7fa83ef577aaff4a40b36c1ac4e4d2209e483c3a8646c3e16add38bc77e2"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/final-public-05.log",
+        "sha256": "196f5a38574e1a2e12804183cd44849381bd9c7f181a587ea2dfd8dd0a0bdff7"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/final-public-parity.json",
+        "sha256": "8a5a63460de8d6d5ed5a6812970249bc042dad3864740de0cd1ad184331cfca4"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/final-redirect_policy.py",
+        "sha256": "2f4767eb854a59a9d7f8d3875cb54ab34767d0b10471a5b26d6df215d7108e44"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/final-test_mcp_redirect_policy.py",
+        "sha256": "493eb0ee085e81ff7106392165f93ee1f5ca76ca3194e9035405b88521950516"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/final-test_native_mcp_core.py",
+        "sha256": "b3a4c91d49b88caae17e0b02fc8dd268e98f988b8ac7f7d339d887cbf6eafff5"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/focused-standards-v2-process.json",
+        "sha256": "ea2551d75f2c69857fced15cd9896a7585c0cc89479beeec41e1886e84c0c138"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/focused-standards-v2.log",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/focused-standards-v5-process.json",
+        "sha256": "5c7d3e9b13edcb19db8b4c3ebfaeea867eb660f66134fc08eef5e748a699dfe6"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/focused-standards-v5.log",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/format-v1-process.json",
+        "sha256": "27fd9e8628f20e385b92a6b8128f10b46e6da201d983ae6bf2f5659623f323c5"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/format-v1.log",
+        "sha256": "d4404ae4ef75443dc978ebaad5232afee9db0def30c7ec13a6b02c54d9febf57"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/format-v2-process.json",
+        "sha256": "35b2d19b810d0cee35c6799cc6cf0df82692f7de5faac6b03412c35dddd50437"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/format-v2.log",
+        "sha256": "177f260a5645724013185e4b140c7045cc39e56c0c97b120f5cb23599f85f0de"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/format-v5-process.json",
+        "sha256": "02875a60d48b92f05b0490ea8eb97e820731dbbf4060f50c9b2ebc2ede894bb7"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/format-v5.log",
+        "sha256": "177f260a5645724013185e4b140c7045cc39e56c0c97b120f5cb23599f85f0de"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/historical-mutable-source-mapping.json",
+        "sha256": "ac267ad5f4e2ef1bcdc877cb83e4a23a72b59eb9d3b3758aac3d52f6bb056f13"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/historical-performance.json",
+        "sha256": "4b9da261be4c787313e348e55b99fcc5598aab07158166fe039765f093b72528"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/historical-round5-20261011.json",
+        "sha256": "197966475964b02c702329eeec00ed3ec11ae4beb973c618885248cc72ca978c"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/historical-round7-20261011-reads.json",
+        "sha256": "ce04883bf47bf7f4efb9e8ed4003619676c1fcd90597595413df7b84447e1583"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/historical-round7-20261011-rendering.json",
+        "sha256": "a1c4118ffc64e984dac0c3cf56207fdcf310c1448b5900ea62295de98626dd2f"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/mypy-v2-process.json",
+        "sha256": "c4abe7d9eea38d597178a4f9c12785d7b0fb131ded94b3f65bd4083c0bddcb85"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/mypy-v2.log",
+        "sha256": "f9b031e5c45aa702cd4fef028d465551cb20a2c4698e0913c7b00766b20ac4d8"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/mypy-v5-process.json",
+        "sha256": "5fbabd5984519f0f4758bc58dfe5d1aedf6fccdadf4c9c94d2b9b3e84b48ee59"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/mypy-v5.log",
+        "sha256": "f9b031e5c45aa702cd4fef028d465551cb20a2c4698e0913c7b00766b20ac4d8"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/native-dependency-source-closure.json",
+        "sha256": "520a9b59ce8b9c7a7f620f85cb1ca7595f7805b3484e26ca75873c7f7dbe59a1"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/native-tests-v2-process.json",
+        "sha256": "2bcae9aa1ae556b42b0314f171a798b7d2b913c990b8d23addc6c1ac62d88e76"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/native-tests-v2.log",
+        "sha256": "ff819659e467692f8631dba7da1ede189503cca641836a286e792d4468fdb98c"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/native-tests-v5-process.json",
+        "sha256": "07e528a87128958ea79fe674761de873bc6f18c773ec39c6ae2d45eddaabb540"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/native-tests-v5.log",
+        "sha256": "de612111c6fd08a7271013ea35a514d1661e0c53760633e31f6577c93f0488ed"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-01-block1-baseline-process.json",
+        "sha256": "613cb3fcdd7ab0165e10bf207c29d5b22cdbdfb6f6374bd06b1a0af3b77d8a5f"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-01-block1-baseline.json",
+        "sha256": "f36b043fb62b2e4178e2f3089cee17324164a930d8845ee52dd6810bcd5cf274"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-01-block1-baseline.log",
+        "sha256": "cc52f81777b176d1e68919abdc3fa588046ab0ee87e2b7f011819413e687d528"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-01-block1-candidate-process.json",
+        "sha256": "92eb19c229f02fe2547b60568d4d17e1287e06f33d179d33b0b9ece5be9dab7d"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-01-block1-candidate.json",
+        "sha256": "a7f981b2847baddfc4419f358a2958ee15926dbc76912383e805ab9a520a7c7c"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-01-block1-candidate.log",
+        "sha256": "7caefe8c9db1817a82fdb6442d4d2a1145263bbe25b0d6f4f24e3b22491288db"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-01-block2-baseline-process.json",
+        "sha256": "38ce0ca8eaa32001f20ff18c3f5ff7fe1a4c2bcd31487ae74861d7e172b623c6"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-01-block2-baseline.json",
+        "sha256": "fb7196638691ff7575c92185fe55bb4ca6bde710a96ebbcc0104b563abc0dcf3"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-01-block2-baseline.log",
+        "sha256": "87fb988b4920b5242df9b26d1b0980b8b36fe2526c74fcd795a269d46666ff48"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-01-block2-candidate-process.json",
+        "sha256": "e5ccc1de6456335a0f1ada3573b3a9c72b80d2ba873d7c5a03c88f86117f8f22"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-01-block2-candidate.json",
+        "sha256": "cb0189250a2ced4db63175988e7a9cdc5e9d15f6880cdb52912666806a9aa962"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-01-block2-candidate.log",
+        "sha256": "b4f7287517927dbdc8fd583978536f9d454800fe87d3fe3620afd5ee205f8f57"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-01-block3-baseline-process.json",
+        "sha256": "968293dff9eeec0a53dde736d160f3bc3818bb7b27173fd16d55242f270e6ee0"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-01-block3-baseline.json",
+        "sha256": "f6f5d8f0df0cce1cff2bcb3756db1e0bbcf68dbad87c4137251071717b955557"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-01-block3-baseline.log",
+        "sha256": "307153eb24eaed5e4302c40d111911b61643af286c58910558a4072bc67688ce"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-01-block3-candidate-process.json",
+        "sha256": "5cff0bd2521c3af63f1361853584617db01531b3246d90527aeb5a93c2147a9b"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-01-block3-candidate.json",
+        "sha256": "3d018ad3133561c66c34c2c41b1e5d51db30d060a51bf5d332f738133861e0f3"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-01-block3-candidate.log",
+        "sha256": "7834f58ce7a1e89d5dfa62d05c8d886fad1eefd9cfbb759e18ecdd2777c26811"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-01-summary.json",
+        "sha256": "117c3b0ff3b40f2f9a7c62d2bee8a84c38dffade00f84450a16bfc875a835535"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-02-block1-baseline-process.json",
+        "sha256": "56f7cb0f722fa12bdde416b0b723d5e0278065d41c8dfe9cf24ea9cab2bbe02e"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-02-block1-baseline.json",
+        "sha256": "5b70da172a91fd38c7cf7d80e8aeaf692868d0af635a20e2cf13d5649317a615"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-02-block1-baseline.log",
+        "sha256": "47a65ab1653c4d3d83bcf31271f5f6f31d18422fd63d5112a0de41bbde7a6596"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-02-block1-candidate-process.json",
+        "sha256": "773f13f81547ffb9042fa7227196876bac4254755ab33c76963bec1b36788c62"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-02-block1-candidate.json",
+        "sha256": "88a4c0c097d673e3eb0721cd07faac643789fdfe7b932e6c5d2a84376ecf9803"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-02-block1-candidate.log",
+        "sha256": "a007f410ea0f5e6aa4ec2e51ff12acb966ae0644497694d1af58cf20f73c56ff"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-02-block2-baseline-process.json",
+        "sha256": "ed84ec79c0d1b86c32dd61a0ac9a55a74ff9875bcd19253a10c86feb05acfd25"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-02-block2-baseline.json",
+        "sha256": "1641a48edbd5d07b1d64476adde15931d4a7e6dfd9b18d500b19f8c2b7820ead"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-02-block2-baseline.log",
+        "sha256": "19a712cd5d37d0a20cfd46368b126b2c40fdc2151e0c7b79a06963b8eb0b7822"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-02-block2-candidate-process.json",
+        "sha256": "6a55b59d3c26a8b59642ee5aa2e1315172a4b17b2e38a06524c8a69ae7684671"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-02-block2-candidate.json",
+        "sha256": "024677e44bcdc91dcefacb103325d4b74543b89459a6bc4e71796af44e7882ec"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-02-block2-candidate.log",
+        "sha256": "7dcfd9bcd33e272ac95b78447adbc06855f77d161ebaa23cc6a0ae5f0cbc0154"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-02-block3-baseline-process.json",
+        "sha256": "56f8ced710deddff2a428e6480ac10b6ce9d69e846b4974da495d9e09d94854e"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-02-block3-baseline.json",
+        "sha256": "16ba7da983f5e6e164e0a8a3b88f99f7330e26f01d7456868369e7913ceb0564"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-02-block3-baseline.log",
+        "sha256": "6fb47d521291e509da394dc2c99fd3c613aac803f69a1ef607338484263dc597"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-02-block3-candidate-process.json",
+        "sha256": "2adfa0e852c431f51eac096c3e5061503bc5cfb78080127be4600737b6caf54f"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-02-block3-candidate.json",
+        "sha256": "1bdb196b2d91f2e180d0f10b48ff7aefb781392f8aa1af0977b7b96fb298bf01"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-02-block3-candidate.log",
+        "sha256": "3ccb205482268f4c87398eb38fcb0bbe74fe29dd928c02582ca1b09836bbc28d"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-02-summary.json",
+        "sha256": "51c58fac9b9be0141c1b5f9b882b77bbd93d9af497a0baeae67b29fdfaeaee92"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-03-block1-baseline-process.json",
+        "sha256": "ad31f39696d3e28785dd59ad0e4837d8f01eed2a27fb63dd1c7da740a570b6c4"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-03-block1-baseline.json",
+        "sha256": "3ac54fa1419b3450e74dbf6c23d3e5983babf649cfef3228b55b41cdd9541241"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-03-block1-baseline.log",
+        "sha256": "fec23b06400d384feb636583b3416017297a96a1e7c191f4456581732503f564"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-03-block1-candidate-process.json",
+        "sha256": "cad18c0e0daa991ab7156bdd424b7f08f4b56659f8f841baff5078345247d47a"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-03-block1-candidate.json",
+        "sha256": "f622cbdf5f858aa5a37ea74c7f6711f50f8da8a0f98657ab86d95464d5f1c355"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-03-block1-candidate.log",
+        "sha256": "0ada3f109d3095c9c3dbd75472594035ede4e63e78adf751d7ea8079b50c0ff0"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-03-block2-baseline-process.json",
+        "sha256": "e6946cba3f3fc8934d49148be2ced1a05063c8be6798a360b4fa7c9e28c601e1"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-03-block2-baseline.json",
+        "sha256": "216668693b918b0897befa2f6b0c79c542d361068bcf39638717bf14333d1f3d"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-03-block2-baseline.log",
+        "sha256": "32692447b858604184bbc51d7d1460bc834c065a8e2b62be5a82a84076c2cb9e"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-03-block2-candidate-process.json",
+        "sha256": "87c1b7c40ac02a7adfe9a2a1ba93c5e11f41c06200a63f246ad3559ef1528da4"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-03-block2-candidate.json",
+        "sha256": "6033eba98b27eae3edfea47fd834f00da326e19abcc0a0d21547237d8be6d22d"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-03-block2-candidate.log",
+        "sha256": "2d2c7ed71c152b9ab727c4d46da5400620c8a93a7f98d799201e6f40503dc2e3"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-03-block3-baseline-process.json",
+        "sha256": "df0d5c77831bc84bab3b1478813da6e5c686299a780b951031048bfdfc8e5172"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-03-block3-baseline.json",
+        "sha256": "627d1b5dc9fa89fbc5af91d5c5c2c756cbcea668757ecad1dca3858a41f2d64f"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-03-block3-baseline.log",
+        "sha256": "f31f06c0a93155bae160b4f25bc80c7d30b2266a62a02b967e48313192324175"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-03-block3-candidate-process.json",
+        "sha256": "f246f08e178940a1c263cb62e99baf9af57354a7fd3725c899497086846ccedf"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-03-block3-candidate.json",
+        "sha256": "8a101eef817058f5416e0d5cbe588bc2a18d42e6086eae2692ccb3c3632e4d54"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-03-block3-candidate.log",
+        "sha256": "c17dd16244c5bbbebe4ebd9b8078afdca00842d024ef5153cc2fce9a614c2897"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-03-summary.json",
+        "sha256": "0744aa7eaed99d205f3f9334a87f759ca50adc1cf79da1d36cb4d6aa1db2e16a"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-04-block1-baseline-process.json",
+        "sha256": "930e4a90d25194b11585768a825bb685d2365149a9149c59411e70c1f9860107"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-04-block1-baseline.json",
+        "sha256": "b708733d4bdc7c27f160e4f7659c4c1af27661a8f42183fbb6ebac31725939d2"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-04-block1-baseline.log",
+        "sha256": "1f135be7400297be623d9a7f676692929a41ea0ea364e07da46c13c600b6519b"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-04-block1-candidate-process.json",
+        "sha256": "4300e36d0567c6bf698de718187a22120d625287ca648baffb676226215bcc5d"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-04-block1-candidate.json",
+        "sha256": "13d767710fb154a931f07d78b38b7c0aa8ec24cc7133ad14985eab1c72215b15"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-04-block1-candidate.log",
+        "sha256": "69a4cd0df6e9ba966c7173165c170b912c4734eb399dba998952ab8bc73005e8"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-04-block2-baseline-process.json",
+        "sha256": "69053e3fe9151d1f59421499d0b9febcdfab9cd6c757b6682b8125ad0a0b9307"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-04-block2-baseline.json",
+        "sha256": "716c9cd62e1e8d211048cccd30247941f101956a76be05c2bd977a0ce21590e7"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-04-block2-baseline.log",
+        "sha256": "eb1bf6e29347c4a6f6ac1721c94849cbda8df6bcdd3a5bc43c14368fb1c775b1"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-04-block2-candidate-process.json",
+        "sha256": "10c290d217bb4d26bec78a8e016c6e00d4785963597301f2d57684ed9c3ef855"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-04-block2-candidate.json",
+        "sha256": "0865904df284e3c4c2356358b3a7f2e2e8eaa01067ddea17aafbbd193784fea9"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-04-block2-candidate.log",
+        "sha256": "335a3589c748880a0060921f699c3e01de9e045847d5b2433ce856d129091f9f"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-04-block3-baseline-process.json",
+        "sha256": "eeea5d502da4b9e0aefa738004fbc2ccf3d39478df12471ce3e94fdcfac54631"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-04-block3-baseline.json",
+        "sha256": "cb0617deeea375662878eda68c12250c07e8b2292f5ca437c5cde40e9c80e019"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-04-block3-baseline.log",
+        "sha256": "ece95901629ec4681794dc9b68edc6b576f5f361f7aa543fdd737e2300f52659"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-04-block3-candidate-process.json",
+        "sha256": "8d453db0a9c8c8b76d188e673eda8c52b90971b850e693c72d79091cdd59b4da"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-04-block3-candidate.json",
+        "sha256": "db8efe1b635e8137e5f3d3afda49cb78058d0ba2becbc31c1d97aff018fa6aec"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-04-block3-candidate.log",
+        "sha256": "4f7bcb281c26711fd56d88f9b602532fb85f754899eda0e372717d199bfa8b2f"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-04-summary.json",
+        "sha256": "dca2b2b06fff848a1a2bc9253155af1566687a946f506e45ec26ffcbd344561c"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-05-block1-baseline-process.json",
+        "sha256": "bc617dbec6c921aab0fbbdd2587c7930659e045248328e7e31903fe121ad1182"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-05-block1-baseline.json",
+        "sha256": "7048b135063f32d38e4c48a6a23f54e264d00143144a993764def33e58710a8c"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-05-block1-baseline.log",
+        "sha256": "f06bdf8c1014bec84ff46dc51969fddb6d86b0c72c5a9483d6d93fc8df968607"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-05-block1-candidate-process.json",
+        "sha256": "41d30e40fefc233ecbd5bf84087e0d8e5f02c7729d2924d8dec51a13af0c6505"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-05-block1-candidate.json",
+        "sha256": "3ca7d6e34457001c437a6e3897fde78204e49751d6017933daaea03d595bc9b0"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-05-block1-candidate.log",
+        "sha256": "dc56e712dc727898e3f956ce1b1f497bc412f8b17cab9a651c8e4caa60632e12"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-05-block2-baseline-process.json",
+        "sha256": "24ad0a278ef40b84d8cb16a726754feb7d71edce47823b2e52a682ba5e66370d"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-05-block2-baseline.json",
+        "sha256": "b9f25f93569c3b592b1daa4e21db51295f9c943016faaebac19205142c15a182"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-05-block2-baseline.log",
+        "sha256": "13350cda7c23e9cb1d8a4b7a7590432cfc477fe3e3f278ba3efdc5b909496e44"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-05-block2-candidate-process.json",
+        "sha256": "7a24d572b96eb11ac0dc88d2c08c11101ca90db9a4b2eee3e4bde9317fec73fa"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-05-block2-candidate.json",
+        "sha256": "e404937bb74f1c65046d9a11b6ab5143b4bdb808ad262d9f2d3ef5de0dac6cca"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-05-block2-candidate.log",
+        "sha256": "8d357df51e6b9a662309914ff04d6eda61e7c9feaeb67dba356cd4b4f5190efa"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-05-block3-baseline-process.json",
+        "sha256": "320f754d5f6bc94a8708dfcad372ec33082f140550281b44dd657724ebe6fe59"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-05-block3-baseline.json",
+        "sha256": "e24aebf326f1fffccb028946b01680d6e4e02bb3779c01061d5fd5fdf6fe9659"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-05-block3-baseline.log",
+        "sha256": "ee85c7d6883fe58044245d9447783d21c20be07d28aa837fed7196dd48dcbb3f"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-05-block3-candidate-process.json",
+        "sha256": "c5c90e2bbc05ff15fd86bb622cb171663c032727d1d6ead43158e67834a34287"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-05-block3-candidate.json",
+        "sha256": "6c98f936e7d69f44fd9b5ec977389d462b7f3b03a7f698287b97d6e1fc51e9d7"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-05-block3-candidate.log",
+        "sha256": "4d4075ee6ce930d8290066aeac511181d67344e705e597beb97964e6d61e5d6a"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-05-summary.json",
+        "sha256": "1abdd2d36a03a84a5d6110f49d302717a3069e745d47832690c7522c87fe2cbf"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-v2-03-block1-baseline-process.json",
+        "sha256": "8741869288a194afc72f282d5f2a0b80090626ba793c05c3e90b3e704ab79783"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-v2-03-block1-baseline.json",
+        "sha256": "bdf96b3718f97d9ec2199d579b43d1b805a357d2cca186a23f17f69b5828f952"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-v2-03-block1-baseline.log",
+        "sha256": "d8ac172b70e93b3a6efb7d36f148b5c73e9579b7c3f6f0da1ba1c606d3041f3f"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-v2-03-block1-candidate-process.json",
+        "sha256": "e849ba9b04323275a22df288cd685f2cca6f888e641350d9f1b80d397ab4f3f0"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-v2-03-block1-candidate.json",
+        "sha256": "23b18ac3fb9a374ba7178af95435dd02ff57e2d8fc6d34032396848bea546afd"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-v2-03-block1-candidate.log",
+        "sha256": "4842f25381ee9169d6d12f370022e6d9f106ff0d7154f70d3865a86dc4d7f2d6"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-v2-03-block2-baseline-process.json",
+        "sha256": "6a3fa99f4dc2acc166116498dd2b5afe92a0253d924867730f55ad4dd547546c"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-v2-03-block2-baseline.json",
+        "sha256": "010e044ef7ac27fc767b58ee44e1eb985e30bf0f19976252aaf64355b7952a51"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-v2-03-block2-baseline.log",
+        "sha256": "224262e10d9238debb288207fa8a9a4d7901f2465607417aa676878c3c2d6d07"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-v2-03-block2-candidate-process.json",
+        "sha256": "9e04b4e37b90f68be079275b1ab9006de0c07009b693f1059d7bcbe605d18ce7"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-v2-03-block2-candidate.json",
+        "sha256": "3933fd01749e5e3d2f6e0016c475c7f1852f973464472ac514b4e5183fa43981"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-v2-03-block2-candidate.log",
+        "sha256": "bdbf79be25ad63549d964fde59960779e4d894a33ca0711ddfa868a5a99dafec"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-v2-03-block3-baseline-process.json",
+        "sha256": "7fb491997d963712923de9b08a24c62a14d6c6c6c4218159d89d747f1b771a83"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-v2-03-block3-baseline.json",
+        "sha256": "7c42e5a49780598523fc0c3c0fdbe5a4b278f2815877e35bf28775141fe91908"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-v2-03-block3-baseline.log",
+        "sha256": "781ab4406107f038ebc49f7f4cdd31970a9b32c773898ff73a425bd89a2579e5"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-v2-03-block3-candidate-process.json",
+        "sha256": "ec672a15200dd6bdd8ffb3c9a33c58e0aee19e3f30b229fdea2aedd3c0eef8ea"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-v2-03-block3-candidate.json",
+        "sha256": "8612d3b482470ef02bd3319a1857df0d9b1a7183dd6087d9181f24f2e13d19d2"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-v2-03-block3-candidate.log",
+        "sha256": "e82c88b15f86f57842db8c225e82bdaf02886ca7eeb38a0f83710c0c566b074b"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-v2-03-summary.json",
+        "sha256": "056b809b22f9e70694671c8ea0ce826a8d6d330046cfbf7c802cead8255d1b3b"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-v3-03-block1-baseline-process.json",
+        "sha256": "70dd5efb56825c1b59b824552383f552a83448ec333ce5de44ef7d351956d9d8"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-v3-03-block1-baseline.json",
+        "sha256": "3d8d9156dff6d8d402200e124139ec58fb14c6d18eb9119d0ee3eff3fe31fd7e"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-v3-03-block1-baseline.log",
+        "sha256": "19ac3ebf33716733b324123f86c84ae9311a0e7dd64d7b9034a94d29108152ca"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-v3-03-block1-candidate-process.json",
+        "sha256": "d9b9244f6a300a6ca4c758d0bc6b9682e4a580392ef62765f51eb7cfcb6e2887"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-v3-03-block1-candidate.json",
+        "sha256": "8e6119e7d9851ecaf7ef94a75bc48a2c3cc43cba6bde182ebe0d0e0f3b58dd4d"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-v3-03-block1-candidate.log",
+        "sha256": "88c1e066e20440fcd8b3068298fc0d7c9e1770f85ebb479b67b1190c3c1b6fbd"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-v3-03-block2-baseline-process.json",
+        "sha256": "cc923b3aeb893977f8dfbd0bc1fdca2d11c15c292d2304e5034072fab1586782"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-v3-03-block2-baseline.json",
+        "sha256": "531f20158514fae55b3e0142415552b8367a7fc995f4cc20f7811b9bcb926725"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-v3-03-block2-baseline.log",
+        "sha256": "3b6d21d025abb2cc7a66c3c26dcf141cec10bfacf8a3dcf1daef97d35b48b3df"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-v3-03-block2-candidate-process.json",
+        "sha256": "c86d08981fcaa87f8a67e86979ad3a65e5ac9c688daa7c162fe9a50c68718ef9"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-v3-03-block2-candidate.json",
+        "sha256": "654ac0eecfc28aa94e074b900993a4ab5853daa7356a01eb5e87bb34ca11e833"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-v3-03-block2-candidate.log",
+        "sha256": "89d047fbc017edf107a9fe50eb709ccfbd48db08fd818cb223cc907239be218c"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-v3-03-block3-baseline-process.json",
+        "sha256": "ee0553e4e94fd7cc654c274336559f42d23965479fd0a93a0a70610bf9bd0386"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-v3-03-block3-baseline.json",
+        "sha256": "5fef417c3e85fe6a5287f0ecd70e67b83e48ee6068cb3e4b2d80bdee322c6056"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-v3-03-block3-baseline.log",
+        "sha256": "ee4850d047f8ae1acf712f22de69e84c4dbbf2d36607260e19190830571f25c8"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-v3-03-block3-candidate-process.json",
+        "sha256": "debe61a434f1cdb4a01bc083945a53c34b013876182ffb7de7a87249cab3221c"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-v3-03-block3-candidate.json",
+        "sha256": "6fd2bb34593dfac67bb4445637fb53c478b4ec68d8f50d4a2cbe36dea20c386d"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-v3-03-block3-candidate.log",
+        "sha256": "23b52de05de0df31640426a4b74a9f4f3c4897d5eca616948f2d25a67c124f39"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-v3-03-summary.json",
+        "sha256": "b041289e223663f4202cc6c095bf287a8f8a5c99f8ecd0c94e577152b89087b9"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-v4-03-block1-baseline-process.json",
+        "sha256": "a7f0e655e24abd6c2417720ce86f8ddae369676ff32dc90bac0918bc47f8ae9f"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-v4-03-block1-baseline.json",
+        "sha256": "ff3c5bdbc8e6e715f3fe7fe732a8af4ecfb3a3d5d2808a307c5388723b431b46"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-v4-03-block1-baseline.log",
+        "sha256": "a13d3a35c2eabd21311c914682e7340fec05046481ede70e6ac15de1bfdac265"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-v4-03-block1-candidate-process.json",
+        "sha256": "3890c6774246570fac004702b9478f27cc479f3bdd49ad67033fb1c27506460f"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-v4-03-block1-candidate.json",
+        "sha256": "c204a058e2e4f39781f25a51156067a1737a598e14a75507bea02385521af9da"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-v4-03-block1-candidate.log",
+        "sha256": "675ef039db7d25dab6801dec3033e23c05b6a4351d4ed3bb7638836e263f13c0"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-v4-03-block2-baseline-process.json",
+        "sha256": "bd865188fa9ce4c3069f96583ecf3bb22c0934b7b5ab733e7e6c0b60f4406bcd"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-v4-03-block2-baseline.json",
+        "sha256": "466cb46d21102b6fa2c39c825210e36ab2b3fd120be90933c37015bd5a93a062"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-v4-03-block2-baseline.log",
+        "sha256": "a74cc55dad5d8a48594bf071fe52c12048cce908aefe29ff22e5d3a2c5e0e024"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-v4-03-block2-candidate-process.json",
+        "sha256": "377c69251c358e1f3fa62e3344734d60fb9e05446e9269bc3a2575de31a5d2d3"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-v4-03-block2-candidate.json",
+        "sha256": "596a185e3c4cded4d6eaa09799b74f082151c581cccd3082b16698f474e74b06"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-v4-03-block2-candidate.log",
+        "sha256": "47c631b0312c44b706e061ebcfdf0aa909191ebeeb2b89c8dbad7d8c39e63a29"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-v4-03-block3-baseline-process.json",
+        "sha256": "c3724a393e363bdfb44c18947605c7b9097fff851a7da7c84950ed87c0543444"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-v4-03-block3-baseline.json",
+        "sha256": "4a519f7dd7c4b0eadd6c6a6626e9ffcfae58449d5405bd92b413b263d06ac9cf"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-v4-03-block3-baseline.log",
+        "sha256": "47516dad93b9757ba4b9a12dcf02b20bfb754b90b723f184397fb0a8607e2c67"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-v4-03-block3-candidate-process.json",
+        "sha256": "38010a85bdf66f26cd377f0fda5be106237fe1fecbc04879e06fd27ef109d79f"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-v4-03-block3-candidate.json",
+        "sha256": "295f2ba7fb903c8cbf95ceedc63f1a0121502ce0d87be9a54cd6787e2c9780b3"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-v4-03-block3-candidate.log",
+        "sha256": "3b21c8d16c7ba8662df723e5b159dc4326e58a60b87273ccaa5237ff69a51d9c"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/paired-v4-03-summary.json",
+        "sha256": "507a4e2e1093ce1e94918abcaa8a5587abb676cddfee5017c2498c6dd2a501aa"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/pilot-01-baseline.json",
+        "sha256": "6d25938569fc8c32660f0bcc0851ee8eaf76973853197cf48e9cb9e8045057bb"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/pilot-03-candidate.json",
+        "sha256": "14ed4fd9201e92291e24c441b50aea36ebab15d8a28465111040a8a66b1351e0"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/pre-exception-message-test_mcp_redirect_policy.py",
+        "sha256": "4601fd3efc6d6bcd3a513d3796f17b85a74acedc66846cbdb866aaadab80de82"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/pre-format-source-mapping.json",
+        "sha256": "c37ead16a0f4182d5b2377d35fa12e636d817bb8deff3ac70e69bb086e991731"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/pre-format-test_native_mcp_core.py",
+        "sha256": "ce64b1878a10553f27bcb3b5a75561900f90ab912ebea909b9c8687c7c6b1fed"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/prior-and-source-audit.json",
+        "sha256": "ebac87a7f82add4011fcbea84620e2e3c094491e0433bf45220873743b10bb85"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/pyright-v2-process.json",
+        "sha256": "f2b4b4d950bf4cf4096f88cc325c2713a1cb7a6b0c9651491a82878dd8b72ea2"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/pyright-v2.log",
+        "sha256": "56882e01cb80173ef053c4096e4ee43e3123a15f5c0a06715f96988d48fbd91c"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/pyright-v5-process.json",
+        "sha256": "31deeb6caec51168c7f0e2bd13b51bccaca0914c6e36503d7e2de5a06e84c76b"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/pyright-v5.log",
+        "sha256": "56882e01cb80173ef053c4096e4ee43e3123a15f5c0a06715f96988d48fbd91c"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/qualified-final-resource-controls.json",
+        "sha256": "69f60431c31b568b87a04a6cab7031049e7f11e793a437e8e678aeaa813bfcab"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/qualified-native_state.py",
+        "sha256": "a1cfc85cdd62037348cb1fe8501c088ba6443ef72a58a9006c290cef383bf868"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/qualified-public-01-process.json",
+        "sha256": "b9cdde7ae2d40dfcb6f2aed526946d2698d5cec7e74dbcc37d900369d923350e"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/qualified-public-01.json",
+        "sha256": "fcf0b70d28dee9c351cb36de5a6605cba539b3103094ec339256ce2d9490e07f"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/qualified-public-01.log",
+        "sha256": "12bc072e41093dd78cf2ab560c8f92eead1cdabb284049a150e4d864f6d1aea5"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/qualified-public-02-process.json",
+        "sha256": "16dbc7c7fb5301f0b0b20ff1befb0158bb2920afc53a89541c9777826695fbfb"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/qualified-public-02.json",
+        "sha256": "cf3cad9ad2b9399db0f8fc0b8e2eeca484343809349be4f0cd0d47ee475d8268"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/qualified-public-02.log",
+        "sha256": "90f31e3292dba4862faf89e5d98fb751c230b91323a35d1f975e5f30ff157c91"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/qualified-public-03-process.json",
+        "sha256": "0135f6aa3fca9493a6954cdb259da08affc71170a77e81a163545f2a8356f8dd"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/qualified-public-03.json",
+        "sha256": "c1aae65c1c93c3fadfd9110fb997020b09688738a5fbab6b1874d98fbf21f39a"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/qualified-public-03.log",
+        "sha256": "95dde7c93db1e835bc4875c463b61e3deb734e1b763b12494563f23dd514b7a0"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/qualified-public-04-process.json",
+        "sha256": "4fdf888ff3fc95aa400b1899bd9ad43065379c42cd734b44594c5ba2dabf0b5e"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/qualified-public-04.json",
+        "sha256": "967e2f2771b76d65283ff08c0da8a4192a5e5aee93878984baf5cc16494fc96c"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/qualified-public-04.log",
+        "sha256": "0addb66b4249978b57634e9bfe980eee131d74287b2dde86dcb62d3e7e2d72d5"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/qualified-public-05-process.json",
+        "sha256": "0b396ab87e39ba65e897df0cf946a7c8a0fb5c6b3a8bdca69b96d72d0b1bd70d"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/qualified-public-05.json",
+        "sha256": "19b2296d2deba4c093a7ac94d02aa595bfc9b19812d38a470f48277522a13c27"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/qualified-public-05.log",
+        "sha256": "fd0a3b2011059a3fe8a801b490a62da392ea6a4c150dee70f562138d2f393964"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/qualified-public-parity.json",
+        "sha256": "a723b441e565e15b50b9a8f418a30bd4b8be166f7272751a981150dbb858026c"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/qualified-redirect_policy.py",
+        "sha256": "b3a7fbeb7172cbd2d498d086650a1aa8e9057426e007199671780708eb992e7c"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/qualified-test_mcp_redirect_policy.py",
+        "sha256": "f7d5494f3b624ed074467043a336a450225247d6096e6426384ea2641336334a"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/qualified-test_native_mcp_core.py",
+        "sha256": "b3a4c91d49b88caae17e0b02fc8dd268e98f988b8ac7f7d339d887cbf6eafff5"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/ratchet-v2-process.json",
+        "sha256": "748c179d2df482b5a2e956ab183b1663517335c2c7221f96a7e0b65b4d001e40"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/ratchet-v2.log",
+        "sha256": "ce7d992e34d103d008b66b04f766690aea2fe14109212dae57144aa958effce8"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/ratchet-v5-process.json",
+        "sha256": "66edda363d0fc9a9628ada97995346f7e1688564c289f08c768bd0514f906140"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/ratchet-v5.log",
+        "sha256": "ce7d992e34d103d008b66b04f766690aea2fe14109212dae57144aa958effce8"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/resource-controls.json",
+        "sha256": "681fad9b6be40db0c14ef06c9eeae4a107140218f44f07d21083f8ee65e6200c"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/ruff-v1-process.json",
+        "sha256": "f195ab8db5b599c27964acda1a8e86d1b077ee1c24fa17d4e7783b7ea8aa305c"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/ruff-v1.log",
+        "sha256": "82b3e6a6c090a57601d22943bd23fca9218d1031dbe5a7b754092f9a156b4f18"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/ruff-v2-process.json",
+        "sha256": "5bdcb43b9a0cd1e04c5ca335aac775e3d216de841c08a49c33b2c16e4db0c6ef"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/ruff-v2.log",
+        "sha256": "82b3e6a6c090a57601d22943bd23fca9218d1031dbe5a7b754092f9a156b4f18"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/ruff-v4-process.json",
+        "sha256": "7192445189bde7864275d8a95c03199f8a89e8a43f7c1814f93441b6cbe12666"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/ruff-v4.log",
+        "sha256": "d2c0cc4af6dd38ac918adc5bacb8f42a5cfbde01a847dc3c0db417c6390d9974"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/ruff-v5-process.json",
+        "sha256": "7b16442dc9b7b6e5dd94cf00230eb90f4a4bcc34a50da9f44b4c7e28d7c21dba"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/ruff-v5.log",
+        "sha256": "82b3e6a6c090a57601d22943bd23fca9218d1031dbe5a7b754092f9a156b4f18"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/sdk-fastmcp-auth.py",
+        "sha256": "94405db4b54afb041e41c7ba70ac31781f67f1f769c017d9213238edd0cd8b86"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/sdk-mcp-bearer_auth.py",
+        "sha256": "90451121f43c0d6f44d56339897ec5f022f77de89b9a7d258da1b4f6d6f2f8f4"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/sdk-mcp-provider.py",
+        "sha256": "32c497b64bc8f3ecdeac33376405c397bd3ad2f8cf44463768cb6f2b5473a007"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/sdk-mcp-shared_auth.py",
+        "sha256": "491c6ce44e7c264b28ea96654f2fac0c55f10c28b6a73601ffc8066f3cf6e664"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/sdk-starlette-authentication.py",
+        "sha256": "f914b0c09d29224accd2ffb6229f075d5076e31b52a7b39bcd1dce7d30bcc120"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/sdk-starlette-requests.py",
+        "sha256": "8691b01ae49ecfa085fe6419343678f73b77c92fc63a411106a77d8e9bf0ac44"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/seal-v1-source-reference-failure.json",
+        "sha256": "2a2de4021b474c2abf7e9c6366ac2924319d83e0c8fc16f861e9995258eb2dc1"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/ty-v2-process.json",
+        "sha256": "efa31564a9afc2d6fd939e39898247306a5bf88502b9407999f852f2e0bc149a"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/ty-v2.log",
+        "sha256": "82b3e6a6c090a57601d22943bd23fca9218d1031dbe5a7b754092f9a156b4f18"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/ty-v5-process.json",
+        "sha256": "ea2dc6522a1cfd6cd235ad602ddd071a2ec2e5246ace4e0d07a525a43a237600"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-backend-artifacts/ty-v5.log",
+        "sha256": "82b3e6a6c090a57601d22943bd23fca9218d1031dbe5a7b754092f9a156b4f18"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-backend-central-v3.py",
+        "sha256": "59a1e2fa254afae2b8b0f30c4b5ca25baebc3a2999e72ead77aa67a82998e476"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-backend-central-v6.py",
+        "sha256": "511e63e315feb9e3a90d56a4e62819dd361d7e44b7d790619361e86f288731c8"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-backend-final-resources.py",
+        "sha256": "c826ef61286078643b1cd019d3ac91afb646e60383c8d88efe4814d196be87ca"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-backend-final-verify-v2.py",
+        "sha256": "8a580e4e2aeecadc624feb270cef45e540e5311f2c8c30727ec70c56c549fdfd"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-backend-final-verify.py",
+        "sha256": "1edc04504d309b938501c9ccbfcb6acebfec96d15aef3d7a94d67ae4d44513ab"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-backend-gates-v2.py",
+        "sha256": "cfedce0b10a8041fe87eb1c89ab331e6788ca003f4c46ef6e45c5205d4c60018"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-backend-gates-v4.py",
+        "sha256": "faae9be3483386fa4d704f08c4ee6499da905045e39b437fe647b0464fe28374"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-backend-gates-v5.py",
+        "sha256": "bd82465bd6e36ee324afff428bc7a11c48d7f08ddb6cc3ac1d52b540a899dc7a"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-backend-gates.py",
+        "sha256": "9cd218bd69ef3e9b5a38e26281a542af08acb351e1e93808bc574efa94416c55"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-backend-pairs-v2.py",
+        "sha256": "89cc5e262f00e52cb7cc78a776506e832775fce5ecd20f3c1e704e1e1826c558"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-backend-pairs-v3.py",
+        "sha256": "decf16fcd15ae1c93934107b9456188776c9d6e1ef1ef46b4978797a25578d35"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-backend-pairs-v4.py",
+        "sha256": "c10023ea6a90e0ed511ac53c8490eb04a92ef00577ad0ecc74b65ae632df94fa"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-backend-pairs.py",
+        "sha256": "42706973b59963a931e6d9a1715462374772de654ad7a778c9cd52d7fff3a381"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-backend-prepare.py",
+        "sha256": "6bd00fdb3ced55e8916644b8d69fd15dbd93db61f96973f4cf26c28e4409a3e4"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-backend-resources.py",
+        "sha256": "ab35b89005152f0acac14cbe5c66de2acfb43a1a5edf63e668940b9cdb73640e"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-backend-review-frontend.json",
+        "sha256": "468aea61d0c041995690f3ddf7bbe56964a1583533f871c87d5b25c5ee795cfa"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-backend-seal-v2.py",
+        "sha256": "51526980e2591b031b93a2d9a3dd4d6743048a271af9c063cb54397033ac062d"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-backend-seal.py",
+        "sha256": "a205aa3deebfbbf91c006295748dab5fb696e5cc78c29fa6f41c344a70485b0b"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-backend-worker-v2.py",
+        "sha256": "c221e45e1accfb64a8666c580dd13e4ea99a432bf16743e784eb386c5f0b024f"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-backend-worker-v3.py",
+        "sha256": "0d6b89279145589d87b5920cbf7a480ab45b166bea9128b516eabc017ba2d54f"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-backend-worker-v4.py",
+        "sha256": "06dbf16d6bf95d9cf101d14195be7797b439052edf7ff4becb427e511c3787ec"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-backend-worker.py",
+        "sha256": "6a07868eab47e7463c1f7c2992e831f8753ba0c5b9840ecefcadf203c76198f8"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-backend.json",
+        "sha256": "d829dd891b3940a1c2ceabbdc63e464596b60f9cd8d0082bcf8e0f7d3956bca1"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-benchmark-guard.py",
+        "sha256": "5d3f1affdd4cb40f301efda581e48a36621a9e940039df2881b4fd3f967da2e7"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-frontend-qualification2/baseline-history-qualified.cjs",
+        "sha256": "3e139ac1b856a4d0c2103fbc73254db3fc04e04bd166d61f5de04266719c6cc3"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-frontend-qualification2/baseline-history-qualified.entry.ts",
+        "sha256": "f075cb2f00d0232d5ef17a1a8b845b34dd72fdbad6a0efd70b3c74134e4bc260"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-frontend-qualification2/baseline-history-qualified.mjs",
+        "sha256": "5668c7dc615dc146adbca6062a1b5d0b0e7e88bd2b77285cd527b85e54b1d956"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-frontend-qualification2/baseline-history-repeated.cjs",
+        "sha256": "173f2f5538d428a03b720ac96951c6cc71a443302fcaf7a55110fe4a3e5135b0"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-frontend-qualification2/baseline-history-repeated.entry.ts",
+        "sha256": "f075cb2f00d0232d5ef17a1a8b845b34dd72fdbad6a0efd70b3c74134e4bc260"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-frontend-qualification2/baseline-history-repeated.mjs",
+        "sha256": "5668c7dc615dc146adbca6062a1b5d0b0e7e88bd2b77285cd527b85e54b1d956"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-frontend-qualification2/baseline-lib-markdown-transform-recovery.ts.compiled.ts",
+        "sha256": "be010d32cedfc92c8aeeeed920f1e734e9bd91dd55aac818ea1ab186f71420e8"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-frontend-qualification2/baseline-lib-recent-aliases.ts.compiled.ts",
+        "sha256": "26ae89ebc8a069655fa0f0926257d485e0a80aaa7f34e4241ce36c12dcc73790"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-frontend-qualification2/baseline-lib-storage-schemas.ts.compiled.ts",
+        "sha256": "ddd3650c5bd2e603e9f1e8c47b3d3fa2c2cfd107059e037f75e2cfdeb53616e0"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-frontend-qualification2/baseline-mutable-fallback-baseline.cjs",
+        "sha256": "a708224cfdd00f2ec863ed4640eb9dd9975c7913297b32ef815ec8a7d0575b96"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-frontend-qualification2/baseline-mutable-fallback-baseline.entry.ts",
+        "sha256": "db0436a5da78ba66276651f0c149b378c7ca0c865233523d114403e16da481d5"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-frontend-qualification2/baseline-mutable-fallback-baseline.mjs",
+        "sha256": "d8e731c5bafd2cc5e26bbcdb328670df5948dc6c24d9be7755d27123013005e3"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-frontend-qualification2/baseline-quick-link-visit-recorder.compiled.tsx",
+        "sha256": "3c3eb20368b54f5bfc262d30a2a9e1102085e4b6c322e7a80e15591cdc1e6d82"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-frontend-qualification2/baseline-quick-link-visit-recorder.fixture.tsx",
+        "sha256": "9d219d0c3ef969a4ed9415c3fefb2b8446f3c8a27bb69e3fcacc8301d61cecd4"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-frontend-qualification2/baseline-stream-qualified.cjs",
+        "sha256": "9f15543f885d8637d48747374a3f2d8a80004826a6372aa87b7eb44ca81ce70d"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-frontend-qualification2/baseline/frontend/src/components/wiki-sidebar/use-document-intent.ts",
+        "sha256": "6b6c0ff270c1ede749ecaf1d718d23a2bbcfda0bb690816d7210dca923a46da5"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-frontend-qualification2/baseline/frontend/src/lib/bounded-text.ts",
+        "sha256": "3121da865d9c180cbf476b1f578d99fbd72c2776c9805a61bfd73c73279133d1"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-frontend-qualification2/baseline/frontend/src/lib/clients/transform-http.ts",
+        "sha256": "db62b1c38100097fbd25a84442b33c68e80fd37231a4c426fe885cff585489dc"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-frontend-qualification2/baseline/frontend/src/lib/markdown-transform-recovery.ts",
+        "sha256": "d3a5b475aa4ba84bcab1c61054943755bae759c00f70bf89364334ca62c911a6"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-frontend-qualification2/baseline/frontend/src/lib/recent-aliases.test.ts",
+        "sha256": "25321e44e5143506fe949c967f7fbfe7aba3df43b831a45e49382c4c55aae0b1"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-frontend-qualification2/baseline/frontend/src/lib/recent-aliases.ts",
+        "sha256": "eddc33d6cd1600e093817d15e138997927ae2f764ed0a3e0757830034b23a42d"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-frontend-qualification2/baseline/frontend/src/lib/storage-schemas.ts",
+        "sha256": "8db52e4af0dc7515a5837487389d2eb0f886c96c53232481415ec9592e8e2e96"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-frontend-qualification2/baseline/frontend/src/lib/wiki-api.ts",
+        "sha256": "22c6bbff6ae9e18b8a5d57e0636536d6c832205ef141a53504f98b804afd1b95"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-frontend-qualification2/baseline/frontend/src/lib/wiki-read-api.ts",
+        "sha256": "450682abacc2acdfe7b83c832acbde5a516fbcb7f50d3fa9a4a4e0431d078cfe"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-frontend-qualification2/baseline/frontend/src/lib/wiki-schemas.ts",
+        "sha256": "707afc0c36fe69fc94465de59099eb093159ba902a80d0511a1e880711286b35"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-frontend-qualification2/candidate-lib-markdown-transform-recovery.ts.compiled.ts",
+        "sha256": "be010d32cedfc92c8aeeeed920f1e734e9bd91dd55aac818ea1ab186f71420e8"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-frontend-qualification2/candidate-lib-recent-aliases.ts.compiled.ts",
+        "sha256": "9690d3a74ae8f3c217d80988b912109737d25fd46a09450746031e0b74b70881"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-frontend-qualification2/candidate-lib-storage-schemas.ts.compiled.ts",
+        "sha256": "64ae431228c8ddc6094c83e724bb837ea97e45ac7b0ff16c06012667ae49e919"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-frontend-qualification2/candidate-mutable-fallback-candidate.cjs",
+        "sha256": "f1bf75b571d3061da5b6e0b76a25630b576a6ab86b51f12e6bfd7b1806ae0ef7"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-frontend-qualification2/candidate-mutable-fallback-candidate.entry.ts",
+        "sha256": "db0436a5da78ba66276651f0c149b378c7ca0c865233523d114403e16da481d5"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-frontend-qualification2/candidate-mutable-fallback-candidate.mjs",
+        "sha256": "6303e297941015c658dcd9631972ec5131f8e361cbc57d9fd47df16a3355e639"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-frontend-qualification2/compile-history-lifecycle.mjs",
+        "sha256": "18f46947883a544e61b1e2b1213a023830b4da6a27984b26585f31c2b2deab32"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-frontend-qualification2/compile-history-lifecycle.txt",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-frontend-qualification2/final-history-qualified.cjs",
+        "sha256": "9e50544deb58312f5a7c913064dfc11998e03bef93515dc526f88a0dcec4d469"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-frontend-qualification2/final-history-qualified.entry.ts",
+        "sha256": "f075cb2f00d0232d5ef17a1a8b845b34dd72fdbad6a0efd70b3c74134e4bc260"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-frontend-qualification2/final-history-qualified.mjs",
+        "sha256": "45b9e5c4ba361cbcdef8543284a6265e8da5b9553dca765ecd09edf7de10930d"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-frontend-qualification2/final-history-repeated.cjs",
+        "sha256": "41a1cf98de5ba7fb9b7f8d61bba5f1c240aa4f7a4f4e4687703c204cf7dae953"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-frontend-qualification2/final-history-repeated.entry.ts",
+        "sha256": "f075cb2f00d0232d5ef17a1a8b845b34dd72fdbad6a0efd70b3c74134e4bc260"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-frontend-qualification2/final-history-repeated.mjs",
+        "sha256": "45b9e5c4ba361cbcdef8543284a6265e8da5b9553dca765ecd09edf7de10930d"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-frontend-qualification2/final-hooks-use-current-user.ts.compiled.ts",
+        "sha256": "6ffb0940387514ddfedec9d1b6f66c5b28ef6d9f67ea1cba0c879daa1cc8916e"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-frontend-qualification2/final-lib-markdown-transform-recovery.ts.compiled.ts",
+        "sha256": "be010d32cedfc92c8aeeeed920f1e734e9bd91dd55aac818ea1ab186f71420e8"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-frontend-qualification2/final-lib-recent-aliases.ts.compiled.ts",
+        "sha256": "9690d3a74ae8f3c217d80988b912109737d25fd46a09450746031e0b74b70881"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-frontend-qualification2/final-lib-storage-schemas.ts.compiled.ts",
+        "sha256": "04c19a1002467c9738f5d7e8be1c1b05506effad09be50a25f3745fb12bc2dab"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-frontend-qualification2/final-mutable-fallback-final.cjs",
+        "sha256": "758dec92cfe93be9f82f68771928ca5bfe04e122346f6412f9009fc20fc228e1"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-frontend-qualification2/final-mutable-fallback-final.entry.ts",
+        "sha256": "db0436a5da78ba66276651f0c149b378c7ca0c865233523d114403e16da481d5"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-frontend-qualification2/final-mutable-fallback-final.mjs",
+        "sha256": "e602f8c19f3efd0c5299bd0ca729151981968a41a3eaea9342ec73d6e503d009"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-frontend-qualification2/final-quick-link-visit-recorder.compiled.tsx",
+        "sha256": "3c3eb20368b54f5bfc262d30a2a9e1102085e4b6c322e7a80e15591cdc1e6d82"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-frontend-qualification2/final-quick-link-visit-recorder.fixture.tsx",
+        "sha256": "67fcbbf4263d32e0d337838cc57cd4c2e84455aef9d3247b4c3f2429a6b2a576"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-frontend-qualification2/final-stream-qualified.cjs",
+        "sha256": "139e91424ac4da2b8d19834f50749bf69ca2a7b3a7d459e4d73c56ef90d328cd"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-frontend-qualification2/final/frontend/src/components/wiki-sidebar/use-document-intent.ts",
+        "sha256": "6b6c0ff270c1ede749ecaf1d718d23a2bbcfda0bb690816d7210dca923a46da5"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-frontend-qualification2/final/frontend/src/lib/bounded-text.ts",
+        "sha256": "fdaabea1ef548213fb20fe1c860733f8f4f3de13eb89a03ccf15707dca70c813"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-frontend-qualification2/final/frontend/src/lib/clients/transform-http.ts",
+        "sha256": "db62b1c38100097fbd25a84442b33c68e80fd37231a4c426fe885cff585489dc"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-frontend-qualification2/final/frontend/src/lib/markdown-transform-recovery.ts",
+        "sha256": "d3a5b475aa4ba84bcab1c61054943755bae759c00f70bf89364334ca62c911a6"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-frontend-qualification2/final/frontend/src/lib/recent-aliases.test.ts",
+        "sha256": "f315e4b068f9d635a90886df4a51334646922c05cf600c1b7c24f7d2aea164bd"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-frontend-qualification2/final/frontend/src/lib/recent-aliases.ts",
+        "sha256": "a5c4f49883c67e7836c4a165cee65cd4123c1dad002b31a3b1d43ec8b5543f0f"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-frontend-qualification2/final/frontend/src/lib/storage-schemas.ts",
+        "sha256": "9d61d879605fd3925c1b4ed87fdb0c7fdce13a12e5eab2fbfa6c7d105e0d8e27"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-frontend-qualification2/final/frontend/src/lib/wiki-api.ts",
+        "sha256": "22c6bbff6ae9e18b8a5d57e0636536d6c832205ef141a53504f98b804afd1b95"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-frontend-qualification2/final/frontend/src/lib/wiki-read-api.ts",
+        "sha256": "450682abacc2acdfe7b83c832acbde5a516fbcb7f50d3fa9a4a4e0431d078cfe"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-frontend-qualification2/final/frontend/src/lib/wiki-schemas.ts",
+        "sha256": "707afc0c36fe69fc94465de59099eb093159ba902a80d0511a1e880711286b35"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-frontend-qualification2/focused-checks-qualification2.json",
+        "sha256": "fe7078d940ba1f2e77aeb90d5580de234494ead51f5dc68f92f91c474b42f097"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-frontend-qualification2/focused-checks-qualification2.txt",
+        "sha256": "81fcc4ea76bfc9ae784501c82d7666463524b9fc06e807ddf5ceae4a51fa8ad2"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-frontend-qualification2/focused-checks.py",
+        "sha256": "2e5ac9fc6facc3d8d03b62704ed0ee72f9f1e05045345f4cd50f4d56d2c0dcc5"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-frontend-qualification2/focused-format-qualification2.txt",
+        "sha256": "1471e7e2082595ca3d2ba08a6aff96fd8dc38ef92e03098b9fa266f60ea5a9f9"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-frontend-qualification2/focused-lint-qualification2.txt",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-frontend-qualification2/focused-tests-qualification2.txt",
+        "sha256": "593a295a4c1012474b54e394166eef91f140852da560369695cba539aca4ed87"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-frontend-qualification2/focused-types-qualification2.txt",
+        "sha256": "8e709d3c1aab3a7ec3edfc506807307cc7c29276270931036675b015f152f247"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-frontend-qualification2/fresh-fallback-repair-receipt.json",
+        "sha256": "f47645fe22269bced15559accd983b95ed457f0f4781ab641873012cf737e56a"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-frontend-qualification2/history-lifecycle-probe.tsx",
+        "sha256": "2e2fb82b2777ffeccc5b92371e03387373056350fa44572c9201a355b9373201"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-frontend-qualification2/history-lifecycle.json",
+        "sha256": "d39c6be08c9e6d956824fb4605184a9c971a9c6533c6cc17ded336fda6a38fbf"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-frontend-qualification2/history-lifecycle.txt",
+        "sha256": "030042e8aa6e5af7e58d5b53e6449fb8f6cdd283a2899ba0a77682ed5603281b"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-frontend-qualification2/history-qualification2.json",
+        "sha256": "bce2af02a8e0a883d97051ba7fc7bc6d6edf9a4171ff981e0448baff8d1a90af"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-frontend-qualification2/history-qualified.json",
+        "sha256": "9cddba5f844da889a3ade4d1cf35f9b37f480833da41beffbbd688714076f254"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-frontend-qualification2/history-repeated-qualification2.json",
+        "sha256": "5331e619615c37adfd0af45ff563b7e78204e48b766d5fa8c6aab06a9547aefa"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-frontend-qualification2/history-repeated.json",
+        "sha256": "abd737cf0a37c553999acc001dbf73750a560ce2dad8ed0c5fba20c3cd89447a"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-frontend-qualification2/native-common.mjs",
+        "sha256": "ec5b97ca238b83e8a33777754352f9781483285f8683674bcc7350418628c04b"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-frontend-qualification2/native-final-resources-qualified.json",
+        "sha256": "d5baafce03aed470e4abbbcaf93db9c6127230dea57734bb8a516f0a7d9a63ad"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-frontend-qualification2/native-final-resources.mjs",
+        "sha256": "876d7b6a023bd80dd2fbcc3f3e557b0b1833c4f0e7c33399430b0deb0c3d0fb4"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-frontend-qualification2/native-final-resources.txt",
+        "sha256": "f2c4c831d7f15ed4471e00a1569ca75456f656b797bff82acb3673dc9d278911"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-frontend-qualification2/native-history-repeated.mjs",
+        "sha256": "1901a7e8caabbf5e5b5abfe2d6491c3f72eb414f90fba40e0fdbb10c97873caf"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-frontend-qualification2/native-history-repeated.txt",
+        "sha256": "49f9023053efcd0b7238b3e00b526e7b1cec24aea964f52af16619b330ceb893"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-frontend-qualification2/native-history.mjs",
+        "sha256": "b7215362c765b2812c81a548f26a54b94a94e23aa693e46165f0bbd0ccde3cae"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-frontend-qualification2/native-history.txt",
+        "sha256": "49f9023053efcd0b7238b3e00b526e7b1cec24aea964f52af16619b330ceb893"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-frontend-qualification2/native-mutated-fallback.json",
+        "sha256": "5afe3c536cd81b4a84cbb172180e7dfd09e26c1d8fcf95a5a00a504568bc06a7"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-frontend-qualification2/native-mutated-fallback.mjs",
+        "sha256": "43254d6826b8f72dc1a8525a7bc83b9eb4801715b73c6171d201a849ca3437ba"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-frontend-qualification2/native-mutated-fallback.txt",
+        "sha256": "d178d1c4dc114eaa9d2cbbd53973114f147d778f5d8c4e37a6bddb5c18db2f36"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-frontend-qualification2/previous-qualified/frontend/src/lib/bounded-text.ts",
+        "sha256": "fdaabea1ef548213fb20fe1c860733f8f4f3de13eb89a03ccf15707dca70c813"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-frontend-qualification2/previous-qualified/frontend/src/lib/recent-aliases.test.ts",
+        "sha256": "a22c19474a77596f5caa0208558e73537bb5bedd7a96197639d7ffa6e83fdfc7"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-frontend-qualification2/previous-qualified/frontend/src/lib/recent-aliases.ts",
+        "sha256": "a5c4f49883c67e7836c4a165cee65cd4123c1dad002b31a3b1d43ec8b5543f0f"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-frontend-qualification2/previous-qualified/frontend/src/lib/storage-schemas.ts",
+        "sha256": "a8f994a20b8015d0fc337d992b2f3ba1d58f28fa80e7a35b009077409d93cf27"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-frontend-qualification2/prototype/frontend/src/components/wiki-sidebar/use-document-intent.ts",
+        "sha256": "6b6c0ff270c1ede749ecaf1d718d23a2bbcfda0bb690816d7210dca923a46da5"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-frontend-qualification2/prototype/frontend/src/lib/bounded-text.ts",
+        "sha256": "fdaabea1ef548213fb20fe1c860733f8f4f3de13eb89a03ccf15707dca70c813"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-frontend-qualification2/prototype/frontend/src/lib/clients/transform-http.ts",
+        "sha256": "db62b1c38100097fbd25a84442b33c68e80fd37231a4c426fe885cff585489dc"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-frontend-qualification2/prototype/frontend/src/lib/markdown-transform-recovery.ts",
+        "sha256": "d3a5b475aa4ba84bcab1c61054943755bae759c00f70bf89364334ca62c911a6"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-frontend-qualification2/prototype/frontend/src/lib/recent-aliases.test.ts",
+        "sha256": "a22c19474a77596f5caa0208558e73537bb5bedd7a96197639d7ffa6e83fdfc7"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-frontend-qualification2/prototype/frontend/src/lib/recent-aliases.ts",
+        "sha256": "a5c4f49883c67e7836c4a165cee65cd4123c1dad002b31a3b1d43ec8b5543f0f"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-frontend-qualification2/prototype/frontend/src/lib/storage-schemas.ts",
+        "sha256": "a8f994a20b8015d0fc337d992b2f3ba1d58f28fa80e7a35b009077409d93cf27"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-frontend-qualification2/prototype/frontend/src/lib/wiki-api.ts",
+        "sha256": "22c6bbff6ae9e18b8a5d57e0636536d6c832205ef141a53504f98b804afd1b95"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-frontend-qualification2/prototype/frontend/src/lib/wiki-read-api.ts",
+        "sha256": "450682abacc2acdfe7b83c832acbde5a516fbcb7f50d3fa9a4a4e0431d078cfe"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-frontend-qualification2/prototype/frontend/src/lib/wiki-schemas.ts",
+        "sha256": "707afc0c36fe69fc94465de59099eb093159ba902a80d0511a1e880711286b35"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-frontend-qualification2/reproduce-history-lifecycle.py",
+        "sha256": "8d7f5368f14dfe8082e533ff7bc9d18683c9b7b9fbb262e77891696fccf300e2"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-frontend-qualification2/sarj-wiki-perf-round9-frontend-qualified.json",
+        "sha256": "622f7d9c0bd267caa83d9e761840df7e06fdd36eefa1e540612bde70bbf1f632"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-frontend-qualification2/sarj-wiki-perf-round9-frontend.json",
+        "sha256": "1b175dd1f3b04f79800399ace199c1a37194ba7ff4b2092ed13000b6350cffad"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-frontend-qualification2/scoped-types.mjs",
+        "sha256": "74b3f23c57a16b329af166772080e332e7222e340c69eef1d9f43dabff5a8f22"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-frontend-qualification2/seal-qualified2.py",
+        "sha256": "f73d4c4fb5aa20cee9a4336cdc583604ead16ca3b563f2cfec54dca460951c6a"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-frontend-qualification2/source-parity-qualified2.json",
+        "sha256": "6391ff46a2ef6ae710a68b0254117985f192e76ffe23430d0a0119d856538d09"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-frontend-qualified.json",
+        "sha256": "622f7d9c0bd267caa83d9e761840df7e06fdd36eefa1e540612bde70bbf1f632"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-frontend-qualified2.json",
+        "sha256": "d81778f0024c8f32282ac94192619bce96af57dc0baa113f3f7fc224d27c876c"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-frontend-refinement1/correct-control-counts.py",
+        "sha256": "cde2209c9dd1cd28f0ea74fe2ca6e666147a7ad486f022ef807844376d0727d0"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-frontend-refinement1/frontend-scope-original.json",
+        "sha256": "1b175dd1f3b04f79800399ace199c1a37194ba7ff4b2092ed13000b6350cffad"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-frontend-refinement1/history-control-counts-corrected.json",
+        "sha256": "f8e55f1f6a68de6b1f56f7a2b5bd63115b7780283ff2e550e1c84fe3abba1e9c"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-frontend-refinement1/metadata-repair-receipt.json",
+        "sha256": "e79af7070ab04099e3c060c54f694bcc2a8b091910b4d81b06ed881a68a1fbad"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-frontend-reproduced-20261012T122912357223Z/baseline-history-qualified.cjs",
+        "sha256": "a14d41e725cc4971f107d15cc683969917e72b556a5e5e545b1877bd192f74bd"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-frontend-reproduced-20261012T122912357223Z/baseline-history-qualified.entry.ts",
+        "sha256": "f075cb2f00d0232d5ef17a1a8b845b34dd72fdbad6a0efd70b3c74134e4bc260"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-frontend-reproduced-20261012T122912357223Z/baseline-history-qualified.mjs",
+        "sha256": "d1d1a444af57f445ba6df75dacc93ea5e13b89922e9a799420d589abda16490e"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-frontend-reproduced-20261012T122912357223Z/baseline-lib-bounded-text.ts.compiled.ts",
+        "sha256": "e870d8f7ca826ac04fd262a261167f196535a3b5280117d6ad593a2cb1df7974"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-frontend-reproduced-20261012T122912357223Z/baseline-lib-clients-transform-http.ts.compiled.ts",
+        "sha256": "91aa5dd504fd097ad70d0487233b8806873d7c1d0df99d5032ec336c0152a8e2"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-frontend-reproduced-20261012T122912357223Z/baseline-lib-markdown-transform-recovery.ts.compiled.ts",
+        "sha256": "be010d32cedfc92c8aeeeed920f1e734e9bd91dd55aac818ea1ab186f71420e8"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-frontend-reproduced-20261012T122912357223Z/baseline-lib-recent-aliases.ts.compiled.ts",
+        "sha256": "26ae89ebc8a069655fa0f0926257d485e0a80aaa7f34e4241ce36c12dcc73790"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-frontend-reproduced-20261012T122912357223Z/baseline-lib-storage-schemas.ts.compiled.ts",
+        "sha256": "ddd3650c5bd2e603e9f1e8c47b3d3fa2c2cfd107059e037f75e2cfdeb53616e0"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-frontend-reproduced-20261012T122912357223Z/baseline-stream-qualified.cjs",
+        "sha256": "0b0bc3d43732ee349b19408d63254dbe9a3a7487b6946e5dee9906d82978bd96"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-frontend-reproduced-20261012T122912357223Z/baseline-stream-qualified.entry.ts",
+        "sha256": "6a7da01fdf8a8de04eb6158b44d6fa3babacfba52499b95e6b7828d6e2d5a07b"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-frontend-reproduced-20261012T122912357223Z/baseline-stream-qualified.mjs",
+        "sha256": "6bea43c45b896c7cacfaab3dfe313bb4d8e577764286dd4c796ceeacecb156e1"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-frontend-reproduced-20261012T122912357223Z/command-00.log",
+        "sha256": "8a1d237a21172f646daecd1397607a3c98422e2e15ecfc8e980ef805fe652e56"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-frontend-reproduced-20261012T122912357223Z/command-01.log",
+        "sha256": "48ab33b00c622c09f39145c0f76bb399019996280db73f42ac87aeb75705f712"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-frontend-reproduced-20261012T122912357223Z/command-02.log",
+        "sha256": "ffa2e85b5f8e141871655d3cc9b719ed8208d17e038ad1b7e11084a85d8137fa"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-frontend-reproduced-20261012T122912357223Z/final-history-qualified.cjs",
+        "sha256": "2ad75f10147cb651f41ee4f8c7489989312322752afcf5c820f15f73e86e9674"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-frontend-reproduced-20261012T122912357223Z/final-history-qualified.entry.ts",
+        "sha256": "f075cb2f00d0232d5ef17a1a8b845b34dd72fdbad6a0efd70b3c74134e4bc260"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-frontend-reproduced-20261012T122912357223Z/final-history-qualified.mjs",
+        "sha256": "21bf53781ad6fff301cb38c209beae9ec657d5c807036d2137a6c307818d9f03"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-frontend-reproduced-20261012T122912357223Z/final-lib-bounded-text.ts.compiled.ts",
+        "sha256": "8b086f08ecdb895f16bef0fc78a82db87598d2e72512c9f56c9e4f2ed6e1172c"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-frontend-reproduced-20261012T122912357223Z/final-lib-clients-transform-http.ts.compiled.ts",
+        "sha256": "91aa5dd504fd097ad70d0487233b8806873d7c1d0df99d5032ec336c0152a8e2"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-frontend-reproduced-20261012T122912357223Z/final-lib-markdown-transform-recovery.ts.compiled.ts",
+        "sha256": "be010d32cedfc92c8aeeeed920f1e734e9bd91dd55aac818ea1ab186f71420e8"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-frontend-reproduced-20261012T122912357223Z/final-lib-recent-aliases.ts.compiled.ts",
+        "sha256": "9690d3a74ae8f3c217d80988b912109737d25fd46a09450746031e0b74b70881"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-frontend-reproduced-20261012T122912357223Z/final-lib-storage-schemas.ts.compiled.ts",
+        "sha256": "64ae431228c8ddc6094c83e724bb837ea97e45ac7b0ff16c06012667ae49e919"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-frontend-reproduced-20261012T122912357223Z/final-stream-qualified.cjs",
+        "sha256": "6a1e21134162e020780a4d7a62824c1c1e39903519c727dcd0b5afff14b93282"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-frontend-reproduced-20261012T122912357223Z/final-stream-qualified.entry.ts",
+        "sha256": "6a7da01fdf8a8de04eb6158b44d6fa3babacfba52499b95e6b7828d6e2d5a07b"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-frontend-reproduced-20261012T122912357223Z/final-stream-qualified.mjs",
+        "sha256": "185a6ab0d1c09d847ef856d0345f643eb799e45d58bcd905ee9d91506f29b9fe"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-frontend-reproduced-20261012T122912357223Z/history-qualified.json",
+        "sha256": "05f18e990f9e1977548c273af60f508684884e36a3441f7cb9fc46cba1e4cd34"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-frontend-reproduced-20261012T122912357223Z/native-final-resources-qualified.json",
+        "sha256": "680fea72511f1a86ab405ba65236a052906e1d4c716ad465f5be898196c06a1c"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-frontend-reproduced-20261012T122912357223Z/native-promise-resources.json",
+        "sha256": "d361f61fb29d81d504f5c62f2c5277cb5d8607e2c5c3b036a929aca3a9e21f83"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-frontend-reproduced-20261012T122912357223Z/native-qualified.json",
+        "sha256": "2b95472064d32dab510270dd010ac659148dbb033dbacc686f9d2df3f707e9c3"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-frontend-reproduced-20261012T122912357223Z/reproduction-receipt.json",
+        "sha256": "2a781445be189797a31a4f2b661124007c4ca25ac9d6d41b533df204d55971f0"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-frontend-reproduced-20261012T122912357223Z/stream-qualified.json",
+        "sha256": "4a82fd3558bc4cb21a4db5efdab0ff75370669c096d47ab6149af0dfd42603c6"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-frontend.json",
+        "sha256": "1b175dd1f3b04f79800399ace199c1a37194ba7ff4b2092ed13000b6350cffad"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-frontend/baseline-components-wiki-sidebar-use-document-intent.ts.compiled.ts",
+        "sha256": "94ca0c001914c1edd3a4c8a61ea940b305fbafa5d045647cc5bf62a231a24520"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-frontend/baseline-history-qualified.cjs",
+        "sha256": "add30f659487dc58c3e3a08f55dc3a79c944161ed7d75a01b1e6de45ba863206"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-frontend/baseline-history-qualified.entry.ts",
+        "sha256": "f075cb2f00d0232d5ef17a1a8b845b34dd72fdbad6a0efd70b3c74134e4bc260"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-frontend/baseline-history-qualified.mjs",
+        "sha256": "d1d1a444af57f445ba6df75dacc93ea5e13b89922e9a799420d589abda16490e"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-frontend/baseline-history-repeated.cjs",
+        "sha256": "3e5e09e2a8e90cd32366d6cab94dc578aa935a13f122d3b1529356c8107c2d72"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-frontend/baseline-history-repeated.entry.ts",
+        "sha256": "f075cb2f00d0232d5ef17a1a8b845b34dd72fdbad6a0efd70b3c74134e4bc260"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-frontend/baseline-history-repeated.mjs",
+        "sha256": "d1d1a444af57f445ba6df75dacc93ea5e13b89922e9a799420d589abda16490e"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-frontend/baseline-history.cjs",
+        "sha256": "c2fba57d77ede1e39dbc68149cbe973c256e9d63b17fa23fd6177f40bba553a5"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-frontend/baseline-history.entry.ts",
+        "sha256": "f075cb2f00d0232d5ef17a1a8b845b34dd72fdbad6a0efd70b3c74134e4bc260"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-frontend/baseline-history.mjs",
+        "sha256": "d1d1a444af57f445ba6df75dacc93ea5e13b89922e9a799420d589abda16490e"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-frontend/baseline-lib-bounded-text.ts.compiled.ts",
+        "sha256": "e870d8f7ca826ac04fd262a261167f196535a3b5280117d6ad593a2cb1df7974"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-frontend/baseline-lib-clients-transform-http.ts.compiled.ts",
+        "sha256": "91aa5dd504fd097ad70d0487233b8806873d7c1d0df99d5032ec336c0152a8e2"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-frontend/baseline-lib-markdown-transform-recovery.ts.compiled.ts",
+        "sha256": "be010d32cedfc92c8aeeeed920f1e734e9bd91dd55aac818ea1ab186f71420e8"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-frontend/baseline-lib-recent-aliases.ts.compiled.ts",
+        "sha256": "26ae89ebc8a069655fa0f0926257d485e0a80aaa7f34e4241ce36c12dcc73790"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-frontend/baseline-lib-storage-schemas.ts.compiled.ts",
+        "sha256": "ddd3650c5bd2e603e9f1e8c47b3d3fa2c2cfd107059e037f75e2cfdeb53616e0"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-frontend/baseline-lib-wiki-api.ts.compiled.ts",
+        "sha256": "5072140a6b9e1bbc2d48f9b562bae8f621d489d5a2a92eca1ef0975910c66d70"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-frontend/baseline-lib-wiki-read-api.ts.compiled.ts",
+        "sha256": "16570d75670847162fb342a9504d6bfcadc69f039db390a25fc01fdd55c45130"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-frontend/baseline-lib-wiki-schemas.ts.compiled.ts",
+        "sha256": "c4eac6139e108dbbe443da54c36051a3ea9ddf869666e61e1099bee8fca2e584"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-frontend/baseline-manifest.json",
+        "sha256": "a5935d5d7891996f9dbe76ee76be6da48779e9a3207b59a5ff33105e913855d9"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-frontend/baseline-quick-link-visit-recorder.compiled.tsx",
+        "sha256": "3c3eb20368b54f5bfc262d30a2a9e1102085e4b6c322e7a80e15591cdc1e6d82"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-frontend/baseline-quick-link-visit-recorder.fixture.tsx",
+        "sha256": "9d219d0c3ef969a4ed9415c3fefb2b8446f3c8a27bb69e3fcacc8301d61cecd4"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-frontend/baseline-recovery.cjs",
+        "sha256": "dc3d1ba1f5bcabba5c6860f83783cc0ce147b58d58e30fcc151932277973d703"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-frontend/baseline-recovery.entry.ts",
+        "sha256": "893dbf8029c79d25081436679cbd8030a8f0233e98c5fe3a0a982c8e48014373"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-frontend/baseline-recovery.mjs",
+        "sha256": "fd58ce2f7eafbffe9bc26c1c85af330ddeb1e85cc4398207edbc3b3d36271acb"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-frontend/baseline-schemas-browser-read-qualified.cjs",
+        "sha256": "1eff4749758d4545c1c92186b14b84dc60e68a7eef6549fc60fb1e19c46b3128"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-frontend/baseline-schemas-browser-read-qualified.entry.ts",
+        "sha256": "86b3ae2dc27932f80ea908461137fa6d8917c494a89c49f669f86335c5b5f3d7"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-frontend/baseline-schemas-browser-read-qualified.mjs",
+        "sha256": "ffdcd4f27aca5cbe6a7ef142deeb694087cc20d7ad9f6422de5c14ac910d81e2"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-frontend/baseline-schemas-browser-read.cjs",
+        "sha256": "31f36c41330a0154c163fce4b121a2a22a94e6608cfd29f04818c43e5320c94e"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-frontend/baseline-schemas-browser-read.entry.ts",
+        "sha256": "86b3ae2dc27932f80ea908461137fa6d8917c494a89c49f669f86335c5b5f3d7"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-frontend/baseline-schemas-browser-read.mjs",
+        "sha256": "ffdcd4f27aca5cbe6a7ef142deeb694087cc20d7ad9f6422de5c14ac910d81e2"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-frontend/baseline-schemas-combined-diagnostic-qualified.cjs",
+        "sha256": "d954eb8d516f80fb28f344bc9fa6a624e9ecb770bbd21867c3a33d96e1c9827c"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-frontend/baseline-schemas-combined-diagnostic-qualified.entry.ts",
+        "sha256": "a26857673f39ba9094655e1fd87687962990ccffde121666342e035739b3a994"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-frontend/baseline-schemas-combined-diagnostic-qualified.mjs",
+        "sha256": "21ee9348f01b806dbafcce1a52a5c0e1804e0e3ceb952febdf9be1f1175c9cfc"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-frontend/baseline-schemas-combined-diagnostic.cjs",
+        "sha256": "bdff944f5a64c192953ca081eaeae12abdc58e1e3699045079f977dea2968fa4"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-frontend/baseline-schemas-combined-diagnostic.entry.ts",
+        "sha256": "a26857673f39ba9094655e1fd87687962990ccffde121666342e035739b3a994"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-frontend/baseline-schemas-combined-diagnostic.mjs",
+        "sha256": "21ee9348f01b806dbafcce1a52a5c0e1804e0e3ceb952febdf9be1f1175c9cfc"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-frontend/baseline-schemas-server-sdk-qualified.cjs",
+        "sha256": "bdf85382f50a6e50426c880546fabfd71957fbe7da73e3b1770a808744fc975a"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-frontend/baseline-schemas-server-sdk-qualified.entry.ts",
+        "sha256": "28545bd03ce49d0372a5df3d31253a58bbf666acb439ef33b0c8c06ca1084d24"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-frontend/baseline-schemas-server-sdk-qualified.mjs",
+        "sha256": "caba90abddb3266f8f78a172059467a13ae4374e9d13b59129fcde7a3a0b9e4e"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-frontend/baseline-schemas-server-sdk.cjs",
+        "sha256": "82a8a19a4a7bf85bad39fd04e7d27d2229ecc748e1b916bd254707b984ec31f4"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-frontend/baseline-schemas-server-sdk.entry.ts",
+        "sha256": "28545bd03ce49d0372a5df3d31253a58bbf666acb439ef33b0c8c06ca1084d24"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-frontend/baseline-schemas-server-sdk.mjs",
+        "sha256": "caba90abddb3266f8f78a172059467a13ae4374e9d13b59129fcde7a3a0b9e4e"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-frontend/baseline-stream-qualified.cjs",
+        "sha256": "9f15543f885d8637d48747374a3f2d8a80004826a6372aa87b7eb44ca81ce70d"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-frontend/baseline-stream-qualified.entry.ts",
+        "sha256": "6a7da01fdf8a8de04eb6158b44d6fa3babacfba52499b95e6b7828d6e2d5a07b"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-frontend/baseline-stream-qualified.mjs",
+        "sha256": "6bea43c45b896c7cacfaab3dfe313bb4d8e577764286dd4c796ceeacecb156e1"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-frontend/baseline-stream-repeated.cjs",
+        "sha256": "cc5727bcc8f25fb6b9c814cce3f87e9058bf31b543f555427f84277726168dda"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-frontend/baseline-stream-repeated.entry.ts",
+        "sha256": "6a7da01fdf8a8de04eb6158b44d6fa3babacfba52499b95e6b7828d6e2d5a07b"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-frontend/baseline-stream-repeated.mjs",
+        "sha256": "6bea43c45b896c7cacfaab3dfe313bb4d8e577764286dd4c796ceeacecb156e1"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-frontend/baseline-stream.cjs",
+        "sha256": "833e95623e2a612852321fb0d6df1e2f03a2c869668915cb6924ace54d872be3"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-frontend/baseline-stream.entry.ts",
+        "sha256": "6a7da01fdf8a8de04eb6158b44d6fa3babacfba52499b95e6b7828d6e2d5a07b"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-frontend/baseline-stream.mjs",
+        "sha256": "6bea43c45b896c7cacfaab3dfe313bb4d8e577764286dd4c796ceeacecb156e1"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-frontend/baseline/frontend/src/components/wiki-sidebar/use-document-intent.ts",
+        "sha256": "6b6c0ff270c1ede749ecaf1d718d23a2bbcfda0bb690816d7210dca923a46da5"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-frontend/baseline/frontend/src/lib/bounded-text.ts",
+        "sha256": "3121da865d9c180cbf476b1f578d99fbd72c2776c9805a61bfd73c73279133d1"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-frontend/baseline/frontend/src/lib/clients/transform-http.ts",
+        "sha256": "db62b1c38100097fbd25a84442b33c68e80fd37231a4c426fe885cff585489dc"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-frontend/baseline/frontend/src/lib/markdown-transform-recovery.ts",
+        "sha256": "d3a5b475aa4ba84bcab1c61054943755bae759c00f70bf89364334ca62c911a6"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-frontend/baseline/frontend/src/lib/recent-aliases.test.ts",
+        "sha256": "25321e44e5143506fe949c967f7fbfe7aba3df43b831a45e49382c4c55aae0b1"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-frontend/baseline/frontend/src/lib/recent-aliases.ts",
+        "sha256": "eddc33d6cd1600e093817d15e138997927ae2f764ed0a3e0757830034b23a42d"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-frontend/baseline/frontend/src/lib/storage-schemas.ts",
+        "sha256": "8db52e4af0dc7515a5837487389d2eb0f886c96c53232481415ec9592e8e2e96"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-frontend/baseline/frontend/src/lib/wiki-api.ts",
+        "sha256": "22c6bbff6ae9e18b8a5d57e0636536d6c832205ef141a53504f98b804afd1b95"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-frontend/baseline/frontend/src/lib/wiki-read-api.ts",
+        "sha256": "450682abacc2acdfe7b83c832acbde5a516fbcb7f50d3fa9a4a4e0431d078cfe"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-frontend/baseline/frontend/src/lib/wiki-schemas.ts",
+        "sha256": "707afc0c36fe69fc94465de59099eb093159ba902a80d0511a1e880711286b35"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-frontend/candidate-components-wiki-sidebar-use-document-intent.ts.compiled.ts",
+        "sha256": "c7ecf0de29e16719a792b8f4a5ff91c4f9b5d7678870d990bdf37e1b43ff744d"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-frontend/candidate-history.cjs",
+        "sha256": "29159d17233f109bcd39adaf7c48ee353b08e8660a0fdc2744e2a3c5895289b9"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-frontend/candidate-history.entry.ts",
+        "sha256": "f075cb2f00d0232d5ef17a1a8b845b34dd72fdbad6a0efd70b3c74134e4bc260"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-frontend/candidate-history.mjs",
+        "sha256": "4319cbcf44bb51a94bd2bc775dd7a2656728cd25d2ae10d3e453559c29dffca6"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-frontend/candidate-lib-bounded-text.ts.compiled.ts",
+        "sha256": "92813f16c0f8bd11ad7b080fae59de0ed127955adad94faa679f27cca0146bb3"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-frontend/candidate-lib-clients-transform-http.ts.compiled.ts",
+        "sha256": "91aa5dd504fd097ad70d0487233b8806873d7c1d0df99d5032ec336c0152a8e2"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-frontend/candidate-lib-markdown-transform-recovery.ts.compiled.ts",
+        "sha256": "1ffd4e7ef369d848af7cf317fbe78649ed29ee83dc2b8641d5a844b6fe569223"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-frontend/candidate-lib-recent-aliases.ts.compiled.ts",
+        "sha256": "9690d3a74ae8f3c217d80988b912109737d25fd46a09450746031e0b74b70881"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-frontend/candidate-lib-storage-schemas.ts.compiled.ts",
+        "sha256": "64ae431228c8ddc6094c83e724bb837ea97e45ac7b0ff16c06012667ae49e919"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-frontend/candidate-lib-wiki-api.ts.compiled.ts",
+        "sha256": "eb8fc9f2aaa9a046c1a2ac0e7d4788ee50118a0a5bc5adc68c0f1053cfcfd80d"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-frontend/candidate-lib-wiki-read-api.ts.compiled.ts",
+        "sha256": "fee4770123697757e7746649c31cb9b6feb3ca468bcf0c55a945809c818db4c5"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-frontend/candidate-lib-wiki-schemas.ts.compiled.ts",
+        "sha256": "a810608a54448ae68423a96a4205c511b7f832a0ca98bef82fe2d2bce004ca70"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-frontend/candidate-recovery.cjs",
+        "sha256": "db22dee3f9de05f21c1492aacd8afb4584eb178021608e891f239f2ae7e4d88a"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-frontend/candidate-recovery.entry.ts",
+        "sha256": "893dbf8029c79d25081436679cbd8030a8f0233e98c5fe3a0a982c8e48014373"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-frontend/candidate-recovery.mjs",
+        "sha256": "064f1c279380affa281083a793f0d03c2341b39a06e2cee18d73f86aef31b9f1"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-frontend/candidate-schemas-browser-read-qualified.cjs",
+        "sha256": "3fa29f408c7a18e16fdbb589e84e94efbba0c33468b6448c3b535b0d714e1aba"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-frontend/candidate-schemas-browser-read-qualified.entry.ts",
+        "sha256": "86b3ae2dc27932f80ea908461137fa6d8917c494a89c49f669f86335c5b5f3d7"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-frontend/candidate-schemas-browser-read-qualified.mjs",
+        "sha256": "de19a364537426da961b958ea2105188c8e3824e64c7cdfec49f5de9d7dc4ad5"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-frontend/candidate-schemas-browser-read.cjs",
+        "sha256": "6f1a8dccfe1d45d4dc7f44f0d1f8136ad8b6cc248fa3cb34ad92127118d7276f"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-frontend/candidate-schemas-browser-read.entry.ts",
+        "sha256": "86b3ae2dc27932f80ea908461137fa6d8917c494a89c49f669f86335c5b5f3d7"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-frontend/candidate-schemas-browser-read.mjs",
+        "sha256": "de19a364537426da961b958ea2105188c8e3824e64c7cdfec49f5de9d7dc4ad5"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-frontend/candidate-schemas-combined-diagnostic-qualified.cjs",
+        "sha256": "856961cc047dfd1e5003e3fd178872307b5dd6be3dd93f9e365e6b18ff9fa5d4"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-frontend/candidate-schemas-combined-diagnostic-qualified.entry.ts",
+        "sha256": "a26857673f39ba9094655e1fd87687962990ccffde121666342e035739b3a994"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-frontend/candidate-schemas-combined-diagnostic-qualified.mjs",
+        "sha256": "a7db340f15cd9094d8a41dccff11f69da033c33bcc6617b57d9e15ef51597d3c"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-frontend/candidate-schemas-combined-diagnostic.cjs",
+        "sha256": "52e0e41d278eef0327c4c7f67fb3f6e5dcd091f10aae0a47d32dfb7c1205f700"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-frontend/candidate-schemas-combined-diagnostic.entry.ts",
+        "sha256": "a26857673f39ba9094655e1fd87687962990ccffde121666342e035739b3a994"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-frontend/candidate-schemas-combined-diagnostic.mjs",
+        "sha256": "a7db340f15cd9094d8a41dccff11f69da033c33bcc6617b57d9e15ef51597d3c"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-frontend/candidate-schemas-server-sdk-qualified.cjs",
+        "sha256": "db4fc6ef634caafcf53a48e2a6ff0667846827c8b4623feadee1b7dfe1185f1c"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-frontend/candidate-schemas-server-sdk-qualified.entry.ts",
+        "sha256": "28545bd03ce49d0372a5df3d31253a58bbf666acb439ef33b0c8c06ca1084d24"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-frontend/candidate-schemas-server-sdk-qualified.mjs",
+        "sha256": "9c82670f381ef3d3c3374beb1ddffef4623af1eee450b65fd21e1a7f6611d575"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-frontend/candidate-schemas-server-sdk.cjs",
+        "sha256": "095ce8701a3f3d666c56317dcf46826bd03d50784544182a78779044de3f44ae"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-frontend/candidate-schemas-server-sdk.entry.ts",
+        "sha256": "28545bd03ce49d0372a5df3d31253a58bbf666acb439ef33b0c8c06ca1084d24"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-frontend/candidate-schemas-server-sdk.mjs",
+        "sha256": "9c82670f381ef3d3c3374beb1ddffef4623af1eee450b65fd21e1a7f6611d575"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-frontend/candidate-stream.cjs",
+        "sha256": "e9c7fb4ece5183716be637bba4781e6f07e80bb7383ee3eae8f79f1153e20f3b"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-frontend/candidate-stream.entry.ts",
+        "sha256": "6a7da01fdf8a8de04eb6158b44d6fa3babacfba52499b95e6b7828d6e2d5a07b"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-frontend/candidate-stream.mjs",
+        "sha256": "51fbaac8eac8b4697cd76f7a20d2641fba9c15b844a58ce56fb68bf04c1f8183"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-frontend/compile-history-lifecycle.mjs",
+        "sha256": "18f46947883a544e61b1e2b1213a023830b4da6a27984b26585f31c2b2deab32"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-frontend/compile-history-lifecycle.txt",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-frontend/compile-intent.mjs",
+        "sha256": "5269b41d23434db2629ac2c453275f9f72a03b940f9dbde3305f394ef228119b"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-frontend/compile-intent.txt",
+        "sha256": "bf9e75878759f36caae1f476fe92b6b1ac5030a2c16f6d49c04fc632a2dbdfcf"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-frontend/final-history-qualified.cjs",
+        "sha256": "e497307ddb1edfc7f55f53ad537a8a9700b325de675e0cb7c2397eeaa29571fe"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-frontend/final-history-qualified.entry.ts",
+        "sha256": "f075cb2f00d0232d5ef17a1a8b845b34dd72fdbad6a0efd70b3c74134e4bc260"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-frontend/final-history-qualified.mjs",
+        "sha256": "21bf53781ad6fff301cb38c209beae9ec657d5c807036d2137a6c307818d9f03"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-frontend/final-history-repeated.cjs",
+        "sha256": "0288416f4fc48b937f4b4a7fc3063b41301bafc18eef1ee145625f249ddb9838"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-frontend/final-history-repeated.entry.ts",
+        "sha256": "f075cb2f00d0232d5ef17a1a8b845b34dd72fdbad6a0efd70b3c74134e4bc260"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-frontend/final-history-repeated.mjs",
+        "sha256": "21bf53781ad6fff301cb38c209beae9ec657d5c807036d2137a6c307818d9f03"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-frontend/final-hooks-use-current-user.ts.compiled.ts",
+        "sha256": "6ffb0940387514ddfedec9d1b6f66c5b28ef6d9f67ea1cba0c879daa1cc8916e"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-frontend/final-lib-bounded-text.ts.compiled.ts",
+        "sha256": "8b086f08ecdb895f16bef0fc78a82db87598d2e72512c9f56c9e4f2ed6e1172c"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-frontend/final-lib-clients-transform-http.ts.compiled.ts",
+        "sha256": "91aa5dd504fd097ad70d0487233b8806873d7c1d0df99d5032ec336c0152a8e2"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-frontend/final-lib-markdown-transform-recovery.ts.compiled.ts",
+        "sha256": "be010d32cedfc92c8aeeeed920f1e734e9bd91dd55aac818ea1ab186f71420e8"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-frontend/final-lib-recent-aliases.ts.compiled.ts",
+        "sha256": "9690d3a74ae8f3c217d80988b912109737d25fd46a09450746031e0b74b70881"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-frontend/final-lib-storage-schemas.ts.compiled.ts",
+        "sha256": "64ae431228c8ddc6094c83e724bb837ea97e45ac7b0ff16c06012667ae49e919"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-frontend/final-quick-link-visit-recorder.compiled.tsx",
+        "sha256": "3c3eb20368b54f5bfc262d30a2a9e1102085e4b6c322e7a80e15591cdc1e6d82"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-frontend/final-quick-link-visit-recorder.fixture.tsx",
+        "sha256": "67fcbbf4263d32e0d337838cc57cd4c2e84455aef9d3247b4c3f2429a6b2a576"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-frontend/final-stream-qualified.cjs",
+        "sha256": "139e91424ac4da2b8d19834f50749bf69ca2a7b3a7d459e4d73c56ef90d328cd"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-frontend/final-stream-qualified.entry.ts",
+        "sha256": "6a7da01fdf8a8de04eb6158b44d6fa3babacfba52499b95e6b7828d6e2d5a07b"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-frontend/final-stream-qualified.mjs",
+        "sha256": "185a6ab0d1c09d847ef856d0345f643eb799e45d58bcd905ee9d91506f29b9fe"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-frontend/final-stream-repeated.cjs",
+        "sha256": "d71986aa8bf1d481e03ae11fadd8c81dbef2a3df35cf2105d6f551becd769a06"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-frontend/final-stream-repeated.entry.ts",
+        "sha256": "6a7da01fdf8a8de04eb6158b44d6fa3babacfba52499b95e6b7828d6e2d5a07b"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-frontend/final-stream-repeated.mjs",
+        "sha256": "185a6ab0d1c09d847ef856d0345f643eb799e45d58bcd905ee9d91506f29b9fe"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-frontend/final/frontend/src/components/wiki-sidebar/use-document-intent.ts",
+        "sha256": "6b6c0ff270c1ede749ecaf1d718d23a2bbcfda0bb690816d7210dca923a46da5"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-frontend/final/frontend/src/lib/bounded-text.ts",
+        "sha256": "fdaabea1ef548213fb20fe1c860733f8f4f3de13eb89a03ccf15707dca70c813"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-frontend/final/frontend/src/lib/clients/transform-http.ts",
+        "sha256": "db62b1c38100097fbd25a84442b33c68e80fd37231a4c426fe885cff585489dc"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-frontend/final/frontend/src/lib/markdown-transform-recovery.ts",
+        "sha256": "d3a5b475aa4ba84bcab1c61054943755bae759c00f70bf89364334ca62c911a6"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-frontend/final/frontend/src/lib/recent-aliases.test.ts",
+        "sha256": "a22c19474a77596f5caa0208558e73537bb5bedd7a96197639d7ffa6e83fdfc7"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-frontend/final/frontend/src/lib/recent-aliases.ts",
+        "sha256": "a5c4f49883c67e7836c4a165cee65cd4123c1dad002b31a3b1d43ec8b5543f0f"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-frontend/final/frontend/src/lib/storage-schemas.ts",
+        "sha256": "a8f994a20b8015d0fc337d992b2f3ba1d58f28fa80e7a35b009077409d93cf27"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-frontend/final/frontend/src/lib/wiki-api.ts",
+        "sha256": "22c6bbff6ae9e18b8a5d57e0636536d6c832205ef141a53504f98b804afd1b95"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-frontend/final/frontend/src/lib/wiki-read-api.ts",
+        "sha256": "450682abacc2acdfe7b83c832acbde5a516fbcb7f50d3fa9a4a4e0431d078cfe"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-frontend/final/frontend/src/lib/wiki-schemas.ts",
+        "sha256": "707afc0c36fe69fc94465de59099eb093159ba902a80d0511a1e880711286b35"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-frontend/focused-checks-final.json",
+        "sha256": "099d228fc03b52d177446d988f64b4bd23a52795b091b46511dc2f3b8b2c1a5c"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-frontend/focused-checks-final.py",
+        "sha256": "12394432994f537a7afd4f5e20ffddc35a77219464673e9db75b181440f358f5"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-frontend/focused-checks-final.txt",
+        "sha256": "81fcc4ea76bfc9ae784501c82d7666463524b9fc06e807ddf5ceae4a51fa8ad2"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-frontend/focused-checks-initial.json",
+        "sha256": "451bee2514498f6f9021f336130ba3cc5b9f2f736da8c5272ae9dea4c462ffad"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-frontend/focused-checks-initial.txt",
+        "sha256": "e1df507135260dc661b3eddcd51f90d4e52443b2948eccc332e959799b5ce117"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-frontend/focused-checks.py",
+        "sha256": "31e750116874ab1014322c175feceef48b5c3da7430f1fb251060a30df5dda47"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-frontend/focused-format-final.txt",
+        "sha256": "17aa973d3f004560237d9a95171210b0671deff23d61628eecf7322ff5938f20"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-frontend/focused-format-initial.txt",
+        "sha256": "810170bda6a993d013bb2a1b5446400c8cd00fdff3e9e0f4f9cc7e9de2db6ae6"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-frontend/focused-lint-final.txt",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-frontend/focused-lint-initial.txt",
+        "sha256": "c662df73f76d1761bf1d7f5438a14c80beffc9e433381ecf18d3308fbba912a6"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-frontend/focused-lint-qualified.txt",
+        "sha256": "3d9e6c573470ab8765cdc5736347fb09dfe6f5ade4f49661080da00878c93bb4"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-frontend/focused-tests-final.txt",
+        "sha256": "af2de67898205d1571b569c917b2db0d2e7eed7e4abc781aba99395d0dbeafa4"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-frontend/focused-tests-initial.txt",
+        "sha256": "bbbab473348884ee777a32d44d2bb09df89e6576b0f24cf546116cc29aa564c5"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-frontend/focused-types-final.txt",
+        "sha256": "8e709d3c1aab3a7ec3edfc506807307cc7c29276270931036675b015f152f247"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-frontend/focused-types-initial.txt",
+        "sha256": "8e709d3c1aab3a7ec3edfc506807307cc7c29276270931036675b015f152f247"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-frontend/history-initial.json",
+        "sha256": "b3b5dd9ef7f61426eb5c480731a4ab6a7a9529ad7262ebcd0a1b28ce65677468"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-frontend/history-lifecycle-initial.txt",
+        "sha256": "49a563594d60f0e92cb73ae33e77454e1628b41f8955eafafac1a189d06b38ad"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-frontend/history-lifecycle-probe-initial-executed.tsx",
+        "sha256": "217021c939191ee747b2993e4654583fe15b26116e7cf5462af5da40eafdf629"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-frontend/history-lifecycle-probe.tsx",
+        "sha256": "a649f13710d8f6aa64c4306c6df5ec5aad7bf76f7002c9fff5a7d80843b8e093"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-frontend/history-lifecycle.json",
+        "sha256": "d39c6be08c9e6d956824fb4605184a9c971a9c6533c6cc17ded336fda6a38fbf"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-frontend/history-qualified.json",
+        "sha256": "b135a9c2d9a2571ff838274561da47706de3bbfa30db7b35b90e6818ca2a602c"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-frontend/history-repeated.json",
+        "sha256": "c906776da9c5998cb39b477c8d99fc17dff7c3fa4dcc731e20c620e9868f8f8c"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-frontend/intent-compiler-initial.json",
+        "sha256": "0e496bc0db25809a9ce5020a86adc28a4a09161cd27b66a274712a2237fdabec"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-frontend/intent-runtime-initial.txt",
+        "sha256": "21b8e613d4a9d250fa7bc77e9d3f49eee9282ba4f70b9b3111e3d757cb55a054"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-frontend/intent-runtime-measurements.json",
+        "sha256": "b72946ac294cc8cc554ff366d9bb39defcb063705a1741f844c6f46e7b43422f"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-frontend/intent-runtime-probe-initial-executed.tsx",
+        "sha256": "69d082a12f3f0f6dae6ec1dec4bece3e1b68e6792bea291c387a858e3c2c09fc"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-frontend/intent-runtime-probe.tsx",
+        "sha256": "6d6aa872ccbc57d54190a1bcb7b324095a506d9bd1c5e448a184201dbec9e336"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-frontend/intermediate-while-formatted/frontend/src/lib/bounded-text.ts",
+        "sha256": "b12f31f65e93d61e19697b0c8685d4c8244fdf5ce17ae2ac836a72253e00cf7d"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-frontend/native-common-final-measurement-executed.mjs",
+        "sha256": "ee1982d7379385a8a0f56930189b8ba6e072e3e59c5f59483a72838119c24685"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-frontend/native-common-initial-executed.mjs",
+        "sha256": "98cf7f59127fcceb379cb618a94492a9305522bee8abcdd9cb5d122fa0bd6f37"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-frontend/native-common.mjs",
+        "sha256": "026a1e3a88fed8d690ba24c2ce3384f51f16baac3fe768281ebc8dfe91218210"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-frontend/native-final-resources-no-export-ownership.mjs",
+        "sha256": "e0c80623ef62cb257a9deb8bb9709464d98808ddb0332b44030f2f2539b5e524"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-frontend/native-final-resources-qualified.json",
+        "sha256": "4eaf6f0418ed3e3bea7577e6355b07f1270bc21f6f54fde5deef316d649bf809"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-frontend/native-final-resources-qualified.txt",
+        "sha256": "553ca6e30a3f1a5c4b9f063d09e1e6d582331876b9daba7fd535e7d054de9801"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-frontend/native-final-resources.json",
+        "sha256": "7e12a74a9c8b49e1c8d91dc7d8b81e96c14e1a39409daa0a64327e583c51ac78"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-frontend/native-final-resources.mjs",
+        "sha256": "c46379779d65554bd04aa90e87088580a3fdbef100d10aed480b17a3564e5a28"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-frontend/native-final-resources.txt",
+        "sha256": "1cfa6cd4cff936542924018844e02dbe1fdb0d3949019cc6a03980f309d2eef1"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-frontend/native-history-stream-recovery.mjs",
+        "sha256": "0ae5d44201c7dd6edcb86a46383114192e122395d6f3c22b221081217954bc9b"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-frontend/native-initial.json",
+        "sha256": "4b04f89b3500d952dd843a94c8be01affc290e57b226abb5b171eeea997eb424"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-frontend/native-initial.txt",
+        "sha256": "ea018f3f475b74d2412074bd81945064946a11bb94f25dd7d339a5c6b5ae5b4a"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-frontend/native-promise-resources-initial.txt",
+        "sha256": "ffa2e85b5f8e141871655d3cc9b719ed8208d17e038ad1b7e11084a85d8137fa"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-frontend/native-promise-resources.json",
+        "sha256": "d361f61fb29d81d504f5c62f2c5277cb5d8607e2c5c3b036a929aca3a9e21f83"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-frontend/native-promise-resources.mjs",
+        "sha256": "cdb907a59815d1890e957359014e34254c57fbb68de579f6a4d07f9a512b4b38"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-frontend/native-qualified.json",
+        "sha256": "93b7326a7a151368b5d4d0545933159979888466a1517cbf6fb90532e7a4a453"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-frontend/native-qualified.mjs",
+        "sha256": "93843fc56c673801d98468d6e6192534a4725b9c644730d6e9a0f70f77c5d87f"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-frontend/native-qualified.txt",
+        "sha256": "8a1d237a21172f646daecd1397607a3c98422e2e15ecfc8e980ef805fe652e56"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-frontend/native-repeated.json",
+        "sha256": "cc719618ba0f361aa302dc412d52b0203a49cf35c39cc46b3acd99c6f599811b"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-frontend/native-repeated.mjs",
+        "sha256": "fff847e9a27b50a61cbf9f03e0c0abdd1c64d69f06fc2fa5c496abb3ea13a5cd"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-frontend/native-repeated.txt",
+        "sha256": "8a1d237a21172f646daecd1397607a3c98422e2e15ecfc8e980ef805fe652e56"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-frontend/native-schema-entries-attempt1.mjs",
+        "sha256": "dd77bd9272dae3f25b32ca54684e93c333226ad2c2e4665727a5b238ac56fe37"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-frontend/native-schema-entries.mjs",
+        "sha256": "c7e2677b0f303e52d54d3a1efec6298d2a4c96ba16380e921bdcddd3886ea37f"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-frontend/prior-records/docs/performance.json",
+        "sha256": "4b9da261be4c787313e348e55b99fcc5598aab07158166fe039765f093b72528"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-frontend/prior-records/docs/performance/round5-20261011.json",
+        "sha256": "197966475964b02c702329eeec00ed3ec11ae4beb973c618885248cc72ca978c"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-frontend/prior-records/docs/performance/round6-20261011-preload.json",
+        "sha256": "c9b9012c20e0b548a74b10c8e74de05eabd054fc9d43ac61507d62bb9cc16ada"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-frontend/prior-records/docs/performance/round7-20261011-transport.json",
+        "sha256": "54c0725949402851dfe0bdd2031479095e2cd20d41e34a745bb6246a8a21697c"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-frontend/prior-records/docs/performance/round8-20261012-frontend.json",
+        "sha256": "838aad0ef6ea22cffa624b362501374eec8bb3ae1cc24ed90eaac5898e2f253d"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-frontend/prior-work-audit-complete.json",
+        "sha256": "cc2da16cf923520b30d51131c89d9acae99fdd11f93380e8a8846bc01b727e44"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-frontend/prior-work-audit.json",
+        "sha256": "9f393e8400c5f1d831307069101e52e3982b2df3c1d8028a70668a0c9012184d"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-frontend/prototype/frontend/src/components/wiki-sidebar/use-document-intent.ts",
+        "sha256": "20df3d52afafef6aea7b577a0595aeaab2f9e8aee5e8da705135411d90718f87"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-frontend/prototype/frontend/src/lib/bounded-text.ts",
+        "sha256": "b12f31f65e93d61e19697b0c8685d4c8244fdf5ce17ae2ac836a72253e00cf7d"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-frontend/prototype/frontend/src/lib/clients/transform-http.ts",
+        "sha256": "db62b1c38100097fbd25a84442b33c68e80fd37231a4c426fe885cff585489dc"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-frontend/prototype/frontend/src/lib/markdown-transform-recovery.ts",
+        "sha256": "f05b162d287837708300680d5aee43763d6d628eb4da16de619edaf47ac46386"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-frontend/prototype/frontend/src/lib/recent-aliases.ts",
+        "sha256": "a5c4f49883c67e7836c4a165cee65cd4123c1dad002b31a3b1d43ec8b5543f0f"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-frontend/prototype/frontend/src/lib/storage-schemas.ts",
+        "sha256": "a8f994a20b8015d0fc337d992b2f3ba1d58f28fa80e7a35b009077409d93cf27"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-frontend/prototype/frontend/src/lib/wiki-api.ts",
+        "sha256": "c8e772c3d02d734183361a1b521b5021d1cc23e5bdfbab0c0569d454bc6ba906"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-frontend/prototype/frontend/src/lib/wiki-read-api.ts",
+        "sha256": "40354cf5573e61f76f67464546ca216ae80b18bbe5c32682348b4338074e3deb"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-frontend/prototype/frontend/src/lib/wiki-schemas.ts",
+        "sha256": "3eed091a0fd0fe4a5a81b68901fb5c80d69d8cffc7ba04c62135656a446ca175"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-frontend/qualification/frontend/src/lib/bounded-text.ts",
+        "sha256": "4c12b1d0e71d2e35709b7e4b3f836a2f63d6e532a68c20359955104eeb9cb902"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-frontend/qualification/frontend/src/lib/recent-aliases.test.ts",
+        "sha256": "a22c19474a77596f5caa0208558e73537bb5bedd7a96197639d7ffa6e83fdfc7"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-frontend/qualification/frontend/src/lib/recent-aliases.ts",
+        "sha256": "a5c4f49883c67e7836c4a165cee65cd4123c1dad002b31a3b1d43ec8b5543f0f"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-frontend/qualification/frontend/src/lib/storage-schemas.ts",
+        "sha256": "a8f994a20b8015d0fc337d992b2f3ba1d58f28fa80e7a35b009077409d93cf27"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-frontend/recovery-initial.json",
+        "sha256": "567c77ff1e0e961ddade6e17142bb9387edc75555b12b313b906517d8e0112ae"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-frontend/reproduce-history-lifecycle.py",
+        "sha256": "dccacd60325f60ceceeec6b8d5d95e94accbc7b4f5d932be4d5c08264a7dc807"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-frontend/reproduce-intent.py",
+        "sha256": "ced032479c8dfa5e84e62d3feba9fd8ec4bc84bf2dc85edc480258a68f761c88"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-frontend/reproduce-resources-validation.txt",
+        "sha256": "5bdc1bdc714b832f7ff21917bb7fef0598d4fbdc7357d0a499e64e4ec445a074"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-frontend/reproduce.py",
+        "sha256": "68f2d6d69ff543c1b7317ffeb480531f95bcb4f42cf8621c2830bbf1ccd6f580"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-frontend/schema-entry-initial.txt",
+        "sha256": "705564239e8d503366359f5f7cf883e04b723537114d799e23252f73d564a347"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-frontend/schema-entry-qualified.json",
+        "sha256": "8cb34c2f7629a82cd2971d3a886dd2312953cf54a7be2db557e4d4652b750110"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-frontend/schema-entry-qualified.txt",
+        "sha256": "edd3b0d749c6efa4060bc7bd0396d24552a9db8108562bf169d5f28f70238f72"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-frontend/schema-entry-startup-qualified.json",
+        "sha256": "1c0be32cc17d4c6ecc7ae7b55d442b4935d87946de11549ce917efcc3841aca8"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-frontend/scoped-types.mjs",
+        "sha256": "74b3f23c57a16b329af166772080e332e7222e340c69eef1d9f43dabff5a8f22"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-frontend/seal-report.py",
+        "sha256": "b4467fb4f44746248639bcaa46771af391a5437e49cb0f7878178f7fc69cee3f"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-frontend/source-parity-final.json",
+        "sha256": "0ea9e7c1bcba0e86529c6c83121f88f53887380f272ef6c8a5ff69929c10aa53"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-frontend/stream-initial.json",
+        "sha256": "08553257d4746e03ebdcd7996af048fe7d37abad01875e4294017f043f7c3489"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-frontend/stream-qualified.json",
+        "sha256": "fd40a5ae4083fed8befb0e1d807b22c1882d8b34101e384712540f5f3917c90f"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-frontend/stream-repeated.json",
+        "sha256": "72cec656face9741dc0eb2da730fdd9ad32cfff1cb414fdeafb110e1f9c7712e"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-independent-source-qualified-review.json",
+        "sha256": "c6f2a8deb58dc92f72ad128beb23d8c3dac445d9016169775d63d8a3b4d86bd2"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-independent-source-review.json",
+        "sha256": "05c1905073bfc7a33f6a5996a60ce7f07ed2617b35cd8e7f9e3cc9e77bfe2d04"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-integration-repairs-priorqualification.json",
+        "sha256": "72438618af9ea7c558bd334132841fd839750c30000c91b15308d8f976162039"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-integration-script-review.json",
+        "sha256": "1871f0c27e41bbb1fa95a2004b17000828476ee128f7ed2039e657fe8c2d941d"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round9-selected-fixtures-priorqualification.json",
+        "sha256": "2bf5f38ab9e26ef5e2d0ecf0dc6664b237b555675951502109f7e29188dd4b28"
+      }
+    ],
+    "scopes": {
+      "backend": {
+        "accepted": 2,
+        "rejected": 3,
+        "recordSha256": "d829dd891b3940a1c2ceabbdc63e464596b60f9cd8d0082bcf8e0f7d3956bca1"
+      },
+      "frontend": {
+        "accepted": 2,
+        "rejected": 3,
+        "recordSha256": "d81778f0024c8f32282ac94192619bce96af57dc0baa113f3f7fc224d27c876c"
+      }
+    },
+    "accepted": 4,
+    "rejected": 6,
+    "managedConfigBaselineChanges": 0,
+    "managedConfigurationOrThresholdChanges": 0,
+    "addedBaselineAllowances": 0,
+    "removedBaselineAllowances": 0,
+    "integrationChangedPaths": [],
+    "integrationSourceHashes": [],
+    "newSuppressions": 0,
+    "newInlineInterfaceExemptions": [],
+    "originalBaselineSyncPolicy": "No baseline changes; preserve the original baseline byte-exact.",
+    "integrationRepairsCountedAsPasses": 0,
+    "integrationRepairs": {
+      "rootIntegrationSourceRepairs": 0,
+      "repairsCountedAsPasses": 0,
+      "sourceOrConfigPathsChangedByRoot": [],
+      "qualifiedScopeReports": [
+        {
+          "path": "/private/tmp/sarj-wiki-perf-round9-backend.json",
+          "sha256": "d829dd891b3940a1c2ceabbdc63e464596b60f9cd8d0082bcf8e0f7d3956bca1"
+        },
+        {
+          "path": "/private/tmp/sarj-wiki-perf-round9-frontend-qualified2.json",
+          "sha256": "d81778f0024c8f32282ac94192619bce96af57dc0baa113f3f7fc224d27c876c"
+        }
+      ],
+      "preservedInitialFrontendScope": {
+        "path": "/private/tmp/sarj-wiki-perf-round9-frontend.json",
+        "sha256": "1b175dd1f3b04f79800399ace199c1a37194ba7ff4b2092ed13000b6350cffad"
+      },
+      "scopeQualificationRepairs": "Backend formatting, cache access, public policy subclass compatibility and exact-source remeasurement are recorded in its sealed scope with immutable historical source mappings. Frontend fixture setup, stream lint-compatible adapter refinement/remeasurement and secondary read-counter metadata correction are recorded separately. All count zero; production source ownership stayed with the agents. A late readonly peer found shared mutable Zod history fallback ownership; the frontend owner changed it to a fresh factory, added the meaningful public mutation/user isolation regression, and requalified source/timing/cost/lifecycle controls. Initial and first-qualified scopes and all252 prior artifact references are preserved. The fix, reprobes, metadata refresh and reviews count zero.",
+      "readOnlyOperationalReview": {
+        "path": "/private/tmp/sarj-wiki-perf-round9-integration-script-review.json",
+        "sha256": "1871f0c27e41bbb1fa95a2004b17000828476ee128f7ed2039e657fe8c2d941d"
+      },
+      "baselineAndThresholdChanges": 0,
+      "newSuppressions": 0,
+      "preservedPriorMetadata": [
+        {
+          "path": "/private/tmp/sarj-wiki-perf-round9-integration-repairs-priorqualification.json",
+          "sha256": "72438618af9ea7c558bd334132841fd839750c30000c91b15308d8f976162039"
+        },
+        {
+          "path": "/private/tmp/sarj-wiki-perf-round9-selected-fixtures-priorqualification.json",
+          "sha256": "2bf5f38ab9e26ef5e2d0ecf0dc6664b237b555675951502109f7e29188dd4b28"
+        }
+      ],
+      "preservedPriorFrontendQualification": {
+        "path": "/private/tmp/sarj-wiki-perf-round9-frontend-qualified.json",
+        "sha256": "622f7d9c0bd267caa83d9e761840df7e06fdd36eefa1e540612bde70bbf1f632"
+      },
+      "latePeerFinding": {
+        "path": "/private/tmp/sarj-wiki-perf-round9-backend-review-frontend.json",
+        "sha256": "468aea61d0c041995690f3ddf7bbe56964a1583533f871c87d5b25c5ee795cfa",
+        "repair": "Fresh invalid-history fallback factory plus public returned-array mutation regression and complete native requalification. The poisoned legacy state is intentionally corrected, not described as parity. Count zero."
+      },
+      "metadataRefreshedAt": "2026-10-12T13:13:56.958907+00:00"
+    },
+    "ownedCacheCleanup": {
+      "taskOwnedBuildCacheCleared": false,
+      "removedBytes": 0,
+      "globalOrUserCachesPurged": false,
+      "reason": "Sufficient headroom; retain the prior qualified build and webpack cache.",
+      "rawEvidencePreserved": true,
+      "countedPasses": 0
+    },
+    "baselineProductionHttp": {
+      "revision": "a2aedf971f86227e33769da272b721e3bc2bded0",
+      "backendRevision": "a2aedf971f86227e33769da272b721e3bc2bded0",
+      "cases": {
+        "frontendHealth": {
+          "url": "https://wiki.sarj.ai/health",
+          "status": 200,
+          "body": {
+            "revision": "a2aedf971f86227e33769da272b721e3bc2bded0",
+            "status": "ok"
+          },
+          "cacheControl": "private, no-store",
+          "location": null,
+          "requestIdPresent": true,
+          "requestIdMatchesInput": true,
+          "durationMs": 895.816
+        },
+        "backendHealth": {
+          "url": "https://api-wiki.sarj.ai/health",
+          "status": 200,
+          "body": {
+            "revision": "a2aedf971f86227e33769da272b721e3bc2bded0",
+            "status": "ok",
+            "database": "ok"
+          },
+          "cacheControl": "private, no-store",
+          "location": null,
+          "requestIdPresent": true,
+          "requestIdMatchesInput": true,
+          "durationMs": 1004.831
+        },
+        "expiredIdentity": {
+          "url": "https://wiki.sarj.ai/api/wiki/auth/me",
+          "status": 401,
+          "body": {
+            "detail": "Your session has expired"
+          },
+          "cacheControl": "private, no-store",
+          "location": null,
+          "requestIdPresent": true,
+          "requestIdMatchesInput": true,
+          "durationMs": 2685.274
+        },
+        "expiredDrives": {
+          "url": "https://wiki.sarj.ai/api/wiki/sidebar/drives",
+          "status": 401,
+          "body": {
+            "detail": "Your session has expired"
+          },
+          "cacheControl": "private, no-store",
+          "location": null,
+          "requestIdPresent": true,
+          "requestIdMatchesInput": true,
+          "durationMs": 1059.692
+        },
+        "expiredRecentPages": {
+          "url": "https://wiki.sarj.ai/api/wiki/files/recent?file_ids=verification-fixture",
+          "status": 401,
+          "body": {
+            "detail": "Your session has expired"
+          },
+          "cacheControl": "private, no-store",
+          "location": null,
+          "requestIdPresent": true,
+          "requestIdMatchesInput": true,
+          "durationMs": 2833.811
+        }
+      },
+      "limitation": "WAN functional checks only; no controlled production latency claim. Invalid fixture cookie only; no real browser cookie extraction."
+    },
+    "baselineProductionBrowser": {
+      "qualifiedBaselineRevision": "a2aedf971f86227e33769da272b721e3bc2bded0",
+      "observedAt": "2026-10-12T11:47:30.404Z",
+      "driveVisibility": {
+        "My Drive": true,
+        "All Team": true,
+        "CX & Account Growth": true,
+        "Engineering": true,
+        "Finance": true,
+        "Marketing": true,
+        "People": true,
+        "Sales": true
+      },
+      "failedDriveMessageCount": 0,
+      "recentLinkCount": 4,
+      "expansion": {
+        "My Drive": "true",
+        "All Team": "false",
+        "Engineering": "true"
+      },
+      "url": "https://wiki.sarj.ai/",
+      "parentWarnings": 0,
+      "parentErrors": 0
+    },
+    "priorCatalogAudit": {
+      "priorRecordedCandidates": 419,
+      "catalogEntryCount": 419,
+      "priorRecordsPreserved": true,
+      "syntheticLegacyCatalogIdCollisions": 62,
+      "interpretation": "Legacy catalog IDs synthesized from document/scope/ordinal omit the tranche. This auxiliary-ID uniqueness assumption was corrected; candidate text and immutable historical source records remain the authority. No historical counts or candidate records were rewritten. New candidate IDs must be distinct and disjoint from every prior catalog ID."
+    },
+    "independentReadOnlyReview": {
+      "reviewedAt": "2026-10-12T13:20:02.248578+00:00",
+      "currentOpenFindingCount": 0,
+      "countedPasses": 0,
+      "reviews": [
+        {
+          "kind": "operational",
+          "path": "/private/tmp/sarj-wiki-perf-round9-integration-script-review.json",
+          "sha256": "1871f0c27e41bbb1fa95a2004b17000828476ee128f7ed2039e657fe8c2d941d",
+          "currentOpenFindingCount": 0,
+          "countedPasses": 0
+        },
+        {
+          "kind": "source",
+          "path": "/private/tmp/sarj-wiki-perf-round9-independent-source-qualified-review.json",
+          "sha256": "c6f2a8deb58dc92f72ad128beb23d8c3dac445d9016169775d63d8a3b4d86bd2",
+          "currentOpenFindingCount": 0,
+          "countedPasses": 0
+        }
+      ],
+      "preservedSupersededReviews": [
+        {
+          "path": "/private/tmp/sarj-wiki-perf-round9-independent-source-review.json",
+          "sha256": "05c1905073bfc7a33f6a5996a60ce7f07ed2617b35cd8e7f9e3cc9e77bfe2d04",
+          "qualification": "Historical pre-repair review, superseded by final source-qualified review; preserved byte-exact."
+        },
+        {
+          "path": "/private/tmp/sarj-wiki-perf-round9-backend-review-frontend.json",
+          "sha256": "468aea61d0c041995690f3ddf7bbe56964a1583533f871c87d5b25c5ee795cfa",
+          "qualification": "Historical pre-repair review, superseded by final source-qualified review; preserved byte-exact."
+        }
+      ],
+      "latePeerFindingResolved": "Shared mutable invalid-history Zod fallback replaced with fresh owned arrays, qualified by source test plus native baseline/pre-repair/final mutation witness and refreshed native timing/cost/lifecycle controls. Poisoned legacy behavior is intentionally corrected; this repair counts zero.",
+      "sourceFiles": 8,
+      "explicitFileHashesVerifiedByIndependentReviewer": 684,
+      "sourceChangesByRoot": 0,
+      "sourceAndCommandOwnershipReleased": true
+    },
+    "measurements": {
+      "selectedFixtures": [
+        {
+          "candidate": "round9-backend-01",
+          "record": "docs/performance/round9-20261012-backend.json",
+          "measurement": "Native-state update with 10,000 live states",
+          "before": 7.27844375,
+          "after": 4.112025149999999,
+          "unit": "median ms",
+          "workload": "put-existing-10000-active",
+          "controlsAndLimits": "Three alternating process pairs, nine samples per process. Owned transaction fixture includes its timeouts and verification read; SQL statements fall10→9 because one unused quota COUNT is skipped only for a live existing key. New-key count/quotas, rotation, expiry, lock and caller transaction ownership remain controlled. One-row timings vary from+5.45% to-20.84%; no universal latency claim or new persistent state."
+        },
+        {
+          "candidate": "round9-backend-03",
+          "record": "docs/performance/round9-20261012-backend.json",
+          "measurement": "Exact-class authorization policy with 16 callbacks",
+          "before": 102.02856,
+          "after": 59.324588000000006,
+          "unit": "median µs",
+          "workload": "policy-authorize-16-callbacks",
+          "controlsAndLimits": "Three alternating process pairs, nine samples per process. Parses fall34→17; all registered callbacks remain checked before the requested URI. Existing public subclass override dispatch/lazy matching is preserved. Subclass median adds0.182µs with mixed paired direction. Complete PostgreSQL provider latency shows no stable gain. Policy instances remain48bytes; up to16 parsed references are retained for the call, with traced peaks in the full report."
+        },
+        {
+          "candidate": "round9-frontend-03",
+          "record": "docs/performance/round9-20261012-frontend.json",
+          "measurement": "Record a recent alias with 50 stored visits",
+          "before": 24.85738142857112,
+          "after": 16.257381428571144,
+          "unit": "median µs",
+          "workload": "recordRecentAlias with50 stored visits, same1read/1write, final fresh fallback",
+          "controlsAndLimits": "41 alternating pairs of the complete native public recorder; 41 candidate medians are lower. Both arms perform one read and one write with exact ordinary output/fallback parity. Stored entries validate once and the new entry validates separately; arbitrary public writes keep their full validator. A count-zero correctness repair gives invalid-history reads fresh owned fallbacks; native public returned-array mutation and cross-user controls distinguish the intentionally fixed poisoned legacy state. Native compiled lifecycle/session controls pass. Isolated module gzip changes+44bytes; startup changes+1.590µs and synthetic retained heap changes+154.4bytes, with variance and small workloads in the full scope."
+        },
+        {
+          "candidate": "round9-frontend-04",
+          "record": "docs/performance/round9-20261012-frontend.json",
+          "measurement": "Native Promise initialization events for 4 MiB / 512 chunks",
+          "before": 3088,
+          "after": 2062,
+          "unit": "events per completed response",
+          "workload": "transformHttp4MiB/512chunks, native Promise init events",
+          "controlsAndLimits": "Seven identical alternating resource pairs through complete native transformHttp, streams, readers and Responses. Node async_hooks observes3,088→2,062 PROMISE events: two removed per read including EOF. Null/pre-aborted controls are unchanged. Ordinary-GC4MiB timing704.278→701.993µs is noise-sensitive;1KiB5.596→5.664µs has no useful gain. GC-outside timings are separately labeled; the rejected while/await prototype is excluded. Final module saves2gzip bytes; private native reader method ownership is fixed for the body lifetime."
+        }
+      ],
+      "clientBundleInventory": {
+        "home": {
+          "before": {
+            "files": [
+              {
+                "file": "static/chunks/3549-0962241baa87ed46.js",
+                "bytes": 8663,
+                "gzipBytes": 3583
+              },
+              {
+                "file": "static/chunks/app/(app)/not-found-d06f6d83539247ca.js",
+                "bytes": 1278,
+                "gzipBytes": 742
+              },
+              {
+                "file": "static/chunks/app/layout-6c764b2a87e4fcac.js",
+                "bytes": 4433,
+                "gzipBytes": 2009
+              },
+              {
+                "file": "static/chunks/app/global-error-4699291d9cd6a8b0.js",
+                "bytes": 1221,
+                "gzipBytes": 741
+              },
+              {
+                "file": "static/chunks/9577-0467d7ff5a01f9b0.js",
+                "bytes": 75365,
+                "gzipBytes": 20750
+              },
+              {
+                "file": "static/chunks/6325-d67c0ff50280111f.js",
+                "bytes": 27319,
+                "gzipBytes": 8606
+              },
+              {
+                "file": "static/chunks/9494-1cd34046d5c2b45d.js",
+                "bytes": 68834,
+                "gzipBytes": 21226
+              },
+              {
+                "file": "static/chunks/3508-8807ce197bd83e94.js",
+                "bytes": 12398,
+                "gzipBytes": 4500
+              },
+              {
+                "file": "static/chunks/7114-404c80ce77af26a9.js",
+                "bytes": 37830,
+                "gzipBytes": 12674
+              },
+              {
+                "file": "static/chunks/3616-fa2885bd8d5e9229.js",
+                "bytes": 7170,
+                "gzipBytes": 2696
+              },
+              {
+                "file": "static/chunks/7686-026b8e0206314b85.js",
+                "bytes": 141004,
+                "gzipBytes": 47157
+              },
+              {
+                "file": "static/chunks/3376-815d68387625c4cb.js",
+                "bytes": 31026,
+                "gzipBytes": 9522
+              },
+              {
+                "file": "static/chunks/5256-429e1e94a953b5f1.js",
+                "bytes": 26689,
+                "gzipBytes": 9140
+              },
+              {
+                "file": "static/chunks/app/(app)/layout-625426a0e3bf48c9.js",
+                "bytes": 123624,
+                "gzipBytes": 41490
+              },
+              {
+                "file": "static/chunks/app/(app)/page-36381129fcb63489.js",
+                "bytes": 16942,
+                "gzipBytes": 6756
+              }
+            ],
+            "bytes": 583796,
+            "gzipBytes": 191592
+          },
+          "after": {
+            "files": [
+              {
+                "file": "static/chunks/3549-0962241baa87ed46.js",
+                "bytes": 8663,
+                "gzipBytes": 3583
+              },
+              {
+                "file": "static/chunks/app/(app)/not-found-d06f6d83539247ca.js",
+                "bytes": 1278,
+                "gzipBytes": 742
+              },
+              {
+                "file": "static/chunks/app/layout-6c764b2a87e4fcac.js",
+                "bytes": 4433,
+                "gzipBytes": 2009
+              },
+              {
+                "file": "static/chunks/app/global-error-4699291d9cd6a8b0.js",
+                "bytes": 1221,
+                "gzipBytes": 741
+              },
+              {
+                "file": "static/chunks/9577-0467d7ff5a01f9b0.js",
+                "bytes": 75365,
+                "gzipBytes": 20750
+              },
+              {
+                "file": "static/chunks/6325-d67c0ff50280111f.js",
+                "bytes": 27319,
+                "gzipBytes": 8606
+              },
+              {
+                "file": "static/chunks/9494-1cd34046d5c2b45d.js",
+                "bytes": 68834,
+                "gzipBytes": 21226
+              },
+              {
+                "file": "static/chunks/3508-8807ce197bd83e94.js",
+                "bytes": 12398,
+                "gzipBytes": 4500
+              },
+              {
+                "file": "static/chunks/7114-404c80ce77af26a9.js",
+                "bytes": 37830,
+                "gzipBytes": 12674
+              },
+              {
+                "file": "static/chunks/3616-fa2885bd8d5e9229.js",
+                "bytes": 7170,
+                "gzipBytes": 2696
+              },
+              {
+                "file": "static/chunks/7686-026b8e0206314b85.js",
+                "bytes": 141004,
+                "gzipBytes": 47157
+              },
+              {
+                "file": "static/chunks/3376-a1ae52a3ab691b38.js",
+                "bytes": 31030,
+                "gzipBytes": 9529
+              },
+              {
+                "file": "static/chunks/5256-429e1e94a953b5f1.js",
+                "bytes": 26689,
+                "gzipBytes": 9140
+              },
+              {
+                "file": "static/chunks/app/(app)/layout-625426a0e3bf48c9.js",
+                "bytes": 123624,
+                "gzipBytes": 41490
+              },
+              {
+                "file": "static/chunks/app/(app)/page-36381129fcb63489.js",
+                "bytes": 16942,
+                "gzipBytes": 6756
+              }
+            ],
+            "bytes": 583800,
+            "gzipBytes": 191599
+          },
+          "rawChangeBytes": 4,
+          "gzipChangeBytes": 7,
+          "gzipChangePercent": 0.0037
+        },
+        "document": {
+          "before": {
+            "files": [
+              {
+                "file": "static/chunks/3549-0962241baa87ed46.js",
+                "bytes": 8663,
+                "gzipBytes": 3583
+              },
+              {
+                "file": "static/chunks/app/(app)/not-found-d06f6d83539247ca.js",
+                "bytes": 1278,
+                "gzipBytes": 742
+              },
+              {
+                "file": "static/chunks/app/layout-6c764b2a87e4fcac.js",
+                "bytes": 4433,
+                "gzipBytes": 2009
+              },
+              {
+                "file": "static/chunks/app/global-error-4699291d9cd6a8b0.js",
+                "bytes": 1221,
+                "gzipBytes": 741
+              },
+              {
+                "file": "static/chunks/9577-0467d7ff5a01f9b0.js",
+                "bytes": 75365,
+                "gzipBytes": 20750
+              },
+              {
+                "file": "static/chunks/6325-d67c0ff50280111f.js",
+                "bytes": 27319,
+                "gzipBytes": 8606
+              },
+              {
+                "file": "static/chunks/9494-1cd34046d5c2b45d.js",
+                "bytes": 68834,
+                "gzipBytes": 21226
+              },
+              {
+                "file": "static/chunks/3508-8807ce197bd83e94.js",
+                "bytes": 12398,
+                "gzipBytes": 4500
+              },
+              {
+                "file": "static/chunks/7114-404c80ce77af26a9.js",
+                "bytes": 37830,
+                "gzipBytes": 12674
+              },
+              {
+                "file": "static/chunks/3616-fa2885bd8d5e9229.js",
+                "bytes": 7170,
+                "gzipBytes": 2696
+              },
+              {
+                "file": "static/chunks/3376-815d68387625c4cb.js",
+                "bytes": 31026,
+                "gzipBytes": 9522
+              },
+              {
+                "file": "static/chunks/5256-429e1e94a953b5f1.js",
+                "bytes": 26689,
+                "gzipBytes": 9140
+              },
+              {
+                "file": "static/chunks/6334-af34c3b69277bfb6.js",
+                "bytes": 30467,
+                "gzipBytes": 10507
+              },
+              {
+                "file": "static/chunks/app/(app)/d/%5BdriveId%5D/page-7526f4031df08f5c.js",
+                "bytes": 2155,
+                "gzipBytes": 1005
+              },
+              {
+                "file": "static/chunks/7686-026b8e0206314b85.js",
+                "bytes": 141004,
+                "gzipBytes": 47157
+              },
+              {
+                "file": "static/chunks/app/(app)/layout-625426a0e3bf48c9.js",
+                "bytes": 123624,
+                "gzipBytes": 41490
+              },
+              {
+                "file": "static/chunks/app/(app)/page-36381129fcb63489.js",
+                "bytes": 16942,
+                "gzipBytes": 6756
+              }
+            ],
+            "bytes": 616418,
+            "gzipBytes": 203104
+          },
+          "after": {
+            "files": [
+              {
+                "file": "static/chunks/3549-0962241baa87ed46.js",
+                "bytes": 8663,
+                "gzipBytes": 3583
+              },
+              {
+                "file": "static/chunks/app/(app)/not-found-d06f6d83539247ca.js",
+                "bytes": 1278,
+                "gzipBytes": 742
+              },
+              {
+                "file": "static/chunks/app/layout-6c764b2a87e4fcac.js",
+                "bytes": 4433,
+                "gzipBytes": 2009
+              },
+              {
+                "file": "static/chunks/app/global-error-4699291d9cd6a8b0.js",
+                "bytes": 1221,
+                "gzipBytes": 741
+              },
+              {
+                "file": "static/chunks/9577-0467d7ff5a01f9b0.js",
+                "bytes": 75365,
+                "gzipBytes": 20750
+              },
+              {
+                "file": "static/chunks/6325-d67c0ff50280111f.js",
+                "bytes": 27319,
+                "gzipBytes": 8606
+              },
+              {
+                "file": "static/chunks/9494-1cd34046d5c2b45d.js",
+                "bytes": 68834,
+                "gzipBytes": 21226
+              },
+              {
+                "file": "static/chunks/3508-8807ce197bd83e94.js",
+                "bytes": 12398,
+                "gzipBytes": 4500
+              },
+              {
+                "file": "static/chunks/7114-404c80ce77af26a9.js",
+                "bytes": 37830,
+                "gzipBytes": 12674
+              },
+              {
+                "file": "static/chunks/3616-fa2885bd8d5e9229.js",
+                "bytes": 7170,
+                "gzipBytes": 2696
+              },
+              {
+                "file": "static/chunks/3376-a1ae52a3ab691b38.js",
+                "bytes": 31030,
+                "gzipBytes": 9529
+              },
+              {
+                "file": "static/chunks/5256-429e1e94a953b5f1.js",
+                "bytes": 26689,
+                "gzipBytes": 9140
+              },
+              {
+                "file": "static/chunks/6334-af34c3b69277bfb6.js",
+                "bytes": 30467,
+                "gzipBytes": 10507
+              },
+              {
+                "file": "static/chunks/app/(app)/d/%5BdriveId%5D/page-b1611c86643a917d.js",
+                "bytes": 2244,
+                "gzipBytes": 1042
+              },
+              {
+                "file": "static/chunks/7686-026b8e0206314b85.js",
+                "bytes": 141004,
+                "gzipBytes": 47157
+              },
+              {
+                "file": "static/chunks/app/(app)/layout-625426a0e3bf48c9.js",
+                "bytes": 123624,
+                "gzipBytes": 41490
+              },
+              {
+                "file": "static/chunks/app/(app)/page-36381129fcb63489.js",
+                "bytes": 16942,
+                "gzipBytes": 6756
+              }
+            ],
+            "bytes": 616511,
+            "gzipBytes": 203148
+          },
+          "rawChangeBytes": 93,
+          "gzipChangeBytes": 44,
+          "gzipChangePercent": 0.0217
+        }
+      },
+      "limitation": "Controlled local work, allocations and native resources plus locked app inventory do not establish live page-load latency or a physical optimization maximum. Shared framework assets and deferred chunks are excluded."
+    },
+    "remainingRequiredQualification": [
+      "normal commit hooks",
+      "normal pre-push full make check",
+      "all hosted required checks",
+      "exact merged-tree Release Main",
+      "strict production health/auth proxies",
+      "authenticated production navigation",
+      "guarded original workspace sync"
+    ]
+  },
+  "reproduce": [
+    "Follow fixture commands and source/artifact hashes in both scope records. Use the same locked dependency/tool versions and workload parameters in both arms.",
+    "Serialize paired local probes through /private/tmp/sarj-wiki-perf-round9-benchmark-guard.py; do not overlap benchmarks with builds or type checks.",
+    "Run unchanged make check with the pinned toolchain and explicitly enabled task-owned loopback PostgreSQL QA, bulk, cache, round7 read and provider databases.",
+    "Home inventory: node frontend/scripts/benchmark-bundle.mjs frontend/.next",
+    "Document inventory: node frontend/scripts/benchmark-bundle.mjs frontend/.next '(app)/d/[driveId]/page'"
+  ],
+  "limitations": [
+    "Controlled local CPU, allocations and resource counts do not establish production page-load latency or an absolute optimization maximum.",
+    "Every candidate includes small and negative controls; rejected regressions remain in the scope reports. Repeated measurements and integration repairs count zero.",
+    "Authentication, session retirement, authorization, request bounds, privacy headers, mutable-input behavior and admitted-write ownership remain qualified under native entrypoint controls.",
+    "Frontend app inventories exclude shared framework assets and deferred chunks. The previous qualified build and task-owned webpack cache were retained in this tranche; source snapshots and all earlier raw evidence remain preserved.",
+    "Normal commit/pre-push hooks, hosted required checks, exact merged-tree deployment, authenticated production navigation and guarded original-workspace sync remain required after initial local qualification. Final receipts are separate to avoid self-referential commit identifiers."
+  ]
+}
