@@ -18,6 +18,18 @@ describe("file presentation", () => {
   });
 
   it.each([
+    ["image/jpeg", "lucide-image", "text-icon-image"],
+    ["audio/ogg", "lucide-file-headphone", "text-icon-generic"],
+    ["video/webm", "lucide-file-play", "text-icon-slide"],
+    ["application/x-synthetic", "lucide-file-text", "text-icon-generic"],
+  ])("preserves fallback glyph, tint and caller classes for %s", (mimeType, glyph, tint) => {
+    const view = renderToStaticMarkup(renderMimeIcon(mimeType, "size-4"));
+    expect(view).toContain(glyph);
+    expect(view).toContain(tint);
+    expect(view).toContain("size-4");
+  });
+
+  it.each([
     ["application/zip", "lucide-archive"],
     ["audio/mpeg", "lucide-file-headphone"],
     ["text/csv", "lucide-table"],

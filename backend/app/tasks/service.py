@@ -1476,7 +1476,11 @@ def _request_hash(payload: dict[str, JsonValue]) -> str:
 
 def _task_read_payload(task: Task) -> dict[str, object]:
     result = task.result
-    if task.kind == TaskKind.FILE_DOCUMENT_TRANSFORM and isinstance(result, dict):
+    if (
+        task.kind == TaskKind.FILE_DOCUMENT_TRANSFORM
+        and isinstance(result, dict)
+        and "qa_permission_evidence" in result
+    ):
         result = dict(result)
         result.pop("qa_permission_evidence", None)
     return {

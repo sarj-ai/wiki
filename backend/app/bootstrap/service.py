@@ -50,9 +50,18 @@ class AggregatingBootstrapService(BootstrapService):
 
     @override
     async def load(self, *, defer_doc_icons: bool = False) -> BootstrapRead:
-        drives, extras = await asyncio.gather(
-            self._drive.list_drives(), self._extras_reads(defer_doc_icons=defer_doc_icons)
-        )
+        drive_read = asyncio.create_task(self._drive.list_drives())
+        extras_read = asyncio.create_task(self._extras_reads(defer_doc_icons=defer_doc_icons))
+        try:
+            drives, extras = await asyncio.gather(drive_read, extras_read)
+        finally:
+            # Both tasks belong to this request. A failed read must not leave
+            # its companion using the request's session after load has exited.
+            pending = [task for task in (drive_read, extras_read) if not task.done()]
+            for task in pending:
+                task.cancel()
+            if pending:
+                await asyncio.gather(drive_read, extras_read, return_exceptions=True)
         preferences, folder_icons, doc_icons, sort_orders = extras
         return BootstrapRead(
             drives=drives,

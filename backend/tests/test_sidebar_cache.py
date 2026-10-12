@@ -358,7 +358,9 @@ async def test_concurrent_cold_tree_reads_decode_once() -> None:
 
 
 def test_decoded_cache_bounds_total_nodes_and_skips_oversized_trees() -> None:
-    cache = sidebar_cache._DecodedTreeCache(max_entries=32, max_nodes=3)
+    cache = sidebar_cache._DecodedTreeCache(
+        max_entries=32, max_nodes=3, max_payload_bytes=32 * 1024 * 1024
+    )
     user = _user()
     version = sidebar_cache._TreeVersion(datetime.now(UTC), 0, "1", "(0,1)")
     decoder = object()
@@ -367,15 +369,16 @@ def test_decoded_cache_bounds_total_nodes_and_skips_oversized_trees() -> None:
     tree = DriveTree(
         drive_id=DriveId("budget"), folders=[node, node], files=[], files_complete=True
     )
-    cache.put(keys[0], tree)
-    cache.put(keys[1], tree)
+    payload_bytes = len(encrypt_cache(tree.model_dump_json()))
+    cache.put(keys[0], tree, payload_bytes=payload_bytes)
+    cache.put(keys[1], tree, payload_bytes=payload_bytes)
 
     assert cache.get(keys[0]) is None
     assert cache.get(keys[1]) is tree
     oversized = DriveTree(
         drive_id=DriveId("large-budget"), folders=[node] * 4, files=[], files_complete=True
     )
-    cache.put(keys[2], oversized)
+    cache.put(keys[2], oversized, payload_bytes=len(encrypt_cache(oversized.model_dump_json())))
     assert cache.get(keys[2]) is None
     assert cache.get(keys[1]) is tree
 

@@ -75,4 +75,36 @@ describe("document viewer lifecycle", () => {
 
     expect(useDocViewerStore.getState().pool[0]?.title).toBe("New title");
   });
+
+  it("consumes only the prewarm target that becomes active, in the same publication", () => {
+    const store = useDocViewerStore.getState();
+    const owner = Symbol("owner");
+    store.setPrewarm(doc("a"));
+    store.setActive(doc("b"), owner);
+    expect(useDocViewerStore.getState().prewarm?.fileId).toBe("a");
+    const publications: { active: string | undefined; prewarm: string | undefined }[] = [];
+    const unsubscribe = useDocViewerStore.subscribe((state) => {
+      publications.push({ active: state.active?.fileId, prewarm: state.prewarm?.fileId });
+    });
+    store.setActive(doc("a"), owner);
+    unsubscribe();
+    expect(publications).toEqual([{ active: "a", prewarm: undefined }]);
+    expect(useDocViewerStore.getState().pool[0]?.fileId).toBe("a");
+    store.setActive(doc("c"), owner);
+    store.setActive(doc("d"), owner);
+    store.setActive(doc("e"), owner);
+    expect(useDocViewerStore.getState().pool.map((entry) => entry.fileId)).toEqual(["e", "d", "c"]);
+    expect(useDocViewerStore.getState().prewarm).toBeNull();
+  });
+
+  it("does not revive a consumed target when its authorization finishes after activation", () => {
+    const store = useDocViewerStore.getState();
+    const owner = Symbol("owner");
+    store.setActive(doc("a"), owner);
+    store.setPrewarm(doc("a"));
+    expect(useDocViewerStore.getState().prewarm).toBeNull();
+    store.setPrewarm(doc("b"));
+    store.setPrewarm(doc("a"));
+    expect(useDocViewerStore.getState().prewarm?.fileId).toBe("b");
+  });
 });

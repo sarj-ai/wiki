@@ -1,5 +1,6 @@
 "use client";
 
+import { useSyncExternalStore } from "react";
 import { create } from "zustand";
 
 export type DropIntent = "above" | "below" | "into";
@@ -78,29 +79,103 @@ export const useDragOverStore = create<DragOverState>((set, get) => ({
   },
 }));
 
+type FeedbackKind = "container" | "folder" | "row";
+
+const FEEDBACK_LISTENERS: Record<FeedbackKind, Map<string, Set<() => void>>> = {
+  container: new Map(),
+  folder: new Map(),
+  row: new Map(),
+};
+let feedbackListenerCount = 0;
+let releaseFeedback: (() => void) | undefined;
+
+function subscribeFeedback(kind: FeedbackKind, id: string, listener: () => void): () => void {
+  const listeners = FEEDBACK_LISTENERS[kind];
+  const bucket = listeners.get(id) ?? new Set<() => void>();
+  listeners.set(id, bucket);
+  bucket.add(listener);
+  feedbackListenerCount++;
+  releaseFeedback ??= useDragOverStore.subscribe(notifyFeedback);
+  return () => {
+    if (!bucket.delete(listener)) return;
+    feedbackListenerCount--;
+    if (bucket.size === 0) listeners.delete(id);
+    if (feedbackListenerCount === 0) {
+      releaseFeedback?.();
+      releaseFeedback = undefined;
+    }
+  };
+}
+
+function notifyFeedback(state: DragOverState, previous: DragOverState): void {
+  const rowIds = new Set([previous.overId, state.overId]);
+  for (const id of rowIds) {
+    if (id === null) continue;
+    if (rowDropEdge(state, id) !== rowDropEdge(previous, id)) notifyForId("row", id);
+  }
+  const containerIds = new Set([previous.overContainerId, state.overContainerId]);
+  for (const id of containerIds) {
+    if (id === null) continue;
+    if (crossContainerDrop(state, id) !== crossContainerDrop(previous, id)) {
+      notifyForId("container", id);
+    }
+    if (id.startsWith("parent:")) rowIds.add(id.slice("parent:".length));
+  }
+  for (const id of rowIds) {
+    if (id === null) continue;
+    if (folderDrop(state, id) !== folderDrop(previous, id)) notifyForId("folder", id);
+  }
+}
+
+function notifyForId(kind: FeedbackKind, id: string): void {
+  const listeners = FEEDBACK_LISTENERS[kind].get(id);
+  if (!listeners) return;
+  for (const listener of listeners) listener();
+}
+
+function crossContainerDrop(state: DragOverState, containerId: string): boolean {
+  return (
+    state.activeContainerId !== null &&
+    state.overContainerId === containerId &&
+    state.activeContainerId !== containerId
+  );
+}
+
+function folderDrop(state: DragOverState, folderId: string): boolean {
+  return (
+    state.activeId !== null &&
+    ((state.overId === folderId && state.intent === "into") ||
+      state.overContainerId === `parent:${folderId}`)
+  );
+}
+
+function rowDropEdge(state: DragOverState, rowId: string): "above" | "below" | null {
+  if (state.activeId === null || state.overId !== rowId) return null;
+  if (state.intent === "above") return "above";
+  if (state.intent === "below") return "below";
+  return null;
+}
+
 export function useIsCrossContainerDropTarget(containerId: string): boolean {
-  return useDragOverStore(
-    (s) =>
-      s.activeContainerId !== null &&
-      s.overContainerId === containerId &&
-      s.activeContainerId !== containerId,
+  return useSyncExternalStore(
+    (listener) => subscribeFeedback("container", containerId, listener),
+    () => crossContainerDrop(useDragOverStore.getState(), containerId),
+    () => false,
   );
 }
 
 export function useIsDropIntoFolder(folderId: string): boolean {
-  return useDragOverStore(
-    (s) =>
-      s.activeId !== null &&
-      ((s.overId === folderId && s.intent === "into") ||
-        s.overContainerId === `parent:${folderId}`),
+  return useSyncExternalStore(
+    (listener) => subscribeFeedback("folder", folderId, listener),
+    () => folderDrop(useDragOverStore.getState(), folderId),
+    () => false,
   );
 }
 
 export function useDropEdgeForRow(rowId: string): "above" | "below" | null {
-  return useDragOverStore((s) => {
-    if (s.activeId === null || s.overId !== rowId) return null;
-    if (s.intent === "above") return "above";
-    if (s.intent === "below") return "below";
-    return null;
-  });
+  return useSyncExternalStore(
+    (listener) => subscribeFeedback("row", rowId, listener),
+    () => rowDropEdge(useDragOverStore.getState(), rowId),
+    () => null,
+  );
 }

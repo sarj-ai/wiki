@@ -465,15 +465,28 @@ def organization_candidates(
     tree: DriveTree,
 ) -> list[ProposalDestination]:
     current_id = current_parent_id or FileId(drive.id)
-    destinations = [
-        ProposalDestination(
-            folder_id=FileId(drive.id),
-            drive_id=drive.id,
-            drive_name=drive.name,
-            folder_path=[drive.name],
-        ),
-        *_tree_destinations(drive, tree),
-    ]
+    root = ProposalDestination(
+        folder_id=FileId(drive.id),
+        drive_id=drive.id,
+        drive_name=drive.name,
+        folder_path=[drive.name],
+    )
+    destinations: Iterable[ProposalDestination] = (
+        [root, *_tree_destinations(drive, tree)]
+        if len(tree.folders) <= _MAX_FOLDER_CANDIDATES
+        else chain(
+            (root,),
+            (
+                ProposalDestination(
+                    folder_id=folder_id,
+                    drive_id=drive.id,
+                    drive_name=drive.name,
+                    folder_path=path,
+                )
+                for folder_id, path in _tree_folder_paths(drive, tree)
+            ),
+        )
+    )
     title_terms = _significant_terms(evidence.file_name)
     description_terms = _significant_terms(evidence.description or "")
     content_terms = _significant_terms(evidence.content)
@@ -683,8 +696,10 @@ def _paths_within_candidate_depth(
 
 
 def _is_path_prefix(path: list[str], invoking_path: tuple[str, ...]) -> bool:
+    if len(path) > len(invoking_path):
+        return False
     normalized = tuple(part.casefold() for part in path)
-    return len(normalized) <= len(invoking_path) and invoking_path[: len(normalized)] == normalized
+    return invoking_path[: len(normalized)] == normalized
 
 
 def _tree_destinations(drive: DriveSummary, tree: DriveTree) -> list[ProposalDestination]:

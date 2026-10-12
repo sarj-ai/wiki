@@ -64,6 +64,21 @@ describe("destination move ordering", () => {
     ]);
   });
 
+  it.each([
+    ["anchor-a", "above", ["moved", "anchor-a", "anchor-z"]],
+    ["anchor-a", "below", ["anchor-a", "moved", "anchor-z"]],
+    ["anchor-z", "above", ["anchor-a", "moved", "anchor-z"]],
+    ["anchor-z", "below", ["anchor-a", "anchor-z", "moved"]],
+  ] as const)("inserts %s %s with consecutive final ranks", (rowId, intent, expected) => {
+    const tree: DriveTree = {
+      driveId: "drive",
+      filesComplete: true,
+      folders: [],
+      files: [node("anchor-z", MIME_DOC), MOVED, node("anchor-a", MIME_DOC)],
+    };
+    expect(order(tree, "drive", rowId, intent)).toEqual(expected);
+  });
+
   it("does not persist a rank list for an absent destination anchor", () => {
     expect(order(fixtureTree(), "root-folder", "root-doc", "above")).toBeNull();
   });

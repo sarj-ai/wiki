@@ -122,9 +122,16 @@ export function iframeShowsOwnTitle(mimeType: string): boolean {
   );
 }
 
+const FALLBACK_ICONS = {
+  audio: { icon: FileAudio, tint: "text-icon-generic" },
+  file: { icon: FileText, tint: "text-icon-generic" },
+  image: { icon: LucideImage, tint: "text-icon-image" },
+  video: { icon: FileVideo, tint: "text-icon-slide" },
+} as const;
+
 function fallbackIcon(mimeType: string): { icon: typeof FileText; tint: string } {
-  if (mimeType.startsWith("image/")) return { icon: LucideImage, tint: "text-icon-image" };
-  if (mimeType.startsWith("audio/")) return { icon: FileAudio, tint: "text-icon-generic" };
-  if (mimeType.startsWith("video/")) return { icon: FileVideo, tint: "text-icon-slide" };
-  return { icon: FileText, tint: "text-icon-generic" };
+  if (mimeType.startsWith("image/")) return FALLBACK_ICONS.image;
+  if (mimeType.startsWith("audio/")) return FALLBACK_ICONS.audio;
+  if (mimeType.startsWith("video/")) return FALLBACK_ICONS.video;
+  return FALLBACK_ICONS.file;
 }

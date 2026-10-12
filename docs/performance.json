@@ -1,7 +1,7 @@
 {
   "recordedAt": "2026-10-11",
   "baselineRevision": "f63e8f6f342a27d3b3f085e2150417ccd45756bf",
-  "totalPasses": 359,
+  "totalPasses": 409,
   "initialPasses": [
     {
       "pass": 1,
@@ -1657,14 +1657,14 @@
           "cases": {
             "destinationPickerWarm": {
               "medianMillisecondsBefore": 0.16125042000000123,
-              "medianMillisecondsAfter": 8.334999999988213e-6,
+              "medianMillisecondsAfter": 8.334999999988213e-06,
               "alternatingSamples": 40,
               "iterationsPerSample": 100,
               "scope": "10,000 immutable mixed folder nodes; repeated selected-destination render"
             },
             "lazyClassificationWarm": {
               "medianMillisecondsBefore": 0.14228166499999928,
-              "medianMillisecondsAfter": 9.1650000001664e-6,
+              "medianMillisecondsAfter": 9.1650000001664e-06,
               "alternatingSamples": 40,
               "iterationsPerSample": 100,
               "scope": "10,000 immutable mixed lazy nodes; repeated folder-shortcut render"
@@ -1678,7 +1678,7 @@
             },
             "documentFilterWarm": {
               "medianMillisecondsBefore": 0.06447687499999802,
-              "medianMillisecondsAfter": 9.374999997362466e-6,
+              "medianMillisecondsAfter": 9.374999997362466e-06,
               "alternatingSamples": 40,
               "iterationsPerSample": 100,
               "scope": "8,000 immutable non-folder nodes; document-only collapsed child count"
@@ -1720,7 +1720,7 @@
             },
             "dragContainerValidation": {
               "medianMillisecondsBefore": 0.07058124500000304,
-              "medianMillisecondsAfter": 5.354500000066764e-5,
+              "medianMillisecondsAfter": 5.354500000066764e-05,
               "alternatingSamples": 40,
               "iterationsPerSample": 100,
               "scope": "Container lookup during drag hover with 10,000 sibling IDs; strict full list validation retained on drop commit"
@@ -2193,17 +2193,23 @@
                 {
                   "ms": 631.7329579032958,
                   "completed": 1,
-                  "errors": ["TimeoutError"]
+                  "errors": [
+                    "TimeoutError"
+                  ]
                 },
                 {
                   "ms": 613.3281660731882,
                   "completed": 1,
-                  "errors": ["TimeoutError"]
+                  "errors": [
+                    "TimeoutError"
+                  ]
                 },
                 {
                   "ms": 613.5858329944313,
                   "completed": 1,
-                  "errors": ["TimeoutError"]
+                  "errors": [
+                    "TimeoutError"
+                  ]
                 }
               ],
               "median_ms": 613.5858329944313
@@ -2937,7 +2943,10 @@
                 "after_rows": 2,
                 "before_response_json_bytes": 830815,
                 "after_response_json_bytes": 187,
-                "unchanged_matching_root_ids": ["templates-a", "templates-b"]
+                "unchanged_matching_root_ids": [
+                  "templates-a",
+                  "templates-b"
+                ]
               }
             },
             {
@@ -2946,7 +2955,9 @@
               "result": "Bind every bulk metadata response to its requested ID before membership work",
               "evidence": {
                 "fixture": "Local mismatched-ID provider fixture; identity correctness, not a valid-record throughput claim",
-                "before_accepted_ids": ["different"],
+                "before_accepted_ids": [
+                  "different"
+                ],
                 "after_accepted_ids": [],
                 "before_metadata_get_subrequests": 1,
                 "after_metadata_get_subrequests": 1,
@@ -3221,12 +3232,18 @@
                   "raw_refresh_requests": 2,
                   "distribution": "one old plus one shared new",
                   "old_waiter": "AbortError",
-                  "new_waiters": ["refreshed", "refreshed"]
+                  "new_waiters": [
+                    "refreshed",
+                    "refreshed"
+                  ]
                 },
                 {
                   "scenario": "Actual HTTP child reads through initial StrictMode mount/cleanup/remount",
                   "read_requests": 2,
-                  "signals_aborted": [true, false],
+                  "signals_aborted": [
+                    true,
+                    false
+                  ],
                   "current_query_data": "loaded",
                   "terminal_events": 0
                 }
@@ -3246,7 +3263,9 @@
                 "evidence_before": {
                   "oldRequestAbortedAtHandoff": false,
                   "notifications": 1,
-                  "clearedUserIds": ["user-b"],
+                  "clearedUserIds": [
+                    "user-b"
+                  ],
                   "replacementLocation": "/login?redirect=%2Fd%2Fcurrent"
                 },
                 "evidence_after": {
@@ -3405,7 +3424,9 @@
                         "actionCallsBeforeHandoff": 0,
                         "actionCallsAfterHandoff": 1,
                         "refreshCalls": 1,
-                        "redirects": ["/login?redirect=%2F"],
+                        "redirects": [
+                          "/login?redirect=%2F"
+                        ],
                         "replacementCacheSurvived": false,
                         "retiredCacheRecreated": true,
                         "toasts": {
@@ -3424,7 +3445,9 @@
                         "scope": "Measured after initial epoch/UI guards, before threading the captured mutation signal into runAction",
                         "actionCalls": 1,
                         "refreshCalls": 1,
-                        "redirects": ["/login?redirect=%2F"],
+                        "redirects": [
+                          "/login?redirect=%2F"
+                        ],
                         "retiredCacheRecreated": false,
                         "toasts": []
                       },
@@ -3466,19 +3489,29 @@
                             "ownedMedianMicroseconds": 1.4520420000000058,
                             "deltaMicroseconds": 0.2254169999999931,
                             "bareSamples": [
-                              2.297499999999957, 1.445083000000011,
-                              1.2266250000000127, 1.2921249999999986,
-                              1.3017500000000268, 3.481124999999963,
-                              1.0131250000000023, 1.0505830000000174,
-                              1.1139590000000226, 1.0453339999999685,
+                              2.297499999999957,
+                              1.445083000000011,
+                              1.2266250000000127,
+                              1.2921249999999986,
+                              1.3017500000000268,
+                              3.481124999999963,
+                              1.0131250000000023,
+                              1.0505830000000174,
+                              1.1139590000000226,
+                              1.0453339999999685,
                               1.087709000000018
                             ],
                             "ownedSamples": [
-                              5.1668750000000045, 1.4520420000000058,
-                              5.541207999999983, 1.7409590000000321,
-                              1.419499999999971, 1.6224579999999946,
-                              1.1923330000000192, 1.2350830000000315,
-                              1.2213749999999663, 2.656833000000006,
+                              5.1668750000000045,
+                              1.4520420000000058,
+                              5.541207999999983,
+                              1.7409590000000321,
+                              1.419499999999971,
+                              1.6224579999999946,
+                              1.1923330000000192,
+                              1.2350830000000315,
+                              1.2213749999999663,
+                              2.656833000000006,
                               1.2821250000000077
                             ]
                           },
@@ -3490,19 +3523,29 @@
                             "ownedMedianMicroseconds": 1.540790999999956,
                             "deltaMicroseconds": 0.22804099999996197,
                             "bareSamples": [
-                              1.2169170000000236, 1.312749999999994,
-                              1.356207999999981, 1.3717090000000098,
-                              1.317707999999982, 1.3444999999999823,
-                              1.3599999999999568, 1.1114160000000197,
-                              1.2065829999999664, 1.2029169999999567,
+                              1.2169170000000236,
+                              1.312749999999994,
+                              1.356207999999981,
+                              1.3717090000000098,
+                              1.317707999999982,
+                              1.3444999999999823,
+                              1.3599999999999568,
+                              1.1114160000000197,
+                              1.2065829999999664,
+                              1.2029169999999567,
                               1.1118340000000444
                             ],
                             "ownedSamples": [
-                              1.6353330000000028, 3.7660829999999805,
-                              3.3473749999999995, 1.5118330000000242,
-                              1.5432500000000005, 1.540790999999956,
-                              4.913416999999981, 1.46225000000004,
-                              1.3746249999999804, 1.3439579999999864,
+                              1.6353330000000028,
+                              3.7660829999999805,
+                              3.3473749999999995,
+                              1.5118330000000242,
+                              1.5432500000000005,
+                              1.540790999999956,
+                              4.913416999999981,
+                              1.46225000000004,
+                              1.3746249999999804,
+                              1.3439579999999864,
                               1.3567919999999845
                             ]
                           }
@@ -4745,7 +4788,10 @@
                 },
                 "serverVerifiedIdentityAdditionalAuthReads": 0,
                 "strictModeReads": 2,
-                "strictModeReadSignalsAborted": [true, false],
+                "strictModeReadSignalsAborted": [
+                  true,
+                  false
+                ],
                 "sharedForegroundReadCallsAfterRecoveryUnmount": 1,
                 "sharedForegroundSignalAbortedAfterRecoveryUnmount": false
               },
@@ -6103,8 +6149,18 @@
                   }
                 },
                 "validationErrorsEqual": {
-                  "constructor": [["finite_number", "sort_order"]],
-                  "adapter": [["finite_number", "sort_order"]]
+                  "constructor": [
+                    [
+                      "finite_number",
+                      "sort_order"
+                    ]
+                  ],
+                  "adapter": [
+                    [
+                      "finite_number",
+                      "sort_order"
+                    ]
+                  ]
                 }
               },
               "limits": [
@@ -7496,16 +7552,30 @@
                       "beforeMedianMs": 9.328666000000112,
                       "afterMedianMs": 9.128832999999986,
                       "beforeSamplesMs": [
-                        9.17533400000002, 8.719832999999994, 9.704875000000015,
-                        9.645833000000039, 8.538832999999954, 66.188625,
-                        25.10566700000004, 9.357958000000053, 8.903958000000102,
-                        9.328666000000112, 8.558291999999938
+                        9.17533400000002,
+                        8.719832999999994,
+                        9.704875000000015,
+                        9.645833000000039,
+                        8.538832999999954,
+                        66.188625,
+                        25.10566700000004,
+                        9.357958000000053,
+                        8.903958000000102,
+                        9.328666000000112,
+                        8.558291999999938
                       ],
                       "afterSamplesMs": [
-                        9.470041999999921, 8.842209000000025, 8.899457999999981,
-                        9.057290999999964, 9.360708999999929, 9.418042000000014,
-                        9.697292000000061, 9.25304099999994, 9.128832999999986,
-                        8.707625000000007, 8.65099999999984
+                        9.470041999999921,
+                        8.842209000000025,
+                        8.899457999999981,
+                        9.057290999999964,
+                        9.360708999999929,
+                        9.418042000000014,
+                        9.697292000000061,
+                        9.25304099999994,
+                        9.128832999999986,
+                        8.707625000000007,
+                        8.65099999999984
                       ]
                     },
                     {
@@ -7525,16 +7595,30 @@
                       "beforeMedianMs": 82.7027079999998,
                       "afterMedianMs": 82.7024580000002,
                       "beforeSamplesMs": [
-                        82.64120799999955, 82.7027079999998, 83.28787499999999,
-                        81.7518329999998, 83.11608399999977, 152.6049170000001,
-                        82.14537500000006, 82.13187499999958, 81.96624999999995,
-                        83.53583299999991, 85.25033299999996
+                        82.64120799999955,
+                        82.7027079999998,
+                        83.28787499999999,
+                        81.7518329999998,
+                        83.11608399999977,
+                        152.6049170000001,
+                        82.14537500000006,
+                        82.13187499999958,
+                        81.96624999999995,
+                        83.53583299999991,
+                        85.25033299999996
                       ],
                       "afterSamplesMs": [
-                        82.59712500000023, 82.92524999999978, 82.42050000000017,
-                        82.7024580000002, 82.27104199999985, 81.93608399999994,
-                        82.81208400000014, 82.91187499999978, 82.85270899999978,
-                        80.51279199999999, 83.574208
+                        82.59712500000023,
+                        82.92524999999978,
+                        82.42050000000017,
+                        82.7024580000002,
+                        82.27104199999985,
+                        81.93608399999994,
+                        82.81208400000014,
+                        82.91187499999978,
+                        82.85270899999978,
+                        80.51279199999999,
+                        83.574208
                       ]
                     }
                   ]
@@ -7636,16 +7720,30 @@
                     "beforeMedianMs": 5.937999999999988,
                     "afterMedianMs": 4.7631669999999815,
                     "beforeSamplesMs": [
-                      5.500541999999996, 5.943250000000006, 5.928082999999987,
-                      5.5625, 5.5699579999999855, 6.188125000000014,
-                      5.937999999999988, 6.129958000000045, 5.941874999999982,
-                      5.892750000000035, 6.086583999999959
+                      5.500541999999996,
+                      5.943250000000006,
+                      5.928082999999987,
+                      5.5625,
+                      5.5699579999999855,
+                      6.188125000000014,
+                      5.937999999999988,
+                      6.129958000000045,
+                      5.941874999999982,
+                      5.892750000000035,
+                      6.086583999999959
                     ],
                     "afterSamplesMs": [
-                      4.689666999999986, 5.045540999999986, 4.773833000000025,
-                      4.5245000000000175, 4.7631669999999815, 4.896582999999993,
-                      4.493916000000013, 4.533957999999984, 4.928665999999964,
-                      5.018750000000011, 4.560292000000004
+                      4.689666999999986,
+                      5.045540999999986,
+                      4.773833000000025,
+                      4.5245000000000175,
+                      4.7631669999999815,
+                      4.896582999999993,
+                      4.493916000000013,
+                      4.533957999999984,
+                      4.928665999999964,
+                      5.018750000000011,
+                      4.560292000000004
                     ]
                   },
                   {
@@ -7655,16 +7753,30 @@
                     "beforeMedianMs": 97.03054199999997,
                     "afterMedianMs": 85.10224999999991,
                     "beforeSamplesMs": [
-                      98.14383399999997, 96.22500000000014, 96.46800000000007,
-                      98.40429099999983, 97.0032920000001, 98.31462499999998,
-                      97.51820799999996, 96.68437500000027, 96.4665,
-                      97.15516700000035, 97.03054199999997
+                      98.14383399999997,
+                      96.22500000000014,
+                      96.46800000000007,
+                      98.40429099999983,
+                      97.0032920000001,
+                      98.31462499999998,
+                      97.51820799999996,
+                      96.68437500000027,
+                      96.4665,
+                      97.15516700000035,
+                      97.03054199999997
                     ],
                     "afterSamplesMs": [
-                      83.35279200000014, 87.95912500000009, 89.89433299999996,
-                      84.17220799999996, 85.10224999999991, 85.28033300000016,
-                      83.64458299999978, 83.65650000000005, 86.23245799999995,
-                      84.50304099999994, 85.34179200000017
+                      83.35279200000014,
+                      87.95912500000009,
+                      89.89433299999996,
+                      84.17220799999996,
+                      85.10224999999991,
+                      85.28033300000016,
+                      83.64458299999978,
+                      83.65650000000005,
+                      86.23245799999995,
+                      84.50304099999994,
+                      85.34179200000017
                     ]
                   }
                 ]
@@ -8427,6 +8539,55 @@
         }
       ],
       "record": "docs/performance/round6-20261011.json"
+    },
+    {
+      "recordedAt": "2026-10-11",
+      "baselineRevision": "3925f07379970ece7845071fe78bf6ccc87f4d7b",
+      "name": "Fifty further backend-read, provider, browser-transport, rendering and interaction candidates",
+      "passCount": 50,
+      "agentPassCount": 50,
+      "integrationPassCount": 0,
+      "acceptedCount": 27,
+      "rejectedCount": 23,
+      "counting": "Ten distinct new measured candidates from each of five agents. A retained improvement or evidenced rejection counts once. Prototype tuning, correctness repairs, tests, builds, qualification, documentation and release administration count zero.",
+      "scopeCounts": [
+        {
+          "scope": "reads",
+          "agent": "/root/backend_reads_round7",
+          "passCount": 10,
+          "acceptedCount": 5,
+          "rejectedCount": 5
+        },
+        {
+          "scope": "provider",
+          "agent": "/root/backend_provider_round7",
+          "passCount": 10,
+          "acceptedCount": 6,
+          "rejectedCount": 4
+        },
+        {
+          "scope": "transport",
+          "agent": "/root/frontend_transport_round7",
+          "passCount": 10,
+          "acceptedCount": 5,
+          "rejectedCount": 5
+        },
+        {
+          "scope": "rendering",
+          "agent": "/root/frontend_render_round7",
+          "passCount": 10,
+          "acceptedCount": 5,
+          "rejectedCount": 5
+        },
+        {
+          "scope": "interaction",
+          "agent": "/root/frontend_interaction_round7",
+          "passCount": 10,
+          "acceptedCount": 6,
+          "rejectedCount": 4
+        }
+      ],
+      "record": "docs/performance/round7-20261011.json"
     }
   ]
 }

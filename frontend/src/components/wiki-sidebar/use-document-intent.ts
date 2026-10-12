@@ -5,15 +5,13 @@ import { useRouter } from "next/navigation";
 import { useEffect, useRef } from "react";
 
 import { useDocViewerStore } from "@/components/wiki-document/doc-viewer-store";
-import { fileQueryOptions } from "@/hooks/use-wiki-tree";
 import { captureBrowserSession } from "@/lib/browser-session";
+import { fetchAuthorizedFile } from "@/lib/fetch-authorized-file";
 import {
   allowsIframeSpeculation,
   allowsReusableSpeculation,
   readNavigatorHints,
 } from "@/lib/speculation-policy";
-import { wikiKeys } from "@/lib/wiki-keys";
-import type { FileDetail } from "@/types/wiki";
 
 export const DOCUMENT_INTENT_PREFETCH_MS = 150;
 export const DOCUMENT_INTENT_PREWARM_MS = 300;
@@ -63,8 +61,7 @@ export function useDocumentIntent({
 
   const prefetch = async () => {
     router.prefetch(`/d/${encodeURIComponent(fileId)}`);
-    await queryClient.prefetchQuery(fileQueryOptions(fileId));
-    return queryClient.getQueryData<FileDetail>(wikiKeys.file(fileId)) ?? null;
+    return await fetchAuthorizedFile(queryClient, fileId);
   };
 
   const prewarm = async (committed = false) => {

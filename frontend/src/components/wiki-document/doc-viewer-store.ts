@@ -48,10 +48,20 @@ export const useDocViewerStore = create<DocViewerState>((set) => ({
     });
   },
   setActive: (active, owner) => {
-    set((state) => ({ active, activeOwner: owner, pool: reconcilePool(state.pool, active) }));
+    set((state) => ({
+      active,
+      activeOwner: owner,
+      pool: reconcilePool(state.pool, active),
+      prewarm: state.prewarm?.fileId === active.fileId ? null : state.prewarm,
+    }));
   },
   setPrewarm: (prewarm) => {
-    set((state) => (state.prewarm?.fileId === prewarm?.fileId ? state : { ...state, prewarm }));
+    set((state) => {
+      // A shared authorization may finish after navigation already consumed
+      // this target. Keep any different pending target rather than reviving it.
+      if (prewarm !== null && state.active?.fileId === prewarm.fileId) return state;
+      return state.prewarm?.fileId === prewarm?.fileId ? state : { ...state, prewarm };
+    });
   },
   setSlot: (slot, owner) => {
     if (slot !== null) {

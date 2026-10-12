@@ -2,6 +2,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { flushSync } from "react-dom";
 import { createRoot, type Root } from "react-dom/client";
 
+import { ApiError } from "@/lib/api-error";
 import { BrowserUserContext } from "@/lib/browser-user-context";
 import { readRecentDocs } from "@/lib/last-doc";
 import { WIKI_READ_API } from "@/lib/wiki-read-api";
@@ -66,6 +67,33 @@ describe("idle document warmup ownership", () => {
       { fileId: "recent", mimeType: MIME_DOC, reloadKey: 0, title: "Authorized recent" },
     ]);
   });
+
+  it.each([403, 404])(
+    "does not warm retained recent metadata after a known %i outcome",
+    async (status) => {
+      client.setQueryData(["wiki", "file", "recent"], FILE);
+      vi.mocked(WIKI_READ_API.getFile).mockRejectedValue(new ApiError(status, "Read denied"));
+      await client
+        .fetchQuery({
+          queryKey: ["wiki", "file", "recent"],
+          queryFn: async () => await WIKI_READ_API.getFile("recent"),
+          staleTime: 0,
+        })
+        .catch(() => null);
+      client.setDefaultOptions({ queries: { gcTime: Infinity, retry: false, staleTime: 60_000 } });
+      renderWarmup(root, client);
+      await vi.advanceTimersByTimeAsync(3_000);
+      expect(WIKI_READ_API.getFile).toHaveBeenCalledTimes(2);
+      expect(useDocViewerStore.getState().warm).toEqual([]);
+      expect(client.getQueryData(["wiki", "file", "recent"])).toEqual(FILE);
+      flushSync(() => root.render(null));
+      vi.mocked(WIKI_READ_API.getFile).mockResolvedValue({ ...FILE, name: "Access restored" });
+      renderWarmup(root, client);
+      await vi.advanceTimersByTimeAsync(3_000);
+      expect(WIKI_READ_API.getFile).toHaveBeenCalledTimes(3);
+      expect(useDocViewerStore.getState().warm[0]?.title).toBe("Access restored");
+    },
+  );
 
   it("does not authorize idle HTML recents that the viewer cannot mount in the background", async () => {
     vi.mocked(readRecentDocs).mockReturnValue([

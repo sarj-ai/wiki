@@ -49,7 +49,7 @@ make standards-check
 `make check` mirrors CI. `make audit` performs network-backed dependency audits, and
 `make standards-check` verifies generated standards configuration, version pins, and code.
 
-See the [359-pass performance record and reproduction commands](docs/performance.json) for
+See the [409-pass performance record and reproduction commands](docs/performance.json) for
 frontend loading and backend latency work.
 
 Original-tranche production-build measurements against the same locked main toolchain:
@@ -214,6 +214,64 @@ inventories exclude framework and deferred chunks. The measurements isolate loca
 work, resources and bytes; they do not establish live load time or an absolute
 optimization maximum. All five scope records include rejected prototypes, controls,
 variance, reproduction commands and final source hashes.
+
+The following October 11 tranche evaluates [50 additional candidates across five agents](docs/performance/round7-20261011.json),
+bringing the record to 409: 27 retained improvements and 23 evidenced rejections.
+Each agent measures ten distinct backend-read, provider, browser-transport,
+rendering or interaction candidates. Controlled results against `3925f073` include:
+
+| Measurement | Before | After |
+| ----------- | ------ | ----- |
+| Fresh active-alias read, local PostgreSQL | 0.339 ms | 0.270 ms |
+| Tree cache with 32 large descriptions, retained bytes | 67,442,084 B | 23,338,568 B |
+| Large destination top80 construction, peak traced bytes | 6,084,320 B | 315,918 B |
+| Large Smart Create failure body, bytes pulled | 1,048,589 B | 40,960 B |
+| Mounted document-viewer data subscriptions | 5 | 1 |
+| Idle mutation observers after using 40 item menus | 120 | 0 |
+
+Shortcut metadata aligns unique targets before expanding duplicate rows, without
+changing authorization probes. Large validated destination catalogs stream into
+the existing top80 heap; small catalogs retain their prior construction path.
+Unshared read leaders avoid allocating a follower Future, and bootstrap failures
+cancel and drain request-owned companions while shared Drive discovery survives.
+
+Drag feedback delivers notifications to affected row, folder and container IDs.
+The 1,000-file, 128-folder, eight-drive fixture reduces native source subscriptions
+from 1,264 to one; keyed JavaScript listeners remain. Smaller controls include
+extra dispatch overhead. Used menus retire observers
+after their dialogs and admitted writes settle; dismissal focus and retry remain
+qualified. Recent-page retries retain the shell while issuing fresh reads, and the
+landing page continues to show up to five permission-checked recent pages.
+
+Failed metadata reads cannot authorize an iframe from retained cache data.
+Successful fresh metadata remains reusable, and activating a prewarmed target
+consumes its stale owner atomically. Singleton continuation work is faster under
+the same final authorization policy; the integrated authorization guard costs
+6–11% in tiny local probes against the older canonical path. Valid alias typing is
+faster, while invalid-only input is about 24% slower. Error readers keep their
+existing bounds, unused upload bodies are disposed, and successful mutation
+responses retain their larger body contract.
+
+The serialized-payload tree budget reduces retained memory but slows an evicted
+tree reread from 4.287 to 6.230 ms. It is not an exact mutable decoded-heap limit.
+The natural-input sort prototype is rejected for regressions. The expansion
+subscription prototype is rejected after compiler and reset controls exposed
+lifecycle costs: its final lease variant leaves total retained owners flat and
+adds reset risk for only a tiny realistic-workload CPU gain. All five scope
+records retain rejected prototypes, controls, variance, reproduction commands and
+final source hashes. Integration typing, hook and fixture repairs count zero;
+the first failed full gate remains recorded, with no baseline or suppression edits.
+
+The unchanged local CI mirror passes 4,443 backend tests
+(89.29% coverage), 992 frontend tests,
+323 repository tests and 11 infrastructure tests.
+Frontend type coverage is 99.72%.
+Compressed app inventory changes by +1,599 B on home
+(190,279 to 191,878 B, +0.84%) and
++1,599 B on the document route
+(201,768 to 203,367 B, +0.79%).
+These inventories exclude framework and deferred chunks. Controlled measurements
+do not establish production load time or an absolute optimization maximum.
 
 The drive-loading regression was reproduced in the compiled Cloudflare Worker:
 server `fetch` rejects `redirect: "error"` before reaching the API. Server clients

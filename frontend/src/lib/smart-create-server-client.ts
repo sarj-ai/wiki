@@ -3,6 +3,7 @@ import "server-only";
 import * as z from "zod";
 
 import type { ActionErrorCode } from "@/lib/action-result";
+import { boundedErrorText } from "@/lib/bounded-error-text";
 import { boundedTransformText } from "@/lib/bounded-transform-text";
 import { fetchBackend } from "@/lib/clients/fetch-backend";
 import { discardStream } from "@/lib/discard-stream";
@@ -45,7 +46,10 @@ export async function smartCreateServerClient(
       discardStream(response.body);
       signal.throwIfAborted();
     }
-    const responseBody = await boundedTransformText(response.body, signal);
+    const responseBody = await (response.ok ? boundedTransformText : boundedErrorText)(
+      response.body,
+      signal,
+    );
     signal.throwIfAborted();
     return smartCreateResponse(response, responseBody);
   } catch {

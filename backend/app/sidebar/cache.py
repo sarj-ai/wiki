@@ -58,6 +58,7 @@ _background_refreshes: dict[str, asyncio.Task[None]] = {}
 
 _DECODED_TREE_CACHE_MAX = 32
 _DECODED_TREE_CACHE_NODE_MAX = 40_000
+_DECODED_TREE_CACHE_PAYLOAD_BYTE_MAX = 32 * 1024 * 1024
 _TRANSACTION_ID_EPOCH_BITS = 32
 _INLINE_TREE_DECODE_BYTES = 16 * 1024
 
@@ -79,11 +80,13 @@ type _DecodedTreeKey = tuple[UserId, DriveId, _TreeVersion, object]
 
 
 class _DecodedTreeCache:
-    def __init__(self, *, max_entries: int, max_nodes: int) -> None:
+    def __init__(self, *, max_entries: int, max_nodes: int, max_payload_bytes: int) -> None:
         self._max_entries = max_entries
         self._max_nodes = max_nodes
+        self._max_payload_bytes = max_payload_bytes
         self._values: OrderedDict[_DecodedTreeKey, DriveTree] = OrderedDict()
         self._latest: dict[tuple[UserId, DriveId], _DecodedTreeKey] = {}
+        self._payload_sizes: dict[_DecodedTreeKey, int] = {}
 
     def get(self, key: _DecodedTreeKey) -> DriveTree | None:
         tree = self._values.get(key)
@@ -99,31 +102,41 @@ class _DecodedTreeCache:
             return None
         return key[2], self._values[key]
 
-    def put(self, key: _DecodedTreeKey, tree: DriveTree) -> None:
-        if len(tree.folders) + len(tree.files) > self._max_nodes:
+    def put(self, key: _DecodedTreeKey, tree: DriveTree, *, payload_bytes: int) -> None:
+        if (
+            len(tree.folders) + len(tree.files) > self._max_nodes
+            or payload_bytes > self._max_payload_bytes
+        ):
             return
         resource = (key[0], key[1])
         if (previous := self._latest.get(resource)) is not None:
             self._values.pop(previous)
+            self._payload_sizes.pop(previous)
         self._latest[resource] = key
         self._values[key] = tree
+        self._payload_sizes[key] = payload_bytes
         self._values.move_to_end(key)
         while (
             len(self._values) > self._max_entries
             or sum(len(value.folders) + len(value.files) for value in self._values.values())
             > self._max_nodes
+            or sum(self._payload_sizes.values()) > self._max_payload_bytes
         ):
             evicted, _ = self._values.popitem(last=False)
             self._latest.pop((evicted[0], evicted[1]))
+            self._payload_sizes.pop(evicted)
 
     def invalidate_drive(self, drive_id: DriveId) -> None:
         for key in [key for key in self._values if key[1] == drive_id]:
             self._values.pop(key)
             self._latest.pop((key[0], key[1]))
+            self._payload_sizes.pop(key)
 
 
 _decoded_trees = _DecodedTreeCache(
-    max_entries=_DECODED_TREE_CACHE_MAX, max_nodes=_DECODED_TREE_CACHE_NODE_MAX
+    max_entries=_DECODED_TREE_CACHE_MAX,
+    max_nodes=_DECODED_TREE_CACHE_NODE_MAX,
+    max_payload_bytes=_DECODED_TREE_CACHE_PAYLOAD_BYTE_MAX,
 )
 
 
@@ -341,7 +354,9 @@ class PostgresSidebarCacheService(SidebarCacheService):
             )
             await db.commit()
             return None
-        _decoded_trees.put(key, tree)
+        # Ciphertext length bounds the original serialized payload retained by
+        # these models, including large descriptions on otherwise tiny trees.
+        _decoded_trees.put(key, tree, payload_bytes=len(blob))
         return tree
 
     async def _decode_tree(self, blob: str, decoder: MultiFernet) -> DriveTree:

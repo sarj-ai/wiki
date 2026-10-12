@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-import { ApiError, SESSION_REFRESH_UNAVAILABLE_MESSAGE } from "@/lib/api-error";
+import { ApiError, RATE_LIMIT_MESSAGE, SESSION_REFRESH_UNAVAILABLE_MESSAGE } from "@/lib/api-error";
 import { boundedErrorText } from "@/lib/bounded-error-text";
 import { captureBrowserSession } from "@/lib/browser-session";
 import { discardStream } from "@/lib/discard-stream";
@@ -51,6 +51,10 @@ export async function wikiReadHttp<S extends z.ZodType>(
   }
   if (!response.ok) {
     if (response.status === 401) notifyTerminalUnauthorized(session);
+    if (response.status === 429) {
+      discardStream(response.body);
+      throw new ApiError(429, RATE_LIMIT_MESSAGE);
+    }
     let payload: unknown = null;
     try {
       payload = JSON.parse(await boundedErrorText(response.body, requestSignal));

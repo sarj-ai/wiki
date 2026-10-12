@@ -16,7 +16,7 @@ from app.auth.google_tokens import provider_refresh_scope
 from app.drive.google_schemas import GoogleFile, GoogleFileAccessLocation
 from app.drive.retry import execute_batch_with_retry, execute_mutation, execute_with_retry
 from app.drive.schemas import MIME_FOLDER, MIME_HTML, NAVIGATOR_SUPPORTED_MIME_TYPES
-from app.drive.service import DriveService, reuse_drive_client
+from app.drive.service import DriveService, GoogleRefreshHandler, reuse_drive_client
 from app.files.errors import (
     CrossDriveMoveNotSupportedError,
     DriveUpstreamError,
@@ -142,9 +142,16 @@ class FilesService(ABC):
 
 
 class GoogleFilesService(FilesService):
-    def __init__(self, *, user: User, drive: DriveService) -> None:
+    def __init__(
+        self,
+        *,
+        user: User,
+        drive: DriveService,
+        client_factory: Callable[[User, GoogleRefreshHandler | None], DriveResource] | None = None,
+    ) -> None:
         self._user = user
         self._drive = drive
+        self._client_factory = client_factory
         self._clients: dict[int, DriveResource] = {}
         self._metadata_slots = asyncio.Semaphore(_FILE_GET_BATCH_CONCURRENCY)
         self._metadata_reads: set[asyncio.Task[Any]] = set()
@@ -704,6 +711,7 @@ class GoogleFilesService(FilesService):
             self._user,
             self._clients,
             refresh_handler=self._drive.google_refresh_handler,
+            client_factory=self._client_factory,
         )
 
 

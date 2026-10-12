@@ -9,6 +9,45 @@ describe("smartCreateServerClient", () => {
     vi.useRealTimers();
   });
 
+  it("stops an oversized failure body at the error bound without retry or private guidance", async () => {
+    let received = 0;
+    const cancel = vi.fn();
+    const body = new ReadableStream<Uint8Array>(
+      {
+        pull(controller) {
+          received += 8192;
+          controller.enqueue(new Uint8Array(8192).fill(120));
+        },
+        cancel,
+      },
+      { highWaterMark: 0 },
+    );
+    const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(new Response(body, { status: 503 }));
+    vi.stubGlobal("fetch", fetchMock);
+    await expect(smartCreateServerClient("/files/smart", "{}", "token", "key")).resolves.toEqual({
+      body: "",
+      error: "Smart Create could not reach the API",
+      ok: false,
+      status: 502,
+    });
+    expect(received).toBe(40_960);
+    expect(cancel).toHaveBeenCalledOnce();
+    expect(fetchMock).toHaveBeenCalledOnce();
+  });
+
+  it("keeps the larger success-body contract for admitted mutations", async () => {
+    const body = JSON.stringify({ result: "x".repeat(64 * 1024) });
+    vi.stubGlobal(
+      "fetch",
+      vi.fn<typeof fetch>().mockResolvedValue(new Response(body, { status: 202 })),
+    );
+    await expect(smartCreateServerClient("/files/smart", "{}", "token", "key")).resolves.toEqual({
+      body,
+      ok: true,
+      status: 202,
+    });
+  });
+
   it("keeps the thirty-second POST deadline through stalled response ingestion without retry", async () => {
     vi.useFakeTimers();
     vi.spyOn(AbortSignal, "timeout").mockImplementation((milliseconds) => {

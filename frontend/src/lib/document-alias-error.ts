@@ -3,8 +3,10 @@ const MAX_WORDS = 3;
 const MIN_WORD_LENGTH = 2;
 const MAX_WORD_LENGTH = 12;
 const MAX_ALIAS_LENGTH = 32;
+const VALID_ALIAS = /^[a-z]{2,12}(?:-[a-z]{2,12}){1,2}(?![\s\S])/;
 
 export function documentAliasError(value: string): null | string {
+  if (value.length <= MAX_ALIAS_LENGTH && VALID_ALIAS.test(value)) return null;
   if (value.length === 0) return "Enter a short-link name.";
   if (/[A-Z]/.test(value)) return "Uppercase letters aren’t allowed; use lowercase only.";
   if (/[\s_]/.test(value))

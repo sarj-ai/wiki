@@ -35,6 +35,10 @@ _RECENT_ALIASES = select(DocumentAlias.alias, DocumentAlias.file_id).where(
     DocumentAlias.alias == any_(bindparam("aliases", type_=ARRAY(Text))),
     DocumentAlias.retired_at.is_(None),
 )
+_RESOLVE_ALIAS = select(DocumentAlias.alias, DocumentAlias.file_id).where(
+    DocumentAlias.alias == bindparam("alias", type_=Text),
+    DocumentAlias.retired_at.is_(None),
+)
 
 
 class AliasService(ABC):
@@ -79,8 +83,10 @@ class PostgresAliasService(AliasService):
 
     @override
     async def resolve(self, alias: DocumentAliasValue) -> DocumentAliasRead:
-        row = await self._db.get(DocumentAlias, alias)
-        if row is None or row.retired_at is not None:
+        # Resolve against a fresh database snapshot, including retirement,
+        # rather than an ORM identity that can outlive an alias change.
+        row = (await self._db.execute(_RESOLVE_ALIAS, {"alias": alias})).one_or_none()
+        if row is None:
             raise AliasNotFoundError
         await self._db.commit()
         try:
@@ -89,7 +95,7 @@ class PostgresAliasService(AliasService):
             if exc.http_status in {403, 404}:
                 raise AliasNotFoundError from exc
             raise
-        return _to_read(row)
+        return DocumentAliasRead(alias=row.alias, file_id=row.file_id)
 
     @override
     async def save(self, file_id: FileId, alias: DocumentAliasValue) -> DocumentAliasRead:
