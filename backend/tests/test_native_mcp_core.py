@@ -391,6 +391,32 @@ async def test_quotas_fail_closed_without_revoking_existing_connection(
         await lab.intent()
 
 
+async def test_full_intent_quota_allows_existing_decision_and_rejects_new_intent(lab: Lab) -> None:
+    core = lab.providers[0].core
+    intent = await lab.intent()
+    view = await core.consent_view(intent, identity=lab.user, browser=_BROWSER)
+    async with lab.sessions.begin() as db:
+        await db.execute(
+            insert(McpNativeState).values(
+                purpose="intent", expires_at=func.clock_timestamp() + timedelta(minutes=20)
+            ),
+            [
+                {"key_digest": f"{index:064x}", "ciphertext": "synthetic-unread-quota-slot"}
+                for index in range(999)
+            ],
+        )
+    with pytest.raises(AuthorizeError):
+        await lab.intent()
+    denied = await core.decide(
+        intent, identity=lab.user, browser=_BROWSER, csrf=view.csrf, approve=False
+    )
+    assert parse_qs(urlsplit(denied).query)["error"] == ["access_denied"]
+    assert (
+        await core.consent_status(intent, identity=lab.user, browser=_BROWSER)
+    ).status == "denied"
+    assert await core.list_connections(lab.user) == []
+
+
 async def test_wrong_client_cannot_load_or_exchange_code(lab: Lab) -> None:
     code = await lab.code()
     other = lab.client.model_copy(update={"client_id": "another-client"})

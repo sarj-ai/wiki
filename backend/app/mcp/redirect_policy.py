@@ -28,6 +28,12 @@ def validate_registered_client_id(client_id: str) -> None:
         raise ValueError(_INVALID_CLIENT)
 
 
+def _validate_registration_bounds(client_id: str, callbacks: tuple[str, ...]) -> None:
+    validate_registered_client_id(client_id)
+    if not callbacks or len(callbacks) > _MAX_CALLBACKS:
+        raise ValueError(_INVALID_REGISTRATION)
+
+
 def _parse_callback(uri: str) -> SplitResult:
     if (
         not uri
@@ -85,26 +91,47 @@ class McpRedirectPolicy:
             _validate_https_allowlist_entry(uri)
 
     def validate_callback(self, uri: str) -> None:
+        self._validated_callback(uri)
+
+    def _validated_callback(self, uri: str) -> SplitResult:
         parsed = _parse_callback(uri)
         if parsed.scheme == "https" and uri in self.https_callbacks:
-            return
+            return parsed
         if (
             parsed.scheme == "http"
             and parsed.hostname in _LOOPBACK_HOSTS
             and parsed.port is not None
             and parsed.path in self.loopback_paths
         ):
-            return
+            return parsed
         raise ValueError(_NOT_ALLOWED)
 
     def validate_registration(self, client_id: str, callbacks: tuple[str, ...]) -> None:
-        validate_registered_client_id(client_id)
-        if not callbacks or len(callbacks) > _MAX_CALLBACKS:
-            raise ValueError(_INVALID_REGISTRATION)
+        _validate_registration_bounds(client_id, callbacks)
         for uri in callbacks:
             self.validate_callback(uri)
 
     def validate_authorization(
+        self, *, client_id: str, uri: str, registered_callbacks: tuple[str, ...]
+    ) -> None:
+        if type(self) is not McpRedirectPolicy:
+            self._validate_extended_authorization(
+                client_id=client_id, uri=uri, registered_callbacks=registered_callbacks
+            )
+            return
+        _validate_registration_bounds(client_id, registered_callbacks)
+        registered = [self._validated_callback(value) for value in registered_callbacks]
+        requested = self._validated_callback(uri)
+        for registered_uri, callback in zip(registered_callbacks, registered, strict=True):
+            if uri == registered_uri or (
+                requested.scheme == callback.scheme == "http"
+                and requested.hostname == callback.hostname
+                and requested.path == callback.path
+            ):
+                return
+        raise ValueError(_NOT_REGISTERED)
+
+    def _validate_extended_authorization(
         self, *, client_id: str, uri: str, registered_callbacks: tuple[str, ...]
     ) -> None:
         self.validate_registration(client_id, registered_callbacks)

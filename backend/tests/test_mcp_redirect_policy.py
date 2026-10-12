@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import override
+
 import pytest
 
 from app.mcp.redirect_policy import McpRedirectPolicy, validate_registered_client_id
@@ -139,3 +141,73 @@ def test_registration_and_configuration_are_bounded(policy: McpRedirectPolicy):
         McpRedirectPolicy(loopback_paths=("/callback",) * 17)
     with pytest.raises(ValueError, match="bounded"):
         policy.validate_registration("client", ("http://localhost:3000/callback",) * 17)
+
+
+@pytest.mark.parametrize(
+    "requested",
+    ["http://localhost:3000/verified-client-callback", "not a callback"],
+)
+def test_authorization_validates_every_registered_callback_before_requested_uri(
+    policy: McpRedirectPolicy, requested: str
+):
+    with pytest.raises(ValueError, match="not allowed"):
+        policy.validate_authorization(
+            client_id="client",
+            uri=requested,
+            registered_callbacks=(
+                "http://localhost:3000/verified-client-callback",
+                "https://evil.example.com/oauth/callback",
+            ),
+        )
+
+
+def test_authorization_matches_last_of_sixteen_valid_callbacks():
+    paths = tuple(f"/callback{index}" for index in range(16))
+    policy = McpRedirectPolicy(loopback_paths=paths)
+    policy.validate_authorization(
+        client_id="client",
+        uri="http://127.0.0.1:9876/callback15",
+        registered_callbacks=tuple(f"http://127.0.0.1:3000{path}" for path in paths),
+    )
+
+
+class _RecordingPolicy(McpRedirectPolicy):
+    def __init__(self) -> None:
+        super().__init__(loopback_paths=("/callback",))
+        self.calls: list[str] = []
+
+    @override
+    def validate_registration(self, client_id: str, callbacks: tuple[str, ...]) -> None:
+        self.calls.append("registration")
+        super().validate_registration(client_id, callbacks)
+
+    @override
+    def validate_callback(self, uri: str) -> None:
+        self.calls.append(uri)
+        super().validate_callback(uri)
+
+
+def test_subclass_authorization_preserves_public_validator_call_order():
+    policy = _RecordingPolicy()
+    registered = "http://127.0.0.1:3000/callback"
+    requested = "http://127.0.0.1:9876/callback"
+    policy.validate_authorization(
+        client_id="client", uri=requested, registered_callbacks=(registered,)
+    )
+    assert policy.calls == ["registration", registered, requested]
+
+
+def test_subclass_authorization_keeps_registration_override_rejection():
+    class RejectingPolicy(McpRedirectPolicy):
+        @override
+        def validate_registration(self, client_id: str, callbacks: tuple[str, ...]) -> None:
+            message = "Extra registration policy rejected"
+            raise ValueError(message)
+
+    policy = RejectingPolicy(loopback_paths=("/callback",))
+    with pytest.raises(ValueError, match="Extra registration policy rejected"):
+        policy.validate_authorization(
+            client_id="client",
+            uri="http://127.0.0.1:9876/callback",
+            registered_callbacks=("http://127.0.0.1:3000/callback",),
+        )
