@@ -86,10 +86,14 @@ function DriveAccessContent({ drive, open }: { drive: DriveSummary; open: boolea
           </div>
           <div className="min-w-0">
             <SheetTitle className="truncate">{drive.name} access</SheetTitle>
-            <SheetDescription>
+            <SheetDescription aria-live="polite">
               {drive.isPersonal
                 ? "Sharing is managed on each file and folder."
-                : permissionSummary(count)}
+                : query.isPending
+                  ? "Loading access…"
+                  : query.isError
+                    ? "Couldn't load drive access"
+                    : permissionSummary(count)}
             </SheetDescription>
           </div>
         </div>

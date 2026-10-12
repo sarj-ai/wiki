@@ -430,6 +430,12 @@ function ComposeStep({
 
       {mode.kind === "ai" ? (
         <div className="space-y-4">
+          {catalogStatus.kind === "ready" && templates.length === 0 ? (
+            <p className="text-muted-foreground text-sm" role="status">
+              This drive has no templates. Describe your file, or add a Doc or Slides file to a
+              top-level Templates folder.
+            </p>
+          ) : null}
           <div className="space-y-1.5">
             <Label htmlFor="smart-description">What are you making?</Label>
             <Textarea

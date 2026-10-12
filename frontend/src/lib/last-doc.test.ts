@@ -91,4 +91,18 @@ describe("recent document warmup metadata", () => {
     read.mockRestore();
     expect(readRecentDocs("user-a")).toEqual([doc]);
   });
+
+  it("owns each invalid-history fallback across reads and users", () => {
+    window.localStorage.setItem(recentDocsStorageKey("user-a"), JSON.stringify([{ fileId: "a" }]));
+    window.localStorage.setItem(recentDocsStorageKey("user-b"), JSON.stringify([{ title: "b" }]));
+    const discarded = readRecentDocs("user-a");
+    discarded.push({ fileId: "poison", mimeType: "text/plain", title: "Private poison" });
+
+    expect(readRecentDocs("user-a")).toEqual([]);
+    expect(readRecentDocs("user-b")).toEqual([]);
+    const current = { fileId: "current", mimeType: "text/plain", title: "Current" };
+    saveLastDoc("user-a", current);
+    expect(readRecentDocs("user-a")).toEqual([current]);
+    expect(readRecentDocs("user-b")).toEqual([]);
+  });
 });

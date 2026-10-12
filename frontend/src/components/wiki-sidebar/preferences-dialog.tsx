@@ -17,7 +17,12 @@ import { useSetPreferences } from "@/hooks/use-wiki-mutations";
 import { useDrives, usePreferences } from "@/hooks/use-wiki-tree";
 import { runWithErrorToast } from "@/lib/mutation-toast";
 
-export function PreferencesDialog({ onOpenChange, open }: PreferencesDialogProps) {
+export function PreferencesDialog({
+  onCloseAutoFocus,
+  onOpenAutoFocus,
+  onOpenChange,
+  open,
+}: PreferencesDialogProps) {
   const drivesQuery = useDrives();
   const prefsQuery = usePreferences();
   const setPreferences = useSetPreferences();
@@ -34,8 +39,12 @@ export function PreferencesDialog({ onOpenChange, open }: PreferencesDialogProps
 
   return (
     <Dialog onOpenChange={onOpenChange} open={open}>
-      <DialogContent className="max-w-sm">
-        <DialogHeader>
+      <DialogContent
+        className="max-h-[calc(100dvh-1rem)] grid-rows-[auto_minmax(0,1fr)_auto] gap-0 overflow-hidden p-0 sm:max-w-sm"
+        onCloseAutoFocus={onCloseAutoFocus}
+        onOpenAutoFocus={onOpenAutoFocus}
+      >
+        <DialogHeader className="px-6 pt-6 pr-12">
           <DialogTitle className="flex items-center gap-2">
             <Settings className="size-4" />
             Preferences
@@ -45,7 +54,12 @@ export function PreferencesDialog({ onOpenChange, open }: PreferencesDialogProps
           </DialogDescription>
         </DialogHeader>
 
-        <div className="space-y-4">
+        <div
+          aria-label="Preferences settings"
+          className="min-h-0 space-y-4 overflow-y-auto px-6 py-4"
+          role="region"
+          tabIndex={0}
+        >
           <section>
             <div className="text-muted-foreground mb-1 px-2 text-xs font-medium tracking-wide uppercase">
               Display
@@ -90,13 +104,12 @@ export function PreferencesDialog({ onOpenChange, open }: PreferencesDialogProps
           </section>
         </div>
 
-        {setPreferences.isPending ? (
-          <p aria-live="polite" className="text-muted-foreground text-xs" role="status">
-            Saving preferences…
-          </p>
-        ) : null}
-
-        <DialogFooter>
+        <DialogFooter className="flex-row items-center border-t px-6 py-4">
+          {setPreferences.isPending ? (
+            <p aria-live="polite" className="text-muted-foreground mr-auto text-xs" role="status">
+              Saving preferences…
+            </p>
+          ) : null}
           <DialogClose asChild>
             <Button type="button">Done</Button>
           </DialogClose>
@@ -107,6 +120,8 @@ export function PreferencesDialog({ onOpenChange, open }: PreferencesDialogProps
 }
 
 interface PreferencesDialogProps {
+  onCloseAutoFocus?: (event: Event) => void;
+  onOpenAutoFocus?: (event: Event) => void;
   onOpenChange: (open: boolean) => void;
   open: boolean;
 }

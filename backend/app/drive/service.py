@@ -6,7 +6,8 @@ from collections.abc import AsyncGenerator, Callable, Iterable, Mapping, Sequenc
 from concurrent.futures import Future
 from contextlib import AbstractAsyncContextManager, asynccontextmanager
 from contextvars import ContextVar
-from datetime import UTC, timedelta
+from dataclasses import dataclass
+from datetime import UTC, datetime, timedelta
 from functools import cache
 from itertools import batched
 import json
@@ -61,7 +62,7 @@ from app.drive.schemas import (
     SnippetResult,
 )
 from app.drive.snippets import escape_query_value, extract_snippet, has_snippet_terms
-from app.identifiers import DriveId, FileId
+from app.identifiers import DriveId, FileId, GoogleUserId
 from app.models.user import User
 from app.sidebar.singleflight import Singleflight
 
@@ -264,6 +265,102 @@ class DriveService(ABC):
         raise NotImplementedError
 
 
+@dataclass(frozen=True, slots=True)
+class _DriveClientBinding:
+    user_identity: int
+    google_subject: GoogleUserId
+    revision: int
+    credential_generation: int
+    ciphertext: str | None
+    expires_at: datetime | None
+    handler_identity: int
+    factory_identity: int
+
+    def matches(
+        self,
+        user: User,
+        refresh_handler: GoogleRefreshHandler | None,
+        client_factory: Callable[[User, GoogleRefreshHandler | None], DriveResource] | None,
+    ) -> bool:
+        return (
+            self.user_identity == id(user)
+            and self.google_subject == user.google_id
+            and self.revision == user.token_version
+            and self.credential_generation == user.google_token_generation
+            and self.ciphertext == user.encrypted_access_token
+            and self.expires_at == user.google_access_token_expires_at
+            and self.handler_identity == id(refresh_handler)
+            and self.factory_identity == id(client_factory)
+        )
+
+
+def _drive_client_binding(
+    user: User,
+    refresh_handler: GoogleRefreshHandler | None,
+    client_factory: Callable[[User, GoogleRefreshHandler | None], DriveResource] | None,
+) -> _DriveClientBinding:
+    return _DriveClientBinding(
+        id(user),
+        user.google_id,
+        user.token_version,
+        user.google_token_generation,
+        user.encrypted_access_token,
+        user.google_access_token_expires_at,
+        id(refresh_handler),
+        id(client_factory),
+    )
+
+
+class _DriveClientSharing:
+    def __init__(
+        self,
+        user: User,
+        clients: dict[int, DriveResource],
+        refresh_handler: GoogleRefreshHandler | None,
+        client_factory: Callable[[User, GoogleRefreshHandler | None], DriveResource] | None,
+    ) -> None:
+        self._user = user
+        self._clients = clients
+        self._refresh_handler = refresh_handler
+        self._client_factory = client_factory
+        self._bindings: dict[int, _DriveClientBinding] = {}
+
+    def client(self) -> DriveResource:
+        thread_id = threading.get_ident()
+        if (client := self._clients.get(thread_id)) is not None:
+            return client
+        binding = _drive_client_binding(self._user, self._refresh_handler, self._client_factory)
+        client = reuse_drive_client(
+            self._user,
+            self._clients,
+            refresh_handler=self._refresh_handler,
+            client_factory=self._client_factory,
+        )
+        self._bindings[thread_id] = binding
+        return client
+
+    def for_metadata(
+        self,
+        user: User,
+        refresh_handler: GoogleRefreshHandler | None,
+        client_factory: Callable[[User, GoogleRefreshHandler | None], DriveResource] | None,
+    ) -> DriveResource | None:
+        if (
+            user is not self._user
+            or refresh_handler is not self._refresh_handler
+            or client_factory is not self._client_factory
+        ):
+            return None
+        thread_id = threading.get_ident()
+        client = self._clients.get(thread_id)
+        if client is None:
+            return self.client()
+        binding = self._bindings.get(thread_id)
+        if binding is None or not binding.matches(user, refresh_handler, client_factory):
+            return None
+        return client
+
+
 class GoogleDriveService(DriveService):
     def __init__(
         self,
@@ -278,6 +375,9 @@ class GoogleDriveService(DriveService):
         self._refresh_handler = refresh_handler
         self._client_factory = client_factory
         self._clients: dict[int, DriveResource] = {}
+        self.metadata_clients = _DriveClientSharing(
+            user, self._clients, refresh_handler, client_factory
+        )
         self._drives_task: asyncio.Task[list[DriveSummary]] | None = None
         self._my_drive_id: DriveId | None = None
         self._bounded_drives: ContextVar[list[DriveSummary] | None] = ContextVar(
@@ -1324,12 +1424,7 @@ class GoogleDriveService(DriveService):
         return str(raw)[: _MAX_EXPORT_BYTES // 2]
 
     def _client(self) -> DriveResource:
-        return reuse_drive_client(
-            self._user,
-            self._clients,
-            refresh_handler=self._refresh_handler,
-            client_factory=self._client_factory,
-        )
+        return self.metadata_clients.client()
 
     @staticmethod
     def build_drive_client(

@@ -13,6 +13,7 @@ const mocks = vi.hoisted(() => ({
   open: true,
   routerPrefetch: vi.fn(),
   routerPush: vi.fn(),
+  returnFocusRef: { current: null },
   searchQuery: {},
   searchEnabled: vi.fn(),
   snippetQuery: {},
@@ -22,12 +23,16 @@ vi.mock("next/navigation", () => ({
   useRouter: () => ({ prefetch: mocks.routerPrefetch, push: mocks.routerPush }),
 }));
 vi.mock("@/hooks/use-command-palette", () => ({
-  useCommandPaletteState: () => ({ open: mocks.open, setOpen: vi.fn() }),
+  useCommandPaletteState: () => ({
+    open: mocks.open,
+    returnFocusRef: mocks.returnFocusRef,
+    setOpen: vi.fn(),
+  }),
 }));
 vi.mock("@/hooks/use-drive-search", () => ({
-  useDriveSearch: (_query: string, enabled: boolean) => {
+  useDriveSearchState: (_query: string, enabled: boolean) => {
     mocks.searchEnabled(enabled);
-    return mocks.searchQuery;
+    return { query: mocks.searchQuery, isCurrentQuery: true };
   },
   useDriveSearchSnippet: () => mocks.snippetQuery,
 }));
@@ -128,6 +133,8 @@ describe("CommandPalette rate-limit errors", () => {
     mocks.searchQuery = queryState({ data: [RESULT] });
     renderPalette(root);
 
+    await enterSearchQuery();
+
     expect(mocks.getFile).not.toHaveBeenCalled();
     expect(mocks.routerPrefetch).not.toHaveBeenCalled();
 
@@ -155,6 +162,7 @@ describe("CommandPalette rate-limit errors", () => {
         value: { saveData: condition === "saveData" },
       });
       renderPalette(root);
+      await enterSearchQuery();
       await new Promise((resolve) => {
         window.setTimeout(resolve, 200);
       });
@@ -178,6 +186,8 @@ function queryState(overrides: Record<string, unknown> = {}): Record<string, unk
     isError: false,
     isFetching: false,
     isLoading: false,
+    isPending: false,
+    isSuccess: overrides["isError"] !== true,
     refetch: vi.fn(),
     ...overrides,
   };

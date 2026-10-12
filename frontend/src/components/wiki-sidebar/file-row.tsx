@@ -19,6 +19,7 @@ import { CHEVRON_OFFSET, ICON_COLUMN_WIDTH, rowIndent } from "./layout-constants
 import { PickableIcon } from "./pickable-icon";
 import { useDocumentIntent } from "./use-document-intent";
 import { useIsMovingFile } from "./use-in-flight-moves";
+import { useSidebarNavigation } from "./use-sidebar-navigation";
 
 const MODIFIED_DATE_FORMAT = new Intl.DateTimeFormat("en", {
   day: "numeric",
@@ -173,6 +174,7 @@ function RowButton({
   route,
   titleAttr,
 }: RowButtonProps) {
+  const navigateSidebar = useSidebarNavigation();
   if (route.inaccessible) {
     return (
       <SidebarMenuButton
@@ -224,6 +226,7 @@ function RowButton({
         onBlur={intent.onBlur}
         onClick={intent.onClick}
         onFocus={intent.onFocus}
+        onNavigate={() => navigateSidebar(documentHref)}
         onPointerDown={intent.onPointerDown}
         onPointerEnter={intent.onPointerEnter}
         onPointerLeave={intent.onPointerLeave}

@@ -137,14 +137,66 @@ describe("move dialog admission", () => {
     expect(MOVE).not.toHaveBeenCalled();
   });
 
+  it("keeps a focusable destination region separate from dismissal and confirmation controls", async () => {
+    let openedTarget: EventTarget | null = null;
+    let closedTarget: EventTarget | null = null;
+    const onOpenAutoFocus = vi.fn((event: Event) => {
+      openedTarget = event.target;
+    });
+    const onCloseAutoFocus = vi.fn((event: Event) => {
+      closedTarget = event.target;
+    });
+    client.setQueryData(
+      wikiKeys.drives,
+      Array.from({ length: 24 }, (_, index) => ({
+        id: `destination-${index}`,
+        isPersonal: false,
+        name: `Destination ${index}`,
+      })),
+    );
+    flushSync(() =>
+      root.render(
+        <QueryClientProvider client={client}>
+          <ReopenHarness onCloseAutoFocus={onCloseAutoFocus} onOpenAutoFocus={onOpenAutoFocus} />
+        </QueryClientProvider>,
+      ),
+    );
+    const destinations = document.querySelector<HTMLElement>(
+      '[role="region"][aria-label="Move destinations"]',
+    );
+    if (!destinations) throw new Error("Focusable Move destinations missing");
+    const dialog = document.querySelector('[role="dialog"]');
+    expect(onOpenAutoFocus).toHaveBeenCalledOnce();
+    expect(openedTarget).toBe(dialog);
+    destinations.focus();
+    expect(document.activeElement).toBe(destinations);
+    expect(destinations).toHaveTextContent("Destination 23");
+    expect(button("Move")).toBeDisabled();
+    flushSync(() => button("Destination 23").click());
+    expect(button("Move")).not.toBeDisabled();
+    expect(destinations.contains(button("Move"))).toBe(false);
+    expect(destinations.contains(button("Cancel"))).toBe(false);
+    expect(destinations.contains(button("Close"))).toBe(false);
+    flushSync(() => button("Cancel").click());
+    await vi.advanceTimersByTimeAsync(0);
+    expect(document.querySelector('[role="dialog"]')).toBeNull();
+    expect(onCloseAutoFocus).toHaveBeenCalledOnce();
+    expect(closedTarget).toBe(dialog);
+    expect(MOVE).not.toHaveBeenCalled();
+  });
+
   it("updates only the changed destination rows in an expanded 1,000-folder picker", async () => {
     let nameReads = 0;
+    // Compiler emission can read each changed folder name four times in this StrictMode control.
+    const maxNameReadsPerChangedFolder = 4;
+    const accessedFolderIds = new Set<string>();
     const folders = Array.from({ length: 1_000 }, (_, index): DriveNode => ({
       id: `folder-${index}`,
       mimeType: MIME_FOLDER,
       modifiedTime: undefined,
       get name() {
         nameReads += 1;
+        accessedFolderIds.add(`folder-${index}`);
         return `Folder ${index}`;
       },
       parentId: undefined,
@@ -165,13 +217,17 @@ describe("move dialog admission", () => {
     if (!(expand instanceof HTMLButtonElement)) throw new TypeError("Drive expansion missing");
     flushSync(() => expand.click());
     nameReads = 0;
+    accessedFolderIds.clear();
     flushSync(() => button("Folder 0").click());
-    expect(nameReads).toBe(2);
+    expect(accessedFolderIds).toEqual(new Set(["folder-0"]));
+    expect(nameReads).toBeLessThanOrEqual(maxNameReadsPerChangedFolder * accessedFolderIds.size);
     expect(button("Folder 0")).toHaveClass("bg-accent");
     expect(button("Destination")).not.toHaveClass("bg-accent");
     nameReads = 0;
+    accessedFolderIds.clear();
     flushSync(() => button("Folder 999").click());
-    expect(nameReads).toBe(4);
+    expect(accessedFolderIds).toEqual(new Set(["folder-0", "folder-999"]));
+    expect(nameReads).toBeLessThanOrEqual(maxNameReadsPerChangedFolder * accessedFolderIds.size);
     expect(button("Folder 0")).not.toHaveClass("bg-accent");
     expect(button("Folder 999")).toHaveClass("bg-accent");
     expect(button("Folder 999").type).toBe("button");
@@ -182,7 +238,13 @@ describe("move dialog admission", () => {
   });
 });
 
-function ReopenHarness() {
+function ReopenHarness({
+  onCloseAutoFocus,
+  onOpenAutoFocus,
+}: {
+  onCloseAutoFocus?: (event: Event) => void;
+  onOpenAutoFocus?: (event: Event) => void;
+} = {}) {
   const [open, setOpen] = useState(true);
   return (
     <>
@@ -194,6 +256,8 @@ function ReopenHarness() {
         currentParentFolderId={undefined}
         fileId="file"
         fileName="Plan"
+        {...(onCloseAutoFocus ? { onCloseAutoFocus } : {})}
+        {...(onOpenAutoFocus ? { onOpenAutoFocus } : {})}
         onOpenChange={setOpen}
         open={open}
       />

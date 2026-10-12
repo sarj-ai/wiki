@@ -3,6 +3,7 @@
 import { type QueryClient, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState, useSyncExternalStore } from "react";
 
+import { RecentPagesSessionProvider } from "@/components/recent-pages/recent-pages-session";
 import { currentUserQueryOptions, useCurrentUser } from "@/hooks/use-current-user";
 import { resetExpansionState } from "@/hooks/use-expanded-folders";
 import {
@@ -113,5 +114,9 @@ function IdentifiedBrowserSessionBoundary({
     writeActiveBrowserUser(currentUserId);
   }, [currentUserId]);
 
-  return <BrowserUserContext value={currentUserId}>{children}</BrowserUserContext>;
+  return (
+    <BrowserUserContext value={currentUserId}>
+      <RecentPagesSessionProvider userId={currentUserId}>{children}</RecentPagesSessionProvider>
+    </BrowserUserContext>
+  );
 }

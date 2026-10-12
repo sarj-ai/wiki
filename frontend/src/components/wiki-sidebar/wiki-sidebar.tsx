@@ -8,12 +8,13 @@ import {
   pointerWithin,
   rectIntersection,
 } from "@dnd-kit/core";
-import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect } from "react";
 
 import { ErrorBoundary } from "@/components/error-boundary";
+import { RecentPagesLink } from "@/components/recent-pages/recent-pages-link";
 import { SarjLogo } from "@/components/sarj-logo";
+import { Button } from "@/components/ui/button";
 import { Sidebar, SidebarContent, SidebarHeader, SidebarSeparator } from "@/components/ui/sidebar";
 import { consumeRevealFor, expandPath } from "@/hooks/use-expanded-folders";
 import {
@@ -30,7 +31,9 @@ import { EMPTY_DOC_ICONS, EMPTY_FOLDER_ICONS, EMPTY_SORT_ORDERS } from "@/lib/wi
 
 import { DriveSearchBox } from "./drive-search-box";
 import { DriveSection } from "./drive-section";
+import { MoveDialogOutletProvider } from "./move-dialog-outlet";
 import { SidebarResizeHandle } from "./sidebar-resize-handle";
+import { SidebarNavigationProvider, useSidebarNavigation } from "./use-sidebar-navigation";
 import { useWikiReorder } from "./use-wiki-reorder";
 import { WikiFooter } from "./wiki-footer";
 
@@ -99,68 +102,100 @@ export function WikiSidebar() {
   }, [activeDriveId, breadcrumb, userId]);
 
   return (
-    <Sidebar>
-      <SidebarHeader>
-        <Link
-          aria-label="Recent pages"
-          className="focus-visible:ring-ring flex items-center gap-2 rounded-sm px-2 py-1.5 focus-visible:ring-2 focus-visible:outline-none"
-          href="/"
-          prefetch={false}
-        >
-          <SarjLogo priority size={28} />
-        </Link>
-        <div className="px-2 pb-1">
-          <DriveSearchBox />
-        </div>
-      </SidebarHeader>
-      <DndContext
-        collisionDetection={cursorFirstCollision}
-        onDragCancel={reorder.onDragCancel}
-        onDragEnd={reorder.onDragEnd}
-        onDragOver={reorder.onDragOver}
-        onDragStart={reorder.onDragStart}
-        sensors={reorder.sensors}
-      >
-        <SidebarContent>
-          <ErrorBoundary>
-            {drivesQuery.isLoading ? (
-              <div className="text-muted-foreground px-3 py-2 text-xs">Loading drives…</div>
-            ) : null}
-            {drivesQuery.isError ? (
-              <div className="text-destructive px-3 py-2 text-xs">Failed to load drives</div>
-            ) : null}
-            {visibleDrives.map((drive, index) => (
-              <div key={drive.id}>
-                <DriveSection
-                  activeDriveId={activeDriveId}
-                  defaultExpanded={index === 0}
-                  docIcons={docIconsQuery.data ?? EMPTY_DOC_ICONS}
-                  drive={drive}
-                  folderIcons={folderIconsQuery.data ?? EMPTY_FOLDER_ICONS}
-                  optimisticByContainer={reorder.optimisticByContainer}
-                  pathname={pathname}
-                  showNonDocFiles={showNonDocFiles}
-                  sortOrders={sortOrdersQuery.data ?? EMPTY_SORT_ORDERS}
-                />
-                {index < visibleDrives.length - 1 && <SidebarSeparator />}
-              </div>
-            ))}
-            {!drivesQuery.isLoading && visibleDrives.length === 0 && (
-              <div className="text-muted-foreground px-3 py-2 text-xs">No accessible drives</div>
-            )}
-          </ErrorBoundary>
-        </SidebarContent>
-        <DragOverlay dropAnimation={null}>
-          {reorder.activeNode ? (
-            <div className="bg-sidebar text-sidebar-foreground flex max-w-64 items-center gap-2 rounded-md border px-2.5 py-1.5 text-sm shadow-lg">
-              {renderNodeIcon(reorder.activeNode, "size-4 shrink-0")}
-              <span className="truncate">{reorder.activeNode.name}</span>
+    <SidebarNavigationProvider ownerKey={userId} pathname={pathname}>
+      <MoveDialogOutletProvider userId={userId}>
+        <Sidebar>
+          <SidebarHeader>
+            <SidebarHomeLink />
+            <div className="px-2 pb-1">
+              <DriveSearchBox />
             </div>
-          ) : null}
-        </DragOverlay>
-      </DndContext>
-      <WikiFooter />
-      <SidebarResizeHandle />
-    </Sidebar>
+          </SidebarHeader>
+          <DndContext
+            collisionDetection={cursorFirstCollision}
+            onDragCancel={reorder.onDragCancel}
+            onDragEnd={reorder.onDragEnd}
+            onDragOver={reorder.onDragOver}
+            onDragStart={reorder.onDragStart}
+            sensors={reorder.sensors}
+          >
+            <SidebarContent>
+              <ErrorBoundary>
+                {drivesQuery.isLoading ? (
+                  <div className="space-y-2 px-3 py-2" role="status">
+                    <span className="text-muted-foreground text-xs">Loading drives…</span>
+                    <div aria-hidden="true" className="space-y-2">
+                      <div className="bg-muted h-7 w-full rounded-sm" />
+                      <div className="bg-muted h-7 w-4/5 rounded-sm" />
+                      <div className="bg-muted h-7 w-full rounded-sm" />
+                    </div>
+                  </div>
+                ) : null}
+                {drivesQuery.isError ? (
+                  <div className="space-y-2 px-3 py-2" role="alert">
+                    <p className="text-destructive text-xs">Failed to load drives</p>
+                    <Button
+                      disabled={drivesQuery.isFetching}
+                      onClick={() => {
+                        void drivesQuery
+                          .refetch()
+                          .catch(() => console.warn("Drive retry could not finish"));
+                      }}
+                      size="sm"
+                      variant="outline"
+                    >
+                      Retry drives
+                    </Button>
+                  </div>
+                ) : null}
+                {visibleDrives.map((drive, index) => (
+                  <div key={drive.id}>
+                    <DriveSection
+                      activeDriveId={activeDriveId}
+                      defaultExpanded={index === 0}
+                      docIcons={docIconsQuery.data ?? EMPTY_DOC_ICONS}
+                      drive={drive}
+                      folderIcons={folderIconsQuery.data ?? EMPTY_FOLDER_ICONS}
+                      optimisticByContainer={reorder.optimisticByContainer}
+                      pathname={pathname}
+                      showNonDocFiles={showNonDocFiles}
+                      sortOrders={sortOrdersQuery.data ?? EMPTY_SORT_ORDERS}
+                    />
+                    {index < visibleDrives.length - 1 && <SidebarSeparator />}
+                  </div>
+                ))}
+                {!drivesQuery.isLoading && !drivesQuery.isError && visibleDrives.length === 0 && (
+                  <div className="text-muted-foreground px-3 py-2 text-xs">
+                    No accessible drives
+                  </div>
+                )}
+              </ErrorBoundary>
+            </SidebarContent>
+            <DragOverlay dropAnimation={null}>
+              {reorder.activeNode ? (
+                <div className="bg-sidebar text-sidebar-foreground flex max-w-64 items-center gap-2 rounded-md border px-2.5 py-1.5 text-sm shadow-lg">
+                  {renderNodeIcon(reorder.activeNode, "size-4 shrink-0")}
+                  <span className="truncate">{reorder.activeNode.name}</span>
+                </div>
+              ) : null}
+            </DragOverlay>
+          </DndContext>
+          <WikiFooter />
+          <SidebarResizeHandle />
+        </Sidebar>
+      </MoveDialogOutletProvider>
+    </SidebarNavigationProvider>
+  );
+}
+
+function SidebarHomeLink() {
+  const navigateSidebar = useSidebarNavigation();
+  return (
+    <RecentPagesLink
+      className="focus-visible:ring-ring flex items-center gap-2 rounded-sm px-2 py-1.5 focus-visible:ring-2 focus-visible:outline-none"
+      onNavigate={() => navigateSidebar("/")}
+    >
+      <SarjLogo priority size={28} />
+    </RecentPagesLink>
   );
 }

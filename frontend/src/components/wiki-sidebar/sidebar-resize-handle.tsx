@@ -6,20 +6,80 @@ import { SIDEBAR_WIDTH_COOKIE } from "@/lib/storage-schemas";
 
 const MIN_WIDTH_PX = 224;
 const MAX_WIDTH_PX = 576;
+const KEYBOARD_STEP_PX = 16;
 
 const clampSidebarWidth = (px: number) => Math.max(MIN_WIDTH_PX, Math.min(MAX_WIDTH_PX, px));
 
+const resizeDirection = (sidebar: HTMLElement) =>
+  sidebar.closest<HTMLElement>('[data-slot="sidebar"][data-side]')?.dataset["side"] === "right"
+    ? -1
+    : 1;
+
+function persistSidebarWidth(wrapper: HTMLElement) {
+  const final = wrapper.style.getPropertyValue("--sidebar-width");
+  if (final) {
+    // eslint-disable-next-line unicorn/no-document-cookie -- SSR reads this non-sensitive preference before hydration to prevent a width jump.
+    document.cookie = `${SIDEBAR_WIDTH_COOKIE}=${encodeURIComponent(final)}; Path=/; Max-Age=31536000; SameSite=Lax`;
+  }
+}
+
 export function SidebarResizeHandle() {
   const [dragging, setDragging] = useState(false);
+  const [width, setWidth] = useState<null | number>(null);
   const releaseDrag = useRef<(() => void) | null>(null);
+  const syncWidth = (element: HTMLElement | null) => {
+    if (!element) return;
+    const sidebar = document.querySelector<HTMLElement>('[data-slot="sidebar-container"]');
+    setWidth(sidebar ? clampSidebarWidth(sidebar.getBoundingClientRect().width) : null);
+  };
 
   useEffect(() => () => releaseDrag.current?.(), []);
+
+  const handleKeyDown = (event: KeyboardEvent) => {
+    if (
+      event.altKey ||
+      event.ctrlKey ||
+      event.metaKey ||
+      !["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)
+    )
+      return;
+    const wrapper = document.querySelector<HTMLElement>('[data-slot="sidebar-wrapper"]');
+    const sidebar = document.querySelector<HTMLElement>('[data-slot="sidebar-container"]');
+    if (!wrapper || !sidebar) return;
+
+    event.preventDefault();
+    releaseDrag.current?.();
+    setDragging(false);
+    const current = sidebar.getBoundingClientRect().width;
+    const delta = (event.key === "ArrowRight" ? 1 : -1) * resizeDirection(sidebar);
+    const next =
+      event.key === "Home"
+        ? MIN_WIDTH_PX
+        : event.key === "End"
+          ? MAX_WIDTH_PX
+          : clampSidebarWidth(current + delta * KEYBOARD_STEP_PX);
+    wrapper.style.setProperty("--sidebar-width", `${next}px`);
+    setWidth(next);
+    persistSidebarWidth(wrapper);
+  };
+
+  const attachHandle = (element: HTMLDivElement | null) => {
+    if (!element) return;
+    syncWidth(element);
+    const handleFocus = () => syncWidth(element);
+    element.addEventListener("focus", handleFocus);
+    element.addEventListener("keydown", handleKeyDown);
+    return () => {
+      element.removeEventListener("focus", handleFocus);
+      element.removeEventListener("keydown", handleKeyDown);
+    };
+  };
 
   const handlePointerDown = (event: React.PointerEvent<HTMLDivElement>) => {
     event.preventDefault();
     releaseDrag.current?.();
     const wrapper = document.querySelector<HTMLElement>('[data-slot="sidebar-wrapper"]');
-    const sidebar = document.querySelector<HTMLElement>('[data-slot="sidebar-inner"]');
+    const sidebar = document.querySelector<HTMLElement>('[data-slot="sidebar-container"]');
     if (!wrapper || !sidebar) {
       setDragging(false);
       return;
@@ -28,6 +88,8 @@ export function SidebarResizeHandle() {
     const pointerId = event.pointerId;
     const startX = event.clientX;
     const startWidth = sidebar.getBoundingClientRect().width;
+    const direction = resizeDirection(sidebar);
+    setWidth(clampSidebarWidth(startWidth));
     const widthElements = Array.from(
       document.querySelectorAll<HTMLElement>(
         '[data-slot="sidebar-gap"], [data-slot="sidebar-container"]',
@@ -49,15 +111,17 @@ export function SidebarResizeHandle() {
     const apply = () => {
       rafId = null;
       if (released || pendingX === null) return;
-      const next = clampSidebarWidth(startWidth + (pendingX - startX));
+      const next = clampSidebarWidth(startWidth + (pendingX - startX) * direction);
       wrapper.style.setProperty("--sidebar-width", `${next}px`);
+      setWidth(next);
       pendingX = null;
     };
 
     const onMove = (moveEvent: PointerEvent) => {
       if (moveEvent.pointerId !== pointerId) return;
       pendingX = moveEvent.clientX;
-      rafId ??= requestAnimationFrame(apply);
+      if (rafId !== null) return;
+      rafId = requestAnimationFrame(apply);
     };
 
     const release = () => {
@@ -84,11 +148,7 @@ export function SidebarResizeHandle() {
       pendingX = upEvent.clientX;
       apply();
       release();
-      const final = wrapper.style.getPropertyValue("--sidebar-width");
-      if (final) {
-        // eslint-disable-next-line unicorn/no-document-cookie -- SSR reads this non-sensitive preference before hydration to prevent a width jump.
-        document.cookie = `${SIDEBAR_WIDTH_COOKIE}=${encodeURIComponent(final)}; Path=/; Max-Age=31536000; SameSite=Lax`;
-      }
+      persistSidebarWidth(wrapper);
       setDragging(false);
     };
 
@@ -111,11 +171,18 @@ export function SidebarResizeHandle() {
   return (
     <>
       <div
+        aria-disabled={width === null || undefined}
         aria-label="Resize sidebar"
         aria-orientation="vertical"
-        className="hover:bg-sidebar-border/80 absolute top-0 right-0 z-20 h-full w-1 cursor-col-resize transition-colors"
+        aria-valuemax={MAX_WIDTH_PX}
+        aria-valuemin={MIN_WIDTH_PX}
+        aria-valuenow={width ?? undefined}
+        aria-valuetext={width === null ? undefined : `${Math.round(width)} pixels wide`}
+        className="focus-visible:ring-ring hover:before:bg-sidebar-border/80 focus-visible:before:bg-sidebar-border absolute top-0 -right-1.5 z-20 hidden h-full w-3 cursor-col-resize group-data-[side=right]:right-auto group-data-[side=right]:-left-1.5 before:absolute before:inset-y-0 before:left-1/2 before:w-px before:-translate-x-1/2 before:transition-colors focus-visible:ring-2 focus-visible:outline-none md:block"
         onPointerDown={handlePointerDown}
+        ref={attachHandle}
         role="separator"
+        tabIndex={width === null ? -1 : 0}
       />
 
       {dragging ? (

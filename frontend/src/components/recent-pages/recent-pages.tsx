@@ -19,11 +19,18 @@ export interface RecentPage {
 interface RecentPagesProps {
   error?: boolean;
   loading?: boolean;
+  loadingCount?: number;
   onRetry?: () => void;
   pages: RecentPage[];
 }
 
-export function RecentPages({ error = false, loading = false, onRetry, pages }: RecentPagesProps) {
+export function RecentPages({
+  error = false,
+  loading = false,
+  loadingCount = 5,
+  onRetry,
+  pages,
+}: RecentPagesProps) {
   return (
     <div className="h-svh overflow-y-auto">
       <section
@@ -45,9 +52,7 @@ export function RecentPages({ error = false, loading = false, onRetry, pages }: 
           className="bg-card mt-6 overflow-hidden rounded-xl border shadow-xs"
         >
           {loading ? (
-            <p className="text-muted-foreground p-6 text-sm" role="status">
-              Loading recent pages…
-            </p>
+            <RecentPagesSkeleton count={loadingCount} />
           ) : error ? (
             <div className="space-y-3 p-6">
               <p className="text-sm">Your recent pages could not be loaded.</p>
@@ -65,7 +70,7 @@ export function RecentPages({ error = false, loading = false, onRetry, pages }: 
               </p>
             </div>
           ) : (
-            <ul aria-label="Your last five pages">
+            <ul aria-label="Recent pages">
               {pages.slice(0, 5).map((page) => (
                 <RecentPageRow key={page.id} page={page} />
               ))}
@@ -74,6 +79,32 @@ export function RecentPages({ error = false, loading = false, onRetry, pages }: 
         </div>
       </section>
     </div>
+  );
+}
+
+function RecentPagesSkeleton({ count }: { count: number }) {
+  const rows = Math.max(0, Math.min(5, count));
+  return (
+    <>
+      <p className={rows > 0 ? "sr-only" : "text-muted-foreground p-6 text-sm"} role="status">
+        Loading recent pages…
+      </p>
+      <div aria-hidden="true">
+        {Array.from({ length: rows }, (_, index) => (
+          <div
+            className="flex min-h-20 items-center gap-3 border-b p-4 last:border-b-0"
+            key={index}
+          >
+            <span className="bg-muted size-10 shrink-0 rounded-lg" />
+            <span className="min-w-0 flex-1 space-y-2">
+              <span className="bg-muted block h-4 w-2/3 rounded-sm" />
+              <span className="bg-muted block h-3 w-1/3 rounded-sm" />
+            </span>
+            <span className="bg-muted size-4 shrink-0 rounded-sm" />
+          </div>
+        ))}
+      </div>
+    </>
   );
 }
 

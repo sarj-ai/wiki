@@ -6,10 +6,13 @@ import dynamic from "next/dynamic";
 import { Button } from "@/components/ui/button";
 import { useDeferredDialog } from "@/hooks/use-deferred-dialog";
 
-const ShortLinkEditor = dynamic(async () => {
-  const { ShortLinkEditor: Editor } = await import("./short-link-editor");
-  return Editor;
-});
+const ShortLinkEditor = dynamic(
+  async () => {
+    const { ShortLinkEditor: Editor } = await import("./short-link-editor");
+    return Editor;
+  },
+  { ssr: false },
+);
 
 export function ShortLinkDialog({ fileId }: { fileId: string }) {
   return <ShortLinkDialogForFile fileId={fileId} key={fileId} />;
@@ -19,7 +22,13 @@ function ShortLinkDialogForFile({ fileId }: { fileId: string }) {
   const dialog = useDeferredDialog();
   return (
     <>
-      <Button onClick={() => dialog.onOpenChange(true)} size="xs" type="button" variant="outline">
+      <Button
+        aria-label="Short link"
+        onClick={() => dialog.onOpenChange(true)}
+        size="xs"
+        type="button"
+        variant="outline"
+      >
         <Link2 className="size-3.5" />
         <span className="hidden sm:inline">Short link</span>
       </Button>
