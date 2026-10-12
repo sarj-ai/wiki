@@ -29,8 +29,11 @@ const MOCKS = vi.hoisted(() => ({
 vi.mock("@tanstack/react-query", () => ({
   queryOptions: (options: unknown) => options,
   useQueryClient: () => ({
-    getQueryData: MOCKS.getQueryData,
-    prefetchQuery: MOCKS.prefetchQuery,
+    fetchQuery: async (...options: unknown[]) => {
+      await MOCKS.prefetchQuery(...options);
+      return MOCKS.getQueryData();
+    },
+    getQueryState: vi.fn(),
   }),
 }));
 

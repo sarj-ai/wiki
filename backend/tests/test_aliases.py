@@ -119,6 +119,9 @@ class _Result:
     def scalar_one_or_none(self) -> DocumentAlias | None:
         return self.row
 
+    def one_or_none(self) -> DocumentAlias | None:
+        return self.row
+
     def all(self) -> list[tuple[str, FileId]]:
         return [(row.alias, row.file_id) for row in self.rows]
 
@@ -154,6 +157,9 @@ class _Session:
     async def execute(self, _statement: object, _parameters: object | None = None) -> _Result:
         self.execute_calls += 1
         self.statements.append(_statement)
+        if isinstance(_parameters, dict) and "alias" in _parameters:
+            row = self.by_alias
+            return _Result(row if row is not None and row.retired_at is None else None)
         if self.recent_rows is not None:
             return _Result(rows=self.recent_rows)
         if self.execute_calls == 1:

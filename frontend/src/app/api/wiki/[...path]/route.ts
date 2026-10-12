@@ -17,6 +17,8 @@ const READ_PATHS = [
   /^tasks\/[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/iu,
   /^templates$/u,
 ] as const;
+// IDs use the ASCII classes above. The longest path is sidebar/drives/<128>/permissions.
+const MAX_READ_PATH_LENGTH = 155;
 const RESPONSE_HEADERS = {
   "cache-control": "private, no-store",
   "content-type": "application/json",
@@ -29,9 +31,20 @@ async function get(request: Request, context: RouteContext): Promise<Response> {
     return failure(403);
   }
   const { path } = await context.params;
+  if (!withinReadPathLimit(path)) return failure(404);
   const pathname = path.join("/");
   if (!READ_PATHS.some((pattern) => pattern.test(pathname))) return failure(404);
   return await wikiReadResponse(request, `/${pathname}${new URL(request.url).search}`, failure);
+}
+
+function withinReadPathLimit(path: string[]): boolean {
+  let length = Math.max(0, path.length - 1);
+  if (length > MAX_READ_PATH_LENGTH) return false;
+  for (const segment of path) {
+    length += segment.length;
+    if (length > MAX_READ_PATH_LENGTH) return false;
+  }
+  return true;
 }
 
 function failure(status: number): Response {

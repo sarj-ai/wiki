@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-import { ApiError, SESSION_REFRESH_UNAVAILABLE_MESSAGE } from "@/lib/api-error";
+import { ApiError, RATE_LIMIT_MESSAGE, SESSION_REFRESH_UNAVAILABLE_MESSAGE } from "@/lib/api-error";
 import { claimBrowserSession, retireBrowserSession } from "@/lib/browser-session";
 import { wikiReadHttp } from "@/lib/clients/wiki-read-http";
 import { TERMINAL_UNAUTHORIZED_EVENT } from "@/lib/session-events";
@@ -19,6 +19,21 @@ afterEach(() => {
 });
 
 describe("authenticated wiki read recovery", () => {
+  it("reports fixed rate-limit guidance without reading or awaiting an unused body", async () => {
+    const cleanup = Promise.withResolvers<undefined>();
+    const cancel = vi.fn<() => Promise<undefined>>().mockReturnValue(cleanup.promise);
+    const body = new ReadableStream<Uint8Array>({ cancel });
+    fetchMock.mockResolvedValue(new Response(body, { status: 429 }));
+    try {
+      await expect(wikiReadHttp("/files/first", PayloadSchema)).rejects.toEqual(
+        new ApiError(429, RATE_LIMIT_MESSAGE),
+      );
+      expect(cancel).toHaveBeenCalledOnce();
+      expect(fetchMock).toHaveBeenCalledOnce();
+    } finally {
+      cleanup.resolve(undefined);
+    }
+  });
   it("does not construct query parameters for reads with no defined query fields", async () => {
     const parameters = vi.spyOn(globalThis, "URLSearchParams");
     fetchMock

@@ -22,6 +22,7 @@ vi.mock("@/lib/clients/transform-http", () => ({
 import { DOCUMENT_TRANSFORM_API } from "@/lib/document-transform-api";
 import { DocumentTransformNeedsReviewError } from "@/lib/document-transform-types";
 const TASK_ID = "55555555-5555-4555-8555-555555555555";
+const UPLOAD_FIELDS = { expiresInSeconds: "expires_in_seconds", id: "upload_id" } as const;
 
 describe("documentTransformApi", () => {
   it("does not poll as the replacement session after the original owner retires during sleep", async () => {
@@ -257,6 +258,41 @@ describe("documentTransformApi", () => {
       },
     });
     put.mockRestore();
+  });
+
+  it.each([
+    { status: 200, expected: "77777777-7777-4777-8777-777777777777" },
+    { status: 503, expected: "Markdown upload failed. Choose the file again to retry." },
+  ])("releases the unused Markdown PUT body on HTTP $status", async ({ status, expected }) => {
+    const uploadId = "77777777-7777-4777-8777-777777777777";
+    ACTION_MOCKS.create.mockResolvedValueOnce({
+      data: JSON.stringify({
+        [UPLOAD_FIELDS.id]: uploadId,
+        url: "https://storage.googleapis.com/bucket/object?signature=fixture",
+        method: "PUT",
+        headers: { "Content-Type": "text/markdown" },
+        [UPLOAD_FIELDS.expiresInSeconds]: 600,
+      }),
+      ok: true,
+    });
+    const cleanup = Promise.withResolvers<undefined>();
+    const cancel = vi.fn<() => Promise<undefined>>().mockReturnValue(cleanup.promise);
+    const put = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(new Response(new ReadableStream<Uint8Array>({ cancel }), { status }));
+    const file = new File(["# Launch"], "launch.md", { type: "text/markdown" });
+    try {
+      const pending = DOCUMENT_TRANSFORM_API.uploadMarkdown(file).catch((error: unknown) => {
+        if (!(error instanceof Error)) throw error;
+        return error.message;
+      });
+      await expect(pending).resolves.toBe(expected);
+      expect(cancel).toHaveBeenCalledOnce();
+      expect(put).toHaveBeenCalledOnce();
+    } finally {
+      cleanup.resolve(undefined);
+      put.mockRestore();
+    }
   });
 
   it("sends in-place as an explicit request strategy", async () => {

@@ -2,10 +2,10 @@
 
 import { MoreHorizontal } from "lucide-react";
 import dynamic from "next/dynamic";
+import { useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { DropdownMenu, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
-import { useDeferredDialog } from "@/hooks/use-deferred-dialog";
 
 const ItemMenuActions = dynamic(
   async () => {
@@ -16,9 +16,14 @@ const ItemMenuActions = dynamic(
 );
 
 export function ItemMenu(props: ItemMenuProps) {
-  const menu = useDeferredDialog();
+  const [menu, setMenu] = useState({ mounted: false, open: false });
   return (
-    <DropdownMenu onOpenChange={menu.onOpenChange} open={menu.open}>
+    <DropdownMenu
+      onOpenChange={(open) => {
+        setMenu((previous) => (previous.open === open ? previous : { mounted: true, open }));
+      }}
+      open={menu.open}
+    >
       <DropdownMenuTrigger asChild>
         <Button
           aria-label={`Actions for ${props.currentName}`}
@@ -32,7 +37,17 @@ export function ItemMenu(props: ItemMenuProps) {
           <MoreHorizontal className="size-3" />
         </Button>
       </DropdownMenuTrigger>
-      {menu.mounted ? <ItemMenuActions {...props} /> : null}
+      {menu.mounted ? (
+        <ItemMenuActions
+          {...props}
+          menuOpen={menu.open}
+          onIdle={() => {
+            setMenu((previous) =>
+              previous.open || !previous.mounted ? previous : { mounted: false, open: false },
+            );
+          }}
+        />
+      ) : null}
     </DropdownMenu>
   );
 }

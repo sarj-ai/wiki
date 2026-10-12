@@ -5,6 +5,7 @@ import { runAction, runActionResult } from "@/lib/action-client";
 import { ApiError } from "@/lib/api-error";
 import { captureBrowserSession } from "@/lib/browser-session";
 import { transformHttp } from "@/lib/clients/transform-http";
+import { discardStream } from "@/lib/discard-stream";
 import {
   DocumentTransformNeedsReviewError,
   type DocumentTransformOutputStrategy,
@@ -133,6 +134,7 @@ export const DOCUMENT_TRANSFORM_API = {
       body: file,
       signal: AbortSignal.timeout(60_000),
     });
+    discardStream(response.body);
     if (!response.ok) throw new Error("Markdown upload failed. Choose the file again to retry.");
     return upload.upload_id;
   },

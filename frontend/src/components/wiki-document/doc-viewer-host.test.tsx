@@ -103,6 +103,21 @@ describe("pooled viewer identity", () => {
     expect(unsubscribeFromMotion).toHaveBeenCalledOnce();
   });
 
+  it("transfers a prewarmed iframe into the active pool without remounting it", () => {
+    const view = renderViewer(doc("other"), doc("prepared"));
+    const prepared = iframe("prepared");
+    expect(prepared).not.toBeNull();
+    activate(doc("prepared"));
+    expect(useDocViewerStore.getState().prewarm).toBeNull();
+    expect(iframe("prepared")).toBe(prepared);
+    activate(doc("next"));
+    activate(doc("third"));
+    activate(doc("fourth"));
+    expect(iframe("prepared")).toBeNull();
+    expect(document.querySelectorAll("iframe")).toHaveLength(3);
+    view.unmount();
+  });
+
   it("reuses one live media query until the mounted viewer subscription retires", () => {
     const view = renderViewer(doc("a"));
     activate(doc("b"));

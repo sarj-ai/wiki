@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 import asyncio
-from collections.abc import AsyncGenerator, Callable, Iterable, Mapping
+from collections.abc import AsyncGenerator, Callable, Iterable, Mapping, Sequence
 from concurrent.futures import Future
 from contextlib import AbstractAsyncContextManager, asynccontextmanager
 from contextvars import ContextVar
@@ -271,10 +271,12 @@ class GoogleDriveService(DriveService):
         cache_service: CacheService | None = None,
         *,
         refresh_handler: GoogleRefreshHandler | None = None,
+        client_factory: Callable[[User, GoogleRefreshHandler | None], DriveResource] | None = None,
     ) -> None:
         self._user = user
         self._cache = cache_service
         self._refresh_handler = refresh_handler
+        self._client_factory = client_factory
         self._clients: dict[int, DriveResource] = {}
         self._drives_task: asyncio.Task[list[DriveSummary]] | None = None
         self._my_drive_id: DriveId | None = None
@@ -709,20 +711,23 @@ class GoogleDriveService(DriveService):
     async def _shortcut_metadata(
         self, items: Iterable[DriveNode | SearchResult]
     ) -> _ShortcutMetadata | None:
-        shortcuts = [item for item in items if item.mime_type == MIME_SHORTCUT]
-        if not shortcuts:
+        target_ids: dict[FileId, None] = {}
+        has_shortcuts = False
+        for item in items:
+            if item.mime_type == MIME_SHORTCUT:
+                has_shortcuts = True
+                if item.shortcut_target_id is not None:
+                    target_ids[item.shortcut_target_id] = None
+        if not has_shortcuts:
             return None
+        unique_ids = list(target_ids)
         drive_names, probes = await asyncio.gather(
             self._drive_names(),
-            self._probe_targets([item.shortcut_target_id for item in shortcuts]),
+            self._probe_targets(unique_ids),
         )
         return _ShortcutMetadata(
             drive_names,
-            {
-                target_id: probe
-                for item, probe in zip(shortcuts, probes, strict=True)
-                if (target_id := item.shortcut_target_id) is not None
-            },
+            dict(zip(unique_ids, probes, strict=True)),
         )
 
     @staticmethod
@@ -765,7 +770,9 @@ class GoogleDriveService(DriveService):
             await self.list_drives()
         return drive_id == self._my_drive_id
 
-    async def _probe_targets(self, target_ids: list[FileId | None]) -> list[ShortcutProbe | None]:
+    async def _probe_targets(
+        self, target_ids: Sequence[FileId | None]
+    ) -> list[ShortcutProbe | None]:
         unique_ids = sorted({tid for tid in target_ids if tid})
         if not unique_ids:
             return [None] * len(target_ids)
@@ -1321,6 +1328,7 @@ class GoogleDriveService(DriveService):
             self._user,
             self._clients,
             refresh_handler=self._refresh_handler,
+            client_factory=self._client_factory,
         )
 
     @staticmethod
@@ -1735,8 +1743,15 @@ def _known_drive_hits(
             # Preserve the per-drive query's result selection when its limit matters.
             return None
         counts[drive_id] = count
-        results.append(hit.model_copy(update={"drive_name": names[drive_id]}))
-    return results
+        results.append(hit)
+    # An over-limit workspace discards this entire result and triggers the
+    # independent per-drive search. Keep its already-validated hits until that
+    # completeness decision, then allocate only publishable named results.
+    return [
+        hit.model_copy(update={"drive_name": names[hit.drive_id]})
+        for hit in results
+        if hit.drive_id is not None
+    ]
 
 
 def _node_shortcut_update(

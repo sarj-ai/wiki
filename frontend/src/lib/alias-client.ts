@@ -5,6 +5,8 @@ import { discardStream } from "@/lib/discard-stream";
 import { API_URL } from "@/lib/env";
 import { zDocumentAliasRead, zRecentDocumentAlias } from "@/lib/generated/zod.gen";
 
+const RecentDocumentAliasesSchema = zRecentDocumentAlias.array();
+
 export interface RecentDocumentAlias {
   alias: string;
   driveName: null | string;
@@ -65,7 +67,7 @@ export async function getRecentDocumentAliases(
     return { status: "unavailable" };
   }
 
-  const parsed = zRecentDocumentAlias.array().safeParse(await upstream.json());
+  const parsed = RecentDocumentAliasesSchema.safeParse(await upstream.json());
   if (!parsed.success) return { status: "unavailable" };
   return {
     aliases: parsed.data.map((item) => ({

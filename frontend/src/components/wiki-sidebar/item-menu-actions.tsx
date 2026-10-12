@@ -3,7 +3,7 @@
 import { Copy, ExternalLink, FolderInput, Loader2, Pencil, Trash2 } from "lucide-react";
 import dynamic from "next/dynamic";
 import { usePathname, useRouter } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { toast } from "sonner";
 
 import {
@@ -40,8 +40,10 @@ export function ItemMenuActions({
   driveId,
   fileId,
   isFolder,
+  menuOpen,
+  onIdle,
   parentFolderId,
-}: ItemMenuProps) {
+}: ItemMenuProps & { menuOpen: boolean; onIdle: () => void }) {
   const router = useRouter();
   const pathname = usePathname();
   const renameFile = useRenameFile();
@@ -51,6 +53,36 @@ export function ItemMenuActions({
   const moveDialog = useDeferredDialog();
   const [renaming, setRenaming] = useState(false);
   const [duplicating, setDuplicating] = useState(false);
+
+  useEffect(() => {
+    if (
+      menuOpen ||
+      renaming ||
+      duplicating ||
+      confirmingDelete ||
+      moveDialog.open ||
+      renameFile.isPending ||
+      copyFile.isPending ||
+      deleteFile.isPending
+    )
+      return;
+    // Keep the native dropdown's dismissal/focus work mounted, then retire
+    // used action observers only after all descendant tasks have settled.
+    const timer = window.setTimeout(onIdle, 200);
+    return () => {
+      window.clearTimeout(timer);
+    };
+  }, [
+    confirmingDelete,
+    copyFile.isPending,
+    deleteFile.isPending,
+    duplicating,
+    menuOpen,
+    moveDialog.open,
+    onIdle,
+    renameFile.isPending,
+    renaming,
+  ]);
 
   const handleRenameSubmit = async (next: string) => {
     if (next === currentName) return;

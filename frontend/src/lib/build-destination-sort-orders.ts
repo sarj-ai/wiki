@@ -1,5 +1,5 @@
 import { EMPTY_NODES, indexChildren, indexSidebarNodes, indexSortOrders } from "@/lib/wiki-indexes";
-import { buildSiblingItems, isFolderLikeNode, orderSiblingItems } from "@/lib/wiki-tree";
+import { buildSiblingItems, orderSiblingItems } from "@/lib/wiki-tree";
 import type { DriveNode, DriveTree, SortOrder } from "@/types/wiki";
 
 interface DestinationOrderArgs {
@@ -30,11 +30,21 @@ export function buildDestinationSortOrders({
   const baseline = orderSiblingItems(items, indexSortOrders(sortOrders), null);
   const overIndex = baseline.findIndex((item) => item.node.id === positionHint.rowId);
   if (overIndex < 0) return null;
-  const finalOrder = [...baseline];
   const insertIndex = positionHint.intent === "below" ? overIndex + 1 : overIndex;
-  finalOrder.splice(insertIndex, 0, {
-    node: movedNode,
-    type: isFolderLikeNode(movedNode) ? "folder" : "file",
-  });
-  return finalOrder.map((item, index) => ({ driveId: item.node.id, sortOrder: index + 1 }));
+  const finalOrder: SortOrder[] = [];
+  let index = 0;
+  for (const item of baseline) {
+    if (index === insertIndex) {
+      finalOrder.push({ driveId: movedNode.id, sortOrder: index + 1 });
+    }
+    finalOrder.push({
+      driveId: item.node.id,
+      sortOrder: index < insertIndex ? index + 1 : index + 2,
+    });
+    index++;
+  }
+  if (insertIndex === baseline.length) {
+    finalOrder.push({ driveId: movedNode.id, sortOrder: baseline.length + 1 });
+  }
+  return finalOrder;
 }

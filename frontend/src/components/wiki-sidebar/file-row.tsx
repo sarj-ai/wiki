@@ -39,6 +39,7 @@ interface FileRowProps {
 
 interface RowButtonProps {
   displayName: string;
+  documentHref: `/d/${string}`;
   href: string;
   intent: ReturnType<typeof useDocumentIntent>;
   isActive: boolean;
@@ -73,7 +74,7 @@ function FileRowContent({
 
   const isForm = route.targetMimeType === MIME_FORM;
   const isDoc = !route.isShortcut && node.mimeType === MIME_DOC;
-  const documentHref = `/d/${encodeURIComponent(route.targetId)}`;
+  const documentHref: `/d/${string}` = `/d/${encodeURIComponent(route.targetId)}`;
   const href = isForm ? openUrlFor(route.targetMimeType, route.targetId) : documentHref;
   const isActive = !isForm && (activeDriveId === route.targetId || pathname === href);
   const isMoving = useIsMovingFile(node.id);
@@ -109,6 +110,7 @@ function FileRowContent({
     <>
       <RowButton
         displayName={displayName}
+        documentHref={documentHref}
         href={href}
         intent={intent}
         isActive={isActive}
@@ -160,6 +162,7 @@ function FileRowContent({
 
 function RowButton({
   displayName,
+  documentHref,
   href,
   isActive,
   isForm,
@@ -217,7 +220,7 @@ function RowButton({
     >
       <Link
         draggable={false}
-        href={`/d/${encodeURIComponent(route.targetId)}`}
+        href={documentHref}
         onBlur={intent.onBlur}
         onClick={intent.onClick}
         onFocus={intent.onFocus}

@@ -9,18 +9,12 @@ import { WIKI_READ_API } from "@/lib/wiki-read-api";
 
 export function RecentPagesLoader() {
   const userId = useBrowserUserId();
-  const [attempt, setAttempt] = useState(0);
   if (!userId) return <RecentPages loading pages={[]} />;
-  return (
-    <UserRecentPages
-      key={`${userId}:${attempt}`}
-      onRetry={() => setAttempt((current) => current + 1)}
-      userId={userId}
-    />
-  );
+  return <UserRecentPages key={userId} userId={userId} />;
 }
 
-function UserRecentPages({ onRetry, userId }: { onRetry: () => void; userId: string }) {
+function UserRecentPages({ userId }: { userId: string }) {
+  const [attempt, setAttempt] = useState(0);
   const [state, setState] = useState<{
     pages: RecentPage[];
     status: "error" | "loading" | "ready";
@@ -44,12 +38,15 @@ function UserRecentPages({ onRetry, userId }: { onRetry: () => void; userId: str
       setState({ pages: [], status: "error" });
     });
     return () => lifetime.abort();
-  }, [userId]);
+  }, [attempt, userId]);
   return (
     <RecentPages
       error={state.status === "error"}
       loading={state.status === "loading"}
-      onRetry={onRetry}
+      onRetry={() => {
+        setState({ pages: [], status: "loading" });
+        setAttempt((current) => current + 1);
+      }}
       pages={state.pages}
     />
   );

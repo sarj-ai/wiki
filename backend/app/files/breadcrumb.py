@@ -23,9 +23,10 @@ def build_breadcrumb(
             node = by_id.get(current)
             if node is None:
                 break
-            chain.insert(0, BreadcrumbItem(id=node.id, name=node.name))
+            chain.append(BreadcrumbItem(id=node.id, name=node.name))
             current = node.parent_id
             depth += 1
+        chain.reverse()
     if drive_id and drive_name:
         chain.insert(0, BreadcrumbItem(id=FileId(drive_id), name=drive_name))
     return chain

@@ -148,10 +148,18 @@ describe("RecentPagesLoader", () => {
     getRecentFiles.mockReturnValueOnce(retry.promise);
     mount("user-a");
     await vi.waitFor(() => expect(host).toHaveTextContent("Your recent pages could not be loaded"));
+    const section = host.querySelector("section");
+    const firstSignal = getRecentFiles.mock.calls[0]?.[1];
     const button = host.querySelector("button");
     expect(button).not.toBeNull();
     if (!button) throw new Error("Retry button missing");
+    button.focus();
+    expect(document.activeElement).toBe(button);
     flushSync(() => button.click());
+    expect(host.querySelector("section")).toBe(section);
+    expect(host).toHaveTextContent("Loading recent pages");
+    expect(firstSignal?.aborted).toBe(true);
+    expect(host.querySelector("button")).toBeNull();
     expect(getRecentFiles).toHaveBeenCalledTimes(2);
     const signal = getRecentFiles.mock.calls[1]?.[1];
     flushSync(() => root.render(null));

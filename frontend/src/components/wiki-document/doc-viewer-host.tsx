@@ -2,6 +2,7 @@
 
 import { Loader2 } from "lucide-react";
 import { useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from "react";
+import { useShallow } from "zustand/react/shallow";
 
 import { DocSkeleton } from "@/components/wiki-document/doc-skeleton";
 import { type ActiveDoc, useDocViewerStore } from "@/components/wiki-document/doc-viewer-store";
@@ -33,11 +34,15 @@ export function htmlContentUrl(fileId: string, version?: string): string {
 }
 
 export const DocViewerHost = () => {
-  const active = useDocViewerStore((s) => s.active);
-  const pool = useDocViewerStore((s) => s.pool);
-  const prewarm = useDocViewerStore((s) => s.prewarm);
-  const warm = useDocViewerStore((s) => s.warm);
-  const slot = useDocViewerStore((s) => s.slot);
+  const { active, pool, prewarm, slot, warm } = useDocViewerStore(
+    useShallow((state) => ({
+      active: state.active,
+      pool: state.pool,
+      prewarm: state.prewarm,
+      slot: state.slot,
+      warm: state.warm,
+    })),
+  );
   const [rect, setRect] = useState<null | SlotRect>(null);
 
   const mounted: ActiveDoc[] = [];

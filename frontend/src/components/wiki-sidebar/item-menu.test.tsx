@@ -38,6 +38,7 @@ describe("file action menu preparation", () => {
   let root: Root;
 
   beforeEach(() => {
+    vi.useFakeTimers();
     vi.clearAllMocks();
     host = document.createElement("div");
     document.body.append(host);
@@ -47,6 +48,7 @@ describe("file action menu preparation", () => {
   afterEach(() => {
     flushSync(() => root.unmount());
     host.remove();
+    vi.useRealTimers();
   });
 
   it("renders 500 accessible triggers without creating mutation observers", () => {
@@ -84,5 +86,33 @@ describe("file action menu preparation", () => {
       expect(document.querySelector('[role="dialog"]')?.textContent).toContain("Rename file");
     });
     expect(document.querySelector("input")).toHaveValue("Example");
+    await vi.advanceTimersByTimeAsync(1_000);
+    expect(document.querySelector('[role="dialog"]')?.textContent).toContain("Rename file");
+  });
+
+  it("retires a used idle body after native dismissal and prepares fresh actions on reopening", async () => {
+    flushSync(() => root.render(menu()));
+    const trigger = host.querySelector("button");
+    if (!(trigger instanceof HTMLButtonElement)) throw new TypeError("trigger missing");
+    const openMenu = () => {
+      flushSync(() => {
+        trigger.dispatchEvent(new KeyboardEvent("keydown", { bubbles: true, key: "Enter" }));
+      });
+    };
+    openMenu();
+    await vi.waitFor(() => expect(document.querySelector('[role="menu"]')).not.toBeNull());
+    const content = document.querySelector('[role="menu"]');
+    if (!(content instanceof HTMLElement)) throw new Error("Menu content missing");
+    flushSync(() => {
+      content.dispatchEvent(new KeyboardEvent("keydown", { bubbles: true, key: "Escape" }));
+    });
+    expect(trigger).toHaveAttribute("aria-expanded", "false");
+    await vi.advanceTimersByTimeAsync(250);
+    expect(document.activeElement).toBe(trigger);
+    openMenu();
+    await vi.waitFor(() => expect(document.querySelector('[role="menu"]')).not.toBeNull());
+    expect(MUTATIONS.copy).toHaveBeenCalledTimes(3);
+    expect(MUTATIONS.remove).toHaveBeenCalledTimes(3);
+    expect(MUTATIONS.rename).toHaveBeenCalledTimes(3);
   });
 });

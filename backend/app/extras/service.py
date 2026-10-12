@@ -75,6 +75,8 @@ async def list_accessible_doc_icons(
     files: FilesService,
 ) -> list[DocIconRead]:
     icons = await extras.list_doc_icons()
+    if not icons:
+        return []
     accessible = await files.get_accessible_ids([icon.drive_id for icon in icons])
     return [icon for icon in icons if icon.drive_id in accessible]
 

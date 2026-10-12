@@ -34,6 +34,51 @@ beforeEach(() => {
 afterEach(() => vi.restoreAllMocks());
 
 describe("authenticated parallel wiki reads", () => {
+  it.each([
+    "sidebar/drives/{id}/folders",
+    "sidebar/drives/{id}/permissions",
+    "sidebar/folders/{id}/files",
+    "files/{id}",
+    "aliases/files/{id}",
+  ])("keeps the existing ASCII ID boundary for %s", async (template) => {
+    fetchMock.mockResolvedValue(Response.json({}));
+    const allowed = template.replace("{id}", "a".repeat(128));
+    const response = await GET(request(allowed), context(allowed));
+    expect(response.status).toBe(200);
+    expect(fetchMock).toHaveBeenCalledOnce();
+    fetchMock.mockClear();
+    const rejected = await Promise.all(
+      ["a".repeat(129), "💼".repeat(128), "\u{D800}".repeat(128)].map(async (id) => {
+        const path = template.replace("{id}", () => id);
+        return await GET(request(path), context(path));
+      }),
+    );
+    expect(rejected.map((rejectedResponse) => rejectedResponse.status)).toEqual([404, 404, 404]);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+  it("accepts the longest allowlisted path and preserves authenticated streaming", async () => {
+    const path = `sidebar/drives/${"a".repeat(128)}/permissions`;
+    expect(path.length).toBe(155);
+    fetchMock.mockResolvedValue(Response.json({ permissions: [] }));
+    const response = await GET(request(path), context(path));
+    expect(response.status).toBe(200);
+    expect(response.headers.get("cache-control")).toBe("private, no-store");
+    expect(fetchMock).toHaveBeenCalledOnce();
+    expect(fetchMock.mock.calls[0]?.[0]).toContain(path);
+  });
+
+  it("rejects an over-contract path before joining segments or looking up credentials", async () => {
+    const path = ["files", "a".repeat(1024 * 1024)];
+    const join = vi.spyOn(path, "join");
+    cookiesMock.mockClear();
+    const response = await GET(request("files/oversize"), {
+      params: Promise.resolve({ path }),
+    });
+    expect(response.status).toBe(404);
+    expect(join).not.toHaveBeenCalled();
+    expect(cookiesMock).not.toHaveBeenCalled();
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
   it.each(["auth/me", "sidebar/drives", "files/recent"])(
     "keeps failed %s reads private and traceable without exposing the upstream body",
     async (path) => {
