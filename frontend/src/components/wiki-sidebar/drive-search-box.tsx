@@ -5,14 +5,17 @@ import { Search } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useCommandPaletteState } from "@/hooks/use-command-palette";
 
+import { useSidebarNavigationIntent } from "./use-sidebar-navigation";
+
 export function DriveSearchBox() {
   const { setOpen } = useCommandPaletteState();
+  const captureNavigation = useSidebarNavigationIntent();
   return (
     <Button
       aria-label="Open search"
       className="text-muted-foreground hover:bg-accent/40 w-full justify-start text-xs font-normal"
-      onClick={() => {
-        setOpen(true);
+      onClick={(event) => {
+        setOpen(true, event.currentTarget, captureNavigation());
       }}
       size="sm"
       variant="outline"

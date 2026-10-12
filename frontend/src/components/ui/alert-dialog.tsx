@@ -4,6 +4,7 @@ import { AlertDialog as AlertDialogPrimitive } from "radix-ui";
 import * as React from "react";
 
 import { Button } from "@/components/ui/button";
+import { FocusReturnScope, useFocusReturn } from "@/components/ui/focus-return";
 import { cn } from "@/lib/utils";
 
 function AlertDialog({ ...props }: React.ComponentProps<typeof AlertDialogPrimitive.Root>) {
@@ -38,24 +39,30 @@ function AlertDialogOverlay({
 
 function AlertDialogContent({
   className,
+  onCloseAutoFocus,
+  onOpenAutoFocus,
   size = "default",
   ...props
 }: React.ComponentProps<typeof AlertDialogPrimitive.Content> & {
   size?: "default" | "sm";
 }) {
+  const { depth, ...focusReturn } = useFocusReturn({ onCloseAutoFocus, onOpenAutoFocus });
   return (
-    <AlertDialogPortal>
-      <AlertDialogOverlay />
-      <AlertDialogPrimitive.Content
-        className={cn(
-          "group/alert-dialog-content bg-background data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=closed]:zoom-out-95 data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=open]:zoom-in-95 fixed top-[50%] left-[50%] z-50 grid w-full max-w-[calc(100%-2rem)] translate-[-50%] gap-4 rounded-lg border p-6 shadow-lg duration-200 data-[size=sm]:max-w-xs data-[size=default]:sm:max-w-lg",
-          className,
-        )}
-        data-size={size}
-        data-slot="alert-dialog-content"
-        {...props}
-      />
-    </AlertDialogPortal>
+    <FocusReturnScope depth={depth}>
+      <AlertDialogPortal>
+        <AlertDialogOverlay />
+        <AlertDialogPrimitive.Content
+          className={cn(
+            "group/alert-dialog-content bg-background data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=closed]:zoom-out-95 data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=open]:zoom-in-95 fixed top-[50%] left-[50%] z-50 grid w-full max-w-[calc(100%-2rem)] translate-[-50%] gap-4 rounded-lg border p-6 shadow-lg duration-200 data-[size=sm]:max-w-xs data-[size=default]:sm:max-w-lg",
+            className,
+          )}
+          data-size={size}
+          data-slot="alert-dialog-content"
+          {...props}
+          {...focusReturn}
+        />
+      </AlertDialogPortal>
+    </FocusReturnScope>
   );
 }
 

@@ -61,6 +61,8 @@ _DECODED_TREE_CACHE_NODE_MAX = 40_000
 _DECODED_TREE_CACHE_PAYLOAD_BYTE_MAX = 32 * 1024 * 1024
 _TRANSACTION_ID_EPOCH_BITS = 32
 _INLINE_TREE_DECODE_BYTES = 16 * 1024
+_TREE_ETAG_TIMESTAMP_MIN_CHARS = 25
+_TREE_ETAG_TIMESTAMP_MAX_CHARS = 32
 
 
 class _TreeVersion(NamedTuple):
@@ -168,6 +170,41 @@ class CachedDriveTree:
     refreshed_at: datetime | None
 
 
+@dataclass(frozen=True, slots=True)
+class ConditionalDriveTree:
+    cached: CachedDriveTree | None
+    refreshed_at: datetime | None
+
+
+@dataclass(frozen=True, slots=True)
+class _ConditionalTreeSnapshot:
+    refreshed_at: datetime
+    snapshot: _TreeSnapshot | None
+
+
+def tree_etag(drive_id: DriveId, refreshed_at: datetime | None) -> str | None:
+    if refreshed_at is None:
+        return None
+    return f'W/"{drive_id}:{refreshed_at.isoformat()}"'
+
+
+def _requested_tree_time(drive_id: DriveId, request_etag: str) -> datetime | None:
+    prefix = f'W/"{drive_id}:'
+    if not request_etag.startswith(prefix) or not request_etag.endswith('"'):
+        return None
+    size = len(request_etag) - len(prefix) - 1
+    if not _TREE_ETAG_TIMESTAMP_MIN_CHARS <= size <= _TREE_ETAG_TIMESTAMP_MAX_CHARS:
+        return None
+    stamp = request_etag[len(prefix) : -1]
+    try:
+        parsed = datetime.fromisoformat(stamp)
+    except ValueError:
+        return None
+    if parsed.utcoffset() != timedelta(0) or parsed.isoformat() != stamp:
+        return None
+    return parsed
+
+
 class SidebarCacheService(ABC):
     @abstractmethod
     async def get_drive_tree(self, db: AsyncSession, drive_id: DriveId) -> CachedDriveTree: ...
@@ -182,6 +219,15 @@ class SidebarCacheService(ABC):
     ) -> datetime | None:
         cached = await self.peek_drive_tree(db, drive_id)
         return cached.refreshed_at if cached is not None else None
+
+    async def get_drive_tree_if_modified(
+        self, db: AsyncSession, drive_id: DriveId, *, request_etag: str
+    ) -> ConditionalDriveTree:
+        refreshed_at = await self.get_drive_tree_refreshed_at(db, drive_id)
+        if (etag := tree_etag(drive_id, refreshed_at)) is not None and request_etag == etag:
+            return ConditionalDriveTree(None, refreshed_at)
+        cached = await self.get_drive_tree(db, drive_id)
+        return ConditionalDriveTree(cached, cached.refreshed_at)
 
     @abstractmethod
     async def get_folder_children(self, folder_id: FileId) -> list[DriveNode]: ...
@@ -232,16 +278,9 @@ class PostgresSidebarCacheService(SidebarCacheService):
         await db.commit()
         if row is None:
             return None
-        if row.tree is None:
-            if decoded is None or decoded[0] != row.version:
-                msg = "Sidebar ciphertext omitted without its decoded version"
-                raise RuntimeError(msg)
-            tree = decoded[1]
-            _decoded_trees.get((UserId(self._user.id), drive_id, row.version, decoder))
-        else:
-            if (decoded_tree := await self._decode_row(db, row, decoder)) is None:
-                return None
-            tree = decoded_tree
+        tree = await self._reuse_or_decode_tree(db, row, decoded, decoder)
+        if tree is None:
+            return None
         if datetime.now(UTC) - row.version.refreshed_at > settings.SIDEBAR_CACHE_TTL:
             self._schedule_refresh(drive_id)
         return CachedDriveTree(tree=tree, refreshed_at=row.version.refreshed_at)
@@ -258,6 +297,36 @@ class PostgresSidebarCacheService(SidebarCacheService):
         ):
             self._schedule_refresh(drive_id)
         return refreshed_at
+
+    @override
+    async def get_drive_tree_if_modified(
+        self, db: AsyncSession, drive_id: DriveId, *, request_etag: str
+    ) -> ConditionalDriveTree:
+        if type(self) is not PostgresSidebarCacheService:
+            return await super().get_drive_tree_if_modified(db, drive_id, request_etag=request_etag)
+        decoder = self._cache_decoder()
+        decoded = _decoded_trees.latest(UserId(self._user.id), drive_id, decoder)
+        requested = _requested_tree_time(drive_id, request_etag)
+        row = await self._load_conditional_row(
+            db, drive_id, decoded[0] if decoded is not None else None, requested
+        )
+        await db.commit()
+        if row is None:
+            cached = await self.get_drive_tree(db, drive_id)
+            return ConditionalDriveTree(cached, cached.refreshed_at)
+        refreshed_at, snapshot = row.refreshed_at, row.snapshot
+        if datetime.now(UTC) - refreshed_at > settings.SIDEBAR_CACHE_TTL:
+            self._schedule_refresh(drive_id)
+        if request_etag == tree_etag(drive_id, refreshed_at):
+            return ConditionalDriveTree(None, refreshed_at)
+        if snapshot is None:
+            cached = await self.get_drive_tree(db, drive_id)
+            return ConditionalDriveTree(cached, cached.refreshed_at)
+        tree = await self._reuse_or_decode_tree(db, snapshot, decoded, decoder)
+        if tree is None:
+            cached = await self.get_drive_tree(db, drive_id)
+            return ConditionalDriveTree(cached, cached.refreshed_at)
+        return ConditionalDriveTree(CachedDriveTree(tree, refreshed_at), refreshed_at)
 
     @override
     async def get_folder_children(self, folder_id: FileId) -> list[DriveNode]:
@@ -322,6 +391,21 @@ class PostgresSidebarCacheService(SidebarCacheService):
         async with self._sessionmaker() as db:
             await self._save_tree(db, tree)
         return tree
+
+    async def _reuse_or_decode_tree(
+        self,
+        db: AsyncSession,
+        row: _TreeSnapshot,
+        decoded: tuple[_TreeVersion, DriveTree] | None,
+        decoder: MultiFernet,
+    ) -> DriveTree | None:
+        if row.tree is not None:
+            return await self._decode_row(db, row, decoder)
+        if decoded is None or decoded[0] != row.version:
+            msg = "Sidebar ciphertext omitted without its decoded version"
+            raise RuntimeError(msg)
+        _decoded_trees.get((UserId(self._user.id), row.drive_id, row.version, decoder))
+        return decoded[1]
 
     async def _decode_row(
         self, db: AsyncSession, row: _TreeSnapshot, decoder: MultiFernet
@@ -429,6 +513,48 @@ class PostgresSidebarCacheService(SidebarCacheService):
             row.tree,
         )
 
+    async def _load_conditional_row(
+        self,
+        db: AsyncSession,
+        drive_id: DriveId,
+        decoded_version: _TreeVersion | None,
+        requested: datetime | None,
+    ) -> _ConditionalTreeSnapshot | None:
+        parameters: dict[str, object] = {
+            "tree_user_id": self._user.id,
+            "tree_drive_id": drive_id,
+            "requested_tree_time": requested,
+        }
+        if decoded_version is not None:
+            parameters.update(
+                tree_refreshed_at=decoded_version.refreshed_at,
+                tree_transaction_id=decoded_version.transaction_id,
+                tree_tuple_location=decoded_version.tuple_location,
+                tree_transaction_epoch=decoded_version.transaction_epoch,
+            )
+        row = (
+            await db.execute(
+                _conditional_tree_read_statement(
+                    self._transaction_epoch(), warm=decoded_version is not None
+                ),
+                parameters,
+            )
+        ).one_or_none()
+        if row is None:
+            return None
+        if row.transaction_epoch is None:
+            return _ConditionalTreeSnapshot(row.refreshed_at, None)
+        return _ConditionalTreeSnapshot(
+            row.refreshed_at,
+            _TreeSnapshot(
+                drive_id,
+                _TreeVersion(
+                    row.refreshed_at, row.transaction_epoch, row.transaction_id, row.tuple_location
+                ),
+                row.tree,
+            ),
+        )
+
     async def _load_refreshed_at(self, db: AsyncSession, drive_id: DriveId) -> datetime | None:
         result = await db.execute(
             _tree_refreshed_statement(),
@@ -502,6 +628,29 @@ def _tree_read_statement(
         transaction_id.label("transaction_id"),
         tuple_location.label("tuple_location"),
         ciphertext.label("tree"),
+    ).where(
+        DriveTreeCache.user_id == bindparam("tree_user_id", type_=Uuid),
+        DriveTreeCache.drive_id == bindparam("tree_drive_id", type_=Text),
+    )
+
+
+@lru_cache(maxsize=4)
+def _conditional_tree_read_statement(
+    transaction_epoch: ColumnElement[int], *, warm: bool
+) -> Select[tuple[datetime, int, str, str, str]]:
+    # Exact canonical request timestamps mask both identity work and ciphertext
+    # on304. Changed rows retain the same exact decoded-version masking rule.
+    unchanged = DriveTreeCache.refreshed_at == bindparam(
+        "requested_tree_time", type_=DateTime(timezone=True)
+    )
+    original = _tree_read_statement(transaction_epoch, warm=warm)
+    refreshed_at, epoch, transaction_id, tuple_location, ciphertext = original.selected_columns
+    return select(
+        refreshed_at,
+        case((unchanged, None), else_=epoch).label("transaction_epoch"),
+        case((unchanged, None), else_=transaction_id).label("transaction_id"),
+        case((unchanged, None), else_=tuple_location).label("tuple_location"),
+        case((unchanged, None), else_=ciphertext).label("tree"),
     ).where(
         DriveTreeCache.user_id == bindparam("tree_user_id", type_=Uuid),
         DriveTreeCache.drive_id == bindparam("tree_drive_id", type_=Text),

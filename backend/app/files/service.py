@@ -16,7 +16,12 @@ from app.auth.google_tokens import provider_refresh_scope
 from app.drive.google_schemas import GoogleFile, GoogleFileAccessLocation
 from app.drive.retry import execute_batch_with_retry, execute_mutation, execute_with_retry
 from app.drive.schemas import MIME_FOLDER, MIME_HTML, NAVIGATOR_SUPPORTED_MIME_TYPES
-from app.drive.service import DriveService, GoogleRefreshHandler, reuse_drive_client
+from app.drive.service import (
+    DriveService,
+    GoogleDriveService,
+    GoogleRefreshHandler,
+    reuse_drive_client,
+)
 from app.files.errors import (
     CrossDriveMoveNotSupportedError,
     DriveUpstreamError,
@@ -707,6 +712,12 @@ class GoogleFilesService(FilesService):
         return raw
 
     def _client(self) -> DriveResource:
+        if type(self._drive) is GoogleDriveService:
+            shared = self._drive.metadata_clients.for_metadata(
+                self._user, self._drive.google_refresh_handler, self._client_factory
+            )
+            if shared is not None:
+                return shared
         return reuse_drive_client(
             self._user,
             self._clients,

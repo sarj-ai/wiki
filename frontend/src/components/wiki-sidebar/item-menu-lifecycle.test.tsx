@@ -21,6 +21,12 @@ vi.mock("next/navigation", () => ({
   useRouter: () => ({ push: vi.fn() }),
   usePathname: () => "/",
 }));
+vi.mock("next/dynamic", async () => ({
+  default: await vi.importActual("next/dist/shared/lib/app-dynamic"),
+}));
+vi.mock("@/lib/wiki-read-api", () => ({
+  WIKI_READ_API: { getDrives: vi.fn().mockResolvedValue([]) },
+}));
 
 const FILE: FileDetail = {
   breadcrumb: [],
@@ -112,6 +118,39 @@ describe("used item-action body lifetime", () => {
     flushSync(() => action.click());
     await vi.waitFor(() => expect(document.querySelector('[role="dialog"]')).not.toBeNull());
   }
+
+  it.each(["Rename", "Duplicate", "Move to…", "Move to trash"])(
+    "returns focus to the persistent action trigger after cancelling %s without a write",
+    async (label) => {
+      renderMenu();
+      const trigger = host.querySelector("button");
+      if (!(trigger instanceof HTMLButtonElement)) throw new Error("Menu trigger missing");
+      flushSync(() => {
+        trigger.focus();
+        trigger.dispatchEvent(new KeyboardEvent("keydown", { bubbles: true, key: "Enter" }));
+      });
+      await vi.waitFor(() => expect(document.querySelector('[role="menu"]')).not.toBeNull());
+      const action = [...document.querySelectorAll('[role="menuitem"]')].find(
+        (item) => item.textContent === label,
+      );
+      if (!(action instanceof HTMLElement)) throw new Error("Action missing");
+      flushSync(() => action.click());
+      await vi.waitFor(() =>
+        expect(document.querySelector('[role="dialog"], [role="alertdialog"]')).not.toBeNull(),
+      );
+      await vi.advanceTimersByTimeAsync(250);
+      const cancel = [...document.querySelectorAll("button")].find(
+        (button) => button.textContent === "Cancel",
+      );
+      if (!(cancel instanceof HTMLButtonElement)) throw new Error("Cancel missing");
+      flushSync(() => cancel.click());
+      await vi.advanceTimersByTimeAsync(250);
+      expect(document.querySelector('[role="dialog"], [role="alertdialog"]')).toBeNull();
+      expect(trigger).toHaveFocus();
+      expect(client.getMutationCache().getAll()).toHaveLength(0);
+      expect(ACTIONS.rename).not.toHaveBeenCalled();
+    },
+  );
 
   it("retains a selected rename across menu dismissal and a delayed provider acknowledgment", async () => {
     const pending = Promise.withResolvers<ActionResult<FileDetail>>();

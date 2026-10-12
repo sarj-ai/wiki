@@ -15,7 +15,6 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import { useMoveFile } from "@/hooks/use-wiki-mutations";
 import { useDrives, useDriveTree } from "@/hooks/use-wiki-tree";
 import { ApiError } from "@/lib/api-error";
@@ -31,6 +30,8 @@ export function MoveFileDialog({
   currentParentFolderId,
   fileId,
   fileName,
+  onCloseAutoFocus,
+  onOpenAutoFocus,
   onOpenChange,
   open,
 }: MoveFileDialogProps) {
@@ -83,15 +84,24 @@ export function MoveFileDialog({
       }}
       open={open}
     >
-      <DialogContent className="max-w-md">
-        <DialogHeader>
+      <DialogContent
+        className="max-h-[calc(100dvh-1rem)] grid-rows-[auto_minmax(0,1fr)_auto] gap-0 overflow-hidden p-0 sm:max-w-md"
+        onCloseAutoFocus={onCloseAutoFocus}
+        onOpenAutoFocus={onOpenAutoFocus}
+      >
+        <DialogHeader className="px-6 pt-6 pr-12">
           <DialogTitle>Move &ldquo;{fileName}&rdquo;</DialogTitle>
           <DialogDescription>
             Pick a destination folder or drive. Cross-drive moves may be blocked by Drive admin
             settings — copy the file instead if that fails.
           </DialogDescription>
         </DialogHeader>
-        <ScrollArea className="h-72 rounded-sm border">
+        <div
+          aria-label="Move destinations"
+          className="mx-6 my-4 max-h-72 min-h-0 overflow-y-auto rounded-sm border"
+          role="region"
+          tabIndex={0}
+        >
           <div className="space-y-0.5 p-1">
             {(drivesQuery.data ?? []).map((drive) => (
               <DriveRow
@@ -103,8 +113,8 @@ export function MoveFileDialog({
               />
             ))}
           </div>
-        </ScrollArea>
-        <DialogFooter>
+        </div>
+        <DialogFooter className="border-t px-6 py-4">
           <Button
             disabled={moveFile.isPending}
             onClick={() => {
@@ -140,6 +150,8 @@ interface MoveFileDialogProps {
   currentParentFolderId: string | undefined;
   fileId: string;
   fileName: string;
+  onCloseAutoFocus?: (event: Event) => void;
+  onOpenAutoFocus?: (event: Event) => void;
   onOpenChange: (open: boolean) => void;
   open: boolean;
 }

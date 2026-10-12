@@ -10,7 +10,10 @@ const DocRefSchema = z.object({
   title: z.string(),
 });
 
-export const RecentDocsSchema = z.array(DocRefSchema).max(6).catch([]);
+export const RecentDocsSchema = z
+  .array(DocRefSchema)
+  .max(6)
+  .catch(() => []);
 
 export const RecentAliasVisitSchema = z.object({
   alias: z

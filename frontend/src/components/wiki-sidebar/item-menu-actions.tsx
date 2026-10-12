@@ -3,7 +3,7 @@
 import { Copy, ExternalLink, FolderInput, Loader2, Pencil, Trash2 } from "lucide-react";
 import dynamic from "next/dynamic";
 import { usePathname, useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 
 import {
@@ -40,10 +40,19 @@ export function ItemMenuActions({
   driveId,
   fileId,
   isFolder,
+  isMoveScopeActive,
   menuOpen,
+  moveInOutlet = false,
   onIdle,
+  onMove,
   parentFolderId,
-}: ItemMenuProps & { menuOpen: boolean; onIdle: () => void }) {
+}: ItemMenuProps & {
+  isMoveScopeActive?: () => boolean;
+  menuOpen: boolean;
+  moveInOutlet?: boolean;
+  onIdle: () => void;
+  onMove?: () => void;
+}) {
   const router = useRouter();
   const pathname = usePathname();
   const renameFile = useRenameFile();
@@ -51,6 +60,7 @@ export function ItemMenuActions({
   const copyFile = useCopyFile();
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const moveDialog = useDeferredDialog();
+  const moveContent = useRef<HTMLElement | null>(null);
   const [renaming, setRenaming] = useState(false);
   const [duplicating, setDuplicating] = useState(false);
 
@@ -61,6 +71,7 @@ export function ItemMenuActions({
       duplicating ||
       confirmingDelete ||
       moveDialog.open ||
+      moveInOutlet ||
       renameFile.isPending ||
       copyFile.isPending ||
       deleteFile.isPending
@@ -79,6 +90,7 @@ export function ItemMenuActions({
     duplicating,
     menuOpen,
     moveDialog.open,
+    moveInOutlet,
     onIdle,
     renameFile.isPending,
     renaming,
@@ -119,7 +131,20 @@ export function ItemMenuActions({
 
   return (
     <>
-      <DropdownMenuContent align="start" className="w-40">
+      <DropdownMenuContent
+        align="start"
+        className="w-40"
+        onCloseAutoFocus={(event) => {
+          if (
+            renaming ||
+            duplicating ||
+            confirmingDelete ||
+            moveContent.current?.isConnected ||
+            isMoveScopeActive?.()
+          )
+            event.preventDefault();
+        }}
+      >
         <DropdownMenuItem
           className="flex items-center gap-2 text-sm"
           onClick={() => {
@@ -132,7 +157,8 @@ export function ItemMenuActions({
         <DropdownMenuItem
           className="flex items-center gap-2 text-sm"
           onClick={() => {
-            moveDialog.onOpenChange(true);
+            if (onMove) onMove();
+            else moveDialog.onOpenChange(true);
           }}
         >
           <FolderInput className="size-4" />
@@ -213,6 +239,12 @@ export function ItemMenuActions({
           currentParentFolderId={parentFolderId}
           fileId={fileId}
           fileName={currentName}
+          onCloseAutoFocus={(event) => {
+            if (event.target === moveContent.current) moveContent.current = null;
+          }}
+          onOpenAutoFocus={(event) => {
+            moveContent.current = event.target instanceof HTMLElement ? event.target : null;
+          }}
           onOpenChange={moveDialog.onOpenChange}
           open={moveDialog.open}
         />

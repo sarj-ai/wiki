@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from datetime import datetime
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Path, Query, Request, Response, status
@@ -12,7 +11,7 @@ from app.drive.schemas import DriveNode, DrivePermissionsPage, DriveSummary, Dri
 from app.drive.service import DriveService
 from app.identifiers import DriveId, FileId
 from app.openapi import authentication_responses
-from app.sidebar.cache import SidebarCacheService
+from app.sidebar.cache import SidebarCacheService, tree_etag as _tree_etag
 from app.sidebar.dependencies import sidebar_cache_service_dep
 
 
@@ -75,15 +74,21 @@ async def get_drive_folders(
 ) -> DriveTree | Response:
     request_etag = request.headers.get("if-none-match")
     if request_etag:
-        refreshed_at = await cache.get_drive_tree_refreshed_at(db, drive_id)
-        metadata_etag = _tree_etag(drive_id, refreshed_at)
-        if metadata_etag is not None and request_etag == metadata_etag:
+        conditional = await cache.get_drive_tree_if_modified(
+            db, drive_id, request_etag=request_etag
+        )
+        metadata_etag = _tree_etag(drive_id, conditional.refreshed_at)
+        if conditional.cached is None and metadata_etag is not None:
             return Response(
                 status_code=status.HTTP_304_NOT_MODIFIED,
                 headers={"ETag": metadata_etag, "Cache-Control": _CACHE_CONTROL},
             )
-
-    cached = await cache.get_drive_tree(db, drive_id)
+        cached = conditional.cached
+        if cached is None:
+            msg = "Conditional tree response lacks a tree or timestamp"
+            raise RuntimeError(msg)
+    else:
+        cached = await cache.get_drive_tree(db, drive_id)
     etag = _tree_etag(drive_id, cached.refreshed_at)
     if etag is None:
         response.headers["Cache-Control"] = _CACHE_CONTROL
@@ -119,9 +124,3 @@ async def get_folder_files(
 ) -> list[DriveNode]:
     response.headers["Cache-Control"] = _CACHE_CONTROL
     return await cache.get_folder_children(folder_id)
-
-
-def _tree_etag(drive_id: DriveId, refreshed_at: datetime | None) -> str | None:
-    if refreshed_at is None:
-        return None
-    return f'W/"{drive_id}:{refreshed_at.isoformat()}"'

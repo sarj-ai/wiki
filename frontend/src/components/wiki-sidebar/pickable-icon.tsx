@@ -28,7 +28,7 @@ export function PickableIcon({
     <EmojiPickerPopover target={target} value={value}>
       <Button
         aria-label={ariaLabel}
-        className="hover:bg-sidebar-accent hover:text-sidebar-accent-foreground size-6 shrink-0 cursor-pointer transition-colors"
+        className="hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:ring-sidebar-ring focus-visible:ring-offset-sidebar size-6 shrink-0 cursor-pointer transition-colors focus-visible:ring-2 focus-visible:ring-offset-2"
         size="icon-xs"
         variant="ghost"
       >

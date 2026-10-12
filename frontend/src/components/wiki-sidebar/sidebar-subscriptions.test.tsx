@@ -6,7 +6,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 
 import { SidebarProvider } from "@/components/ui/sidebar";
 import { wikiKeys } from "@/lib/wiki-keys";
-import type { DocIcon, DriveNode, FolderIcon, SortOrder } from "@/types/wiki";
+import type { DocIcon, DriveNode, DriveSummary, FolderIcon, SortOrder } from "@/types/wiki";
 import { MIME_DOC, MIME_FORM, MIME_SHORTCUT } from "@/types/wiki";
 
 import { FileRow } from "./file-row";
@@ -15,11 +15,14 @@ import { WikiSidebar } from "./wiki-sidebar";
 
 const PATHNAME = vi.hoisted(() => vi.fn(() => "/"));
 const ICON_READ = vi.hoisted(() => vi.fn<() => Promise<DocIcon[]>>());
+const DRIVES_READ = vi.hoisted(() => vi.fn<() => Promise<DriveSummary[]>>());
 vi.mock("next/navigation", () => ({
   usePathname: PATHNAME,
   useRouter: () => ({ push: vi.fn() }),
 }));
-vi.mock("@/lib/wiki-read-api", () => ({ WIKI_READ_API: { listDocIcons: ICON_READ } }));
+vi.mock("@/lib/wiki-read-api", () => ({
+  WIKI_READ_API: { getDrives: DRIVES_READ, listDocIcons: ICON_READ },
+}));
 vi.mock("./drive-section", () => ({
   DriveSection: vi.fn(function DriveSection({
     docIcons,
@@ -33,7 +36,7 @@ vi.mock("./drive-section", () => ({
     sortOrders: readonly SortOrder[];
   }) {
     const index = useDriveTreeIndex(drive.id, docIcons, folderIcons, sortOrders, false);
-    return <span>{index.docIconOverrides.size}</span>;
+    return <span data-drive-id={drive.id}>{index.docIconOverrides.size}</span>;
   }),
 }));
 vi.mock("./drive-search-box", () => ({ DriveSearchBox: vi.fn(() => null) }));
@@ -53,6 +56,7 @@ describe("sidebar subscriptions", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     ICON_READ.mockResolvedValue([]);
+    DRIVES_READ.mockResolvedValue([]);
     PATHNAME.mockReturnValue("/");
     queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     const drives = Array.from({ length: 20 }, (_, index) => ({
@@ -108,6 +112,50 @@ describe("sidebar subscriptions", () => {
     });
     flushSync(() => root.render(wrap(<WikiSidebar />)));
     expect(ICON_READ).not.toHaveBeenCalled();
+  });
+
+  it("exposes cold drive loading without claiming an empty successful result", () => {
+    queryClient.removeQueries({ queryKey: wikiKeys.drives });
+    DRIVES_READ.mockReturnValue(Promise.withResolvers<DriveSummary[]>().promise);
+    flushSync(() => root.render(wrap(<WikiSidebar />)));
+    expect(host.querySelector('[role="status"]')).toHaveTextContent("Loading drives");
+    expect(host.querySelector('[role="status"] [aria-hidden="true"]')?.children).toHaveLength(3);
+    expect(host).not.toHaveTextContent("No accessible drives");
+  });
+
+  it("offers a fresh drive retry and shows empty feedback only after success", async () => {
+    queryClient.removeQueries({ queryKey: wikiKeys.drives });
+    DRIVES_READ.mockRejectedValueOnce(new Error("Unavailable"));
+    const retry = Promise.withResolvers<DriveSummary[]>();
+    DRIVES_READ.mockReturnValueOnce(retry.promise);
+    flushSync(() => root.render(wrap(<WikiSidebar />)));
+    await vi.waitFor(() =>
+      expect(host.querySelector('[role="alert"]')).toHaveTextContent("Failed to load drives"),
+    );
+    expect(host).not.toHaveTextContent("No accessible drives");
+    const button = [...host.querySelectorAll("button")].find(
+      (candidate) => candidate.textContent === "Retry drives",
+    );
+    if (!button) throw new Error("Drive retry is missing");
+    flushSync(() => button.click());
+    await vi.waitFor(() => expect(DRIVES_READ).toHaveBeenCalledTimes(2));
+    expect(host).not.toHaveTextContent("No accessible drives");
+    retry.resolve([]);
+    await vi.waitFor(() => expect(host).toHaveTextContent("No accessible drives"));
+    expect(host).not.toHaveTextContent("Failed to load drives");
+  });
+
+  it("keeps cached visible drive rows during a foreground refetch", async () => {
+    const retry = Promise.withResolvers<DriveSummary[]>();
+    DRIVES_READ.mockReturnValueOnce(retry.promise);
+    flushSync(() => root.render(wrap(<WikiSidebar />)));
+    expect(host.querySelectorAll("[data-drive-id]")).toHaveLength(20);
+    const refresh = queryClient.refetchQueries({ queryKey: wikiKeys.drives });
+    await vi.waitFor(() => expect(DRIVES_READ).toHaveBeenCalledOnce());
+    expect(host.querySelectorAll("[data-drive-id]")).toHaveLength(20);
+    retry.resolve([]);
+    await refresh;
+    await vi.waitFor(() => expect(host).toHaveTextContent("No accessible drives"));
   });
 
   it("renders 500 normal rows without repeating the sidebar pathname subscription", () => {

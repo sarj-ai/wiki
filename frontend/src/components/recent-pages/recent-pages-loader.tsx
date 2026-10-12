@@ -1,53 +1,53 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { CancelledError, useQuery } from "@tanstack/react-query";
+import { useState } from "react";
 
-import { type RecentPage, RecentPages } from "@/components/recent-pages/recent-pages";
-import { useBrowserUserId } from "@/lib/browser-user-context";
+import { RecentPages } from "@/components/recent-pages/recent-pages";
+import { useRecentPagesScope } from "@/components/recent-pages/recent-pages-session";
 import { readRecentDocs } from "@/lib/last-doc";
-import { WIKI_READ_API } from "@/lib/wiki-read-api";
+import { recentPagesQueryOptions, type RecentPagesScope } from "@/lib/recent-pages-query";
 
 export function RecentPagesLoader() {
-  const userId = useBrowserUserId();
-  if (!userId) return <RecentPages loading pages={[]} />;
-  return <UserRecentPages key={userId} userId={userId} />;
+  const scope = useRecentPagesScope();
+  if (scope === null) return <RecentPages loading pages={[]} />;
+  return <UserRecentPages key={scope.queryKey[2]} scope={scope} />;
 }
 
-function UserRecentPages({ userId }: { userId: string }) {
-  const [attempt, setAttempt] = useState(0);
-  const [state, setState] = useState<{
-    pages: RecentPage[];
-    status: "error" | "loading" | "ready";
-  }>({ pages: [], status: "loading" });
-  useEffect(() => {
-    const lifetime = new AbortController();
-    const visits = readRecentDocs(userId);
-    const load = async () => {
-      const accessible =
-        visits.length === 0
-          ? []
-          : await WIKI_READ_API.getRecentFiles(
-              visits.map((visit) => visit.fileId),
-              lifetime.signal,
-            );
-      if (lifetime.signal.aborted) return;
-      setState({ pages: accessible, status: "ready" });
-    };
-    void load().catch(() => {
-      if (lifetime.signal.aborted) return;
-      setState({ pages: [], status: "error" });
-    });
-    return () => lifetime.abort();
-  }, [attempt, userId]);
+function UserRecentPages({ scope }: { scope: RecentPagesScope }) {
+  const [fileIds, setFileIds] = useState(() =>
+    readRecentDocs(scope.userId).map((visit) => visit.fileId),
+  );
+  const [retrying, setRetrying] = useState(false);
+  const query = useQuery(recentPagesQueryOptions(scope, fileIds));
+  const loading = retrying || query.isPending || query.isFetching;
+  const error = query.isError && !loading;
   return (
     <RecentPages
-      error={state.status === "error"}
-      loading={state.status === "loading"}
+      error={error}
+      loading={loading}
+      loadingCount={fileIds.length}
       onRetry={() => {
-        setState({ pages: [], status: "loading" });
-        setAttempt((current) => current + 1);
+        setRetrying(true);
+        const ids = readRecentDocs(scope.userId).map((visit) => visit.fileId);
+        setFileIds(ids);
+        const retry = async () => {
+          try {
+            await scope.queryClient.fetchQuery({
+              ...recentPagesQueryOptions(scope, ids),
+              staleTime: 0,
+            });
+          } catch (failure: unknown) {
+            if (scope.isActive() && !(failure instanceof CancelledError)) {
+              console.warn("Recent-page retry could not finish");
+            }
+          } finally {
+            setRetrying(false);
+          }
+        };
+        void retry().catch(() => console.warn("Recent-page retry could not finish"));
       }}
-      pages={state.pages}
+      pages={query.isSuccess && !loading ? query.data : []}
     />
   );
 }

@@ -4,14 +4,15 @@ import { type QueryClient, useQueryClient } from "@tanstack/react-query";
 import { Command as CommandPrimitive } from "cmdk";
 import { ExternalLink, Loader2, Search, X } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useDebouncedCallback } from "use-debounce";
 
 import { Button } from "@/components/ui/button";
 import { Command, CommandItem, CommandList } from "@/components/ui/command";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
+import { FocusReturnProvider } from "@/components/ui/focus-return";
 import { useCommandPaletteState } from "@/hooks/use-command-palette";
-import { useDriveSearch, useDriveSearchSnippet } from "@/hooks/use-drive-search";
+import { useDriveSearchSnippet, useDriveSearchState } from "@/hooks/use-drive-search";
 import { expandPath, requestReveal } from "@/hooks/use-expanded-folders";
 import { fileQueryOptions, wikiKeys } from "@/hooks/use-wiki-tree";
 import { ApiError, RATE_LIMIT_MESSAGE } from "@/lib/api-error";
@@ -38,7 +39,7 @@ const RELATIVE_TIME_UNITS: [Intl.RelativeTimeFormatUnit, number][] = [
 ];
 
 export function CommandPalette() {
-  const { open, setOpen } = useCommandPaletteState();
+  const { onDocumentNavigate, open, returnFocusRef, setOpen } = useCommandPaletteState();
   const router = useRouter();
   const qc = useQueryClient();
   const userId = useBrowserUserId();
@@ -47,16 +48,32 @@ export function CommandPalette() {
 
   const [selectedResultId, setSelectedResultId] = useState<null | string>(null);
   const inputRef = useRef<HTMLInputElement | null>(null);
+  const focusFrame = useRef<null | number>(null);
+  const focusOwner = useRef<null | object>(null);
+  useLayoutEffect(() => {
+    const owner = {};
+    focusOwner.current = open ? owner : null;
+    return () => {
+      focusOwner.current = null;
+      if (focusFrame.current !== null) cancelAnimationFrame(focusFrame.current);
+      focusFrame.current = null;
+    };
+  }, [open, userId]);
 
-  const searchQuery = useDriveSearch(query, open);
-  const results = searchQuery.data ?? [];
+  const { query: searchQuery, isCurrentQuery } = useDriveSearchState(query, open);
+  const hasQuery = query.trim().length >= 2;
+  const results = hasQuery && isCurrentQuery ? (searchQuery.data ?? []) : [];
 
   const selectedId =
     selectedResultId !== null && results.some((r) => r.id === selectedResultId)
       ? selectedResultId
       : (results[0]?.id ?? "");
   const selectedResult = results.find((r) => r.id === selectedId) ?? null;
-  const hasQuery = query.trim().length >= 2;
+  const selectedIsFolder =
+    selectedResult !== null && resolveShortcutTarget(selectedResult).targetMimeType === MIME_FOLDER;
+  const searching =
+    hasQuery &&
+    (!isCurrentQuery || searchQuery.isPending || (searchQuery.isFetching && results.length === 0));
 
   const prepareResult = (result: DriveSearchResult): void => {
     if (result.shortcutInaccessible) return;
@@ -94,7 +111,7 @@ export function CommandPalette() {
     setOpen(true);
   };
 
-  const openResult = (result: DriveSearchResult) => {
+  const openResult = (result: DriveSearchResult, navigationEligible = true) => {
     schedulePrepareResult.cancel();
     if (result.shortcutInaccessible) {
       closePalette();
@@ -123,126 +140,142 @@ export function CommandPalette() {
     } else {
       prepareResult(result);
       requestReveal(target.targetId);
-      router.push(`/d/${encodeURIComponent(target.targetId)}`);
+      const href = `/d/${encodeURIComponent(target.targetId)}` as const;
+      if (navigationEligible) onDocumentNavigate?.(href);
+      router.push(href);
     }
     closePalette();
   };
 
   const handleInputKeyDown = (event: React.KeyboardEvent<HTMLInputElement>) => {
-    if (event.key !== "Enter" || event.nativeEvent.isComposing) return;
+    if (event.key !== "Enter" || event.nativeEvent.isComposing || event.defaultPrevented) return;
     event.preventDefault();
-    if (selectedResult) openResult(selectedResult);
+    if (selectedResult) openResult(selectedResult, isUnmodifiedActivation(event));
   };
 
   return (
-    <Dialog onOpenChange={handleOpenChange} open={open}>
-      <DialogContent
-        className="flex h-[min(640px,85dvh)] !max-w-5xl flex-col gap-0 overflow-hidden p-0 sm:!max-w-5xl"
-        onOpenAutoFocus={(e) => {
-          e.preventDefault();
-          requestAnimationFrame(() => inputRef.current?.focus());
-        }}
-        showCloseButton={false}
-      >
-        <DialogTitle className="sr-only">Search Drive</DialogTitle>
-        <Command
-          className="h-auto min-h-0 flex-1 bg-transparent"
-          disablePointerSelection
-          onValueChange={setSelectedResultId}
-          shouldFilter={false}
-          value={selectedId}
+    <FocusReturnProvider targetRef={returnFocusRef}>
+      <Dialog onOpenChange={handleOpenChange} open={open}>
+        <DialogContent
+          className="flex h-[min(640px,85dvh)] !max-w-5xl flex-col gap-0 overflow-hidden p-0 sm:!max-w-5xl"
+          onOpenAutoFocus={(e) => {
+            e.preventDefault();
+            const owner = focusOwner.current;
+            if (!owner) return;
+            if (focusFrame.current !== null) cancelAnimationFrame(focusFrame.current);
+            focusFrame.current = requestAnimationFrame(() => {
+              focusFrame.current = null;
+              if (focusOwner.current === owner) inputRef.current?.focus();
+            });
+          }}
+          showCloseButton={false}
         >
-          <div className="border-border flex items-center gap-2.5 border-b px-5 py-4">
-            <Search className="text-muted-foreground size-5 shrink-0" />
+          <DialogTitle className="sr-only">Search Drive</DialogTitle>
+          <Command
+            className="h-auto min-h-0 flex-1 bg-transparent"
+            disablePointerSelection
+            onValueChange={setSelectedResultId}
+            shouldFilter={false}
+            value={selectedId}
+          >
+            <div className="border-border flex shrink-0 items-center gap-2.5 border-b p-3 sm:px-5 sm:py-4">
+              <Search className="text-muted-foreground size-5 shrink-0" />
 
-            <CommandPrimitive.Input
-              aria-label="Search Drive"
-              className="placeholder:text-muted-foreground/70 flex-1 bg-transparent text-base leading-none outline-none"
-              onKeyDown={handleInputKeyDown}
-              onValueChange={setQuery}
-              placeholder="Search Drive…"
-              ref={inputRef}
-              value={query}
-            />
-            {query.length > 0 && (
-              <Button
-                aria-label="Clear search"
-                className="text-muted-foreground hover:text-foreground size-7 shrink-0"
-                onClick={() => {
-                  setQuery("");
-                }}
-                size="icon-sm"
-                variant="ghost"
-              >
-                <X className="size-4" />
-              </Button>
-            )}
-          </div>
-
-          <div className="flex min-h-0 flex-1">
-            <CommandList className="h-full max-h-full w-2/5 min-w-0 border-r">
-              <div className="space-y-0.5 p-3">
-                {!hasQuery && (
-                  <div className="text-muted-foreground px-3 py-4 text-xs">
-                    Type at least 2 characters to search. Press ↑↓ to navigate, ⏎ to open.
-                  </div>
-                )}
-                {hasQuery && searchQuery.isFetching && results.length === 0 ? (
-                  <div className="text-muted-foreground flex items-center gap-2 px-3 py-4 text-xs">
-                    <Loader2 className="size-3 animate-spin" /> Searching…
-                  </div>
-                ) : null}
-                {hasQuery && searchQuery.isError ? (
-                  <QueryError
-                    error={searchQuery.error}
-                    fallback="Search is temporarily unavailable."
-                    label="Retry search"
-                    onRetry={() => void searchQuery.refetch()}
-                    retrying={searchQuery.isFetching}
-                  />
-                ) : null}
-                {hasQuery &&
-                !searchQuery.isFetching &&
-                !searchQuery.isError &&
-                results.length === 0 ? (
-                  <div className="text-muted-foreground px-3 py-4 text-xs">No results</div>
-                ) : null}
-                {results.map((result) => (
-                  <ResultRow driveName={result.driveName} key={result.id} result={result} />
-                ))}
-              </div>
-            </CommandList>
-
-            <div className="min-w-0 flex-1">
-              <PreviewPanel
-                driveName={selectedResult?.driveName}
-                onOpen={openResult}
-                query={query.trim()}
-                result={selectedResult}
+              <CommandPrimitive.Input
+                aria-label="Search Drive"
+                className="placeholder:text-muted-foreground/70 flex-1 bg-transparent text-base leading-none outline-none"
+                onKeyDown={handleInputKeyDown}
+                onValueChange={setQuery}
+                placeholder="Search Drive…"
+                ref={inputRef}
+                value={query}
               />
+              {query.length > 0 && (
+                <Button
+                  aria-label="Clear search"
+                  className="text-muted-foreground hover:text-foreground size-7 shrink-0"
+                  onClick={() => {
+                    setQuery("");
+                    setSelectedResultId(null);
+                    inputRef.current?.focus();
+                  }}
+                  size="icon-sm"
+                  variant="ghost"
+                >
+                  <X className="size-4" />
+                </Button>
+              )}
             </div>
-          </div>
-        </Command>
 
-        <div className="border-border text-muted-foreground flex items-center justify-between gap-2 border-t px-5 py-2.5 text-[11px]">
-          <span>
-            <kbd className="bg-muted rounded-sm border px-1 py-0.5 font-mono text-[10px]">↑</kbd>{" "}
-            <kbd className="bg-muted rounded-sm border px-1 py-0.5 font-mono text-[10px]">↓</kbd>{" "}
-            navigate
-            <span className="mx-2">·</span>
-            <kbd className="bg-muted rounded-sm border px-1 py-0.5 font-mono text-[10px]">
-              Enter
-            </kbd>{" "}
-            open
-            <span className="mx-2">·</span>
-            <kbd className="bg-muted rounded-sm border px-1 py-0.5 font-mono text-[10px]">
-              Esc
-            </kbd>{" "}
-            close
-          </span>
-        </div>
-      </DialogContent>
-    </Dialog>
+            <div className="flex min-h-0 flex-1 flex-col sm:flex-row">
+              <CommandList className="max-h-none min-h-0 w-full min-w-0 flex-1 border-b sm:h-full sm:max-h-full sm:w-2/5 sm:flex-none sm:border-r sm:border-b-0">
+                <div className="space-y-0.5 p-3">
+                  {!hasQuery && (
+                    <div className="text-muted-foreground px-3 py-4 text-xs">
+                      Type at least 2 characters to search. Press ↑↓ to navigate, ⏎ to open.
+                    </div>
+                  )}
+                  {searching ? (
+                    <div
+                      className="text-muted-foreground flex items-center gap-2 px-3 py-4 text-xs"
+                      role="status"
+                    >
+                      <Loader2 className="size-3 animate-spin" /> Searching…
+                    </div>
+                  ) : null}
+                  {hasQuery && isCurrentQuery && searchQuery.isError ? (
+                    <QueryError
+                      error={searchQuery.error}
+                      fallback="Search is temporarily unavailable."
+                      label="Retry search"
+                      onRetry={() => void searchQuery.refetch()}
+                      retrying={searchQuery.isFetching}
+                    />
+                  ) : null}
+                  {hasQuery &&
+                  isCurrentQuery &&
+                  searchQuery.isSuccess &&
+                  !searchQuery.isFetching &&
+                  results.length === 0 ? (
+                    <div className="text-muted-foreground px-3 py-4 text-xs">No results</div>
+                  ) : null}
+                  {results.map((result) => (
+                    <ResultRow driveName={result.driveName} key={result.id} result={result} />
+                  ))}
+                </div>
+              </CommandList>
+
+              <div className="min-h-0 min-w-0 flex-1">
+                <PreviewPanel
+                  driveName={selectedResult?.driveName}
+                  onOpen={openResult}
+                  query={query.trim()}
+                  result={selectedResult}
+                />
+              </div>
+            </div>
+          </Command>
+
+          <div className="border-border text-muted-foreground flex shrink-0 flex-wrap items-center justify-between gap-2 border-t px-3 py-2.5 text-[11px] sm:px-5">
+            <span>
+              <kbd className="bg-muted rounded-sm border px-1 py-0.5 font-mono text-[10px]">↑</kbd>{" "}
+              <kbd className="bg-muted rounded-sm border px-1 py-0.5 font-mono text-[10px]">↓</kbd>{" "}
+              navigate
+              <span className="mx-2">·</span>
+              <kbd className="bg-muted rounded-sm border px-1 py-0.5 font-mono text-[10px]">
+                Enter
+              </kbd>{" "}
+              {selectedIsFolder ? "show in sidebar" : "open"}
+              <span className="mx-2">·</span>
+              <kbd className="bg-muted rounded-sm border px-1 py-0.5 font-mono text-[10px]">
+                Esc
+              </kbd>{" "}
+              close
+            </span>
+          </div>
+        </DialogContent>
+      </Dialog>
+    </FocusReturnProvider>
   );
 }
 
@@ -314,16 +347,20 @@ function ResultRow({
         {renderNodeIcon(result, "size-4")}
       </span>
       <div className="min-w-0 flex-1">
-        <div className="text-foreground font-medium break-words">{displayName}</div>
+        <div className="flex flex-col gap-0.5 sm:flex-row sm:items-baseline sm:gap-2">
+          <div className="text-foreground min-w-0 flex-1 font-medium break-words">
+            {displayName}
+          </div>
+          {result.modifiedTime ? (
+            <span className="text-muted-foreground shrink-0 text-xs">
+              {relativeTime(result.modifiedTime)}
+            </span>
+          ) : null}
+        </div>
         {driveName ? (
           <div className="text-muted-foreground text-xs break-words">{driveName}</div>
         ) : null}
       </div>
-      {result.modifiedTime ? (
-        <span className="text-muted-foreground mt-0.5 shrink-0 text-xs">
-          {relativeTime(result.modifiedTime)}
-        </span>
-      ) : null}
     </CommandItem>
   );
 }
@@ -337,7 +374,7 @@ function PreviewPanel({
   result: DriveSearchResult | null;
   query: string;
   driveName: string | undefined;
-  onOpen: (result: DriveSearchResult) => void;
+  onOpen: (result: DriveSearchResult, navigationEligible: boolean) => void;
 }) {
   const target = result ? resolveShortcutTarget(result) : null;
   const inaccessible = result?.shortcutInaccessible === true;
@@ -357,60 +394,34 @@ function PreviewPanel({
   }
 
   const isForm = target.targetMimeType === MIME_FORM;
-  const snippet = snippetQuery.data;
+  const isFolder = target.targetMimeType === MIME_FOLDER;
   const displayName = displayFileName(result.name, target.targetMimeType);
 
   return (
-    <div className="flex h-full min-h-0 flex-col p-5">
-      <div className="flex items-start gap-3">
-        <span className="mt-1 shrink-0">{renderNodeIcon(result, "size-6")}</span>
-        <div className="min-w-0 flex-1">
-          <div className="text-base font-semibold break-words">{displayName}</div>
-          {driveName ? <div className="text-muted-foreground text-xs">{driveName}</div> : null}
+    <div className="flex h-full min-h-0 flex-col">
+      <div className="min-h-0 flex-1 space-y-3 overflow-auto p-3 sm:space-y-4 sm:p-5">
+        <div className="flex items-start gap-3">
+          <span className="mt-1 shrink-0">{renderNodeIcon(result, "size-6")}</span>
+          <div className="min-w-0 flex-1">
+            <div className="text-base font-semibold break-words">{displayName}</div>
+            {driveName ? <div className="text-muted-foreground text-xs">{driveName}</div> : null}
+          </div>
         </div>
-      </div>
 
-      <div className="mt-4 min-h-0 flex-1 overflow-auto">
-        {inaccessible ? (
-          <div className="text-muted-foreground text-sm text-pretty">
-            This is a shortcut, but you don&apos;t have access to its target. Contact your admin if
-            you need access.
-          </div>
-        ) : null}
-        {!inaccessible && snippetQuery.isLoading ? (
-          <div className="text-muted-foreground flex items-center gap-2 text-sm">
-            <Loader2 className="size-4 animate-spin" />
-            Loading match preview…
-          </div>
-        ) : null}
-        {!inaccessible && snippetQuery.isError ? (
-          <QueryError
-            error={snippetQuery.error}
-            fallback="The match preview is temporarily unavailable."
-            label="Retry preview"
-            onRetry={() => void snippetQuery.refetch()}
-            retrying={snippetQuery.isFetching}
-          />
-        ) : null}
-        {!inaccessible && !snippetQuery.isLoading && !snippetQuery.isError && !snippet?.snippet && (
-          <div className="text-muted-foreground text-sm">
-            {isGoogleWorkspaceType(target.targetMimeType)
-              ? "Drive matched this file but we couldn't pinpoint the exact phrase in its text. Open it to see the match in context."
-              : "Inline text preview isn't available for this file type — open it to view the content."}
-          </div>
-        )}
-        {!inaccessible && !snippetQuery.isError && snippet?.snippet ? (
-          <p className="text-foreground text-sm leading-relaxed">
-            <Highlighted term={snippet.matchTerm ?? query} text={snippet.snippet} />
-          </p>
-        ) : null}
+        <MatchPreview
+          inaccessible={inaccessible}
+          isFolder={isFolder}
+          mimeType={target.targetMimeType}
+          query={query}
+          snippetQuery={snippetQuery}
+        />
       </div>
-
-      <div className="mt-4 flex justify-end">
+      <div className="border-border flex shrink-0 justify-end border-t px-3 py-2 sm:px-5 sm:py-3">
         <Button
           disabled={inaccessible}
-          onClick={() => {
-            onOpen(result);
+          onClick={(event) => {
+            if (event.defaultPrevented) return;
+            onOpen(result, isUnmodifiedActivation(event));
           }}
           size="sm"
         >
@@ -419,6 +430,8 @@ function PreviewPanel({
               <ExternalLink className="size-4" />
               Open in new tab
             </>
+          ) : isFolder ? (
+            "Show in sidebar"
           ) : (
             "Open"
           )}
@@ -426,6 +439,66 @@ function PreviewPanel({
       </div>
     </div>
   );
+}
+
+function isUnmodifiedActivation(event: {
+  altKey: boolean;
+  ctrlKey: boolean;
+  metaKey: boolean;
+  shiftKey: boolean;
+}): boolean {
+  return !event.altKey && !event.ctrlKey && !event.metaKey && !event.shiftKey;
+}
+
+function MatchPreview({
+  inaccessible,
+  isFolder,
+  mimeType,
+  query,
+  snippetQuery,
+}: {
+  inaccessible: boolean;
+  isFolder: boolean;
+  mimeType: string;
+  query: string;
+  snippetQuery: ReturnType<typeof useDriveSearchSnippet>;
+}) {
+  if (inaccessible)
+    return (
+      <div className="text-muted-foreground text-sm text-pretty">
+        This is a shortcut, but you don&apos;t have access to its target. Contact your admin if you
+        need access.
+      </div>
+    );
+  if (snippetQuery.isLoading)
+    return (
+      <div className="text-muted-foreground flex items-center gap-2 text-sm">
+        <Loader2 className="size-4 animate-spin" /> Loading match preview…
+      </div>
+    );
+  if (snippetQuery.isError)
+    return (
+      <QueryError
+        error={snippetQuery.error}
+        fallback="The match preview is temporarily unavailable."
+        label="Retry preview"
+        onRetry={() => void snippetQuery.refetch()}
+        retrying={snippetQuery.isFetching}
+      />
+    );
+  const snippet = snippetQuery.data;
+  if (snippet?.snippet)
+    return (
+      <p className="text-foreground text-sm leading-relaxed">
+        <Highlighted term={snippet.matchTerm ?? query} text={snippet.snippet} />
+      </p>
+    );
+  const message = isFolder
+    ? "Show this folder in the sidebar to browse its contents."
+    : isGoogleWorkspaceType(mimeType)
+      ? "Drive matched this file but we couldn't pinpoint the exact phrase in its text. Open it to see the match in context."
+      : "Inline text preview isn't available for this file type — open it to view the content.";
+  return <div className="text-muted-foreground text-sm">{message}</div>;
 }
 
 function QueryError({

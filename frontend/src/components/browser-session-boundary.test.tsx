@@ -43,9 +43,11 @@ describe("browser session identity boundary", () => {
 
     flushSync(() => {
       root.render(
-        <BrowserSessionBoundary initialUserId="user-b">
-          <IdentityProbe />
-        </BrowserSessionBoundary>,
+        <QueryClientProvider client={client}>
+          <BrowserSessionBoundary initialUserId="user-b">
+            <IdentityProbe />
+          </BrowserSessionBoundary>
+        </QueryClientProvider>,
       );
     });
 

@@ -6,6 +6,7 @@ import { Slot } from "radix-ui";
 import * as React from "react";
 
 import { Button } from "@/components/ui/button";
+import { FocusReturnProvider } from "@/components/ui/focus-return";
 import { Input } from "@/components/ui/input";
 import { Separator } from "@/components/ui/separator";
 import {
@@ -29,6 +30,7 @@ const SIDEBAR_KEYBOARD_SHORTCUT = "b";
 
 interface SidebarContextProps {
   isMobile: boolean;
+  mobileTriggerRef: React.RefObject<HTMLButtonElement | null>;
   open: boolean;
   openMobile: boolean;
   setOpen: (open: boolean) => void;
@@ -69,6 +71,7 @@ function SidebarProvider({
 }) {
   const isMobile = useIsMobile();
   const [openMobile, setOpenMobile] = React.useState(false);
+  const mobileTriggerRef = React.useRef<HTMLButtonElement | null>(null);
 
   const [_open, _setOpen] = React.useState(defaultOpen);
   const open = openProp ?? _open;
@@ -118,6 +121,7 @@ function SidebarProvider({
   const contextValue = React.useMemo<SidebarContextProps>(
     () => ({
       isMobile,
+      mobileTriggerRef,
       open,
       openMobile,
       setOpen,
@@ -164,7 +168,7 @@ function Sidebar({
   variant?: "floating" | "inset" | "sidebar";
   collapsible?: "icon" | "none" | "offcanvas";
 }) {
-  const { isMobile, openMobile, setOpenMobile, state } = useSidebar();
+  const { isMobile, mobileTriggerRef, openMobile, setOpenMobile, state } = useSidebar();
   const mobileSidebarStyle: SidebarStyle = {
     "--sidebar-width": SIDEBAR_WIDTH_MOBILE,
   };
@@ -186,22 +190,24 @@ function Sidebar({
 
   if (isMobile) {
     return (
-      <Sheet onOpenChange={setOpenMobile} open={openMobile} {...props}>
-        <SheetContent
-          className="bg-sidebar text-sidebar-foreground w-(--sidebar-width) p-0 [&>button]:hidden"
-          data-mobile="true"
-          data-sidebar="sidebar"
-          data-slot="sidebar"
-          side={side}
-          style={mobileSidebarStyle}
-        >
-          <SheetHeader className="sr-only">
-            <SheetTitle>Sidebar</SheetTitle>
-            <SheetDescription>Displays the mobile sidebar.</SheetDescription>
-          </SheetHeader>
-          <div className="flex size-full flex-col">{children}</div>
-        </SheetContent>
-      </Sheet>
+      <FocusReturnProvider targetRef={mobileTriggerRef}>
+        <Sheet onOpenChange={setOpenMobile} open={openMobile} {...props}>
+          <SheetContent
+            className="bg-sidebar text-sidebar-foreground w-(--sidebar-width) p-0 [&>button]:hidden"
+            data-mobile="true"
+            data-sidebar="sidebar"
+            data-slot="sidebar"
+            side={side}
+            style={mobileSidebarStyle}
+          >
+            <SheetHeader className="sr-only">
+              <SheetTitle>Sidebar</SheetTitle>
+              <SheetDescription>Displays the mobile sidebar.</SheetDescription>
+            </SheetHeader>
+            <div className="flex size-full flex-col">{children}</div>
+          </SheetContent>
+        </Sheet>
+      </FocusReturnProvider>
     );
   }
 
@@ -252,8 +258,13 @@ function Sidebar({
   );
 }
 
-function SidebarTrigger({ className, onClick, ...props }: React.ComponentProps<typeof Button>) {
-  const { toggleSidebar } = useSidebar();
+function SidebarTrigger({
+  className,
+  onClick,
+  ref,
+  ...props
+}: React.ComponentProps<typeof Button>) {
+  const { mobileTriggerRef, toggleSidebar } = useSidebar();
 
   return (
     <Button
@@ -262,7 +273,18 @@ function SidebarTrigger({ className, onClick, ...props }: React.ComponentProps<t
       data-slot="sidebar-trigger"
       onClick={(event) => {
         onClick?.(event);
-        toggleSidebar();
+        if (!event.defaultPrevented) toggleSidebar();
+      }}
+      ref={(element) => {
+        mobileTriggerRef.current = element;
+        const cleanup = typeof ref === "function" ? ref(element) : undefined;
+        if (ref && typeof ref !== "function") ref.current = element;
+        return () => {
+          if (mobileTriggerRef.current === element) mobileTriggerRef.current = null;
+          if (typeof cleanup === "function") cleanup();
+          else if (typeof ref === "function") ref(null);
+          else if (ref?.current === element) ref.current = null;
+        };
       }}
       size="icon"
       variant="ghost"

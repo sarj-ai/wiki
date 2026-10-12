@@ -1,14 +1,18 @@
 from __future__ import annotations
 
 import asyncio
-from collections.abc import AsyncGenerator
+from collections.abc import AsyncGenerator, Generator
+from contextlib import contextmanager
 from datetime import UTC, datetime, timedelta
 
+from pydantic_core import to_json
 import pytest
-from sqlalchemy import update
+from sqlalchemy import event, update
+from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession
 
 from app.aliases.errors import AliasNotFoundError
 from app.aliases.service import PostgresAliasService
+from app.auth.encryption import encrypt_cache_bytes
 from app.bootstrap.service import AggregatingBootstrapService
 from app.cache.protection import CacheEntryProtector
 from app.cache.service import CacheNamespace, CachePSqlService
@@ -18,8 +22,8 @@ from app.extras.schemas import DocIconRead
 from app.extras.service import list_accessible_doc_icons
 from app.files.service import GoogleFilesService
 from app.identifiers import DriveId, FileId
-from app.models.wiki import CacheEntry, DocumentAlias
-from app.sidebar.cache import PostgresSidebarCacheService
+from app.models.wiki import CacheEntry, DocumentAlias, DriveTreeCache
+from app.sidebar.cache import PostgresSidebarCacheService, tree_etag
 from app.sidebar.singleflight import Singleflight
 from tests.round7_reads_support import (
     ReadsDatabase,
@@ -47,6 +51,112 @@ async def round7_reads_database() -> AsyncGenerator[ReadsDatabase]:
         pytest.skip("Requires the owned round7 loopback reads database")
     async with reads_database(url) as database:
         yield database
+
+
+@contextmanager
+def _record_tree_selects(db: AsyncSession) -> Generator[list[str]]:
+    assert isinstance(db.bind, AsyncEngine)
+    statements: list[str] = []
+
+    def record(
+        _connection: object,
+        _cursor: object,
+        statement: str,
+        _parameters: object,
+        _context: object,
+        _executemany: bool,
+    ) -> None:
+        if statement.startswith("SELECT") and "user_drive_tree_cache" in statement:
+            statements.append(statement)
+
+    event.listen(db.bind.sync_engine, "before_cursor_execute", record)
+    try:
+        yield statements
+    finally:
+        event.remove(db.bind.sync_engine, "before_cursor_execute", record)
+
+
+def _conditional_tree_cache(database: ReadsDatabase) -> PostgresSidebarCacheService:
+    return PostgresSidebarCacheService(
+        drive=dependency(ReadsDrive()),
+        user=database.user,
+        singleflight=Singleflight(),
+        bg_tasks=set(),
+        sessionmaker=database.sessions,
+    )
+
+
+async def test_conditional_tree_read_reuses_one_fresh_version_and_releases_transaction(
+    round7_reads_database: ReadsDatabase,
+) -> None:
+    database = round7_reads_database
+    (drive_id,) = await seed_trees(database, count=1, description_bytes=0)
+    service = _conditional_tree_cache(database)
+    async with database.sessions() as db:
+        with _record_tree_selects(db) as statements:
+            changed = await service.get_drive_tree_if_modified(
+                db, drive_id, request_etag='W/"different-drive:old"'
+            )
+        assert len(statements) == 1
+        assert changed.cached is not None
+        assert not db.in_transaction()
+        current_tag = tree_etag(drive_id, changed.refreshed_at)
+        assert current_tag is not None
+        with _record_tree_selects(db) as statements:
+            unchanged = await service.get_drive_tree_if_modified(
+                db, drive_id, request_etag=current_tag
+            )
+        assert len(statements) == 1
+        assert unchanged.cached is None
+        assert unchanged.refreshed_at == changed.refreshed_at
+        assert not db.in_transaction()
+        spelling_changed = await service.get_drive_tree_if_modified(
+            db, drive_id, request_etag=current_tag.replace("+00:00", "Z")
+        )
+        assert spelling_changed.cached is not None
+        assert spelling_changed.cached.tree is changed.cached.tree
+
+
+async def test_conditional_tree_read_observes_same_timestamp_ciphertext_replacement(
+    round7_reads_database: ReadsDatabase,
+) -> None:
+    database = round7_reads_database
+    (drive_id,) = await seed_trees(database, count=1, description_bytes=0)
+    service = _conditional_tree_cache(database)
+    async with database.sessions() as db:
+        original = await service.get_drive_tree(db, drive_id)
+        replacement = original.tree.model_copy(deep=True)
+        replacement.files[0].name = "Concurrent fresh name"
+        async with database.sessions.begin() as writer:
+            await writer.execute(
+                update(DriveTreeCache)
+                .where(
+                    DriveTreeCache.user_id == database.user.id,
+                    DriveTreeCache.drive_id == drive_id,
+                )
+                .values(tree=encrypt_cache_bytes(to_json(replacement)))
+            )
+        changed = await service.get_drive_tree_if_modified(
+            db, drive_id, request_etag='W/"different-drive:old"'
+        )
+        assert changed.cached is not None
+        assert changed.cached.tree.files[0].name == "Concurrent fresh name"
+        assert original.tree.files[0].name == "Round7 fixture document"
+        assert changed.refreshed_at == original.refreshed_at
+        current_tag = tree_etag(drive_id, changed.refreshed_at)
+        assert current_tag is not None
+        async with database.sessions.begin() as writer:
+            await writer.execute(
+                update(DriveTreeCache)
+                .where(
+                    DriveTreeCache.user_id == database.user.id,
+                    DriveTreeCache.drive_id == drive_id,
+                )
+                .values(tree="fixture-corrupt-ciphertext")
+            )
+        unchanged = await service.get_drive_tree_if_modified(db, drive_id, request_etag=current_tag)
+        assert unchanged.cached is None
+        assert not db.in_transaction()
 
 
 async def test_singleton_bulk_cache_preserves_a_present_json_null(

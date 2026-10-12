@@ -1,7 +1,7 @@
 {
   "recordedAt": "2026-10-11",
   "baselineRevision": "f63e8f6f342a27d3b3f085e2150417ccd45756bf",
-  "totalPasses": 429,
+  "totalPasses": 439,
   "initialPasses": [
     {
       "pass": 1,
@@ -8644,6 +8644,36 @@
         }
       ],
       "record": "docs/performance/round9-20261012.json"
+    },
+    {
+      "recordedAt": "2026-10-12",
+      "baselineRevision": "d716fee43e906abf05aa40490f0d883c9e9164a3",
+      "name": "Ten performance candidates and thirty recorded UX cases",
+      "passCount": 10,
+      "agentPassCount": 10,
+      "integrationPassCount": 0,
+      "acceptedCount": 4,
+      "rejectedCount": 6,
+      "counting": "Five distinct new measured candidates from each of two agents. A retained improvement or evidenced rejection counts once. Prototype tuning, correctness repairs, tests, builds, review, documentation and release administration count zero.",
+      "scopeCounts": [
+        {
+          "scope": "backend",
+          "agent": "/root/round10_backend_resume",
+          "passCount": 5,
+          "acceptedCount": 2,
+          "rejectedCount": 3
+        },
+        {
+          "scope": "frontend",
+          "agent": "/root/round10_frontend_resume",
+          "passCount": 5,
+          "acceptedCount": 2,
+          "rejectedCount": 3
+        }
+      ],
+      "record": "docs/performance/round10-20261012.json",
+      "uxCaseCount": 30,
+      "uxPerformancePassCount": 0
     }
   ]
 }

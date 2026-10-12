@@ -17,9 +17,13 @@ const SEARCH_GC_TIME_MS = 10 * 60 * 1000;
 const SEARCH_DEBOUNCE_MS = 250;
 
 export function useDriveSearch(query: string, enabled = true) {
+  return useDriveSearchState(query, enabled).query;
+}
+
+export function useDriveSearchState(query: string, enabled = true) {
   const currentQuery = query.trim();
   const [debouncedQuery] = useDebounce(currentQuery, SEARCH_DEBOUNCE_MS);
-  return useQuery<DriveSearchResult[]>({
+  const result = useQuery<DriveSearchResult[]>({
     enabled:
       enabled &&
       currentQuery === debouncedQuery &&
@@ -31,6 +35,7 @@ export function useDriveSearch(query: string, enabled = true) {
 
     staleTime: 30_000,
   });
+  return { query: result, isCurrentQuery: currentQuery === debouncedQuery };
 }
 
 export function useDriveSearchSnippet(
