@@ -2,7 +2,7 @@
   "schema_version": 1,
   "merge_base": "d1f5913d57f992cbb33dba24f00ec5cd5a2e46cd",
   "from_bundle": "8.43.2",
-  "to_bundle": "8.55.1",
+  "to_bundle": "8.55.2",
   "reason": "Exact unchanged-source findings exposed by the tested Standards upgrade; the baseline remains shrink-only after this migration.",
   "allowances": {
     "frontend/eslint-suppressions.json": {
