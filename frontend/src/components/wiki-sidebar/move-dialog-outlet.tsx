@@ -67,6 +67,14 @@ function MoveDialogOwner({
   const { mobileTriggerRef } = useSidebar();
   const [move, setMove] = useState<MoveSelection | null>(null);
   const contentRef = useRef<{ content: HTMLElement | null; token: symbol } | null>(null);
+  const closeTimer = useRef<null | number>(null);
+
+  useEffect(
+    () => () => {
+      if (closeTimer.current !== null) window.clearTimeout(closeTimer.current);
+    },
+    [],
+  );
 
   useEffect(() => {
     if (!move) return;
@@ -90,11 +98,9 @@ function MoveDialogOwner({
         event.action.type === "success" && !sourceStillMatches(queryClient, move.item, key);
       if (denied || changed) retire();
     });
-    const timer = move.open ? null : window.setTimeout(retire, 200);
     return () => {
       move.session.removeEventListener("abort", retire);
       unsubscribe();
-      if (timer !== null) window.clearTimeout(timer);
     };
   }, [move, queryClient]);
 
@@ -141,10 +147,20 @@ function MoveDialogOwner({
             ])}
             onCloseAutoFocus={(event) => {
               if (
-                contentRef.current?.token === currentMove.token &&
-                event.target === contentRef.current.content
+                contentRef.current?.token !== currentMove.token ||
+                event.target !== contentRef.current.content
               )
-                contentRef.current = null;
+                return;
+              contentRef.current = null;
+              if (closeTimer.current !== null) window.clearTimeout(closeTimer.current);
+              // Radix emits this after the real exit animation. Keep the
+              // focus owner alive through the shared return-focus microtask.
+              closeTimer.current = window.setTimeout(() => {
+                closeTimer.current = null;
+                setMove((current) =>
+                  current?.token === currentMove.token && !current.open ? null : current,
+                );
+              }, 0);
             }}
             onOpenAutoFocus={(event) => {
               contentRef.current = {
