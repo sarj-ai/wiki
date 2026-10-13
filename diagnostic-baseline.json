@@ -1,9 +1,9 @@
 {
   "schemaVersion": 2,
   "provenance": {
-    "bundleVersion": "8.43.2",
-    "consumerBaseSha": "0b82fe76a8561fda2a0dedc6fe36435145c26b3b",
-    "catalogDigest": "262dc154f69540e6729f305ee85b9705aa6a302f339cb42197c8557556e45139"
+    "bundleVersion": "8.55.1",
+    "consumerBaseSha": "d1f5913d57f992cbb33dba24f00ec5cd5a2e46cd",
+    "catalogDigest": "e8e38bfe9ba7e06b88b6ad905581287c6fbfa89f7092998646e3f052fb7ee462"
   },
   "diagnostics": [
     {
@@ -28,11 +28,18 @@
       "count": 1
     },
     {
+      "fingerprint": "f5235a5e815dc64b826157e9299367bbad3311646bfbf194f8100a040e5ace98",
+      "source": "eslint",
+      "ruleId": "@sarj/prefer-nominal-id-types",
+      "path": "frontend/src/components/wiki-sidebar/move-dialog-outlet.tsx",
+      "count": 1
+    },
+    {
       "fingerprint": "72cace85399458335338b34754679275daab7645ebd87f8e00b8215358f9f808",
       "source": "eslint",
       "ruleId": "@sarj/prefer-nominal-id-types",
       "path": "frontend/src/components/wiki-sidebar/use-wiki-reorder.ts",
-      "count": 4
+      "count": 3
     },
     {
       "fingerprint": "3664d7fa7eb4e8f01d617803fceeea208533e1c84772769ddb1a061ed429521f",
@@ -40,6 +47,13 @@
       "ruleId": "@sarj/prefer-nominal-id-types",
       "path": "frontend/src/hooks/use-expanded-folders.ts",
       "count": 3
+    },
+    {
+      "fingerprint": "7bac8455960511fe714a6d48a7883646dd45f9c0d9c810f22a0cae7e974cf135",
+      "source": "eslint",
+      "ruleId": "@sarj/prefer-nominal-id-types",
+      "path": "frontend/src/lib/build-destination-sort-orders.test.ts",
+      "count": 1
     },
     {
       "fingerprint": "05c069351b729f67083a479bf7c39c498a28ff786e001ed967f43215067559b4",
@@ -54,6 +68,13 @@
       "ruleId": "@sarj/prefer-nominal-id-types",
       "path": "frontend/src/lib/wiki-cache.ts",
       "count": 1
+    },
+    {
+      "fingerprint": "e5034c1e411e86a1fcbf5793d7c6602d280536094cfbf9d70b02bf335a28a97d",
+      "source": "eslint",
+      "ruleId": "@sarj/prefer-whole-object-assertion",
+      "path": "frontend/src/components/wiki-search/command-palette-navigation.test.tsx",
+      "count": 3
     },
     {
       "fingerprint": "54506165b2434b1e60f6c1def188bd41eeca7191dc897ea81de35d3830756e3b",
@@ -200,6 +221,69 @@
       "source": "eslint",
       "ruleId": "@sarj/require-camelcase-properties",
       "path": "frontend/src/components/wiki-document/document-polish-recovery.tsx",
+      "count": 1
+    },
+    {
+      "fingerprint": "304d997864853b3c6ffbd6b022dfd8ea7e9490266f7d99b378807eb71b19de8b",
+      "source": "eslint",
+      "ruleId": "@sarj/require-camelcase-properties",
+      "path": "frontend/src/components/wiki-sidebar/drive-access-sheet-state.test.tsx",
+      "count": 1
+    },
+    {
+      "fingerprint": "41587b1b5cef138360e37c68f6f33579378a9c08129e28e9fbca4a28a452d89c",
+      "source": "eslint",
+      "ruleId": "@sarj/require-camelcase-properties",
+      "path": "frontend/src/components/wiki-sidebar/drive-access-sheet-state.test.tsx",
+      "count": 1
+    },
+    {
+      "fingerprint": "46b9edc6f41872231165f8224621e34434d162b8e5b6d6ec7f0c9ad2d1452614",
+      "source": "eslint",
+      "ruleId": "@sarj/require-camelcase-properties",
+      "path": "frontend/src/components/wiki-sidebar/drive-access-sheet-state.test.tsx",
+      "count": 1
+    },
+    {
+      "fingerprint": "699570ddaf18f57b4bb9ae9d1a8328274c652ea8f6ddcddbbc67cfadc4a72b81",
+      "source": "eslint",
+      "ruleId": "@sarj/require-camelcase-properties",
+      "path": "frontend/src/components/wiki-sidebar/drive-access-sheet-state.test.tsx",
+      "count": 1
+    },
+    {
+      "fingerprint": "77e4eb5a94f777f411aa2737280f97fd849de5f4a89df7bf05be710f6026d89d",
+      "source": "eslint",
+      "ruleId": "@sarj/require-camelcase-properties",
+      "path": "frontend/src/components/wiki-sidebar/drive-access-sheet-state.test.tsx",
+      "count": 1
+    },
+    {
+      "fingerprint": "79534965ae1f95298fe3536a2f19ad6fb4bb0f18d5b9dc07f574695e5c53604f",
+      "source": "eslint",
+      "ruleId": "@sarj/require-camelcase-properties",
+      "path": "frontend/src/components/wiki-sidebar/drive-access-sheet-state.test.tsx",
+      "count": 1
+    },
+    {
+      "fingerprint": "7cb0ae0e2453e07c6322cc48459641ce814b7fa138dac97057c93d23165f1e85",
+      "source": "eslint",
+      "ruleId": "@sarj/require-camelcase-properties",
+      "path": "frontend/src/components/wiki-sidebar/drive-access-sheet-state.test.tsx",
+      "count": 1
+    },
+    {
+      "fingerprint": "824cf6aa7b62301840fb359b241f0f377288cbb0cc4f2b28b369290de28e0e52",
+      "source": "eslint",
+      "ruleId": "@sarj/require-camelcase-properties",
+      "path": "frontend/src/components/wiki-sidebar/drive-access-sheet-state.test.tsx",
+      "count": 1
+    },
+    {
+      "fingerprint": "ca357a6617603fd0b06fa47bd9e0965baad9561da3951c7121028bc609cb97cb",
+      "source": "eslint",
+      "ruleId": "@sarj/require-camelcase-properties",
+      "path": "frontend/src/components/wiki-sidebar/drive-access-sheet-state.test.tsx",
       "count": 1
     },
     {
@@ -375,7 +459,7 @@
       "source": "eslint",
       "ruleId": "@sarj/require-camelcase-properties",
       "path": "frontend/src/lib/document-transform-api.test.ts",
-      "count": 2
+      "count": 3
     },
     {
       "fingerprint": "11d9e79e9bd9cf022c2cc1a9ce33c325db37bf509c54fad6d5682f9b07ab8732",
@@ -466,7 +550,7 @@
       "source": "eslint",
       "ruleId": "@sarj/require-camelcase-properties",
       "path": "frontend/src/lib/document-transform-api.test.ts",
-      "count": 2
+      "count": 3
     },
     {
       "fingerprint": "5228145a0957c139a6c32d886409932595e8f47208048d2a3ac7b538db7b68c3",
@@ -1285,7 +1369,7 @@
       "source": "eslint",
       "ruleId": "@sarj/require-camelcase-properties",
       "path": "frontend/src/lib/smart-create-client.test.ts",
-      "count": 2
+      "count": 1
     },
     {
       "fingerprint": "da168a7edf6454f273691a1955125d89a3b1e67ab8960b993afb95c2e8b69b02",
@@ -1561,241 +1645,52 @@
       "count": 1
     },
     {
-      "fingerprint": "03ee0ae4753ce286dc7f07336ee372cad506b78eb9bac02dc6cabf9e6149a1d6",
+      "fingerprint": "4080ca3040ad0f4a37e20611492ccf36790737c4f1be158783ba7db7c9f15c55",
       "source": "eslint",
       "ruleId": "@sarj/require-camelcase-properties",
-      "path": "frontend/src/lib/wiki-schemas.ts",
+      "path": "frontend/src/lib/wiki-read-client.test.ts",
       "count": 1
     },
     {
-      "fingerprint": "11753edf874d2fe8723a200e3e76dbb68bf54d9c50bfca5e60c10810f834da38",
+      "fingerprint": "41cc08101aa678fa84d9ecf85ad69301f181091c58670edac3a13e6ada3ed803",
       "source": "eslint",
       "ruleId": "@sarj/require-camelcase-properties",
-      "path": "frontend/src/lib/wiki-schemas.ts",
+      "path": "frontend/src/lib/wiki-read-client.test.ts",
       "count": 1
     },
     {
-      "fingerprint": "14b36b7d1f8bd5c52de43b84b29e215d41e8a2249b108876930b2c6ee5f3d241",
+      "fingerprint": "aa9d4a33a2fde0d547e1034aa16920586f70c0253b303e826b418b135e3b4ded",
       "source": "eslint",
       "ruleId": "@sarj/require-camelcase-properties",
-      "path": "frontend/src/lib/wiki-schemas.ts",
+      "path": "frontend/src/lib/wiki-read-client.test.ts",
+      "count": 1
+    },
+    {
+      "fingerprint": "c738011efa609e9e1d7ddbe6aeff66e6ec6e8af76c9b2b0744489eb2324f044a",
+      "source": "eslint",
+      "ruleId": "@sarj/require-camelcase-properties",
+      "path": "frontend/src/lib/wiki-read-client.test.ts",
       "count": 2
     },
     {
-      "fingerprint": "15ad6e82b441830a9a68ac485434bda0b13c2ee1c561e59111196c295eff1ca8",
+      "fingerprint": "cf9850685c69669c8c0fd1ba700d096161911e6e7a7ae2fb42082dc4364f005e",
       "source": "eslint",
       "ruleId": "@sarj/require-camelcase-properties",
-      "path": "frontend/src/lib/wiki-schemas.ts",
-      "count": 1
-    },
-    {
-      "fingerprint": "16e4a1c4b37f24387b3bafa0f6e9fdd62876c07fc95cc75325d11f24cc41dee9",
-      "source": "eslint",
-      "ruleId": "@sarj/require-camelcase-properties",
-      "path": "frontend/src/lib/wiki-schemas.ts",
-      "count": 1
-    },
-    {
-      "fingerprint": "1fd77eb9e96946468807db7cd121a6f5d4b38011a0a63e072c1ac59edb9d962e",
-      "source": "eslint",
-      "ruleId": "@sarj/require-camelcase-properties",
-      "path": "frontend/src/lib/wiki-schemas.ts",
-      "count": 1
-    },
-    {
-      "fingerprint": "2b36d0cfdf5345a22ce65d79c0b27fd3828fc7b9f103860dd937bc9b69afac0f",
-      "source": "eslint",
-      "ruleId": "@sarj/require-camelcase-properties",
-      "path": "frontend/src/lib/wiki-schemas.ts",
-      "count": 1
-    },
-    {
-      "fingerprint": "3a889315322d67139072b540e1b231dfece14b02756bc770c72f953ce9775b8d",
-      "source": "eslint",
-      "ruleId": "@sarj/require-camelcase-properties",
-      "path": "frontend/src/lib/wiki-schemas.ts",
-      "count": 1
-    },
-    {
-      "fingerprint": "3a895b398dd2264ad20f6022efaa83880b9576f03df858a2f9f2e888c8ee75f0",
-      "source": "eslint",
-      "ruleId": "@sarj/require-camelcase-properties",
-      "path": "frontend/src/lib/wiki-schemas.ts",
-      "count": 1
-    },
-    {
-      "fingerprint": "427c6ce7872f06c7ede3c120119dc18bb6b331bc83b595c598b0110a59f6412c",
-      "source": "eslint",
-      "ruleId": "@sarj/require-camelcase-properties",
-      "path": "frontend/src/lib/wiki-schemas.ts",
+      "path": "frontend/src/lib/wiki-read-client.test.ts",
       "count": 2
     },
     {
-      "fingerprint": "4f0e367b5dd5bf52f5575c37dd4f4d5db4a706290093a96950ac870b83505c5c",
+      "fingerprint": "f1f5a305a563114f0a3fabd5934fae338a64e4a1457d235ae9fa3401235d3086",
       "source": "eslint",
       "ruleId": "@sarj/require-camelcase-properties",
-      "path": "frontend/src/lib/wiki-schemas.ts",
+      "path": "frontend/src/lib/wiki-read-client.test.ts",
       "count": 1
     },
     {
-      "fingerprint": "532ba14a9be0e1b887e07f8e409ae07a8b58bfdd87970c4b5ffa724323cee73e",
+      "fingerprint": "f6edc1fe3ddc34d53f5d6d87d12f2ccc8e031b1554bab57299c280d714c7859e",
       "source": "eslint",
       "ruleId": "@sarj/require-camelcase-properties",
-      "path": "frontend/src/lib/wiki-schemas.ts",
-      "count": 1
-    },
-    {
-      "fingerprint": "59379d1939e10999af9a639dbd5fc112a22de1292b043dfb0cef972ce268c898",
-      "source": "eslint",
-      "ruleId": "@sarj/require-camelcase-properties",
-      "path": "frontend/src/lib/wiki-schemas.ts",
-      "count": 3
-    },
-    {
-      "fingerprint": "5ee2d52b466d3941420979140311590db86b19dd44af1656fc3bc58edfb92773",
-      "source": "eslint",
-      "ruleId": "@sarj/require-camelcase-properties",
-      "path": "frontend/src/lib/wiki-schemas.ts",
-      "count": 1
-    },
-    {
-      "fingerprint": "66123ec1de4c6ba56bfac24361cd81d5219f3e968ae6b3b1461a46247710a7f9",
-      "source": "eslint",
-      "ruleId": "@sarj/require-camelcase-properties",
-      "path": "frontend/src/lib/wiki-schemas.ts",
-      "count": 2
-    },
-    {
-      "fingerprint": "686f77c2734d04c3393523b406efbb14c6e85e885fbf1aae925a6e0ffac76e67",
-      "source": "eslint",
-      "ruleId": "@sarj/require-camelcase-properties",
-      "path": "frontend/src/lib/wiki-schemas.ts",
-      "count": 6
-    },
-    {
-      "fingerprint": "6dcca12ce1b97ece3c506c1e97bebb0395a3da47a88bcd5b7cc0c89300fb78ec",
-      "source": "eslint",
-      "ruleId": "@sarj/require-camelcase-properties",
-      "path": "frontend/src/lib/wiki-schemas.ts",
-      "count": 1
-    },
-    {
-      "fingerprint": "730e5db16234a7312600d7b697a2a4ca76733f572df128bca81bb0d8f9c49b64",
-      "source": "eslint",
-      "ruleId": "@sarj/require-camelcase-properties",
-      "path": "frontend/src/lib/wiki-schemas.ts",
-      "count": 1
-    },
-    {
-      "fingerprint": "7a1c74e98f24dc7a48690091b1fe8f047b87540a6751329e98c9fcfc6537c271",
-      "source": "eslint",
-      "ruleId": "@sarj/require-camelcase-properties",
-      "path": "frontend/src/lib/wiki-schemas.ts",
-      "count": 2
-    },
-    {
-      "fingerprint": "932b51dd10c6b28d9f5e6551bd993cf7cfa0774b68d4056914499fa46dd42d7f",
-      "source": "eslint",
-      "ruleId": "@sarj/require-camelcase-properties",
-      "path": "frontend/src/lib/wiki-schemas.ts",
-      "count": 2
-    },
-    {
-      "fingerprint": "9523e4f87847a268ae93c5a9ce894fd303134f5f0195888132795011faa056eb",
-      "source": "eslint",
-      "ruleId": "@sarj/require-camelcase-properties",
-      "path": "frontend/src/lib/wiki-schemas.ts",
-      "count": 1
-    },
-    {
-      "fingerprint": "96bc28b9f4698cfa8e7f2e650fd215742408a76c44791f45c5e9cd2cd21a64e6",
-      "source": "eslint",
-      "ruleId": "@sarj/require-camelcase-properties",
-      "path": "frontend/src/lib/wiki-schemas.ts",
-      "count": 2
-    },
-    {
-      "fingerprint": "9737aff9ade83b6fc3ad9187dcecd239de1db5ed0657378c42fb98ce42094dc4",
-      "source": "eslint",
-      "ruleId": "@sarj/require-camelcase-properties",
-      "path": "frontend/src/lib/wiki-schemas.ts",
-      "count": 1
-    },
-    {
-      "fingerprint": "9787b936cb384553241542ef698f3b7c0e698e18835931c9418e34c304102439",
-      "source": "eslint",
-      "ruleId": "@sarj/require-camelcase-properties",
-      "path": "frontend/src/lib/wiki-schemas.ts",
-      "count": 2
-    },
-    {
-      "fingerprint": "98c84f232a15d236e3e20e138471dcc9b90c63483cb119d339ebd3b00b112ae9",
-      "source": "eslint",
-      "ruleId": "@sarj/require-camelcase-properties",
-      "path": "frontend/src/lib/wiki-schemas.ts",
-      "count": 4
-    },
-    {
-      "fingerprint": "a3d4b6ff18748ff30ca801d6b60700fec6635fd9d062bffa960a16837ad64a39",
-      "source": "eslint",
-      "ruleId": "@sarj/require-camelcase-properties",
-      "path": "frontend/src/lib/wiki-schemas.ts",
-      "count": 1
-    },
-    {
-      "fingerprint": "a6f0f846e55f7ab5358007a3f079d5238d59e7ee76005e1b72bdadb8081cedbd",
-      "source": "eslint",
-      "ruleId": "@sarj/require-camelcase-properties",
-      "path": "frontend/src/lib/wiki-schemas.ts",
-      "count": 1
-    },
-    {
-      "fingerprint": "a790c075961eb10d8430a1c4b1132815787f210d1e29b83c92334949a56721cb",
-      "source": "eslint",
-      "ruleId": "@sarj/require-camelcase-properties",
-      "path": "frontend/src/lib/wiki-schemas.ts",
-      "count": 2
-    },
-    {
-      "fingerprint": "b44a6aadf46a2ad803ec065f4eb6511556e1e15fa092a9355bd7727a0f2abdfd",
-      "source": "eslint",
-      "ruleId": "@sarj/require-camelcase-properties",
-      "path": "frontend/src/lib/wiki-schemas.ts",
-      "count": 1
-    },
-    {
-      "fingerprint": "bc147b5e49fa070d4538687f4dab5c54395bc748726a1cabfc61f95b7bba3ef6",
-      "source": "eslint",
-      "ruleId": "@sarj/require-camelcase-properties",
-      "path": "frontend/src/lib/wiki-schemas.ts",
-      "count": 2
-    },
-    {
-      "fingerprint": "ccfb04a3aedabdb9bbbf954b303c5c103d76c2880f58a912d7e8e87ebac2cabd",
-      "source": "eslint",
-      "ruleId": "@sarj/require-camelcase-properties",
-      "path": "frontend/src/lib/wiki-schemas.ts",
-      "count": 1
-    },
-    {
-      "fingerprint": "d45a4295dab21c7c6e2c8a5eeb2acf85e42c009cd14612b418b18ffb7a016140",
-      "source": "eslint",
-      "ruleId": "@sarj/require-camelcase-properties",
-      "path": "frontend/src/lib/wiki-schemas.ts",
-      "count": 1
-    },
-    {
-      "fingerprint": "ef6d80512b046c3720e2311445893681c7c8b2d829fe402620200b874c1dc6a0",
-      "source": "eslint",
-      "ruleId": "@sarj/require-camelcase-properties",
-      "path": "frontend/src/lib/wiki-schemas.ts",
-      "count": 1
-    },
-    {
-      "fingerprint": "fcd5c8fb827d2727cdbfca85ef4f92d8047d63bbf56e628e1220428530440637",
-      "source": "eslint",
-      "ruleId": "@sarj/require-camelcase-properties",
-      "path": "frontend/src/lib/wiki-schemas.ts",
+      "path": "frontend/src/lib/wiki-read-client.test.ts",
       "count": 1
     },
     {
@@ -1946,10 +1841,10 @@
       "count": 1
     },
     {
-      "fingerprint": "b89f9d4b4915a13a700dc43b0e77b7fec86995764c2fc08718c528ed1a3d4923",
+      "fingerprint": "ff0a459661e71734b7947d9b8e18d2c279a5c2811c16bdc486dc74e78302f3be",
       "source": "eslint",
       "ruleId": "shadcn/no-arbitrary-values",
-      "path": "frontend/src/components/wiki-document/short-link-dialog.tsx",
+      "path": "frontend/src/components/wiki-document/short-link-editor.tsx",
       "count": 1
     },
     {
@@ -2027,6 +1922,34 @@
       "source": "eslint",
       "ruleId": "shadcn/no-arbitrary-values",
       "path": "frontend/src/components/wiki-sidebar/empty-drop-zone.tsx",
+      "count": 1
+    },
+    {
+      "fingerprint": "49544a15a5ea9c9160a3beff6c421ce842722a5f21f90d54d5de6b8c1327076f",
+      "source": "eslint",
+      "ruleId": "shadcn/no-arbitrary-values",
+      "path": "frontend/src/components/wiki-sidebar/move-file-dialog.tsx",
+      "count": 1
+    },
+    {
+      "fingerprint": "5efa6f7db3e20fb1689f41b12439e637ae705d5a7bd5dcfca7f02740f32d4287",
+      "source": "eslint",
+      "ruleId": "shadcn/no-arbitrary-values",
+      "path": "frontend/src/components/wiki-sidebar/move-file-dialog.tsx",
+      "count": 1
+    },
+    {
+      "fingerprint": "34feefe8a2797181fbb44d3676ecd054251e4527e3c7802d894ef98b04b0c2cc",
+      "source": "eslint",
+      "ruleId": "shadcn/no-arbitrary-values",
+      "path": "frontend/src/components/wiki-sidebar/preferences-dialog.tsx",
+      "count": 1
+    },
+    {
+      "fingerprint": "fc1e1f91268063dae8955b71914199d89183a03e1fe6b2d36f67d72c7b0ee40f",
+      "source": "eslint",
+      "ruleId": "shadcn/no-arbitrary-values",
+      "path": "frontend/src/components/wiki-sidebar/preferences-dialog.tsx",
       "count": 1
     },
     {
@@ -2174,55 +2097,6 @@
       "source": "eslint",
       "ruleId": "shadcn/no-inline-styles",
       "path": "frontend/src/components/wiki-sidebar/tree-node.tsx",
-      "count": 1
-    },
-    {
-      "fingerprint": "0bb030129322550f48f5308e0a94892a948f12506fe27a614867909a6c64ce4c",
-      "source": "eslint",
-      "ruleId": "shadcn/no-restyle",
-      "path": "frontend/src/app/(app)/layout.tsx",
-      "count": 1
-    },
-    {
-      "fingerprint": "0fb90725486a4861438bf5631ae59fa4e85340e808ee77f6919688bc4b8d932f",
-      "source": "eslint",
-      "ruleId": "shadcn/no-restyle",
-      "path": "frontend/src/app/(app)/layout.tsx",
-      "count": 1
-    },
-    {
-      "fingerprint": "249e7dda75339d5f68532c317fef335631e94f32e1fae0787821ddafb0d009d7",
-      "source": "eslint",
-      "ruleId": "shadcn/no-restyle",
-      "path": "frontend/src/app/(app)/layout.tsx",
-      "count": 1
-    },
-    {
-      "fingerprint": "3b317e74732f200daa654daf5ea5c87606aa704a07cc7f65c37994420392d70d",
-      "source": "eslint",
-      "ruleId": "shadcn/no-restyle",
-      "path": "frontend/src/app/(app)/layout.tsx",
-      "count": 1
-    },
-    {
-      "fingerprint": "8226f337903f68c6c2720082b16f68f99c3652fbfa7e25da748be5d6befead09",
-      "source": "eslint",
-      "ruleId": "shadcn/no-restyle",
-      "path": "frontend/src/app/(app)/layout.tsx",
-      "count": 1
-    },
-    {
-      "fingerprint": "9465943a473a739f5f4a506d63881e294a9ca9bfa776b7774876cc5b0b36f4fd",
-      "source": "eslint",
-      "ruleId": "shadcn/no-restyle",
-      "path": "frontend/src/app/(app)/layout.tsx",
-      "count": 1
-    },
-    {
-      "fingerprint": "c73c0c7d755c88cb9363ec6d0c8286c521921ec4dc1634400ba00622ac190572",
-      "source": "eslint",
-      "ruleId": "shadcn/no-restyle",
-      "path": "frontend/src/app/(app)/layout.tsx",
       "count": 1
     },
     {
@@ -2856,59 +2730,59 @@
       "count": 1
     },
     {
-      "fingerprint": "05c6fafff0190c745e8d602879ff2752ae355a5c3bd882b94ef7f46bf8763e92",
+      "fingerprint": "35d4963e48ffd034d3e8b10d80cacd0a26b965cd2ae5a6d690faec9b635661ac",
       "source": "eslint",
       "ruleId": "shadcn/no-restyle",
-      "path": "frontend/src/components/wiki-document/short-link-dialog.tsx",
+      "path": "frontend/src/components/wiki-document/short-link-editor.tsx",
       "count": 1
     },
     {
-      "fingerprint": "260fac5146db9f3744f4af300670e35512c6c285af56a81afcafd8a6991fd488",
+      "fingerprint": "3e80fe8fe4c89e973335af94bad3d2050082a63f4b272100a2aa6133ec8a7754",
       "source": "eslint",
       "ruleId": "shadcn/no-restyle",
-      "path": "frontend/src/components/wiki-document/short-link-dialog.tsx",
+      "path": "frontend/src/components/wiki-document/short-link-editor.tsx",
       "count": 1
     },
     {
-      "fingerprint": "2ebeabb1d10f8b81428035730b3f03010bf3169d78c9176cee71ad6943fbbdef",
+      "fingerprint": "84d65491420c41816d6be5407b42242182270f5c1e676922cad0a487466bed1c",
       "source": "eslint",
       "ruleId": "shadcn/no-restyle",
-      "path": "frontend/src/components/wiki-document/short-link-dialog.tsx",
+      "path": "frontend/src/components/wiki-document/short-link-editor.tsx",
       "count": 1
     },
     {
-      "fingerprint": "3802131f4fb63a3419689d1d94e4778f1a63d6ee4c1c128a825fc27bdc2423f8",
+      "fingerprint": "ae212dcd5d6f621adb843e547f8814c97b8dcfc00575209ae423270b17c53153",
       "source": "eslint",
       "ruleId": "shadcn/no-restyle",
-      "path": "frontend/src/components/wiki-document/short-link-dialog.tsx",
+      "path": "frontend/src/components/wiki-document/short-link-editor.tsx",
       "count": 1
     },
     {
-      "fingerprint": "3a11d63e20251d90a8ebd4f3753508975a0382ec22bd0539cebea6d0c662b8a1",
+      "fingerprint": "b53d6d890335bf89331c2f505eae035988f7fe12e663a184afa1f5ecdc4ceb1a",
       "source": "eslint",
       "ruleId": "shadcn/no-restyle",
-      "path": "frontend/src/components/wiki-document/short-link-dialog.tsx",
+      "path": "frontend/src/components/wiki-document/short-link-editor.tsx",
       "count": 1
     },
     {
-      "fingerprint": "9d141f7537c5dcf27652158cb181bb155a3dd8e30dfd89e3fe9f90d996139122",
+      "fingerprint": "d59bf03b8132159991f236cee321bdb2c4f63b4d340fa149af6380a3fa898e48",
       "source": "eslint",
       "ruleId": "shadcn/no-restyle",
-      "path": "frontend/src/components/wiki-document/short-link-dialog.tsx",
+      "path": "frontend/src/components/wiki-document/short-link-editor.tsx",
       "count": 1
     },
     {
-      "fingerprint": "b9c5dec3d792d5be2ba7a931344adc893ed67318deac31e77d73d4bba8b2824e",
+      "fingerprint": "de3449830ead2a3563fcbe4c4298ed3b9ce50848329258a74c8186b345d24f61",
       "source": "eslint",
       "ruleId": "shadcn/no-restyle",
-      "path": "frontend/src/components/wiki-document/short-link-dialog.tsx",
+      "path": "frontend/src/components/wiki-document/short-link-editor.tsx",
       "count": 1
     },
     {
-      "fingerprint": "fe4b56d1aa99b2ee7f05c00bb8563d81e75621d21dec77fa7c357a13774eed1c",
+      "fingerprint": "ec575b49f6e5c66f922c3c1a2ef0b5804868330b611c4dd5385408da0e7217d7",
       "source": "eslint",
       "ruleId": "shadcn/no-restyle",
-      "path": "frontend/src/components/wiki-document/short-link-dialog.tsx",
+      "path": "frontend/src/components/wiki-document/short-link-editor.tsx",
       "count": 1
     },
     {
@@ -2926,7 +2800,7 @@
       "count": 1
     },
     {
-      "fingerprint": "087fc1336903b123ae535feb77b7bc0642718f3f92faa1226bd687fc8ee27b6d",
+      "fingerprint": "0e6b6b476faffa9553961dc56c000a1a7c87704a582e80f9910c1e54b7745c3e",
       "source": "eslint",
       "ruleId": "shadcn/no-restyle",
       "path": "frontend/src/components/wiki-search/command-palette.tsx",
@@ -2947,7 +2821,21 @@
       "count": 1
     },
     {
+      "fingerprint": "1696e62f84e74431eb64a9236c08b3b0d77998214198814dd0595a2022971c5d",
+      "source": "eslint",
+      "ruleId": "shadcn/no-restyle",
+      "path": "frontend/src/components/wiki-search/command-palette.tsx",
+      "count": 1
+    },
+    {
       "fingerprint": "2237c1c151407aa49fda7c67a363c78f0bb8e01838a94b9bbcd14caf07959d0a",
+      "source": "eslint",
+      "ruleId": "shadcn/no-restyle",
+      "path": "frontend/src/components/wiki-search/command-palette.tsx",
+      "count": 1
+    },
+    {
+      "fingerprint": "22f079f0b727a5a966eb90adff65d4db20b6eb2eb01088d5c743e61365639b88",
       "source": "eslint",
       "ruleId": "shadcn/no-restyle",
       "path": "frontend/src/components/wiki-search/command-palette.tsx",
@@ -2976,6 +2864,13 @@
     },
     {
       "fingerprint": "2c36e7ad05fe35b86a4428ab342158aa05a4c94ed9888bd15c41ff8426718f62",
+      "source": "eslint",
+      "ruleId": "shadcn/no-restyle",
+      "path": "frontend/src/components/wiki-search/command-palette.tsx",
+      "count": 1
+    },
+    {
+      "fingerprint": "2ca4a765834ecfb21196e701b74a252ca609b36dcac536092d6f48ecee15cf15",
       "source": "eslint",
       "ruleId": "shadcn/no-restyle",
       "path": "frontend/src/components/wiki-search/command-palette.tsx",
@@ -3024,14 +2919,14 @@
       "count": 1
     },
     {
-      "fingerprint": "578227804d40ff5dc926f230598c6710368027c62ba0a9d2ebd5a8205f836627",
+      "fingerprint": "5f20eca6779ab057fb53d7f007968e59271e659e0545c93db7160d33cd479008",
       "source": "eslint",
       "ruleId": "shadcn/no-restyle",
       "path": "frontend/src/components/wiki-search/command-palette.tsx",
       "count": 1
     },
     {
-      "fingerprint": "5f20eca6779ab057fb53d7f007968e59271e659e0545c93db7160d33cd479008",
+      "fingerprint": "62b6e878142c6be6a51a062ee2d0a6f29c571df4137a561d14f7f1a0d172208d",
       "source": "eslint",
       "ruleId": "shadcn/no-restyle",
       "path": "frontend/src/components/wiki-search/command-palette.tsx",
@@ -3045,6 +2940,13 @@
       "count": 1
     },
     {
+      "fingerprint": "650570999a7925562637e1c1adf00aed406e59a05b36c2dc5f02db2ae15bd6b2",
+      "source": "eslint",
+      "ruleId": "shadcn/no-restyle",
+      "path": "frontend/src/components/wiki-search/command-palette.tsx",
+      "count": 1
+    },
+    {
       "fingerprint": "67f22bea56f1ede50ee09cb8d87f34d69660849243d9ea868cdfe99670eaaa35",
       "source": "eslint",
       "ruleId": "shadcn/no-restyle",
@@ -3052,14 +2954,14 @@
       "count": 1
     },
     {
-      "fingerprint": "6802e17bc03f4a49a8ee8e959f7f59fbe12315831807721769b181d8972c90b7",
+      "fingerprint": "7949c2bf97009e3b1455c93432c4a90bea80da332a6ab263beb45ed80d98fb38",
       "source": "eslint",
       "ruleId": "shadcn/no-restyle",
       "path": "frontend/src/components/wiki-search/command-palette.tsx",
       "count": 1
     },
     {
-      "fingerprint": "7949c2bf97009e3b1455c93432c4a90bea80da332a6ab263beb45ed80d98fb38",
+      "fingerprint": "7a245e20754ac99e6bb3618814fcf211fbcbe36a055df33768389c48076d4f6f",
       "source": "eslint",
       "ruleId": "shadcn/no-restyle",
       "path": "frontend/src/components/wiki-search/command-palette.tsx",
@@ -3080,7 +2982,28 @@
       "count": 1
     },
     {
+      "fingerprint": "8b96535112ce3a6c2a6c11555cc38e83557865028001886292cc550ce3dff73a",
+      "source": "eslint",
+      "ruleId": "shadcn/no-restyle",
+      "path": "frontend/src/components/wiki-search/command-palette.tsx",
+      "count": 1
+    },
+    {
+      "fingerprint": "8ca2432e363140f0f4f88b47990b272849f3cf0ba0ccc6a485a7cfd71f01694f",
+      "source": "eslint",
+      "ruleId": "shadcn/no-restyle",
+      "path": "frontend/src/components/wiki-search/command-palette.tsx",
+      "count": 1
+    },
+    {
       "fingerprint": "935ee16f82643f2897df5fd62dc73b3742889f247c79f3c7ace9ecbefd483fcb",
+      "source": "eslint",
+      "ruleId": "shadcn/no-restyle",
+      "path": "frontend/src/components/wiki-search/command-palette.tsx",
+      "count": 1
+    },
+    {
+      "fingerprint": "9f23262f8d9ee2f793b8e3839137c778d42f8757172130fe2630ad54ddd1107c",
       "source": "eslint",
       "ruleId": "shadcn/no-restyle",
       "path": "frontend/src/components/wiki-search/command-palette.tsx",
@@ -3115,7 +3038,7 @@
       "count": 1
     },
     {
-      "fingerprint": "cdc6d8e9fe157a777d5835cc3e71c42d65b0f230979f6a8c73ed401228e0d62f",
+      "fingerprint": "e128c5a237def20347fb012e6bd0b6ec238dd2a2a27fd7a757d82d0f599b15c3",
       "source": "eslint",
       "ruleId": "shadcn/no-restyle",
       "path": "frontend/src/components/wiki-search/command-palette.tsx",
@@ -3136,10 +3059,38 @@
       "count": 1
     },
     {
-      "fingerprint": "18a9c93a2690adacd326c006cbd4b386879dfaf41951084dacca0945d40bae30",
+      "fingerprint": "11036e2aa1905f0b354bd7c98d6b4eef2d89e6af8430fef9c6f3266459ace661",
       "source": "eslint",
       "ruleId": "shadcn/no-restyle",
-      "path": "frontend/src/components/wiki-sidebar/create-file-menu.tsx",
+      "path": "frontend/src/components/wiki-sidebar/create-file-menu-actions.tsx",
+      "count": 1
+    },
+    {
+      "fingerprint": "6e44632f0dc98a35081f2c9e2df774f7f93da74043630700652e1349924c9059",
+      "source": "eslint",
+      "ruleId": "shadcn/no-restyle",
+      "path": "frontend/src/components/wiki-sidebar/create-file-menu-actions.tsx",
+      "count": 3
+    },
+    {
+      "fingerprint": "b56de63e3e25a010276e614abfc5a06c28ddaad09700908c85fda11a51502a19",
+      "source": "eslint",
+      "ruleId": "shadcn/no-restyle",
+      "path": "frontend/src/components/wiki-sidebar/create-file-menu-actions.tsx",
+      "count": 3
+    },
+    {
+      "fingerprint": "db8755e66c5fd9db443da5ede91725ccee3f95689f80e0e9e2eb53f67840d97a",
+      "source": "eslint",
+      "ruleId": "shadcn/no-restyle",
+      "path": "frontend/src/components/wiki-sidebar/create-file-menu-actions.tsx",
+      "count": 3
+    },
+    {
+      "fingerprint": "ee05bb3ab328d142b2772f9382bdeba0d020e64618ee59ac1c570e8e66063a54",
+      "source": "eslint",
+      "ruleId": "shadcn/no-restyle",
+      "path": "frontend/src/components/wiki-sidebar/create-file-menu-actions.tsx",
       "count": 3
     },
     {
@@ -3164,13 +3115,6 @@
       "count": 1
     },
     {
-      "fingerprint": "524e63fa89d52e82df1de7a3836b011c6d2138bcf3cb2f775b012ddec98f19fa",
-      "source": "eslint",
-      "ruleId": "shadcn/no-restyle",
-      "path": "frontend/src/components/wiki-sidebar/create-file-menu.tsx",
-      "count": 1
-    },
-    {
       "fingerprint": "5384f67c7faa0f57eb90d8174eee14273c3cc857f3e5d32abdaf986c2ce0eafd",
       "source": "eslint",
       "ruleId": "shadcn/no-restyle",
@@ -3183,27 +3127,6 @@
       "ruleId": "shadcn/no-restyle",
       "path": "frontend/src/components/wiki-sidebar/create-file-menu.tsx",
       "count": 1
-    },
-    {
-      "fingerprint": "69d6050b6a97ef292bd16f2d4df6248767a639ec6e03a84e4ca0c381a7488170",
-      "source": "eslint",
-      "ruleId": "shadcn/no-restyle",
-      "path": "frontend/src/components/wiki-sidebar/create-file-menu.tsx",
-      "count": 3
-    },
-    {
-      "fingerprint": "93b26041a234c7589dc28a392a49a2938aaf653218c766fd9ea24835dbb73df6",
-      "source": "eslint",
-      "ruleId": "shadcn/no-restyle",
-      "path": "frontend/src/components/wiki-sidebar/create-file-menu.tsx",
-      "count": 3
-    },
-    {
-      "fingerprint": "c58d705b99e9684116d4f28c0747c60c903cc0082c060fa39b45d52110da5896",
-      "source": "eslint",
-      "ruleId": "shadcn/no-restyle",
-      "path": "frontend/src/components/wiki-sidebar/create-file-menu.tsx",
-      "count": 3
     },
     {
       "fingerprint": "f738235b683f7f25fbd4ec04168537cad7bcd9c53ddfea3dc928b1410cd6d6db",
@@ -3262,7 +3185,7 @@
       "count": 2
     },
     {
-      "fingerprint": "8b64ce84789e0172c24021e9388e53807a1843238f580b0b120024bf7188a5da",
+      "fingerprint": "7d11729ddf2354188b4632d84a5717a9a3552a8ec9db839a362b06f4086fa25b",
       "source": "eslint",
       "ruleId": "shadcn/no-restyle",
       "path": "frontend/src/components/wiki-sidebar/drive-access-sheet.tsx",
@@ -3381,20 +3304,6 @@
       "count": 1
     },
     {
-      "fingerprint": "047837d0edb218d70c33ad6ac7cb2f29192db77aa88183d79599a8737c19f190",
-      "source": "eslint",
-      "ruleId": "shadcn/no-restyle",
-      "path": "frontend/src/components/wiki-sidebar/drive-section.tsx",
-      "count": 1
-    },
-    {
-      "fingerprint": "0c3f143559e6dcb965883df8264011dbbf184f803f5b340b1fb42b566962a5d2",
-      "source": "eslint",
-      "ruleId": "shadcn/no-restyle",
-      "path": "frontend/src/components/wiki-sidebar/drive-section.tsx",
-      "count": 1
-    },
-    {
       "fingerprint": "1f862e4dd4f8878a9501f0099f7a8ef0c460b334f811d31d11129a9624a52d7d",
       "source": "eslint",
       "ruleId": "shadcn/no-restyle",
@@ -3409,7 +3318,7 @@
       "count": 4
     },
     {
-      "fingerprint": "3cf363356ac80afc2af612d8bd266aa300d866b84a3bb522856f1a3989f68fe8",
+      "fingerprint": "40ed4e46b6a92975e8ab645ee8db2602f1367c6cd8582ec84b6e58aec78058bd",
       "source": "eslint",
       "ruleId": "shadcn/no-restyle",
       "path": "frontend/src/components/wiki-sidebar/drive-section.tsx",
@@ -3417,20 +3326,6 @@
     },
     {
       "fingerprint": "43aedb3b7d02aa47dbff96795980e12fe5f2234cd547757abef4343e14cef328",
-      "source": "eslint",
-      "ruleId": "shadcn/no-restyle",
-      "path": "frontend/src/components/wiki-sidebar/drive-section.tsx",
-      "count": 1
-    },
-    {
-      "fingerprint": "4ecfeb50233432515bf70356aef6dfd6e8fce05e7d6035f10d2bd463cd098333",
-      "source": "eslint",
-      "ruleId": "shadcn/no-restyle",
-      "path": "frontend/src/components/wiki-sidebar/drive-section.tsx",
-      "count": 1
-    },
-    {
-      "fingerprint": "523b92e136989fc15036e8ca08daea2ff44b9b4778f46702561300a41a317528",
       "source": "eslint",
       "ruleId": "shadcn/no-restyle",
       "path": "frontend/src/components/wiki-sidebar/drive-section.tsx",
@@ -3445,6 +3340,27 @@
     },
     {
       "fingerprint": "545541b9afac12c03fde077ae8f5a1c51a5f7c730871b92c0ee7adb1bb96cb95",
+      "source": "eslint",
+      "ruleId": "shadcn/no-restyle",
+      "path": "frontend/src/components/wiki-sidebar/drive-section.tsx",
+      "count": 1
+    },
+    {
+      "fingerprint": "54ea21961b7d8d8d99cf42e02fb034fe67111dfa1141bd7be2ad248846ec81f6",
+      "source": "eslint",
+      "ruleId": "shadcn/no-restyle",
+      "path": "frontend/src/components/wiki-sidebar/drive-section.tsx",
+      "count": 1
+    },
+    {
+      "fingerprint": "5aa15126304602054a1e0323a0736dc4147cf8ca8696317edbb14b2bfb1c8981",
+      "source": "eslint",
+      "ruleId": "shadcn/no-restyle",
+      "path": "frontend/src/components/wiki-sidebar/drive-section.tsx",
+      "count": 1
+    },
+    {
+      "fingerprint": "5e68e16fb5a418a522b05a8c143cc3d1e41a65bf8dbb1439c22e913c79ee66c8",
       "source": "eslint",
       "ruleId": "shadcn/no-restyle",
       "path": "frontend/src/components/wiki-sidebar/drive-section.tsx",
@@ -3472,7 +3388,7 @@
       "count": 8
     },
     {
-      "fingerprint": "8b415e1aae3ff83ef7e79ff0987889de878db1c7ef15df3d5a267b8bc2058b55",
+      "fingerprint": "83888b2e45f792517966c5fa6fac280700b2dc27882f9c9da58e48848d91c16f",
       "source": "eslint",
       "ruleId": "shadcn/no-restyle",
       "path": "frontend/src/components/wiki-sidebar/drive-section.tsx",
@@ -3480,13 +3396,6 @@
     },
     {
       "fingerprint": "8db88723ba537290967a8d453338b1275dba70f7503b310a24244c73e5dd7a76",
-      "source": "eslint",
-      "ruleId": "shadcn/no-restyle",
-      "path": "frontend/src/components/wiki-sidebar/drive-section.tsx",
-      "count": 1
-    },
-    {
-      "fingerprint": "924ae8420bb2f2ccb0c1d91ed14e000ce716501e4c13f9e7fac92061f9654b03",
       "source": "eslint",
       "ruleId": "shadcn/no-restyle",
       "path": "frontend/src/components/wiki-sidebar/drive-section.tsx",
@@ -3514,7 +3423,21 @@
       "count": 1
     },
     {
+      "fingerprint": "9c5cb64ff1a64ca31ea446c8fe5f3023eb08e38764b1e16d93b4e29e4a9eebee",
+      "source": "eslint",
+      "ruleId": "shadcn/no-restyle",
+      "path": "frontend/src/components/wiki-sidebar/drive-section.tsx",
+      "count": 1
+    },
+    {
       "fingerprint": "acfa3c24b8bbaaf2b493480f3003f0aa930546434418ba13230ba1acf6604160",
+      "source": "eslint",
+      "ruleId": "shadcn/no-restyle",
+      "path": "frontend/src/components/wiki-sidebar/drive-section.tsx",
+      "count": 1
+    },
+    {
+      "fingerprint": "ba1227dc5ebb4283ff23aec27db7fc74cfd909823f082f2889ac4774a06dff68",
       "source": "eslint",
       "ruleId": "shadcn/no-restyle",
       "path": "frontend/src/components/wiki-sidebar/drive-section.tsx",
@@ -3549,13 +3472,6 @@
       "count": 1
     },
     {
-      "fingerprint": "d6b6896198213f37a1ee37fd02b7d567109626ff4ccae095b4c73ba4120ef72b",
-      "source": "eslint",
-      "ruleId": "shadcn/no-restyle",
-      "path": "frontend/src/components/wiki-sidebar/drive-section.tsx",
-      "count": 1
-    },
-    {
       "fingerprint": "e7a021f30ef48f219bd25e933fe1b7305d1dc03f08623874ced7958bf8a6d40d",
       "source": "eslint",
       "ruleId": "shadcn/no-restyle",
@@ -3563,7 +3479,7 @@
       "count": 4
     },
     {
-      "fingerprint": "e91fa88d0681c2a445eca05328e3372eb5c99a7253a6f3d8496b2b53aca801c8",
+      "fingerprint": "e8f29bd05f4bbcdca2260342a62223164a03082498ba8c815d1d99367dab3dbe",
       "source": "eslint",
       "ruleId": "shadcn/no-restyle",
       "path": "frontend/src/components/wiki-sidebar/drive-section.tsx",
@@ -3578,6 +3494,13 @@
     },
     {
       "fingerprint": "f5ee8c2de8c75038bd353c6e9e661f583b605584c5a96a349f0364e4781fe2e5",
+      "source": "eslint",
+      "ruleId": "shadcn/no-restyle",
+      "path": "frontend/src/components/wiki-sidebar/drive-section.tsx",
+      "count": 1
+    },
+    {
+      "fingerprint": "f646b6d75b08c5babe7949a44e06e05e88d53cb2c7d759c9791d34804cd65640",
       "source": "eslint",
       "ruleId": "shadcn/no-restyle",
       "path": "frontend/src/components/wiki-sidebar/drive-section.tsx",
@@ -3605,6 +3528,13 @@
       "count": 1
     },
     {
+      "fingerprint": "83e459da8fbca51e1b691f81651d275d3baa295d1a9c8e71ef3d83c73584d1b5",
+      "source": "eslint",
+      "ruleId": "shadcn/no-restyle",
+      "path": "frontend/src/components/wiki-sidebar/emoji-picker-popover.tsx",
+      "count": 1
+    },
+    {
       "fingerprint": "beaf4fb545d48855d3bc0fa7cde7c48402a73854636d3d845ed3fa6d3956023e",
       "source": "eslint",
       "ruleId": "shadcn/no-restyle",
@@ -3619,91 +3549,84 @@
       "count": 1
     },
     {
-      "fingerprint": "dc1a9dd7aa2e4b6b4edf698cc5b498291ec9829a75c9ca97b50a9b92ea860c2e",
-      "source": "eslint",
-      "ruleId": "shadcn/no-restyle",
-      "path": "frontend/src/components/wiki-sidebar/emoji-picker-popover.tsx",
-      "count": 1
-    },
-    {
-      "fingerprint": "08eb2909a25bbb965f23143441ce76a61a583d582462f3a354de0ec6861dd1ed",
+      "fingerprint": "1b493a34f788cbd3c6a42bb094a29c9d301da6b7562879bb2ff7f816895a98a0",
       "source": "eslint",
       "ruleId": "shadcn/no-restyle",
       "path": "frontend/src/components/wiki-sidebar/empty-drop-zone.tsx",
       "count": 1
     },
     {
-      "fingerprint": "4b336a9155e9cfb668f3129ead5c366c9f4bf26fbe70925e8b6b16ded0baceef",
+      "fingerprint": "1e89f5782d5ecbbcd9a29c15058e875a17c7ac56f1ccd0b547740b8b780b7276",
       "source": "eslint",
       "ruleId": "shadcn/no-restyle",
       "path": "frontend/src/components/wiki-sidebar/empty-drop-zone.tsx",
       "count": 1
     },
     {
-      "fingerprint": "531230b58525dfee589e8c7fa74a74cb06a72948d5570f7b728b3b238d383b63",
+      "fingerprint": "3deb131dcadad108820e15219bf33c21b3f7ff17d88b92dd5ea2adf2dc4e3d9f",
       "source": "eslint",
       "ruleId": "shadcn/no-restyle",
       "path": "frontend/src/components/wiki-sidebar/empty-drop-zone.tsx",
       "count": 1
     },
     {
-      "fingerprint": "67fde29b94c3cc19f1426740175e768934512f279bfa4aae7c6c07892f888fe9",
+      "fingerprint": "4510435b3ef3e9dccf9978b3748fc55c9ab5f82009ec646777aa681f0fb48985",
       "source": "eslint",
       "ruleId": "shadcn/no-restyle",
       "path": "frontend/src/components/wiki-sidebar/empty-drop-zone.tsx",
       "count": 1
     },
     {
-      "fingerprint": "72e637255b5bc9916b59644862f3583b5281efef6484a47b5dfa63ada68896f5",
+      "fingerprint": "561a31609d4257c8875928c49b73047ec92836be6a33ae16fdb63aa3bd769815",
       "source": "eslint",
       "ruleId": "shadcn/no-restyle",
       "path": "frontend/src/components/wiki-sidebar/empty-drop-zone.tsx",
       "count": 1
     },
     {
-      "fingerprint": "a0af997ee2ca9662de694112c903e809ba9d56df25fd981d9532a4d481c7b2e7",
+      "fingerprint": "6c01c6ac50699545baf7d2d89561e38d0bb7f9b688753bbe70b8df43f2e3457d",
       "source": "eslint",
       "ruleId": "shadcn/no-restyle",
       "path": "frontend/src/components/wiki-sidebar/empty-drop-zone.tsx",
       "count": 1
     },
     {
-      "fingerprint": "a7ce2bf19019527c9f6ffc66731c35dbb6ec257889d035343e9d429eaeed1afe",
+      "fingerprint": "76cee1bea9b3b01cfa600588bb878f661973f222e8d142951f85c03b10789ee4",
       "source": "eslint",
       "ruleId": "shadcn/no-restyle",
       "path": "frontend/src/components/wiki-sidebar/empty-drop-zone.tsx",
       "count": 1
     },
     {
-      "fingerprint": "b1c3f65b7204d766a38518291c07ca6b71033d018729742ad71ec36ca2d499fd",
+      "fingerprint": "7890a74606605d293000330d8fb96d55ae6011c5e6214d1371779d2d60753173",
       "source": "eslint",
       "ruleId": "shadcn/no-restyle",
       "path": "frontend/src/components/wiki-sidebar/empty-drop-zone.tsx",
       "count": 1
     },
     {
-      "fingerprint": "be85759148d3d4c2a9d848469e203caf731c9318fc212e39d9585dcbc1639e8a",
+      "fingerprint": "87fee4239c184894dcc2a3a5f72c5cc6ff34615a103d612b44dd452ceb31d9c4",
       "source": "eslint",
       "ruleId": "shadcn/no-restyle",
       "path": "frontend/src/components/wiki-sidebar/empty-drop-zone.tsx",
       "count": 1
     },
     {
-      "fingerprint": "ce04bbacb46d768e8af7b5dcfc506905fe192a74c294c028de78f7a300d86be6",
+      "fingerprint": "a94651104b16359b9c23191c366bae258c94d54b4d4ecf3624164052709d1aa3",
       "source": "eslint",
       "ruleId": "shadcn/no-restyle",
       "path": "frontend/src/components/wiki-sidebar/empty-drop-zone.tsx",
       "count": 1
     },
     {
-      "fingerprint": "dcfb177f88e8ab08ef40635281ab95eeccbebb78b567e67f2b83298cc30bed09",
+      "fingerprint": "acb22f030263555452a13e919a21d720b155ba4a9273595088e0f851551615a6",
       "source": "eslint",
       "ruleId": "shadcn/no-restyle",
       "path": "frontend/src/components/wiki-sidebar/empty-drop-zone.tsx",
       "count": 1
     },
     {
-      "fingerprint": "f4a1b5ea84b5537ca37a36aeafe6abed342accd60d0000fe911407acdfc79881",
+      "fingerprint": "b8aaa4007c9e181d5c3ed190a9c09f71c3b67d8e15e05fc617b009bb6d82adfc",
       "source": "eslint",
       "ruleId": "shadcn/no-restyle",
       "path": "frontend/src/components/wiki-sidebar/empty-drop-zone.tsx",
@@ -3829,24 +3752,52 @@
       "count": 2
     },
     {
-      "fingerprint": "0bfd96886de635c44f1aaf23a6be260358185a512b1d7e69c1f8063cd38f5622",
+      "fingerprint": "1a11bfc1efb6ac7cd92faab3826d0593f7319fc91343d376096d3c65daddf3ae",
       "source": "eslint",
       "ruleId": "shadcn/no-restyle",
-      "path": "frontend/src/components/wiki-sidebar/item-menu.tsx",
-      "count": 1
-    },
-    {
-      "fingerprint": "0db63738fb3ad099d197cb5b6bba0ef176e47c90b362794bec93a816994d9949",
-      "source": "eslint",
-      "ruleId": "shadcn/no-restyle",
-      "path": "frontend/src/components/wiki-sidebar/item-menu.tsx",
+      "path": "frontend/src/components/wiki-sidebar/item-menu-actions.tsx",
       "count": 5
     },
     {
-      "fingerprint": "43d9bd1f43f857699f47fd5f5552e9c9532c8103725464eae67b1420dcce71b4",
+      "fingerprint": "2fab0b53e8b976c478e54f5e86f8ef81b06e9cd8ff3c8321f68804469b52f7cc",
       "source": "eslint",
       "ruleId": "shadcn/no-restyle",
-      "path": "frontend/src/components/wiki-sidebar/item-menu.tsx",
+      "path": "frontend/src/components/wiki-sidebar/item-menu-actions.tsx",
+      "count": 1
+    },
+    {
+      "fingerprint": "4220b6ead9534900fcbf7e6bfa762ad46c2d0113e8435119a6bb7a60d020d8a4",
+      "source": "eslint",
+      "ruleId": "shadcn/no-restyle",
+      "path": "frontend/src/components/wiki-sidebar/item-menu-actions.tsx",
+      "count": 1
+    },
+    {
+      "fingerprint": "4b10a1d90b11b9cf750ae95fc55989e83486dd1f899823f6d0e0876af36a10e4",
+      "source": "eslint",
+      "ruleId": "shadcn/no-restyle",
+      "path": "frontend/src/components/wiki-sidebar/item-menu-actions.tsx",
+      "count": 1
+    },
+    {
+      "fingerprint": "876f37a43a748ce4e8f880937a7040e2575bd59bfd665f62adb103619d4630f5",
+      "source": "eslint",
+      "ruleId": "shadcn/no-restyle",
+      "path": "frontend/src/components/wiki-sidebar/item-menu-actions.tsx",
+      "count": 5
+    },
+    {
+      "fingerprint": "8f75f1d2428639db0916bd0784b0d1e46c55775c1e247cbe69134e3df50cc986",
+      "source": "eslint",
+      "ruleId": "shadcn/no-restyle",
+      "path": "frontend/src/components/wiki-sidebar/item-menu-actions.tsx",
+      "count": 5
+    },
+    {
+      "fingerprint": "d3a4f662248740b98ca229c7f0c89ba999b56fbb8f34d802a3a5b08ed45305b4",
+      "source": "eslint",
+      "ruleId": "shadcn/no-restyle",
+      "path": "frontend/src/components/wiki-sidebar/item-menu-actions.tsx",
       "count": 5
     },
     {
@@ -3855,27 +3806,6 @@
       "ruleId": "shadcn/no-restyle",
       "path": "frontend/src/components/wiki-sidebar/item-menu.tsx",
       "count": 1
-    },
-    {
-      "fingerprint": "8ab5884c82f1044cc0e7afd581748a7e01883a279fb3e515bbcab5c935980b84",
-      "source": "eslint",
-      "ruleId": "shadcn/no-restyle",
-      "path": "frontend/src/components/wiki-sidebar/item-menu.tsx",
-      "count": 1
-    },
-    {
-      "fingerprint": "a0ea606ca930cb490190ce6ce0ca07e113e84eb973976cecbba64880fd5da616",
-      "source": "eslint",
-      "ruleId": "shadcn/no-restyle",
-      "path": "frontend/src/components/wiki-sidebar/item-menu.tsx",
-      "count": 1
-    },
-    {
-      "fingerprint": "a2dc8f808e9b4dad59d4d901ed554556899fee0f7a4686a6a22946aef2d201bc",
-      "source": "eslint",
-      "ruleId": "shadcn/no-restyle",
-      "path": "frontend/src/components/wiki-sidebar/item-menu.tsx",
-      "count": 5
     },
     {
       "fingerprint": "b3be75a87f383da6809dadc1b16642e41c87e6bd4b5f8e3a5bb20d0cc4095b32",
@@ -3890,13 +3820,6 @@
       "ruleId": "shadcn/no-restyle",
       "path": "frontend/src/components/wiki-sidebar/item-menu.tsx",
       "count": 1
-    },
-    {
-      "fingerprint": "e4b35694cf914c29dfffd464cc9ccb1faec19f4552be820b974c1ad99d06656a",
-      "source": "eslint",
-      "ruleId": "shadcn/no-restyle",
-      "path": "frontend/src/components/wiki-sidebar/item-menu.tsx",
-      "count": 5
     },
     {
       "fingerprint": "e964327e5d6d988d4ce04c528fb2003823b2858c3eb0d3d961e399de54e807b7",
@@ -3934,6 +3857,13 @@
       "count": 2
     },
     {
+      "fingerprint": "1456730d09d1ed064b4aeb8b611e45e202cc6b3a7d20bc671b5fbcaf1314e4a4",
+      "source": "eslint",
+      "ruleId": "shadcn/no-restyle",
+      "path": "frontend/src/components/wiki-sidebar/move-file-dialog.tsx",
+      "count": 1
+    },
+    {
       "fingerprint": "1cb3de0da33a3552299717e5b7d1e065accc7cdab9bbb30554d09bbb106ae4aa",
       "source": "eslint",
       "ruleId": "shadcn/no-restyle",
@@ -3955,6 +3885,13 @@
       "count": 2
     },
     {
+      "fingerprint": "4a61b0641ec4ae0e249f4da59eeb69f05329740da8f3018f6a81a5b6d8d09773",
+      "source": "eslint",
+      "ruleId": "shadcn/no-restyle",
+      "path": "frontend/src/components/wiki-sidebar/move-file-dialog.tsx",
+      "count": 1
+    },
+    {
       "fingerprint": "53287c03e241465e1b3bfb7a210dd1b3772970baf326cd9228f16f90ab1f482c",
       "source": "eslint",
       "ruleId": "shadcn/no-restyle",
@@ -3969,14 +3906,14 @@
       "count": 2
     },
     {
-      "fingerprint": "73471d5e061672d823e2c5d5d26dac2c1ef1470a077997d17c72f3f0acfe0cc0",
+      "fingerprint": "5e9a9f1b19d8616bf8757dba0253ee785dfe8281cd38d6f6e5fe627118e9445d",
       "source": "eslint",
       "ruleId": "shadcn/no-restyle",
       "path": "frontend/src/components/wiki-sidebar/move-file-dialog.tsx",
       "count": 1
     },
     {
-      "fingerprint": "7548db4098b850196ec2ebde6b532fcfc5abe367f480724c5b059ff8bb866f29",
+      "fingerprint": "6f6779b7c59bdb9ff4fd2fed82fe5d4c570477320ee8f56c588c5b001ff4740c",
       "source": "eslint",
       "ruleId": "shadcn/no-restyle",
       "path": "frontend/src/components/wiki-sidebar/move-file-dialog.tsx",
@@ -4004,6 +3941,13 @@
       "count": 2
     },
     {
+      "fingerprint": "878551bbf335bad1637e0d423104d7526c8358855e3974e6f648b11a9b1085d7",
+      "source": "eslint",
+      "ruleId": "shadcn/no-restyle",
+      "path": "frontend/src/components/wiki-sidebar/move-file-dialog.tsx",
+      "count": 1
+    },
+    {
       "fingerprint": "9b146c8bb8cba1bac2036b44f56a76d353214ae7bc43acd1fd119ee57eaa39a6",
       "source": "eslint",
       "ruleId": "shadcn/no-restyle",
@@ -4011,7 +3955,28 @@
       "count": 1
     },
     {
-      "fingerprint": "b0b515fbff82ccfb2448805f8748554f270a519f933e4d074e0dbf3f1f0f406a",
+      "fingerprint": "9bf18ec9e44166a0dd4bd56617f30ae846a66484589b04abdbd1153fb5681040",
+      "source": "eslint",
+      "ruleId": "shadcn/no-restyle",
+      "path": "frontend/src/components/wiki-sidebar/move-file-dialog.tsx",
+      "count": 1
+    },
+    {
+      "fingerprint": "b98596a36580a23527e7772816f2910e463e83ea8484bcb1a07d998edd9cd048",
+      "source": "eslint",
+      "ruleId": "shadcn/no-restyle",
+      "path": "frontend/src/components/wiki-sidebar/move-file-dialog.tsx",
+      "count": 1
+    },
+    {
+      "fingerprint": "bde40a44236c6072662f7736f7042cdf1313cf873b92cfdf455817f49d087ae6",
+      "source": "eslint",
+      "ruleId": "shadcn/no-restyle",
+      "path": "frontend/src/components/wiki-sidebar/move-file-dialog.tsx",
+      "count": 1
+    },
+    {
+      "fingerprint": "c108ee23c933fb6ab888c15f72455d16c3f3a9b3a1122109f9a4287be9d874b8",
       "source": "eslint",
       "ruleId": "shadcn/no-restyle",
       "path": "frontend/src/components/wiki-sidebar/move-file-dialog.tsx",
@@ -4025,13 +3990,6 @@
       "count": 2
     },
     {
-      "fingerprint": "db22f4e71eec3035572b59a55e494adb5500b0431c7f266cd65a503f86e82255",
-      "source": "eslint",
-      "ruleId": "shadcn/no-restyle",
-      "path": "frontend/src/components/wiki-sidebar/move-file-dialog.tsx",
-      "count": 1
-    },
-    {
       "fingerprint": "e33142c86a660cdd7f3562868d5af7c6a1c44ee189dd51d50d2b51e7893dbd98",
       "source": "eslint",
       "ruleId": "shadcn/no-restyle",
@@ -4039,10 +3997,45 @@
       "count": 2
     },
     {
+      "fingerprint": "efecbd12d08a1965e8b444bc224f643021bf0b59bc746f8f15731995072bd5c7",
+      "source": "eslint",
+      "ruleId": "shadcn/no-restyle",
+      "path": "frontend/src/components/wiki-sidebar/move-file-dialog.tsx",
+      "count": 1
+    },
+    {
+      "fingerprint": "f9cff2a86a020342b428596e3aa9acc510103c12d914c3c614938d77f46ad8ab",
+      "source": "eslint",
+      "ruleId": "shadcn/no-restyle",
+      "path": "frontend/src/components/wiki-sidebar/move-file-dialog.tsx",
+      "count": 1
+    },
+    {
+      "fingerprint": "fd239ecc1830c7ac4b34a61228e4eaabeef49514c16ff2e3434bcc05b8e56bcf",
+      "source": "eslint",
+      "ruleId": "shadcn/no-restyle",
+      "path": "frontend/src/components/wiki-sidebar/move-file-dialog.tsx",
+      "count": 1
+    },
+    {
       "fingerprint": "3fb7c6f2cb9b6513518dce91743a14b5ec622a32e52369f81e6afb6febba1e28",
       "source": "eslint",
       "ruleId": "shadcn/no-restyle",
       "path": "frontend/src/components/wiki-sidebar/name-prompt-dialog.tsx",
+      "count": 1
+    },
+    {
+      "fingerprint": "03c99781a7dd7725a1e406930d9e970661e2c1e0e38deb70f11e551b5eb7c74a",
+      "source": "eslint",
+      "ruleId": "shadcn/no-restyle",
+      "path": "frontend/src/components/wiki-sidebar/pickable-icon.tsx",
+      "count": 1
+    },
+    {
+      "fingerprint": "0d4be79fc3ab64592afdf56f6ab54b036447cff69081e8f8c0e7190604e7968e",
+      "source": "eslint",
+      "ruleId": "shadcn/no-restyle",
+      "path": "frontend/src/components/wiki-sidebar/pickable-icon.tsx",
       "count": 1
     },
     {
@@ -4074,6 +4067,20 @@
       "count": 1
     },
     {
+      "fingerprint": "a31c36990179372afaa1af20e0f46b9d69d217aa00e83e9f355fb40d82804f68",
+      "source": "eslint",
+      "ruleId": "shadcn/no-restyle",
+      "path": "frontend/src/components/wiki-sidebar/pickable-icon.tsx",
+      "count": 1
+    },
+    {
+      "fingerprint": "af997bace603df8678309af75f35e337ad34678a40b243650eb3dacb31b4fb7e",
+      "source": "eslint",
+      "ruleId": "shadcn/no-restyle",
+      "path": "frontend/src/components/wiki-sidebar/pickable-icon.tsx",
+      "count": 1
+    },
+    {
       "fingerprint": "ce20a12201fbf783027112c1e042ae69968e51223e545f4b984d8d4cfde68b67",
       "source": "eslint",
       "ruleId": "shadcn/no-restyle",
@@ -4088,7 +4095,28 @@
       "count": 1
     },
     {
-      "fingerprint": "3299e564e5cefc49a615b0768ccd21beb8dd03eec18b57141b20fe9c1e1173fb",
+      "fingerprint": "19737b711fab584b098ffaeb421e3dc1aaec54f7080b538c6d68d1227f902be2",
+      "source": "eslint",
+      "ruleId": "shadcn/no-restyle",
+      "path": "frontend/src/components/wiki-sidebar/preferences-dialog.tsx",
+      "count": 1
+    },
+    {
+      "fingerprint": "2ffd6a6c7c0af5be92c996c66791f6a41bd99b6410f5d0033f389650d1a3b089",
+      "source": "eslint",
+      "ruleId": "shadcn/no-restyle",
+      "path": "frontend/src/components/wiki-sidebar/preferences-dialog.tsx",
+      "count": 1
+    },
+    {
+      "fingerprint": "48362ded75ed296863336f1865b68e2f0fa39643904f8b76b2b62f3052d53e1a",
+      "source": "eslint",
+      "ruleId": "shadcn/no-restyle",
+      "path": "frontend/src/components/wiki-sidebar/preferences-dialog.tsx",
+      "count": 1
+    },
+    {
+      "fingerprint": "58ce3d5a590e5c9e99ee19bb7718dc8b5d1ca9320465da25c9defa01e1dd839f",
       "source": "eslint",
       "ruleId": "shadcn/no-restyle",
       "path": "frontend/src/components/wiki-sidebar/preferences-dialog.tsx",
@@ -4096,6 +4124,27 @@
     },
     {
       "fingerprint": "7f0599fc9f2bd110d2126e66145315472906db3fb40b406dbb715603ebd5aafd",
+      "source": "eslint",
+      "ruleId": "shadcn/no-restyle",
+      "path": "frontend/src/components/wiki-sidebar/preferences-dialog.tsx",
+      "count": 1
+    },
+    {
+      "fingerprint": "8135307cbaaba7a914c3e8b435f03d5dba7ef97910215651b2c5a9d7d6afd1be",
+      "source": "eslint",
+      "ruleId": "shadcn/no-restyle",
+      "path": "frontend/src/components/wiki-sidebar/preferences-dialog.tsx",
+      "count": 1
+    },
+    {
+      "fingerprint": "8f186d4601ee2afb8e9bcea8fb0b474ad0811c80b76b61b54fef5c4c5b90ddd2",
+      "source": "eslint",
+      "ruleId": "shadcn/no-restyle",
+      "path": "frontend/src/components/wiki-sidebar/preferences-dialog.tsx",
+      "count": 1
+    },
+    {
+      "fingerprint": "99cfffa5ed7b1d7b6b8320ecb66dbaded732e83ebf1f21dbd822243aa14183f5",
       "source": "eslint",
       "ruleId": "shadcn/no-restyle",
       "path": "frontend/src/components/wiki-sidebar/preferences-dialog.tsx",
@@ -4116,7 +4165,56 @@
       "count": 1
     },
     {
+      "fingerprint": "c3d226f4cc3de58a50a909853c9a2c2e77ec19a28e81fa1a6964edbf876d1a12",
+      "source": "eslint",
+      "ruleId": "shadcn/no-restyle",
+      "path": "frontend/src/components/wiki-sidebar/preferences-dialog.tsx",
+      "count": 1
+    },
+    {
+      "fingerprint": "cb735de790576a2d07537d0033eb77df8534062f272ad8e65ef2fda6df5785ca",
+      "source": "eslint",
+      "ruleId": "shadcn/no-restyle",
+      "path": "frontend/src/components/wiki-sidebar/preferences-dialog.tsx",
+      "count": 1
+    },
+    {
       "fingerprint": "cc4477821ba424c18f70d91bbf891ff7ae1bd1e8dc13091f490352bfd9f854b9",
+      "source": "eslint",
+      "ruleId": "shadcn/no-restyle",
+      "path": "frontend/src/components/wiki-sidebar/preferences-dialog.tsx",
+      "count": 1
+    },
+    {
+      "fingerprint": "d31914acb3496f7b378da7e54c8c48123823c99c8709a79d195a40460552e80a",
+      "source": "eslint",
+      "ruleId": "shadcn/no-restyle",
+      "path": "frontend/src/components/wiki-sidebar/preferences-dialog.tsx",
+      "count": 1
+    },
+    {
+      "fingerprint": "d41f096cb8d462abba621e11dcbce62840849ef6b73f3790698e5ff3137c7406",
+      "source": "eslint",
+      "ruleId": "shadcn/no-restyle",
+      "path": "frontend/src/components/wiki-sidebar/preferences-dialog.tsx",
+      "count": 1
+    },
+    {
+      "fingerprint": "e8c5aaf79a7b2b22aae6e7ef610d2aa341342d655ab597c79c32367c77289fdf",
+      "source": "eslint",
+      "ruleId": "shadcn/no-restyle",
+      "path": "frontend/src/components/wiki-sidebar/preferences-dialog.tsx",
+      "count": 1
+    },
+    {
+      "fingerprint": "f36aa5c1abb22a41206da66f722b6427302f94a2b1c8550c937037dc99925cc1",
+      "source": "eslint",
+      "ruleId": "shadcn/no-restyle",
+      "path": "frontend/src/components/wiki-sidebar/preferences-dialog.tsx",
+      "count": 1
+    },
+    {
+      "fingerprint": "fe8c756e2b1cfabf4f52842064cf3d3679ce60d0ab5c4b4287ec167654b65370",
       "source": "eslint",
       "ruleId": "shadcn/no-restyle",
       "path": "frontend/src/components/wiki-sidebar/preferences-dialog.tsx",
@@ -4494,7 +4592,7 @@
       "count": 1
     },
     {
-      "fingerprint": "7188ef6f02072620438e2d56a144a55765e6e01274057742cdc77761456cf04e",
+      "fingerprint": "4b21b7dfb0ea96b32c2518186c31d59d3db850022089fe8c8ff1d8a1de49e218",
       "source": "eslint",
       "ruleId": "shadcn/no-restyle",
       "path": "frontend/src/components/wiki-sidebar/tree-node.tsx",
@@ -4522,14 +4620,14 @@
       "count": 1
     },
     {
-      "fingerprint": "9d35e7f1a586feb9d44682ba8140abf70da9fae15b69f33518a5017b56e2f3c3",
+      "fingerprint": "9bf08bae2431bbb4c82d5c7d5859e06e44ab5a4fc50cf72e1976fd9b2fec6653",
       "source": "eslint",
       "ruleId": "shadcn/no-restyle",
       "path": "frontend/src/components/wiki-sidebar/tree-node.tsx",
       "count": 1
     },
     {
-      "fingerprint": "a52def8a65762afaea993f3383217a337061cfca3fa93f90b904d5e73cbd7e5e",
+      "fingerprint": "a8c4a2c0cbcebdf7378127b1124897a6333d5eea343f561743b2ec93d79f40c9",
       "source": "eslint",
       "ruleId": "shadcn/no-restyle",
       "path": "frontend/src/components/wiki-sidebar/tree-node.tsx",
@@ -4592,6 +4690,13 @@
       "count": 1
     },
     {
+      "fingerprint": "1be879d0e9752bed25bd62e1cb2b67f73baa0e54c2e7d47d7584ac0ba130c610",
+      "source": "eslint",
+      "ruleId": "shadcn/no-restyle",
+      "path": "frontend/src/components/wiki-sidebar/wiki-footer.tsx",
+      "count": 1
+    },
+    {
       "fingerprint": "1e05c09e3389d511c87d97a071eca1a75166d1aee38a65cad2f95117e2aec753",
       "source": "eslint",
       "ruleId": "shadcn/no-restyle",
@@ -4627,14 +4732,14 @@
       "count": 3
     },
     {
-      "fingerprint": "5d6baf8c2642561f12d5d20a4bb513e40de0528c8e30380175faaf573c656c73",
+      "fingerprint": "537abbd6301d619a61491a1287ca27f4d066acee114361c2dc65a11dcb5eed78",
       "source": "eslint",
       "ruleId": "shadcn/no-restyle",
       "path": "frontend/src/components/wiki-sidebar/wiki-footer.tsx",
       "count": 1
     },
     {
-      "fingerprint": "62bac5c1f23808cd0442c5e3e73ee76f2b471ad951d7caa58867633eb2b09778",
+      "fingerprint": "5d6baf8c2642561f12d5d20a4bb513e40de0528c8e30380175faaf573c656c73",
       "source": "eslint",
       "ruleId": "shadcn/no-restyle",
       "path": "frontend/src/components/wiki-sidebar/wiki-footer.tsx",
@@ -4677,6 +4782,13 @@
     },
     {
       "fingerprint": "82ec31567700c1a4366cbbccfb308d24ba90593d7110a753ff3660174510d8c4",
+      "source": "eslint",
+      "ruleId": "shadcn/no-restyle",
+      "path": "frontend/src/components/wiki-sidebar/wiki-footer.tsx",
+      "count": 1
+    },
+    {
+      "fingerprint": "8469f17d29854422726811fa645f57bfef3fff4628bbb0c5c8300e3f30da04dc",
       "source": "eslint",
       "ruleId": "shadcn/no-restyle",
       "path": "frontend/src/components/wiki-sidebar/wiki-footer.tsx",
@@ -4732,20 +4844,6 @@
       "count": 3
     },
     {
-      "fingerprint": "e76a788ab96da97701f00d335a55432043ac62270d88bdea6652bd300fc6f279",
-      "source": "eslint",
-      "ruleId": "shadcn/no-restyle",
-      "path": "frontend/src/components/wiki-sidebar/wiki-footer.tsx",
-      "count": 1
-    },
-    {
-      "fingerprint": "ebfa039081b488870c9ad26efc098ec76e2661c3b8a37feba4d8beba7ce0d6e8",
-      "source": "eslint",
-      "ruleId": "shadcn/no-restyle",
-      "path": "frontend/src/components/wiki-sidebar/wiki-footer.tsx",
-      "count": 1
-    },
-    {
       "fingerprint": "60d0a7d80832a49d2956fd18c29aa12618264fce5e8e849a97d04ac2ad51f1a9",
       "source": "eslint",
       "ruleId": "shadcn/no-unknown-classes",
@@ -4788,6 +4886,90 @@
       "count": 4
     },
     {
+      "fingerprint": "e0cff9fb16d82242f2affc18c6190adad86648b305a5e4339fc298c8f40bb9be",
+      "source": "eslint",
+      "ruleId": "unicorn/no-unnecessary-array-flat-map",
+      "path": "frontend/src/components/quick-links/quick-links-loader.tsx",
+      "count": 1
+    },
+    {
+      "fingerprint": "6f11ce42086e049a5d653233bab679ae0efa936378b5f1436b3274d519ebe9ea",
+      "source": "eslint",
+      "ruleId": "unicorn/no-unnecessary-array-flat-map",
+      "path": "frontend/src/lib/browser-transport-boundary.test.ts",
+      "count": 2
+    },
+    {
+      "fingerprint": "c2d0c08b76b29fa99600edcbd82bca3c1c3bfbe0b9e2b1895727fbd3ee9bbead",
+      "source": "eslint",
+      "ruleId": "unicorn/no-unnecessary-default-arguments",
+      "path": "frontend/src/components/wiki-document/doc-warmup-lifecycle.test.tsx",
+      "count": 1
+    },
+    {
+      "fingerprint": "5630cef6ba5c5a00a101f6ab0d8440cf80215420d07a4b89c56cb66397498c5e",
+      "source": "eslint",
+      "ruleId": "unicorn/no-unnecessary-default-arguments",
+      "path": "frontend/src/components/wiki-document/document-polish-dialog.test.tsx",
+      "count": 4
+    },
+    {
+      "fingerprint": "7eb63a4409327ef321aa21372d9c276ffdbb3c4934456a9f0669f111af1414d4",
+      "source": "eslint",
+      "ruleId": "unicorn/no-unnecessary-default-arguments",
+      "path": "frontend/src/components/wiki-sidebar/move-dialog-outlet.test.tsx",
+      "count": 1
+    },
+    {
+      "fingerprint": "e14966cd9a81592021f2acbeb4776077434e46aa0b1e35db14b9a68383773bd5",
+      "source": "eslint",
+      "ruleId": "unicorn/no-unnecessary-parameters",
+      "path": "frontend/src/components/wiki-document/doc-viewer-store.test.ts",
+      "count": 1
+    },
+    {
+      "fingerprint": "bf5d67980894f17285e4741e7927d386ded40c517428297ef994db039914e41b",
+      "source": "eslint",
+      "ruleId": "unicorn/no-unnecessary-parameters",
+      "path": "frontend/src/components/wiki-search/command-palette-navigation.test.tsx",
+      "count": 1
+    },
+    {
+      "fingerprint": "555973707e09d12bc19d0b746d0a5b3159860e11c01dbb53982934137444d2fb",
+      "source": "eslint",
+      "ruleId": "unicorn/no-unnecessary-parameters",
+      "path": "frontend/src/components/wiki-sidebar/drive-access-sheet-state.test.tsx",
+      "count": 1
+    },
+    {
+      "fingerprint": "59596afe693b808ceb7b525aa75c53bbd4b3dec9307e2c74a582f8f73aaab2e7",
+      "source": "eslint",
+      "ruleId": "unicorn/no-unnecessary-parameters",
+      "path": "frontend/src/components/wiki-sidebar/tree-node-observers.test.tsx",
+      "count": 1
+    },
+    {
+      "fingerprint": "e9a66344ed9f2148ae9db71bc3dc1f233f4697d6da0ae369907f802caa183302",
+      "source": "eslint",
+      "ruleId": "unicorn/no-unnecessary-parameters",
+      "path": "frontend/src/components/wiki-sidebar/use-drive-tree-index.test.tsx",
+      "count": 1
+    },
+    {
+      "fingerprint": "eabfb3af8e28ec3cc8892cf2a9bc15452e2b8274a48bc4d87c84aebedd91a1e3",
+      "source": "eslint",
+      "ruleId": "unicorn/no-unnecessary-parameters",
+      "path": "frontend/src/lib/server-api.test.ts",
+      "count": 1
+    },
+    {
+      "fingerprint": "976303aa7a5cf5e373cca2d4ddf44ee68cd6fe6f49193f89a5f1c8c8f5e44ac5",
+      "source": "eslint",
+      "ruleId": "unicorn/no-unnecessary-parameters",
+      "path": "frontend/src/lib/wiki-tree.test.ts",
+      "count": 1
+    },
+    {
       "fingerprint": "a2f8ef89b4df68e08e98fa8c2798e91a7c54eb7ec4aea1bfc2bdafb1d32ae581",
       "source": "eslint",
       "ruleId": "unicorn/prefer-combined-guards",
@@ -4807,6 +4989,104 @@
       "ruleId": "unicorn/prefer-combined-guards",
       "path": "frontend/src/lib/speculation-policy.ts",
       "count": 1
+    },
+    {
+      "fingerprint": "98db20ee51e4b9ec36a4a67aef6083f1fc4c2b7cf0c476f650cb329e8226d84b",
+      "source": "eslint",
+      "ruleId": "unicorn/prefer-default-parameters",
+      "path": "frontend/src/components/mcp/mcp-consent.tsx",
+      "count": 1
+    },
+    {
+      "fingerprint": "b2dbea554dbf13a5ee028039ca68be6b766315cfae9ca977eb87f5e6bdbe966f",
+      "source": "eslint",
+      "ruleId": "unicorn/prefer-default-parameters",
+      "path": "frontend/src/components/wiki-document/doc-viewer-host.tsx",
+      "count": 1
+    },
+    {
+      "fingerprint": "92383becb98a623244aa4342d5dd638b3aea4476469d4d5c61d9864535d28798",
+      "source": "eslint",
+      "ruleId": "unicorn/prefer-type-error",
+      "path": "frontend/src/components/query-provider-session-ownership.test.tsx",
+      "count": 1
+    },
+    {
+      "fingerprint": "154e2b7af28c7f487b00900aa9f36e25323a18e4ad7d363d6cc3d9cde76e7525",
+      "source": "eslint",
+      "ruleId": "unicorn/prefer-type-error",
+      "path": "frontend/src/components/ui/focus-return.test.tsx",
+      "count": 2
+    },
+    {
+      "fingerprint": "131ec7cb8103b3ef4c39ac83e39341ae3317f77a01419d9d8baae48fbe5225c9",
+      "source": "eslint",
+      "ruleId": "unicorn/prefer-type-error",
+      "path": "frontend/src/components/wiki-search/command-palette-lifecycle.test.tsx",
+      "count": 4
+    },
+    {
+      "fingerprint": "4ff9295755652ce37f320cf66b8b55da0bee9cd94621363d1bf0278c9ad0e38b",
+      "source": "eslint",
+      "ruleId": "unicorn/prefer-type-error",
+      "path": "frontend/src/components/wiki-search/command-palette-navigation.test.tsx",
+      "count": 2
+    },
+    {
+      "fingerprint": "6e485a5ff5bf9247eef3d2dd4997e40c85b618fd9f3623f3393ea141be0e66f7",
+      "source": "eslint",
+      "ruleId": "unicorn/prefer-type-error",
+      "path": "frontend/src/components/wiki-sidebar/folder-picker-focus.test.tsx",
+      "count": 1
+    },
+    {
+      "fingerprint": "f70e5c6518581bf7ea9f5c06aac6612e896e3de0aa46be13868272bbce57af42",
+      "source": "eslint",
+      "ruleId": "unicorn/prefer-type-error",
+      "path": "frontend/src/components/wiki-sidebar/item-menu-lifecycle.test.tsx",
+      "count": 7
+    },
+    {
+      "fingerprint": "7193e6ccdbfdcee15488df124d433c007c36c5dba7ac9fb75c9e952e3c5ca848",
+      "source": "eslint",
+      "ruleId": "unicorn/prefer-type-error",
+      "path": "frontend/src/components/wiki-sidebar/item-menu.test.tsx",
+      "count": 1
+    },
+    {
+      "fingerprint": "eabb56ebaa3432edfec687c18894928f9c5ee98270a3ecd5bb1309e990eab06f",
+      "source": "eslint",
+      "ruleId": "unicorn/prefer-type-error",
+      "path": "frontend/src/components/wiki-sidebar/move-dialog-outlet.test.tsx",
+      "count": 5
+    },
+    {
+      "fingerprint": "6e5758e57cf9f911bbc731680508bf0c6b7fbe4e209cb45061fb0b41b9f81982",
+      "source": "eslint",
+      "ruleId": "unicorn/prefer-type-error",
+      "path": "frontend/src/components/wiki-sidebar/use-document-intent-authorization.test.tsx",
+      "count": 1
+    },
+    {
+      "fingerprint": "626701b627262efdbc8fd7759f263ecf7e49c29f0f9a8430db8c39379668a965",
+      "source": "eslint",
+      "ruleId": "unicorn/prefer-type-error",
+      "path": "frontend/src/components/wiki-sidebar/use-sidebar-navigation.test.tsx",
+      "count": 2
+    },
+    {
+      "fingerprint": "9bfbd0fecdf6064b1a196fb337998ac66664e3c1e47bc55a8e992f64cc6ad3ef",
+      "source": "eslint",
+      "ruleId": "unicorn/prefer-type-error",
+      "path": "frontend/src/components/wiki-sidebar/wiki-footer.test.tsx",
+      "count": 2
+    },
+    {
+      "fingerprint": "66bbe3bc327d6c60c5d422fca884fa25e6a497ca30905b4b8a6d4b3cccaa5097",
+      "source": "eslint",
+      "ruleId": "unicorn/prefer-type-error",
+      "path": "frontend/src/lib/api-client.test.ts",
+      "count": 5
     },
     {
       "fingerprint": "0bba6cd43ac34119560c6736b28fe0581ca7f18bde9979dbc1f9c0a0ba493c3e",
@@ -5054,17 +5334,10 @@
       "count": 1
     },
     {
-      "fingerprint": "609b8130e9e59e8d34b50c98dd55060b29f77dc8483cfd933dc7c11366aad3ff",
+      "fingerprint": "46318a1de2fc9d096b95ce5645c244dff93f48a830a064e998665c4263cc116b",
       "source": "sarj-python-lint",
       "ruleId": "named-record-at-boundaries",
       "path": "backend/app/tasks/internal_router.py",
-      "count": 1
-    },
-    {
-      "fingerprint": "98873f3cfcf840b184a95ffc2a562eca9a1264cf005dc17526d5d699c141c6f3",
-      "source": "sarj-python-lint",
-      "ruleId": "named-record-at-boundaries",
-      "path": "scripts/github/branch_protection.py",
       "count": 1
     },
     {
@@ -5927,6 +6200,426 @@
       "ruleId": "no-any-mapping-types",
       "path": "scripts/github/test_deploy_cache_contract.py",
       "count": 4
+    },
+    {
+      "fingerprint": "2013d66850cd9f5aa49a6e7f38b0e92127fe3326a7935551b6d51d4e48280d2f",
+      "source": "sarj-python-lint",
+      "ruleId": "no-broad-keyword-capture",
+      "path": "backend/app/document_transform/gcs_uploads.py",
+      "count": 2
+    },
+    {
+      "fingerprint": "de13896467c6e01319587fed474eff1369b944126a12fb3c368fca5f47578bf4",
+      "source": "sarj-python-lint",
+      "ruleId": "no-broad-keyword-capture",
+      "path": "backend/app/document_transform/google_gateway.py",
+      "count": 3
+    },
+    {
+      "fingerprint": "9af662c334ac6c925677e0ee708e49cb64afed3d5049a8ca208b15ca686c8537",
+      "source": "sarj-python-lint",
+      "ruleId": "no-broad-keyword-capture",
+      "path": "backend/app/document_transform/google_presentation_gateway.py",
+      "count": 3
+    },
+    {
+      "fingerprint": "54d93d649f25c3584fbd593d9df8d67ec14409f256a61c5730e11f0e1c35148b",
+      "source": "sarj-python-lint",
+      "ruleId": "no-broad-keyword-capture",
+      "path": "backend/tests/support.py",
+      "count": 2
+    },
+    {
+      "fingerprint": "5d0d926d1e52fcfbb7d2d9ef8657f7cd9f2a5b71f73b03cfcfe796cc6fb3ecdf",
+      "source": "sarj-python-lint",
+      "ruleId": "no-broad-keyword-capture",
+      "path": "backend/tests/test_authored_labels.py",
+      "count": 1
+    },
+    {
+      "fingerprint": "9d8fd9fe70edf78457c075f8051bab6a6dbc141306f04de0fa45cdb80ee78d3a",
+      "source": "sarj-python-lint",
+      "ruleId": "no-broad-keyword-capture",
+      "path": "backend/tests/test_copy_font_defense.py",
+      "count": 2
+    },
+    {
+      "fingerprint": "426fe7e58b6c216db7e85ecfc62c9f4bc41cc93e49a2f56633bcb0b0768dbafa",
+      "source": "sarj-python-lint",
+      "ruleId": "no-broad-keyword-capture",
+      "path": "backend/tests/test_copy_header_recovery.py",
+      "count": 3
+    },
+    {
+      "fingerprint": "ba978aa0cce14430ddbd617335b8921c6b49f9ee3ebe74076a8bc60e2e1ad541",
+      "source": "sarj-python-lint",
+      "ruleId": "no-broad-keyword-capture",
+      "path": "backend/tests/test_copy_visual_authority.py",
+      "count": 1
+    },
+    {
+      "fingerprint": "45d8125a540e2a0786cbe39531ea786283ab18453315025dbcb5c1c45df4dcde",
+      "source": "sarj-python-lint",
+      "ruleId": "no-broad-keyword-capture",
+      "path": "backend/tests/test_custom_furniture.py",
+      "count": 1
+    },
+    {
+      "fingerprint": "2fb9abce2614184024ee3abdf84e36295dd7a7f92b4e71395bda67f803f4ffbc",
+      "source": "sarj-python-lint",
+      "ruleId": "no-broad-keyword-capture",
+      "path": "backend/tests/test_document_transform.py",
+      "count": 5
+    },
+    {
+      "fingerprint": "de77f8986dfa57ca33e6eda6c032bf65d35c433411820e56a8dcc1249a9ffe8b",
+      "source": "sarj-python-lint",
+      "ruleId": "no-broad-keyword-capture",
+      "path": "backend/tests/test_document_transform.py",
+      "count": 8
+    },
+    {
+      "fingerprint": "c688325d61c38d3bb131cdc8aa24a0d5617587002868180a42bcb42f144bdede",
+      "source": "sarj-python-lint",
+      "ruleId": "no-broad-keyword-capture",
+      "path": "backend/tests/test_document_transform_footer_flow.py",
+      "count": 1
+    },
+    {
+      "fingerprint": "28976662f41421015f22d5f929468783b7d58b5c65cbd5764f4cbb1a60a99e8a",
+      "source": "sarj-python-lint",
+      "ruleId": "no-broad-keyword-capture",
+      "path": "backend/tests/test_document_transform_native_date_flow.py",
+      "count": 5
+    },
+    {
+      "fingerprint": "7e64cba9a3f059439b49b5a61886d70d5da90d5a7eadd427c258f0cae4fcf486",
+      "source": "sarj-python-lint",
+      "ruleId": "no-broad-keyword-capture",
+      "path": "backend/tests/test_document_transform_native_footer.py",
+      "count": 1
+    },
+    {
+      "fingerprint": "ced81c895669ee7f030a347a4e5972f3af48fd30e20fb7d3957b72575b3954fa",
+      "source": "sarj-python-lint",
+      "ruleId": "no-broad-keyword-capture",
+      "path": "backend/tests/test_document_transform_native_safety_diagnostics.py",
+      "count": 1
+    },
+    {
+      "fingerprint": "9547383d35869b12024fbd259656492c07200b9a38e1d76bacbd8f7e15ef4e66",
+      "source": "sarj-python-lint",
+      "ruleId": "no-broad-keyword-capture",
+      "path": "backend/tests/test_document_transform_qa_campaigns_postgres.py",
+      "count": 2
+    },
+    {
+      "fingerprint": "ff0e4aaef500b1ab844c9ac96658fa8e62f2b4219f3f4cc67632d6700fd27cdc",
+      "source": "sarj-python-lint",
+      "ruleId": "no-broad-keyword-capture",
+      "path": "backend/tests/test_document_transform_qa_corpus_schema.py",
+      "count": 1
+    },
+    {
+      "fingerprint": "5662d8d225a65c2f39372f7dbf8b7c03d36f5c12b6a08a469588bf572fd5f666",
+      "source": "sarj-python-lint",
+      "ruleId": "no-broad-keyword-capture",
+      "path": "backend/tests/test_document_transform_qa_migration.py",
+      "count": 5
+    },
+    {
+      "fingerprint": "4cbb4ef853ec1efeb5aeb49e2138e8a710303265ea77baad312cf5c12858fdbc",
+      "source": "sarj-python-lint",
+      "ruleId": "no-broad-keyword-capture",
+      "path": "backend/tests/test_document_transform_qa_router.py",
+      "count": 29
+    },
+    {
+      "fingerprint": "f115a0a32440061ab0c1493c1d694941fe7a9155f781f0bd1d0dce940c678edd",
+      "source": "sarj-python-lint",
+      "ruleId": "no-broad-keyword-capture",
+      "path": "backend/tests/test_document_transform_qa_router.py",
+      "count": 16
+    },
+    {
+      "fingerprint": "e6ed00c38878200cbb0e54af2711ff9cb3acfaaa7d6a09ca928bdc6db2b0c195",
+      "source": "sarj-python-lint",
+      "ruleId": "no-broad-keyword-capture",
+      "path": "backend/tests/test_document_transform_tab_metadata.py",
+      "count": 1
+    },
+    {
+      "fingerprint": "a6bbcc6bb524836bb4bc998535529e6c77e6563455aabe4d261c536670e35f29",
+      "source": "sarj-python-lint",
+      "ruleId": "no-broad-keyword-capture",
+      "path": "backend/tests/test_document_transform_tab_structure_execution.py",
+      "count": 1
+    },
+    {
+      "fingerprint": "6f0828605edbf0bfacaa9675cb1dc498c33d9bcac6c4305b297b33f9d1aa409a",
+      "source": "sarj-python-lint",
+      "ruleId": "no-broad-keyword-capture",
+      "path": "backend/tests/test_document_transform_task_executor.py",
+      "count": 4
+    },
+    {
+      "fingerprint": "285d7837e27f50aea5e422b041725b19e35116842074afdde970a7530c6ec627",
+      "source": "sarj-python-lint",
+      "ruleId": "no-broad-keyword-capture",
+      "path": "backend/tests/test_document_transform_typography.py",
+      "count": 1
+    },
+    {
+      "fingerprint": "7c23ff4a89dfbc35b2f9e55f27f842c45776d8380d7b4fc57c46447079ff918f",
+      "source": "sarj-python-lint",
+      "ruleId": "no-broad-keyword-capture",
+      "path": "backend/tests/test_drive_modules.py",
+      "count": 1
+    },
+    {
+      "fingerprint": "873ddcb2ee7b0f96ac6097dadbd90cf2cda0c767e68285a8e873322fdb40838e",
+      "source": "sarj-python-lint",
+      "ruleId": "no-broad-keyword-capture",
+      "path": "backend/tests/test_drive_modules.py",
+      "count": 6
+    },
+    {
+      "fingerprint": "de586d975df5f63c964ba583e8faefd2d4e4569ead6e35c554b95977a1b311ce",
+      "source": "sarj-python-lint",
+      "ruleId": "no-broad-keyword-capture",
+      "path": "backend/tests/test_drive_modules.py",
+      "count": 2
+    },
+    {
+      "fingerprint": "020705e2e6e91fe337266c4074e3fc52549b955f3a7c5f2c0b2e46999ffb7a47",
+      "source": "sarj-python-lint",
+      "ruleId": "no-broad-keyword-capture",
+      "path": "backend/tests/test_files_service.py",
+      "count": 11
+    },
+    {
+      "fingerprint": "d214d332f59063dde9806ad75c08c8423b4b3f25363a708e126e76ff161830bf",
+      "source": "sarj-python-lint",
+      "ruleId": "no-broad-keyword-capture",
+      "path": "backend/tests/test_files_service.py",
+      "count": 15
+    },
+    {
+      "fingerprint": "50fe6e4d17eb529a702a0d5605388d98d44d498656e6461f4edeb52ef1c5be73",
+      "source": "sarj-python-lint",
+      "ruleId": "no-broad-keyword-capture",
+      "path": "backend/tests/test_google_presentation_gateway.py",
+      "count": 9
+    },
+    {
+      "fingerprint": "73ceb2486a0cae6ab2fc28593f4614178781982dd6f93364dea48cc8d56af257",
+      "source": "sarj-python-lint",
+      "ruleId": "no-broad-keyword-capture",
+      "path": "backend/tests/test_header_postcondition_recovery.py",
+      "count": 2
+    },
+    {
+      "fingerprint": "3930152ed792fc8c94f3091bf59e8cd4d92d1b5644f708a957ab96892588db8b",
+      "source": "sarj-python-lint",
+      "ruleId": "no-broad-keyword-capture",
+      "path": "backend/tests/test_markdown_gcs_uploads.py",
+      "count": 2
+    },
+    {
+      "fingerprint": "ce14ffa8256809b2ab34548a1a4e841cf37c1192fa0fdb8708ea2c67ee31baea",
+      "source": "sarj-python-lint",
+      "ruleId": "no-broad-keyword-capture",
+      "path": "backend/tests/test_mcp_adversarial.py",
+      "count": 1
+    },
+    {
+      "fingerprint": "49425b13d46f23e96cdb58f479c8bde76552c6f312196085b5869143fa385117",
+      "source": "sarj-python-lint",
+      "ruleId": "no-broad-keyword-capture",
+      "path": "backend/tests/test_mcp_bounded_search.py",
+      "count": 2
+    },
+    {
+      "fingerprint": "2985f5fa602950edd6dfa80af739ddd1923a4f9a4b8f9917287289f98576ea0f",
+      "source": "sarj-python-lint",
+      "ruleId": "no-broad-keyword-capture",
+      "path": "backend/tests/test_mcp_mutation.py",
+      "count": 1
+    },
+    {
+      "fingerprint": "2c211c9e8865a83d408d5cb29a8ac86b2d464e8d867d1b1a31218989b2495021",
+      "source": "sarj-python-lint",
+      "ruleId": "no-broad-keyword-capture",
+      "path": "backend/tests/test_mcp_mutation.py",
+      "count": 1
+    },
+    {
+      "fingerprint": "dd35fe38620bf074b14c39568126527736782c9eaded9c396787187664162198",
+      "source": "sarj-python-lint",
+      "ruleId": "no-broad-keyword-capture",
+      "path": "backend/tests/test_mcp_native_composition.py",
+      "count": 1
+    },
+    {
+      "fingerprint": "cb2e715a6530d7f305237952964937de007fdea8f3e10370208bd54e3d538015",
+      "source": "sarj-python-lint",
+      "ruleId": "no-broad-keyword-capture",
+      "path": "backend/tests/test_mcp_server.py",
+      "count": 2
+    },
+    {
+      "fingerprint": "e89b17662d624c54bfab062de1ffa1ef8c45c64d168b89a190f755d6d7c6f3db",
+      "source": "sarj-python-lint",
+      "ruleId": "no-broad-keyword-capture",
+      "path": "backend/tests/test_mcp_storage.py",
+      "count": 1
+    },
+    {
+      "fingerprint": "71561e646b79ea9dfaa66e041fff40688c37fcabfdcd1ad1378da1ab1395a200",
+      "source": "sarj-python-lint",
+      "ruleId": "no-broad-keyword-capture",
+      "path": "backend/tests/test_native_font_noop.py",
+      "count": 1
+    },
+    {
+      "fingerprint": "9e5d35f84620d7e57b5d34686cad9cec592431cf42bc255d4125dc9ad4d38477",
+      "source": "sarj-python-lint",
+      "ruleId": "no-broad-keyword-capture",
+      "path": "backend/tests/test_native_font_shift_execution.py",
+      "count": 1
+    },
+    {
+      "fingerprint": "092027d694e66046c33c8dfda8ca52252e56c0a05af7321c5eadbab7b06bccbd",
+      "source": "sarj-python-lint",
+      "ruleId": "no-broad-keyword-capture",
+      "path": "backend/tests/test_native_paragraph_layout.py",
+      "count": 1
+    },
+    {
+      "fingerprint": "9e87e9f1f136c678ee3e53d5af582ccdb8eec6b4d779855ad645134c8d9339d6",
+      "source": "sarj-python-lint",
+      "ruleId": "no-broad-keyword-capture",
+      "path": "backend/tests/test_native_paragraph_layout.py",
+      "count": 2
+    },
+    {
+      "fingerprint": "0333543143487044a50b6b45baa1124da36cd1a8ff9b319a7a34393c0d36d5c4",
+      "source": "sarj-python-lint",
+      "ruleId": "no-broad-keyword-capture",
+      "path": "backend/tests/test_native_preservation_findings.py",
+      "count": 1
+    },
+    {
+      "fingerprint": "9446b14f65827c7b1efc7e07e3d3e411a6789fda2f3b90964a2249d165f3a646",
+      "source": "sarj-python-lint",
+      "ruleId": "no-broad-keyword-capture",
+      "path": "backend/tests/test_native_preservation_findings.py",
+      "count": 1
+    },
+    {
+      "fingerprint": "41760ae0923bdfabb1374eceb549289f963cf9dc2f0f5ab6aabcb2b675f24c51",
+      "source": "sarj-python-lint",
+      "ruleId": "no-broad-keyword-capture",
+      "path": "backend/tests/test_native_tab_icons.py",
+      "count": 1
+    },
+    {
+      "fingerprint": "12fc56903cc649102c2def8439eb8f412f3095e9b1010dc31d583daacd4bafed",
+      "source": "sarj-python-lint",
+      "ruleId": "no-broad-keyword-capture",
+      "path": "backend/tests/test_native_table_font_execution.py",
+      "count": 2
+    },
+    {
+      "fingerprint": "595cdf03efb6ce59579a0f73c1aa02cad002028de5a69c49c48cd9682f5c5b26",
+      "source": "sarj-python-lint",
+      "ruleId": "no-broad-keyword-capture",
+      "path": "backend/tests/test_native_table_font_execution.py",
+      "count": 1
+    },
+    {
+      "fingerprint": "a4daa42ae94a5f60866410993effb9dc17db2c3f10d776e01754955fd46e49f7",
+      "source": "sarj-python-lint",
+      "ruleId": "no-broad-keyword-capture",
+      "path": "backend/tests/test_native_visual_authority.py",
+      "count": 1
+    },
+    {
+      "fingerprint": "23cb1846cdd886d69089685f2424b0f20cfd5158d082d8e2e8b2ace9b77e21c5",
+      "source": "sarj-python-lint",
+      "ruleId": "no-broad-keyword-capture",
+      "path": "backend/tests/test_presentation_transform.py",
+      "count": 1
+    },
+    {
+      "fingerprint": "e820958aa8b394c3c59b3926db3d3e9a98e3a3914e4139a09014151886150760",
+      "source": "sarj-python-lint",
+      "ruleId": "no-broad-keyword-capture",
+      "path": "backend/tests/test_provider_error_sanitization.py",
+      "count": 2
+    },
+    {
+      "fingerprint": "39669e3053d7c002313512b87994d4cdaead15b88dee3c150f85023454dccc66",
+      "source": "sarj-python-lint",
+      "ruleId": "no-broad-keyword-capture",
+      "path": "backend/tests/test_provider_round4.py",
+      "count": 2
+    },
+    {
+      "fingerprint": "bc6be9bffc96e9fc1a1e17c49ccb0cd0ea22a304ca73d2c48af6ceddb1f27a6a",
+      "source": "sarj-python-lint",
+      "ruleId": "no-broad-keyword-capture",
+      "path": "backend/tests/test_qa_document_transform_corpus.py",
+      "count": 5
+    },
+    {
+      "fingerprint": "de67287712afe5f3b620e4c3d2edcb8d999e4cc1decc1c43b84d37bb7a4bdf05",
+      "source": "sarj-python-lint",
+      "ruleId": "no-broad-keyword-capture",
+      "path": "backend/tests/test_qa_document_transform_corpus.py",
+      "count": 2
+    },
+    {
+      "fingerprint": "aa2ad080ee49c64a80e13083a2cc5863a79bd227863a6e84d54862d222033db4",
+      "source": "sarj-python-lint",
+      "ruleId": "no-broad-keyword-capture",
+      "path": "backend/tests/test_qa_markdown_transform_cli.py",
+      "count": 2
+    },
+    {
+      "fingerprint": "fba68ba428a8e789bc565c23e145833e4c14f4da7f9c4682db64d02c8c3cb856",
+      "source": "sarj-python-lint",
+      "ruleId": "no-broad-keyword-capture",
+      "path": "backend/tests/test_qa_pdf_process_safety.py",
+      "count": 4
+    },
+    {
+      "fingerprint": "d7c18d51c764f60d4a020b8797bf3738fd96736f5e11ec3a1805e6ff0ff7b6d8",
+      "source": "sarj-python-lint",
+      "ruleId": "no-broad-keyword-capture",
+      "path": "backend/tests/test_word_runtime.py",
+      "count": 1
+    },
+    {
+      "fingerprint": "3ca3e2334d28e0cd37a7cc26bc20551d15bb88362114aa32a334c02a89c292f0",
+      "source": "sarj-python-lint",
+      "ruleId": "no-broad-keyword-capture",
+      "path": "scripts/github/branch_protection.py",
+      "count": 1
+    },
+    {
+      "fingerprint": "9beff00e10b272f84369efe03232a788ee50b9aa1762a4d20741141bb6f37925",
+      "source": "sarj-python-lint",
+      "ruleId": "no-broad-keyword-capture",
+      "path": "scripts/github/test_cli.py",
+      "count": 2
+    },
+    {
+      "fingerprint": "3ee84e24eab3752664b5e9bf49b4e4f8b181feea835bc83125b734d9e5458a41",
+      "source": "sarj-python-lint",
+      "ruleId": "no-broad-keyword-capture",
+      "path": "scripts/github/test_frontend_rollback.py",
+      "count": 1
     },
     {
       "fingerprint": "fbc418effcc09b30572116a4fe3446898acacf03270c99b98b847dec60ed8e9d",
@@ -6986,6 +7679,20 @@
       "count": 1
     },
     {
+      "fingerprint": "750bf9187b3509c29f51828f8da5542a09a93141e70d6a413aab3d5c549107b6",
+      "source": "sarj-python-lint",
+      "ruleId": "no-fixed-sleep-in-loop",
+      "path": "backend/scripts/qa_document_transform_cloud.py",
+      "count": 1
+    },
+    {
+      "fingerprint": "732392a65b8a209e75ae34908e150c30ca125bfc04cb498f934f64ee34efab14",
+      "source": "sarj-python-lint",
+      "ruleId": "no-input-model-mutation",
+      "path": "backend/app/document_transform/native_pagination.py",
+      "count": 1
+    },
+    {
       "fingerprint": "8bd5961e5b69d4aa91b9453b2ac16ab5d8fb56310847e0583b3d548dab7ed465",
       "source": "sarj-python-lint",
       "ruleId": "no-positional-tuple-record",
@@ -6997,6 +7704,34 @@
       "source": "sarj-python-lint",
       "ruleId": "no-positional-tuple-record",
       "path": "backend/app/document_transform/task_executor.py",
+      "count": 1
+    },
+    {
+      "fingerprint": "0c4878e8df81d86a3cf6b594c5a5fa33a2d7ac804c7b5da208f256d7a473584a",
+      "source": "sarj-python-lint",
+      "ruleId": "no-raw-source-text-test-oracle",
+      "path": "backend/tests/test_container_contract.py",
+      "count": 1
+    },
+    {
+      "fingerprint": "9ce66862f27c8d8e73f5bd96dd61c575f7abc1b8e626d180988be69140bf6e72",
+      "source": "sarj-python-lint",
+      "ruleId": "opaque-parametrize-case-needs-id",
+      "path": "backend/tests/test_provider_round5.py",
+      "count": 1
+    },
+    {
+      "fingerprint": "1ef8d2702168f9ca25356a63b0601678b0164116efe78e4a750edb39e930774d",
+      "source": "sarj-python-lint",
+      "ruleId": "opaque-parametrize-case-needs-id",
+      "path": "backend/tests/test_recent_files_router.py",
+      "count": 1
+    },
+    {
+      "fingerprint": "d0827f560cd285ff62b2f11934dd5f5f677baceb16c41a78d79b4a3c5f16511c",
+      "source": "sarj-python-lint",
+      "ruleId": "prefer-collection-comprehension",
+      "path": "backend/app/document_transform/google_gateway.py",
       "count": 1
     },
     {
@@ -7567,6 +8302,13 @@
       "count": 1
     },
     {
+      "fingerprint": "0265fbe51ab66b2fc70e848ccff46d924cae63a3190265f1d2fc6442f20d0730",
+      "source": "sarj-python-lint",
+      "ruleId": "prefer-match-value-dispatch",
+      "path": "backend/tests/test_advanced_round6.py",
+      "count": 1
+    },
+    {
       "fingerprint": "413306792b6dac128185ca158c95385056da5d42b2e4d1e298e00d7444d859f2",
       "source": "sarj-python-lint",
       "ruleId": "prefer-nominal-id-types",
@@ -7847,10 +8589,325 @@
       "count": 1
     },
     {
-      "fingerprint": "75fe6f21f751641635fe64757b54bde6e13b8ad1fbdc2318aa19c3951c0b04b3",
+      "fingerprint": "aa6790c56e1452a20187b597ee8f92b900e7230472453f6184f161896917dfbb",
       "source": "sarj-python-lint",
       "ruleId": "prefer-pydantic-json-value",
       "path": "backend/tests/test_document_transform_qa_launcher.py",
+      "count": 1
+    },
+    {
+      "fingerprint": "9a035bf5a4c4c31ff4e5ba22f425d184b35f522fb90c1dcdefe783cfe0b2e640",
+      "source": "sarj-python-lint",
+      "ruleId": "prefer-required-constructor-parameters",
+      "path": "backend/app/aliases/service.py",
+      "count": 1
+    },
+    {
+      "fingerprint": "efa4b98da50bf14d97aa4ba6eabb79953f36c0621ce54eff6b5e3e86e3cab91a",
+      "source": "sarj-python-lint",
+      "ruleId": "prefer-required-constructor-parameters",
+      "path": "backend/app/auth/google_tokens.py",
+      "count": 1
+    },
+    {
+      "fingerprint": "9e8793a8c501edcf5fc77c05351038e95028602c779198283eb73cafdd123706",
+      "source": "sarj-python-lint",
+      "ruleId": "prefer-required-constructor-parameters",
+      "path": "backend/app/auth/service.py",
+      "count": 1
+    },
+    {
+      "fingerprint": "6b7bc85cda14199b1358cd7be2c25819b52edb18c24fa72c734ab65bc19b2df4",
+      "source": "sarj-python-lint",
+      "ruleId": "prefer-required-constructor-parameters",
+      "path": "backend/app/document_transform/errors.py",
+      "count": 1
+    },
+    {
+      "fingerprint": "765083ea0d7f8fccc1ae736e10addfe066ffe29bb6f6df08f515a2d55d2c76e7",
+      "source": "sarj-python-lint",
+      "ruleId": "prefer-required-constructor-parameters",
+      "path": "backend/app/document_transform/errors.py",
+      "count": 1
+    },
+    {
+      "fingerprint": "1e17fe23de3c768b516ed508c41f1ff44db4be86b8277b8430803229af3ff01e",
+      "source": "sarj-python-lint",
+      "ruleId": "prefer-required-constructor-parameters",
+      "path": "backend/app/document_transform/executor.py",
+      "count": 1
+    },
+    {
+      "fingerprint": "40378b9985577816e01cb664c0a713065fb31b35985e2a7e2c5077fc654e6dc1",
+      "source": "sarj-python-lint",
+      "ruleId": "prefer-required-constructor-parameters",
+      "path": "backend/app/document_transform/executor.py",
+      "count": 1
+    },
+    {
+      "fingerprint": "507836575f3e0522baf08bc003d84cf4408791e037f6140519c5825ba9dd96ef",
+      "source": "sarj-python-lint",
+      "ruleId": "prefer-required-constructor-parameters",
+      "path": "backend/app/document_transform/executor.py",
+      "count": 1
+    },
+    {
+      "fingerprint": "520b4197d2d3d6598be2fa00ac9c21855bcf99f1af85e62ebceb6b6f0df49459",
+      "source": "sarj-python-lint",
+      "ruleId": "prefer-required-constructor-parameters",
+      "path": "backend/app/document_transform/executor.py",
+      "count": 1
+    },
+    {
+      "fingerprint": "6e9711ee8c91f7551d9458090412d5da06a06b11a49cd20cf70fd9d9612fbeea",
+      "source": "sarj-python-lint",
+      "ruleId": "prefer-required-constructor-parameters",
+      "path": "backend/app/document_transform/executor.py",
+      "count": 1
+    },
+    {
+      "fingerprint": "79920589ae76bd7a4c8ace5b8ae5ff258a67cfc83fe073217c8834ba70ceb1dc",
+      "source": "sarj-python-lint",
+      "ruleId": "prefer-required-constructor-parameters",
+      "path": "backend/app/document_transform/executor.py",
+      "count": 1
+    },
+    {
+      "fingerprint": "a005f2f1885ef2797d22e07edb150a963cd775e7f08c1fffcab466aa7f37ba7d",
+      "source": "sarj-python-lint",
+      "ruleId": "prefer-required-constructor-parameters",
+      "path": "backend/app/document_transform/executor.py",
+      "count": 1
+    },
+    {
+      "fingerprint": "ba94420e65cb9708275b78bce82742a60536ec045963b0b41431d5ac48ba01ed",
+      "source": "sarj-python-lint",
+      "ruleId": "prefer-required-constructor-parameters",
+      "path": "backend/app/document_transform/executor.py",
+      "count": 1
+    },
+    {
+      "fingerprint": "efdb8613b62a421ff8aeaa713722640ab2bb74f3d89a89b817f4b182e3237d86",
+      "source": "sarj-python-lint",
+      "ruleId": "prefer-required-constructor-parameters",
+      "path": "backend/app/document_transform/executor.py",
+      "count": 1
+    },
+    {
+      "fingerprint": "f437b037adb654b4e258a036c2e1452a1f8b8f3e9a82d1037a145a11c0ca1a86",
+      "source": "sarj-python-lint",
+      "ruleId": "prefer-required-constructor-parameters",
+      "path": "backend/app/document_transform/executor.py",
+      "count": 1
+    },
+    {
+      "fingerprint": "41a16071d11df527f56f2d8bec326b346880579e785731da3347150db070fb8f",
+      "source": "sarj-python-lint",
+      "ruleId": "prefer-required-constructor-parameters",
+      "path": "backend/app/document_transform/google_gateway.py",
+      "count": 1
+    },
+    {
+      "fingerprint": "7f60d165eb7b2c23cc33758457baa03eda0fcceb92ee0c7588b394dd41996372",
+      "source": "sarj-python-lint",
+      "ruleId": "prefer-required-constructor-parameters",
+      "path": "backend/app/document_transform/google_gateway.py",
+      "count": 1
+    },
+    {
+      "fingerprint": "07c80ebe19ace3f83f2c05b042aa93c630333993e4d24e1e2fb8ab6b1152533c",
+      "source": "sarj-python-lint",
+      "ruleId": "prefer-required-constructor-parameters",
+      "path": "backend/app/document_transform/google_presentation_gateway.py",
+      "count": 1
+    },
+    {
+      "fingerprint": "2e5e58ed71e4885f66b57d75fd92787858cebfd2e1cae2573723cb5bf559b6d2",
+      "source": "sarj-python-lint",
+      "ruleId": "prefer-required-constructor-parameters",
+      "path": "backend/app/document_transform/google_presentation_gateway.py",
+      "count": 1
+    },
+    {
+      "fingerprint": "7c1aec054a376dd669e47516f9c4bf00cad8139cbeaf08ed4c05cdd01d37fcc9",
+      "source": "sarj-python-lint",
+      "ruleId": "prefer-required-constructor-parameters",
+      "path": "backend/app/document_transform/google_presentation_gateway.py",
+      "count": 1
+    },
+    {
+      "fingerprint": "be0743098dc3d189b24e97bf9e9142d1f44c5f8bb9e10bb89c09844507786cd2",
+      "source": "sarj-python-lint",
+      "ruleId": "prefer-required-constructor-parameters",
+      "path": "backend/app/document_transform/google_presentation_gateway.py",
+      "count": 1
+    },
+    {
+      "fingerprint": "4fd871ab5b568103b086316757c57cce9f601c74b3fa07d14143e4a44166f6e9",
+      "source": "sarj-python-lint",
+      "ruleId": "prefer-required-constructor-parameters",
+      "path": "backend/app/document_transform/models.py",
+      "count": 1
+    },
+    {
+      "fingerprint": "883b2b6c014b3d3a1fc868e834c168932ffa05bdaf60df62127909654c50fa41",
+      "source": "sarj-python-lint",
+      "ruleId": "prefer-required-constructor-parameters",
+      "path": "backend/app/document_transform/planner.py",
+      "count": 1
+    },
+    {
+      "fingerprint": "c4fee87d4fecbf8f4f0ded706c46e3f361ac65ec3ec228b0e3e27648347895e5",
+      "source": "sarj-python-lint",
+      "ruleId": "prefer-required-constructor-parameters",
+      "path": "backend/app/document_transform/planner.py",
+      "count": 1
+    },
+    {
+      "fingerprint": "3057fb5dda5245ab51d3bb98f97c352f0e729dcbb872c58b65c8a1722fec0249",
+      "source": "sarj-python-lint",
+      "ruleId": "prefer-required-constructor-parameters",
+      "path": "backend/app/document_transform/qa_launcher.py",
+      "count": 1
+    },
+    {
+      "fingerprint": "d2cb5ef6e709e8734b0239288f3e8f36e312b24c3f27ebfcebec1eb4f2c582c9",
+      "source": "sarj-python-lint",
+      "ruleId": "prefer-required-constructor-parameters",
+      "path": "backend/app/document_transform/qa_launcher.py",
+      "count": 1
+    },
+    {
+      "fingerprint": "d5d1495bf7f3012d6a38241b8203e16cbfacedceb9493eca38f1325450e7c5b7",
+      "source": "sarj-python-lint",
+      "ruleId": "prefer-required-constructor-parameters",
+      "path": "backend/app/document_transform/qa_launcher.py",
+      "count": 1
+    },
+    {
+      "fingerprint": "709e43c996e654ce1932065c077cefa73d60afd1145be5f24bcb922d7d956559",
+      "source": "sarj-python-lint",
+      "ruleId": "prefer-required-constructor-parameters",
+      "path": "backend/app/drive/service.py",
+      "count": 1
+    },
+    {
+      "fingerprint": "95fea4293ba93822dc39088f3ec292b7e19d121777b3f26dd396e5f0fe083093",
+      "source": "sarj-python-lint",
+      "ruleId": "prefer-required-constructor-parameters",
+      "path": "backend/app/drive/service.py",
+      "count": 1
+    },
+    {
+      "fingerprint": "f5ef7267a3db05eba8df7d9825b9dce3e31e282cff448111399be8316ad15888",
+      "source": "sarj-python-lint",
+      "ruleId": "prefer-required-constructor-parameters",
+      "path": "backend/app/drive/service.py",
+      "count": 1
+    },
+    {
+      "fingerprint": "086c2bbbcfdb6920e161f68e5a1e72dc14aae746bde71f523a847cefe748a6be",
+      "source": "sarj-python-lint",
+      "ruleId": "prefer-required-constructor-parameters",
+      "path": "backend/app/files/errors.py",
+      "count": 1
+    },
+    {
+      "fingerprint": "3121aa1a910339f98df0e1f2bf1af34c7a98df1f7fc933e356d0f39ec19344d2",
+      "source": "sarj-python-lint",
+      "ruleId": "prefer-required-constructor-parameters",
+      "path": "backend/app/files/service.py",
+      "count": 1
+    },
+    {
+      "fingerprint": "7403b40f7dff9f0cd5eeb12d4fc446a5e20c29efd68dc34cf5cab7c4a359e147",
+      "source": "sarj-python-lint",
+      "ruleId": "prefer-required-constructor-parameters",
+      "path": "backend/app/mcp/native_provider.py",
+      "count": 1
+    },
+    {
+      "fingerprint": "19edb2387cbc8f1857383565517f1656f571323c6be00c5fcee1c6c999fb4879",
+      "source": "sarj-python-lint",
+      "ruleId": "prefer-required-constructor-parameters",
+      "path": "backend/app/request_body.py",
+      "count": 1
+    },
+    {
+      "fingerprint": "847f7af8293698bc764f9cd8f817ba1e16153c98ac4c493649ac01c2a5fbfe13",
+      "source": "sarj-python-lint",
+      "ruleId": "prefer-required-constructor-parameters",
+      "path": "backend/app/request_body.py",
+      "count": 1
+    },
+    {
+      "fingerprint": "5767034c3339a8b5c2e878a84f9f62bce7a732972653083f953c6d96331b352c",
+      "source": "sarj-python-lint",
+      "ruleId": "prefer-required-constructor-parameters",
+      "path": "backend/app/smart_create/errors.py",
+      "count": 1
+    },
+    {
+      "fingerprint": "014b05debc91af3c7029dffbff012cccb6e44f4c4b6a5b7dabd596f90c141b56",
+      "source": "sarj-python-lint",
+      "ruleId": "prefer-required-constructor-parameters",
+      "path": "backend/app/smart_create/executor.py",
+      "count": 1
+    },
+    {
+      "fingerprint": "1598b0dc76ef05e106cd2d7026aac7d4501ebeb41f3f6c128ff09c5fc5fe48a4",
+      "source": "sarj-python-lint",
+      "ruleId": "prefer-required-constructor-parameters",
+      "path": "backend/app/smart_create/service.py",
+      "count": 2
+    },
+    {
+      "fingerprint": "69e5f4d796e2b47734fc6a423f71a43600e918a6d7b7ead2e62622b37f417ce2",
+      "source": "sarj-python-lint",
+      "ruleId": "prefer-required-constructor-parameters",
+      "path": "backend/app/smart_create/service.py",
+      "count": 1
+    },
+    {
+      "fingerprint": "83cc44a7f8192c08200372789b3d649d7501d79098ea3a652961af52fb6c4751",
+      "source": "sarj-python-lint",
+      "ruleId": "prefer-required-constructor-parameters",
+      "path": "backend/app/smart_create/service.py",
+      "count": 1
+    },
+    {
+      "fingerprint": "73a248eceb9c476ff496147623d101f57f291d58854d60b6b09332fe5253e9d2",
+      "source": "sarj-python-lint",
+      "ruleId": "prefer-required-constructor-parameters",
+      "path": "backend/app/tasks/internal_auth.py",
+      "count": 1
+    },
+    {
+      "fingerprint": "e7eb8ccd28ac88e3ef6ff48b516deef42c02760a1a45b9be7c483e7186086e22",
+      "source": "sarj-python-lint",
+      "ruleId": "prefer-required-constructor-parameters",
+      "path": "backend/app/tasks/queue.py",
+      "count": 1
+    },
+    {
+      "fingerprint": "f8c62676832dea2945dcbf3e7330dc0a2971bb2631efcd77f77ee0a2c29729dd",
+      "source": "sarj-python-lint",
+      "ruleId": "prefer-required-constructor-parameters",
+      "path": "backend/app/tasks/queue.py",
+      "count": 1
+    },
+    {
+      "fingerprint": "fa40054b8fe951dc737d12519336ec68708ea88ba1b7cc9a35785466d7c7c0e2",
+      "source": "sarj-python-lint",
+      "ruleId": "prefer-required-constructor-parameters",
+      "path": "backend/app/tasks/queue.py",
+      "count": 1
+    },
+    {
+      "fingerprint": "cc8eb4798d7145bf167abf08e1ea0560b171c02fd842b3b7fe004297b8dd2af5",
+      "source": "sarj-python-lint",
+      "ruleId": "prefer-required-constructor-parameters",
+      "path": "backend/app/templates/service.py",
       "count": 1
     },
     {
@@ -7865,6 +8922,20 @@
       "source": "sarj-python-lint",
       "ruleId": "prefer-walrus-awaited-none-guard",
       "path": "backend/app/auth/service.py",
+      "count": 1
+    },
+    {
+      "fingerprint": "1c386a18e212df5bc185febc6b7de219be93058f2ae26c2ec90c6ae954584c5b",
+      "source": "sarj-python-lint",
+      "ruleId": "prefer-walrus-awaited-none-guard",
+      "path": "backend/app/sidebar/cache.py",
+      "count": 1
+    },
+    {
+      "fingerprint": "8628e29e458b037d355c09f1f8a74db687f5621e1e01b8d7bb7ceca76802ceec",
+      "source": "sarj-python-lint",
+      "ruleId": "prefer-walrus-awaited-none-guard",
+      "path": "backend/app/sidebar/cache.py",
       "count": 1
     },
     {
@@ -7901,6 +8972,55 @@
       "ruleId": "repeated-test-composition",
       "path": "backend/tests/test_request_body.py",
       "count": 5
+    },
+    {
+      "fingerprint": "18168afe6f59f357a2c56122dac723ca40997e6f181c8a8948ced6cb8dc90c08",
+      "source": "sarj-python-lint",
+      "ruleId": "repeated-unimplemented-test-contract",
+      "path": "backend/tests/test_smart_create.py",
+      "count": 1
+    },
+    {
+      "fingerprint": "640062528027f32ab5c00e049f1e40db459118e003860d64597c3fc581e6a4cd",
+      "source": "sarj-python-lint",
+      "ruleId": "require-explicit-service-contract",
+      "path": "backend/app/aliases/service.py",
+      "count": 1
+    },
+    {
+      "fingerprint": "872245046a4e3c1821dc056fccda1f0562d3e1ec745a322f1179fcb758cc1b63",
+      "source": "sarj-python-lint",
+      "ruleId": "require-explicit-service-contract",
+      "path": "backend/app/auth/google_tokens.py",
+      "count": 1
+    },
+    {
+      "fingerprint": "159bde4e2706fb19d8a18cd8bed4ab3b310b5528a809b3f28ca6876320b3ad47",
+      "source": "sarj-python-lint",
+      "ruleId": "require-explicit-service-contract",
+      "path": "backend/app/document_transform/executor.py",
+      "count": 1
+    },
+    {
+      "fingerprint": "f491b740fc3c8f902f95230b9c12997103ad6a623b029aeac9da94f8528ff64d",
+      "source": "sarj-python-lint",
+      "ruleId": "require-explicit-service-contract",
+      "path": "backend/app/document_transform/presentation_executor.py",
+      "count": 1
+    },
+    {
+      "fingerprint": "df34f8809b80f26412fed17d50bc4aa8167d827cd19d537f61f21bbeab11553a",
+      "source": "sarj-python-lint",
+      "ruleId": "require-explicit-service-contract",
+      "path": "backend/app/document_transform/word_executor.py",
+      "count": 1
+    },
+    {
+      "fingerprint": "8a5881e7d29ac5ce3304d934fda4941962a389b182c462ae104236add059b1eb",
+      "source": "sarj-python-lint",
+      "ruleId": "require-explicit-service-contract",
+      "path": "backend/app/mcp/service.py",
+      "count": 1
     },
     {
       "fingerprint": "f93c1c7dbc3485055880ad568cf7c2c999b36aa0b54a14e1032c2deba22e2276",

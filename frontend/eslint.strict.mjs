@@ -189,11 +189,15 @@ const ESLINT_CONCISION_ADVISORY_RULES = {
 // evaluating each non-deprecated rule for correctness, runtime compatibility,
 // overlap with existing authorities, and whether its fix preserves semantics.
 // Correctness rules also act as ratchets against newly introduced defects.
+// Version 78's comma-spacing, indent, key-name-casing, no-empty-link-text,
+// no-javascript-url, and no-loss-of-precision support other ESLint languages.
+// Enabling them in this JS/TS preset fails language validation; those formats
+// require their own language plugins rather than this preset's JS/TS parser.
 //
 // Rules are declared as two objects rather than inline so the version guard
 // below can check them, and so the two intents stay separable.
 //
-// REQUIRES eslint-plugin-unicorn >= 76 (and therefore eslint >= 10.4). Many of
+// REQUIRES eslint-plugin-unicorn >= 78 (and therefore eslint >= 10.4). Many of
 // these rules do not exist in older releases; on an incompatible
 // plugin ESLint would emit "Definition for rule ... was not found" once per rule
 // per file. The guard below turns that into one actionable line.
@@ -213,6 +217,26 @@ const ESLINT_CONCISION_ADVISORY_RULES = {
 // The DOM *modernisation* rules (prefer-query-selector, prefer-dom-node-append,
 // dom-node-dataset, …) are rejected instead — see the rejection list below.
 const UNICORN_CORRECTNESS_RULES = {
+  "unicorn/no-conflicting-constraints": "error",
+  "unicorn/no-incomplete-accessor-override": "error",
+  "unicorn/no-ineffective-csp-directives": "error",
+  "unicorn/no-invalid-boolean-attribute-value": "error",
+  "unicorn/no-invalid-dom-token": "error",
+  "unicorn/no-invalid-integrity": "error",
+  "unicorn/no-invalid-intl-options": "error",
+  "unicorn/no-invalid-property-descriptor": "error",
+  "unicorn/no-invalid-response-options": "error",
+  "unicorn/no-invalid-style-set-property": "error",
+  "unicorn/no-invalid-temporal-arithmetic": "error",
+  "unicorn/no-invalid-url-protocol-comparison": "error",
+  "unicorn/no-leading-empty-lines": "error",
+  "unicorn/no-prevent-default-in-passive-listener": "error",
+  "unicorn/no-unnecessary-default-arguments": "error",
+  "unicorn/no-unnecessary-parameters": "error",
+  "unicorn/no-unsafe-json-serialization": "error",
+  "unicorn/no-url-in-search-params": "error",
+  "unicorn/require-text-decoder-streaming": "error",
+
   "unicorn/class-reference-in-static-methods": "error",
   "unicorn/consistent-assert": "error",
   "unicorn/consistent-date-clone": "error",
@@ -268,7 +292,9 @@ const UNICORN_CORRECTNESS_RULES = {
   "unicorn/no-missing-local-resource": "error",
   "unicorn/no-multiple-promise-resolver-calls": "error",
   "unicorn/no-negation-in-equality-check": "error",
-  "unicorn/no-new-array": "error",
+  // Numeric Array construction preserves holes and RangeErrors; Array.from does not.
+  // This loses single non-number literal advice; no-array-constructor still owns safe literals.
+  "unicorn/no-new-array": "off",
   "unicorn/no-new-buffer": "error",
   "unicorn/no-nonstandard-builtin-properties": "error",
   "unicorn/no-object-as-default-parameter": "error",
@@ -357,6 +383,13 @@ const UNICORN_CORRECTNESS_RULES = {
 // `Set#union` and friends). Both are ES2025 library types available in TS today;
 // a consumer still on `lib: ES2024` bumps `lib`, it does not bump its runtime.
 const UNICORN_MODERNISATION_RULES = {
+  "unicorn/prefer-escaped-irregular-whitespace": "error",
+  "unicorn/prefer-literal-ascii": "error",
+  // Promise.resolve(existingPromise) preserves its identity; new Promise creates
+  // a distinct wrapper. Eager evaluation can also move a throw outside the executor.
+  "unicorn/prefer-promise-static-methods": "off",
+  "unicorn/prefer-short-escape-sequences": "error",
+
   "unicorn/no-array-reverse": "error",
   "unicorn/no-array-sort": "error",
   "unicorn/no-for-loop": "error",
@@ -461,6 +494,9 @@ const UNICORN_CONCISION_ADVISORY_RULES = {
 // non-blocking until consumer fixes establish that the upstream guidance is
 // uniformly correct.
 const UNICORN_SEMANTIC_ADVISORY_RULES = {
+  // Moving callers' conversions into a function can change its return contract,
+  // evaluation timing, and exception handling; upstream intentionally has no fix.
+  "unicorn/no-repeated-call-wrappers": "warn",
   "unicorn/custom-error-definition": "warn",
   "unicorn/no-computed-property-existence-check": "warn",
 };
@@ -482,7 +518,7 @@ if (missingUnicornRules.length > 0) {
   throw new Error(
     `code-standards: ${String(missingUnicornRules.length)} rule(s) this config enables do not exist ` +
       `in the installed eslint-plugin-unicorn (${missingUnicornRules.slice(0, 5).join(", ")}). ` +
-      `Either the plugin is older than the required >= 76 (which also needs eslint >= 10.4), ` +
+      `Either the plugin is older than the required >= 78 (which also needs eslint >= 10.4), ` +
       `or a rule name in this config is a typo or was renamed upstream.`,
   );
 }
@@ -838,6 +874,7 @@ export function createConfig(options = {}) {
       "@typescript-eslint/require-array-sort-compare": "error",
       "@typescript-eslint/no-unsafe-type-assertion": "error",
       "@typescript-eslint/no-unsafe-enum-comparison": "error",
+      "@typescript-eslint/no-unsafe-enum-assignment": "error",
       "@typescript-eslint/no-base-to-string": "error",
       "@typescript-eslint/no-misused-spread": "error",
       "@typescript-eslint/no-unnecessary-type-conversion": "error",
@@ -1246,18 +1283,19 @@ export function createConfig(options = {}) {
       // the paired tests, which its `meta.docs.url` points at.
       //
       "@sarj/require-pascal-case-zod-schema-name": "error",
-      "@sarj/require-explicit-contract-implementation": "warn",
-      "@sarj/require-explicit-service-contract": "warn",
-      "@sarj/require-interface-for-exported-class": "warn",
-      "@sarj/prefer-named-complex-return-type": "warn",
+      "@sarj/named-child-schema-type": "error",
+      "@sarj/require-explicit-contract-implementation": "error",
+      "@sarj/require-explicit-service-contract": "error",
+      "@sarj/require-interface-for-exported-class": "error",
+      "@sarj/prefer-named-complex-return-type": "error",
       "@sarj/prefer-module-level-refined-schema": "warn",
-      "@sarj/prefer-multi-value-zod-literal": ["warn", { zodMajorVersion: 4 }],
+      "@sarj/prefer-multi-value-zod-literal": ["error", { zodMajorVersion: 4 }],
       "@sarj/prefer-named-callback-domain": "error",
-      "@sarj/prefer-nominal-id-types": "warn",
+      "@sarj/prefer-nominal-id-types": "error",
       "@sarj/prefer-node-crypto-hash": "warn",
       "@sarj/prefer-node-fs-promises": "warn",
       "@sarj/prefer-shared-zod-enum": "warn",
-      "@sarj/prefer-switch-for-repeated-equality": "warn",
+      "@sarj/prefer-switch-for-repeated-equality": "error",
       "@sarj/require-sql-access-class": "warn",
       "@sarj/sole-export-matches-filename": "error",
       "@sarj/require-assert-never": "error",
@@ -1274,7 +1312,7 @@ export function createConfig(options = {}) {
       "@sarj/no-bare-return-from-test-catch": "error",
       "@sarj/no-bespoke-api-case-conversion": "warn",
       "@sarj/no-detached-global-fetch": "error",
-      "@sarj/no-json-stringify-object-equality": "warn",
+      "@sarj/no-json-stringify-object-equality": "error",
       "@sarj/no-dangerously-allow-svg": "error",
       "@sarj/no-duplicate-lifecycle-refresh-listeners": "error",
       "@sarj/no-production-browser-source-maps": "error",
@@ -1301,7 +1339,7 @@ export function createConfig(options = {}) {
       "@sarj/no-conditional-empty-object-spread": "error",
       "@sarj/no-reduce-accumulator-copy": "error",
       "@sarj/require-button-accessible-name": "error",
-      "@sarj/require-camelcase-properties": "warn",
+      "@sarj/require-camelcase-properties": "error",
       // Wire keys need bracket access so they remain visibly external. The
       // TypeScript dot-notation rule must not undo that spelling.
       "@typescript-eslint/dot-notation": ["error", { allowPattern: "^[A-Za-z_$][\\w$]*_[\\w$]*$" }],
@@ -1327,7 +1365,7 @@ export function createConfig(options = {}) {
       "@sarj/no-offset-pagination": "error",
       "@sarj/no-select-star": "error",
       "@sarj/no-zod-native-enum": "error",
-      "@sarj/no-impossible-zod-literal-bounds": "error",
+      "@sarj/no-impossible-zod-literal-bounds": ["error", { delegateRealContradictions: true }],
       "@sarj/no-in-operator-on-built-in-collections": "error",
       "@sarj/prefer-module-level-constant": "error",
       "@sarj/prefer-module-level-schema": "error",
@@ -1349,7 +1387,7 @@ export function createConfig(options = {}) {
       "@sarj/no-type-member-comment-wall": "error",
       "@sarj/no-repeated-string-literal": "error",
       "@sarj/no-tautological-expect": "error",
-      "@sarj/no-duplicate-test-case": "warn",
+      "@sarj/no-duplicate-test-case": "error",
       "@sarj/no-typed-doc-sections": "error",
       "@sarj/require-port-for-service": "error",
       "@sarj/no-unsafe-mock-casting": "error",

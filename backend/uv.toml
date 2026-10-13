@@ -5,6 +5,12 @@ index-strategy = "first-index"
 # Preserve the current reviewed third-party lockfile while the rolling cutoff
 # catches up. The exact-pinned Sarj analyzer packages remain exempt.
 [exclude-newer-package]
+# Analyzer 1.36.0 requires Ruff 0.17.0; retain the global seven-day cutoff.
+ruff = "2026-10-10T00:00:00Z"
+# Python analyzer 1.36.0 requires this reviewed SQL parser release.
+sqlglot = "2026-10-10T00:00:00Z"
+# Canonical Standards 8.55.0 pins this reviewed release.
+typer = "2026-10-07T00:00:00Z"
 coverage = "2026-08-04T00:00:00Z"
 cryptography = "2026-08-04T00:00:00Z"
 fastapi = "2026-08-04T00:00:00Z"
