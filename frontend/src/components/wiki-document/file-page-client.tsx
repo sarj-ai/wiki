@@ -14,6 +14,7 @@ import { useFile } from "@/hooks/use-wiki-tree";
 import { ApiError } from "@/lib/api-error";
 import { useBrowserUserId } from "@/lib/browser-user-context";
 import { displayFileName } from "@/lib/file-icons";
+import { mobileReadUrlFor } from "@/lib/file-urls";
 import { saveLastDoc } from "@/lib/last-doc";
 import { markNav, markPaint } from "@/lib/perf-marks";
 import { findCachedNodeMeta } from "@/lib/wiki-cache";
@@ -159,6 +160,7 @@ function FilePageBody({
     setSlot(slot, viewerOwner.current);
   };
   const displayTitle = displayFileName(title, mimeType);
+  const mobileReadUrl = authority === "resolved" ? mobileReadUrlFor(mimeType, fileId) : null;
   useDocumentTitle(displayTitle);
 
   useEffect(() => {
@@ -205,6 +207,17 @@ function FilePageBody({
         {...(refreshModifiedTime === undefined ? {} : { refreshModifiedTime })}
         title={displayTitle}
       />
+      {mobileReadUrl === null ? null : (
+        <a
+          className="border-border bg-background hover:bg-accent focus-visible:ring-ring flex shrink-0 items-center justify-between gap-2 border-b px-4 py-2 text-sm focus-visible:ring-2 focus-visible:outline-none focus-visible:ring-inset md:hidden"
+          href={mobileReadUrl}
+          rel="noopener noreferrer"
+          target="_blank"
+        >
+          Read document
+          <span aria-hidden="true">↗</span>
+        </a>
+      )}
       <div className="flex-1 overflow-hidden" ref={setOwnedSlot}>
         {authority === "pending" ? <DocSkeleton /> : null}
       </div>

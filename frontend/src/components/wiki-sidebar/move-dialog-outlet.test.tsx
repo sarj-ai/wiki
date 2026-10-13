@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { StrictMode } from "react";
+import { StrictMode, useRef } from "react";
 import { flushSync } from "react-dom";
 import { createRoot, type Root } from "react-dom/client";
 
@@ -14,7 +14,7 @@ import type { DriveNode, DriveSummary, DriveTree, FileDetail, FileResponse } fro
 import { MIME_DOC } from "@/types/wiki";
 
 import { ItemMenu, type ItemMenuProps } from "./item-menu";
-import { MoveDialogOutletProvider } from "./move-dialog-outlet";
+import { MoveDialogOutletProvider, useMoveDialogOutlet } from "./move-dialog-outlet";
 
 const ACTIONS = vi.hoisted(() => ({
   copy: vi.fn(),
@@ -95,6 +95,16 @@ function ResponsiveMode() {
   return <output>{isMobile ? "Mobile" : "Desktop"}</output>;
 }
 
+function ReopenMove({ item }: { item: ItemMenuProps }) {
+  const outlet = useMoveDialogOutlet();
+  const opener = useRef<HTMLButtonElement | null>(null);
+  return (
+    <button onClick={() => outlet?.openItem(item, opener)} ref={opener} type="button">
+      Reopen Move
+    </button>
+  );
+}
+
 function Harness({ item, userId }: { item: ItemMenuProps; userId: string }) {
   return (
     <BrowserUserContext value={userId}>
@@ -102,6 +112,7 @@ function Harness({ item, userId }: { item: ItemMenuProps; userId: string }) {
         <SidebarTrigger />
         <ResponsiveMode />
         <MoveDialogOutletProvider userId={userId}>
+          <ReopenMove item={item} />
           <Sidebar>
             <SourceChildren />
             <ItemMenu {...item} />
@@ -117,9 +128,11 @@ describe("admitted Move ownership above the responsive sidebar", () => {
   let host: HTMLDivElement;
   let root: Root;
   let initialWidth: number;
+  let animationStyle: HTMLStyleElement | null;
 
   beforeEach(() => {
     vi.useFakeTimers();
+    animationStyle = null;
     vi.clearAllMocks();
     READS.drives.mockResolvedValue(DRIVES);
     READS.folders.mockResolvedValue(SOURCE);
@@ -141,6 +154,7 @@ describe("admitted Move ownership above the responsive sidebar", () => {
     retireMutationSession(client);
     client.clear();
     await vi.advanceTimersByTimeAsync(0);
+    animationStyle?.remove();
     host.remove();
     Object.defineProperty(window, "innerWidth", { configurable: true, value: initialWidth });
     vi.useRealTimers();
@@ -167,6 +181,28 @@ describe("admitted Move ownership above the responsive sidebar", () => {
     const element = host.querySelector('[data-slot="sidebar-trigger"]');
     if (!(element instanceof HTMLButtonElement)) throw new Error("Sidebar toggle missing");
     return element;
+  }
+
+  function holdExitAnimation() {
+    animationStyle = document.createElement("style");
+    animationStyle.textContent = `
+      @keyframes move-enter { from { opacity: 0; } to { opacity: 1; } }
+      @keyframes move-exit { from { opacity: 1; } to { opacity: 0; } }
+      [data-slot="dialog-content"][data-state="open"] { animation-name: move-enter; }
+      [data-slot="dialog-content"][data-state="closed"] {
+        animation-name: move-exit;
+        animation-duration: 1s;
+      }
+    `;
+    document.head.append(animationStyle);
+  }
+
+  function moveDialog(): HTMLElement {
+    const dialog = [...document.querySelectorAll('[role="dialog"]')].find((element) =>
+      element.textContent.includes(`Move “${ITEM.currentName}”`),
+    );
+    if (!(dialog instanceof HTMLElement)) throw new Error("Move dialog missing");
+    return dialog;
   }
 
   async function openMove() {
@@ -246,6 +282,112 @@ describe("admitted Move ownership above the responsive sidebar", () => {
     expect(toggle()).toHaveFocus();
     assertNoWrites();
   });
+
+  it("waits for the real Radix exit before retiring a cancelled mobile Move and returning focus", async () => {
+    holdExitAnimation();
+    render();
+    const opener = await openMove();
+    const dialog = moveDialog();
+    flushSync(() => button("Destination").click());
+    render({ width: 390 });
+    expect(opener.isConnected).toBe(false);
+    flushSync(() => button("Cancel").click());
+    await vi.advanceTimersByTimeAsync(350);
+    expect(dialog.isConnected).toBe(true);
+    expect(dialog).toHaveAttribute("data-state", "closed");
+    expect(toggle()).not.toHaveFocus();
+    assertNoWrites();
+    finishExitAnimation(dialog);
+    await vi.advanceTimersByTimeAsync(1);
+    expect(dialog.isConnected).toBe(false);
+    expect(toggle()).toHaveFocus();
+    assertNoWrites();
+  });
+
+  it("ignores an old deferred native close callback after a new opening owns the Move dialog", async () => {
+    holdExitAnimation();
+    render();
+    await openMove();
+    const previous = moveDialog();
+    flushSync(() => button("Cancel").click());
+    finishExitAnimation(previous);
+    expect(previous.isConnected).toBe(false);
+    flushSync(() => button("Reopen Move").click());
+    const current = moveDialog();
+    expect(current).not.toBe(previous);
+    await vi.advanceTimersByTimeAsync(350);
+    expect(current.isConnected).toBe(true);
+    expect(current).toHaveAttribute("data-state", "open");
+    expect(current.contains(document.activeElement)).toBe(true);
+    flushSync(() => button("Cancel").click());
+    finishExitAnimation(current);
+    await vi.advanceTimersByTimeAsync(1);
+    expect(button("Reopen Move")).toHaveFocus();
+    assertNoWrites();
+  });
+
+  it("does not retire a newer opening admitted during the previous return-focus microtask", async () => {
+    holdExitAnimation();
+    render();
+    const opener = await openMove();
+    const previous = moveDialog();
+    opener.addEventListener(
+      "focus",
+      () => {
+        flushSync(() => button("Reopen Move").click());
+      },
+      { once: true },
+    );
+    flushSync(() => button("Cancel").click());
+    finishExitAnimation(previous);
+    await vi.advanceTimersByTimeAsync(350);
+    const current = moveDialog();
+    expect(current).not.toBe(previous);
+    expect(current).toHaveAttribute("data-state", "open");
+    expect(current.contains(document.activeElement)).toBe(true);
+    flushSync(() => button("Cancel").click());
+    finishExitAnimation(current);
+    await vi.advanceTimersByTimeAsync(1);
+    expect(button("Reopen Move")).toHaveFocus();
+    assertNoWrites();
+  });
+
+  it.each(["session", 403, 404] as const)(
+    "retires authority during an animated close without returning focus from the old %s owner",
+    async (authority) => {
+      holdExitAnimation();
+      render();
+      const opener = await openMove();
+      const restoreOpener = vi.spyOn(opener, "focus");
+      const restoreToggle = vi.spyOn(toggle(), "focus");
+      const dialog = moveDialog();
+      flushSync(() => button("Cancel").click());
+      await vi.advanceTimersByTimeAsync(350);
+      expect(dialog.isConnected).toBe(true);
+      let outcome: unknown = null;
+      try {
+        if (authority === "session") {
+          flushSync(() => retireMutationSession(client));
+        } else {
+          await client.fetchQuery({
+            queryKey: wikiKeys.file(ITEM.fileId),
+            queryFn: () => {
+              throw new ApiError(authority, "Denied");
+            },
+            retry: false,
+          });
+        }
+      } catch (error) {
+        outcome = error;
+      }
+      expect(outcome).toEqual(authority === "session" ? null : new ApiError(authority, "Denied"));
+      await vi.advanceTimersByTimeAsync(1);
+      expect(dialog.isConnected).toBe(false);
+      expect(restoreOpener).not.toHaveBeenCalled();
+      expect(restoreToggle).not.toHaveBeenCalled();
+      assertNoWrites();
+    },
+  );
 
   it("returns ordinary cancellation to a surviving Actions trigger", async () => {
     render();
@@ -444,6 +586,14 @@ describe("admitted Move ownership above the responsive sidebar", () => {
     await vi.waitFor(() => expect(document.querySelector('[role="dialog"]')).toBeNull());
   });
 });
+
+function finishExitAnimation(dialog: Element) {
+  const event = new Event("animationend", { bubbles: true });
+  Object.defineProperty(event, "animationName", { value: "move-exit" });
+  flushSync(() => {
+    dialog.dispatchEvent(event);
+  });
+}
 
 function button(text: string): HTMLButtonElement {
   const result = [...document.querySelectorAll("button")].find(

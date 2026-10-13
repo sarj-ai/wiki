@@ -16,14 +16,23 @@ export function openUrlFor(mimeType: string, id: string): string {
   return workspaceUrl(mimeType, id, "view");
 }
 
+export function mobileReadUrlFor(mimeType: string, id: string): null | string {
+  return mimeType === MIME_DOC ? workspaceUrl(mimeType, id, "view", "mobilebasic") : null;
+}
+
 export function folderUrlFor(id: string): string {
   return `https://drive.google.com/drive/folders/${encodeURIComponent(id)}`;
 }
 
-function workspaceUrl(mimeType: string, id: string, driveFallback: "preview" | "view"): string {
+function workspaceUrl(
+  mimeType: string,
+  id: string,
+  driveFallback: "preview" | "view",
+  editorMode: "edit" | "mobilebasic" = "edit",
+): string {
   const encoded = encodeURIComponent(id);
   const path = EDITOR_PATHS[mimeType];
   return path
-    ? `https://docs.google.com/${path}/d/${encoded}/edit`
+    ? `https://docs.google.com/${path}/d/${encoded}/${editorMode}`
     : `https://drive.google.com/file/d/${encoded}/${driveFallback}`;
 }
