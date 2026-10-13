@@ -1,7 +1,7 @@
 "use client";
 
 import { cva, type VariantProps } from "class-variance-authority";
-import { PanelLeftIcon } from "lucide-react";
+import { PanelLeftIcon, XIcon } from "lucide-react";
 import { Slot } from "radix-ui";
 import * as React from "react";
 
@@ -11,6 +11,7 @@ import { Input } from "@/components/ui/input";
 import { Separator } from "@/components/ui/separator";
 import {
   Sheet,
+  SheetClose,
   SheetContent,
   SheetDescription,
   SheetHeader,
@@ -70,7 +71,13 @@ function SidebarProvider({
   onOpenChange?: (open: boolean) => void;
 }) {
   const isMobile = useIsMobile();
-  const [openMobile, setOpenMobile] = React.useState(false);
+  const [mobileDrawer, setMobileDrawer] = React.useState({ isMobile, open: false });
+  if (mobileDrawer.isMobile !== isMobile) setMobileDrawer({ isMobile, open: false });
+  const openMobile = mobileDrawer.isMobile === isMobile && mobileDrawer.open;
+  const setOpenMobile = React.useCallback(
+    (value: boolean) => setMobileDrawer({ isMobile, open: value }),
+    [isMobile],
+  );
   const mobileTriggerRef = React.useRef<HTMLButtonElement | null>(null);
 
   const [_open, _setOpen] = React.useState(defaultOpen);
@@ -96,11 +103,11 @@ function SidebarProvider({
 
   const toggleSidebar = React.useCallback(() => {
     if (isMobile) {
-      setOpenMobile((currentOpen) => !currentOpen);
+      setMobileDrawer((current) => ({ isMobile, open: !current.open }));
     } else {
       setOpen((currentOpen) => !currentOpen);
     }
-  }, [isMobile, setOpen, setOpenMobile]);
+  }, [isMobile, setOpen]);
 
   React.useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
@@ -193,10 +200,11 @@ function Sidebar({
       <FocusReturnProvider targetRef={mobileTriggerRef}>
         <Sheet onOpenChange={setOpenMobile} open={openMobile} {...props}>
           <SheetContent
-            className="bg-sidebar text-sidebar-foreground w-(--sidebar-width) p-0 [&>button]:hidden"
+            className="bg-sidebar text-sidebar-foreground w-(--sidebar-width) p-0"
             data-mobile="true"
             data-sidebar="sidebar"
             data-slot="sidebar"
+            showCloseButton={false}
             side={side}
             style={mobileSidebarStyle}
           >
@@ -205,6 +213,14 @@ function Sidebar({
               <SheetDescription>Displays the mobile sidebar.</SheetDescription>
             </SheetHeader>
             <div className="flex size-full flex-col">{children}</div>
+            <div className="absolute top-1 right-1">
+              <SheetClose asChild>
+                <Button size="icon-lg" variant="ghost">
+                  <XIcon />
+                  <span className="sr-only">Close</span>
+                </Button>
+              </SheetClose>
+            </div>
           </SheetContent>
         </Sheet>
       </FocusReturnProvider>
@@ -213,12 +229,14 @@ function Sidebar({
 
   return (
     <div
+      aria-hidden={state === "collapsed" && collapsible === "offcanvas"}
       className="group peer text-sidebar-foreground hidden md:block"
       data-collapsible={state === "collapsed" ? collapsible : ""}
       data-side={side}
       data-slot="sidebar"
       data-state={state}
       data-variant={variant}
+      inert={state === "collapsed" && collapsible === "offcanvas"}
     >
       <div
         className={cn(
@@ -262,13 +280,15 @@ function SidebarTrigger({
   className,
   onClick,
   ref,
+  size = "icon-sm",
   ...props
 }: React.ComponentProps<typeof Button>) {
-  const { mobileTriggerRef, toggleSidebar } = useSidebar();
+  const { isMobile, mobileTriggerRef, open, openMobile, toggleSidebar } = useSidebar();
 
   return (
     <Button
-      className={cn("size-7", className)}
+      aria-expanded={isMobile ? openMobile : open}
+      className={className}
       data-sidebar="trigger"
       data-slot="sidebar-trigger"
       onClick={(event) => {
@@ -286,7 +306,7 @@ function SidebarTrigger({
           else if (ref?.current === element) ref.current = null;
         };
       }}
-      size="icon"
+      size={size}
       variant="ghost"
       {...props}
     >

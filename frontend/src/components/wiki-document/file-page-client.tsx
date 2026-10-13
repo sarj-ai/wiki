@@ -193,7 +193,7 @@ function FilePageBody({
   }, [authority, displayTitle, fileId, mimeType, userId]);
 
   return (
-    <div className="flex h-svh min-h-0 flex-col overflow-hidden">
+    <div className="flex h-full min-h-0 flex-col overflow-hidden">
       <WikiToolbar
         authority={authority}
         breadcrumb={breadcrumb}
@@ -230,9 +230,9 @@ export function FilePagePending() {
     <div
       aria-busy="true"
       aria-label="Loading file"
-      className="flex h-svh min-h-0 flex-col overflow-hidden"
+      className="flex h-full min-h-0 flex-col overflow-hidden"
     >
-      <header className="border-border bg-background flex h-10 shrink-0 items-center gap-2 overflow-hidden border-b pr-4 pl-12 md:pl-4">
+      <header className="border-border bg-background flex h-10 shrink-0 items-center gap-2 overflow-hidden border-b px-4">
         <Skeleton className="size-4 shrink-0 rounded-sm" />
         <Skeleton className="h-4 w-48" />
         <div className="ml-auto flex items-center gap-2">

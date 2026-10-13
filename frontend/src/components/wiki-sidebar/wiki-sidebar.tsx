@@ -32,6 +32,7 @@ import { EMPTY_DOC_ICONS, EMPTY_FOLDER_ICONS, EMPTY_SORT_ORDERS } from "@/lib/wi
 import { DriveSearchBox } from "./drive-search-box";
 import { DriveSection } from "./drive-section";
 import { MoveDialogOutletProvider } from "./move-dialog-outlet";
+import { PreferencesDialogOutletProvider } from "./preferences-dialog-outlet";
 import { SidebarResizeHandle } from "./sidebar-resize-handle";
 import { SidebarNavigationProvider, useSidebarNavigation } from "./use-sidebar-navigation";
 import { useWikiReorder } from "./use-wiki-reorder";
@@ -104,85 +105,87 @@ export function WikiSidebar() {
   return (
     <SidebarNavigationProvider ownerKey={userId} pathname={pathname}>
       <MoveDialogOutletProvider userId={userId}>
-        <Sidebar>
-          <SidebarHeader>
-            <SidebarHomeLink />
-            <div className="px-2 pb-1">
-              <DriveSearchBox />
-            </div>
-          </SidebarHeader>
-          <DndContext
-            collisionDetection={cursorFirstCollision}
-            onDragCancel={reorder.onDragCancel}
-            onDragEnd={reorder.onDragEnd}
-            onDragOver={reorder.onDragOver}
-            onDragStart={reorder.onDragStart}
-            sensors={reorder.sensors}
-          >
-            <SidebarContent>
-              <ErrorBoundary>
-                {drivesQuery.isLoading ? (
-                  <div className="space-y-2 px-3 py-2" role="status">
-                    <span className="text-muted-foreground text-xs">Loading drives…</span>
-                    <div aria-hidden="true" className="space-y-2">
-                      <div className="bg-muted h-7 w-full rounded-sm" />
-                      <div className="bg-muted h-7 w-4/5 rounded-sm" />
-                      <div className="bg-muted h-7 w-full rounded-sm" />
+        <PreferencesDialogOutletProvider userId={userId}>
+          <Sidebar>
+            <SidebarHeader>
+              <SidebarHomeLink />
+              <div className="px-2 pb-1">
+                <DriveSearchBox />
+              </div>
+            </SidebarHeader>
+            <DndContext
+              collisionDetection={cursorFirstCollision}
+              onDragCancel={reorder.onDragCancel}
+              onDragEnd={reorder.onDragEnd}
+              onDragOver={reorder.onDragOver}
+              onDragStart={reorder.onDragStart}
+              sensors={reorder.sensors}
+            >
+              <SidebarContent>
+                <ErrorBoundary>
+                  {drivesQuery.isLoading ? (
+                    <div className="space-y-2 px-3 py-2" role="status">
+                      <span className="text-muted-foreground text-xs">Loading drives…</span>
+                      <div aria-hidden="true" className="space-y-2">
+                        <div className="bg-muted h-7 w-full rounded-sm" />
+                        <div className="bg-muted h-7 w-4/5 rounded-sm" />
+                        <div className="bg-muted h-7 w-full rounded-sm" />
+                      </div>
                     </div>
+                  ) : null}
+                  {drivesQuery.isError ? (
+                    <div className="space-y-2 px-3 py-2" role="alert">
+                      <p className="text-destructive text-xs">Failed to load drives</p>
+                      <Button
+                        disabled={drivesQuery.isFetching}
+                        onClick={() => {
+                          void drivesQuery
+                            .refetch()
+                            .catch(() => console.warn("Drive retry could not finish"));
+                        }}
+                        size="sm"
+                        variant="outline"
+                      >
+                        Retry drives
+                      </Button>
+                    </div>
+                  ) : null}
+                  {visibleDrives.map((drive, index) => (
+                    <div key={drive.id}>
+                      <DriveSection
+                        activeDriveId={activeDriveId}
+                        defaultExpanded={index === 0}
+                        docIcons={docIconsQuery.data ?? EMPTY_DOC_ICONS}
+                        drive={drive}
+                        folderIcons={folderIconsQuery.data ?? EMPTY_FOLDER_ICONS}
+                        optimisticByContainer={reorder.optimisticByContainer}
+                        pathname={pathname}
+                        showNonDocFiles={showNonDocFiles}
+                        sortOrders={sortOrdersQuery.data ?? EMPTY_SORT_ORDERS}
+                      />
+                      {index < visibleDrives.length - 1 && <SidebarSeparator />}
+                    </div>
+                  ))}
+                  {!drivesQuery.isLoading && !drivesQuery.isError && visibleDrives.length === 0 && (
+                    <div className="text-muted-foreground px-3 py-2 text-xs">
+                      No accessible drives
+                    </div>
+                  )}
+                </ErrorBoundary>
+              </SidebarContent>
+              <DragOverlay dropAnimation={null}>
+                {reorder.activeNode ? (
+                  <div className="bg-sidebar text-sidebar-foreground flex max-w-64 items-center gap-2 rounded-md border px-2.5 py-1.5 text-sm shadow-lg">
+                    {renderNodeIcon(reorder.activeNode, "size-4 shrink-0")}
+                    <span className="truncate">{reorder.activeNode.name}</span>
                   </div>
                 ) : null}
-                {drivesQuery.isError ? (
-                  <div className="space-y-2 px-3 py-2" role="alert">
-                    <p className="text-destructive text-xs">Failed to load drives</p>
-                    <Button
-                      disabled={drivesQuery.isFetching}
-                      onClick={() => {
-                        void drivesQuery
-                          .refetch()
-                          .catch(() => console.warn("Drive retry could not finish"));
-                      }}
-                      size="sm"
-                      variant="outline"
-                    >
-                      Retry drives
-                    </Button>
-                  </div>
-                ) : null}
-                {visibleDrives.map((drive, index) => (
-                  <div key={drive.id}>
-                    <DriveSection
-                      activeDriveId={activeDriveId}
-                      defaultExpanded={index === 0}
-                      docIcons={docIconsQuery.data ?? EMPTY_DOC_ICONS}
-                      drive={drive}
-                      folderIcons={folderIconsQuery.data ?? EMPTY_FOLDER_ICONS}
-                      optimisticByContainer={reorder.optimisticByContainer}
-                      pathname={pathname}
-                      showNonDocFiles={showNonDocFiles}
-                      sortOrders={sortOrdersQuery.data ?? EMPTY_SORT_ORDERS}
-                    />
-                    {index < visibleDrives.length - 1 && <SidebarSeparator />}
-                  </div>
-                ))}
-                {!drivesQuery.isLoading && !drivesQuery.isError && visibleDrives.length === 0 && (
-                  <div className="text-muted-foreground px-3 py-2 text-xs">
-                    No accessible drives
-                  </div>
-                )}
-              </ErrorBoundary>
-            </SidebarContent>
-            <DragOverlay dropAnimation={null}>
-              {reorder.activeNode ? (
-                <div className="bg-sidebar text-sidebar-foreground flex max-w-64 items-center gap-2 rounded-md border px-2.5 py-1.5 text-sm shadow-lg">
-                  {renderNodeIcon(reorder.activeNode, "size-4 shrink-0")}
-                  <span className="truncate">{reorder.activeNode.name}</span>
-                </div>
-              ) : null}
-            </DragOverlay>
-          </DndContext>
-          <WikiFooter />
-          <SidebarResizeHandle />
-        </Sidebar>
+              </DragOverlay>
+            </DndContext>
+            <WikiFooter />
+            <SidebarResizeHandle />
+          </Sidebar>
+        </PreferencesDialogOutletProvider>
       </MoveDialogOutletProvider>
     </SidebarNavigationProvider>
   );

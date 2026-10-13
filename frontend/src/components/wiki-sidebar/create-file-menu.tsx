@@ -15,13 +15,18 @@ const CreateFileMenuActions = dynamic(
   { ssr: false },
 );
 
-export function CreateFileMenu({ compact = true, driveId, parentFolderId }: CreateFileMenuProps) {
+export function CreateFileMenu({
+  compact = true,
+  driveId,
+  parentFolderId,
+  parentName,
+}: CreateFileMenuProps) {
   const menu = useDeferredDialog();
   return (
     <DropdownMenu onOpenChange={menu.onOpenChange} open={menu.open}>
       <DropdownMenuTrigger asChild>
         <Button
-          aria-label="Create item"
+          aria-label={parentName ? `Create item in ${parentName}` : "Create item"}
           className="text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground size-5 shrink-0 rounded-sm"
           onClick={(event) => {
             event.stopPropagation();
@@ -47,4 +52,5 @@ interface CreateFileMenuProps {
   compact?: boolean;
   driveId: string;
   parentFolderId: string;
+  parentName?: string;
 }

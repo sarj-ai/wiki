@@ -8,6 +8,7 @@ import {
   useRecentPagesScope,
 } from "@/components/recent-pages/recent-pages-session";
 import { ApiError } from "@/lib/api-error";
+import { recentDocsStorageKey } from "@/lib/browser-storage";
 import { BrowserUserContext } from "@/lib/browser-user-context";
 import { saveLastDoc } from "@/lib/last-doc";
 import { recentPagesQueryOptions, type RecentPagesScope } from "@/lib/recent-pages-query";
@@ -71,6 +72,67 @@ describe("RecentPagesLoader", () => {
     mount("user-a");
     await vi.waitFor(() => expect(host).toHaveTextContent("Your recent pages will appear here"));
     expect(getRecentFiles).not.toHaveBeenCalled();
+  });
+
+  it.each(["storage", "focus", "visibilitychange"])(
+    "refreshes a mounted home from changed history after %s without rendering local titles",
+    async (eventType) => {
+      mount("user-a");
+      await vi.waitFor(() => expect(host).toHaveTextContent("Your recent pages will appear here"));
+      saveLastDoc("user-a", {
+        fileId: "new-page",
+        title: "Untrusted local title",
+        mimeType: "text/plain",
+      });
+      const pending =
+        Promise.withResolvers<{ id: string; name: string; mimeType: string; driveName: null }[]>();
+      getRecentFiles.mockReturnValueOnce(pending.promise);
+      if (eventType === "visibilitychange") {
+        vi.spyOn(document, "visibilityState", "get").mockReturnValue("visible");
+        flushSync(() => document.dispatchEvent(new Event("visibilitychange")));
+      } else if (eventType === "storage") {
+        flushSync(() =>
+          window.dispatchEvent(
+            new StorageEvent("storage", { key: recentDocsStorageKey("user-a") }),
+          ),
+        );
+      } else {
+        flushSync(() => window.dispatchEvent(new Event("focus")));
+      }
+      await vi.waitFor(() => expect(getRecentFiles).toHaveBeenCalledOnce());
+      expect(getRecentFiles.mock.calls[0]?.[0]).toEqual(["new-page"]);
+      expect(host).toHaveTextContent("Loading recent pages");
+      expect(host).not.toHaveTextContent("Untrusted local title");
+      pending.resolve([
+        { id: "new-page", name: "Authorized new page", mimeType: "text/plain", driveName: null },
+      ]);
+      await vi.waitFor(() =>
+        expect(host.querySelector('a[href="/d/new-page"]')).toHaveTextContent(
+          "Authorized new page",
+        ),
+      );
+    },
+  );
+
+  it("ignores another user's storage events and unchanged IDs, and detaches after unmount", async () => {
+    getRecentFiles.mockResolvedValue([]);
+    saveLastDoc("user-a", { fileId: "page-a", title: "Local", mimeType: "text/plain" });
+    mount("user-a");
+    await vi.waitFor(() => expect(getRecentFiles).toHaveBeenCalledOnce());
+    saveLastDoc("user-a", { fileId: "page-b", title: "Local B", mimeType: "text/plain" });
+    flushSync(() =>
+      window.dispatchEvent(new StorageEvent("storage", { key: recentDocsStorageKey("user-b") })),
+    );
+    expect(getRecentFiles).toHaveBeenCalledOnce();
+    flushSync(() => window.dispatchEvent(new Event("focus")));
+    await vi.waitFor(() => expect(getRecentFiles).toHaveBeenCalledTimes(2));
+    flushSync(() => window.dispatchEvent(new Event("focus")));
+    expect(getRecentFiles).toHaveBeenCalledTimes(2);
+    mount(null);
+    flushSync(() =>
+      window.dispatchEvent(new StorageEvent("storage", { key: recentDocsStorageKey("user-a") })),
+    );
+    expect(getRecentFiles).toHaveBeenCalledTimes(2);
   });
 
   it("waits for a verified user and never displays locally saved titles", async () => {

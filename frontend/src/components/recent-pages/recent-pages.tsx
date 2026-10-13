@@ -32,10 +32,10 @@ export function RecentPages({
   pages,
 }: RecentPagesProps) {
   return (
-    <div className="h-svh overflow-y-auto">
+    <div className="h-full overflow-y-auto">
       <section
         aria-labelledby="recent-pages-heading"
-        className="mx-auto flex min-h-svh w-full max-w-3xl flex-col px-4 py-16 sm:px-8 md:py-24"
+        className="mx-auto flex min-h-full w-full max-w-3xl flex-col px-4 py-8 sm:px-8 md:py-24"
       >
         <div className="bg-muted mb-5 flex size-12 items-center justify-center rounded-xl">
           <Clock3 aria-hidden className="text-muted-foreground size-6" />
@@ -125,7 +125,9 @@ function RecentPageRow({ page }: { page: RecentPage }) {
         {renderMimeIcon(page.mimeType, "size-5")}
       </span>
       <span className="min-w-0 flex-1">
-        <span className="block truncate text-sm font-medium">{name}</span>
+        <span className="line-clamp-2 text-sm font-medium wrap-break-word sm:block sm:truncate">
+          {name}
+        </span>
         <span className="text-muted-foreground mt-1 block truncate text-xs">
           {page.driveName ?? "My Drive"}
         </span>
@@ -155,6 +157,7 @@ function RecentPageRow({ page }: { page: RecentPage }) {
           className={linkClassName}
           href={`/d/${encodeURIComponent(page.id)}`}
           prefetch={false}
+          title={name}
         >
           {contents}
         </Link>

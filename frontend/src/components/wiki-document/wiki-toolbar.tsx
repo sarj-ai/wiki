@@ -71,7 +71,7 @@ export function WikiToolbar({
   };
 
   return (
-    <header className="border-border bg-background text-foreground flex h-10 shrink-0 items-center gap-1 overflow-hidden border-b pr-4 pl-12 sm:gap-2 md:pl-4">
+    <header className="border-border bg-background text-foreground flex h-10 shrink-0 items-center gap-1 overflow-hidden border-b px-4 sm:gap-2">
       <div className="flex min-w-0 flex-1 items-center gap-2 overflow-hidden">
         <span className="shrink-0">{renderMimeIcon(mimeType, "size-4")}</span>
         <nav

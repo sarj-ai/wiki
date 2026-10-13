@@ -1,10 +1,11 @@
 "use client";
 
 import { CancelledError, useQuery } from "@tanstack/react-query";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 import { RecentPages } from "@/components/recent-pages/recent-pages";
 import { useRecentPagesScope } from "@/components/recent-pages/recent-pages-session";
+import { recentDocsStorageKey } from "@/lib/browser-storage";
 import { readRecentDocs } from "@/lib/last-doc";
 import { recentPagesQueryOptions, type RecentPagesScope } from "@/lib/recent-pages-query";
 
@@ -19,6 +20,32 @@ function UserRecentPages({ scope }: { scope: RecentPagesScope }) {
     readRecentDocs(scope.userId).map((visit) => visit.fileId),
   );
   const [retrying, setRetrying] = useState(false);
+  const { isActive, userId } = scope;
+  useEffect(() => {
+    const refreshVisits = () => {
+      if (!isActive()) return;
+      const ids = readRecentDocs(userId).map((visit) => visit.fileId);
+      setFileIds((current) =>
+        current.length === ids.length && current.every((id, index) => id === ids[index])
+          ? current
+          : ids,
+      );
+    };
+    const handleStorage = (event: StorageEvent) => {
+      if (event.key === null || event.key === recentDocsStorageKey(userId)) refreshVisits();
+    };
+    const handleVisibility = () => {
+      if (document.visibilityState === "visible") refreshVisits();
+    };
+    window.addEventListener("storage", handleStorage);
+    window.addEventListener("focus", refreshVisits);
+    document.addEventListener("visibilitychange", handleVisibility);
+    return () => {
+      window.removeEventListener("storage", handleStorage);
+      window.removeEventListener("focus", refreshVisits);
+      document.removeEventListener("visibilitychange", handleVisibility);
+    };
+  }, [isActive, userId]);
   const query = useQuery(recentPagesQueryOptions(scope, fileIds));
   const loading = retrying || query.isPending || query.isFetching;
   const error = query.isError && !loading;

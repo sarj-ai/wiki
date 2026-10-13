@@ -193,7 +193,7 @@ export function DriveSection({
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
-            <CreateFileMenu driveId={drive.id} parentFolderId={drive.id} />
+            <CreateFileMenu driveId={drive.id} parentFolderId={drive.id} parentName={drive.name} />
           </div>
         </div>
         {expanded ? (

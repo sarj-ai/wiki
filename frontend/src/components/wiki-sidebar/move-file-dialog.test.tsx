@@ -213,7 +213,7 @@ describe("move dialog admission", () => {
       folders,
     });
     render();
-    const expand = document.querySelector('button[aria-label="Expand"]');
+    const expand = document.querySelector('button[aria-label="Expand Destination"]');
     if (!(expand instanceof HTMLButtonElement)) throw new TypeError("Drive expansion missing");
     flushSync(() => expand.click());
     nameReads = 0;
