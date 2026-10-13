@@ -282,13 +282,22 @@ async def test_large_metadata_batches_overlap_four_workers_and_keep_order() -> N
 async def test_failed_batch_drains_admitted_reads_and_stops_queued_work() -> None:
     drive = _CountingDrive()
     provider = _CoordinatedBatchProvider(fail=True)
-    load = asyncio.create_task(
-        _MetadataFiles(drive, provider).get_accessible_many(list(provider.records))
-    )
+    files = _MetadataFiles(drive, provider)
+    load = asyncio.create_task(files.get_accessible_many(list(provider.records)))
     try:
         await asyncio.wait_for(provider.started.wait(), timeout=2)
+        workers = tuple(files._metadata_reads)
+        assert len(workers) == 4
         provider.release_failure.set()
         await asyncio.wait_for(provider.failed.wait(), timeout=2)
+        # The provider callback can run before its thread result reaches the
+        # service. Hold successful reads until the failed worker has finished
+        # so queued-work assertions exercise an observed service failure.
+        finished, _pending = await asyncio.wait(
+            workers, timeout=2, return_when=asyncio.FIRST_COMPLETED
+        )
+        assert len(finished) == 1
+        assert isinstance(next(iter(finished)).exception(), DriveUpstreamError)
         assert not load.done()
     finally:
         provider.release_failure.set()
