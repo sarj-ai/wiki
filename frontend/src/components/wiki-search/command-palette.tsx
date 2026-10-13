@@ -257,7 +257,7 @@ export function CommandPalette() {
           </Command>
 
           <div className="border-border text-muted-foreground flex shrink-0 flex-wrap items-center justify-between gap-2 border-t px-3 py-2.5 text-[11px] sm:px-5">
-            <span>
+            <span className="hidden sm:inline">
               <kbd className="bg-muted rounded-sm border px-1 py-0.5 font-mono text-[10px]">↑</kbd>{" "}
               <kbd className="bg-muted rounded-sm border px-1 py-0.5 font-mono text-[10px]">↓</kbd>{" "}
               navigate
@@ -272,6 +272,9 @@ export function CommandPalette() {
               </kbd>{" "}
               close
             </span>
+            <Button aria-label="Close search" onClick={closePalette} size="sm" variant="ghost">
+              Close
+            </Button>
           </div>
         </DialogContent>
       </Dialog>

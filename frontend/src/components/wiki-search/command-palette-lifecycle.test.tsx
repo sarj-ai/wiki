@@ -274,6 +274,24 @@ describe("current-query search and native focus ownership", () => {
     expect(WIKI_READ_API.driveSearch).not.toHaveBeenCalled();
   });
 
+  it("offers a separate Close control that dismisses search and returns focus to its opener", async () => {
+    await openSearch();
+    type("alpha");
+    const close = document.querySelector<HTMLButtonElement>('[aria-label="Close search"]');
+    if (!close) throw new Error("Search dismissal control missing");
+    expect(document.querySelector('[aria-label="Clear search"]')).not.toBeNull();
+    flushSync(() => {
+      close.focus();
+      close.click();
+    });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(document.querySelector('[role="dialog"]')).toBeNull();
+    expect(opener()).toHaveFocus();
+    await openSearch();
+    expect(input()).toHaveValue("");
+    expect(WIKI_READ_API.driveSearch).not.toHaveBeenCalled();
+  });
+
   it("cancels opening RAF work when the palette closes before autofocus", async () => {
     mountPalette();
     flushSync(() => {

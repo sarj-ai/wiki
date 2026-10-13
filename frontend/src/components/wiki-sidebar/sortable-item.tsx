@@ -63,6 +63,8 @@ export function SortableItem({ children, data = EMPTY_DATA, id, variant }: Sorta
     style,
     ...attributes,
     ...listeners,
+    "aria-pressed": undefined,
+    role: "group",
   };
 
   const dropIndicator = dropEdge ? (

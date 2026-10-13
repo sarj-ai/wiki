@@ -15,6 +15,12 @@ const resizeDirection = (sidebar: HTMLElement) =>
     ? -1
     : 1;
 
+function intendedSidebarWidth(wrapper: HTMLElement | null, sidebar: HTMLElement) {
+  const value = wrapper?.style.getPropertyValue("--sidebar-width").trim() ?? "";
+  const pixels = value.endsWith("px") ? Number.parseFloat(value) : NaN;
+  return Number.isFinite(pixels) && pixels > 0 ? pixels : sidebar.getBoundingClientRect().width;
+}
+
 function persistSidebarWidth(wrapper: HTMLElement) {
   const final = wrapper.style.getPropertyValue("--sidebar-width");
   if (final) {
@@ -30,7 +36,8 @@ export function SidebarResizeHandle() {
   const syncWidth = (element: HTMLElement | null) => {
     if (!element) return;
     const sidebar = document.querySelector<HTMLElement>('[data-slot="sidebar-container"]');
-    setWidth(sidebar ? clampSidebarWidth(sidebar.getBoundingClientRect().width) : null);
+    const wrapper = document.querySelector<HTMLElement>('[data-slot="sidebar-wrapper"]');
+    setWidth(sidebar ? clampSidebarWidth(intendedSidebarWidth(wrapper, sidebar)) : null);
   };
 
   useEffect(() => () => releaseDrag.current?.(), []);
@@ -50,7 +57,7 @@ export function SidebarResizeHandle() {
     event.preventDefault();
     releaseDrag.current?.();
     setDragging(false);
-    const current = sidebar.getBoundingClientRect().width;
+    const current = intendedSidebarWidth(wrapper, sidebar);
     const delta = (event.key === "ArrowRight" ? 1 : -1) * resizeDirection(sidebar);
     const next =
       event.key === "Home"
@@ -87,7 +94,7 @@ export function SidebarResizeHandle() {
 
     const pointerId = event.pointerId;
     const startX = event.clientX;
-    const startWidth = sidebar.getBoundingClientRect().width;
+    const startWidth = intendedSidebarWidth(wrapper, sidebar);
     const direction = resizeDirection(sidebar);
     setWidth(clampSidebarWidth(startWidth));
     const widthElements = Array.from(

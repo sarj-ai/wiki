@@ -192,7 +192,8 @@ const FolderRow = memo(function FolderRowContent({
     <>
       <div className="flex items-center gap-1" style={{ paddingLeft: `${rowIndent(depth)}px` }}>
         <Button
-          aria-label={expanded ? "Collapse" : "Expand"}
+          aria-expanded={expanded}
+          aria-label={`${expanded ? "Collapse" : "Expand"} ${folder.name}`}
           className="hover:bg-muted size-4 shrink-0 rounded-sm"
           onClick={() => {
             setExpanded((v) => !v);
@@ -258,7 +259,8 @@ const DriveRow = memo(function DriveRowContent({
     <>
       <div className="flex items-center gap-1">
         <Button
-          aria-label={expanded ? "Collapse" : "Expand"}
+          aria-expanded={expanded}
+          aria-label={`${expanded ? "Collapse" : "Expand"} ${driveName}`}
           className="hover:bg-muted size-4 shrink-0 rounded-sm"
           onClick={() => {
             setExpanded((v) => !v);

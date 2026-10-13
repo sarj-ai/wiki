@@ -7,12 +7,13 @@ import { ErrorBoundary } from "@/components/error-boundary";
 import { QueryProvider } from "@/components/query-provider";
 import { RedirectAfterLogin } from "@/components/redirect-after-login";
 import { SessionRefresh } from "@/components/session-refresh";
-import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
+import { SidebarProvider } from "@/components/ui/sidebar";
 import { Toaster } from "@/components/ui/sonner";
 import { DocViewerHost } from "@/components/wiki-document/doc-viewer-host";
 import { DocWarmup } from "@/components/wiki-document/doc-warmup";
 import { CommandPaletteMount } from "@/components/wiki-search/command-palette-mount";
 import { WikiSidebar } from "@/components/wiki-sidebar/wiki-sidebar";
+import { WorkspaceFrame } from "@/components/workspace-frame";
 import { loadSessionBootstrap } from "@/lib/load-session-bootstrap";
 import { serverWikiApi } from "@/lib/server-api";
 import {
@@ -97,10 +98,9 @@ async function AuthenticatedLayout({ children }: { children: React.ReactNode }) 
             <ErrorBoundary>
               <WikiSidebar />
             </ErrorBoundary>
-            <main className="min-h-0 min-w-0 flex-1 overflow-hidden">
-              <SidebarTrigger className="bg-background/80 fixed top-3 left-3 z-50 backdrop-blur-sm md:hidden" />
+            <WorkspaceFrame>
               <ErrorBoundary>{children}</ErrorBoundary>
-            </main>
+            </WorkspaceFrame>
 
             <ErrorBoundary>
               <CommandPaletteMount />

@@ -1,0 +1,363 @@
+{
+  "schemaVersion": 1,
+  "round": 11,
+  "date": "2026-10-13",
+  "baseRevision": "ce4b83f0b338609ecfdc19be0637e30013dd230c",
+  "uxAuditPassCount": 25,
+  "baselineScreenshotCount": 56,
+  "implementedImprovementCount": 14,
+  "performanceLedgerPassCountUnchanged": 439,
+  "method": {
+    "site": "https://wiki.sarj.ai",
+    "capture": "Native Chrome screenshots and bound DOM snapshots at action boundaries",
+    "independentReview": "All 25 baseline passes and 56 screenshots reviewed by an independent Codex judge",
+    "clips": "25 replay clips assembled from native screenshot sequences; gaps compressed to at most three seconds",
+    "nativeContinuousRecording": false,
+    "latencyMeasurement": false,
+    "postFixLocalPreview": "Synthetic fixture using the real components and application stylesheet; removed before checks",
+    "postDeploymentVerificationRequired": true
+  },
+  "corrections": [
+    "Pass 25 frame 1 captures home and is excluded as other-tab proof; frame 3 is the corrected resolved other-tab document.",
+    "Pass 21 Move remains behind a stale Sidebar sheet; it was not lost.",
+    "Viewport and dialog entry transition frames do not prove persistent clipping or latency.",
+    "Source review findings and regression controls do not count as additional UX audit passes."
+  ],
+  "improvements": [
+    {
+      "id": "UX01",
+      "behavior": "Keep phone navigation above the scrollable page content",
+      "passes": [
+        2,
+        3
+      ]
+    },
+    {
+      "id": "UX02",
+      "behavior": "Offer a visible way to reopen the collapsed desktop sidebar",
+      "passes": [
+        13
+      ]
+    },
+    {
+      "id": "UX03",
+      "behavior": "Show a visible Close control on the mobile sidebar",
+      "passes": [
+        12
+      ]
+    },
+    {
+      "id": "UX04",
+      "behavior": "Retire stale mobile drawer state when leaving the mobile breakpoint",
+      "passes": [
+        21
+      ]
+    },
+    {
+      "id": "UX05",
+      "behavior": "Offer a separate visible Close action for search",
+      "passes": [
+        7,
+        11
+      ]
+    },
+    {
+      "id": "UX06",
+      "behavior": "Wrap recent titles to two lines on phones and provide full-title tooltips",
+      "passes": [
+        4
+      ]
+    },
+    {
+      "id": "UX07",
+      "behavior": "Accumulate keyboard resize steps from the intended width and preserve pointer handoff",
+      "passes": [
+        14
+      ]
+    },
+    {
+      "id": "UX08",
+      "behavior": "Keep Preferences alive across responsive sidebar remounts and restore a surviving focus target",
+      "passes": [
+        16
+      ]
+    },
+    {
+      "id": "UX09",
+      "behavior": "Expose sortable row children as separate controls inside a group",
+      "passes": [
+        1
+      ]
+    },
+    {
+      "id": "UX10",
+      "behavior": "Name creation controls with their destination folder or drive",
+      "passes": [
+        22
+      ]
+    },
+    {
+      "id": "UX11",
+      "behavior": "Name Move expansion controls with their destination and expanded state",
+      "passes": [
+        21
+      ]
+    },
+    {
+      "id": "UX12",
+      "behavior": "Announce pending short-link reads and loading errors",
+      "passes": [
+        24
+      ]
+    },
+    {
+      "id": "UX13",
+      "behavior": "Refresh mounted recent pages after same-user cross-tab visits and focus, preserving current authorization",
+      "passes": [
+        25
+      ]
+    },
+    {
+      "id": "UX14",
+      "behavior": "Make collapsed offcanvas sidebar controls inert and hidden from assistive navigation",
+      "passes": [
+        13
+      ]
+    }
+  ],
+  "passes": [
+    {
+      "pass": 1,
+      "scope": "Desktop landing and navigation",
+      "outcome": "improved",
+      "improvements": [
+        "UX09"
+      ],
+      "baselineFrameCount": 1
+    },
+    {
+      "pass": 2,
+      "scope": "320 pixel phone landing and scroll",
+      "outcome": "improved",
+      "improvements": [
+        "UX01"
+      ],
+      "baselineFrameCount": 2
+    },
+    {
+      "pass": 3,
+      "scope": "Short phone landing",
+      "outcome": "improved",
+      "improvements": [
+        "UX01"
+      ],
+      "baselineFrameCount": 1
+    },
+    {
+      "pass": 4,
+      "scope": "Long recent-page names",
+      "outcome": "improved",
+      "improvements": [
+        "UX06"
+      ],
+      "baselineFrameCount": 1
+    },
+    {
+      "pass": 5,
+      "scope": "Keyboard search entry",
+      "outcome": "existing behavior verified",
+      "improvements": [],
+      "baselineFrameCount": 1
+    },
+    {
+      "pass": 6,
+      "scope": "Document to home navigation",
+      "outcome": "existing behavior verified",
+      "improvements": [],
+      "baselineFrameCount": 3
+    },
+    {
+      "pass": 7,
+      "scope": "Desktop search dismissal",
+      "outcome": "improved",
+      "improvements": [
+        "UX05"
+      ],
+      "baselineFrameCount": 2
+    },
+    {
+      "pass": 8,
+      "scope": "Search admission and selection",
+      "outcome": "existing behavior verified",
+      "improvements": [],
+      "baselineFrameCount": 2
+    },
+    {
+      "pass": 9,
+      "scope": "Empty search recovery",
+      "outcome": "existing behavior verified",
+      "improvements": [],
+      "baselineFrameCount": 3
+    },
+    {
+      "pass": 10,
+      "scope": "Folder action navigation",
+      "outcome": "existing behavior verified",
+      "improvements": [],
+      "baselineFrameCount": 1
+    },
+    {
+      "pass": 11,
+      "scope": "Short phone search",
+      "outcome": "improved",
+      "improvements": [
+        "UX05"
+      ],
+      "baselineFrameCount": 3
+    },
+    {
+      "pass": 12,
+      "scope": "Search and sidebar dismissal focus",
+      "outcome": "improved",
+      "improvements": [
+        "UX03"
+      ],
+      "baselineFrameCount": 2
+    },
+    {
+      "pass": 13,
+      "scope": "Desktop collapsed navigation",
+      "outcome": "improved",
+      "improvements": [
+        "UX02",
+        "UX14"
+      ],
+      "baselineFrameCount": 2
+    },
+    {
+      "pass": 14,
+      "scope": "Keyboard sidebar resize",
+      "outcome": "improved",
+      "improvements": [
+        "UX07"
+      ],
+      "baselineFrameCount": 2
+    },
+    {
+      "pass": 15,
+      "scope": "Desktop Preferences entry",
+      "outcome": "existing behavior verified",
+      "improvements": [],
+      "baselineFrameCount": 1
+    },
+    {
+      "pass": 16,
+      "scope": "Preferences viewport continuity and phone scroll",
+      "outcome": "improved",
+      "improvements": [
+        "UX08"
+      ],
+      "baselineFrameCount": 4
+    },
+    {
+      "pass": 17,
+      "scope": "Drive access sheet",
+      "outcome": "existing behavior verified",
+      "improvements": [],
+      "baselineFrameCount": 2
+    },
+    {
+      "pass": 18,
+      "scope": "Document action menu",
+      "outcome": "existing behavior verified",
+      "improvements": [],
+      "baselineFrameCount": 1
+    },
+    {
+      "pass": 19,
+      "scope": "Cancelled rename draft",
+      "outcome": "existing behavior verified",
+      "improvements": [],
+      "baselineFrameCount": 2
+    },
+    {
+      "pass": 20,
+      "scope": "Move destination admission",
+      "outcome": "existing behavior verified",
+      "improvements": [],
+      "baselineFrameCount": 2
+    },
+    {
+      "pass": 21,
+      "scope": "Move expansion and responsive overlay stack",
+      "outcome": "improved",
+      "improvements": [
+        "UX04",
+        "UX11"
+      ],
+      "baselineFrameCount": 5
+    },
+    {
+      "pass": 22,
+      "scope": "Create menu and unavailable templates",
+      "outcome": "improved",
+      "improvements": [
+        "UX10"
+      ],
+      "baselineFrameCount": 3
+    },
+    {
+      "pass": 23,
+      "scope": "Phone document toolbar and reading alternative",
+      "outcome": "known provider limitation; existing external Read document alternative",
+      "improvements": [],
+      "baselineFrameCount": 3
+    },
+    {
+      "pass": 24,
+      "scope": "Short-link loading and dismissal",
+      "outcome": "improved",
+      "improvements": [
+        "UX12"
+      ],
+      "baselineFrameCount": 2
+    },
+    {
+      "pass": 25,
+      "scope": "Cross-tab recent history refresh",
+      "outcome": "improved",
+      "improvements": [
+        "UX13"
+      ],
+      "baselineFrameCount": 5
+    }
+  ],
+  "independentBaselineReviewReceipts": [
+    {
+      "name": "independent-ux-review-pass-01-07-v1.json",
+      "sha256": "832e2d2c0d06da617abacaf6a50f4085f791dd678bbf810ffc0b2d8cfa5e1483"
+    },
+    {
+      "name": "independent-ux-review-pass-08-16-v1.json",
+      "sha256": "037cc7c406139334a30fd174c5fbc1ac9d25397be26f61ee0bf356a60f683eb9"
+    },
+    {
+      "name": "independent-ux-review-pass-17-25-v1.json",
+      "sha256": "354ddf76afb10542a4aa9bcf6214b6119f49cc9239407f3ffc32a47677df4c87"
+    }
+  ],
+  "verification": {
+    "regressionNegativeControls": [
+      "history",
+      "resize",
+      "drawer",
+      "preferences",
+      "sortable",
+      "search-close"
+    ],
+    "negativeControlBaseRevision": "ce4b83f0b338609ecfdc19be0637e30013dd230c",
+    "authorization": "Recent-page storage supplies IDs only; rendered titles still require current authorized metadata.",
+    "providerLimit": "Google Docs embedded editing remains limited on small phone viewports; the existing Read document link opens the Google reader.",
+    "privateEvidenceLocation": "/private/tmp/sarj-wiki-ux-round11-evidence-20261013"
+  }
+}

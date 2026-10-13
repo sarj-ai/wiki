@@ -197,6 +197,45 @@ describe("sidebar resize ownership", () => {
     });
   }
 
+  it("accumulates rapid keyboard steps while the rendered width is still animating", () => {
+    const sidebar = wrapper.querySelector<HTMLElement>('[data-slot="sidebar-container"]');
+    if (!sidebar) throw new Error("Sidebar container missing");
+    vi.spyOn(sidebar, "getBoundingClientRect").mockReturnValue(new DOMRect(0, 0, 300, 800));
+    wrapper.style.setProperty("--sidebar-width", "300px");
+    const separator = mountHandle();
+    press("ArrowRight");
+    press("ArrowRight");
+    press("ArrowRight");
+    expect(wrapper.style.getPropertyValue("--sidebar-width")).toBe("348px");
+    expect(separator).toHaveAttribute("aria-valuenow", "348");
+    press("ArrowLeft");
+    press("ArrowLeft");
+    press("ArrowLeft");
+    expect(wrapper.style.getPropertyValue("--sidebar-width")).toBe("300px");
+    expect(separator).toHaveAttribute("aria-valuenow", "300");
+  });
+
+  it.each(["left", "right"])(
+    "retains the intended %s width when a pointer takes over an animated keyboard resize",
+    (side) => {
+      const sidebar = wrapper.querySelector<HTMLElement>('[data-slot="sidebar-container"]');
+      if (!sidebar) throw new Error("Sidebar container missing");
+      vi.spyOn(sidebar, "getBoundingClientRect").mockReturnValue(new DOMRect(0, 0, 300, 800));
+      pane.dataset["side"] = side;
+      wrapper.style.setProperty("--sidebar-width", "300px");
+      mountHandle();
+      const growKey = side === "left" ? "ArrowRight" : "ArrowLeft";
+      press(growKey);
+      press(growKey);
+      press(growKey);
+      expect(wrapper.style.getPropertyValue("--sidebar-width")).toBe("348px");
+      start();
+      send("pointerup", side === "left" ? 110 : 90);
+      expect(wrapper.style.getPropertyValue("--sidebar-width")).toBe("358px");
+      expectReleased();
+    },
+  );
+
   it("provides a focusable width range and persists bounded keyboard adjustments", () => {
     const separator = mountHandle();
     expect(separator.tabIndex).toBe(0);

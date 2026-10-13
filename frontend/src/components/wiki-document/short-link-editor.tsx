@@ -247,14 +247,20 @@ function ShortLinkQueryState({
 }) {
   if (pending)
     return (
-      <div className="text-muted-foreground flex h-24 items-center justify-center gap-2 text-sm">
-        <Loader2 className="size-4 animate-spin" />
+      <div
+        className="text-muted-foreground flex h-24 items-center justify-center gap-2 text-sm"
+        role="status"
+      >
+        <Loader2 aria-hidden className="size-4 animate-spin" />
         Loading short link…
       </div>
     );
   if (error)
     return (
-      <div className="border-destructive/30 bg-destructive/5 text-destructive rounded-md border px-3 py-2 text-sm">
+      <div
+        className="border-destructive/30 bg-destructive/5 text-destructive rounded-md border px-3 py-2 text-sm"
+        role="alert"
+      >
         Couldn&apos;t load this document&apos;s short link.
       </div>
     );

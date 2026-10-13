@@ -9,6 +9,7 @@ interface FocusOpening {
   claim: ReturnType<ReturnType<typeof createFocusOwner>["capture"]>;
   content: HTMLElement | null;
   fallbackTargetRef: FocusTargetRef | null;
+  fallbackTargetRefs: readonly FocusTargetRef[] | undefined;
   target: HTMLElement | null;
   targetRef: FocusTargetRef | null;
 }
@@ -17,6 +18,7 @@ const FocusDepthContext = createContext(0);
 
 const FocusReturnContext = createContext<{
   fallbackTargetRef: FocusTargetRef | null;
+  fallbackTargetRefs: readonly FocusTargetRef[] | undefined;
   owner: ReturnType<typeof createFocusOwner>;
   targetRef: FocusTargetRef;
 } | null>(null);
@@ -24,19 +26,23 @@ const FocusReturnContext = createContext<{
 export function FocusReturnProvider({
   children,
   fallbackTargetRef,
+  fallbackTargetRefs,
   targetRef,
 }: {
   children: React.ReactNode;
   fallbackTargetRef?: FocusTargetRef;
+  fallbackTargetRefs?: readonly FocusTargetRef[];
   targetRef: FocusTargetRef;
 }) {
   const [owner] = useState(createFocusOwner);
   useLayoutEffect(() => {
     owner.activate(targetRef);
     return () => owner.retire();
-  }, [fallbackTargetRef, owner, targetRef]);
+  }, [fallbackTargetRef, fallbackTargetRefs, owner, targetRef]);
   return (
-    <FocusReturnContext value={{ fallbackTargetRef: fallbackTargetRef ?? null, owner, targetRef }}>
+    <FocusReturnContext
+      value={{ fallbackTargetRef: fallbackTargetRef ?? null, fallbackTargetRefs, owner, targetRef }}
+    >
       <FocusDepthContext value={0}>{children}</FocusDepthContext>
     </FocusReturnContext>
   );
@@ -90,6 +96,7 @@ export function useFocusReturn({
         claim: (explicit?.owner ?? localOwner).capture(ownerTargetRef, depth),
         content,
         fallbackTargetRef: explicit?.fallbackTargetRef ?? null,
+        fallbackTargetRefs: explicit?.fallbackTargetRefs,
         ...captureReturnTarget(content, ownerTargetRef),
       };
       onOpenAutoFocus?.(event);
@@ -159,11 +166,23 @@ function captureReturnTarget(content: HTMLElement | null, targetRef: FocusTarget
   return { target: candidate instanceof HTMLElement ? candidate : null, targetRef };
 }
 
-function resolveReturnTarget({ fallbackTargetRef, target, targetRef }: FocusOpening) {
+function resolveReturnTarget({
+  fallbackTargetRef,
+  fallbackTargetRefs,
+  target,
+  targetRef,
+}: FocusOpening) {
   if (target && (!targetRef || targetRef.current === target) && canReturnFocus(target))
     return target;
   const fallback = fallbackTargetRef?.current;
-  return fallback && canReturnFocus(fallback) ? fallback : null;
+  if (fallback && canReturnFocus(fallback)) return fallback;
+  if (fallbackTargetRefs != null) {
+    for (const candidateRef of fallbackTargetRefs) {
+      const candidate = candidateRef.current;
+      if (candidate && canReturnFocus(candidate)) return candidate;
+    }
+  }
+  return null;
 }
 
 function createFocusOwner() {

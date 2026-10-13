@@ -2,7 +2,6 @@
 
 import { useQueryClient } from "@tanstack/react-query";
 import { ChevronsUpDown, LogOut, Moon, Settings, Sun } from "lucide-react";
-import dynamic from "next/dynamic";
 import { useTheme } from "next-themes";
 import { useRef, useState } from "react";
 
@@ -18,18 +17,11 @@ import {
 import { FocusReturnProvider } from "@/components/ui/focus-return";
 import { SidebarFooter } from "@/components/ui/sidebar";
 import { useCurrentUser } from "@/hooks/use-current-user";
-import { useDeferredDialog } from "@/hooks/use-deferred-dialog";
 import { useIsClient } from "@/hooks/use-is-client";
 import { logout as apiLogout } from "@/lib/auth";
 import { broadcastSessionClear, clearAuthenticatedSession } from "@/lib/session-isolation";
 
-const PreferencesDialog = dynamic(
-  async () => {
-    const loadedModule = await import("./preferences-dialog");
-    return loadedModule.PreferencesDialog;
-  },
-  { ssr: false },
-);
+import { usePreferencesDialogOutlet } from "./preferences-dialog-outlet";
 
 export function WikiFooter() {
   const user = useCurrentUser().data ?? null;
@@ -44,10 +36,9 @@ export function WikiFooter() {
   const { resolvedTheme, setTheme } = useTheme();
   const mounted = useIsClient();
 
-  const preferencesDialog = useDeferredDialog();
+  const preferencesDialog = usePreferencesDialogOutlet();
   const [accountMenuOpen, setAccountMenuOpen] = useState(false);
   const accountTrigger = useRef<HTMLButtonElement>(null);
-  const preferencesContent = useRef<HTMLElement | null>(null);
 
   const isDark = mounted && resolvedTheme === "dark";
   const toggleTheme = () => {
@@ -69,7 +60,15 @@ export function WikiFooter() {
             <Button
               aria-label="Account menu"
               className="hover:bg-sidebar-accent hover:text-sidebar-accent-foreground h-auto w-full justify-start px-2 py-1.5 font-normal"
-              ref={accountTrigger}
+              ref={(element) => {
+                accountTrigger.current = element;
+                if (!element) return;
+                const release = preferencesDialog.registerOpener(element);
+                return () => {
+                  if (accountTrigger.current === element) accountTrigger.current = null;
+                  release();
+                };
+              }}
               variant="ghost"
             >
               <Avatar className="bg-sidebar-accent text-sidebar-accent-foreground">
@@ -100,7 +99,7 @@ export function WikiFooter() {
             align="end"
             className="w-56"
             onCloseAutoFocus={(event) => {
-              if (preferencesContent.current) event.preventDefault();
+              if (preferencesDialog.hasActiveScope()) event.preventDefault();
             }}
             side="top"
           >
@@ -108,7 +107,7 @@ export function WikiFooter() {
               className="flex items-center gap-2 text-sm"
               onSelect={() => {
                 setAccountMenuOpen(false);
-                preferencesDialog.onOpenChange(true);
+                preferencesDialog.openPreferences(accountTrigger);
               }}
             >
               <Settings className="size-4" />
@@ -136,19 +135,6 @@ export function WikiFooter() {
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
-        {preferencesDialog.mounted ? (
-          <PreferencesDialog
-            onCloseAutoFocus={(event) => {
-              if (preferencesContent.current === event.target) preferencesContent.current = null;
-            }}
-            onOpenAutoFocus={(event) => {
-              preferencesContent.current =
-                event.target instanceof HTMLElement ? event.target : null;
-            }}
-            onOpenChange={preferencesDialog.onOpenChange}
-            open={preferencesDialog.open}
-          />
-        ) : null}
       </SidebarFooter>
     </FocusReturnProvider>
   );
