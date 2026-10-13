@@ -15,6 +15,7 @@ import { WikiFooter } from "./wiki-footer";
 const ACTIONS = vi.hoisted(() => ({
   logout: vi.fn<() => Promise<void>>(),
   preferences: vi.fn<() => Promise<ActionResult<Preferences>>>(),
+  readPreferences: vi.fn<() => Promise<Preferences>>(),
   theme: vi.fn(),
 }));
 const viewport = vi.hoisted(() => ({ mobile: false }));
@@ -35,6 +36,9 @@ vi.mock("next-themes", () => ({
 }));
 vi.mock("@/app/actions/wiki-actions", () => ({ setPreferencesAction: ACTIONS.preferences }));
 vi.mock("@/lib/auth", () => ({ logout: ACTIONS.logout }));
+vi.mock("@/lib/wiki-read-api", () => ({
+  WIKI_READ_API: { getPreferences: ACTIONS.readPreferences },
+}));
 
 describe("account menu preferences transition", () => {
   let client: QueryClient;
@@ -206,6 +210,39 @@ describe("account menu preferences transition", () => {
     mount("second-user", "second-user");
     expect(document.querySelector('[role="dialog"]')).toBeNull();
     expect(ACTIONS.preferences).not.toHaveBeenCalled();
+  });
+
+  it("keeps admitted saving feedback through closing and reopening Preferences", async () => {
+    const pending = Promise.withResolvers<ActionResult<Preferences>>();
+    const saved = { showNonDocFiles: false, hiddenWorkspaceIds: [] };
+    ACTIONS.preferences.mockReturnValueOnce(pending.promise);
+    ACTIONS.readPreferences.mockResolvedValue(saved);
+    try {
+      mount();
+      await openPreferences();
+      const checkbox = document.querySelector<HTMLElement>('[role="checkbox"]');
+      if (!checkbox) throw new Error("Preference checkbox missing");
+      flushSync(() => checkbox.click());
+      await vi.advanceTimersByTimeAsync(0);
+      expect(document.querySelector('[role="status"]')).toHaveTextContent("Saving preferences…");
+      const done = [...document.querySelectorAll("button")].find(
+        (button) => button.textContent === "Done",
+      );
+      if (!done) throw new Error("Preferences Done control missing");
+      flushSync(() => done.click());
+      await vi.advanceTimersByTimeAsync(1);
+      expect(document.querySelector('[data-slot="dialog-content"]')).toBeNull();
+      await openPreferences();
+      expect(document.querySelector('[role="status"]')).toHaveTextContent("Saving preferences…");
+      expect(document.querySelector('[role="checkbox"]')).toHaveAttribute("aria-checked", "false");
+      expect(ACTIONS.preferences).toHaveBeenCalledOnce();
+      pending.resolve({ ok: true, data: saved });
+      await vi.advanceTimersByTimeAsync(0);
+      expect(document.querySelector('[role="status"]')).toBeNull();
+    } finally {
+      pending.resolve({ ok: true, data: saved });
+      await vi.advanceTimersByTimeAsync(0);
+    }
   });
 });
 

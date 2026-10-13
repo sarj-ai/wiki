@@ -63,14 +63,6 @@ function PreferencesDialogOwner({
   const [fallbackTargetRefs] = useState(() => [accountTriggerRef, mobileTriggerRef]);
   const [opening, setOpening] = useState<null | PreferencesOpening>(null);
   const contentRef = useRef<{ content: HTMLElement | null; token: symbol } | null>(null);
-  const closeTimer = useRef<null | number>(null);
-
-  useEffect(
-    () => () => {
-      if (closeTimer.current !== null) window.clearTimeout(closeTimer.current);
-    },
-    [],
-  );
   useEffect(() => {
     if (!opening) return;
     const retire = () =>
@@ -120,15 +112,8 @@ function PreferencesDialogOwner({
               )
                 return;
               contentRef.current = null;
-              if (closeTimer.current !== null) window.clearTimeout(closeTimer.current);
-              // Preserve the focus owner through Radix's real close callback
-              // and the shared return-focus microtask.
-              closeTimer.current = window.setTimeout(() => {
-                closeTimer.current = null;
-                setOpening((current) =>
-                  current?.token === currentOpening.token && !current.open ? null : current,
-                );
-              }, 0);
+              // Keep the dialog's mutation observer and focus owner alive
+              // after dismissal, including a close/reopen during a save.
             }}
             onOpenAutoFocus={(event) => {
               contentRef.current = {
