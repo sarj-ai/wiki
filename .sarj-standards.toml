@@ -1,5 +1,5 @@
 # Managed by `code-standards setup`; commit this file.
-bundle = "8.43.2"
+bundle = "8.55.2"
 rule_profile = "all"
 schema = 4
 
@@ -15,6 +15,7 @@ disable = [
   "zizmor",
   "checkov",
   "jscpd",
+  "knip",
 ]
 
 [artifacts]
