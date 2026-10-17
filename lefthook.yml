@@ -39,7 +39,7 @@ pre-commit:
     # check`, whose check-frontend step mirrors the CI "TypeScript check".
     frontend-eslint:
       root: frontend/
-      glob: "*.{js,mjs,cjs,ts,tsx}"
+      glob: "*.{js,jsx,mjs,cjs,ts,tsx,mts,cts}"
       # Standards owns warning promotion; the canonical staged gate checks the approved baseline.
       run: >-
         ../scripts/check-fully-staged.sh {staged_files} &&
@@ -49,7 +49,7 @@ pre-commit:
       fail_text: "AGENT: ESLint rejected staged frontend code. Fix: run 'make fix' (applies eslint --fix), repair what remains by hand, stage, and retry. NEVER use --no-verify."
     frontend-prettier:
       root: frontend/
-      glob: "*.{js,mjs,cjs,ts,tsx,json,css,md,yml,yaml}"
+      glob: "*.{js,jsx,mjs,cjs,ts,tsx,mts,cts,json,css,md,yml,yaml}"
       run: npm exec --call "prettier --check --ignore-unknown {staged_files}"
       fail_text: "AGENT: staged frontend files are not Prettier-formatted. Fix: run 'npm run format' in frontend/ (or prettier --write on the listed files), stage, and retry. NEVER use --no-verify."
     markdownlint:
@@ -65,7 +65,7 @@ pre-commit:
       fail_text: "AGENT: a pre-commit hook (hygiene, gitleaks, actionlint, or a sarj-* rule) rejected staged files. Fix: repair the reported finding (sarj rules accept a narrow '# sarj-noqa: SARJ0XX — reason' only with justification), stage, and retry. NEVER use --no-verify."
 
     code-standards:
-      run: uvx --no-config --isolated --python 3.14 --from sarj-standards-bootstrap code-standards check --staged --trust-repository-code -- {staged_files}
+      run: uvx --no-config --isolated --python 3.14 --from sarj-standards-bootstrap code-standards check --staged --trust-repository-code
 pre-push:
   parallel: true
   commands:

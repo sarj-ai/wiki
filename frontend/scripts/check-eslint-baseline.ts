@@ -4,26 +4,26 @@ import { copyFile, mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-const baselinePath = "eslint-suppressions.json";
-const temporaryDirectory = await mkdtemp(join(tmpdir(), "wiki-eslint-baseline-"));
-const temporaryBaseline = join(temporaryDirectory, "eslint-suppressions.json");
+const BASELINE_PATH = "eslint-suppressions.json";
+const TEMPORARY_DIRECTORY = await mkdtemp(join(tmpdir(), "wiki-eslint-baseline-"));
+const TEMPORARY_BASELINE = join(TEMPORARY_DIRECTORY, "eslint-suppressions.json");
 
 try {
-  await copyFile(baselinePath, temporaryBaseline);
+  await copyFile(BASELINE_PATH, TEMPORARY_BASELINE);
   execFileSync(
     "node_modules/.bin/eslint",
     [
       ".",
       "--suppressions-location",
-      temporaryBaseline,
+      TEMPORARY_BASELINE,
       "--prune-suppressions",
       "--pass-on-unpruned-suppressions",
     ],
     { stdio: "inherit" },
   );
   const [committed, pruned] = await Promise.all([
-    readFile(baselinePath, "utf8"),
-    readFile(temporaryBaseline, "utf8"),
+    readFile(BASELINE_PATH, "utf8"),
+    readFile(TEMPORARY_BASELINE, "utf8"),
   ]);
   assert.deepEqual(
     JSON.parse(pruned),
@@ -31,5 +31,5 @@ try {
     "eslint-suppressions.json contains unused or inflated allowances",
   );
 } finally {
-  await rm(temporaryDirectory, { recursive: true });
+  await rm(TEMPORARY_DIRECTORY, { recursive: true });
 }

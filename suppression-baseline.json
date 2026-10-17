@@ -10,15 +10,15 @@
     "noqa:RUF029": 1,
     "noqa:S404": 1,
     "noqa:S603": 3,
+    "pyright:reportAttributeAccessIssue": 1,
     "sarj-noqa:SARJ071": 1,
     "sarj-noqa:SARJ428": 2,
     "sarj-noqa:SARJ470": 8,
     "type-ignore:attr-defined": 1,
-    "type-ignore:call-arg": 2,
     "type-ignore:no-untyped-call": 2
   },
   "packages": {
-    "backend": 25
+    "backend": 24
   },
   "excluded_subtrees": [],
   "files": {
@@ -31,10 +31,8 @@
       "backend/alembic/versions/0022_qa_corpus_campaigns.py": {
         "sarj-noqa:SARJ470": 8
       },
-      "backend/app/config.py": {
-        "type-ignore:call-arg": 1
-      },
       "backend/app/drive/service.py": {
+        "pyright:reportAttributeAccessIssue": 1,
         "type-ignore:attr-defined": 1,
         "type-ignore:no-untyped-call": 2
       },
@@ -54,9 +52,6 @@
       "backend/scripts/qa_document_transform_corpus.py": {
         "noqa:S404": 1,
         "noqa:S603": 3
-      },
-      "backend/tests/test_config.py": {
-        "type-ignore:call-arg": 1
       },
       "backend/tests/test_sidebar_cache.py": {
         "sarj-noqa:SARJ428": 2

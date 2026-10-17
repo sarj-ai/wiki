@@ -305,6 +305,12 @@ def test_required_ci_aggregators_remain_fail_closed() -> None:
         (["backend/app/main.py"], True, True),
         (["backend/uv.lock"], True, True),
         (["frontend/openapi.json"], True, True),
+        pytest.param(
+            ["frontend/scripts/patch-generated.ts"], True, True, id="typed-api-generator"
+        ),
+        pytest.param(
+            ["frontend/scripts/patch-generated.mjs"], True, True, id="legacy-api-generator"
+        ),
         (["frontend/src/lib/generated/types.ts"], True, True),
         ([".github/workflows/ci-backend.yml"], True, True),
         (["scripts/github/runtime-ci-policy.sh"], True, True),

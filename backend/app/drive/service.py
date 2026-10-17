@@ -1435,7 +1435,8 @@ class GoogleDriveService(DriveService):
             GoogleDriveService.build_credentials(user, refresh_handler),
             http=httplib2.Http(timeout=_DRIVE_HTTP_TIMEOUT.total_seconds()),
         )
-        built: DriveResource = discovery.build_from_document(  # type: ignore[attr-defined]  # ty: ignore[unresolved-attribute]
+        # The installed SDK implements this builder; its external stubs omit the attribute.
+        built: DriveResource = discovery.build_from_document(  # type: ignore[attr-defined]  # ty: ignore[unresolved-attribute]  # pyright: ignore[reportAttributeAccessIssue]
             drive_discovery_document(), http=authed_http
         )
         return built

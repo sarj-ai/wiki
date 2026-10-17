@@ -10,7 +10,7 @@ from pydantic import (
     field_validator,
     model_validator,
 )
-from pydantic_settings import SettingsConfigDict
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from app.database_config import DatabaseSettings, NonEmptyStr
 from app.mcp.redirect_policy import McpRedirectPolicy
@@ -307,4 +307,10 @@ def _is_https_origin(url: HttpUrl) -> bool:
     )
 
 
-settings = Settings()  # type: ignore[call-arg]
+def load_environment_settings[SettingsModel: BaseSettings](
+    model: type[SettingsModel], *, load_dotenv: bool = True
+) -> SettingsModel:
+    return model() if load_dotenv else model(_env_file=None)
+
+
+settings = load_environment_settings(Settings)
