@@ -9,15 +9,19 @@ fi
 temp_dir=$(mktemp -d)
 trap 'rm -rf "$temp_dir"' EXIT
 
-git diff --name-only "$base_sha" > "$temp_dir/changed-files"
-git show "$base_sha:.sarj-standards.toml" > "$temp_dir/base-standards.toml"
+git diff --name-only "$base_sha" >"$temp_dir/changed-files"
+git show "$base_sha:.sarj-standards.toml" >"$temp_dir/base-standards.toml"
 {
   git show "$base_sha:frontend/eslint.strict.mjs"
-  git show "$base_sha:frontend/eslint.config.mjs"
-} > "$temp_dir/base-eslint-configs.mjs"
+  for config in eslint.config.ts eslint.config.mts eslint.config.cts eslint.config.js eslint.config.mjs eslint.config.cjs; do
+    if git cat-file -e "$base_sha:frontend/$config" 2>/dev/null; then
+      git show "$base_sha:frontend/$config"
+    fi
+  done
+} >"$temp_dir/base-eslint-configs.txt"
 
 initializing_diagnostic_baselines=false
-if [[ -f diagnostic-baseline.json ]] && \
+if [[ -f diagnostic-baseline.json ]] &&
   ! git cat-file -e "$base_sha:diagnostic-baseline.json" 2>/dev/null; then
   initializing_diagnostic_baselines=true
 fi
@@ -31,12 +35,12 @@ for baseline in python-standards-baseline.json frontend/eslint-suppressions.json
   if [[ "$initializing_diagnostic_baselines" == true ]]; then
     uv run --project backend --locked python scripts/check_baseline_growth.py \
       --initial "$baseline" "$temp_dir/changed-files" "$prefix"
-  elif git show "$base_sha:$baseline" > "$base_file" 2>/dev/null; then
+  elif git show "$base_sha:$baseline" >"$base_file" 2>/dev/null; then
     if [[ "$baseline" == frontend/* ]]; then
       uv run --project backend --locked python scripts/check_baseline_growth.py \
         --standards-base "$temp_dir/base-standards.toml" \
         --standards-current .sarj-standards.toml \
-        --base-config "$temp_dir/base-eslint-configs.mjs" \
+        --base-config "$temp_dir/base-eslint-configs.txt" \
         --bootstrap standards-baseline-bootstrap.json \
         --merge-base "$base_sha" \
         --allowance-path "$baseline" \

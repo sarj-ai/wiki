@@ -7,11 +7,6 @@
       "count": 1
     }
   },
-  "postcss.config.mjs": {
-    "@sarj/sole-export-matches-filename": {
-      "count": 1
-    }
-  },
   "src/app/actions/smart-create-actions.test.ts": {
     "@sarj/no-conditional-empty-object-spread": {
       "count": 1

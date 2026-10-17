@@ -61,7 +61,7 @@ const SECURITY_HEADERS = [
   },
 ];
 
-const nextConfig: NextConfig = {
+const NEXT_CONFIG: NextConfig = {
   experimental: {
     optimizePackageImports: [
       "lucide-react",
@@ -71,50 +71,56 @@ const nextConfig: NextConfig = {
       "@dnd-kit/utilities",
     ],
   },
-  headers: async () => [
-    {
-      headers: [
-        { key: "Cache-Control", value: "public, max-age=86400, stale-while-revalidate=604800" },
-        ...SECURITY_HEADERS,
-      ],
-      // Static brand assets are immutable in practice; cache them instead of revalidating.
-      source: "/brand/:path*",
-    },
-    {
-      headers: [{ key: "Cache-Control", value: "no-cache, must-revalidate" }, ...SECURITY_HEADERS],
-      // HTML pages: always revalidate (browser checks for new version).
-      source: "/((?!_next/static|_next/image|brand/).*)",
-    },
-    {
-      headers: [{ key: "Cache-Control", value: "private, no-store" }, ...SECURITY_HEADERS],
-      source: "/health",
-    },
-    {
-      // Keep private API reads and expired-session errors out of all caches.
-      // Cloudflare applies configured headers after route response headers.
-      headers: [{ key: "Cache-Control", value: "private, no-store" }],
-      source: "/api/:path*",
-    },
-    {
-      headers: [
-        ...SECURITY_HEADERS.filter(
-          (header) =>
-            !["Content-Security-Policy", "Referrer-Policy", "X-Frame-Options"].includes(header.key),
-        ),
-        { key: "Cache-Control", value: "private, no-store" },
-        { key: "Referrer-Policy", value: "no-referrer" },
-        { key: "X-Frame-Options", value: "DENY" },
-        {
-          key: "Content-Security-Policy",
-          value: CSP_DIRECTIVES.replace("frame-ancestors 'self'", "frame-ancestors 'none'"),
-        },
-      ],
-      source: "/mcp/:path*",
-    },
-  ],
+  headers: () =>
+    Promise.resolve([
+      {
+        headers: [
+          { key: "Cache-Control", value: "public, max-age=86400, stale-while-revalidate=604800" },
+          ...SECURITY_HEADERS,
+        ],
+        // Static brand assets are immutable in practice; cache them instead of revalidating.
+        source: "/brand/:path*",
+      },
+      {
+        headers: [
+          { key: "Cache-Control", value: "no-cache, must-revalidate" },
+          ...SECURITY_HEADERS,
+        ],
+        // HTML pages: always revalidate (browser checks for new version).
+        source: "/((?!_next/static|_next/image|brand/).*)",
+      },
+      {
+        headers: [{ key: "Cache-Control", value: "private, no-store" }, ...SECURITY_HEADERS],
+        source: "/health",
+      },
+      {
+        // Keep private API reads and expired-session errors out of all caches.
+        // Cloudflare applies configured headers after route response headers.
+        headers: [{ key: "Cache-Control", value: "private, no-store" }],
+        source: "/api/:path*",
+      },
+      {
+        headers: [
+          ...SECURITY_HEADERS.filter(
+            (header) =>
+              !["Content-Security-Policy", "Referrer-Policy", "X-Frame-Options"].includes(
+                header.key,
+              ),
+          ),
+          { key: "Cache-Control", value: "private, no-store" },
+          { key: "Referrer-Policy", value: "no-referrer" },
+          { key: "X-Frame-Options", value: "DENY" },
+          {
+            key: "Content-Security-Policy",
+            value: CSP_DIRECTIVES.replace("frame-ancestors 'self'", "frame-ancestors 'none'"),
+          },
+        ],
+        source: "/mcp/:path*",
+      },
+    ]),
   output: "standalone",
   reactCompiler: true,
   typedRoutes: true,
 };
 
-export default nextConfig;
+export default NEXT_CONFIG;

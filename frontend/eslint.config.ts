@@ -1,4 +1,5 @@
 import vitest from "@vitest/eslint-plugin";
+import type { Linter } from "eslint";
 import { defineConfig, globalIgnores } from "eslint/config";
 import nextVitals from "eslint-config-next/core-web-vitals";
 import nextTs from "eslint-config-next/typescript";
@@ -14,23 +15,25 @@ import sarjStrict from "./eslint.strict.mjs";
 const { dirname: tsconfigRootDir } = import.meta;
 const { "flat/react": testingLibraryReact } = testingLibrary.configs;
 
-const rulesAsErrors = (rules = {}) =>
-  Object.fromEntries(
-    Object.entries(rules).map(([name, setting]) => {
-      if (setting === "off" || setting === 0) return [name, setting];
-      if (Array.isArray(setting)) return [name, ["error", ...setting.slice(1)]];
-      return [name, "error"];
-    }),
-  );
+const rulesAsErrors = (rules: Partial<Linter.RulesRecord> = {}): Linter.RulesRecord => {
+  const result: Linter.RulesRecord = {};
+  for (const [name, setting] of Object.entries(rules)) {
+    if (setting === undefined) continue;
+    if (setting === "off" || setting === 0) result[name] = setting;
+    else if (Array.isArray(setting)) result[name] = ["error", ...setting.slice(1)];
+    else result[name] = "error";
+  }
+  return result;
+};
 
-const configsAsErrors = (configs) =>
+const configsAsErrors = (configs: readonly Linter.Config[]): Linter.Config[] =>
   configs.map((config) => ({
     ...config,
     rules: rulesAsErrors(config.rules),
   }));
 
 // Use the strict config's compatibility-wrapped React plugin to avoid duplicate namespaces.
-const withoutReactPlugin = (configs) =>
+const withoutReactPlugin = (configs: readonly Linter.Config[]): Linter.Config[] =>
   configs.map((config) => {
     if (!config.plugins || !("react" in config.plugins)) return config;
     const { react: _react, ...plugins } = config.plugins;
@@ -39,8 +42,8 @@ const withoutReactPlugin = (configs) =>
 
 const strictNamingConvention = sarjStrict
   .map((config) => config.rules?.["@typescript-eslint/naming-convention"])
-  .find(Array.isArray);
-const reactNamingConvention = strictNamingConvention && [
+  .find((setting): setting is [Linter.Severity, ...unknown[]] => Array.isArray(setting));
+const reactNamingConvention: Linter.RuleEntry | undefined = strictNamingConvention && [
   strictNamingConvention[0],
   { format: ["camelCase", "PascalCase"], selector: "function" },
   ...strictNamingConvention.slice(1),
@@ -175,19 +178,34 @@ export default defineConfig([
   },
   // Test-file-only configs.
   {
-    files: ["**/*.test.{ts,tsx}"],
+    files: ["scripts/*.test.ts"],
+    rules: {
+      // The native Node runner owns registration and failure propagation.
+      "@typescript-eslint/no-floating-promises": [
+        "error",
+        {
+          allowForKnownSafeCalls: [
+            { from: "package", name: ["describe", "it"], package: "node:test" },
+          ],
+          ignoreVoid: false,
+        },
+      ],
+    },
+  },
+  {
+    files: ["src/**/*.test.{ts,tsx}"],
     plugins: { vitest },
     rules: rulesAsErrors(vitest.configs.recommended.rules),
     settings: { vitest: { typecheck: true } },
   },
   {
-    files: ["**/*.test.tsx"],
+    files: ["src/**/*.test.tsx"],
     ...testingLibraryReact,
     rules: rulesAsErrors(testingLibraryReact.rules),
   },
   // Restore async and scoping rules that test-double type assertions do not require disabling.
   {
-    files: ["**/*.test.{ts,tsx}"],
+    files: ["src/**/*.test.{ts,tsx}"],
     rules: {
       "@typescript-eslint/promise-function-async": "error",
       "@typescript-eslint/require-await": "error",
@@ -214,11 +232,6 @@ export default defineConfig([
     rules: {
       "@sarj/no-raw-env": "off",
     },
-  },
-  // Config files live outside the typed project — disable type-aware rules.
-  {
-    extends: [tseslint.configs.disableTypeChecked],
-    files: ["**/*.config.{ts,mjs,js}", "**/*.mjs"],
   },
   globalIgnores([
     // Default ignores of eslint-config-next:

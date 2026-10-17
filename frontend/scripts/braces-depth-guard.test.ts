@@ -1,9 +1,10 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
-import braces from "braces";
+import braces, { type BracesNode } from "braces";
 
-const nested = (opening, closing, depth) => `${opening.repeat(depth)}a${closing.repeat(depth)}`;
+const nested = (opening: string, closing: string, depth: number): string =>
+  `${opening.repeat(depth)}a${closing.repeat(depth)}`;
 
 describe("braces security backport", () => {
   it("preserves ordinary expansion and invalid-brace escaping", () => {
@@ -14,8 +15,8 @@ describe("braces security backport", () => {
   for (const [opening, closing] of [
     ["{", "}"],
     ["(", ")"],
-  ]) {
-    for (const method of ["parse", "compile", "expand", "stringify"]) {
+  ] as const) {
+    for (const method of ["parse", "compile", "expand", "stringify"] as const) {
       it(`bounds ${opening}${closing} nesting in ${method}`, () => {
         braces[method](nested(opening, closing, 100));
         assert.throws(
@@ -34,16 +35,16 @@ describe("braces security backport", () => {
     }
   }
 
-  for (const method of ["compile", "expand", "stringify"]) {
+  for (const method of ["compile", "expand", "stringify"] as const) {
     it(`bounds caller-supplied cyclic child graphs in ${method}`, () => {
-      const root = { type: "root", nodes: [] };
+      const root: BracesNode & { nodes: BracesNode[] } = { type: "root", nodes: [] };
       root.nodes.push(root);
       assert.throws(() => braces[method](root), /exceeds max depth \(100\)/u);
     });
   }
 
   it("rejects cyclic expansion parent chains", () => {
-    const parent = { type: "paren", nodes: [], queue: [] };
+    const parent: BracesNode = { type: "paren", nodes: [], queue: [] };
     parent.parent = parent;
     const ast = { type: "paren", nodes: [], parent };
     assert.throws(() => braces.expand(ast), /AST parent chain contains a cycle/u);
