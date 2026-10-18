@@ -1,4 +1,4 @@
-enabled_rules = ["repository/artifacts/makefile-growth", "repository/artifacts/untyped-javascript"]
+enabled_rules = ["repository/artifacts/makefile-growth", "repository/artifacts/untyped-javascript", "repository/artifacts/local-residue"]
 repository_id = "wiki"
 components = []
 
