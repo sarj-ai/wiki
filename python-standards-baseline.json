@@ -201,9 +201,6 @@
     "SARJ444": 3,
     "SARJ447": 18
   },
-  "backend/app/document_transform/task_executor.py": {
-    "SARJ026": 1
-  },
   "backend/app/document_transform/word_executor.py": {
     "SARJ444": 1,
     "SARJ465": 1
@@ -262,13 +259,12 @@
     "SARJ432": 1
   },
   "backend/scripts/qa_document_transform_cloud.py": {
-    "SARJ093": 5,
     "SARJ444": 1,
     "SARJ447": 1,
     "SARJ485": 1
   },
   "backend/scripts/qa_document_transform_corpus.py": {
-    "SARJ093": 4,
+    "SARJ093": 2,
     "SARJ442": 2,
     "SARJ444": 2,
     "SARJ447": 11
@@ -280,7 +276,6 @@
     "SARJ432": 1
   },
   "backend/scripts/qa_polish_rounds.py": {
-    "SARJ093": 1,
     "SARJ444": 2
   },
   "backend/tests/support.py": {
