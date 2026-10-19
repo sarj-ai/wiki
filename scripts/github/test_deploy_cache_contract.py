@@ -287,7 +287,6 @@ def test_required_ci_aggregators_remain_fail_closed() -> None:
             "image",
         },
         "ci-frontend.yml": {"changes", "lint-and-typecheck", "test", "build"},
-        "ci-iac.yml": {"terraform-validation", "trivy-config"},
     }
 
     for name, needs in expected_needs.items():

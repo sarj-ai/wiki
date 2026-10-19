@@ -20,8 +20,10 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  terraform-validation:
-    name: IaC / Terraform validation
+  # One job carries the required check: both scans take seconds, and Blacksmith
+  # bills every job a full minute.
+  required:
+    name: IaC / required
     runs-on: blacksmith-2vcpu-ubuntu-2404
     timeout-minutes: 10
     env:
@@ -51,15 +53,8 @@ jobs:
       - name: Validate real provider schemas and offline preview wiring
         run: make check-iac
 
-  trivy-config:
-    name: IaC / Trivy config scan
-    runs-on: blacksmith-2vcpu-ubuntu-2404
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-
       - name: Trivy config scan (gate HIGH+CRITICAL)
+        if: ${{ !cancelled() }}
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
           scan-type: config
@@ -72,27 +67,11 @@ jobs:
       - name: Publish report to job summary
         id: trivy_summary_header
         if: always()
-        run: printf '%s\n' '## Trivy IaC scan (terraform/)' "\`\`\`" >> "$GITHUB_STEP_SUMMARY"
+        run: printf '%s\n' '## Trivy IaC scan (terraform/)' "\`\`\`" >>"$GITHUB_STEP_SUMMARY"
       - name: Append IaC scan report
         id: trivy_summary_report
         if: always() && steps.trivy_summary_header.outcome == 'success'
-        run: cat trivy-report.txt >> "$GITHUB_STEP_SUMMARY"
+        run: cat trivy-report.txt >>"$GITHUB_STEP_SUMMARY"
       - name: Close IaC scan summary
         if: always() && steps.trivy_summary_header.outcome == 'success' && steps.trivy_summary_report.outcome == 'success'
-        run: printf '%s\n' "\`\`\`" >> "$GITHUB_STEP_SUMMARY"
-  required:
-    name: IaC / required
-    if: ${{ always() }}
-    needs: [trivy-config, terraform-validation]
-    runs-on: blacksmith-2vcpu-ubuntu-2404
-    timeout-minutes: 1
-    steps:
-      - name: Require the IaC gate
-        env:
-          TRIVY_RESULT: ${{ needs.trivy-config.result }}
-          TERRAFORM_RESULT: ${{ needs.terraform-validation.result }}
-        run: test "$TRIVY_RESULT" = success
-      - name: Require Terraform validation
-        env:
-          TERRAFORM_RESULT: ${{ needs.terraform-validation.result }}
-        run: test "$TERRAFORM_RESULT" = success
+        run: printf '%s\n' "\`\`\`" >>"$GITHUB_STEP_SUMMARY"
