@@ -9,7 +9,7 @@ _GITLEAKS_SHA256 = "551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f24
 def test_pre_commit_runtime_and_cache_are_version_bound() -> None:
     workflow = _QUALITY_WORKFLOW.read_text()
     repository_job = workflow[
-        workflow.index("  repository-quality:") : workflow.index("  python-baseline:")
+        workflow.index("  repository-quality:") : workflow.index("  api-contract:")
     ]
 
     assert "run: bash scripts/github/run-pre-commit.sh" in repository_job
@@ -23,15 +23,18 @@ def test_pre_commit_runtime_and_cache_are_version_bound() -> None:
     assert ".pre-commit-config.yaml" in repository_job
 
 
-def test_protected_pre_commit_check_requires_both_parallel_quality_jobs() -> None:
+def test_protected_pre_commit_check_runs_every_repository_quality_gate() -> None:
     workflow = _QUALITY_WORKFLOW.read_text()
-    protected_job = workflow[workflow.index("  pre-commit:") : workflow.index("  api-contract:")]
+    protected_job = workflow[
+        workflow.index("  repository-quality:") : workflow.index("  api-contract:")
+    ]
 
     assert "name: pre-commit (actionlint, hygiene, sarj rules)" in protected_job
-    assert "if: ${{ always() }}" in protected_job
-    assert "needs: [python-baseline, repository-quality]" in protected_job
-    assert 'test "$PYTHON_BASELINE_RESULT" = success' in protected_job
-    assert 'test "$REPOSITORY_QUALITY_RESULT" = success' in protected_job
+    assert "\n    if:" not in protected_job
+    assert "continue-on-error" not in protected_job
+    assert "scripts/check_standards.py --verify-python-baseline ." in protected_job
+    assert "run: bash scripts/github/run-pre-commit.sh" in protected_job
+    assert workflow.count("name: pre-commit (actionlint, hygiene, sarj rules)") == 1
 
 
 def test_gitleaks_archive_is_verified_before_extraction_and_execution() -> None:
