@@ -28,7 +28,7 @@ def test_cold_quality_checks_initialize_locked_local_providers_after_tool_setup(
     iac = yaml.safe_load((ROOT / ".github/workflows/ci-iac.yml").read_text())
     provider_setup = next(
         step
-        for step in iac["jobs"]["terraform-validation"]["steps"]
+        for step in iac["jobs"]["required"]["steps"]
         if step.get("uses", "").startswith("hashicorp/setup-terraform@")
     )
     quality = yaml.safe_load((ROOT / ".github/workflows/ci-quality.yml").read_text())
@@ -67,23 +67,23 @@ def test_cold_quality_checks_initialize_locked_local_providers_after_tool_setup(
 def test_iac_validation_uses_locked_provider_cache_without_weakening_gates() -> None:
     workflow = yaml.safe_load((ROOT / ".github/workflows/ci-iac.yml").read_text())
     jobs = workflow["jobs"]
-    validation = jobs["terraform-validation"]
-    cache_directory = validation["env"]["TF_PLUGIN_CACHE_DIR"]
+    job = jobs["required"]
+    cache_directory = job["env"]["TF_PLUGIN_CACHE_DIR"]
     assert Path(cache_directory).is_absolute()
     assert cache_directory.endswith("/terraform-provider-cache")
 
     (cache_step,) = [
         step
-        for step in validation["steps"]
+        for step in job["steps"]
         if step.get("uses", "").startswith("actions/cache@")
     ]
     assert cache_step["uses"] == _CACHE_ACTION
     prepare_index = next(
         index
-        for index, step in enumerate(validation["steps"])
+        for index, step in enumerate(job["steps"])
         if step.get("name") == "Prepare Terraform provider cache"
     )
-    cache_index = validation["steps"].index(cache_step)
+    cache_index = job["steps"].index(cache_step)
     assert prepare_index < cache_index
     assert cache_step["with"]["path"] == "${{ env.TF_PLUGIN_CACHE_DIR }}"
     assert cache_step["with"]["key"] == (
@@ -91,20 +91,27 @@ def test_iac_validation_uses_locked_provider_cache_without_weakening_gates() -> 
     )
     assert cache_step["with"]["restore-keys"] == f"{_PLATFORM_PREFIX}\n"
 
-    required = jobs["required"]
-    assert required["if"] == "${{ always() }}"
-    assert set(required["needs"]) == {"terraform-validation", "trivy-config"}
-    required_step = required["steps"][0]
-    assert required_step["env"] == {
-        "TRIVY_RESULT": "${{ needs.trivy-config.result }}",
-        "TERRAFORM_RESULT": "${{ needs.terraform-validation.result }}",
-    }
-    assert required_step["run"] == 'test "$TRIVY_RESULT" = success'
-    assert required["steps"][1] == {
-        "name": "Require Terraform validation",
-        "env": {"TERRAFORM_RESULT": "${{ needs.terraform-validation.result }}"},
-        "run": 'test "$TERRAFORM_RESULT" = success',
-    }
+    assert list(jobs) == ["required"]
+    assert job["name"] == "IaC / required"
+    assert "if" not in job
+    assert "continue-on-error" not in job
+    steps = job["steps"]
+    assert all("continue-on-error" not in step for step in steps)
+    terraform_index = next(
+        index
+        for index, step in enumerate(steps)
+        if step.get("run") == "make check-iac"
+    )
+    assert "if" not in steps[terraform_index]
+    trivy = next(
+        step
+        for step in steps
+        if step.get("uses", "").startswith("aquasecurity/trivy-action@")
+    )
+    assert terraform_index < steps.index(trivy)
+    assert trivy["if"] == "${{ !cancelled() }}"
+    assert trivy["with"]["exit-code"] == "1"
+    assert trivy["with"]["severity"] == "HIGH,CRITICAL"
 
 
 @pytest.mark.parametrize("scenario", ["report", "missing-report", "failed-header"])
@@ -112,7 +119,7 @@ def test_iac_summary_preserves_content_and_stops_after_a_failed_write(
     scenario: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     workflow = yaml.safe_load((ROOT / ".github/workflows/ci-iac.yml").read_text())
-    steps = workflow["jobs"]["trivy-config"]["steps"]
+    steps = workflow["jobs"]["required"]["steps"]
     header = next(step for step in steps if step.get("id") == "trivy_summary_header")
     report = next(step for step in steps if step.get("id") == "trivy_summary_report")
     footer = next(
