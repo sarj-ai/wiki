@@ -194,7 +194,6 @@ export default defineConfig([
   },
   {
     files: ["src/**/*.test.{ts,tsx}"],
-    plugins: { vitest },
     rules: rulesAsErrors(vitest.configs.recommended.rules),
     settings: { vitest: { typecheck: true } },
   },
