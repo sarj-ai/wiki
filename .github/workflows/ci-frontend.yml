@@ -139,7 +139,26 @@ jobs:
 
   required:
     name: Frontend / required
-    if: ${{ always() }}
+    # Skip only the result shapes release_gate.py accepts; any other shape runs
+    # the gate, so a skipped required check can never hide a failure.
+    if: >-
+      ${{ always() && !(
+        needs.lint-and-typecheck.result == 'success' && (
+          (
+            (github.event_name != 'pull_request' || inputs.force_full == true) &&
+            needs.changes.result == 'skipped' &&
+            needs.test.result == 'success' && needs.build.result == 'success'
+          ) || (
+            github.event_name == 'pull_request' && inputs.force_full != true &&
+            needs.changes.result == 'success' && needs.changes.outputs.runtime == 'true' &&
+            needs.test.result == 'success' && needs.build.result == 'success'
+          ) || (
+            github.event_name == 'pull_request' && inputs.force_full != true &&
+            needs.changes.result == 'success' && needs.changes.outputs.runtime == 'false' &&
+            needs.test.result == 'skipped' && needs.build.result == 'skipped'
+          )
+        )
+      ) }}
     needs: [changes, lint-and-typecheck, test, build]
     runs-on: blacksmith-2vcpu-ubuntu-2404
     timeout-minutes: 1

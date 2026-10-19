@@ -70,7 +70,7 @@ jobs:
       - name: Identify Mypy cache toolchain
         id: mypy-toolchain
         run: |
-          uv run python -c 'import importlib.metadata, platform; print("python=" + platform.python_version()); print("mypy=" + importlib.metadata.version("mypy"))' >> "$GITHUB_OUTPUT"
+          uv run python -c 'import importlib.metadata, platform; print("python=" + platform.python_version()); print("mypy=" + importlib.metadata.version("mypy"))' >>"$GITHUB_OUTPUT"
 
       - name: Restore Mypy incremental data
         id: mypy-cache
@@ -233,7 +233,26 @@ jobs:
 
   required:
     name: Backend / required
-    if: ${{ always() }}
+    # Skip only the result shapes release_gate.py accepts; any other shape runs
+    # the gate, so a skipped required check can never hide a failure.
+    if: >-
+      ${{ always() && !(
+        needs.lint-and-typecheck.result == 'success' && needs.image.result == 'success' && (
+          (
+            (github.event_name != 'pull_request' || inputs.force_full == true) &&
+            needs.changes.result == 'skipped' &&
+            needs.test.result == 'success' && needs.postgres-concurrency.result == 'success'
+          ) || (
+            github.event_name == 'pull_request' && inputs.force_full != true &&
+            needs.changes.result == 'success' && needs.changes.outputs.runtime == 'true' &&
+            needs.test.result == 'success' && needs.postgres-concurrency.result == 'success'
+          ) || (
+            github.event_name == 'pull_request' && inputs.force_full != true &&
+            needs.changes.result == 'success' && needs.changes.outputs.runtime == 'false' &&
+            needs.test.result == 'skipped' && needs.postgres-concurrency.result == 'skipped'
+          )
+        )
+      ) }}
     needs: [changes, lint-and-typecheck, test, postgres-concurrency, image]
     runs-on: blacksmith-2vcpu-ubuntu-2404
     timeout-minutes: 1
