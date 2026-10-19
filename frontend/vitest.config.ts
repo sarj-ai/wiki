@@ -21,6 +21,8 @@ export default defineConfig({
     environment: "happy-dom",
     globals: true,
     include: ["src/**/*.test.{ts,tsx}"],
+    // Bound Happy DOM setup and large-picker work during the complete local CI mirror.
+    maxWorkers: 2,
     setupFiles: ["./vitest.setup.ts"],
   },
 });

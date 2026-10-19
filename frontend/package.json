@@ -23,7 +23,7 @@
     "typegen": "next typegen",
     "knip": "knip",
     "type-coverage": "type-coverage --strict --at-least 99 --ignore-files \"src/components/ui/**\"",
-    "hooks:install": "cd .. && lefthook install",
+    "hooks:install": "cd .. && sh scripts/github/install-hooks.sh",
     "patches:apply": "patch-package --error-on-fail",
     "test": "node --test --test-timeout=10000 scripts/*.test.ts && vitest run",
     "test:watch": "vitest",
@@ -62,7 +62,7 @@
     "@eslint/js": "10.0.1",
     "@hey-api/openapi-ts": "^0.99.0",
     "@opennextjs/cloudflare": "^1.20.2",
-    "@sarj/eslint-plugin": "16.20.1",
+    "@sarj/eslint-plugin": "16.21.0",
     "@sarj/tsconfig": "0.2.0",
     "@shadcn/lint": "0.2.1",
     "@tailwindcss/postcss": "^4.3.3",
@@ -94,7 +94,7 @@
     "eslint-plugin-react": "7.37.5",
     "eslint-plugin-react-hooks": "7.1.1",
     "eslint-plugin-simple-import-sort": "14.0.0",
-    "eslint-plugin-sonarjs": "^4.2.0",
+    "eslint-plugin-sonarjs": "4.2.2",
     "eslint-plugin-testing-library": "7.16.2",
     "eslint-plugin-unicorn": "78.0.0",
     "eslint-plugin-zod": "5.0.1",
@@ -116,7 +116,8 @@
     "typescript-eslint": "8.71.2",
     "vite": "^8.2.0",
     "vitest": "^5.0.1",
-    "wrangler": "^4.123.0"
+    "wrangler": "^4.123.0",
+    "eslint-plugin-regexp": "3.3.1"
   },
   "overrides": {
     "eslint-plugin-jest": "$eslint-plugin-jest",

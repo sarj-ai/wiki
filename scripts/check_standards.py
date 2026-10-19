@@ -16,7 +16,7 @@ from sarj_sql_lint.rules import REGISTRY as SQL_RULES
 
 
 if TYPE_CHECKING:
-    from collections.abc import Mapping, Sequence
+    from collections.abc import Iterator, Mapping, Sequence
 
 
 _BASELINE = Path(__file__).resolve().parents[1] / "python-standards-baseline.json"
@@ -123,19 +123,16 @@ def group_paths(paths: Sequence[str]) -> _GroupedPaths:
     grouped = _GroupedPaths()
     for raw_path in paths:
         path = Path(raw_path)
-        candidates = path.rglob("*") if path.is_dir() else (path,)
+        is_directory = path.is_dir()
+        candidates = _source_files(path) if is_directory else (path,)
         for candidate in candidates:
-            if path.is_dir() and any(
-                part in _IGNORED_DIRS for part in candidate.relative_to(path).parts
-            ):
-                continue
             if candidate.is_symlink():
                 msg = f"refusing symlink input: {candidate}"
                 raise ValueError(msg)
             if not candidate.is_file():
                 continue
             suffix = candidate.suffix.lower()
-            rendered = str(candidate) if path.is_dir() else raw_path
+            rendered = str(candidate) if is_directory else raw_path
             if suffix == ".py":
                 grouped.python.append(rendered)
             elif suffix == ".sql":
@@ -143,6 +140,14 @@ def group_paths(paths: Sequence[str]) -> _GroupedPaths:
             elif suffix in {".hcl", ".tf", ".tfvars", ".yaml", ".yml"}:
                 grouped.iac.append(rendered)
     return grouped
+
+
+def _source_files(root: Path) -> Iterator[Path]:
+    for directory, subdirectories, filenames in root.walk():
+        subdirectories[:] = sorted(name for name in subdirectories if name not in _IGNORED_DIRS)
+        for name in sorted(filenames):
+            if name not in _IGNORED_DIRS:
+                yield directory / name
 
 
 if __name__ == "__main__":
