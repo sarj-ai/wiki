@@ -1,9 +1,16 @@
+import ast
+import itertools
 import json
 from pathlib import Path
+import re
 from typing import Any
 
 import pytest
-from scripts.github.release_gate import ReleaseBlockedError, command_output
+from scripts.github.release_gate import (
+    ReleaseBlockedError,
+    command_output,
+    require_ci_gates,
+)
 import yaml
 
 
@@ -18,6 +25,7 @@ _DEPLOY_NEEDS = {
     "standards-receipt",
 }
 _READY_FENCE_COUNTS = {"backend": 1, "frontend": 2}
+_JOB_RESULTS = ("success", "failure", "cancelled", "skipped")
 
 
 def _workflow(name: str) -> dict[str, Any]:
@@ -292,8 +300,95 @@ def test_required_ci_aggregators_remain_fail_closed() -> None:
 
     for name, needs in expected_needs.items():
         required = _workflow(name)["jobs"]["required"]
-        assert required["if"] == "${{ always() }}"
+        assert required["if"].startswith("${{ always()")
         assert set(required["needs"]) == needs
+
+
+_ActionsValue = str | bool | None
+
+
+def _actions_expression(expression: str, values: dict[str, _ActionsValue]) -> object:
+    body = expression.strip().removeprefix("${{").removesuffix("}}")
+    body = body.replace("always()", "True")
+    body = re.sub(r"(?<!')\btrue\b(?!')", "True", body)
+    body = re.sub(
+        r"\b(?:needs|github|inputs)(?:\.[a-z_-]+)+", lambda m: repr(values[m[0]]), body
+    )
+    body = body.replace("!=", "\0").replace("!", " not ").replace("\0", "!=")
+    body = body.replace("&&", " and ").replace("||", " or ")
+    return _evaluate_node(ast.parse(" ".join(body.split()), mode="eval").body)
+
+
+def _evaluate_node(node: ast.expr) -> object:
+    match node:
+        case ast.BoolOp(op=ast.And(), values=operands):
+            return all(_evaluate_node(operand) for operand in operands)
+        case ast.BoolOp(op=ast.Or(), values=operands):
+            return any(_evaluate_node(operand) for operand in operands)
+        case ast.UnaryOp(op=ast.Not(), operand=operand):
+            return not _evaluate_node(operand)
+        case ast.Compare(left=left, ops=[ast.Eq()], comparators=[right]):
+            return _evaluate_node(left) == _evaluate_node(right)
+        case ast.Compare(left=left, ops=[ast.NotEq()], comparators=[right]):
+            return _evaluate_node(left) != _evaluate_node(right)
+        case ast.Constant(value=value):
+            return value
+    msg = f"Unsupported Actions expression node: {ast.dump(node)}"
+    raise AssertionError(msg)
+
+
+@pytest.mark.parametrize(
+    ("component", "needs"),
+    [
+        (
+            "backend",
+            ("changes", "lint-and-typecheck", "test", "postgres-concurrency", "image"),
+        ),
+        ("frontend", ("changes", "lint-and-typecheck", "test", "build")),
+    ],
+)
+def test_required_ci_aggregators_skip_only_shapes_the_gate_accepts(
+    component: str, needs: tuple[str, ...]
+) -> None:
+    required = _workflow(f"ci-{component}.yml")["jobs"]["required"]
+    assert required["needs"] == list(needs)
+    assert required["if"].startswith("${{ always() && !(")
+    gate_env = required["steps"][2]["env"]
+    result_env = {
+        match[1]: key
+        for key, value in gate_env.items()
+        if (match := re.fullmatch(r"\$\{\{ needs\.([a-z-]+)\.result \}\}", value))
+    }
+    assert set(result_env) == set(needs)
+
+    triggers = [("pull_request", None), *itertools.product(["push"], [True, False])]
+    for (event, force_full), runtime, results in itertools.product(
+        triggers,
+        ["true", "false", ""],
+        itertools.product(_JOB_RESULTS, repeat=len(needs)),
+    ):
+        job_results = dict(zip(needs, results, strict=True))
+        values: dict[str, _ActionsValue] = {
+            "github.event_name": event,
+            "inputs.force_full": force_full,
+            "needs.changes.outputs.runtime": runtime,
+        }
+        values.update(
+            (f"needs.{job}.result", result) for job, result in job_results.items()
+        )
+        environment = {
+            result_env[job]: result for job, result in job_results.items()
+        }
+        forced = _actions_expression(gate_env["FORCE_FULL"], values)
+        environment["FORCE_FULL"] = "true" if forced else "false"
+        environment["RUNTIME_SELECTED"] = runtime
+        try:
+            require_ci_gates(environment, component)
+        except ReleaseBlockedError:
+            accepted = False
+        else:
+            accepted = True
+        assert _actions_expression(required["if"], values) is not accepted, values
 
 
 @pytest.mark.parametrize(
