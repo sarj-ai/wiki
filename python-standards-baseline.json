@@ -778,9 +778,6 @@
   "scripts/check_baseline_growth.py": {
     "SARJ444": 1
   },
-  "scripts/check_standards.py": {
-    "SARJ444": 1
-  },
   "scripts/github/branch_protection.py": {
     "SARJ444": 1,
     "SARJ477": 1

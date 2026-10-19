@@ -8,11 +8,13 @@ import react from "eslint-plugin-react";
 import { fixupPluginRules } from "@eslint/compat";
 import reactHooks from "eslint-plugin-react-hooks";
 import unicorn from "eslint-plugin-unicorn";
+import regexp from "eslint-plugin-regexp";
 import eslintComments from "@eslint-community/eslint-plugin-eslint-comments";
 import node from "eslint-plugin-n";
 import perfectionist from "eslint-plugin-perfectionist";
 import promise from "eslint-plugin-promise";
 import simpleImportSort from "eslint-plugin-simple-import-sort";
+import sonarjs from "eslint-plugin-sonarjs";
 import betterTailwindcss from "eslint-plugin-better-tailwindcss";
 import { plugin as shadcn, project as shadcnProject } from "@shadcn/lint";
 import jsdoc from "eslint-plugin-jsdoc";
@@ -83,6 +85,9 @@ const UNTYPED_RULE_OVERRIDES = Object.fromEntries(
     .filter(([, rule]) => rule.meta?.docs?.requiresTypeChecking === true)
     .map(([name]) => [`@typescript-eslint/${name}`, "off"]),
 );
+// Boolean selector detection requires compiler parameter types, including inferred defaults
+// and aliases. Keep syntax-only configuration files independent of a TS project.
+UNTYPED_RULE_OVERRIDES["@sarj/no-boolean-selector-parameter"] = "off";
 const UNTYPED_DYNAMIC_EXECUTION_RULES = {
   "no-implied-eval": "error",
   "no-new-func": "error",
@@ -176,6 +181,7 @@ const ESLINT_RECOMMENDED_CONFIG = {
     "no-constant-binary-expression": "error",
     "no-unsafe-finally": "error",
     "no-unsafe-optional-chaining": "error",
+    "preserve-caught-error": ["warn", { requireCatchParameter: true }],
   },
 };
 
@@ -184,6 +190,26 @@ const ESLINT_RECOMMENDED_CONFIG = {
 // expression or object literal into an explicit `return` block.
 const ESLINT_CONCISION_ADVISORY_RULES = {
   "arrow-body-style": ["warn", "as-needed"],
+  "no-extra-label": "warn",
+  "no-lonely-if": "warn",
+};
+
+// These require a local decision: a constructor may deliberately replace its
+// instance, and a one-iteration loop may deliberately select the first item.
+// Neither upstream rule autofixes the return value or control-flow contract.
+const ESLINT_CORRECTNESS_ADVISORY_RULES = {
+  "no-constructor-return": "warn",
+  "no-unreachable-loop": "warn",
+  // An unparenthesized assignment can be an accidental comparison. Explicitly
+  // grouped assignments, including lazy memoization with ??=, remain allowed.
+  "no-return-assign": ["warn", "except-parens"],
+};
+
+// Keep regex analysis focused on native String API failures. Defer the current
+// backtracking rule's accepting-suffix false positives and disjunction-rule
+// removal suggestions that can change backreference-dependent matching.
+const REGEXP_ADVISORY_RULES = {
+  "regexp/no-missing-g-flag": ["warn", { strictTypes: true }],
 };
 
 // Unicorn ships a broad rule set. The enabled subset below was selected by
@@ -487,6 +513,8 @@ const UNICORN_CONCISION_ADVISORY_RULES = {
   "unicorn/prefer-single-object-destructuring": "warn",
   "unicorn/iteration-fallback-style": ["warn", "guard"],
   "unicorn/prefer-combined-guards": "warn",
+  "unicorn/no-lonely-if": "warn",
+  "unicorn/prefer-block-statement-over-iife": "warn",
 };
 
 // Semantic advisories require local intent to resolve. Dynamic property reads
@@ -555,6 +583,34 @@ if (missingUnicornRules.length > 0) {
 // compatibility layer restores those APIs, keeping every React rule active
 // instead of silently weakening the strict configuration on newer ESLint.
 const compatibleReact = fixupPluginRules(react);
+
+// Upstream's async checks report stored assertion promises even when awaited
+// later. Keep its structural checks and leave promise handling to typed
+// no-floating-promises, including explicit void expressions.
+const validExpect = vitest.rules["valid-expect"];
+const scopedVitest = {
+  ...vitest,
+  rules: {
+    ...vitest.rules,
+    "valid-expect": {
+      ...validExpect,
+      meta: { ...validExpect.meta, fixable: undefined },
+      create(context) {
+        return validExpect.create(Object.create(context, {
+          report: {
+            value(descriptor) {
+              if (descriptor.messageId === "asyncMustBeAwaited" ||
+                  descriptor.messageId === "promisesWithAsyncAssertionsMustBeAwaited") {
+                return;
+              }
+              context.report(descriptor);
+            },
+          },
+        }));
+      },
+    },
+  },
+};
 
 // Captured Node values may be functions or other non-serializable objects.
 // Keep upstream browser-scope diagnostics without automatically moving those
@@ -718,15 +774,17 @@ export function createConfig(options = {}) {
       react: compatibleReact,
       "react-hooks": reactHooks,
       unicorn,
+      regexp,
       "@eslint-community/eslint-comments": eslintComments,
       n: node,
       perfectionist,
       promise,
       "simple-import-sort": simpleImportSort,
+      sonarjs,
       jsdoc,
       shadcn: scopedShadcn,
       "@sarj": sarj,
-      vitest,
+      vitest: scopedVitest,
       "node-test": nodeTest,
       jest,
       "testing-library": testingLibrary,
@@ -930,7 +988,10 @@ export function createConfig(options = {}) {
         { ignoreArrowShorthand: true },
       ],
       "@typescript-eslint/no-non-null-asserted-optional-chain": "error",
-      "@typescript-eslint/no-unnecessary-type-assertion": "error",
+      "@typescript-eslint/no-unnecessary-type-assertion": [
+        "error",
+        { checkLiteralConstAssertions: true },
+      ],
       "@typescript-eslint/no-redundant-type-constituents": "error",
       "@typescript-eslint/require-array-sort-compare": "error",
       "@typescript-eslint/no-unsafe-type-assertion": "error",
@@ -1089,6 +1150,8 @@ export function createConfig(options = {}) {
       ...UNICORN_CORRECTNESS_RULES,
       ...UNICORN_MODERNISATION_RULES,
       ...ESLINT_CONCISION_ADVISORY_RULES,
+      ...ESLINT_CORRECTNESS_ADVISORY_RULES,
+      ...REGEXP_ADVISORY_RULES,
       ...UNICORN_CONCISION_ADVISORY_RULES,
       ...UNICORN_SEMANTIC_ADVISORY_RULES,
 
@@ -1198,6 +1261,13 @@ export function createConfig(options = {}) {
       // so each concern fires exactly one diagnostic.
       "no-restricted-syntax": [
         "error",
+        {
+          // The typed upstream rule skips literal assertions in object/array
+          // members. Restrict direct values only: calls, returns, spreads and
+          // satisfies expressions can establish independent inference contexts.
+          selector: ":matches(TSAsExpression, TSTypeAssertion)[typeAnnotation.typeName.name='const'] > ObjectExpression > Property > :matches(TSAsExpression, TSTypeAssertion).value[typeAnnotation.typeName.name='const'], :matches(TSAsExpression, TSTypeAssertion)[typeAnnotation.typeName.name='const'] > ArrayExpression > :matches(TSAsExpression, TSTypeAssertion)[typeAnnotation.typeName.name='const']",
+          message: "This member already inherits the enclosing as const assertion. Remove the member's redundant const assertion.",
+        },
         {
           selector: "UnaryExpression[operator='typeof']:not([parent.type='BinaryExpression'][parent.operator=/^(===|!==|==|!=)$/][parent.right.type='Literal'][parent.right.value='undefined']):not([parent.type='BinaryExpression'][parent.operator=/^(===|!==|==|!=)$/][parent.left.type='Literal'][parent.left.value='undefined'])",
           message: "Avoid runtime typeof representation checks. Preserve a known domain type or validate external input with the existing schema. Existence checks against \"undefined\" and TypeScript type queries remain allowed.",
@@ -1320,6 +1390,9 @@ export function createConfig(options = {}) {
       eqeqeq: ["error", "always", { null: "ignore" }],
       "no-await-in-loop": "error",
       "no-param-reassign": "error",
+      // A boolean that selects between operations hides intent at the call site.
+      // This upstream advisory preserves boolean data and named options. It is
+      // deliberately narrower than banning every boolean in a signature.
       "array-callback-return": "error",
       "no-fallthrough": "error",
       "no-console": ["error", { allow: ["warn", "error"] }],
@@ -1399,6 +1472,9 @@ export function createConfig(options = {}) {
       "@sarj/no-invalid-typed-mutation": "warn",
       "@sarj/no-contradictory-type-predicate": "warn",
       "@sarj/no-partial-type-predicate": "warn",
+      // One calibrated owner prevents duplicate native selector reports.
+      "sonarjs/no-selector-parameter": "off",
+      "@sarj/no-boolean-selector-parameter": "warn",
       "@sarj/no-invalid-zod-custom-parse": "warn",
       "@sarj/no-contradictory-overload-return": "warn",
       "@sarj/no-broad-return-type": "error",
@@ -1524,6 +1600,10 @@ export function createConfig(options = {}) {
       "vitest/prefer-expect-resolves": HAS_VITEST ? "error" : "off",
       "vitest/prefer-to-be": HAS_VITEST ? "error" : "off",
       "vitest/require-local-test-context-for-concurrent-snapshots": HAS_VITEST ? "warn" : "off",
+      // Preserve Vitest's optional assertion message while catching missing
+      // matchers and accidental focused suites before the runner executes.
+      "vitest/valid-expect": HAS_VITEST ? ["warn", { maxArgs: 2 }] : "off",
+      "vitest/no-focused-tests": HAS_VITEST ? "warn" : "off",
 
       // eslint-plugin-jest can parse Bun's Jest-compatible `bun:test` API when
       // globalPackage is set above. These rules intentionally mirror only the
@@ -1619,6 +1699,8 @@ export function createConfig(options = {}) {
       // This rule has no JSX exception and would undo the async-handler policy.
       // no-misused-promises still checks non-JSX promise callback boundaries.
       "@typescript-eslint/strict-void-return": "off",
+      // The boolean selector adapter checks JSX helpers while preserving
+      // independently declared component callback contracts.
     },
   },
   // React component IDENTIFIERS must be PascalCase for JSX to distinguish them

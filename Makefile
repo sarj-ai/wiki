@@ -1,14 +1,14 @@
 STANDARDS_RUN := uvx --no-config --isolated --python 3.14 --from sarj-standards-bootstrap code-standards
 
-.PHONY: help setup setup-hooks standards-sync standards-check standards-upgrade \
-	check check-node check-quality check-backend check-frontend check-iac check-repository fix audit \
-	branch-protection-check branch-protection-apply branch-protection-rollback
+.PHONY: help setup setup-hooks standards-sync standards-check standards-upgrade
+.PHONY: check check-node check-quality check-backend check-frontend check-iac check-repository fix audit
+.PHONY: branch-protection-check branch-protection-apply branch-protection-rollback
 
 help: ## List supported repository commands.
 	@uv run --no-project --with typer==0.27.2 --python 3.14 python scripts/repository_checks.py make-help Makefile
 
 setup-hooks: ## Install the repository Git hooks.
-	@npm --prefix frontend exec -- lefthook install
+	@sh scripts/github/install-hooks.sh
 
 standards-sync: ## Regenerate pinned Standards configuration without network access.
 	@$(STANDARDS_RUN) update --offline --no-install

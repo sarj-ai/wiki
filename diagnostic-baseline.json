@@ -1,9 +1,9 @@
 {
   "schemaVersion": 2,
   "provenance": {
-    "bundleVersion": "8.79.3",
-    "consumerBaseSha": "937e73f820ddb68531957bb14e868415145c5fb3",
-    "catalogDigest": "3463d0d83dd5db2765c03b697f83b97644da891c94b26c561964c794c0d32a16"
+    "bundleVersion": "8.101.0",
+    "consumerBaseSha": "ef31b4b91616401d1fcffe201225d8e5f2da2308",
+    "catalogDigest": "5dc84310000b93bd775da4bb0922fed360f07c2846f43ef6e2515d1abf4beca4"
   },
   "diagnostics": [
     {
@@ -14,62 +14,6 @@
       "count": 1
     },
     {
-      "fingerprint": "28b69d6e76a4475d9e033fa9d7a20e13e121566c3157a6253ecdb8fde92a75d0",
-      "source": "eslint",
-      "ruleId": "@sarj/prefer-nominal-id-types",
-      "path": "frontend/src/app/actions/wiki-actions.ts",
-      "count": 1
-    },
-    {
-      "fingerprint": "1d719a74b89aa15b30518826a785d68ba821b5551c3937cd6809768604c7c787",
-      "source": "eslint",
-      "ruleId": "@sarj/prefer-nominal-id-types",
-      "path": "frontend/src/components/wiki-search/command-palette.tsx",
-      "count": 1
-    },
-    {
-      "fingerprint": "f5235a5e815dc64b826157e9299367bbad3311646bfbf194f8100a040e5ace98",
-      "source": "eslint",
-      "ruleId": "@sarj/prefer-nominal-id-types",
-      "path": "frontend/src/components/wiki-sidebar/move-dialog-outlet.tsx",
-      "count": 1
-    },
-    {
-      "fingerprint": "72cace85399458335338b34754679275daab7645ebd87f8e00b8215358f9f808",
-      "source": "eslint",
-      "ruleId": "@sarj/prefer-nominal-id-types",
-      "path": "frontend/src/components/wiki-sidebar/use-wiki-reorder.ts",
-      "count": 3
-    },
-    {
-      "fingerprint": "3664d7fa7eb4e8f01d617803fceeea208533e1c84772769ddb1a061ed429521f",
-      "source": "eslint",
-      "ruleId": "@sarj/prefer-nominal-id-types",
-      "path": "frontend/src/hooks/use-expanded-folders.ts",
-      "count": 3
-    },
-    {
-      "fingerprint": "7bac8455960511fe714a6d48a7883646dd45f9c0d9c810f22a0cae7e974cf135",
-      "source": "eslint",
-      "ruleId": "@sarj/prefer-nominal-id-types",
-      "path": "frontend/src/lib/build-destination-sort-orders.test.ts",
-      "count": 1
-    },
-    {
-      "fingerprint": "05c069351b729f67083a479bf7c39c498a28ff786e001ed967f43215067559b4",
-      "source": "eslint",
-      "ruleId": "@sarj/prefer-nominal-id-types",
-      "path": "frontend/src/lib/wiki-api.ts",
-      "count": 1
-    },
-    {
-      "fingerprint": "dcfe8fb26bb3cb9a3b74cf73767aeec78bad13404d9b2d01a346ef9f8799314b",
-      "source": "eslint",
-      "ruleId": "@sarj/prefer-nominal-id-types",
-      "path": "frontend/src/lib/wiki-cache.ts",
-      "count": 1
-    },
-    {
       "fingerprint": "e5034c1e411e86a1fcbf5793d7c6602d280536094cfbf9d70b02bf335a28a97d",
       "source": "eslint",
       "ruleId": "@sarj/prefer-whole-object-assertion",
@@ -77,1669 +21,10 @@
       "count": 3
     },
     {
-      "fingerprint": "54506165b2434b1e60f6c1def188bd41eeca7191dc897ea81de35d3830756e3b",
-      "source": "eslint",
-      "ruleId": "@sarj/require-camelcase-properties",
-      "path": "frontend/src/app/api/document-transforms/[[...path]]/route.test.ts",
-      "count": 1
-    },
-    {
-      "fingerprint": "6a226ec1f548541516044e3c2a7982508ef4e3f8bd4e4df49bb3b10c6a16a29f",
-      "source": "eslint",
-      "ruleId": "@sarj/require-camelcase-properties",
-      "path": "frontend/src/app/go/[alias]/route.test.ts",
-      "count": 1
-    },
-    {
-      "fingerprint": "213c8aff604596a7ee1c14a698cfdad31529fb477271e1b61c5b09603cb113a5",
-      "source": "eslint",
-      "ruleId": "@sarj/require-camelcase-properties",
-      "path": "frontend/src/app/login/page.tsx",
-      "count": 1
-    },
-    {
-      "fingerprint": "2efdcfeb36df10fd1a434d9f745018bca8f1eb5b2703322059873ab128c16fa8",
-      "source": "eslint",
-      "ruleId": "@sarj/require-camelcase-properties",
-      "path": "frontend/src/app/login/page.tsx",
-      "count": 1
-    },
-    {
-      "fingerprint": "8bad8bcf41da58c897e0eb715e51aa659d5ca23a8c0cf81ac2b3507c3bc30827",
-      "source": "eslint",
-      "ruleId": "@sarj/require-camelcase-properties",
-      "path": "frontend/src/app/login/page.tsx",
-      "count": 1
-    },
-    {
-      "fingerprint": "287b2769f5203163a20db60dc6a22eab3387279fa50fcc595e737c9b7d7e2408",
-      "source": "eslint",
-      "ruleId": "@sarj/require-camelcase-properties",
-      "path": "frontend/src/components/mcp/mcp-connections.test.tsx",
-      "count": 2
-    },
-    {
-      "fingerprint": "6d751006059a01efa93d96457cb0d60b93929e01e846cf5427cfa5953ea545ae",
-      "source": "eslint",
-      "ruleId": "@sarj/require-camelcase-properties",
-      "path": "frontend/src/components/mcp/mcp-connections.test.tsx",
-      "count": 3
-    },
-    {
-      "fingerprint": "9c5c8b5fd841a3c60dc8e3b3ed0db39e9a83ea21de9896e8f6911c2057663e12",
-      "source": "eslint",
-      "ruleId": "@sarj/require-camelcase-properties",
-      "path": "frontend/src/components/mcp/mcp-connections.test.tsx",
-      "count": 3
-    },
-    {
-      "fingerprint": "557e8d399bcb73341b970bc05791d9d39a73e5189ba4a7283a5ad58461b6ee9c",
-      "source": "eslint",
-      "ruleId": "@sarj/require-camelcase-properties",
-      "path": "frontend/src/components/mcp/mcp-connections.tsx",
-      "count": 1
-    },
-    {
-      "fingerprint": "55d598da2bc961f972303e46b57f527ee088cda236c3b793b160b9d5b10b401c",
-      "source": "eslint",
-      "ruleId": "@sarj/require-camelcase-properties",
-      "path": "frontend/src/components/mcp/mcp-connections.tsx",
-      "count": 2
-    },
-    {
-      "fingerprint": "5751328353483c2bb91fb9124600a716018214be7ba2f7fc90dad307b8eeee34",
-      "source": "eslint",
-      "ruleId": "@sarj/require-camelcase-properties",
-      "path": "frontend/src/components/mcp/mcp-connections.tsx",
-      "count": 2
-    },
-    {
-      "fingerprint": "02646a5ce28f59134f53327c55fc7cb416ccd0b1cb4ccdd1b3a4454448e7c3c0",
-      "source": "eslint",
-      "ruleId": "@sarj/require-camelcase-properties",
-      "path": "frontend/src/components/mcp/mcp-consent-loader.test.tsx",
-      "count": 1
-    },
-    {
-      "fingerprint": "1d0dafa34ac2554b6cd6394573ad7d86c57b517643e6d8764608da0db4838850",
-      "source": "eslint",
-      "ruleId": "@sarj/require-camelcase-properties",
-      "path": "frontend/src/components/mcp/mcp-consent-loader.test.tsx",
-      "count": 1
-    },
-    {
-      "fingerprint": "bad7115bddf9b754bdfe7f8454a866a795a746ddf05e934b1f57e692660a007c",
-      "source": "eslint",
-      "ruleId": "@sarj/require-camelcase-properties",
-      "path": "frontend/src/components/mcp/mcp-consent-loader.test.tsx",
-      "count": 1
-    },
-    {
-      "fingerprint": "b788bab813ab7340e1140a4ed829cfcb233e3b18a7daf1be62e5213d41d3a135",
-      "source": "eslint",
-      "ruleId": "@sarj/require-camelcase-properties",
-      "path": "frontend/src/components/mcp/mcp-consent-loader.tsx",
-      "count": 1
-    },
-    {
-      "fingerprint": "d235cb730ccd2d1a65243acb76dc53a1530bf64a84c49ffd00566b71efb7cfc7",
-      "source": "eslint",
-      "ruleId": "@sarj/require-camelcase-properties",
-      "path": "frontend/src/components/mcp/mcp-consent-loader.tsx",
-      "count": 1
-    },
-    {
-      "fingerprint": "1cf2bec27f2cd6b8736c4e4eda781d6c1c2466f14db2475a9459e1a457c14152",
-      "source": "eslint",
-      "ruleId": "@sarj/require-camelcase-properties",
-      "path": "frontend/src/components/mcp/mcp-pages.test.tsx",
-      "count": 1
-    },
-    {
-      "fingerprint": "a0f22ad964177b6a69013673be1b8c260bbed7a2057d16ac748f1121c45e264a",
-      "source": "eslint",
-      "ruleId": "@sarj/require-camelcase-properties",
-      "path": "frontend/src/components/mcp/mcp-pages.test.tsx",
-      "count": 1
-    },
-    {
-      "fingerprint": "e16fb3578a54d9624f4591aa47e541e4603095959dcd9c690836af13002ad83e",
-      "source": "eslint",
-      "ruleId": "@sarj/require-camelcase-properties",
-      "path": "frontend/src/components/mcp/mcp-pages.test.tsx",
-      "count": 1
-    },
-    {
-      "fingerprint": "47e2f93c7df8a4b9f7ac697b39232d41c105323de366cc035e1cb691cf1f16fb",
-      "source": "eslint",
-      "ruleId": "@sarj/require-camelcase-properties",
-      "path": "frontend/src/components/wiki-document/document-polish-recovery.test.tsx",
-      "count": 1
-    },
-    {
-      "fingerprint": "ae43ce95c522de7f9edeebb8fbdeef6398c794569506696a7efd62da18194550",
-      "source": "eslint",
-      "ruleId": "@sarj/require-camelcase-properties",
-      "path": "frontend/src/components/wiki-document/document-polish-recovery.tsx",
-      "count": 1
-    },
-    {
-      "fingerprint": "304d997864853b3c6ffbd6b022dfd8ea7e9490266f7d99b378807eb71b19de8b",
-      "source": "eslint",
-      "ruleId": "@sarj/require-camelcase-properties",
-      "path": "frontend/src/components/wiki-sidebar/drive-access-sheet-state.test.tsx",
-      "count": 1
-    },
-    {
-      "fingerprint": "41587b1b5cef138360e37c68f6f33579378a9c08129e28e9fbca4a28a452d89c",
-      "source": "eslint",
-      "ruleId": "@sarj/require-camelcase-properties",
-      "path": "frontend/src/components/wiki-sidebar/drive-access-sheet-state.test.tsx",
-      "count": 1
-    },
-    {
-      "fingerprint": "46b9edc6f41872231165f8224621e34434d162b8e5b6d6ec7f0c9ad2d1452614",
-      "source": "eslint",
-      "ruleId": "@sarj/require-camelcase-properties",
-      "path": "frontend/src/components/wiki-sidebar/drive-access-sheet-state.test.tsx",
-      "count": 1
-    },
-    {
-      "fingerprint": "699570ddaf18f57b4bb9ae9d1a8328274c652ea8f6ddcddbbc67cfadc4a72b81",
-      "source": "eslint",
-      "ruleId": "@sarj/require-camelcase-properties",
-      "path": "frontend/src/components/wiki-sidebar/drive-access-sheet-state.test.tsx",
-      "count": 1
-    },
-    {
-      "fingerprint": "77e4eb5a94f777f411aa2737280f97fd849de5f4a89df7bf05be710f6026d89d",
-      "source": "eslint",
-      "ruleId": "@sarj/require-camelcase-properties",
-      "path": "frontend/src/components/wiki-sidebar/drive-access-sheet-state.test.tsx",
-      "count": 1
-    },
-    {
-      "fingerprint": "79534965ae1f95298fe3536a2f19ad6fb4bb0f18d5b9dc07f574695e5c53604f",
-      "source": "eslint",
-      "ruleId": "@sarj/require-camelcase-properties",
-      "path": "frontend/src/components/wiki-sidebar/drive-access-sheet-state.test.tsx",
-      "count": 1
-    },
-    {
-      "fingerprint": "7cb0ae0e2453e07c6322cc48459641ce814b7fa138dac97057c93d23165f1e85",
-      "source": "eslint",
-      "ruleId": "@sarj/require-camelcase-properties",
-      "path": "frontend/src/components/wiki-sidebar/drive-access-sheet-state.test.tsx",
-      "count": 1
-    },
-    {
-      "fingerprint": "824cf6aa7b62301840fb359b241f0f377288cbb0cc4f2b28b369290de28e0e52",
-      "source": "eslint",
-      "ruleId": "@sarj/require-camelcase-properties",
-      "path": "frontend/src/components/wiki-sidebar/drive-access-sheet-state.test.tsx",
-      "count": 1
-    },
-    {
-      "fingerprint": "ca357a6617603fd0b06fa47bd9e0965baad9561da3951c7121028bc609cb97cb",
-      "source": "eslint",
-      "ruleId": "@sarj/require-camelcase-properties",
-      "path": "frontend/src/components/wiki-sidebar/drive-access-sheet-state.test.tsx",
-      "count": 1
-    },
-    {
-      "fingerprint": "22f6357299e0c55113cf8e8f9746c7b36d371dc7d06d883de81261e41339371d",
-      "source": "eslint",
-      "ruleId": "@sarj/require-camelcase-properties",
-      "path": "frontend/src/components/wiki-sidebar/drive-access-sheet.test.ts",
-      "count": 1
-    },
-    {
-      "fingerprint": "29a7b62e4638cd8ac0450148222739350e494bbf41b724681a99bfbc3c8d1023",
-      "source": "eslint",
-      "ruleId": "@sarj/require-camelcase-properties",
-      "path": "frontend/src/components/wiki-sidebar/drive-access-sheet.test.ts",
-      "count": 1
-    },
-    {
-      "fingerprint": "3448fcbf9ec08f040aadc268a433bc893c0339554fe712fa2b730bcc912c199b",
-      "source": "eslint",
-      "ruleId": "@sarj/require-camelcase-properties",
-      "path": "frontend/src/components/wiki-sidebar/drive-access-sheet.test.ts",
-      "count": 1
-    },
-    {
-      "fingerprint": "369d8111bc0da14293f4e2a093dc83155b61c94a6617addfab7741030a28009c",
-      "source": "eslint",
-      "ruleId": "@sarj/require-camelcase-properties",
-      "path": "frontend/src/components/wiki-sidebar/drive-access-sheet.test.ts",
-      "count": 1
-    },
-    {
-      "fingerprint": "38bec2620c50de0bdc6e3467cc7fedebeaa2f50b6d6512350c344904eed457fb",
-      "source": "eslint",
-      "ruleId": "@sarj/require-camelcase-properties",
-      "path": "frontend/src/components/wiki-sidebar/drive-access-sheet.test.ts",
-      "count": 1
-    },
-    {
-      "fingerprint": "48f61c4346560173ba4d1e341fe1f835eb1aa835abd515c90a9a480d145546ee",
-      "source": "eslint",
-      "ruleId": "@sarj/require-camelcase-properties",
-      "path": "frontend/src/components/wiki-sidebar/drive-access-sheet.test.ts",
-      "count": 1
-    },
-    {
-      "fingerprint": "824af4f932f5d02e3d384fbf6b6a953280deaf9920d489fb1ad9d7abf2d1381b",
-      "source": "eslint",
-      "ruleId": "@sarj/require-camelcase-properties",
-      "path": "frontend/src/components/wiki-sidebar/drive-access-sheet.test.ts",
-      "count": 1
-    },
-    {
-      "fingerprint": "9ecc8476c86790c51d48d5cbed007437a6647fb36b5ac5283cff216f34a542c8",
-      "source": "eslint",
-      "ruleId": "@sarj/require-camelcase-properties",
-      "path": "frontend/src/components/wiki-sidebar/drive-access-sheet.test.ts",
-      "count": 1
-    },
-    {
-      "fingerprint": "f26da9e3d905e0993ee2b1359667f1ba81a559f06d7d8c14af62592467f9dd7b",
-      "source": "eslint",
-      "ruleId": "@sarj/require-camelcase-properties",
-      "path": "frontend/src/components/wiki-sidebar/drive-access-sheet.test.ts",
-      "count": 1
-    },
-    {
-      "fingerprint": "ac7eb83b385366fda298faf11155f56b4a047eb078f76ea5f2366e1c2267853e",
-      "source": "eslint",
-      "ruleId": "@sarj/require-camelcase-properties",
-      "path": "frontend/src/lib/alias-client.test.ts",
-      "count": 1
-    },
-    {
-      "fingerprint": "c080374815fccb0f86fbc67de6a2dd0a341fb2237f0edc36146e8363ee1bd369",
-      "source": "eslint",
-      "ruleId": "@sarj/require-camelcase-properties",
-      "path": "frontend/src/lib/alias-client.test.ts",
-      "count": 1
-    },
-    {
-      "fingerprint": "f09db65a69d6af372573b0b1dc39abbe18776facca3df5542ebfe5961e411c2a",
-      "source": "eslint",
-      "ruleId": "@sarj/require-camelcase-properties",
-      "path": "frontend/src/lib/alias-client.test.ts",
-      "count": 2
-    },
-    {
-      "fingerprint": "0767d64b9d66fc7b60323b2dc37e205564801b7c7afbdf27e23f6b58a5213ad4",
-      "source": "eslint",
-      "ruleId": "@sarj/require-camelcase-properties",
-      "path": "frontend/src/lib/alias-client.ts",
-      "count": 2
-    },
-    {
-      "fingerprint": "14db5e48bfa5861984737a25933ea87eff87d326ff9e9ab6585778022f3070a5",
-      "source": "eslint",
-      "ruleId": "@sarj/require-camelcase-properties",
-      "path": "frontend/src/lib/alias-client.ts",
-      "count": 1
-    },
-    {
-      "fingerprint": "5ac268caf1acbf1027cd699d320362a5b371ba8bf48fb865b7a168dea095830d",
-      "source": "eslint",
-      "ruleId": "@sarj/require-camelcase-properties",
-      "path": "frontend/src/lib/alias-client.ts",
-      "count": 1
-    },
-    {
-      "fingerprint": "23d050053c31fefffde8cfd0f174162c6f7cf9ec59fa4c555fd4899d75ed5363",
-      "source": "eslint",
-      "ruleId": "@sarj/require-camelcase-properties",
-      "path": "frontend/src/lib/api-client.test.ts",
-      "count": 4
-    },
-    {
-      "fingerprint": "28028dd6ba988d1652304e766d36397c679334a8938d3c0797d9b2bb7fa2ea29",
-      "source": "eslint",
-      "ruleId": "@sarj/require-camelcase-properties",
-      "path": "frontend/src/lib/api-client.test.ts",
-      "count": 1
-    },
-    {
-      "fingerprint": "42bf4e5b9c30dce75b3faaa43701254890798d4d64e7a7651278f1f77e685a74",
-      "source": "eslint",
-      "ruleId": "@sarj/require-camelcase-properties",
-      "path": "frontend/src/lib/api-client.test.ts",
-      "count": 1
-    },
-    {
-      "fingerprint": "759a9f9aa19742d387b01ca5ad3978959759481cd70ee872e2332938f88875b1",
-      "source": "eslint",
-      "ruleId": "@sarj/require-camelcase-properties",
-      "path": "frontend/src/lib/api-client.test.ts",
-      "count": 1
-    },
-    {
-      "fingerprint": "bbc185fd596df10b14baf9ed1224203523ebb0ad240cec5255a2a3e16fc3738d",
-      "source": "eslint",
-      "ruleId": "@sarj/require-camelcase-properties",
-      "path": "frontend/src/lib/api-client.test.ts",
-      "count": 3
-    },
-    {
-      "fingerprint": "d20fa466ca449ef88c7826bcf1b9da543a271bb1c404ff806f61f8a4e7af5f02",
-      "source": "eslint",
-      "ruleId": "@sarj/require-camelcase-properties",
-      "path": "frontend/src/lib/api-client.test.ts",
-      "count": 3
-    },
-    {
-      "fingerprint": "f5bbb7bb28196b300598dea1c2bf7a44da27854a987ff946df58c9c4bb9c13a9",
-      "source": "eslint",
-      "ruleId": "@sarj/require-camelcase-properties",
-      "path": "frontend/src/lib/api-client.test.ts",
-      "count": 2
-    },
-    {
-      "fingerprint": "031a829705d95f027cc5e0e02a3843ca0e6c7b9e68c3b7ff3e77d7adce26ed1b",
-      "source": "eslint",
-      "ruleId": "@sarj/require-camelcase-properties",
-      "path": "frontend/src/lib/document-transform-api.test.ts",
-      "count": 2
-    },
-    {
-      "fingerprint": "0adfc06214e689a1ab2e3ea93840191dc7ce90229c6e6c52af3a960166c98df3",
-      "source": "eslint",
-      "ruleId": "@sarj/require-camelcase-properties",
-      "path": "frontend/src/lib/document-transform-api.test.ts",
-      "count": 4
-    },
-    {
-      "fingerprint": "0e4fbbf8eafb211a8d46d34c410a660bb9e20efe1cf4333d6041e8267ce54d6a",
-      "source": "eslint",
-      "ruleId": "@sarj/require-camelcase-properties",
-      "path": "frontend/src/lib/document-transform-api.test.ts",
-      "count": 3
-    },
-    {
-      "fingerprint": "11d9e79e9bd9cf022c2cc1a9ce33c325db37bf509c54fad6d5682f9b07ab8732",
-      "source": "eslint",
-      "ruleId": "@sarj/require-camelcase-properties",
-      "path": "frontend/src/lib/document-transform-api.test.ts",
-      "count": 1
-    },
-    {
-      "fingerprint": "19da870c14c1f3cae64ead44176c1589fc1776d52f697b9747b13b84930548da",
-      "source": "eslint",
-      "ruleId": "@sarj/require-camelcase-properties",
-      "path": "frontend/src/lib/document-transform-api.test.ts",
-      "count": 2
-    },
-    {
-      "fingerprint": "21fd4a615c677c154e74e85546d360ae50f5c5165d3ef5f9d51f87a2d8b81dff",
-      "source": "eslint",
-      "ruleId": "@sarj/require-camelcase-properties",
-      "path": "frontend/src/lib/document-transform-api.test.ts",
-      "count": 1
-    },
-    {
-      "fingerprint": "2215e0fc3ea2d1aefbd288bde405059013318097d421a9d3ed6e7ef42378391d",
-      "source": "eslint",
-      "ruleId": "@sarj/require-camelcase-properties",
-      "path": "frontend/src/lib/document-transform-api.test.ts",
-      "count": 1
-    },
-    {
-      "fingerprint": "25f51de4797180450fcca7268cf06229bab4244c7ad9c89e6d0d3882fd9a3a27",
-      "source": "eslint",
-      "ruleId": "@sarj/require-camelcase-properties",
-      "path": "frontend/src/lib/document-transform-api.test.ts",
-      "count": 2
-    },
-    {
-      "fingerprint": "26d6f2e6a5eb62e88aa41504ecb177eba1a62a1f9d06aea264f2d87c69f26c39",
-      "source": "eslint",
-      "ruleId": "@sarj/require-camelcase-properties",
-      "path": "frontend/src/lib/document-transform-api.test.ts",
-      "count": 4
-    },
-    {
-      "fingerprint": "2a71d2ffed17389dc3e2588b0d6b72cc80b89d18bd07f9fbdb9a2ede4f1571a8",
-      "source": "eslint",
-      "ruleId": "@sarj/require-camelcase-properties",
-      "path": "frontend/src/lib/document-transform-api.test.ts",
-      "count": 1
-    },
-    {
-      "fingerprint": "2e000c67ea678a7fc1b29faa5aacba819d9fbde871937ae4611dca645a7d5491",
-      "source": "eslint",
-      "ruleId": "@sarj/require-camelcase-properties",
-      "path": "frontend/src/lib/document-transform-api.test.ts",
-      "count": 7
-    },
-    {
-      "fingerprint": "3248ec16a44aa1988b9035e643eeba8a1ff9f00401e2178bf273462d46ea4767",
-      "source": "eslint",
-      "ruleId": "@sarj/require-camelcase-properties",
-      "path": "frontend/src/lib/document-transform-api.test.ts",
-      "count": 1
-    },
-    {
-      "fingerprint": "3664e48b577e748aa1f1a0a1081adb80df91d7799666257333f2ce556e5ec7b5",
-      "source": "eslint",
-      "ruleId": "@sarj/require-camelcase-properties",
-      "path": "frontend/src/lib/document-transform-api.test.ts",
-      "count": 1
-    },
-    {
-      "fingerprint": "47ec8eed9e69cbbaf7b82d414230f90a90f529cc5742ab3edd5301aaa75525ab",
-      "source": "eslint",
-      "ruleId": "@sarj/require-camelcase-properties",
-      "path": "frontend/src/lib/document-transform-api.test.ts",
-      "count": 2
-    },
-    {
-      "fingerprint": "4edfbdd3fddf12dd813705259a6738d7bb71564242e70d9a0309c6e058daeca0",
-      "source": "eslint",
-      "ruleId": "@sarj/require-camelcase-properties",
-      "path": "frontend/src/lib/document-transform-api.test.ts",
-      "count": 1
-    },
-    {
-      "fingerprint": "4fb246b5d6679752a9155934058cb03762a879fe36185179cb6ac71068ccbeb9",
-      "source": "eslint",
-      "ruleId": "@sarj/require-camelcase-properties",
-      "path": "frontend/src/lib/document-transform-api.test.ts",
-      "count": 3
-    },
-    {
-      "fingerprint": "5228145a0957c139a6c32d886409932595e8f47208048d2a3ac7b538db7b68c3",
-      "source": "eslint",
-      "ruleId": "@sarj/require-camelcase-properties",
-      "path": "frontend/src/lib/document-transform-api.test.ts",
-      "count": 2
-    },
-    {
-      "fingerprint": "5df1a21880f0676831749dd214cdb77df79201ae044ad0156f74fcf5e4bfd148",
-      "source": "eslint",
-      "ruleId": "@sarj/require-camelcase-properties",
-      "path": "frontend/src/lib/document-transform-api.test.ts",
-      "count": 3
-    },
-    {
-      "fingerprint": "6bbce37703e1af54e6cca45d4a6abd82d4592e76eedfdfee82d828e0fd265e15",
-      "source": "eslint",
-      "ruleId": "@sarj/require-camelcase-properties",
-      "path": "frontend/src/lib/document-transform-api.test.ts",
-      "count": 4
-    },
-    {
-      "fingerprint": "72ac296593aaf856035ba5e8f3ad0525560f193d992932c3669c3d96144b52e6",
-      "source": "eslint",
-      "ruleId": "@sarj/require-camelcase-properties",
-      "path": "frontend/src/lib/document-transform-api.test.ts",
-      "count": 1
-    },
-    {
-      "fingerprint": "76a9e98803914df772440d78e405a02a6258c39ac07651cfc60ec633181f95ab",
-      "source": "eslint",
-      "ruleId": "@sarj/require-camelcase-properties",
-      "path": "frontend/src/lib/document-transform-api.test.ts",
-      "count": 4
-    },
-    {
-      "fingerprint": "8004b4bf57adcadfc9b25405c33ec1c9617406f0d72fff12abacf641f955e47b",
-      "source": "eslint",
-      "ruleId": "@sarj/require-camelcase-properties",
-      "path": "frontend/src/lib/document-transform-api.test.ts",
-      "count": 6
-    },
-    {
-      "fingerprint": "8176eac5635436257d2e75df240167e899eea520ee417ca00c0fce64f2c3dec3",
-      "source": "eslint",
-      "ruleId": "@sarj/require-camelcase-properties",
-      "path": "frontend/src/lib/document-transform-api.test.ts",
-      "count": 1
-    },
-    {
-      "fingerprint": "82081fae1058a67d43f5b0187c33e9905b34a018d2db4770c713f0999ff5548b",
-      "source": "eslint",
-      "ruleId": "@sarj/require-camelcase-properties",
-      "path": "frontend/src/lib/document-transform-api.test.ts",
-      "count": 1
-    },
-    {
-      "fingerprint": "8c1565d83ac5c84b08abc0f89366d3d141630015eb928f6018c3624aa75fb8a4",
-      "source": "eslint",
-      "ruleId": "@sarj/require-camelcase-properties",
-      "path": "frontend/src/lib/document-transform-api.test.ts",
-      "count": 4
-    },
-    {
-      "fingerprint": "980d64ff597a64ba0a5e2f53d1d3554de5774682741fc8e3cd1905f5acc3ef9f",
-      "source": "eslint",
-      "ruleId": "@sarj/require-camelcase-properties",
-      "path": "frontend/src/lib/document-transform-api.test.ts",
-      "count": 4
-    },
-    {
-      "fingerprint": "9980d0c5f4dab01dbed22026ed95373e5ba27716ed0dcaed76764ef0d1bbf1c1",
-      "source": "eslint",
-      "ruleId": "@sarj/require-camelcase-properties",
-      "path": "frontend/src/lib/document-transform-api.test.ts",
-      "count": 4
-    },
-    {
-      "fingerprint": "a1e1b544329548ebe722e5529e934929326015e29c9175a7e4883b6027517cc2",
-      "source": "eslint",
-      "ruleId": "@sarj/require-camelcase-properties",
-      "path": "frontend/src/lib/document-transform-api.test.ts",
-      "count": 1
-    },
-    {
-      "fingerprint": "a387fd33656594ba6302d482d00984f5ec5a7be2665c69beef1203f2a9988829",
-      "source": "eslint",
-      "ruleId": "@sarj/require-camelcase-properties",
-      "path": "frontend/src/lib/document-transform-api.test.ts",
-      "count": 2
-    },
-    {
-      "fingerprint": "c22b460bd57c914460c1dacd807f508a6df6270715de20eb28e81f69df862734",
-      "source": "eslint",
-      "ruleId": "@sarj/require-camelcase-properties",
-      "path": "frontend/src/lib/document-transform-api.test.ts",
-      "count": 4
-    },
-    {
-      "fingerprint": "d065a57857057d79bd2a16b0399913705d37ffbae88d4d01149b5607316134e6",
-      "source": "eslint",
-      "ruleId": "@sarj/require-camelcase-properties",
-      "path": "frontend/src/lib/document-transform-api.test.ts",
-      "count": 4
-    },
-    {
-      "fingerprint": "d12c0a007576917e6cb27bdba880bc90abae1787b2f0591ecd087503b47e41ea",
-      "source": "eslint",
-      "ruleId": "@sarj/require-camelcase-properties",
-      "path": "frontend/src/lib/document-transform-api.test.ts",
-      "count": 4
-    },
-    {
-      "fingerprint": "d3c2f92f1f7b3fcc307157baed02de0c714c1d3a6b61e99c2855b4af12be686a",
-      "source": "eslint",
-      "ruleId": "@sarj/require-camelcase-properties",
-      "path": "frontend/src/lib/document-transform-api.test.ts",
-      "count": 2
-    },
-    {
-      "fingerprint": "dae56dc14ea9418bc4704a6fb4d167b255fad803d6db5fa73673b07b23dd6f4e",
-      "source": "eslint",
-      "ruleId": "@sarj/require-camelcase-properties",
-      "path": "frontend/src/lib/document-transform-api.test.ts",
-      "count": 2
-    },
-    {
-      "fingerprint": "dc42d30ccaa3fc902ec7e8eea30efff6017bda1af0b5ad9b441575f7e6e74ef1",
-      "source": "eslint",
-      "ruleId": "@sarj/require-camelcase-properties",
-      "path": "frontend/src/lib/document-transform-api.test.ts",
-      "count": 1
-    },
-    {
-      "fingerprint": "e1b065cec28c85568326f42d47f12e1f47f65b329903e6f1ffb469c9168816aa",
-      "source": "eslint",
-      "ruleId": "@sarj/require-camelcase-properties",
-      "path": "frontend/src/lib/document-transform-api.test.ts",
-      "count": 3
-    },
-    {
-      "fingerprint": "ea91557413f44ecebfc27ef08ab220cb0151faeae9a8de9f6e0a551fefe806e0",
-      "source": "eslint",
-      "ruleId": "@sarj/require-camelcase-properties",
-      "path": "frontend/src/lib/document-transform-api.test.ts",
-      "count": 4
-    },
-    {
-      "fingerprint": "ed5eb4272aa016b1c762092e1f3b5c052e34409bb1261e4bcc27d9fdf969a294",
-      "source": "eslint",
-      "ruleId": "@sarj/require-camelcase-properties",
-      "path": "frontend/src/lib/document-transform-api.test.ts",
-      "count": 4
-    },
-    {
-      "fingerprint": "ee95b2e00c263d8881bf0322f8b12431f88d268ed8fe2679595de3644dd89166",
-      "source": "eslint",
-      "ruleId": "@sarj/require-camelcase-properties",
-      "path": "frontend/src/lib/document-transform-api.test.ts",
-      "count": 2
-    },
-    {
-      "fingerprint": "f8f24fbc5b9569e744bec53a8027cf54d44e003801e9f3af3a1452c651b67a28",
-      "source": "eslint",
-      "ruleId": "@sarj/require-camelcase-properties",
-      "path": "frontend/src/lib/document-transform-api.test.ts",
-      "count": 4
-    },
-    {
-      "fingerprint": "fb281b3eda5e9d41e95c9eb21d2b82e9d6c355c74040a798b120ccf7ba592023",
-      "source": "eslint",
-      "ruleId": "@sarj/require-camelcase-properties",
-      "path": "frontend/src/lib/document-transform-api.test.ts",
-      "count": 4
-    },
-    {
-      "fingerprint": "ff993370c03c567d001003470cfd38333c03e6ef7a33554929c4ab82470855ca",
-      "source": "eslint",
-      "ruleId": "@sarj/require-camelcase-properties",
-      "path": "frontend/src/lib/document-transform-api.test.ts",
-      "count": 4
-    },
-    {
-      "fingerprint": "fff504fc14bea1d812144a15c8e1f61bc4d59cf91015fd304590fd4b7b9edbf6",
-      "source": "eslint",
-      "ruleId": "@sarj/require-camelcase-properties",
-      "path": "frontend/src/lib/document-transform-api.test.ts",
-      "count": 2
-    },
-    {
-      "fingerprint": "039ea2a7787de155f99f96400b7ef2172acd4bcf60c68d24361ea1518319216b",
-      "source": "eslint",
-      "ruleId": "@sarj/require-camelcase-properties",
-      "path": "frontend/src/lib/document-transform-api.ts",
-      "count": 1
-    },
-    {
-      "fingerprint": "06503ba004ae7e4f9640186f6c41ae2f4493a3bd4bad167d77167807e043c557",
-      "source": "eslint",
-      "ruleId": "@sarj/require-camelcase-properties",
-      "path": "frontend/src/lib/document-transform-api.ts",
-      "count": 2
-    },
-    {
-      "fingerprint": "068a37895f513043ba799ec26c29235cccb94330c60ff5f6e78eefc6831fedf0",
-      "source": "eslint",
-      "ruleId": "@sarj/require-camelcase-properties",
-      "path": "frontend/src/lib/document-transform-api.ts",
-      "count": 1
-    },
-    {
-      "fingerprint": "0806c7fa73bf9991bc6a3d93755c534cf2cb8d7beaf1ca795a045b7d1a7828e6",
-      "source": "eslint",
-      "ruleId": "@sarj/require-camelcase-properties",
-      "path": "frontend/src/lib/document-transform-api.ts",
-      "count": 1
-    },
-    {
-      "fingerprint": "0d4da29fd44246b7732b8ea1eebd0045f6aa423f5aa80437ce05a60b3f65b581",
-      "source": "eslint",
-      "ruleId": "@sarj/require-camelcase-properties",
-      "path": "frontend/src/lib/document-transform-api.ts",
-      "count": 2
-    },
-    {
-      "fingerprint": "10e7c7e179121b92de71b6b89d0aa6bd3800f34ea657c4a146b18d00ec7be240",
-      "source": "eslint",
-      "ruleId": "@sarj/require-camelcase-properties",
-      "path": "frontend/src/lib/document-transform-api.ts",
-      "count": 2
-    },
-    {
-      "fingerprint": "13c8ec1b83cb8d4cf685bcf0ccca054574e3d457e82575c3163147d722a2ff45",
-      "source": "eslint",
-      "ruleId": "@sarj/require-camelcase-properties",
-      "path": "frontend/src/lib/document-transform-api.ts",
-      "count": 1
-    },
-    {
-      "fingerprint": "1909d19895a7f91a858f9bb95f60360d13cda125f9405180c6ff2203c8ef04ef",
-      "source": "eslint",
-      "ruleId": "@sarj/require-camelcase-properties",
-      "path": "frontend/src/lib/document-transform-api.ts",
-      "count": 2
-    },
-    {
-      "fingerprint": "2348780e766a646c23e11eb2e06e914484f3f8bdde5a7e63dec1949e257fbbb0",
-      "source": "eslint",
-      "ruleId": "@sarj/require-camelcase-properties",
-      "path": "frontend/src/lib/document-transform-api.ts",
-      "count": 2
-    },
-    {
-      "fingerprint": "2a9087988e1613f179052307ecdd485869f0752f4d7c15c7f8845a60be1261c5",
-      "source": "eslint",
-      "ruleId": "@sarj/require-camelcase-properties",
-      "path": "frontend/src/lib/document-transform-api.ts",
-      "count": 2
-    },
-    {
-      "fingerprint": "2d27f2a3f1443d16f99b37fd6327f065d5543c8c7aa76eada6fab30f0f0e9c80",
-      "source": "eslint",
-      "ruleId": "@sarj/require-camelcase-properties",
-      "path": "frontend/src/lib/document-transform-api.ts",
-      "count": 2
-    },
-    {
-      "fingerprint": "356e29905b12c0a6012368e37b1065aeb024491131c4f4c3b341be8b98dbe376",
-      "source": "eslint",
-      "ruleId": "@sarj/require-camelcase-properties",
-      "path": "frontend/src/lib/document-transform-api.ts",
-      "count": 1
-    },
-    {
-      "fingerprint": "37fffadefba3e000f088c25570a17fc21dbe076b29a1c37e12e1539d6a72d96a",
-      "source": "eslint",
-      "ruleId": "@sarj/require-camelcase-properties",
-      "path": "frontend/src/lib/document-transform-api.ts",
-      "count": 5
-    },
-    {
-      "fingerprint": "3eb6b8ccad8d801fa406bf4a86ebf069eaa18121761a6c27c1cf16ebdf5677c9",
-      "source": "eslint",
-      "ruleId": "@sarj/require-camelcase-properties",
-      "path": "frontend/src/lib/document-transform-api.ts",
-      "count": 2
-    },
-    {
-      "fingerprint": "4bb155e25da424e9aee04344cdd4544cb07e418d7d44c1e4528f1e54ea31d1c6",
-      "source": "eslint",
-      "ruleId": "@sarj/require-camelcase-properties",
-      "path": "frontend/src/lib/document-transform-api.ts",
-      "count": 2
-    },
-    {
-      "fingerprint": "4edcc327e70d21f16089064b0ddf30a27a5597ee3900de660e0e1fa2b97dcc3a",
-      "source": "eslint",
-      "ruleId": "@sarj/require-camelcase-properties",
-      "path": "frontend/src/lib/document-transform-api.ts",
-      "count": 2
-    },
-    {
-      "fingerprint": "5529f655a6efb4ecdfb565779623ad22ceacf15824e5c28d9e4b808ad9712327",
-      "source": "eslint",
-      "ruleId": "@sarj/require-camelcase-properties",
-      "path": "frontend/src/lib/document-transform-api.ts",
-      "count": 3
-    },
-    {
-      "fingerprint": "5564ea149e31e70249fe86393462620657f671f48d7deed58cd2493a0293ae13",
-      "source": "eslint",
-      "ruleId": "@sarj/require-camelcase-properties",
-      "path": "frontend/src/lib/document-transform-api.ts",
-      "count": 2
-    },
-    {
-      "fingerprint": "6418574fb43581db2dd69825cb9cbb4405b2c4a1b8b0878a2e13623f035e2f37",
-      "source": "eslint",
-      "ruleId": "@sarj/require-camelcase-properties",
-      "path": "frontend/src/lib/document-transform-api.ts",
-      "count": 2
-    },
-    {
-      "fingerprint": "6c82ec15d2c3d7fbabd650218c34d7ee5ed50ca41d69f69d8e2964fcf2121617",
-      "source": "eslint",
-      "ruleId": "@sarj/require-camelcase-properties",
-      "path": "frontend/src/lib/document-transform-api.ts",
-      "count": 2
-    },
-    {
-      "fingerprint": "6efd09dda451b2ce64463b1a17aeeda989f8d07b5705318d54202eaa96c6c7cc",
-      "source": "eslint",
-      "ruleId": "@sarj/require-camelcase-properties",
-      "path": "frontend/src/lib/document-transform-api.ts",
-      "count": 1
-    },
-    {
-      "fingerprint": "7189c781e758d1cc1a75ddc6cd4fa2f9e8f2067afa435cd7684acb6ba7c12c8e",
-      "source": "eslint",
-      "ruleId": "@sarj/require-camelcase-properties",
-      "path": "frontend/src/lib/document-transform-api.ts",
-      "count": 2
-    },
-    {
-      "fingerprint": "74317c076af4d4a9faf9c5f21622ef9370eb6efe0ab9ba435e74caf63ec7c915",
-      "source": "eslint",
-      "ruleId": "@sarj/require-camelcase-properties",
-      "path": "frontend/src/lib/document-transform-api.ts",
-      "count": 1
-    },
-    {
-      "fingerprint": "7f575cda99deb5db2bf07778d891c70460ba33319c2212ca3e630fb9ae62a4fa",
-      "source": "eslint",
-      "ruleId": "@sarj/require-camelcase-properties",
-      "path": "frontend/src/lib/document-transform-api.ts",
-      "count": 2
-    },
-    {
-      "fingerprint": "80918d4cd27163a0175244a0a03d219f22f6f74b98f79e5a1fdc643e1924ab7c",
-      "source": "eslint",
-      "ruleId": "@sarj/require-camelcase-properties",
-      "path": "frontend/src/lib/document-transform-api.ts",
-      "count": 2
-    },
-    {
-      "fingerprint": "8218ad813a8c1c271053e3c767bb07465dd3adfaf66ddec4acbba4523221762f",
-      "source": "eslint",
-      "ruleId": "@sarj/require-camelcase-properties",
-      "path": "frontend/src/lib/document-transform-api.ts",
-      "count": 2
-    },
-    {
-      "fingerprint": "864367bd496a095e82299a1468b025f6bac20f7dd73988baa96113b726da9c32",
-      "source": "eslint",
-      "ruleId": "@sarj/require-camelcase-properties",
-      "path": "frontend/src/lib/document-transform-api.ts",
-      "count": 2
-    },
-    {
-      "fingerprint": "89967aac21426a35dada91199d9159154a08a2c48f19098dd8ecbe60b5756c9f",
-      "source": "eslint",
-      "ruleId": "@sarj/require-camelcase-properties",
-      "path": "frontend/src/lib/document-transform-api.ts",
-      "count": 1
-    },
-    {
-      "fingerprint": "8c502bbd59adba07cbb6d7281efb15172f6611d109fd9caf3adb8fe47a50a9a1",
-      "source": "eslint",
-      "ruleId": "@sarj/require-camelcase-properties",
-      "path": "frontend/src/lib/document-transform-api.ts",
-      "count": 3
-    },
-    {
-      "fingerprint": "968567664878348858fb92b41c8346cc52ee43d356a54380f789cb073f0083a3",
-      "source": "eslint",
-      "ruleId": "@sarj/require-camelcase-properties",
-      "path": "frontend/src/lib/document-transform-api.ts",
-      "count": 2
-    },
-    {
-      "fingerprint": "97732341d00150b73e695ad3f42e30f5f6333311a6fe479611cf59dfc7129ac5",
-      "source": "eslint",
-      "ruleId": "@sarj/require-camelcase-properties",
-      "path": "frontend/src/lib/document-transform-api.ts",
-      "count": 3
-    },
-    {
-      "fingerprint": "9fa82ecc788d0e01399750c44e6762ce3c5a873abc5bb1ab6e5fabd921bd6a9d",
-      "source": "eslint",
-      "ruleId": "@sarj/require-camelcase-properties",
-      "path": "frontend/src/lib/document-transform-api.ts",
-      "count": 1
-    },
-    {
-      "fingerprint": "a6e0be1f74288362466d8a05476678c7b4a28c20e348bcb9dff06b423e4cd0ce",
-      "source": "eslint",
-      "ruleId": "@sarj/require-camelcase-properties",
-      "path": "frontend/src/lib/document-transform-api.ts",
-      "count": 1
-    },
-    {
-      "fingerprint": "a8cd02c674e801ff8099d7986e4570b95b117cb12739978a637405ebc6316648",
-      "source": "eslint",
-      "ruleId": "@sarj/require-camelcase-properties",
-      "path": "frontend/src/lib/document-transform-api.ts",
-      "count": 2
-    },
-    {
-      "fingerprint": "aed186954dccfafb988d4af2bbd8284965e0d2a4b8a93e9c9edb0491a897f0f5",
-      "source": "eslint",
-      "ruleId": "@sarj/require-camelcase-properties",
-      "path": "frontend/src/lib/document-transform-api.ts",
-      "count": 2
-    },
-    {
-      "fingerprint": "b3f0ff2b1674c126a74f7cef29c21b8f94e55029dcbb0230ccc5f2c70d8c9290",
-      "source": "eslint",
-      "ruleId": "@sarj/require-camelcase-properties",
-      "path": "frontend/src/lib/document-transform-api.ts",
-      "count": 2
-    },
-    {
-      "fingerprint": "bf348c70157315be211a6e1856a8086605ef7e9014feb72e02a479a1e1fea234",
-      "source": "eslint",
-      "ruleId": "@sarj/require-camelcase-properties",
-      "path": "frontend/src/lib/document-transform-api.ts",
-      "count": 1
-    },
-    {
-      "fingerprint": "c643c748da67d8a4068dcb497a65152bbcef162272863b9d7782700f0cc60440",
-      "source": "eslint",
-      "ruleId": "@sarj/require-camelcase-properties",
-      "path": "frontend/src/lib/document-transform-api.ts",
-      "count": 2
-    },
-    {
-      "fingerprint": "cfa9d616c20c98494d77e1a4a4cf400c3dfc7e741879b20874fef5a54645ce4d",
-      "source": "eslint",
-      "ruleId": "@sarj/require-camelcase-properties",
-      "path": "frontend/src/lib/document-transform-api.ts",
-      "count": 2
-    },
-    {
-      "fingerprint": "d706623c372d3763d0024ca775d5792b0b23d2b6adfb90484195929e4b3a6abc",
-      "source": "eslint",
-      "ruleId": "@sarj/require-camelcase-properties",
-      "path": "frontend/src/lib/document-transform-api.ts",
-      "count": 2
-    },
-    {
-      "fingerprint": "daef1710c397bf9bf5c6fd20dbd074cf606ea0a082c44556432d55334145a750",
-      "source": "eslint",
-      "ruleId": "@sarj/require-camelcase-properties",
-      "path": "frontend/src/lib/document-transform-api.ts",
-      "count": 2
-    },
-    {
-      "fingerprint": "dd4023ee89942dc4d345f770e931a6c02515694232600e4e492080aab8f356d6",
-      "source": "eslint",
-      "ruleId": "@sarj/require-camelcase-properties",
-      "path": "frontend/src/lib/document-transform-api.ts",
-      "count": 2
-    },
-    {
-      "fingerprint": "de1baf24037912649f6602753a15a218484d254343de271d7f1b4016f91828d0",
-      "source": "eslint",
-      "ruleId": "@sarj/require-camelcase-properties",
-      "path": "frontend/src/lib/document-transform-api.ts",
-      "count": 5
-    },
-    {
-      "fingerprint": "e49a2616225969c1acf2cf9c0a971ae5b9a56cf9c8eab7dd542884a7ba245be3",
-      "source": "eslint",
-      "ruleId": "@sarj/require-camelcase-properties",
-      "path": "frontend/src/lib/document-transform-api.ts",
-      "count": 2
-    },
-    {
-      "fingerprint": "e907f9454439aaa74e105dfbf3c151941b834aa6d9b6b4cfb3ce6eb3976f4cc5",
-      "source": "eslint",
-      "ruleId": "@sarj/require-camelcase-properties",
-      "path": "frontend/src/lib/document-transform-api.ts",
-      "count": 2
-    },
-    {
-      "fingerprint": "edb8d169219a39d2a09af1ff72e5e984f75a9a4523dac9a5e65d56a8177cf065",
-      "source": "eslint",
-      "ruleId": "@sarj/require-camelcase-properties",
-      "path": "frontend/src/lib/document-transform-api.ts",
-      "count": 2
-    },
-    {
-      "fingerprint": "f31e3ce7851bdaa8c69f2d2ac440c872d6309c00d1faf6302970b9c23992ab8e",
-      "source": "eslint",
-      "ruleId": "@sarj/require-camelcase-properties",
-      "path": "frontend/src/lib/document-transform-api.ts",
-      "count": 2
-    },
-    {
-      "fingerprint": "fe0ccb53e49621d80a2aaff777785bf2c10b602b7090a45db4cff8744d60c6f9",
-      "source": "eslint",
-      "ruleId": "@sarj/require-camelcase-properties",
-      "path": "frontend/src/lib/document-transform-api.ts",
-      "count": 3
-    },
-    {
-      "fingerprint": "166f7195750a08566d1abd821d00371cff6ebaa98f073be103b305b4204d8da6",
-      "source": "eslint",
-      "ruleId": "@sarj/require-camelcase-properties",
-      "path": "frontend/src/lib/mcp-consent-client.test.ts",
-      "count": 2
-    },
-    {
-      "fingerprint": "229f5f5402931b22b8cbfccfe221103257b9b95e33f3b05228a3a07065ec2dae",
-      "source": "eslint",
-      "ruleId": "@sarj/require-camelcase-properties",
-      "path": "frontend/src/lib/mcp-consent-client.test.ts",
-      "count": 1
-    },
-    {
-      "fingerprint": "3fc8a0074058278e468729289cc63d6186cfc8529051691ed07a31e191902fbe",
-      "source": "eslint",
-      "ruleId": "@sarj/require-camelcase-properties",
-      "path": "frontend/src/lib/mcp-consent-client.test.ts",
-      "count": 1
-    },
-    {
-      "fingerprint": "551e7217b2273c9aed9b6cc6bf2ddb8b2dbd1a49432375ef260b9629c7e2388f",
-      "source": "eslint",
-      "ruleId": "@sarj/require-camelcase-properties",
-      "path": "frontend/src/lib/mcp-consent-client.test.ts",
-      "count": 2
-    },
-    {
-      "fingerprint": "9c34d249412f3820528349a0121f4f137dda41011f9f569b2777c6aa28949456",
-      "source": "eslint",
-      "ruleId": "@sarj/require-camelcase-properties",
-      "path": "frontend/src/lib/mcp-consent-client.test.ts",
-      "count": 1
-    },
-    {
-      "fingerprint": "a9463a285af54460537dc8a2f6c9b85b5dee10f4768afddc38b892d858f5a8a6",
-      "source": "eslint",
-      "ruleId": "@sarj/require-camelcase-properties",
-      "path": "frontend/src/lib/mcp-consent-client.test.ts",
-      "count": 1
-    },
-    {
-      "fingerprint": "1ac561144eac08699747fef3457ffc51b2728abfcb3c4b1520ba0a093c74063f",
-      "source": "eslint",
-      "ruleId": "@sarj/require-camelcase-properties",
-      "path": "frontend/src/lib/mcp-consent-client.ts",
-      "count": 1
-    },
-    {
-      "fingerprint": "1ff1b7044dce06560ea55f6ec98e191fd73615ab61b5b0a3c0886b4aea9a9a35",
-      "source": "eslint",
-      "ruleId": "@sarj/require-camelcase-properties",
-      "path": "frontend/src/lib/mcp-consent-client.ts",
-      "count": 1
-    },
-    {
-      "fingerprint": "45d57d0e28f66c1cb37a2ae4ec59972e0601a231c9ada41ee98417563ce160c3",
-      "source": "eslint",
-      "ruleId": "@sarj/require-camelcase-properties",
-      "path": "frontend/src/lib/mcp-consent-client.ts",
-      "count": 1
-    },
-    {
-      "fingerprint": "630f8f6c390d36fa7f29707628a3a515fcbca35ff734d4584428de6c68d1b373",
-      "source": "eslint",
-      "ruleId": "@sarj/require-camelcase-properties",
-      "path": "frontend/src/lib/mcp-consent-client.ts",
-      "count": 1
-    },
-    {
-      "fingerprint": "7f999000eb4ba23126a9b540f1d6906859ea811d0801c7ee6d2f620ff4f8f755",
-      "source": "eslint",
-      "ruleId": "@sarj/require-camelcase-properties",
-      "path": "frontend/src/lib/mcp-consent-client.ts",
-      "count": 1
-    },
-    {
-      "fingerprint": "9881184b0e8d0d2f6f35cca6753198a3f9a86058a1db51da41c289f9526aed47",
-      "source": "eslint",
-      "ruleId": "@sarj/require-camelcase-properties",
-      "path": "frontend/src/lib/mcp-consent-client.ts",
-      "count": 2
-    },
-    {
-      "fingerprint": "b9d133be20f9090c299a40b4966456f3eb33bc7479b0faca1a6addba7a2fe9b4",
-      "source": "eslint",
-      "ruleId": "@sarj/require-camelcase-properties",
-      "path": "frontend/src/lib/mcp-consent-client.ts",
-      "count": 3
-    },
-    {
-      "fingerprint": "c717d5073b48872ce5f9b9987bb4cb6f047b61d2bbb6d9173dad1b5818e93427",
-      "source": "eslint",
-      "ruleId": "@sarj/require-camelcase-properties",
-      "path": "frontend/src/lib/mcp-consent-client.ts",
-      "count": 1
-    },
-    {
-      "fingerprint": "218aa35ff778757668365caa13d2ea132ee778b626bfbe9296c2eb77ce92bded",
-      "source": "eslint",
-      "ruleId": "@sarj/require-camelcase-properties",
-      "path": "frontend/src/lib/reorganize-client.test.ts",
-      "count": 1
-    },
-    {
-      "fingerprint": "45807c6ac33b51506adfd57a2f5a2a8f614fea02f6fffd0fde894a804f7cf497",
-      "source": "eslint",
-      "ruleId": "@sarj/require-camelcase-properties",
-      "path": "frontend/src/lib/reorganize-client.test.ts",
-      "count": 2
-    },
-    {
-      "fingerprint": "60f6d163b33d38e6e45161b0d98438481b486ed1df75086e2b0c7061d7b0222b",
-      "source": "eslint",
-      "ruleId": "@sarj/require-camelcase-properties",
-      "path": "frontend/src/lib/reorganize-client.test.ts",
-      "count": 1
-    },
-    {
-      "fingerprint": "9adc107ce3baa8073f483bebb4039004b2e5c3d2d6cb588f23d7dcb00627697a",
-      "source": "eslint",
-      "ruleId": "@sarj/require-camelcase-properties",
-      "path": "frontend/src/lib/reorganize-client.test.ts",
-      "count": 2
-    },
-    {
-      "fingerprint": "d491eb555985229ed3e95abeee26b43dbe052266900a637690152b0a81af569b",
-      "source": "eslint",
-      "ruleId": "@sarj/require-camelcase-properties",
-      "path": "frontend/src/lib/reorganize-client.test.ts",
-      "count": 2
-    },
-    {
-      "fingerprint": "fcb6d48a29017f64e4780415ad1b0f0f80d9d703094eeb6a44964306a982e817",
-      "source": "eslint",
-      "ruleId": "@sarj/require-camelcase-properties",
-      "path": "frontend/src/lib/reorganize-client.test.ts",
-      "count": 2
-    },
-    {
-      "fingerprint": "82331f20a3c3f45a8b8baebd34c536e13bf20c7a16649dd12a4a60573d774838",
-      "source": "eslint",
-      "ruleId": "@sarj/require-camelcase-properties",
-      "path": "frontend/src/lib/reorganize-client.ts",
-      "count": 2
-    },
-    {
-      "fingerprint": "8641896bf26c2a1193aaf06a6ebb170a99cb4274db1faf0cc8203cd412ba7828",
-      "source": "eslint",
-      "ruleId": "@sarj/require-camelcase-properties",
-      "path": "frontend/src/lib/reorganize-client.ts",
-      "count": 2
-    },
-    {
-      "fingerprint": "b5f55e3554b9a163c917cbd7c328bfb80fbb48ce2d45a8f61f4e3b7b182fa956",
-      "source": "eslint",
-      "ruleId": "@sarj/require-camelcase-properties",
-      "path": "frontend/src/lib/reorganize-client.ts",
-      "count": 3
-    },
-    {
-      "fingerprint": "f60e85ea9924bf5adbace315c1bc222ce05d780089e974549d7a46e1c2ad13fe",
-      "source": "eslint",
-      "ruleId": "@sarj/require-camelcase-properties",
-      "path": "frontend/src/lib/reorganize-client.ts",
-      "count": 2
-    },
-    {
-      "fingerprint": "fd62276f5d6a81afffa4613c2592619d740be271eccc519153d6577eba528878",
-      "source": "eslint",
-      "ruleId": "@sarj/require-camelcase-properties",
-      "path": "frontend/src/lib/reorganize-client.ts",
-      "count": 2
-    },
-    {
-      "fingerprint": "fe5228bd72bcaf68605c59181ce90f029ccfd94eec2fbe3f92a7d5b07fcb2aa3",
-      "source": "eslint",
-      "ruleId": "@sarj/require-camelcase-properties",
-      "path": "frontend/src/lib/reorganize-client.ts",
-      "count": 2
-    },
-    {
-      "fingerprint": "575118e32141e857cf073dc3c629983fe30caaad75f06604314977bfd26f8911",
-      "source": "eslint",
-      "ruleId": "@sarj/require-camelcase-properties",
-      "path": "frontend/src/lib/server-api.test.ts",
-      "count": 1
-    },
-    {
-      "fingerprint": "14f6d79cf852b21fcd8316b32ef0beae625de9a2a9c9e563af4e604e5c96ced2",
-      "source": "eslint",
-      "ruleId": "@sarj/require-camelcase-properties",
-      "path": "frontend/src/lib/smart-create-client.test.ts",
-      "count": 3
-    },
-    {
-      "fingerprint": "2d54f9be3eb1ab6367841b8a8e6b6585f5c68e78eaef147a380b7eb90f54f23c",
-      "source": "eslint",
-      "ruleId": "@sarj/require-camelcase-properties",
-      "path": "frontend/src/lib/smart-create-client.test.ts",
-      "count": 2
-    },
-    {
-      "fingerprint": "46f21dff478bf7d744ca0546d5fbb784b7fd18fb46d8af6e2d581c416ce186d4",
-      "source": "eslint",
-      "ruleId": "@sarj/require-camelcase-properties",
-      "path": "frontend/src/lib/smart-create-client.test.ts",
-      "count": 2
-    },
-    {
-      "fingerprint": "57dd59712b19a7d87ef097205bd1c3678f7c6f6c2f9189c7a3c4559827b92243",
-      "source": "eslint",
-      "ruleId": "@sarj/require-camelcase-properties",
-      "path": "frontend/src/lib/smart-create-client.test.ts",
-      "count": 2
-    },
-    {
-      "fingerprint": "6bc42d3acb6e966c8868fcdbdefab22b5da7350aec9b8fea0ff3f6c7ae6acb4b",
-      "source": "eslint",
-      "ruleId": "@sarj/require-camelcase-properties",
-      "path": "frontend/src/lib/smart-create-client.test.ts",
-      "count": 2
-    },
-    {
-      "fingerprint": "925ca1e828ec219564470790e8dde99dfda29025392217c4cceeeec77b52394b",
-      "source": "eslint",
-      "ruleId": "@sarj/require-camelcase-properties",
-      "path": "frontend/src/lib/smart-create-client.test.ts",
-      "count": 1
-    },
-    {
-      "fingerprint": "927e480a3d8a34b88c7bc1a38fc35276b183f41d25bef2d0720249e3a7aeee75",
-      "source": "eslint",
-      "ruleId": "@sarj/require-camelcase-properties",
-      "path": "frontend/src/lib/smart-create-client.test.ts",
-      "count": 1
-    },
-    {
-      "fingerprint": "971be6751fcee95deb728e3d9c8f244a69882fff598e8c5ce2d82dc5a5f0068b",
-      "source": "eslint",
-      "ruleId": "@sarj/require-camelcase-properties",
-      "path": "frontend/src/lib/smart-create-client.test.ts",
-      "count": 1
-    },
-    {
-      "fingerprint": "a8502a0c9399b703571506e5acd12adae71f93c37c235340895a5881b9eaa734",
-      "source": "eslint",
-      "ruleId": "@sarj/require-camelcase-properties",
-      "path": "frontend/src/lib/smart-create-client.test.ts",
-      "count": 2
-    },
-    {
-      "fingerprint": "a921c41d9a160bc1c861312dca789f1a22bd9ea0f3b900dc77a13b7f3bb45eef",
-      "source": "eslint",
-      "ruleId": "@sarj/require-camelcase-properties",
-      "path": "frontend/src/lib/smart-create-client.test.ts",
-      "count": 1
-    },
-    {
-      "fingerprint": "a962dc0f491ed51288ff6b8255b6d5473f7f2edb27522f639c49a684a074cc70",
-      "source": "eslint",
-      "ruleId": "@sarj/require-camelcase-properties",
-      "path": "frontend/src/lib/smart-create-client.test.ts",
-      "count": 2
-    },
-    {
-      "fingerprint": "ac1866ab4ff17816076dec5aac5d8bdad0369e6ceb0bcc9f3fe7af788d07c330",
-      "source": "eslint",
-      "ruleId": "@sarj/require-camelcase-properties",
-      "path": "frontend/src/lib/smart-create-client.test.ts",
-      "count": 2
-    },
-    {
-      "fingerprint": "b84a33d884b1f33547935d510d0ffb6659e141e59911f69a769fc3bb6aed522e",
-      "source": "eslint",
-      "ruleId": "@sarj/require-camelcase-properties",
-      "path": "frontend/src/lib/smart-create-client.test.ts",
-      "count": 1
-    },
-    {
-      "fingerprint": "cc81c86bf1345a7f25d2530c7433c5e6773f4442555a3f3460d19a2f91acf180",
-      "source": "eslint",
-      "ruleId": "@sarj/require-camelcase-properties",
-      "path": "frontend/src/lib/smart-create-client.test.ts",
-      "count": 2
-    },
-    {
-      "fingerprint": "d35b65b84b531bc6e744c1fb97785e060692bbf5ea9abba04025f388dc443fae",
-      "source": "eslint",
-      "ruleId": "@sarj/require-camelcase-properties",
-      "path": "frontend/src/lib/smart-create-client.test.ts",
-      "count": 1
-    },
-    {
-      "fingerprint": "da168a7edf6454f273691a1955125d89a3b1e67ab8960b993afb95c2e8b69b02",
-      "source": "eslint",
-      "ruleId": "@sarj/require-camelcase-properties",
-      "path": "frontend/src/lib/smart-create-client.test.ts",
-      "count": 1
-    },
-    {
-      "fingerprint": "da9c4dc3fe86e8ad01296d6ba63c0cda6c3233d3a5fb00d67e09fcecc1ead338",
-      "source": "eslint",
-      "ruleId": "@sarj/require-camelcase-properties",
-      "path": "frontend/src/lib/smart-create-client.test.ts",
-      "count": 2
-    },
-    {
-      "fingerprint": "e8de4b68d8f06bd7577646060c941f247f650968a70621f9742fdd0e2f2b3048",
-      "source": "eslint",
-      "ruleId": "@sarj/require-camelcase-properties",
-      "path": "frontend/src/lib/smart-create-client.test.ts",
-      "count": 2
-    },
-    {
-      "fingerprint": "ea6d64596c21bc7171fad813c1953ae7c1dfada8ca5503acb2fac3a48325394b",
-      "source": "eslint",
-      "ruleId": "@sarj/require-camelcase-properties",
-      "path": "frontend/src/lib/smart-create-client.test.ts",
-      "count": 2
-    },
-    {
-      "fingerprint": "fbf3da734d13cc1e36681b36430f4b88b0d6855ee72959452d292e5451f1f31b",
-      "source": "eslint",
-      "ruleId": "@sarj/require-camelcase-properties",
-      "path": "frontend/src/lib/smart-create-client.test.ts",
-      "count": 1
-    },
-    {
-      "fingerprint": "fd93f9dff64a0a81925cd68db2ca9ed4456a2579d9354c891d8e5595aa5610d1",
-      "source": "eslint",
-      "ruleId": "@sarj/require-camelcase-properties",
-      "path": "frontend/src/lib/smart-create-client.test.ts",
-      "count": 1
-    },
-    {
-      "fingerprint": "07354ecf9b743e83df9e57a801b9f4496af68111be0602e31eb42a430eb8e41f",
-      "source": "eslint",
-      "ruleId": "@sarj/require-camelcase-properties",
-      "path": "frontend/src/lib/smart-create-client.ts",
-      "count": 4
-    },
-    {
-      "fingerprint": "378690b20c83e981bf697a4c1bea02ace9a182656136158aedb64fa5438df31c",
-      "source": "eslint",
-      "ruleId": "@sarj/require-camelcase-properties",
-      "path": "frontend/src/lib/smart-create-client.ts",
-      "count": 2
-    },
-    {
-      "fingerprint": "46087981a984b041f86a04ef59868455c974e58cbda445b2badd0e76fccd33dd",
-      "source": "eslint",
-      "ruleId": "@sarj/require-camelcase-properties",
-      "path": "frontend/src/lib/smart-create-client.ts",
-      "count": 2
-    },
-    {
-      "fingerprint": "49a9a3ea022dd94d1beab06b7e60c3593206330f5a85b015941142f72e3e4ce1",
-      "source": "eslint",
-      "ruleId": "@sarj/require-camelcase-properties",
-      "path": "frontend/src/lib/smart-create-client.ts",
-      "count": 3
-    },
-    {
-      "fingerprint": "53b7996bc19905a4fb9b490c409ac64156eb270a73d4679ce7ec8f9f4f9826f8",
-      "source": "eslint",
-      "ruleId": "@sarj/require-camelcase-properties",
-      "path": "frontend/src/lib/smart-create-client.ts",
-      "count": 1
-    },
-    {
-      "fingerprint": "55153b9f945d27e66eab0542e21c56ce717d397c7d5e5203fdcea856500b1671",
-      "source": "eslint",
-      "ruleId": "@sarj/require-camelcase-properties",
-      "path": "frontend/src/lib/smart-create-client.ts",
-      "count": 1
-    },
-    {
-      "fingerprint": "58802ba8af7aa452360a76f353cf74b45a5c0c9561940b8b61834cdf49c249f9",
-      "source": "eslint",
-      "ruleId": "@sarj/require-camelcase-properties",
-      "path": "frontend/src/lib/smart-create-client.ts",
-      "count": 2
-    },
-    {
-      "fingerprint": "59c1b9dbc6660e23a4073c58841b26b7215200209a00763e87bbf3563d29357c",
-      "source": "eslint",
-      "ruleId": "@sarj/require-camelcase-properties",
-      "path": "frontend/src/lib/smart-create-client.ts",
-      "count": 1
-    },
-    {
-      "fingerprint": "5bf46d616b422d4f436b25156af9919a70910abc7718dd49d4916bda1090deb6",
-      "source": "eslint",
-      "ruleId": "@sarj/require-camelcase-properties",
-      "path": "frontend/src/lib/smart-create-client.ts",
-      "count": 1
-    },
-    {
-      "fingerprint": "63678ab211f2d891047b146edf3a020090f82596c5e389b1940a7c68107d71f3",
-      "source": "eslint",
-      "ruleId": "@sarj/require-camelcase-properties",
-      "path": "frontend/src/lib/smart-create-client.ts",
-      "count": 1
-    },
-    {
-      "fingerprint": "6daeadc2f68ae3dc14d91451838bcc24bca4d28d3564418f0bf62c41935f7872",
-      "source": "eslint",
-      "ruleId": "@sarj/require-camelcase-properties",
-      "path": "frontend/src/lib/smart-create-client.ts",
-      "count": 1
-    },
-    {
-      "fingerprint": "6fe6533d09c3a002ba144d28a00b5683dd4e4133ad7d1eb000fbe4f2f89e5f51",
-      "source": "eslint",
-      "ruleId": "@sarj/require-camelcase-properties",
-      "path": "frontend/src/lib/smart-create-client.ts",
-      "count": 1
-    },
-    {
-      "fingerprint": "7c73dc2559abeeb93963d787af1d36ad318caf968ef3645c77efe1234c019238",
-      "source": "eslint",
-      "ruleId": "@sarj/require-camelcase-properties",
-      "path": "frontend/src/lib/smart-create-client.ts",
-      "count": 2
-    },
-    {
-      "fingerprint": "815b43728f5a51a420febe5b5940331746b8a8c18029234dc6a1379cee4f93cc",
-      "source": "eslint",
-      "ruleId": "@sarj/require-camelcase-properties",
-      "path": "frontend/src/lib/smart-create-client.ts",
-      "count": 2
-    },
-    {
-      "fingerprint": "9483ae746a7d0a4befa7e6f9e52c5cfb4256cee09aabcff9409bd18530bedd2c",
-      "source": "eslint",
-      "ruleId": "@sarj/require-camelcase-properties",
-      "path": "frontend/src/lib/smart-create-client.ts",
-      "count": 1
-    },
-    {
-      "fingerprint": "94c5904f24fde583065d5a45694738f4567cd08a22004461716b1d225a19e1af",
-      "source": "eslint",
-      "ruleId": "@sarj/require-camelcase-properties",
-      "path": "frontend/src/lib/smart-create-client.ts",
-      "count": 1
-    },
-    {
-      "fingerprint": "9f390fc3d1f7598e03e3989fdbc132a0ea2b8678755bbb0626546766233a8ebe",
-      "source": "eslint",
-      "ruleId": "@sarj/require-camelcase-properties",
-      "path": "frontend/src/lib/smart-create-client.ts",
-      "count": 3
-    },
-    {
-      "fingerprint": "b2784f3bdf6ba1daf33c8c1400481bef1a6935a72c81aec663a6549273f81197",
-      "source": "eslint",
-      "ruleId": "@sarj/require-camelcase-properties",
-      "path": "frontend/src/lib/smart-create-client.ts",
-      "count": 2
-    },
-    {
-      "fingerprint": "ef03ed108654f8ff598602604d75bef7babbf5bb70be5df07781bd138b6d96a6",
-      "source": "eslint",
-      "ruleId": "@sarj/require-camelcase-properties",
-      "path": "frontend/src/lib/smart-create-client.ts",
-      "count": 2
-    },
-    {
-      "fingerprint": "006cc7fb132e55ab88cf07a4d4f58565163237831bc29f4b3cebad1a21f96d25",
-      "source": "eslint",
-      "ruleId": "@sarj/require-camelcase-properties",
-      "path": "frontend/src/lib/wiki-api.ts",
-      "count": 1
-    },
-    {
-      "fingerprint": "1b10e3169af564908812839d6a4f6537f0bb183988260cf9cc6261d13261b60d",
-      "source": "eslint",
-      "ruleId": "@sarj/require-camelcase-properties",
-      "path": "frontend/src/lib/wiki-api.ts",
-      "count": 1
-    },
-    {
-      "fingerprint": "384fd7ffac6387431927277861f5c7ad8a5be0d623be2c5df1fb4880feb494f5",
-      "source": "eslint",
-      "ruleId": "@sarj/require-camelcase-properties",
-      "path": "frontend/src/lib/wiki-api.ts",
-      "count": 1
-    },
-    {
-      "fingerprint": "40df1cec5d0955af0f2ef4b2197a6a1c04ea6df5f58320b2f6a5417d13cab607",
-      "source": "eslint",
-      "ruleId": "@sarj/require-camelcase-properties",
-      "path": "frontend/src/lib/wiki-api.ts",
-      "count": 1
-    },
-    {
-      "fingerprint": "5621bc76bb7625b4801b9bbb4a7022999f37586345e927ebd9bd29ce8188351c",
-      "source": "eslint",
-      "ruleId": "@sarj/require-camelcase-properties",
-      "path": "frontend/src/lib/wiki-api.ts",
-      "count": 1
-    },
-    {
-      "fingerprint": "7b56c16a17b59e441e3ad794558d63b7a2c494a3021e4fd1a803f00e18274afb",
-      "source": "eslint",
-      "ruleId": "@sarj/require-camelcase-properties",
-      "path": "frontend/src/lib/wiki-api.ts",
-      "count": 5
-    },
-    {
-      "fingerprint": "8488213690c53cf173b5248326b05d4ea1a451b03868cb0f2f28f4d4ea7c03f4",
-      "source": "eslint",
-      "ruleId": "@sarj/require-camelcase-properties",
-      "path": "frontend/src/lib/wiki-api.ts",
-      "count": 1
-    },
-    {
-      "fingerprint": "8bc3ff45f2665a44d695e6a3f919a8e939d8bbebd34367e96ba96f15b3ce7d20",
-      "source": "eslint",
-      "ruleId": "@sarj/require-camelcase-properties",
-      "path": "frontend/src/lib/wiki-api.ts",
-      "count": 1
-    },
-    {
-      "fingerprint": "9078c32f54b679b1490b6ac26268cd8db87026f8700ffbeb3793a7ab6d9d553b",
-      "source": "eslint",
-      "ruleId": "@sarj/require-camelcase-properties",
-      "path": "frontend/src/lib/wiki-api.ts",
-      "count": 2
-    },
-    {
-      "fingerprint": "9d10cd247a4d13f688cbcc97369d03a656255d90b4cbce1add11497c4206847f",
-      "source": "eslint",
-      "ruleId": "@sarj/require-camelcase-properties",
-      "path": "frontend/src/lib/wiki-api.ts",
-      "count": 1
-    },
-    {
-      "fingerprint": "cb8d66d922f7be18093449842bc7a474ee205d0273cfbd1fea72be52f4bae5d8",
-      "source": "eslint",
-      "ruleId": "@sarj/require-camelcase-properties",
-      "path": "frontend/src/lib/wiki-api.ts",
-      "count": 10
-    },
-    {
-      "fingerprint": "e75367eae425de77e39ee744bd3beaa3bbe6ba72687aa81717efb24c49f69351",
-      "source": "eslint",
-      "ruleId": "@sarj/require-camelcase-properties",
-      "path": "frontend/src/lib/wiki-api.ts",
-      "count": 1
-    },
-    {
-      "fingerprint": "eb7542647ba322b85fa98bace2aeaa792f24fbe8a05469206ff3e20a407601c3",
-      "source": "eslint",
-      "ruleId": "@sarj/require-camelcase-properties",
-      "path": "frontend/src/lib/wiki-api.ts",
-      "count": 1
-    },
-    {
-      "fingerprint": "f0ea86d0d4cae5c99967bc74e99a46839f36881296636d7bcfedcf143ce549eb",
-      "source": "eslint",
-      "ruleId": "@sarj/require-camelcase-properties",
-      "path": "frontend/src/lib/wiki-api.ts",
-      "count": 1
-    },
-    {
-      "fingerprint": "4080ca3040ad0f4a37e20611492ccf36790737c4f1be158783ba7db7c9f15c55",
-      "source": "eslint",
-      "ruleId": "@sarj/require-camelcase-properties",
-      "path": "frontend/src/lib/wiki-read-client.test.ts",
-      "count": 1
-    },
-    {
-      "fingerprint": "41cc08101aa678fa84d9ecf85ad69301f181091c58670edac3a13e6ada3ed803",
-      "source": "eslint",
-      "ruleId": "@sarj/require-camelcase-properties",
-      "path": "frontend/src/lib/wiki-read-client.test.ts",
-      "count": 1
-    },
-    {
-      "fingerprint": "aa9d4a33a2fde0d547e1034aa16920586f70c0253b303e826b418b135e3b4ded",
-      "source": "eslint",
-      "ruleId": "@sarj/require-camelcase-properties",
-      "path": "frontend/src/lib/wiki-read-client.test.ts",
-      "count": 1
-    },
-    {
-      "fingerprint": "c738011efa609e9e1d7ddbe6aeff66e6ec6e8af76c9b2b0744489eb2324f044a",
-      "source": "eslint",
-      "ruleId": "@sarj/require-camelcase-properties",
-      "path": "frontend/src/lib/wiki-read-client.test.ts",
-      "count": 2
-    },
-    {
-      "fingerprint": "cf9850685c69669c8c0fd1ba700d096161911e6e7a7ae2fb42082dc4364f005e",
-      "source": "eslint",
-      "ruleId": "@sarj/require-camelcase-properties",
-      "path": "frontend/src/lib/wiki-read-client.test.ts",
-      "count": 2
-    },
-    {
-      "fingerprint": "f1f5a305a563114f0a3fabd5934fae338a64e4a1457d235ae9fa3401235d3086",
-      "source": "eslint",
-      "ruleId": "@sarj/require-camelcase-properties",
-      "path": "frontend/src/lib/wiki-read-client.test.ts",
-      "count": 1
-    },
-    {
-      "fingerprint": "f6edc1fe3ddc34d53f5d6d87d12f2ccc8e031b1554bab57299c280d714c7859e",
-      "source": "eslint",
-      "ruleId": "@sarj/require-camelcase-properties",
-      "path": "frontend/src/lib/wiki-read-client.test.ts",
-      "count": 1
-    },
-    {
       "fingerprint": "dabdfca97fa6d168b53146f0657a5d12cbc18ed554b7993ecde75a73d6563327",
       "source": "eslint",
       "ruleId": "@typescript-eslint/strict-void-return",
       "path": "frontend/src/app/api/perf/route.test.ts",
-      "count": 1
-    },
-    {
-      "fingerprint": "7df5ff713ff23d155766296ee333154338ca28ef3ac2fc001aa1a8309a3f13eb",
-      "source": "eslint",
-      "ruleId": "@typescript-eslint/strict-void-return",
-      "path": "frontend/src/components/quick-links/quick-links.test.tsx",
-      "count": 1
-    },
-    {
-      "fingerprint": "50875b2a5727fd76fbf2fb8d4b2a8a15d4152767a9ed0a8edc1280933b29b430",
-      "source": "eslint",
-      "ruleId": "@typescript-eslint/strict-void-return",
-      "path": "frontend/src/components/wiki-document/document-polish-dialog.test.tsx",
-      "count": 3
-    },
-    {
-      "fingerprint": "bbb18f48bd629be36afec857021ac4faf4cd988331f03816d57b87d01fbb1757",
-      "source": "eslint",
-      "ruleId": "@typescript-eslint/strict-void-return",
-      "path": "frontend/src/components/wiki-document/document-polish-recovery.test.tsx",
-      "count": 1
-    },
-    {
-      "fingerprint": "bf665f007b9e5c15c57b614305c4658282959b29c924f897a3bcf0920c523085",
-      "source": "eslint",
-      "ruleId": "@typescript-eslint/strict-void-return",
-      "path": "frontend/src/components/wiki-document/wiki-toolbar.test.tsx",
-      "count": 7
-    },
-    {
-      "fingerprint": "b214edc0dbdfa54103c0cdc4cc8ce2330a53f991d5b621fbcf3aef0ad3c0eed3",
-      "source": "eslint",
-      "ruleId": "@typescript-eslint/strict-void-return",
-      "path": "frontend/src/components/wiki-sidebar/smart-create-dialog.test.tsx",
-      "count": 1
-    },
-    {
-      "fingerprint": "ea54c98e301576f3aeaa67650a458892ba58af7355a17cb86d79a73a3a0371c8",
-      "source": "eslint",
-      "ruleId": "@typescript-eslint/strict-void-return",
-      "path": "frontend/src/components/wiki-sidebar/use-document-intent.test.tsx",
       "count": 1
     },
     {
@@ -1771,13 +56,6 @@
       "count": 1
     },
     {
-      "fingerprint": "c76c573dec2cafe5ef75225b4cfbdb0bd902864554cb5e23c4e7c4e6d0840399",
-      "source": "eslint",
-      "ruleId": "shadcn/no-arbitrary-values",
-      "path": "frontend/src/components/error-boundary.tsx",
-      "count": 1
-    },
-    {
       "fingerprint": "d12a425fbd1e7f0d81be54f6fae54ec2cd2943c6345a125feb249f5861d1d7fe",
       "source": "eslint",
       "ruleId": "shadcn/no-arbitrary-values",
@@ -1806,35 +84,7 @@
       "count": 1
     },
     {
-      "fingerprint": "97593c893a6936c3ed2fd8ef98190492b168d95fc94a109f9809a6223f1fe231",
-      "source": "eslint",
-      "ruleId": "shadcn/no-arbitrary-values",
-      "path": "frontend/src/components/wiki-document/document-polish-dialog.tsx",
-      "count": 1
-    },
-    {
-      "fingerprint": "c43eaa45fa29e719185342704b3163dd3a2bd295ee110a32506f6aefc17f136f",
-      "source": "eslint",
-      "ruleId": "shadcn/no-arbitrary-values",
-      "path": "frontend/src/components/wiki-document/document-polish-dialog.tsx",
-      "count": 1
-    },
-    {
-      "fingerprint": "2dbdcb2b336bd02d82f89dc06398447dd360f92fe5c64b93365f19df1cd54ae0",
-      "source": "eslint",
-      "ruleId": "shadcn/no-arbitrary-values",
-      "path": "frontend/src/components/wiki-document/reorganize-document.tsx",
-      "count": 1
-    },
-    {
       "fingerprint": "65f9e7aa537eb463b1a75896693c43bea3d4ceda1b1682bdc07af0f8841bbe3e",
-      "source": "eslint",
-      "ruleId": "shadcn/no-arbitrary-values",
-      "path": "frontend/src/components/wiki-document/reorganize-document.tsx",
-      "count": 1
-    },
-    {
-      "fingerprint": "90a0be37d2e079488491885d57339e9c616c64fcaa0e9f193d3feae8fe864bed",
       "source": "eslint",
       "ruleId": "shadcn/no-arbitrary-values",
       "path": "frontend/src/components/wiki-document/reorganize-document.tsx",
@@ -1848,13 +98,6 @@
       "count": 1
     },
     {
-      "fingerprint": "be4798a9944f6c6efff2684f62432c30682cc3c39e787e3565b427682c56bec2",
-      "source": "eslint",
-      "ruleId": "shadcn/no-arbitrary-values",
-      "path": "frontend/src/components/wiki-not-found.tsx",
-      "count": 1
-    },
-    {
       "fingerprint": "2161882e88473b2abe870e40e2144df0511b8b32f20875b1af320437ad39b4c6",
       "source": "eslint",
       "ruleId": "shadcn/no-arbitrary-values",
@@ -1862,24 +105,10 @@
       "count": 4
     },
     {
-      "fingerprint": "457274572eec11f4876a6f3f18476098f0d675254ec55ce9d896c8d3681bc647",
-      "source": "eslint",
-      "ruleId": "shadcn/no-arbitrary-values",
-      "path": "frontend/src/components/wiki-search/command-palette.tsx",
-      "count": 1
-    },
-    {
       "fingerprint": "6916de9e714bb84f2d5365aff29b6c8bb84ba0c3452dd4f7e7902bd4dcdc372c",
       "source": "eslint",
       "ruleId": "shadcn/no-arbitrary-values",
       "path": "frontend/src/components/wiki-search/command-palette.tsx",
-      "count": 1
-    },
-    {
-      "fingerprint": "0a90192ef16e96598cef2719bd49d7885615baec3c3404645b130c08a888e0b6",
-      "source": "eslint",
-      "ruleId": "shadcn/no-arbitrary-values",
-      "path": "frontend/src/components/wiki-sidebar/drive-access-sheet.tsx",
       "count": 1
     },
     {
@@ -1904,20 +133,6 @@
       "count": 1
     },
     {
-      "fingerprint": "3d32e878832f1da78d5b00765a412522e2a8c0defbba2610be106c726af197f1",
-      "source": "eslint",
-      "ruleId": "shadcn/no-arbitrary-values",
-      "path": "frontend/src/components/wiki-sidebar/emoji-picker-popover.tsx",
-      "count": 1
-    },
-    {
-      "fingerprint": "ed37df446c3c64e6c0d12ee3c483d03975875f18573760dd889f181b508fbf0a",
-      "source": "eslint",
-      "ruleId": "shadcn/no-arbitrary-values",
-      "path": "frontend/src/components/wiki-sidebar/emoji-picker-popover.tsx",
-      "count": 1
-    },
-    {
       "fingerprint": "1f41156f8ee0330b2c56db9e94468680595e214f375829283fe216402a951e96",
       "source": "eslint",
       "ruleId": "shadcn/no-arbitrary-values",
@@ -1925,63 +140,7 @@
       "count": 1
     },
     {
-      "fingerprint": "49544a15a5ea9c9160a3beff6c421ce842722a5f21f90d54d5de6b8c1327076f",
-      "source": "eslint",
-      "ruleId": "shadcn/no-arbitrary-values",
-      "path": "frontend/src/components/wiki-sidebar/move-file-dialog.tsx",
-      "count": 1
-    },
-    {
-      "fingerprint": "5efa6f7db3e20fb1689f41b12439e637ae705d5a7bd5dcfca7f02740f32d4287",
-      "source": "eslint",
-      "ruleId": "shadcn/no-arbitrary-values",
-      "path": "frontend/src/components/wiki-sidebar/move-file-dialog.tsx",
-      "count": 1
-    },
-    {
-      "fingerprint": "34feefe8a2797181fbb44d3676ecd054251e4527e3c7802d894ef98b04b0c2cc",
-      "source": "eslint",
-      "ruleId": "shadcn/no-arbitrary-values",
-      "path": "frontend/src/components/wiki-sidebar/preferences-dialog.tsx",
-      "count": 1
-    },
-    {
-      "fingerprint": "fc1e1f91268063dae8955b71914199d89183a03e1fe6b2d36f67d72c7b0ee40f",
-      "source": "eslint",
-      "ruleId": "shadcn/no-arbitrary-values",
-      "path": "frontend/src/components/wiki-sidebar/preferences-dialog.tsx",
-      "count": 1
-    },
-    {
-      "fingerprint": "164d97a171b3ec90005696a1e5c02715eaebf522c57ece6aa40fc3c8a2f21336",
-      "source": "eslint",
-      "ruleId": "shadcn/no-arbitrary-values",
-      "path": "frontend/src/components/wiki-sidebar/smart-create-dialog.tsx",
-      "count": 1
-    },
-    {
-      "fingerprint": "1a92cb4149fb41e7fe3a09389af9e206563cac856794e48a9d9d73a088306cec",
-      "source": "eslint",
-      "ruleId": "shadcn/no-arbitrary-values",
-      "path": "frontend/src/components/wiki-sidebar/smart-create-dialog.tsx",
-      "count": 1
-    },
-    {
-      "fingerprint": "36c531a21696e3cf26851741fff7cfcc6c3963283bb9e45efaed9c670fb0551a",
-      "source": "eslint",
-      "ruleId": "shadcn/no-arbitrary-values",
-      "path": "frontend/src/components/wiki-sidebar/smart-create-dialog.tsx",
-      "count": 1
-    },
-    {
       "fingerprint": "674ead79ab0ad0611bf9006724c15b645bf4755036d7cf10e72957072c82f679",
-      "source": "eslint",
-      "ruleId": "shadcn/no-arbitrary-values",
-      "path": "frontend/src/components/wiki-sidebar/smart-create-dialog.tsx",
-      "count": 1
-    },
-    {
-      "fingerprint": "f308a2335de4a970e27ac70d23932849cd754db6be20357acec82f587cd8c6a1",
       "source": "eslint",
       "ruleId": "shadcn/no-arbitrary-values",
       "path": "frontend/src/components/wiki-sidebar/smart-create-dialog.tsx",
@@ -2100,13 +259,6 @@
       "count": 1
     },
     {
-      "fingerprint": "2d1a9562f719234c815ad8a76b39581e51293ee05ec8cbd3891b50a84956254b",
-      "source": "eslint",
-      "ruleId": "shadcn/no-restyle",
-      "path": "frontend/src/app/login/page.tsx",
-      "count": 1
-    },
-    {
       "fingerprint": "2da39d5d857b394767c967ce9f6a2026606c27aa6c36b42051e976987ad2cd2d",
       "source": "eslint",
       "ruleId": "shadcn/no-restyle",
@@ -2114,21 +266,21 @@
       "count": 1
     },
     {
-      "fingerprint": "86d482e03e402ee2f6ca65beb0b07ec9b9fb5eacdeb553d594e497890ce117ad",
+      "fingerprint": "3ce073545cce25312cef703802ad7f3b3b038debdae7ae9bb01671670c38b5d5",
       "source": "eslint",
       "ruleId": "shadcn/no-restyle",
       "path": "frontend/src/app/login/page.tsx",
       "count": 1
     },
     {
-      "fingerprint": "93c36da43b0bb170eda8a95bd12bf0964dd2218dd8d00f7df7466af7ff5b55ba",
+      "fingerprint": "c5163c79ceb110eb387c1f667a39f4e61ef1a4de809fd4f73c8593cee154c2d0",
       "source": "eslint",
       "ruleId": "shadcn/no-restyle",
       "path": "frontend/src/app/login/page.tsx",
       "count": 1
     },
     {
-      "fingerprint": "76dcb4bf9d7be5d4c64ace8611b7f5107bb4f1bbd1ca38ddcb0555888d98918d",
+      "fingerprint": "0b08aa8912f4afbc2419c85ba19e9b5a8c5891d117e79d023315a550b7fac57f",
       "source": "eslint",
       "ruleId": "shadcn/no-restyle",
       "path": "frontend/src/app/mcp/connections/page.tsx",
@@ -2142,13 +294,6 @@
       "count": 1
     },
     {
-      "fingerprint": "0422eb9bf97538205dd014efec2dac03f20cb0a69842ae274654aa839b3ef7c2",
-      "source": "eslint",
-      "ruleId": "shadcn/no-restyle",
-      "path": "frontend/src/app/mcp/consent/page.tsx",
-      "count": 1
-    },
-    {
       "fingerprint": "8ff54eef61ed588fd0c0cd2bfc932573149207e9688157c42e09e40f8aaa45ff",
       "source": "eslint",
       "ruleId": "shadcn/no-restyle",
@@ -2156,35 +301,14 @@
       "count": 1
     },
     {
-      "fingerprint": "b60b8fb2828dcfce5566b7760458412a98bd99aefe333314e78cd494e21ab83e",
+      "fingerprint": "e585dc769c382d8fee550e92c5ba150430c2c085c6e405af4189929948160195",
       "source": "eslint",
       "ruleId": "shadcn/no-restyle",
       "path": "frontend/src/app/mcp/consent/page.tsx",
       "count": 1
     },
     {
-      "fingerprint": "1ecfd1af4f2c8fad507434a7a4d55b869bb22397f8baa1f49fd52ae685e410d6",
-      "source": "eslint",
-      "ruleId": "shadcn/no-restyle",
-      "path": "frontend/src/components/mcp/mcp-consent.tsx",
-      "count": 1
-    },
-    {
-      "fingerprint": "a6e0fe959e70d5b4ffd9fb89e8885838c198398ef875908ee36da51afd054b06",
-      "source": "eslint",
-      "ruleId": "shadcn/no-restyle",
-      "path": "frontend/src/components/mcp/mcp-consent.tsx",
-      "count": 1
-    },
-    {
       "fingerprint": "1bd4b9d33ce9682373af12b0085231415edf3a3032023459d760fdec1f8da364",
-      "source": "eslint",
-      "ruleId": "shadcn/no-restyle",
-      "path": "frontend/src/components/quick-links/quick-links.tsx",
-      "count": 1
-    },
-    {
-      "fingerprint": "2c1ec746d17c89ae5441eb6fc19f3b1370b2b9c8e8857d218fe6f5e31a463d93",
       "source": "eslint",
       "ruleId": "shadcn/no-restyle",
       "path": "frontend/src/components/quick-links/quick-links.tsx",
@@ -2205,38 +329,10 @@
       "count": 1
     },
     {
-      "fingerprint": "b193828ce64ea9dd73385e426df0b0405535ffe8eaf632f593fd531b4bb712bb",
+      "fingerprint": "f16b9f57d6ec3c88242c50bf229b32d4923bc430525ba96c8e0e09c44bca7aac",
       "source": "eslint",
       "ruleId": "shadcn/no-restyle",
       "path": "frontend/src/components/quick-links/quick-links.tsx",
-      "count": 1
-    },
-    {
-      "fingerprint": "06fc877593d52b9817fa1cb062cfb3815b6a6c226729afc43986f95060f11017",
-      "source": "eslint",
-      "ruleId": "shadcn/no-restyle",
-      "path": "frontend/src/components/wiki-document/doc-skeleton.tsx",
-      "count": 1
-    },
-    {
-      "fingerprint": "3feb8e6d957b1b519c07922fd873735e991df01c2a2f79618050328b9d319c9c",
-      "source": "eslint",
-      "ruleId": "shadcn/no-restyle",
-      "path": "frontend/src/components/wiki-document/doc-skeleton.tsx",
-      "count": 2
-    },
-    {
-      "fingerprint": "7ea79f51e0c225ce195ee47040f1877c530f882e6498a82e49dc46bdece1650e",
-      "source": "eslint",
-      "ruleId": "shadcn/no-restyle",
-      "path": "frontend/src/components/wiki-document/doc-skeleton.tsx",
-      "count": 1
-    },
-    {
-      "fingerprint": "8aef44ab1aefc90320691b066c31ce2b9e5709b9e1966432aa4462641789b3d9",
-      "source": "eslint",
-      "ruleId": "shadcn/no-restyle",
-      "path": "frontend/src/components/wiki-document/doc-skeleton.tsx",
       "count": 1
     },
     {
@@ -2261,32 +357,18 @@
       "count": 3
     },
     {
-      "fingerprint": "068dbb45c9323baeb92cc379c3c422be64e10ccdecfbbd1d28741891ecde7151",
-      "source": "eslint",
-      "ruleId": "shadcn/no-restyle",
-      "path": "frontend/src/components/wiki-document/document-polish-dialog.tsx",
-      "count": 1
-    },
-    {
-      "fingerprint": "09f505be0592a2471bb91f84ffea57f9a65d6a07cf340c5268647f953c4d371e",
-      "source": "eslint",
-      "ruleId": "shadcn/no-restyle",
-      "path": "frontend/src/components/wiki-document/document-polish-dialog.tsx",
-      "count": 1
-    },
-    {
-      "fingerprint": "0cd20ae2380f200e74f6fe0f27c9440db44574c1d0f5eedfb3ff48cde76fcc2d",
-      "source": "eslint",
-      "ruleId": "shadcn/no-restyle",
-      "path": "frontend/src/components/wiki-document/document-polish-dialog.tsx",
-      "count": 1
-    },
-    {
       "fingerprint": "103f8256ae5d8d2d0bde6b7268a507586c33a9238a18fed6284c6e2ff7e6a4fc",
       "source": "eslint",
       "ruleId": "shadcn/no-restyle",
       "path": "frontend/src/components/wiki-document/document-polish-dialog.tsx",
       "count": 3
+    },
+    {
+      "fingerprint": "15f3f90d2cb641c6d252fd69a10207176d50f33a74ad0ee56d8a8831bec2fe14",
+      "source": "eslint",
+      "ruleId": "shadcn/no-restyle",
+      "path": "frontend/src/components/wiki-document/document-polish-dialog.tsx",
+      "count": 1
     },
     {
       "fingerprint": "18abf6113b876ca6d0073477d9f5370b3f99190a44d132eaff8753766c892e09",
@@ -2303,7 +385,14 @@
       "count": 1
     },
     {
-      "fingerprint": "2bb7059e013680bf1b3e8f66d96e6301b5249a2d9119fcd074acc1d73ce468a3",
+      "fingerprint": "301a4fc8802e103a9959f55052244fe4722709f2732573933646368eb34985b0",
+      "source": "eslint",
+      "ruleId": "shadcn/no-restyle",
+      "path": "frontend/src/components/wiki-document/document-polish-dialog.tsx",
+      "count": 1
+    },
+    {
+      "fingerprint": "361f2a046d24461d4107475390271777ca36f67004c1fb9910ee7293ccb5b202",
       "source": "eslint",
       "ruleId": "shadcn/no-restyle",
       "path": "frontend/src/components/wiki-document/document-polish-dialog.tsx",
@@ -2315,13 +404,6 @@
       "ruleId": "shadcn/no-restyle",
       "path": "frontend/src/components/wiki-document/document-polish-dialog.tsx",
       "count": 3
-    },
-    {
-      "fingerprint": "47b7d0128d7549b34c04dfdaef1f4ce0e3ea997075355234cd5249f22e3483e6",
-      "source": "eslint",
-      "ruleId": "shadcn/no-restyle",
-      "path": "frontend/src/components/wiki-document/document-polish-dialog.tsx",
-      "count": 5
     },
     {
       "fingerprint": "4fb71173ae8b1922517849d85eafed911806da0d127af7164c9328fe31a4dae1",
@@ -2338,49 +420,7 @@
       "count": 1
     },
     {
-      "fingerprint": "547caa9cb431c15e75d5d5d1241e7d6fe28d2d34878f3ab02210aa92c7573b63",
-      "source": "eslint",
-      "ruleId": "shadcn/no-restyle",
-      "path": "frontend/src/components/wiki-document/document-polish-dialog.tsx",
-      "count": 1
-    },
-    {
-      "fingerprint": "5bdd60d31966acb5b462d8006faec0a4473b86032c2b595648e3268a1a0ab3c7",
-      "source": "eslint",
-      "ruleId": "shadcn/no-restyle",
-      "path": "frontend/src/components/wiki-document/document-polish-dialog.tsx",
-      "count": 1
-    },
-    {
-      "fingerprint": "5e55da8be06f121e2f99553b57882a94fe0ceb67d5334649389dd6ebcdd3426d",
-      "source": "eslint",
-      "ruleId": "shadcn/no-restyle",
-      "path": "frontend/src/components/wiki-document/document-polish-dialog.tsx",
-      "count": 2
-    },
-    {
-      "fingerprint": "71ba00a2e927a2fac0c7df19297388abb7f5c7042dccbef913d5ed840973fd38",
-      "source": "eslint",
-      "ruleId": "shadcn/no-restyle",
-      "path": "frontend/src/components/wiki-document/document-polish-dialog.tsx",
-      "count": 1
-    },
-    {
-      "fingerprint": "725fe720f8c9fc6bfddfe00b31a0b08d14c16fcab7c9ab248aa4e7b76d80a25b",
-      "source": "eslint",
-      "ruleId": "shadcn/no-restyle",
-      "path": "frontend/src/components/wiki-document/document-polish-dialog.tsx",
-      "count": 1
-    },
-    {
-      "fingerprint": "7a9427677151f5b0e0deb744ee72f4210bc835b57cd79760bb85e21d5261e3a3",
-      "source": "eslint",
-      "ruleId": "shadcn/no-restyle",
-      "path": "frontend/src/components/wiki-document/document-polish-dialog.tsx",
-      "count": 1
-    },
-    {
-      "fingerprint": "8236c92f1a3e6d0030e0fe22fa41ae2795f60bf01e4de1a6e02ca787f3723f72",
+      "fingerprint": "73236731ce7bc685fa39f3469b32ac76cfb448ad90dd43b3ce73d713421ab694",
       "source": "eslint",
       "ruleId": "shadcn/no-restyle",
       "path": "frontend/src/components/wiki-document/document-polish-dialog.tsx",
@@ -2401,32 +441,11 @@
       "count": 3
     },
     {
-      "fingerprint": "93890478147009da62f8e6b4078a0152e1e2383b8015f9f7a7edb663bdaaf4b4",
-      "source": "eslint",
-      "ruleId": "shadcn/no-restyle",
-      "path": "frontend/src/components/wiki-document/document-polish-dialog.tsx",
-      "count": 1
-    },
-    {
-      "fingerprint": "94a839ae19704b9b92bb3ed56e6dbc0cebdeb84c6924d78c619995e4a0942ee8",
-      "source": "eslint",
-      "ruleId": "shadcn/no-restyle",
-      "path": "frontend/src/components/wiki-document/document-polish-dialog.tsx",
-      "count": 1
-    },
-    {
       "fingerprint": "979270270b8d66e7177b4e4d5345521ae2e0d40782a22eab4dbb42530448c66d",
       "source": "eslint",
       "ruleId": "shadcn/no-restyle",
       "path": "frontend/src/components/wiki-document/document-polish-dialog.tsx",
       "count": 1
-    },
-    {
-      "fingerprint": "98acb18e1ee02e4e6f1300c2ea785acc3c858e08ea4a790592273e3f8d06851f",
-      "source": "eslint",
-      "ruleId": "shadcn/no-restyle",
-      "path": "frontend/src/components/wiki-document/document-polish-dialog.tsx",
-      "count": 3
     },
     {
       "fingerprint": "98f13e079c20c8fb68fd6882052aae7dca5fd9c289ab35e0df4cc009a34fcafd",
@@ -2436,11 +455,11 @@
       "count": 3
     },
     {
-      "fingerprint": "a25248583e2c2055ec4bf116dcf86cec1b7ca4f6a88304843ee4e772487f07dc",
+      "fingerprint": "9b382c2c722d3314c5aa68b3d1f0bff37ae903cd0319a98008dd28449574fd2f",
       "source": "eslint",
       "ruleId": "shadcn/no-restyle",
       "path": "frontend/src/components/wiki-document/document-polish-dialog.tsx",
-      "count": 4
+      "count": 1
     },
     {
       "fingerprint": "aa5ff2228939788c0411f25f00609cec6cbdd7fb3a9a0e7fe0806194bf573d5f",
@@ -2450,32 +469,18 @@
       "count": 3
     },
     {
-      "fingerprint": "aaf7744d36721ac3327dcb4087b6bd6c462360e64f450b24f980483385810387",
-      "source": "eslint",
-      "ruleId": "shadcn/no-restyle",
-      "path": "frontend/src/components/wiki-document/document-polish-dialog.tsx",
-      "count": 1
-    },
-    {
-      "fingerprint": "b1f34a9a10dc5622abe747242192f54b7aaaeaa929fa130e74e139f0ded2e968",
+      "fingerprint": "b705c6d7ac75a0b31fd6669c6c0b45b7eb5057c56abd1bd374751cf6b954322f",
       "source": "eslint",
       "ruleId": "shadcn/no-restyle",
       "path": "frontend/src/components/wiki-document/document-polish-dialog.tsx",
       "count": 4
     },
     {
-      "fingerprint": "b7d49d6e3beb64d6c12ceeec9eb7195e34f2d1abead8829e94f1ffef4d055180",
+      "fingerprint": "bcb53cf7f075b1845d7ca3a55c00f71129467df58672db627e2592f830f29b07",
       "source": "eslint",
       "ruleId": "shadcn/no-restyle",
       "path": "frontend/src/components/wiki-document/document-polish-dialog.tsx",
       "count": 1
-    },
-    {
-      "fingerprint": "bddc8c1f4bc05c0b0388ae2f5e15a2544453296cf27b6627161022658906f6e9",
-      "source": "eslint",
-      "ruleId": "shadcn/no-restyle",
-      "path": "frontend/src/components/wiki-document/document-polish-dialog.tsx",
-      "count": 4
     },
     {
       "fingerprint": "bfe6424d29f92a1e88fdd63686ee3f82d62915abe42b1331c5aaadfa7ef15584",
@@ -2492,53 +497,11 @@
       "count": 3
     },
     {
-      "fingerprint": "d7a713427dd9e7fb41641c2ac9c94d1d9b0afdacd67e9b51fd8f3b14fa60b450",
-      "source": "eslint",
-      "ruleId": "shadcn/no-restyle",
-      "path": "frontend/src/components/wiki-document/document-polish-dialog.tsx",
-      "count": 1
-    },
-    {
-      "fingerprint": "d9c0eca87753d0645e7b5b2abbed5b42166e7ae6ba1470a35b9131cc002821e0",
-      "source": "eslint",
-      "ruleId": "shadcn/no-restyle",
-      "path": "frontend/src/components/wiki-document/document-polish-dialog.tsx",
-      "count": 2
-    },
-    {
       "fingerprint": "dc5635732d5df4ee4d42db18d846da124882860d22874c285250b78a4a4b52c9",
       "source": "eslint",
       "ruleId": "shadcn/no-restyle",
       "path": "frontend/src/components/wiki-document/document-polish-dialog.tsx",
       "count": 1
-    },
-    {
-      "fingerprint": "dec36ebe8b2e4847f4048e44da48889d410220da40ed96be7a299373fd8ad0d1",
-      "source": "eslint",
-      "ruleId": "shadcn/no-restyle",
-      "path": "frontend/src/components/wiki-document/document-polish-dialog.tsx",
-      "count": 1
-    },
-    {
-      "fingerprint": "def25e56afa964fa3415d251caa279ac237d0f46852dacfd26ad2517b0275339",
-      "source": "eslint",
-      "ruleId": "shadcn/no-restyle",
-      "path": "frontend/src/components/wiki-document/document-polish-dialog.tsx",
-      "count": 1
-    },
-    {
-      "fingerprint": "e0576f2322de1dc1ccce249b8d59d0cca424401246b128abab3760452e5c61a9",
-      "source": "eslint",
-      "ruleId": "shadcn/no-restyle",
-      "path": "frontend/src/components/wiki-document/document-polish-dialog.tsx",
-      "count": 1
-    },
-    {
-      "fingerprint": "e3efe52170ba63b253803434c7e056399c135d06182a948941b9f0871bad0343",
-      "source": "eslint",
-      "ruleId": "shadcn/no-restyle",
-      "path": "frontend/src/components/wiki-document/document-polish-dialog.tsx",
-      "count": 4
     },
     {
       "fingerprint": "e4da1401e329d962ff0cb70b32d329365706b72b81f5356011525174b9c8481b",
@@ -2548,7 +511,7 @@
       "count": 3
     },
     {
-      "fingerprint": "e5ac51729de00f0f0617cb4ac22db2be599197ba8f2dd9f1616dec397dcb77d6",
+      "fingerprint": "e66d4933a637ecab34f7bb901a5acd7478814be8fe703959ff2198c7ed53dbe6",
       "source": "eslint",
       "ruleId": "shadcn/no-restyle",
       "path": "frontend/src/components/wiki-document/document-polish-dialog.tsx",
@@ -2560,6 +523,13 @@
       "ruleId": "shadcn/no-restyle",
       "path": "frontend/src/components/wiki-document/document-polish-dialog.tsx",
       "count": 3
+    },
+    {
+      "fingerprint": "e9991c8d381b139bce2759cfc0074b0381233d8afb80a7dfe03566f47648c84a",
+      "source": "eslint",
+      "ruleId": "shadcn/no-restyle",
+      "path": "frontend/src/components/wiki-document/document-polish-dialog.tsx",
+      "count": 1
     },
     {
       "fingerprint": "ec097d2b5b811b2ee85a84df6cec372458656ccbb75d880a6a6a81b7f6aba8ae",
@@ -2590,13 +560,6 @@
       "count": 1
     },
     {
-      "fingerprint": "37404921e6246a9a7b1ec7df54c906168287964f66a6eacf76387efa6d1d0fdf",
-      "source": "eslint",
-      "ruleId": "shadcn/no-restyle",
-      "path": "frontend/src/components/wiki-document/document-polish-recovery.tsx",
-      "count": 2
-    },
-    {
       "fingerprint": "41f66a948a26dcdd1bc2fe08385f1b17b8293401f94af5d1ad7ae2dc4389c1af",
       "source": "eslint",
       "ruleId": "shadcn/no-restyle",
@@ -2604,101 +567,10 @@
       "count": 2
     },
     {
-      "fingerprint": "7642d0f1d70c9f6473de5846c9a56d8c82a3caa865131ec58db11963453ec82d",
+      "fingerprint": "51a3af29af3416c2617b3d2e0e7022db545112bc4ee67b24970bd827675ea2db",
       "source": "eslint",
       "ruleId": "shadcn/no-restyle",
       "path": "frontend/src/components/wiki-document/document-polish-recovery.tsx",
-      "count": 2
-    },
-    {
-      "fingerprint": "f9824b72880825ce60b8fc3b9f3e1e31b3afc5da5d7545245e77888dd0a56f28",
-      "source": "eslint",
-      "ruleId": "shadcn/no-restyle",
-      "path": "frontend/src/components/wiki-document/document-polish-recovery.tsx",
-      "count": 4
-    },
-    {
-      "fingerprint": "fdc5eb73ba9d3fa54fa81091dfd377b1c7f5225695a89016fa11dfc6a7c8f71f",
-      "source": "eslint",
-      "ruleId": "shadcn/no-restyle",
-      "path": "frontend/src/components/wiki-document/document-polish-recovery.tsx",
-      "count": 1
-    },
-    {
-      "fingerprint": "1b5cbf5e665938f2ece5243e2083d0116dc7bf7b0b10f01b6b643dd6638d74e1",
-      "source": "eslint",
-      "ruleId": "shadcn/no-restyle",
-      "path": "frontend/src/components/wiki-document/file-page-client.tsx",
-      "count": 1
-    },
-    {
-      "fingerprint": "22e9d559f38313442d7c9432f052cdf62ca8a415e4d04d484938efd2e091cf50",
-      "source": "eslint",
-      "ruleId": "shadcn/no-restyle",
-      "path": "frontend/src/components/wiki-document/file-page-client.tsx",
-      "count": 1
-    },
-    {
-      "fingerprint": "42bf65118ec319bf0d98b0073d9dc9715e987267a94e6d62d02ec8f011133970",
-      "source": "eslint",
-      "ruleId": "shadcn/no-restyle",
-      "path": "frontend/src/components/wiki-document/file-page-client.tsx",
-      "count": 1
-    },
-    {
-      "fingerprint": "44d7378a418e666323895a0f70801110e81b9da36030356f347fad8ecad8078a",
-      "source": "eslint",
-      "ruleId": "shadcn/no-restyle",
-      "path": "frontend/src/components/wiki-document/file-page-client.tsx",
-      "count": 1
-    },
-    {
-      "fingerprint": "4a3fe2d32fe7378fac8764aa21829e8a438ab450ac3f0244d046fd88b3b742fc",
-      "source": "eslint",
-      "ruleId": "shadcn/no-restyle",
-      "path": "frontend/src/components/wiki-document/file-page-client.tsx",
-      "count": 2
-    },
-    {
-      "fingerprint": "6c590b126f3678c4245b13e3fd55d68a272bf51b1cdc284e05be78020a717d8c",
-      "source": "eslint",
-      "ruleId": "shadcn/no-restyle",
-      "path": "frontend/src/components/wiki-document/file-page-client.tsx",
-      "count": 1
-    },
-    {
-      "fingerprint": "6d51010ac96a4af78291c8aa5dd8dc46d0aca5b8d837c57e24b2a3f273fe1335",
-      "source": "eslint",
-      "ruleId": "shadcn/no-restyle",
-      "path": "frontend/src/components/wiki-document/file-page-client.tsx",
-      "count": 1
-    },
-    {
-      "fingerprint": "81e83f8239cde0da68de5530162c3262528779a093bfa1f4fcc97c13f22230c4",
-      "source": "eslint",
-      "ruleId": "shadcn/no-restyle",
-      "path": "frontend/src/components/wiki-document/file-page-client.tsx",
-      "count": 1
-    },
-    {
-      "fingerprint": "826a93a44ca180db1782ac14c080b01adbe52347f53dee5f1d250ebd5c646ab5",
-      "source": "eslint",
-      "ruleId": "shadcn/no-restyle",
-      "path": "frontend/src/components/wiki-document/file-page-client.tsx",
-      "count": 1
-    },
-    {
-      "fingerprint": "a0e8ebf48fb4e1ecff51dda5bf55a7a0fc841424dc624718c2172987d02770bd",
-      "source": "eslint",
-      "ruleId": "shadcn/no-restyle",
-      "path": "frontend/src/components/wiki-document/file-page-client.tsx",
-      "count": 1
-    },
-    {
-      "fingerprint": "c7822d2a584bf7be231a7d1c3c8ffa898d7110043a9e53a157ee49b8a63f5793",
-      "source": "eslint",
-      "ruleId": "shadcn/no-restyle",
-      "path": "frontend/src/components/wiki-document/file-page-client.tsx",
       "count": 1
     },
     {
@@ -2709,35 +581,7 @@
       "count": 1
     },
     {
-      "fingerprint": "d13d37c022fb7cc66503316d69afe5b8e2c8aa11fedfc79b37e74a636df3c4e5",
-      "source": "eslint",
-      "ruleId": "shadcn/no-restyle",
-      "path": "frontend/src/components/wiki-document/file-page-client.tsx",
-      "count": 1
-    },
-    {
-      "fingerprint": "110c5ab4b29589839eba4712b3af1c99d93835a75ce166d575ffe2289d2150fd",
-      "source": "eslint",
-      "ruleId": "shadcn/no-restyle",
-      "path": "frontend/src/components/wiki-document/reorganize-document.tsx",
-      "count": 1
-    },
-    {
-      "fingerprint": "557af601baab018664396b914fe5b91c7f5d2d51a8e5b65f7783471f64736da7",
-      "source": "eslint",
-      "ruleId": "shadcn/no-restyle",
-      "path": "frontend/src/components/wiki-document/reorganize-document.tsx",
-      "count": 1
-    },
-    {
       "fingerprint": "35d4963e48ffd034d3e8b10d80cacd0a26b965cd2ae5a6d690faec9b635661ac",
-      "source": "eslint",
-      "ruleId": "shadcn/no-restyle",
-      "path": "frontend/src/components/wiki-document/short-link-editor.tsx",
-      "count": 1
-    },
-    {
-      "fingerprint": "3e80fe8fe4c89e973335af94bad3d2050082a63f4b272100a2aa6133ec8a7754",
       "source": "eslint",
       "ruleId": "shadcn/no-restyle",
       "path": "frontend/src/components/wiki-document/short-link-editor.tsx",
@@ -2765,35 +609,7 @@
       "count": 1
     },
     {
-      "fingerprint": "d59bf03b8132159991f236cee321bdb2c4f63b4d340fa149af6380a3fa898e48",
-      "source": "eslint",
-      "ruleId": "shadcn/no-restyle",
-      "path": "frontend/src/components/wiki-document/short-link-editor.tsx",
-      "count": 1
-    },
-    {
-      "fingerprint": "de3449830ead2a3563fcbe4c4298ed3b9ce50848329258a74c8186b345d24f61",
-      "source": "eslint",
-      "ruleId": "shadcn/no-restyle",
-      "path": "frontend/src/components/wiki-document/short-link-editor.tsx",
-      "count": 1
-    },
-    {
-      "fingerprint": "ec575b49f6e5c66f922c3c1a2ef0b5804868330b611c4dd5385408da0e7217d7",
-      "source": "eslint",
-      "ruleId": "shadcn/no-restyle",
-      "path": "frontend/src/components/wiki-document/short-link-editor.tsx",
-      "count": 1
-    },
-    {
-      "fingerprint": "04052f95608abe1823695752feb1d4ebfd68d24f17d93e69f90266dcd48d1556",
-      "source": "eslint",
-      "ruleId": "shadcn/no-restyle",
-      "path": "frontend/src/components/wiki-search/command-palette.tsx",
-      "count": 1
-    },
-    {
-      "fingerprint": "07a42f205204d099bb801b7b10818c5779960ca720e7fa0b4042cce38d0aec91",
+      "fingerprint": "0335101d428f11262d40665e77f9e8ea96c0a8bdf5b73aae56ba324facc1ec36",
       "source": "eslint",
       "ruleId": "shadcn/no-restyle",
       "path": "frontend/src/components/wiki-search/command-palette.tsx",
@@ -2814,42 +630,7 @@
       "count": 1
     },
     {
-      "fingerprint": "1100cafe4c2b0cf0c0e14710df8657e94a2220a3dfd56d732698edec6ac27aa9",
-      "source": "eslint",
-      "ruleId": "shadcn/no-restyle",
-      "path": "frontend/src/components/wiki-search/command-palette.tsx",
-      "count": 1
-    },
-    {
-      "fingerprint": "1696e62f84e74431eb64a9236c08b3b0d77998214198814dd0595a2022971c5d",
-      "source": "eslint",
-      "ruleId": "shadcn/no-restyle",
-      "path": "frontend/src/components/wiki-search/command-palette.tsx",
-      "count": 1
-    },
-    {
-      "fingerprint": "2237c1c151407aa49fda7c67a363c78f0bb8e01838a94b9bbcd14caf07959d0a",
-      "source": "eslint",
-      "ruleId": "shadcn/no-restyle",
-      "path": "frontend/src/components/wiki-search/command-palette.tsx",
-      "count": 1
-    },
-    {
-      "fingerprint": "22f079f0b727a5a966eb90adff65d4db20b6eb2eb01088d5c743e61365639b88",
-      "source": "eslint",
-      "ruleId": "shadcn/no-restyle",
-      "path": "frontend/src/components/wiki-search/command-palette.tsx",
-      "count": 1
-    },
-    {
-      "fingerprint": "23866fecb6fc11e90750a83ca6565e8a936dc92291356465bd74b6fb35742a31",
-      "source": "eslint",
-      "ruleId": "shadcn/no-restyle",
-      "path": "frontend/src/components/wiki-search/command-palette.tsx",
-      "count": 1
-    },
-    {
-      "fingerprint": "2450eb52bcf4c13f54c8ed0fe0a100ee1f68ae191a8183f91d846f255c971c4a",
+      "fingerprint": "20f9cba40749d7400707a8f29421ce8aea2e81a6988306ce0dd780b65fff63ed",
       "source": "eslint",
       "ruleId": "shadcn/no-restyle",
       "path": "frontend/src/components/wiki-search/command-palette.tsx",
@@ -2863,84 +644,7 @@
       "count": 1
     },
     {
-      "fingerprint": "2c36e7ad05fe35b86a4428ab342158aa05a4c94ed9888bd15c41ff8426718f62",
-      "source": "eslint",
-      "ruleId": "shadcn/no-restyle",
-      "path": "frontend/src/components/wiki-search/command-palette.tsx",
-      "count": 1
-    },
-    {
-      "fingerprint": "2ca4a765834ecfb21196e701b74a252ca609b36dcac536092d6f48ecee15cf15",
-      "source": "eslint",
-      "ruleId": "shadcn/no-restyle",
-      "path": "frontend/src/components/wiki-search/command-palette.tsx",
-      "count": 1
-    },
-    {
-      "fingerprint": "330db687f29a44f395db8af55b1fe9e1afd73baa0b4af892b52469ad5be7161c",
-      "source": "eslint",
-      "ruleId": "shadcn/no-restyle",
-      "path": "frontend/src/components/wiki-search/command-palette.tsx",
-      "count": 1
-    },
-    {
-      "fingerprint": "3b94480ec2b15d54895fb06deaf792127d3f10fa0daf14df37814701a839ed1f",
-      "source": "eslint",
-      "ruleId": "shadcn/no-restyle",
-      "path": "frontend/src/components/wiki-search/command-palette.tsx",
-      "count": 1
-    },
-    {
-      "fingerprint": "3c6b38be61f6157aa25c115792261cae63f74ebbbc6c4d6c0a73e7c9c05153d0",
-      "source": "eslint",
-      "ruleId": "shadcn/no-restyle",
-      "path": "frontend/src/components/wiki-search/command-palette.tsx",
-      "count": 1
-    },
-    {
-      "fingerprint": "4b82324a32d79c27977581056525e4a200487ee56e79fd9a9f69e83d2706e318",
-      "source": "eslint",
-      "ruleId": "shadcn/no-restyle",
-      "path": "frontend/src/components/wiki-search/command-palette.tsx",
-      "count": 1
-    },
-    {
-      "fingerprint": "4bb01e4b9095ff4934c05e5f6069dfc7df75506733e0781ec02eb2c63837da6a",
-      "source": "eslint",
-      "ruleId": "shadcn/no-restyle",
-      "path": "frontend/src/components/wiki-search/command-palette.tsx",
-      "count": 1
-    },
-    {
-      "fingerprint": "533c137cbcb030a0440d872533813a95751a411fe847731a43be08d9d2b21329",
-      "source": "eslint",
-      "ruleId": "shadcn/no-restyle",
-      "path": "frontend/src/components/wiki-search/command-palette.tsx",
-      "count": 1
-    },
-    {
-      "fingerprint": "5f20eca6779ab057fb53d7f007968e59271e659e0545c93db7160d33cd479008",
-      "source": "eslint",
-      "ruleId": "shadcn/no-restyle",
-      "path": "frontend/src/components/wiki-search/command-palette.tsx",
-      "count": 1
-    },
-    {
-      "fingerprint": "62b6e878142c6be6a51a062ee2d0a6f29c571df4137a561d14f7f1a0d172208d",
-      "source": "eslint",
-      "ruleId": "shadcn/no-restyle",
-      "path": "frontend/src/components/wiki-search/command-palette.tsx",
-      "count": 1
-    },
-    {
-      "fingerprint": "62e1fb079c18b09ff581c04d1d9d2006e65f47dd3fdc23224475725b650e9ec7",
-      "source": "eslint",
-      "ruleId": "shadcn/no-restyle",
-      "path": "frontend/src/components/wiki-search/command-palette.tsx",
-      "count": 1
-    },
-    {
-      "fingerprint": "650570999a7925562637e1c1adf00aed406e59a05b36c2dc5f02db2ae15bd6b2",
+      "fingerprint": "4f4c15dcc99e1664a7db75014f3e6b060fbc063f1911b0ffe9ae719450a18034",
       "source": "eslint",
       "ruleId": "shadcn/no-restyle",
       "path": "frontend/src/components/wiki-search/command-palette.tsx",
@@ -2954,7 +658,7 @@
       "count": 1
     },
     {
-      "fingerprint": "7949c2bf97009e3b1455c93432c4a90bea80da332a6ab263beb45ed80d98fb38",
+      "fingerprint": "6b932a827f4194f14ac657a6578e07af1d5f3499a55728fe50ae4bcbe60175c3",
       "source": "eslint",
       "ruleId": "shadcn/no-restyle",
       "path": "frontend/src/components/wiki-search/command-palette.tsx",
@@ -2975,20 +679,6 @@
       "count": 1
     },
     {
-      "fingerprint": "88532dbd4e552da34625024b104230f9611a179fa2689de152eb64a9fd73aee8",
-      "source": "eslint",
-      "ruleId": "shadcn/no-restyle",
-      "path": "frontend/src/components/wiki-search/command-palette.tsx",
-      "count": 1
-    },
-    {
-      "fingerprint": "8b96535112ce3a6c2a6c11555cc38e83557865028001886292cc550ce3dff73a",
-      "source": "eslint",
-      "ruleId": "shadcn/no-restyle",
-      "path": "frontend/src/components/wiki-search/command-palette.tsx",
-      "count": 1
-    },
-    {
       "fingerprint": "8ca2432e363140f0f4f88b47990b272849f3cf0ba0ccc6a485a7cfd71f01694f",
       "source": "eslint",
       "ruleId": "shadcn/no-restyle",
@@ -3003,14 +693,7 @@
       "count": 1
     },
     {
-      "fingerprint": "9f23262f8d9ee2f793b8e3839137c778d42f8757172130fe2630ad54ddd1107c",
-      "source": "eslint",
-      "ruleId": "shadcn/no-restyle",
-      "path": "frontend/src/components/wiki-search/command-palette.tsx",
-      "count": 1
-    },
-    {
-      "fingerprint": "a0d5247da8b0f26246259715103d15e265760399a56a6abf79ee6f36a0745b84",
+      "fingerprint": "b268739a9aa2b8f42ceb10b3f2dbd333c6d8d9e9f09b72bfa2182e7320f6ac1a",
       "source": "eslint",
       "ruleId": "shadcn/no-restyle",
       "path": "frontend/src/components/wiki-search/command-palette.tsx",
@@ -3024,46 +707,11 @@
       "count": 1
     },
     {
-      "fingerprint": "c3985cd99c6a3812572f4643707393c01a71cc2692fc411c16c33c7349a26551",
-      "source": "eslint",
-      "ruleId": "shadcn/no-restyle",
-      "path": "frontend/src/components/wiki-search/command-palette.tsx",
-      "count": 1
-    },
-    {
-      "fingerprint": "c504544708ca79c0b1aaa60f16d16414c2eda6b9aeb9213e2c8cb0dd7763e003",
-      "source": "eslint",
-      "ruleId": "shadcn/no-restyle",
-      "path": "frontend/src/components/wiki-search/command-palette.tsx",
-      "count": 1
-    },
-    {
-      "fingerprint": "e128c5a237def20347fb012e6bd0b6ec238dd2a2a27fd7a757d82d0f599b15c3",
-      "source": "eslint",
-      "ruleId": "shadcn/no-restyle",
-      "path": "frontend/src/components/wiki-search/command-palette.tsx",
-      "count": 1
-    },
-    {
-      "fingerprint": "e5b872b570d9b843852c69d3723f7d99e0c4a9b25950b4ca7d042263d529747e",
-      "source": "eslint",
-      "ruleId": "shadcn/no-restyle",
-      "path": "frontend/src/components/wiki-search/command-palette.tsx",
-      "count": 1
-    },
-    {
-      "fingerprint": "f2c6ee713df36590af3bf0c0c55e7e97aa110670cf138895e9bc026346c92216",
-      "source": "eslint",
-      "ruleId": "shadcn/no-restyle",
-      "path": "frontend/src/components/wiki-search/command-palette.tsx",
-      "count": 1
-    },
-    {
-      "fingerprint": "11036e2aa1905f0b354bd7c98d6b4eef2d89e6af8430fef9c6f3266459ace661",
+      "fingerprint": "1d13aded2053465413ccc0b843f4dbb7d1400628ce2d4ccc852e47d1dd418965",
       "source": "eslint",
       "ruleId": "shadcn/no-restyle",
       "path": "frontend/src/components/wiki-sidebar/create-file-menu-actions.tsx",
-      "count": 1
+      "count": 3
     },
     {
       "fingerprint": "6e44632f0dc98a35081f2c9e2df774f7f93da74043630700652e1349924c9059",
@@ -3073,42 +721,7 @@
       "count": 3
     },
     {
-      "fingerprint": "b56de63e3e25a010276e614abfc5a06c28ddaad09700908c85fda11a51502a19",
-      "source": "eslint",
-      "ruleId": "shadcn/no-restyle",
-      "path": "frontend/src/components/wiki-sidebar/create-file-menu-actions.tsx",
-      "count": 3
-    },
-    {
-      "fingerprint": "db8755e66c5fd9db443da5ede91725ccee3f95689f80e0e9e2eb53f67840d97a",
-      "source": "eslint",
-      "ruleId": "shadcn/no-restyle",
-      "path": "frontend/src/components/wiki-sidebar/create-file-menu-actions.tsx",
-      "count": 3
-    },
-    {
-      "fingerprint": "ee05bb3ab328d142b2772f9382bdeba0d020e64618ee59ac1c570e8e66063a54",
-      "source": "eslint",
-      "ruleId": "shadcn/no-restyle",
-      "path": "frontend/src/components/wiki-sidebar/create-file-menu-actions.tsx",
-      "count": 3
-    },
-    {
       "fingerprint": "2a7e33c11b35a185e562aaa55c6ef65840b4b174e959cb2478e9db6d4bbb1842",
-      "source": "eslint",
-      "ruleId": "shadcn/no-restyle",
-      "path": "frontend/src/components/wiki-sidebar/create-file-menu.tsx",
-      "count": 1
-    },
-    {
-      "fingerprint": "3b311008dc0b969ee21088b2e6beffe7689c470ac2071303dd3663ed8504baec",
-      "source": "eslint",
-      "ruleId": "shadcn/no-restyle",
-      "path": "frontend/src/components/wiki-sidebar/create-file-menu.tsx",
-      "count": 1
-    },
-    {
-      "fingerprint": "4432edf11e25cc4116091762ff33658a0beb0622154d9e77040d58493f480919",
       "source": "eslint",
       "ruleId": "shadcn/no-restyle",
       "path": "frontend/src/components/wiki-sidebar/create-file-menu.tsx",
@@ -3136,6 +749,13 @@
       "count": 1
     },
     {
+      "fingerprint": "06b97f4340344ae40fe7bcb4ea57083d24b9ce2058cda4c6a3b0c78bdcf3319a",
+      "source": "eslint",
+      "ruleId": "shadcn/no-restyle",
+      "path": "frontend/src/components/wiki-sidebar/drive-access-sheet.tsx",
+      "count": 1
+    },
+    {
       "fingerprint": "0b1353c7a9f87ea65f2900c1324ef92304b500912e9534f74ab2c464ec134b27",
       "source": "eslint",
       "ruleId": "shadcn/no-restyle",
@@ -3150,76 +770,6 @@
       "count": 1
     },
     {
-      "fingerprint": "25b16702ca106ea1f82c7198e0f0c8388d66a7566256a767fc4eafe37f628093",
-      "source": "eslint",
-      "ruleId": "shadcn/no-restyle",
-      "path": "frontend/src/components/wiki-sidebar/drive-access-sheet.tsx",
-      "count": 1
-    },
-    {
-      "fingerprint": "48cd268bbe37ed3305b19391b4b83a6c148380edf31a79e362c79539e72d9b34",
-      "source": "eslint",
-      "ruleId": "shadcn/no-restyle",
-      "path": "frontend/src/components/wiki-sidebar/drive-access-sheet.tsx",
-      "count": 3
-    },
-    {
-      "fingerprint": "57bdff93e1ef576e12d666aa5f138c5acb933073b13740382bcbe4e3cb415ea1",
-      "source": "eslint",
-      "ruleId": "shadcn/no-restyle",
-      "path": "frontend/src/components/wiki-sidebar/drive-access-sheet.tsx",
-      "count": 1
-    },
-    {
-      "fingerprint": "70583cfb28429484510baa74b4988674dc76f82cc92bdb45e371208baaa80cb2",
-      "source": "eslint",
-      "ruleId": "shadcn/no-restyle",
-      "path": "frontend/src/components/wiki-sidebar/drive-access-sheet.tsx",
-      "count": 1
-    },
-    {
-      "fingerprint": "74b2b3a85e57c06e4782d3604aad002c81d778ceba5d92c6724a7f82615ea380",
-      "source": "eslint",
-      "ruleId": "shadcn/no-restyle",
-      "path": "frontend/src/components/wiki-sidebar/drive-access-sheet.tsx",
-      "count": 2
-    },
-    {
-      "fingerprint": "7d11729ddf2354188b4632d84a5717a9a3552a8ec9db839a362b06f4086fa25b",
-      "source": "eslint",
-      "ruleId": "shadcn/no-restyle",
-      "path": "frontend/src/components/wiki-sidebar/drive-access-sheet.tsx",
-      "count": 1
-    },
-    {
-      "fingerprint": "8c7adcd3e72470ab4686a208764755754a1d64205e017af032113a9633c7b5c8",
-      "source": "eslint",
-      "ruleId": "shadcn/no-restyle",
-      "path": "frontend/src/components/wiki-sidebar/drive-access-sheet.tsx",
-      "count": 1
-    },
-    {
-      "fingerprint": "9bcbc6dc1b933c1961e12810cc8c1d3ef93469f0c5200484b907c8434ff66d43",
-      "source": "eslint",
-      "ruleId": "shadcn/no-restyle",
-      "path": "frontend/src/components/wiki-sidebar/drive-access-sheet.tsx",
-      "count": 1
-    },
-    {
-      "fingerprint": "9f38486a1c1c56eb17c976817996cb576e92d5f742c0d7b68f9564919ed61762",
-      "source": "eslint",
-      "ruleId": "shadcn/no-restyle",
-      "path": "frontend/src/components/wiki-sidebar/drive-access-sheet.tsx",
-      "count": 1
-    },
-    {
-      "fingerprint": "a00ca34fe3cb21e7aa2e0ec4f274d5375293a0414aa18b6296efbb1b8f118275",
-      "source": "eslint",
-      "ruleId": "shadcn/no-restyle",
-      "path": "frontend/src/components/wiki-sidebar/drive-access-sheet.tsx",
-      "count": 1
-    },
-    {
       "fingerprint": "adbe575c45830678890816cba771fcdef3c01e81e3f6f089ed9a5ecd077b527c",
       "source": "eslint",
       "ruleId": "shadcn/no-restyle",
@@ -3227,28 +777,7 @@
       "count": 1
     },
     {
-      "fingerprint": "b904a116f5b29251900aee68f24bc635ef6892dc114a4de5410e91b8e1926bb3",
-      "source": "eslint",
-      "ruleId": "shadcn/no-restyle",
-      "path": "frontend/src/components/wiki-sidebar/drive-access-sheet.tsx",
-      "count": 1
-    },
-    {
-      "fingerprint": "e6e9246f827d914e8ae81f6ed6105257715f76f253abf853b8be2ba224fab8f6",
-      "source": "eslint",
-      "ruleId": "shadcn/no-restyle",
-      "path": "frontend/src/components/wiki-sidebar/drive-access-sheet.tsx",
-      "count": 1
-    },
-    {
-      "fingerprint": "f1e21767666b35bb4065c3c45dcb9831a934e67a19bba75c5f7daef6ca5fb73e",
-      "source": "eslint",
-      "ruleId": "shadcn/no-restyle",
-      "path": "frontend/src/components/wiki-sidebar/drive-access-sheet.tsx",
-      "count": 1
-    },
-    {
-      "fingerprint": "f5a37c15820e6b3811146bcf4e8137d0c0418a4b8751d62b10104656231668b3",
+      "fingerprint": "d40948cf005b12f9dfdf43f1ebb05f99ce929011a285bb12fcb0d0a667dcdd9b",
       "source": "eslint",
       "ruleId": "shadcn/no-restyle",
       "path": "frontend/src/components/wiki-sidebar/drive-access-sheet.tsx",
@@ -3269,13 +798,6 @@
       "count": 1
     },
     {
-      "fingerprint": "a8f94e791177699d4e788d58f6aad7e0d5babe074df48d6215ac9e8ad7a7c791",
-      "source": "eslint",
-      "ruleId": "shadcn/no-restyle",
-      "path": "frontend/src/components/wiki-sidebar/drive-search-box.tsx",
-      "count": 1
-    },
-    {
       "fingerprint": "d31742c6443a716a021c34a1054a2dfda500659f8ca6da51360b0fced106edff",
       "source": "eslint",
       "ruleId": "shadcn/no-restyle",
@@ -3290,63 +812,14 @@
       "count": 1
     },
     {
-      "fingerprint": "ed408d2573721729a7cd2d82cc0b06dd6e6c08ad854f922cfa324309e65236cc",
-      "source": "eslint",
-      "ruleId": "shadcn/no-restyle",
-      "path": "frontend/src/components/wiki-sidebar/drive-search-box.tsx",
-      "count": 1
-    },
-    {
-      "fingerprint": "0424ad2597c4826101a629f5eafbfdb718122a7f2e2928438040807d72c84462",
+      "fingerprint": "0fb4e284676456422f87a68926ddf12637fd92fa923e95798493246b073fa389",
       "source": "eslint",
       "ruleId": "shadcn/no-restyle",
       "path": "frontend/src/components/wiki-sidebar/drive-section.tsx",
       "count": 1
     },
     {
-      "fingerprint": "1f862e4dd4f8878a9501f0099f7a8ef0c460b334f811d31d11129a9624a52d7d",
-      "source": "eslint",
-      "ruleId": "shadcn/no-restyle",
-      "path": "frontend/src/components/wiki-sidebar/drive-section.tsx",
-      "count": 1
-    },
-    {
-      "fingerprint": "32162c52b872a97b23b6997f8c8dd302e7cc67add5d931afebe924d30aa67906",
-      "source": "eslint",
-      "ruleId": "shadcn/no-restyle",
-      "path": "frontend/src/components/wiki-sidebar/drive-section.tsx",
-      "count": 4
-    },
-    {
-      "fingerprint": "40ed4e46b6a92975e8ab645ee8db2602f1367c6cd8582ec84b6e58aec78058bd",
-      "source": "eslint",
-      "ruleId": "shadcn/no-restyle",
-      "path": "frontend/src/components/wiki-sidebar/drive-section.tsx",
-      "count": 1
-    },
-    {
-      "fingerprint": "43aedb3b7d02aa47dbff96795980e12fe5f2234cd547757abef4343e14cef328",
-      "source": "eslint",
-      "ruleId": "shadcn/no-restyle",
-      "path": "frontend/src/components/wiki-sidebar/drive-section.tsx",
-      "count": 1
-    },
-    {
-      "fingerprint": "537cad513e4a3d0825a880ab2952b3dbb60f687381730ca61426e3e2909e5f6e",
-      "source": "eslint",
-      "ruleId": "shadcn/no-restyle",
-      "path": "frontend/src/components/wiki-sidebar/drive-section.tsx",
-      "count": 1
-    },
-    {
-      "fingerprint": "545541b9afac12c03fde077ae8f5a1c51a5f7c730871b92c0ee7adb1bb96cb95",
-      "source": "eslint",
-      "ruleId": "shadcn/no-restyle",
-      "path": "frontend/src/components/wiki-sidebar/drive-section.tsx",
-      "count": 1
-    },
-    {
-      "fingerprint": "54ea21961b7d8d8d99cf42e02fb034fe67111dfa1141bd7be2ad248846ec81f6",
+      "fingerprint": "1d94f5d3c7f1c674d35aa63a91c6006d9aa4c70a2d1ad851cd9130dc605df75f",
       "source": "eslint",
       "ruleId": "shadcn/no-restyle",
       "path": "frontend/src/components/wiki-sidebar/drive-section.tsx",
@@ -3367,20 +840,6 @@
       "count": 1
     },
     {
-      "fingerprint": "61ad0ecafa75c4380c57f4cd4d69c587d4e647317fbf65286c2936598b88cd71",
-      "source": "eslint",
-      "ruleId": "shadcn/no-restyle",
-      "path": "frontend/src/components/wiki-sidebar/drive-section.tsx",
-      "count": 1
-    },
-    {
-      "fingerprint": "641efa86a187b1a95376cc03c78d249535a2711b2de351b69f46a7cee754e9f3",
-      "source": "eslint",
-      "ruleId": "shadcn/no-restyle",
-      "path": "frontend/src/components/wiki-sidebar/drive-section.tsx",
-      "count": 1
-    },
-    {
       "fingerprint": "6ac43ec1952d4513eebb5ba1b85dfc9e0c5842e08187ff7f57e0c539deafb89c",
       "source": "eslint",
       "ruleId": "shadcn/no-restyle",
@@ -3388,28 +847,21 @@
       "count": 8
     },
     {
+      "fingerprint": "7c2f2c13f7fd98d39f4ba601d7061fd1bc0ed5be844bd2bfbb2bcabadd149a9d",
+      "source": "eslint",
+      "ruleId": "shadcn/no-restyle",
+      "path": "frontend/src/components/wiki-sidebar/drive-section.tsx",
+      "count": 1
+    },
+    {
+      "fingerprint": "7c8b3c46e0a76d04f732be7eef346a4f58c95cdd7e661edfe677ef570a065421",
+      "source": "eslint",
+      "ruleId": "shadcn/no-restyle",
+      "path": "frontend/src/components/wiki-sidebar/drive-section.tsx",
+      "count": 1
+    },
+    {
       "fingerprint": "83888b2e45f792517966c5fa6fac280700b2dc27882f9c9da58e48848d91c16f",
-      "source": "eslint",
-      "ruleId": "shadcn/no-restyle",
-      "path": "frontend/src/components/wiki-sidebar/drive-section.tsx",
-      "count": 1
-    },
-    {
-      "fingerprint": "8db88723ba537290967a8d453338b1275dba70f7503b310a24244c73e5dd7a76",
-      "source": "eslint",
-      "ruleId": "shadcn/no-restyle",
-      "path": "frontend/src/components/wiki-sidebar/drive-section.tsx",
-      "count": 1
-    },
-    {
-      "fingerprint": "9257cfb609b4cab68854b8709b8b00e7c4717e27690bdeb841e5be8a84fa8bb4",
-      "source": "eslint",
-      "ruleId": "shadcn/no-restyle",
-      "path": "frontend/src/components/wiki-sidebar/drive-section.tsx",
-      "count": 1
-    },
-    {
-      "fingerprint": "990fc1b1f93d56705ad01f9da667df3c9d7185b60d06182446488c3bdb4afdd3",
       "source": "eslint",
       "ruleId": "shadcn/no-restyle",
       "path": "frontend/src/components/wiki-sidebar/drive-section.tsx",
@@ -3430,13 +882,6 @@
       "count": 1
     },
     {
-      "fingerprint": "acfa3c24b8bbaaf2b493480f3003f0aa930546434418ba13230ba1acf6604160",
-      "source": "eslint",
-      "ruleId": "shadcn/no-restyle",
-      "path": "frontend/src/components/wiki-sidebar/drive-section.tsx",
-      "count": 1
-    },
-    {
       "fingerprint": "ba1227dc5ebb4283ff23aec27db7fc74cfd909823f082f2889ac4774a06dff68",
       "source": "eslint",
       "ruleId": "shadcn/no-restyle",
@@ -3444,70 +889,28 @@
       "count": 1
     },
     {
-      "fingerprint": "bb861ebb8d7ade792ef9f1fef04e9e3e64db2431f73fca4f1cdbcbb722206ddc",
+      "fingerprint": "c11849a6090709a9011e7555e0ce7a31628bba9c58149b0232a386f9e90afb10",
       "source": "eslint",
       "ruleId": "shadcn/no-restyle",
       "path": "frontend/src/components/wiki-sidebar/drive-section.tsx",
       "count": 1
     },
     {
-      "fingerprint": "bc807758f834cf6993c267bb52c783789712f81d9fbf34619acedf3d19aec8b9",
+      "fingerprint": "c5e71e9661815e6f10d59093c7902dee8be4858654e0ede4bedad69f2642635a",
       "source": "eslint",
       "ruleId": "shadcn/no-restyle",
       "path": "frontend/src/components/wiki-sidebar/drive-section.tsx",
       "count": 1
     },
     {
-      "fingerprint": "c5a4a09fe9741e6a5a87b532704b0fed759ebd56d5303a70dd4f204487171b73",
+      "fingerprint": "cf936dd1b4294895e5e0b68e150023c93195314d791ab06e6695f44f7b071c9e",
       "source": "eslint",
       "ruleId": "shadcn/no-restyle",
       "path": "frontend/src/components/wiki-sidebar/drive-section.tsx",
       "count": 1
-    },
-    {
-      "fingerprint": "c9c56fb103cc326442e019947622799eafc1b23953106c1ca501f9665c7f561b",
-      "source": "eslint",
-      "ruleId": "shadcn/no-restyle",
-      "path": "frontend/src/components/wiki-sidebar/drive-section.tsx",
-      "count": 1
-    },
-    {
-      "fingerprint": "e7a021f30ef48f219bd25e933fe1b7305d1dc03f08623874ced7958bf8a6d40d",
-      "source": "eslint",
-      "ruleId": "shadcn/no-restyle",
-      "path": "frontend/src/components/wiki-sidebar/drive-section.tsx",
-      "count": 4
     },
     {
       "fingerprint": "e8f29bd05f4bbcdca2260342a62223164a03082498ba8c815d1d99367dab3dbe",
-      "source": "eslint",
-      "ruleId": "shadcn/no-restyle",
-      "path": "frontend/src/components/wiki-sidebar/drive-section.tsx",
-      "count": 1
-    },
-    {
-      "fingerprint": "f55dd8bbeab4a76b4b47a573dcefa4966fe5425e90e16a87877feb2c2d48047a",
-      "source": "eslint",
-      "ruleId": "shadcn/no-restyle",
-      "path": "frontend/src/components/wiki-sidebar/drive-section.tsx",
-      "count": 1
-    },
-    {
-      "fingerprint": "f5ee8c2de8c75038bd353c6e9e661f583b605584c5a96a349f0364e4781fe2e5",
-      "source": "eslint",
-      "ruleId": "shadcn/no-restyle",
-      "path": "frontend/src/components/wiki-sidebar/drive-section.tsx",
-      "count": 1
-    },
-    {
-      "fingerprint": "f646b6d75b08c5babe7949a44e06e05e88d53cb2c7d759c9791d34804cd65640",
-      "source": "eslint",
-      "ruleId": "shadcn/no-restyle",
-      "path": "frontend/src/components/wiki-sidebar/drive-section.tsx",
-      "count": 1
-    },
-    {
-      "fingerprint": "f7064f05277a7b6431f79270a23578f62e4af44126d101a6ba97678b8dcf6a61",
       "source": "eslint",
       "ruleId": "shadcn/no-restyle",
       "path": "frontend/src/components/wiki-sidebar/drive-section.tsx",
@@ -3528,7 +931,7 @@
       "count": 1
     },
     {
-      "fingerprint": "83e459da8fbca51e1b691f81651d275d3baa295d1a9c8e71ef3d83c73584d1b5",
+      "fingerprint": "76f77eafc743889cafa288bb2251017279f0f781231dc50665e8a8214af0086c",
       "source": "eslint",
       "ruleId": "shadcn/no-restyle",
       "path": "frontend/src/components/wiki-sidebar/emoji-picker-popover.tsx",
@@ -3536,13 +939,6 @@
     },
     {
       "fingerprint": "beaf4fb545d48855d3bc0fa7cde7c48402a73854636d3d845ed3fa6d3956023e",
-      "source": "eslint",
-      "ruleId": "shadcn/no-restyle",
-      "path": "frontend/src/components/wiki-sidebar/emoji-picker-popover.tsx",
-      "count": 1
-    },
-    {
-      "fingerprint": "ca578bca5b0591d773043fedbb99e7cffd3c669c6bbf33dce5f9e74d71e4118f",
       "source": "eslint",
       "ruleId": "shadcn/no-restyle",
       "path": "frontend/src/components/wiki-sidebar/emoji-picker-popover.tsx",
@@ -3654,32 +1050,11 @@
       "count": 3
     },
     {
-      "fingerprint": "a142ccf0345f4078c614807b01463beb8666c7c28b1f175d5578f4c5a8414f00",
-      "source": "eslint",
-      "ruleId": "shadcn/no-restyle",
-      "path": "frontend/src/components/wiki-sidebar/file-row.tsx",
-      "count": 1
-    },
-    {
-      "fingerprint": "a5edd41f51ff41883d5f7e9ad752a64d83e8ef2e4fbd92219d57f16c13528851",
+      "fingerprint": "bb06e055e972faf26dc3c04f54f3c575c792856952fc2347b0d61e8cc253e751",
       "source": "eslint",
       "ruleId": "shadcn/no-restyle",
       "path": "frontend/src/components/wiki-sidebar/file-row.tsx",
       "count": 3
-    },
-    {
-      "fingerprint": "03b4ca1a64f7d7723eacb5ba0e42cfa836ea4f90fe337bb53530ce55d5bce3f9",
-      "source": "eslint",
-      "ruleId": "shadcn/no-restyle",
-      "path": "frontend/src/components/wiki-sidebar/folder-picker-dialog.tsx",
-      "count": 2
-    },
-    {
-      "fingerprint": "0d11d18f2c477d23b797d90af5f218e405832f6ca8e2ae11f975d62c13413f32",
-      "source": "eslint",
-      "ruleId": "shadcn/no-restyle",
-      "path": "frontend/src/components/wiki-sidebar/folder-picker-dialog.tsx",
-      "count": 1
     },
     {
       "fingerprint": "74cb3211f7f5fd5132ebb52df98d73da59a8c84e721cecf389e8e924d9adfb9c",
@@ -3689,13 +1064,6 @@
       "count": 1
     },
     {
-      "fingerprint": "74eca506d3023082ada4f395d7f96f849599b8272871dc393e34156bdefc2ec9",
-      "source": "eslint",
-      "ruleId": "shadcn/no-restyle",
-      "path": "frontend/src/components/wiki-sidebar/folder-picker-dialog.tsx",
-      "count": 2
-    },
-    {
       "fingerprint": "77aac3201043648cea98b556a307abaad6aba0c8354e9f81dcda122f35a4ead7",
       "source": "eslint",
       "ruleId": "shadcn/no-restyle",
@@ -3703,14 +1071,14 @@
       "count": 1
     },
     {
-      "fingerprint": "7ee567f68d34ae615810a7f0515ec5d8fc67bf3ca6251a5b07f57b6c6d4c3801",
+      "fingerprint": "787eb2df3829c27e4b680d500a171dbfbc9a4993b98674c8fc42c31ce9f2c29e",
       "source": "eslint",
       "ruleId": "shadcn/no-restyle",
       "path": "frontend/src/components/wiki-sidebar/folder-picker-dialog.tsx",
       "count": 2
     },
     {
-      "fingerprint": "91eb599da740e32b4b5fc07387560c73ae77bde16585c4c73add6dcb3fd3c35b",
+      "fingerprint": "d48d97ceb6120eacea86246cf5e462354684cf08608c2f5788316f55fb9ab094",
       "source": "eslint",
       "ruleId": "shadcn/no-restyle",
       "path": "frontend/src/components/wiki-sidebar/folder-picker-dialog.tsx",
@@ -3722,41 +1090,6 @@
       "ruleId": "shadcn/no-restyle",
       "path": "frontend/src/components/wiki-sidebar/folder-picker-dialog.tsx",
       "count": 1
-    },
-    {
-      "fingerprint": "e8b027ac62869da28b11133b20e6b22a3f7c5b8866898db9cf340e24e5f2128c",
-      "source": "eslint",
-      "ruleId": "shadcn/no-restyle",
-      "path": "frontend/src/components/wiki-sidebar/folder-picker-dialog.tsx",
-      "count": 2
-    },
-    {
-      "fingerprint": "eb7c0d40f4a43446866c099a535f78930b9de6d7ede34e207a0038bd779f5675",
-      "source": "eslint",
-      "ruleId": "shadcn/no-restyle",
-      "path": "frontend/src/components/wiki-sidebar/folder-picker-dialog.tsx",
-      "count": 2
-    },
-    {
-      "fingerprint": "efc58dd100faa1197ae569709d84f09ed5a14b884c9f7d6a23880a5038b8b97e",
-      "source": "eslint",
-      "ruleId": "shadcn/no-restyle",
-      "path": "frontend/src/components/wiki-sidebar/folder-picker-dialog.tsx",
-      "count": 1
-    },
-    {
-      "fingerprint": "f78351b02d68b4422fd5fbf14049e2c47544043f6203dfd9758a3492e0e9a939",
-      "source": "eslint",
-      "ruleId": "shadcn/no-restyle",
-      "path": "frontend/src/components/wiki-sidebar/folder-picker-dialog.tsx",
-      "count": 2
-    },
-    {
-      "fingerprint": "1a11bfc1efb6ac7cd92faab3826d0593f7319fc91343d376096d3c65daddf3ae",
-      "source": "eslint",
-      "ruleId": "shadcn/no-restyle",
-      "path": "frontend/src/components/wiki-sidebar/item-menu-actions.tsx",
-      "count": 5
     },
     {
       "fingerprint": "2fab0b53e8b976c478e54f5e86f8ef81b06e9cd8ff3c8321f68804469b52f7cc",
@@ -3773,20 +1106,6 @@
       "count": 1
     },
     {
-      "fingerprint": "4b10a1d90b11b9cf750ae95fc55989e83486dd1f899823f6d0e0876af36a10e4",
-      "source": "eslint",
-      "ruleId": "shadcn/no-restyle",
-      "path": "frontend/src/components/wiki-sidebar/item-menu-actions.tsx",
-      "count": 1
-    },
-    {
-      "fingerprint": "876f37a43a748ce4e8f880937a7040e2575bd59bfd665f62adb103619d4630f5",
-      "source": "eslint",
-      "ruleId": "shadcn/no-restyle",
-      "path": "frontend/src/components/wiki-sidebar/item-menu-actions.tsx",
-      "count": 5
-    },
-    {
       "fingerprint": "8f75f1d2428639db0916bd0784b0d1e46c55775c1e247cbe69134e3df50cc986",
       "source": "eslint",
       "ruleId": "shadcn/no-restyle",
@@ -3794,28 +1113,14 @@
       "count": 5
     },
     {
-      "fingerprint": "d3a4f662248740b98ca229c7f0c89ba999b56fbb8f34d802a3a5b08ed45305b4",
+      "fingerprint": "c37c11ccdfdca5abaac30eac21ac7bb2064c9eb211fb60d3dd151a7c03db9ac1",
       "source": "eslint",
       "ruleId": "shadcn/no-restyle",
       "path": "frontend/src/components/wiki-sidebar/item-menu-actions.tsx",
       "count": 5
     },
     {
-      "fingerprint": "863d58ed33c99093e3caa00300d6a5f8c1935f14999794e76e038c3277788414",
-      "source": "eslint",
-      "ruleId": "shadcn/no-restyle",
-      "path": "frontend/src/components/wiki-sidebar/item-menu.tsx",
-      "count": 1
-    },
-    {
       "fingerprint": "b3be75a87f383da6809dadc1b16642e41c87e6bd4b5f8e3a5bb20d0cc4095b32",
-      "source": "eslint",
-      "ruleId": "shadcn/no-restyle",
-      "path": "frontend/src/components/wiki-sidebar/item-menu.tsx",
-      "count": 1
-    },
-    {
-      "fingerprint": "bb79eddd1ff00c93dedbd2d29bbb757e2dbf925a1331a30d6422b2c035204ebf",
       "source": "eslint",
       "ruleId": "shadcn/no-restyle",
       "path": "frontend/src/components/wiki-sidebar/item-menu.tsx",
@@ -3850,25 +1155,11 @@
       "count": 2
     },
     {
-      "fingerprint": "0bf0b86d613273069f58cfe909491b2babc7175900709d7617b28b7ca951de58",
-      "source": "eslint",
-      "ruleId": "shadcn/no-restyle",
-      "path": "frontend/src/components/wiki-sidebar/move-file-dialog.tsx",
-      "count": 2
-    },
-    {
-      "fingerprint": "1456730d09d1ed064b4aeb8b611e45e202cc6b3a7d20bc671b5fbcaf1314e4a4",
+      "fingerprint": "1aeaf1163561b5985ed5b36b13838b6dd93705c88de01a54a58e0d9978b15849",
       "source": "eslint",
       "ruleId": "shadcn/no-restyle",
       "path": "frontend/src/components/wiki-sidebar/move-file-dialog.tsx",
       "count": 1
-    },
-    {
-      "fingerprint": "1cb3de0da33a3552299717e5b7d1e065accc7cdab9bbb30554d09bbb106ae4aa",
-      "source": "eslint",
-      "ruleId": "shadcn/no-restyle",
-      "path": "frontend/src/components/wiki-sidebar/move-file-dialog.tsx",
-      "count": 2
     },
     {
       "fingerprint": "23c0df5f0c658cc2826129019ed9c254883d1b4cc33c6e6bb5ad0bd8d2f5a16b",
@@ -3878,53 +1169,32 @@
       "count": 1
     },
     {
-      "fingerprint": "2a1ae8ef1190cf9c4293cafe6a442c37eb2f9eab710747e2314417b349d2bad2",
-      "source": "eslint",
-      "ruleId": "shadcn/no-restyle",
-      "path": "frontend/src/components/wiki-sidebar/move-file-dialog.tsx",
-      "count": 2
-    },
-    {
-      "fingerprint": "4a61b0641ec4ae0e249f4da59eeb69f05329740da8f3018f6a81a5b6d8d09773",
+      "fingerprint": "2c4de26e136fbf272d2ca841c5c41f90f8bda4d7999239dd7af511023869966e",
       "source": "eslint",
       "ruleId": "shadcn/no-restyle",
       "path": "frontend/src/components/wiki-sidebar/move-file-dialog.tsx",
       "count": 1
     },
     {
-      "fingerprint": "53287c03e241465e1b3bfb7a210dd1b3772970baf326cd9228f16f90ab1f482c",
-      "source": "eslint",
-      "ruleId": "shadcn/no-restyle",
-      "path": "frontend/src/components/wiki-sidebar/move-file-dialog.tsx",
-      "count": 2
-    },
-    {
-      "fingerprint": "56d2cb7222f6ac1308ec02d68583a32ead5496543b37cce70b82130b59002fb4",
-      "source": "eslint",
-      "ruleId": "shadcn/no-restyle",
-      "path": "frontend/src/components/wiki-sidebar/move-file-dialog.tsx",
-      "count": 2
-    },
-    {
-      "fingerprint": "5e9a9f1b19d8616bf8757dba0253ee785dfe8281cd38d6f6e5fe627118e9445d",
+      "fingerprint": "3e7e4a3154f9b8780e33ff736263c7d492f4421a6daf9c1c565d58c9b6e2e34c",
       "source": "eslint",
       "ruleId": "shadcn/no-restyle",
       "path": "frontend/src/components/wiki-sidebar/move-file-dialog.tsx",
       "count": 1
     },
     {
-      "fingerprint": "6f6779b7c59bdb9ff4fd2fed82fe5d4c570477320ee8f56c588c5b001ff4740c",
-      "source": "eslint",
-      "ruleId": "shadcn/no-restyle",
-      "path": "frontend/src/components/wiki-sidebar/move-file-dialog.tsx",
-      "count": 1
-    },
-    {
-      "fingerprint": "83be23bb367610ca071a8561ec83670d3def1139bba5bb1f06040b34bb923e80",
+      "fingerprint": "60564b9db0d2bbf99e7edc72aa80577d3b91c67c49a2b2dd1e2823b5c2533712",
       "source": "eslint",
       "ruleId": "shadcn/no-restyle",
       "path": "frontend/src/components/wiki-sidebar/move-file-dialog.tsx",
       "count": 2
+    },
+    {
+      "fingerprint": "6804979e2ed3b32624d10d49dae7528d545a301061faf7ed1480b52c06edcdd9",
+      "source": "eslint",
+      "ruleId": "shadcn/no-restyle",
+      "path": "frontend/src/components/wiki-sidebar/move-file-dialog.tsx",
+      "count": 1
     },
     {
       "fingerprint": "87382f09c228c9e98f04aab52fa7f0c77792416a99d7e3f026c680fbb9a3d915",
@@ -3934,18 +1204,11 @@
       "count": 1
     },
     {
-      "fingerprint": "8756dd486d06fe775d9c20d683ee1c44fd2a6ce3f50fcb1a76f5205aad4cbcef",
+      "fingerprint": "8d9b443f1180fa277efb1c13c2a0631d847229fd990f8d4edd1532d74caa1e4b",
       "source": "eslint",
       "ruleId": "shadcn/no-restyle",
       "path": "frontend/src/components/wiki-sidebar/move-file-dialog.tsx",
       "count": 2
-    },
-    {
-      "fingerprint": "878551bbf335bad1637e0d423104d7526c8358855e3974e6f648b11a9b1085d7",
-      "source": "eslint",
-      "ruleId": "shadcn/no-restyle",
-      "path": "frontend/src/components/wiki-sidebar/move-file-dialog.tsx",
-      "count": 1
     },
     {
       "fingerprint": "9b146c8bb8cba1bac2036b44f56a76d353214ae7bc43acd1fd119ee57eaa39a6",
@@ -3955,28 +1218,7 @@
       "count": 1
     },
     {
-      "fingerprint": "9bf18ec9e44166a0dd4bd56617f30ae846a66484589b04abdbd1153fb5681040",
-      "source": "eslint",
-      "ruleId": "shadcn/no-restyle",
-      "path": "frontend/src/components/wiki-sidebar/move-file-dialog.tsx",
-      "count": 1
-    },
-    {
-      "fingerprint": "b98596a36580a23527e7772816f2910e463e83ea8484bcb1a07d998edd9cd048",
-      "source": "eslint",
-      "ruleId": "shadcn/no-restyle",
-      "path": "frontend/src/components/wiki-sidebar/move-file-dialog.tsx",
-      "count": 1
-    },
-    {
-      "fingerprint": "bde40a44236c6072662f7736f7042cdf1313cf873b92cfdf455817f49d087ae6",
-      "source": "eslint",
-      "ruleId": "shadcn/no-restyle",
-      "path": "frontend/src/components/wiki-sidebar/move-file-dialog.tsx",
-      "count": 1
-    },
-    {
-      "fingerprint": "c108ee23c933fb6ab888c15f72455d16c3f3a9b3a1122109f9a4287be9d874b8",
+      "fingerprint": "a3374448950ffd8345a13c6f7c64cd992617a8a6b03f888d177bb5c1bfd9f502",
       "source": "eslint",
       "ruleId": "shadcn/no-restyle",
       "path": "frontend/src/components/wiki-sidebar/move-file-dialog.tsx",
@@ -3997,6 +1239,13 @@
       "count": 2
     },
     {
+      "fingerprint": "e6e5a5f050ac7f23e7c513c8cf864134c63f02f19a442ecfdcef9f5963836a1a",
+      "source": "eslint",
+      "ruleId": "shadcn/no-restyle",
+      "path": "frontend/src/components/wiki-sidebar/move-file-dialog.tsx",
+      "count": 1
+    },
+    {
       "fingerprint": "efecbd12d08a1965e8b444bc224f643021bf0b59bc746f8f15731995072bd5c7",
       "source": "eslint",
       "ruleId": "shadcn/no-restyle",
@@ -4004,24 +1253,10 @@
       "count": 1
     },
     {
-      "fingerprint": "f9cff2a86a020342b428596e3aa9acc510103c12d914c3c614938d77f46ad8ab",
+      "fingerprint": "f02229a423daedd661929a3c43b6e83671b0a93b42b8e2113656c97c04ec8d3c",
       "source": "eslint",
       "ruleId": "shadcn/no-restyle",
       "path": "frontend/src/components/wiki-sidebar/move-file-dialog.tsx",
-      "count": 1
-    },
-    {
-      "fingerprint": "fd239ecc1830c7ac4b34a61228e4eaabeef49514c16ff2e3434bcc05b8e56bcf",
-      "source": "eslint",
-      "ruleId": "shadcn/no-restyle",
-      "path": "frontend/src/components/wiki-sidebar/move-file-dialog.tsx",
-      "count": 1
-    },
-    {
-      "fingerprint": "3fb7c6f2cb9b6513518dce91743a14b5ec622a32e52369f81e6afb6febba1e28",
-      "source": "eslint",
-      "ruleId": "shadcn/no-restyle",
-      "path": "frontend/src/components/wiki-sidebar/name-prompt-dialog.tsx",
       "count": 1
     },
     {
@@ -4040,20 +1275,6 @@
     },
     {
       "fingerprint": "1b67bdcdb73b5d57c5af4db8597e40fd22c83fc8dc4ded0221a1383e9e0931fd",
-      "source": "eslint",
-      "ruleId": "shadcn/no-restyle",
-      "path": "frontend/src/components/wiki-sidebar/pickable-icon.tsx",
-      "count": 1
-    },
-    {
-      "fingerprint": "264cd02d8404ee7aab6453f910abe3bba25b5d040bf4b0565842dc81f81b0cb4",
-      "source": "eslint",
-      "ruleId": "shadcn/no-restyle",
-      "path": "frontend/src/components/wiki-sidebar/pickable-icon.tsx",
-      "count": 1
-    },
-    {
-      "fingerprint": "47bd5f7e7246808fb0cd4645b9a4018e8cac658cdf86bdcd175c409ea10bdc5d",
       "source": "eslint",
       "ruleId": "shadcn/no-restyle",
       "path": "frontend/src/components/wiki-sidebar/pickable-icon.tsx",
@@ -4088,14 +1309,21 @@
       "count": 1
     },
     {
-      "fingerprint": "f39557ec975402323ca683deaef901bdd487afe0521567619bab645f40b69572",
+      "fingerprint": "120d0190c813282514d694534c54ca51a6f9746a8d0b99f07ddfa11681550bc2",
       "source": "eslint",
       "ruleId": "shadcn/no-restyle",
-      "path": "frontend/src/components/wiki-sidebar/pickable-icon.tsx",
+      "path": "frontend/src/components/wiki-sidebar/preferences-dialog.tsx",
       "count": 1
     },
     {
-      "fingerprint": "19737b711fab584b098ffaeb421e3dc1aaec54f7080b538c6d68d1227f902be2",
+      "fingerprint": "2be3559c6c9c866a3e2dfb6c25c40bb4cde36145b29a1782bc725704be4c70e3",
+      "source": "eslint",
+      "ruleId": "shadcn/no-restyle",
+      "path": "frontend/src/components/wiki-sidebar/preferences-dialog.tsx",
+      "count": 1
+    },
+    {
+      "fingerprint": "2e324aceec63173b6dfda6b35468e0324119b7076705e2275017e2ba7c98a41d",
       "source": "eslint",
       "ruleId": "shadcn/no-restyle",
       "path": "frontend/src/components/wiki-sidebar/preferences-dialog.tsx",
@@ -4109,144 +1337,60 @@
       "count": 1
     },
     {
-      "fingerprint": "48362ded75ed296863336f1865b68e2f0fa39643904f8b76b2b62f3052d53e1a",
+      "fingerprint": "4f64b2f075cf7ed9b0a3262bd6bae7c9bc2ad287cade6e70bf2911a8d0d1b4e2",
       "source": "eslint",
       "ruleId": "shadcn/no-restyle",
       "path": "frontend/src/components/wiki-sidebar/preferences-dialog.tsx",
       "count": 1
     },
     {
-      "fingerprint": "58ce3d5a590e5c9e99ee19bb7718dc8b5d1ca9320465da25c9defa01e1dd839f",
+      "fingerprint": "5b9f26df0f79a701c9c8b99a40b1b80d4e5b2517378eaee8cee23dc97bfc83aa",
       "source": "eslint",
       "ruleId": "shadcn/no-restyle",
       "path": "frontend/src/components/wiki-sidebar/preferences-dialog.tsx",
       "count": 1
     },
     {
-      "fingerprint": "7f0599fc9f2bd110d2126e66145315472906db3fb40b406dbb715603ebd5aafd",
+      "fingerprint": "769cdd7015f67a06955dcdf99d3e5c496de1c03e72a3f1d2cf0ce522b3184ec6",
       "source": "eslint",
       "ruleId": "shadcn/no-restyle",
       "path": "frontend/src/components/wiki-sidebar/preferences-dialog.tsx",
       "count": 1
     },
     {
-      "fingerprint": "8135307cbaaba7a914c3e8b435f03d5dba7ef97910215651b2c5a9d7d6afd1be",
+      "fingerprint": "9da98944236730ca634425a160a4a16be5c4c33eb91766debdaa9cd99a8aee7f",
       "source": "eslint",
       "ruleId": "shadcn/no-restyle",
       "path": "frontend/src/components/wiki-sidebar/preferences-dialog.tsx",
       "count": 1
     },
     {
-      "fingerprint": "8f186d4601ee2afb8e9bcea8fb0b474ad0811c80b76b61b54fef5c4c5b90ddd2",
+      "fingerprint": "dfeb7a8f4ebed79f4f1bf64daa82efc216ac945991bc53542c75941102637c7d",
       "source": "eslint",
       "ruleId": "shadcn/no-restyle",
       "path": "frontend/src/components/wiki-sidebar/preferences-dialog.tsx",
       "count": 1
     },
     {
-      "fingerprint": "99cfffa5ed7b1d7b6b8320ecb66dbaded732e83ebf1f21dbd822243aa14183f5",
+      "fingerprint": "07374e7255deb329d4c48c13913e96bfffe7651a6bf889a250dd3b8563dc04b1",
       "source": "eslint",
       "ruleId": "shadcn/no-restyle",
-      "path": "frontend/src/components/wiki-sidebar/preferences-dialog.tsx",
+      "path": "frontend/src/components/wiki-sidebar/smart-create-dialog.tsx",
       "count": 1
     },
     {
-      "fingerprint": "a59d1a7600d4980b75edc95dd5542d24406028fa2a87f8514426cb4c45db5687",
+      "fingerprint": "1035c0b4f98424b63b167d6d833429b7df7b6e2fef20b170c85e8b41b4914283",
       "source": "eslint",
       "ruleId": "shadcn/no-restyle",
-      "path": "frontend/src/components/wiki-sidebar/preferences-dialog.tsx",
+      "path": "frontend/src/components/wiki-sidebar/smart-create-dialog.tsx",
       "count": 1
     },
     {
-      "fingerprint": "ac449b6ec800110fee62d6a9566311be587120662f7faf649a508fc6f83f7840",
-      "source": "eslint",
-      "ruleId": "shadcn/no-restyle",
-      "path": "frontend/src/components/wiki-sidebar/preferences-dialog.tsx",
-      "count": 1
-    },
-    {
-      "fingerprint": "c3d226f4cc3de58a50a909853c9a2c2e77ec19a28e81fa1a6964edbf876d1a12",
-      "source": "eslint",
-      "ruleId": "shadcn/no-restyle",
-      "path": "frontend/src/components/wiki-sidebar/preferences-dialog.tsx",
-      "count": 1
-    },
-    {
-      "fingerprint": "cb735de790576a2d07537d0033eb77df8534062f272ad8e65ef2fda6df5785ca",
-      "source": "eslint",
-      "ruleId": "shadcn/no-restyle",
-      "path": "frontend/src/components/wiki-sidebar/preferences-dialog.tsx",
-      "count": 1
-    },
-    {
-      "fingerprint": "cc4477821ba424c18f70d91bbf891ff7ae1bd1e8dc13091f490352bfd9f854b9",
-      "source": "eslint",
-      "ruleId": "shadcn/no-restyle",
-      "path": "frontend/src/components/wiki-sidebar/preferences-dialog.tsx",
-      "count": 1
-    },
-    {
-      "fingerprint": "d31914acb3496f7b378da7e54c8c48123823c99c8709a79d195a40460552e80a",
-      "source": "eslint",
-      "ruleId": "shadcn/no-restyle",
-      "path": "frontend/src/components/wiki-sidebar/preferences-dialog.tsx",
-      "count": 1
-    },
-    {
-      "fingerprint": "d41f096cb8d462abba621e11dcbce62840849ef6b73f3790698e5ff3137c7406",
-      "source": "eslint",
-      "ruleId": "shadcn/no-restyle",
-      "path": "frontend/src/components/wiki-sidebar/preferences-dialog.tsx",
-      "count": 1
-    },
-    {
-      "fingerprint": "e8c5aaf79a7b2b22aae6e7ef610d2aa341342d655ab597c79c32367c77289fdf",
-      "source": "eslint",
-      "ruleId": "shadcn/no-restyle",
-      "path": "frontend/src/components/wiki-sidebar/preferences-dialog.tsx",
-      "count": 1
-    },
-    {
-      "fingerprint": "f36aa5c1abb22a41206da66f722b6427302f94a2b1c8550c937037dc99925cc1",
-      "source": "eslint",
-      "ruleId": "shadcn/no-restyle",
-      "path": "frontend/src/components/wiki-sidebar/preferences-dialog.tsx",
-      "count": 1
-    },
-    {
-      "fingerprint": "fe8c756e2b1cfabf4f52842064cf3d3679ce60d0ab5c4b4287ec167654b65370",
-      "source": "eslint",
-      "ruleId": "shadcn/no-restyle",
-      "path": "frontend/src/components/wiki-sidebar/preferences-dialog.tsx",
-      "count": 1
-    },
-    {
-      "fingerprint": "03a62f37a68de47f2200993ede19389729de19c7cc9ebf5d0133516842f024d0",
+      "fingerprint": "16cb2c8e460edef5af7957ea7aedf81c47b31f9da04dacd88e1efa6ea49f4f85",
       "source": "eslint",
       "ruleId": "shadcn/no-restyle",
       "path": "frontend/src/components/wiki-sidebar/smart-create-dialog.tsx",
       "count": 2
-    },
-    {
-      "fingerprint": "0627531721f0b866786ac3d52f5c5975c11ee77fe5911ff6e899c76838754952",
-      "source": "eslint",
-      "ruleId": "shadcn/no-restyle",
-      "path": "frontend/src/components/wiki-sidebar/smart-create-dialog.tsx",
-      "count": 2
-    },
-    {
-      "fingerprint": "173d3548644b550536efa6c3a0144d8d644bd7b56858b4f6a3b05ffa2a31be02",
-      "source": "eslint",
-      "ruleId": "shadcn/no-restyle",
-      "path": "frontend/src/components/wiki-sidebar/smart-create-dialog.tsx",
-      "count": 1
-    },
-    {
-      "fingerprint": "193c18a2c56dbcd78b823d0975d5fea6afbe19a654d07657fe20dd3a70a763be",
-      "source": "eslint",
-      "ruleId": "shadcn/no-restyle",
-      "path": "frontend/src/components/wiki-sidebar/smart-create-dialog.tsx",
-      "count": 1
     },
     {
       "fingerprint": "1b0a4e545ff8c787430e534585c86ddc2a1a032089b84dacf9c6cbac3b0a7687",
@@ -4263,25 +1407,18 @@
       "count": 1
     },
     {
+      "fingerprint": "2b905163ef536c5caf30bdd8a8c1a96e42b3c558a58b2f1f82f7e7c6728127f8",
+      "source": "eslint",
+      "ruleId": "shadcn/no-restyle",
+      "path": "frontend/src/components/wiki-sidebar/smart-create-dialog.tsx",
+      "count": 1
+    },
+    {
       "fingerprint": "30fc23e89a20f15ea72ccb376928a63032423434141b1739327d83914187040a",
       "source": "eslint",
       "ruleId": "shadcn/no-restyle",
       "path": "frontend/src/components/wiki-sidebar/smart-create-dialog.tsx",
       "count": 1
-    },
-    {
-      "fingerprint": "3a99c6fae412394e9f98d50dfb88e3dbf3a774f3f2db075bd2b94fa91173e6d5",
-      "source": "eslint",
-      "ruleId": "shadcn/no-restyle",
-      "path": "frontend/src/components/wiki-sidebar/smart-create-dialog.tsx",
-      "count": 1
-    },
-    {
-      "fingerprint": "40ef420777fb4cdabb06338a16e5f49a9e339e59fee725349851e7c992c21381",
-      "source": "eslint",
-      "ruleId": "shadcn/no-restyle",
-      "path": "frontend/src/components/wiki-sidebar/smart-create-dialog.tsx",
-      "count": 2
     },
     {
       "fingerprint": "4214888828a4aacf65ae84fa72a312d7a4b37ff7e52da74fc086dcfbfc0374d5",
@@ -4291,63 +1428,14 @@
       "count": 1
     },
     {
-      "fingerprint": "458e9d7a95335e62ef31a2a768fe6112ecf9931ff65410b30374b9ddb81b2c38",
-      "source": "eslint",
-      "ruleId": "shadcn/no-restyle",
-      "path": "frontend/src/components/wiki-sidebar/smart-create-dialog.tsx",
-      "count": 4
-    },
-    {
-      "fingerprint": "4cf1776040accd8209d9173173953875c9e2cbe25195b3c4d1c9a57cd0dcb44a",
+      "fingerprint": "73b02d499efa15f2b6ad7626b98ce52332cc0b52ddc720d06cd4bc604f8cc1fb",
       "source": "eslint",
       "ruleId": "shadcn/no-restyle",
       "path": "frontend/src/components/wiki-sidebar/smart-create-dialog.tsx",
       "count": 1
     },
     {
-      "fingerprint": "4daaf51e057d9f8f6311167578b6cdb91aea3100a2be7978f8e5247a22712740",
-      "source": "eslint",
-      "ruleId": "shadcn/no-restyle",
-      "path": "frontend/src/components/wiki-sidebar/smart-create-dialog.tsx",
-      "count": 1
-    },
-    {
-      "fingerprint": "561a13dd1c8a9d7e8bdc2c578ca2b6461ce9f63b888131fed5e7a65c4d776253",
-      "source": "eslint",
-      "ruleId": "shadcn/no-restyle",
-      "path": "frontend/src/components/wiki-sidebar/smart-create-dialog.tsx",
-      "count": 1
-    },
-    {
-      "fingerprint": "649ffbc3133249a526b0f910c6d7fcc6cead4b89d5d3bde1ef05e68ce19f7244",
-      "source": "eslint",
-      "ruleId": "shadcn/no-restyle",
-      "path": "frontend/src/components/wiki-sidebar/smart-create-dialog.tsx",
-      "count": 2
-    },
-    {
-      "fingerprint": "6bd7f8e8253160cb0720db69b2a407abe0d2aa1a6d2d1eae92ce288afcdbdb10",
-      "source": "eslint",
-      "ruleId": "shadcn/no-restyle",
-      "path": "frontend/src/components/wiki-sidebar/smart-create-dialog.tsx",
-      "count": 1
-    },
-    {
-      "fingerprint": "70ef1e03e5b5f019980cc24018a40affcce90cf743a3a692bc82063843be1476",
-      "source": "eslint",
-      "ruleId": "shadcn/no-restyle",
-      "path": "frontend/src/components/wiki-sidebar/smart-create-dialog.tsx",
-      "count": 1
-    },
-    {
-      "fingerprint": "711d9af676fe7212b849d0dee9de8bdb2f454aa928630201444fbc3935dc7b97",
-      "source": "eslint",
-      "ruleId": "shadcn/no-restyle",
-      "path": "frontend/src/components/wiki-sidebar/smart-create-dialog.tsx",
-      "count": 1
-    },
-    {
-      "fingerprint": "7563aedf612df685a5ffcfc5b7e8e1af584702aa2e7a0de7cc7d52b163660117",
+      "fingerprint": "742209af0e882568b913fdd206b61618e75868ff408c4789190575a8cf58b781",
       "source": "eslint",
       "ruleId": "shadcn/no-restyle",
       "path": "frontend/src/components/wiki-sidebar/smart-create-dialog.tsx",
@@ -4361,25 +1449,11 @@
       "count": 1
     },
     {
-      "fingerprint": "7d84e7d320f02703d85267ed52699644f85500bbd78da33fa62cd14dc97ab035",
+      "fingerprint": "80fbc7ba9ee23cd2049f14b235fc45fae3904ea541bff15febc9267a3d2b83fe",
       "source": "eslint",
       "ruleId": "shadcn/no-restyle",
       "path": "frontend/src/components/wiki-sidebar/smart-create-dialog.tsx",
       "count": 1
-    },
-    {
-      "fingerprint": "817a79d19476949ddea5d9ac275838a1e449cc49553a5c2c0ec60815568e7e7a",
-      "source": "eslint",
-      "ruleId": "shadcn/no-restyle",
-      "path": "frontend/src/components/wiki-sidebar/smart-create-dialog.tsx",
-      "count": 1
-    },
-    {
-      "fingerprint": "81efcd531ed3c08fa1f607249679eb49bc745dea94cf56238e0ad3577c118ecd",
-      "source": "eslint",
-      "ruleId": "shadcn/no-restyle",
-      "path": "frontend/src/components/wiki-sidebar/smart-create-dialog.tsx",
-      "count": 2
     },
     {
       "fingerprint": "8a114e28a4a1945d2d934c53f6f9e22d2e8aecbc85078b11429843b54ca3b0ae",
@@ -4396,56 +1470,7 @@
       "count": 1
     },
     {
-      "fingerprint": "925d05f106fd0b93bd9ceb793ec2db9c37d7a533aa6c2eef7c3c29de6997d13e",
-      "source": "eslint",
-      "ruleId": "shadcn/no-restyle",
-      "path": "frontend/src/components/wiki-sidebar/smart-create-dialog.tsx",
-      "count": 1
-    },
-    {
       "fingerprint": "981114ca28d7cc18e103135d97f51d40a017f4e1ee2dae957ff6fe72432fc4b0",
-      "source": "eslint",
-      "ruleId": "shadcn/no-restyle",
-      "path": "frontend/src/components/wiki-sidebar/smart-create-dialog.tsx",
-      "count": 1
-    },
-    {
-      "fingerprint": "9f6ea54c3b142b92f89a949c56f0f423b234e760a98071b4be19aa159091d8e7",
-      "source": "eslint",
-      "ruleId": "shadcn/no-restyle",
-      "path": "frontend/src/components/wiki-sidebar/smart-create-dialog.tsx",
-      "count": 1
-    },
-    {
-      "fingerprint": "ae2e350c3fef63f62744912b310b6a4cb3eaa99570215ff6539f9ad3e62bafa2",
-      "source": "eslint",
-      "ruleId": "shadcn/no-restyle",
-      "path": "frontend/src/components/wiki-sidebar/smart-create-dialog.tsx",
-      "count": 1
-    },
-    {
-      "fingerprint": "af0e5519f96d394af2821a4575c8a2852cf663cb0413000afca6be1e67e48e81",
-      "source": "eslint",
-      "ruleId": "shadcn/no-restyle",
-      "path": "frontend/src/components/wiki-sidebar/smart-create-dialog.tsx",
-      "count": 1
-    },
-    {
-      "fingerprint": "b1068722661f63d285e9f2324342f9fbc4a2bf75f83eb3ace4c8d4abc2ec79c9",
-      "source": "eslint",
-      "ruleId": "shadcn/no-restyle",
-      "path": "frontend/src/components/wiki-sidebar/smart-create-dialog.tsx",
-      "count": 1
-    },
-    {
-      "fingerprint": "b38af984d9e31aa7c29e49e653513d7496833a30b986d7f16b0a950fa66ecf9d",
-      "source": "eslint",
-      "ruleId": "shadcn/no-restyle",
-      "path": "frontend/src/components/wiki-sidebar/smart-create-dialog.tsx",
-      "count": 1
-    },
-    {
-      "fingerprint": "b43a7af44af83a5c28402ff72912178d94b1902a2e7e88f55ac6457cfa911fc4",
       "source": "eslint",
       "ruleId": "shadcn/no-restyle",
       "path": "frontend/src/components/wiki-sidebar/smart-create-dialog.tsx",
@@ -4466,63 +1491,21 @@
       "count": 1
     },
     {
-      "fingerprint": "b88ee09d9df72cbab14c812f8ef7efb9e7b2aa000b3aad9ac37f8dcbec594048",
-      "source": "eslint",
-      "ruleId": "shadcn/no-restyle",
-      "path": "frontend/src/components/wiki-sidebar/smart-create-dialog.tsx",
-      "count": 2
-    },
-    {
-      "fingerprint": "c03733271b06f11a38f3a01f551eca5b7c242e4e96474145ab53c62c7b7ccd5f",
+      "fingerprint": "c202f86cb12d9eadee30ef04c661788cffc727042110615d3a0a8eb4ab6ba5c5",
       "source": "eslint",
       "ruleId": "shadcn/no-restyle",
       "path": "frontend/src/components/wiki-sidebar/smart-create-dialog.tsx",
       "count": 1
     },
     {
-      "fingerprint": "c1116a23499179c554d0840509042f8df529e1a42dad1d2b8eb0ab9828b08993",
+      "fingerprint": "f2916771d50d353caed20d4c923fdebe4201b724f057417e48bc961b5d3481ae",
       "source": "eslint",
       "ruleId": "shadcn/no-restyle",
       "path": "frontend/src/components/wiki-sidebar/smart-create-dialog.tsx",
       "count": 1
     },
     {
-      "fingerprint": "c2e6518d2a6a03beca633eaabcf435d5c508c6bbbbfd226cf6d8ca99b3e34af0",
-      "source": "eslint",
-      "ruleId": "shadcn/no-restyle",
-      "path": "frontend/src/components/wiki-sidebar/smart-create-dialog.tsx",
-      "count": 2
-    },
-    {
-      "fingerprint": "cb65586791f242162e5aaef0a7a1e31b0d274609930f4daf038028ed70b82a85",
-      "source": "eslint",
-      "ruleId": "shadcn/no-restyle",
-      "path": "frontend/src/components/wiki-sidebar/smart-create-dialog.tsx",
-      "count": 1
-    },
-    {
-      "fingerprint": "dc07bd1481d6d3aaef9ab6e68cf5efc8c1cdca37153abd6ebb01a36888aa4002",
-      "source": "eslint",
-      "ruleId": "shadcn/no-restyle",
-      "path": "frontend/src/components/wiki-sidebar/smart-create-dialog.tsx",
-      "count": 1
-    },
-    {
-      "fingerprint": "f35104f5b4336a1e5dbc72d7ff47c2083408406cf95db3109fc42dc1102b08b4",
-      "source": "eslint",
-      "ruleId": "shadcn/no-restyle",
-      "path": "frontend/src/components/wiki-sidebar/smart-create-dialog.tsx",
-      "count": 1
-    },
-    {
-      "fingerprint": "fabcf0391349d991fe5e94ede931336897375127e3ec74f46ca5384d6d3497e6",
-      "source": "eslint",
-      "ruleId": "shadcn/no-restyle",
-      "path": "frontend/src/components/wiki-sidebar/smart-create-dialog.tsx",
-      "count": 1
-    },
-    {
-      "fingerprint": "fb19cb75b9dc33b827385bc1b43119e20c6d247aa0993339e31b18a38a06331f",
+      "fingerprint": "f8b3f3e3c304f0ff7e380f937cc13e11268c65408bc41649f259f886712d2988",
       "source": "eslint",
       "ruleId": "shadcn/no-restyle",
       "path": "frontend/src/components/wiki-sidebar/smart-create-dialog.tsx",
@@ -4536,45 +1519,10 @@
       "count": 1
     },
     {
-      "fingerprint": "19d66d39bd71263d6c281e13888cd1b363c35965a702cfc8a3f57e563760fbc7",
+      "fingerprint": "06cdb4d166413101146feecd79d6ea2d7b1f087946f362d10240957ba8fd320e",
       "source": "eslint",
       "ruleId": "shadcn/no-restyle",
-      "path": "frontend/src/components/wiki-sidebar/sortable-item.tsx",
-      "count": 1
-    },
-    {
-      "fingerprint": "1bf4a54984b228cd2d2c88ff0d7106d127601d45785e93abb6fcd9b7b2702ba0",
-      "source": "eslint",
-      "ruleId": "shadcn/no-restyle",
-      "path": "frontend/src/components/wiki-sidebar/sortable-item.tsx",
-      "count": 1
-    },
-    {
-      "fingerprint": "741bfb64542e5e7595491a2ec5f01b5d966412c5bd328841d4b40a7caaf2ace1",
-      "source": "eslint",
-      "ruleId": "shadcn/no-restyle",
-      "path": "frontend/src/components/wiki-sidebar/sortable-item.tsx",
-      "count": 1
-    },
-    {
-      "fingerprint": "9f1704770e0862ea7b3b8d24983fae0306ab01eb017db8a8fab971da8a0c69d1",
-      "source": "eslint",
-      "ruleId": "shadcn/no-restyle",
-      "path": "frontend/src/components/wiki-sidebar/sortable-item.tsx",
-      "count": 1
-    },
-    {
-      "fingerprint": "e212a2c814b451330c358b922cd9573d1b7052617ba7badd43a29af16e782291",
-      "source": "eslint",
-      "ruleId": "shadcn/no-restyle",
-      "path": "frontend/src/components/wiki-sidebar/sortable-item.tsx",
-      "count": 1
-    },
-    {
-      "fingerprint": "e573457b90087a7938ee7f68912ce3fa27dbb4e0f6747b19cc437f0abeb7d0a1",
-      "source": "eslint",
-      "ruleId": "shadcn/no-restyle",
-      "path": "frontend/src/components/wiki-sidebar/sortable-item.tsx",
+      "path": "frontend/src/components/wiki-sidebar/tree-node.tsx",
       "count": 1
     },
     {
@@ -4585,14 +1533,7 @@
       "count": 1
     },
     {
-      "fingerprint": "2c29f2021c791d482dd0faf5aadd3b8f3ac40fffd181f415913b82b52d15fc30",
-      "source": "eslint",
-      "ruleId": "shadcn/no-restyle",
-      "path": "frontend/src/components/wiki-sidebar/tree-node.tsx",
-      "count": 1
-    },
-    {
-      "fingerprint": "4b21b7dfb0ea96b32c2518186c31d59d3db850022089fe8c8ff1d8a1de49e218",
+      "fingerprint": "4f9c286f5499a6198936c14b7d04831c563e0e3c88dbcd668c487a20f1beca6a",
       "source": "eslint",
       "ruleId": "shadcn/no-restyle",
       "path": "frontend/src/components/wiki-sidebar/tree-node.tsx",
@@ -4627,21 +1568,7 @@
       "count": 1
     },
     {
-      "fingerprint": "a8c4a2c0cbcebdf7378127b1124897a6333d5eea343f561743b2ec93d79f40c9",
-      "source": "eslint",
-      "ruleId": "shadcn/no-restyle",
-      "path": "frontend/src/components/wiki-sidebar/tree-node.tsx",
-      "count": 1
-    },
-    {
       "fingerprint": "cbe935fe9700058774c9563621f2c7f629cfd20fa0dffd514281429d9686898a",
-      "source": "eslint",
-      "ruleId": "shadcn/no-restyle",
-      "path": "frontend/src/components/wiki-sidebar/tree-node.tsx",
-      "count": 1
-    },
-    {
-      "fingerprint": "cecdde74c3e50fef90c8d94df0ca2f2a5806b51c41d78d60357a0df23895b767",
       "source": "eslint",
       "ruleId": "shadcn/no-restyle",
       "path": "frontend/src/components/wiki-sidebar/tree-node.tsx",
@@ -4662,17 +1589,10 @@
       "count": 1
     },
     {
-      "fingerprint": "f88babf90b32e6056b794ea03dda3c5b3c106e3ac9b9f645f62506e6713baa21",
+      "fingerprint": "fb859baaa7f2b994837dae5ce5e2992a94de432ef26b3f40602a74f494defbab",
       "source": "eslint",
       "ruleId": "shadcn/no-restyle",
       "path": "frontend/src/components/wiki-sidebar/tree-node.tsx",
-      "count": 1
-    },
-    {
-      "fingerprint": "13376639c0daebc5adfe718e5fc4fab10fe0137fceec1a2a5268468484812a23",
-      "source": "eslint",
-      "ruleId": "shadcn/no-restyle",
-      "path": "frontend/src/components/wiki-sidebar/wiki-footer.tsx",
       "count": 1
     },
     {
@@ -4711,20 +1631,6 @@
       "count": 1
     },
     {
-      "fingerprint": "3033ca6d288aaed27bb30f070735b4b9c4ff6b676225044a3ba0d928f69a20e7",
-      "source": "eslint",
-      "ruleId": "shadcn/no-restyle",
-      "path": "frontend/src/components/wiki-sidebar/wiki-footer.tsx",
-      "count": 1
-    },
-    {
-      "fingerprint": "340e2ebbfb53d12c6bde2795470816b51da1c2d8d16e0aa58de84b297b0452cb",
-      "source": "eslint",
-      "ruleId": "shadcn/no-restyle",
-      "path": "frontend/src/components/wiki-sidebar/wiki-footer.tsx",
-      "count": 3
-    },
-    {
       "fingerprint": "38811574b2828e9f92c8f34078eb6b3517bd23fae782becee61c82c549ab5df9",
       "source": "eslint",
       "ruleId": "shadcn/no-restyle",
@@ -4739,7 +1645,14 @@
       "count": 1
     },
     {
-      "fingerprint": "5d6baf8c2642561f12d5d20a4bb513e40de0528c8e30380175faaf573c656c73",
+      "fingerprint": "5b9e11619d2b581ec03698cc74441fb78fd541c732d7f03359e44cc11b7f0bfd",
+      "source": "eslint",
+      "ruleId": "shadcn/no-restyle",
+      "path": "frontend/src/components/wiki-sidebar/wiki-footer.tsx",
+      "count": 3
+    },
+    {
+      "fingerprint": "5e7ba086aa4e736f8ce4b9d5f988ecb8fc2ddb18d0bc9fc28f9347260c55270e",
       "source": "eslint",
       "ruleId": "shadcn/no-restyle",
       "path": "frontend/src/components/wiki-sidebar/wiki-footer.tsx",
@@ -4774,13 +1687,6 @@
       "count": 1
     },
     {
-      "fingerprint": "8126aa26d8926ba2c2e44de143a9ae25640c56c8f581d3a34a9787eba4327940",
-      "source": "eslint",
-      "ruleId": "shadcn/no-restyle",
-      "path": "frontend/src/components/wiki-sidebar/wiki-footer.tsx",
-      "count": 3
-    },
-    {
       "fingerprint": "82ec31567700c1a4366cbbccfb308d24ba90593d7110a753ff3660174510d8c4",
       "source": "eslint",
       "ruleId": "shadcn/no-restyle",
@@ -4788,14 +1694,7 @@
       "count": 1
     },
     {
-      "fingerprint": "8469f17d29854422726811fa645f57bfef3fff4628bbb0c5c8300e3f30da04dc",
-      "source": "eslint",
-      "ruleId": "shadcn/no-restyle",
-      "path": "frontend/src/components/wiki-sidebar/wiki-footer.tsx",
-      "count": 1
-    },
-    {
-      "fingerprint": "941ddf59abb80f541ee96970afb1c10defa630fc4421054c9d775a403751bb93",
+      "fingerprint": "9d434b8481cf42e1627138bbe29f703a1adddcf0eee2c36cb6edabbf6f4db36e",
       "source": "eslint",
       "ruleId": "shadcn/no-restyle",
       "path": "frontend/src/components/wiki-sidebar/wiki-footer.tsx",
@@ -4809,21 +1708,7 @@
       "count": 1
     },
     {
-      "fingerprint": "9e08fb3cefa845c61dd42fdd3167990e40113a97249fc1fd1487b5bbe7b971e6",
-      "source": "eslint",
-      "ruleId": "shadcn/no-restyle",
-      "path": "frontend/src/components/wiki-sidebar/wiki-footer.tsx",
-      "count": 1
-    },
-    {
-      "fingerprint": "c1de0faf17a68e5e599fc5ff8484104b7caa43d21b0eef1275f4f85e7be11a34",
-      "source": "eslint",
-      "ruleId": "shadcn/no-restyle",
-      "path": "frontend/src/components/wiki-sidebar/wiki-footer.tsx",
-      "count": 1
-    },
-    {
-      "fingerprint": "c53fe9ddf8d195ee6a2f08009cd790116ebd3a72e4a2e67b4df48016f0aaf90c",
+      "fingerprint": "c1cb99701a74f540858f4f47c74ab1b087cc12aa4190b88d919283e675fa1247",
       "source": "eslint",
       "ruleId": "shadcn/no-restyle",
       "path": "frontend/src/components/wiki-sidebar/wiki-footer.tsx",
@@ -4835,13 +1720,6 @@
       "ruleId": "shadcn/no-restyle",
       "path": "frontend/src/components/wiki-sidebar/wiki-footer.tsx",
       "count": 1
-    },
-    {
-      "fingerprint": "e6c114453e2b7c05996a781fd8fa5ea2089b446119f35c98d80d80d8229440ad",
-      "source": "eslint",
-      "ruleId": "shadcn/no-restyle",
-      "path": "frontend/src/components/wiki-sidebar/wiki-footer.tsx",
-      "count": 3
     },
     {
       "fingerprint": "60d0a7d80832a49d2956fd18c29aa12618264fce5e8e849a97d04ac2ad51f1a9",
@@ -4858,13 +1736,6 @@
       "count": 1
     },
     {
-      "fingerprint": "83d4117af71387866e1fd598da5a54d87ceb2f3a2f4f5ee5c5596d9c2efa039c",
-      "source": "eslint",
-      "ruleId": "unicorn/custom-error-definition",
-      "path": "frontend/src/app/actions/wiki-actions.test.ts",
-      "count": 1
-    },
-    {
       "fingerprint": "df797956b453551f48db37739a7b55914f4a2bd21188e62aaec576ac737eb412",
       "source": "eslint",
       "ruleId": "unicorn/custom-error-definition",
@@ -4877,216 +1748,6 @@
       "ruleId": "unicorn/iteration-fallback-style",
       "path": "frontend/src/components/wiki-document/doc-warmup.tsx",
       "count": 1
-    },
-    {
-      "fingerprint": "f10b83d807141f07e70e8463a678d036b620fa60870b788d6b9f4d13aada6026",
-      "source": "eslint",
-      "ruleId": "unicorn/no-computed-property-existence-check",
-      "path": "frontend/src/hooks/use-expanded-folders.ts",
-      "count": 4
-    },
-    {
-      "fingerprint": "e0cff9fb16d82242f2affc18c6190adad86648b305a5e4339fc298c8f40bb9be",
-      "source": "eslint",
-      "ruleId": "unicorn/no-unnecessary-array-flat-map",
-      "path": "frontend/src/components/quick-links/quick-links-loader.tsx",
-      "count": 1
-    },
-    {
-      "fingerprint": "6f11ce42086e049a5d653233bab679ae0efa936378b5f1436b3274d519ebe9ea",
-      "source": "eslint",
-      "ruleId": "unicorn/no-unnecessary-array-flat-map",
-      "path": "frontend/src/lib/browser-transport-boundary.test.ts",
-      "count": 2
-    },
-    {
-      "fingerprint": "c2d0c08b76b29fa99600edcbd82bca3c1c3bfbe0b9e2b1895727fbd3ee9bbead",
-      "source": "eslint",
-      "ruleId": "unicorn/no-unnecessary-default-arguments",
-      "path": "frontend/src/components/wiki-document/doc-warmup-lifecycle.test.tsx",
-      "count": 1
-    },
-    {
-      "fingerprint": "5630cef6ba5c5a00a101f6ab0d8440cf80215420d07a4b89c56cb66397498c5e",
-      "source": "eslint",
-      "ruleId": "unicorn/no-unnecessary-default-arguments",
-      "path": "frontend/src/components/wiki-document/document-polish-dialog.test.tsx",
-      "count": 4
-    },
-    {
-      "fingerprint": "7eb63a4409327ef321aa21372d9c276ffdbb3c4934456a9f0669f111af1414d4",
-      "source": "eslint",
-      "ruleId": "unicorn/no-unnecessary-default-arguments",
-      "path": "frontend/src/components/wiki-sidebar/move-dialog-outlet.test.tsx",
-      "count": 1
-    },
-    {
-      "fingerprint": "e14966cd9a81592021f2acbeb4776077434e46aa0b1e35db14b9a68383773bd5",
-      "source": "eslint",
-      "ruleId": "unicorn/no-unnecessary-parameters",
-      "path": "frontend/src/components/wiki-document/doc-viewer-store.test.ts",
-      "count": 1
-    },
-    {
-      "fingerprint": "bf5d67980894f17285e4741e7927d386ded40c517428297ef994db039914e41b",
-      "source": "eslint",
-      "ruleId": "unicorn/no-unnecessary-parameters",
-      "path": "frontend/src/components/wiki-search/command-palette-navigation.test.tsx",
-      "count": 1
-    },
-    {
-      "fingerprint": "555973707e09d12bc19d0b746d0a5b3159860e11c01dbb53982934137444d2fb",
-      "source": "eslint",
-      "ruleId": "unicorn/no-unnecessary-parameters",
-      "path": "frontend/src/components/wiki-sidebar/drive-access-sheet-state.test.tsx",
-      "count": 1
-    },
-    {
-      "fingerprint": "59596afe693b808ceb7b525aa75c53bbd4b3dec9307e2c74a582f8f73aaab2e7",
-      "source": "eslint",
-      "ruleId": "unicorn/no-unnecessary-parameters",
-      "path": "frontend/src/components/wiki-sidebar/tree-node-observers.test.tsx",
-      "count": 1
-    },
-    {
-      "fingerprint": "e9a66344ed9f2148ae9db71bc3dc1f233f4697d6da0ae369907f802caa183302",
-      "source": "eslint",
-      "ruleId": "unicorn/no-unnecessary-parameters",
-      "path": "frontend/src/components/wiki-sidebar/use-drive-tree-index.test.tsx",
-      "count": 1
-    },
-    {
-      "fingerprint": "eabfb3af8e28ec3cc8892cf2a9bc15452e2b8274a48bc4d87c84aebedd91a1e3",
-      "source": "eslint",
-      "ruleId": "unicorn/no-unnecessary-parameters",
-      "path": "frontend/src/lib/server-api.test.ts",
-      "count": 1
-    },
-    {
-      "fingerprint": "976303aa7a5cf5e373cca2d4ddf44ee68cd6fe6f49193f89a5f1c8c8f5e44ac5",
-      "source": "eslint",
-      "ruleId": "unicorn/no-unnecessary-parameters",
-      "path": "frontend/src/lib/wiki-tree.test.ts",
-      "count": 1
-    },
-    {
-      "fingerprint": "a2f8ef89b4df68e08e98fa8c2798e91a7c54eb7ec4aea1bfc2bdafb1d32ae581",
-      "source": "eslint",
-      "ruleId": "unicorn/prefer-combined-guards",
-      "path": "frontend/src/components/wiki-document/doc-warmup.tsx",
-      "count": 1
-    },
-    {
-      "fingerprint": "1774a9715837d0d0c3265043a9d0a41142ebeeda74e8f42e17941e4f864efde6",
-      "source": "eslint",
-      "ruleId": "unicorn/prefer-combined-guards",
-      "path": "frontend/src/components/wiki-sidebar/wiki-sidebar.tsx",
-      "count": 1
-    },
-    {
-      "fingerprint": "58ef59ef8f7cb31c03d535609db4b599b8b19531f4538f34e88948505554ee79",
-      "source": "eslint",
-      "ruleId": "unicorn/prefer-combined-guards",
-      "path": "frontend/src/lib/speculation-policy.ts",
-      "count": 1
-    },
-    {
-      "fingerprint": "98db20ee51e4b9ec36a4a67aef6083f1fc4c2b7cf0c476f650cb329e8226d84b",
-      "source": "eslint",
-      "ruleId": "unicorn/prefer-default-parameters",
-      "path": "frontend/src/components/mcp/mcp-consent.tsx",
-      "count": 1
-    },
-    {
-      "fingerprint": "b2dbea554dbf13a5ee028039ca68be6b766315cfae9ca977eb87f5e6bdbe966f",
-      "source": "eslint",
-      "ruleId": "unicorn/prefer-default-parameters",
-      "path": "frontend/src/components/wiki-document/doc-viewer-host.tsx",
-      "count": 1
-    },
-    {
-      "fingerprint": "92383becb98a623244aa4342d5dd638b3aea4476469d4d5c61d9864535d28798",
-      "source": "eslint",
-      "ruleId": "unicorn/prefer-type-error",
-      "path": "frontend/src/components/query-provider-session-ownership.test.tsx",
-      "count": 1
-    },
-    {
-      "fingerprint": "154e2b7af28c7f487b00900aa9f36e25323a18e4ad7d363d6cc3d9cde76e7525",
-      "source": "eslint",
-      "ruleId": "unicorn/prefer-type-error",
-      "path": "frontend/src/components/ui/focus-return.test.tsx",
-      "count": 2
-    },
-    {
-      "fingerprint": "131ec7cb8103b3ef4c39ac83e39341ae3317f77a01419d9d8baae48fbe5225c9",
-      "source": "eslint",
-      "ruleId": "unicorn/prefer-type-error",
-      "path": "frontend/src/components/wiki-search/command-palette-lifecycle.test.tsx",
-      "count": 4
-    },
-    {
-      "fingerprint": "4ff9295755652ce37f320cf66b8b55da0bee9cd94621363d1bf0278c9ad0e38b",
-      "source": "eslint",
-      "ruleId": "unicorn/prefer-type-error",
-      "path": "frontend/src/components/wiki-search/command-palette-navigation.test.tsx",
-      "count": 2
-    },
-    {
-      "fingerprint": "6e485a5ff5bf9247eef3d2dd4997e40c85b618fd9f3623f3393ea141be0e66f7",
-      "source": "eslint",
-      "ruleId": "unicorn/prefer-type-error",
-      "path": "frontend/src/components/wiki-sidebar/folder-picker-focus.test.tsx",
-      "count": 1
-    },
-    {
-      "fingerprint": "f70e5c6518581bf7ea9f5c06aac6612e896e3de0aa46be13868272bbce57af42",
-      "source": "eslint",
-      "ruleId": "unicorn/prefer-type-error",
-      "path": "frontend/src/components/wiki-sidebar/item-menu-lifecycle.test.tsx",
-      "count": 7
-    },
-    {
-      "fingerprint": "7193e6ccdbfdcee15488df124d433c007c36c5dba7ac9fb75c9e952e3c5ca848",
-      "source": "eslint",
-      "ruleId": "unicorn/prefer-type-error",
-      "path": "frontend/src/components/wiki-sidebar/item-menu.test.tsx",
-      "count": 1
-    },
-    {
-      "fingerprint": "eabb56ebaa3432edfec687c18894928f9c5ee98270a3ecd5bb1309e990eab06f",
-      "source": "eslint",
-      "ruleId": "unicorn/prefer-type-error",
-      "path": "frontend/src/components/wiki-sidebar/move-dialog-outlet.test.tsx",
-      "count": 5
-    },
-    {
-      "fingerprint": "6e5758e57cf9f911bbc731680508bf0c6b7fbe4e209cb45061fb0b41b9f81982",
-      "source": "eslint",
-      "ruleId": "unicorn/prefer-type-error",
-      "path": "frontend/src/components/wiki-sidebar/use-document-intent-authorization.test.tsx",
-      "count": 1
-    },
-    {
-      "fingerprint": "626701b627262efdbc8fd7759f263ecf7e49c29f0f9a8430db8c39379668a965",
-      "source": "eslint",
-      "ruleId": "unicorn/prefer-type-error",
-      "path": "frontend/src/components/wiki-sidebar/use-sidebar-navigation.test.tsx",
-      "count": 2
-    },
-    {
-      "fingerprint": "9bfbd0fecdf6064b1a196fb337998ac66664e3c1e47bc55a8e992f64cc6ad3ef",
-      "source": "eslint",
-      "ruleId": "unicorn/prefer-type-error",
-      "path": "frontend/src/components/wiki-sidebar/wiki-footer.test.tsx",
-      "count": 2
-    },
-    {
-      "fingerprint": "66bbe3bc327d6c60c5d422fca884fa25e6a497ca30905b4b8a6d4b3cccaa5097",
-      "source": "eslint",
-      "ruleId": "unicorn/prefer-type-error",
-      "path": "frontend/src/lib/api-client.test.ts",
-      "count": 5
     },
     {
       "fingerprint": "0bba6cd43ac34119560c6736b28fe0581ca7f18bde9979dbc1f9c0a0ba493c3e",
@@ -5408,14 +2069,14 @@
       "source": "sarj-python-lint",
       "ruleId": "no-any-mapping-types",
       "path": "backend/app/document_transform/google_gateway.py",
-      "count": 123
+      "count": 118
     },
     {
       "fingerprint": "b2b0fc599d5f1de3a90f221f952f8720038af5dc700d85a3618fd4f9cfa4848a",
       "source": "sarj-python-lint",
       "ruleId": "no-any-mapping-types",
       "path": "backend/app/document_transform/google_presentation_gateway.py",
-      "count": 21
+      "count": 19
     },
     {
       "fingerprint": "4dbd8845929260ede01f38c4feb4594743f10418154a32b132623c2c68cc5916",
@@ -5569,7 +2230,7 @@
       "source": "sarj-python-lint",
       "ruleId": "no-any-mapping-types",
       "path": "backend/app/document_transform/provider_diagnostics.py",
-      "count": 4
+      "count": 3
     },
     {
       "fingerprint": "275c0db4a45292c4eeee20e0fd0bcc311350ecb7afa242bddefb8f884fe4bbe6",
@@ -5649,13 +2310,6 @@
       "count": 10
     },
     {
-      "fingerprint": "a40ce5a3e69c9ac1112771eaa1246944944fc4ab34a79b49144ec201e0e69d70",
-      "source": "sarj-python-lint",
-      "ruleId": "no-any-mapping-types",
-      "path": "backend/app/mcp/native_consent_router.py",
-      "count": 1
-    },
-    {
       "fingerprint": "de0a0b9cf9e1e151fb8b861876b54ca9b90b553473bfaaf188958600e5d626b9",
       "source": "sarj-python-lint",
       "ruleId": "no-any-mapping-types",
@@ -5691,13 +2345,6 @@
       "count": 4
     },
     {
-      "fingerprint": "9a6cba6873c7883f8cfdb90b38ed11dafcbe7cfe955b9eb5738aa3a198114dd1",
-      "source": "sarj-python-lint",
-      "ruleId": "no-any-mapping-types",
-      "path": "backend/tests/test_branch_protection.py",
-      "count": 2
-    },
-    {
       "fingerprint": "70582b3f247b164ef0b22d34e36f15f82e007142976a8aff249648111c2c5c6e",
       "source": "sarj-python-lint",
       "ruleId": "no-any-mapping-types",
@@ -5716,7 +2363,7 @@
       "source": "sarj-python-lint",
       "ruleId": "no-any-mapping-types",
       "path": "backend/tests/test_copy_header_recovery.py",
-      "count": 3
+      "count": 2
     },
     {
       "fingerprint": "012c5088a8e65d1b1753dbf61b2b1ba28ee34d5af6510fe89bd6855916724065",
@@ -5737,7 +2384,7 @@
       "source": "sarj-python-lint",
       "ruleId": "no-any-mapping-types",
       "path": "backend/tests/test_document_transform.py",
-      "count": 24
+      "count": 15
     },
     {
       "fingerprint": "e44dc3f93ae7b49fd4460a4b61102aabb02602dcdfd1415f29c1a5df40b13550",
@@ -6178,13 +2825,6 @@
       "source": "sarj-python-lint",
       "ruleId": "no-any-mapping-types",
       "path": "backend/tests/test_terminal_text_runs.py",
-      "count": 1
-    },
-    {
-      "fingerprint": "3a799616d9140a7c60be42a3d9da861032edb5af6d5f3b40e4414a1976bcf12b",
-      "source": "sarj-python-lint",
-      "ruleId": "no-any-mapping-types",
-      "path": "backend/tests/test_transform_diagnostics_workflow.py",
       "count": 1
     },
     {
@@ -6668,13 +3308,6 @@
       "source": "sarj-python-lint",
       "ruleId": "no-delete-statement",
       "path": "backend/app/mcp/server.py",
-      "count": 1
-    },
-    {
-      "fingerprint": "dc1d9f0a68a096be8de80f7ffde53a4a9f4d0b59ddd78015a849725cf5438afb",
-      "source": "sarj-python-lint",
-      "ruleId": "no-delete-statement",
-      "path": "backend/app/sidebar/cache.py",
       "count": 1
     },
     {
@@ -7581,20 +4214,6 @@
       "count": 1
     },
     {
-      "fingerprint": "7ab438ee9700a5560678bfc9934bf3515df3674dba7cdfaafd1b4df8da32d7e9",
-      "source": "sarj-python-lint",
-      "ruleId": "no-excessive-cognitive-complexity",
-      "path": "backend/app/mcp/native_http_guard.py",
-      "count": 1
-    },
-    {
-      "fingerprint": "91b2c9b4a2295f08c0ef9ad1cd721924d76d25055ac616b540445f6132e358ad",
-      "source": "sarj-python-lint",
-      "ruleId": "no-excessive-cognitive-complexity",
-      "path": "backend/app/mcp/native_http_guard.py",
-      "count": 1
-    },
-    {
       "fingerprint": "d2604e306aecf9cc90c6deb575df3df08623f8d8de50d235c7858fee4c2198d2",
       "source": "sarj-python-lint",
       "ruleId": "no-excessive-cognitive-complexity",
@@ -7658,13 +4277,6 @@
       "count": 1
     },
     {
-      "fingerprint": "a603057e24a679dab55f58dd1381e5c85bb6a1dfd6c7386dea0cb58622012f4f",
-      "source": "sarj-python-lint",
-      "ruleId": "no-excessive-cognitive-complexity",
-      "path": "scripts/check_standards.py",
-      "count": 1
-    },
-    {
       "fingerprint": "88837df37c675e5254d70dcf88eeb7168d7998f6f50847902469cc5cd586ee74",
       "source": "sarj-python-lint",
       "ruleId": "no-excessive-cognitive-complexity",
@@ -7698,13 +4310,6 @@
       "ruleId": "no-positional-tuple-record",
       "path": "backend/app/document_transform/docx_renderer.py",
       "count": 2
-    },
-    {
-      "fingerprint": "0dfa4c01e0f75ca8e6c751a0b1de6d0d84c982f968cf14ac502e5588fdd4ceb3",
-      "source": "sarj-python-lint",
-      "ruleId": "no-positional-tuple-record",
-      "path": "backend/app/document_transform/task_executor.py",
-      "count": 1
     },
     {
       "fingerprint": "0c4878e8df81d86a3cf6b594c5a5fa33a2d7ac804c7b5da208f256d7a473584a",
@@ -8344,13 +4949,6 @@
       "count": 1
     },
     {
-      "fingerprint": "a655a1942a15c12c8b746d5b9ba764caede0489518e162ad20e7c9d8df54610e",
-      "source": "sarj-python-lint",
-      "ruleId": "prefer-nominal-id-types",
-      "path": "backend/app/document_transform/qa_router.py",
-      "count": 1
-    },
-    {
       "fingerprint": "84a6c44ba37e557f7a3c630c7cb10451ed1d018ce96acf50bff1d0413da237c4",
       "source": "sarj-python-lint",
       "ruleId": "prefer-nominal-id-types",
@@ -8362,76 +4960,6 @@
       "source": "sarj-python-lint",
       "ruleId": "prefer-nominal-id-types",
       "path": "backend/app/document_transform/slides_brand.py",
-      "count": 1
-    },
-    {
-      "fingerprint": "0c0f8943d46bb407daab67859763e4fd00ecf405a1fd036fcc0db643a08b6b41",
-      "source": "sarj-python-lint",
-      "ruleId": "prefer-nominal-id-types",
-      "path": "backend/app/document_transform/task_executor.py",
-      "count": 1
-    },
-    {
-      "fingerprint": "20cdf215d301eec19d2824832cf0f60c6b9701172b33a3aecc259386168820a9",
-      "source": "sarj-python-lint",
-      "ruleId": "prefer-nominal-id-types",
-      "path": "backend/app/tasks/router.py",
-      "count": 1
-    },
-    {
-      "fingerprint": "2b87824d3b05ba42ec3fb10587c39a69906ab5585904318c61f2b0c79b7cd16b",
-      "source": "sarj-python-lint",
-      "ruleId": "prefer-nominal-id-types",
-      "path": "backend/app/tasks/service.py",
-      "count": 8
-    },
-    {
-      "fingerprint": "d6bff0ae40f48e2045c687b1a48376de150507d29c6e28f9098be395f8c49e59",
-      "source": "sarj-python-lint",
-      "ruleId": "prefer-nominal-id-types",
-      "path": "backend/app/tasks/service.py",
-      "count": 1
-    },
-    {
-      "fingerprint": "8b1022976de78fbf0f02084b2f16e3eb333d783be90f3b6ab20ccc35102f8481",
-      "source": "sarj-python-lint",
-      "ruleId": "prefer-nominal-id-types",
-      "path": "backend/scripts/qa_document_transform_cloud.py",
-      "count": 1
-    },
-    {
-      "fingerprint": "98200127fa0288dfced4dda463b567bed05903a116a94045272d434649690774",
-      "source": "sarj-python-lint",
-      "ruleId": "prefer-nominal-id-types",
-      "path": "backend/scripts/qa_document_transform_cloud.py",
-      "count": 1
-    },
-    {
-      "fingerprint": "afb1366c3a3193d96a3457a9f5b44bf4335f246234713bac1cc50e311317b01f",
-      "source": "sarj-python-lint",
-      "ruleId": "prefer-nominal-id-types",
-      "path": "backend/scripts/qa_document_transform_cloud.py",
-      "count": 2
-    },
-    {
-      "fingerprint": "d7f84a4a33d7dc634de57973d14b9bb35ae4a9175f242c72609c73643245d936",
-      "source": "sarj-python-lint",
-      "ruleId": "prefer-nominal-id-types",
-      "path": "backend/scripts/qa_document_transform_cloud.py",
-      "count": 1
-    },
-    {
-      "fingerprint": "e222cf01433ad2d6001b784158fad068faf78e0777dd7b1c46dc65b4433f8671",
-      "source": "sarj-python-lint",
-      "ruleId": "prefer-nominal-id-types",
-      "path": "backend/scripts/qa_document_transform_cloud.py",
-      "count": 1
-    },
-    {
-      "fingerprint": "1428d3558a40ccaad8ee1232eefcb0fa99076d8d1659c29841fd619f1dbf458c",
-      "source": "sarj-python-lint",
-      "ruleId": "prefer-nominal-id-types",
-      "path": "backend/scripts/qa_document_transform_corpus.py",
       "count": 1
     },
     {
@@ -8463,46 +4991,11 @@
       "count": 1
     },
     {
-      "fingerprint": "ac3f7137e4b555fbe83c4685004c9e4907eb62cae86f877cf212575f8fa4bcb2",
-      "source": "sarj-python-lint",
-      "ruleId": "prefer-nominal-id-types",
-      "path": "backend/scripts/qa_document_transform_corpus.py",
-      "count": 1
-    },
-    {
-      "fingerprint": "c3f284affab3a552dac01be9039e78a9e902811d8042f77ffd9cfd7c072bcc00",
-      "source": "sarj-python-lint",
-      "ruleId": "prefer-nominal-id-types",
-      "path": "backend/scripts/qa_document_transform_corpus.py",
-      "count": 1
-    },
-    {
-      "fingerprint": "627a2573eff4d565d3c0acfbc0f6a093e1877bace935e3d5c4f54f664759fbf3",
-      "source": "sarj-python-lint",
-      "ruleId": "prefer-nominal-id-types",
-      "path": "backend/scripts/qa_polish_rounds.py",
-      "count": 1
-    },
-    {
       "fingerprint": "782d67416f462389858850eb5d2b97f724ab509c26b68d802c80b88bccff7fc7",
       "source": "sarj-python-lint",
       "ruleId": "prefer-nominal-id-types",
       "path": "backend/tests/test_document_transform_application.py",
       "count": 1
-    },
-    {
-      "fingerprint": "2c6a596100ce4ad351f9ff972d8fd8ca50fb9f6dab2f7e960b7a545d72791b5a",
-      "source": "sarj-python-lint",
-      "ruleId": "prefer-nominal-id-types",
-      "path": "backend/tests/test_document_transform_qa_broker.py",
-      "count": 4
-    },
-    {
-      "fingerprint": "3ad0d70a208fe33fc04dc7e12e49768bacc20f51c381fc58d34212e2e5c37165",
-      "source": "sarj-python-lint",
-      "ruleId": "prefer-nominal-id-types",
-      "path": "backend/tests/test_document_transform_qa_broker.py",
-      "count": 2
     },
     {
       "fingerprint": "fdd621f9c8a317476a3d2bfd34e5f0278ab8bba13bc48a4cbf723a94c3f9fa11",
@@ -8526,49 +5019,7 @@
       "count": 1
     },
     {
-      "fingerprint": "44766c5054386274664364e7f9759ec5238b6121c2862fe8b38fff66c80cd8ea",
-      "source": "sarj-python-lint",
-      "ruleId": "prefer-nominal-id-types",
-      "path": "backend/tests/test_smart_create_executor.py",
-      "count": 1
-    },
-    {
-      "fingerprint": "5211d096d95a49080f6c5574b0a874448308373d45d9d76f09af747208023e71",
-      "source": "sarj-python-lint",
-      "ruleId": "prefer-nominal-id-types",
-      "path": "backend/tests/test_smart_create_executor.py",
-      "count": 3
-    },
-    {
-      "fingerprint": "4483bb1f75bf3966eb6fa93ecb26b81e8dd16e973f9dd79a1fe995dd0bbde34e",
-      "source": "sarj-python-lint",
-      "ruleId": "prefer-nominal-id-types",
-      "path": "backend/tests/test_smart_create_router_tasks.py",
-      "count": 1
-    },
-    {
-      "fingerprint": "4ade8c41b794af94cd5105c1efd0e5d7a3cca6dcaea4248c082a07880e880613",
-      "source": "sarj-python-lint",
-      "ruleId": "prefer-nominal-id-types",
-      "path": "backend/tests/test_smart_create_router_tasks.py",
-      "count": 3
-    },
-    {
-      "fingerprint": "3f9e2b783e21e6d713ac3f367d2da8029d12443cd1e17bbfa21623fb5e0b8bfd",
-      "source": "sarj-python-lint",
-      "ruleId": "prefer-nominal-id-types",
-      "path": "backend/tests/test_smart_creation.py",
-      "count": 3
-    },
-    {
       "fingerprint": "82b3fc7b2b6c9bd58e4210b3fc300cf5734d58bae48367c8e386ddd2ec03b981",
-      "source": "sarj-python-lint",
-      "ruleId": "prefer-nominal-id-types",
-      "path": "backend/tests/test_smart_creation.py",
-      "count": 1
-    },
-    {
-      "fingerprint": "b31fecb5585af154e890c794926ea99726a5fb5528f65239e7bb52a735f34b19",
       "source": "sarj-python-lint",
       "ruleId": "prefer-nominal-id-types",
       "path": "backend/tests/test_smart_creation.py",
@@ -9034,6 +5485,258 @@
       "source": "sarj-python-lint",
       "ruleId": "require-pydantic-for-external-json",
       "path": "backend/app/auth/google_tokens.py",
+      "count": 1
+    },
+    {
+      "fingerprint": "c62ed560643d142a2b947fec1f8ec3933f5d447c8e47e1608135dd3ce53d7002",
+      "source": "sarj-python-lint",
+      "ruleId": "require-pydantic-for-mapping-shape",
+      "path": "backend/app/document_transform/brand.py",
+      "count": 1
+    },
+    {
+      "fingerprint": "9283565fd2fc5f39ed13df3d6a0a33ca44c4b2a8bb40b4a7ac9beb015374148f",
+      "source": "sarj-python-lint",
+      "ruleId": "require-pydantic-for-mapping-shape",
+      "path": "backend/app/document_transform/copy_identity.py",
+      "count": 1
+    },
+    {
+      "fingerprint": "318e23aeecf25b665f9172f8abee1a62bd14ef53c720080b56467527e509ec35",
+      "source": "sarj-python-lint",
+      "ruleId": "require-pydantic-for-mapping-shape",
+      "path": "backend/app/document_transform/google_gateway.py",
+      "count": 31
+    },
+    {
+      "fingerprint": "0f0a9121e15bf363234dfd57fdb6c14e778fb5485d96bf20b934480370468a70",
+      "source": "sarj-python-lint",
+      "ruleId": "require-pydantic-for-mapping-shape",
+      "path": "backend/app/document_transform/google_presentation_gateway.py",
+      "count": 4
+    },
+    {
+      "fingerprint": "407556a091944a2e07bc9181f1e0ad3955616071d8752ca58dde43a688b9e434",
+      "source": "sarj-python-lint",
+      "ruleId": "require-pydantic-for-mapping-shape",
+      "path": "backend/app/document_transform/ir.py",
+      "count": 9
+    },
+    {
+      "fingerprint": "0e5161a3fbd02539329e691d10f036384f14dc176c32522de33a39a22215e524",
+      "source": "sarj-python-lint",
+      "ruleId": "require-pydantic-for-mapping-shape",
+      "path": "backend/app/document_transform/markdown_import.py",
+      "count": 38
+    },
+    {
+      "fingerprint": "2edf528bd0a4e97bc9453970e184cc632a9d8d8637659a5ca25997a41a205d54",
+      "source": "sarj-python-lint",
+      "ruleId": "require-pydantic-for-mapping-shape",
+      "path": "backend/app/document_transform/native_font_noop.py",
+      "count": 2
+    },
+    {
+      "fingerprint": "ae52339797b5aa34a8f8d0015b2f5ba6ef65d7be5a6dd4fb8124b9ca35f8afd5",
+      "source": "sarj-python-lint",
+      "ruleId": "require-pydantic-for-mapping-shape",
+      "path": "backend/app/document_transform/native_footer.py",
+      "count": 2
+    },
+    {
+      "fingerprint": "fe5672f5a61633e50efb89a9a34f9e33b7d1b24dfc454142670a0a3288394e6e",
+      "source": "sarj-python-lint",
+      "ruleId": "require-pydantic-for-mapping-shape",
+      "path": "backend/app/document_transform/native_footer_flow.py",
+      "count": 2
+    },
+    {
+      "fingerprint": "481f2fdd62c07b676a74c7144b3ab8e3c4541e889f68eae71d70cf617559f3bf",
+      "source": "sarj-python-lint",
+      "ruleId": "require-pydantic-for-mapping-shape",
+      "path": "backend/app/document_transform/native_pagination.py",
+      "count": 1
+    },
+    {
+      "fingerprint": "ae1d55d618bee727afe5e0f26b115e5abb7af5e25db2680c2bf8e4bddf58540d",
+      "source": "sarj-python-lint",
+      "ruleId": "require-pydantic-for-mapping-shape",
+      "path": "backend/app/document_transform/provider_diagnostics.py",
+      "count": 1
+    },
+    {
+      "fingerprint": "25aaa15cbc236ae4943e7e5f79ea86268e0ccff2b91ef3b9fe5610dc65be22b7",
+      "source": "sarj-python-lint",
+      "ruleId": "require-pydantic-for-mapping-shape",
+      "path": "backend/app/document_transform/slides_brand.py",
+      "count": 19
+    },
+    {
+      "fingerprint": "db635b7d7f00177af75659ed3ae068246b6c58573f2359c24201149d130c6c93",
+      "source": "sarj-python-lint",
+      "ruleId": "require-pydantic-for-mapping-shape",
+      "path": "backend/app/document_transform/slides_ir.py",
+      "count": 10
+    },
+    {
+      "fingerprint": "58ac1a6fa073f58a50d977a5366d2138cde78d6bd80b3ad79a905ec9b4175612",
+      "source": "sarj-python-lint",
+      "ruleId": "require-pydantic-for-mapping-shape",
+      "path": "backend/app/document_transform/source_access.py",
+      "count": 5
+    },
+    {
+      "fingerprint": "5acd94d461f8cf7e80bc5da506d9be54efcca7270ab7b3f3805a7268faa0cd0d",
+      "source": "sarj-python-lint",
+      "ruleId": "require-pydantic-for-mapping-shape",
+      "path": "backend/app/document_transform/tab_metadata.py",
+      "count": 1
+    },
+    {
+      "fingerprint": "ada75f8c7bf6ee4714f3ea84473b2932f7f703faa5eed8deaca494b86634ec47",
+      "source": "sarj-python-lint",
+      "ruleId": "require-pydantic-for-mapping-shape",
+      "path": "backend/app/document_transform/tab_structure.py",
+      "count": 3
+    },
+    {
+      "fingerprint": "f7ba91cdfcac44ead2586a3ad6f4d76f7d675d81de8e84d93e16eb890ecad9c2",
+      "source": "sarj-python-lint",
+      "ruleId": "require-pydantic-for-mapping-shape",
+      "path": "backend/app/document_transform/tab_structure_execution.py",
+      "count": 2
+    },
+    {
+      "fingerprint": "a9eb15bf1cfce7d63edaea62e489ca007e9b7b259b589d8330ae266bb7559006",
+      "source": "sarj-python-lint",
+      "ruleId": "require-pydantic-for-mapping-shape",
+      "path": "backend/app/document_transform/word_gateway.py",
+      "count": 4
+    },
+    {
+      "fingerprint": "6ab24b5e020aee68ee967ad9f81809e0228f4605f32dd907a65eccb52b7948bc",
+      "source": "sarj-python-lint",
+      "ruleId": "require-pydantic-for-mapping-shape",
+      "path": "backend/app/mcp/identity.py",
+      "count": 2
+    },
+    {
+      "fingerprint": "8535c94f11dbf3258b0751d6051fd1df6fdd8f9c64b966c0122e260cbdfc2843",
+      "source": "sarj-python-lint",
+      "ruleId": "require-pydantic-for-mapping-shape",
+      "path": "backend/app/tasks/service.py",
+      "count": 5
+    },
+    {
+      "fingerprint": "b177c1494b562d441c4f0992d71a54adacc97ee31cfce4dfc3bd20328c72a13f",
+      "source": "sarj-python-lint",
+      "ruleId": "require-pydantic-for-mapping-shape",
+      "path": "backend/tests/test_smart_create.py",
+      "count": 1
+    },
+    {
+      "fingerprint": "9196fe8c040f0bfb1a65c7fce7d5a3f4b66a49780b989c4c3422fb8680a02f3e",
+      "source": "shellcheck",
+      "ruleId": "SC2310",
+      "path": "scripts/frontend_release/verify-health.sh",
+      "count": 1
+    },
+    {
+      "fingerprint": "687b312e76fe05a59af6fa1e10fdcc7fc5d99f8c501efb26abe2d4b6f1289efc",
+      "source": "shellcheck",
+      "ruleId": "SC2310",
+      "path": "scripts/github/run-backend-migrations.sh",
+      "count": 2
+    },
+    {
+      "fingerprint": "6d5c07bc15f8391d64f22a0de2a92637e66f1a1593608df90b82b77d3f107947",
+      "source": "shellcheck",
+      "ruleId": "SC2310",
+      "path": "scripts/github/run-backend-migrations.sh",
+      "count": 2
+    },
+    {
+      "fingerprint": "84f7713740c926c2b4d69b63c0590ef3ba658564c656a74a0ba40600a5e2ff37",
+      "source": "shellcheck",
+      "ruleId": "SC2312",
+      "path": "scripts/github/deploy-backend-candidate.sh",
+      "count": 1
+    },
+    {
+      "fingerprint": "70e48d0ee93263e000563402669cbce9ff7eff7633f03a6901bd0a12ffa957fa",
+      "source": "shellcheck",
+      "ruleId": "SC2312",
+      "path": "scripts/github/verify-backend-production-health.sh",
+      "count": 1
+    },
+    {
+      "fingerprint": "0c74bb7e34d437096b42a3791e6782942b08adb0a89fc1e5ad5015b506bc6c8b",
+      "source": "shfmt",
+      "ruleId": "format",
+      "path": ".github/workflows/deploy-backend.yml",
+      "count": 2
+    },
+    {
+      "fingerprint": "de020b2d55b3eee722b221af2110add50b6d9b81cf792149973c306eafad1b85",
+      "source": "shfmt",
+      "ruleId": "format",
+      "path": ".github/workflows/deploy-frontend.yml",
+      "count": 1
+    },
+    {
+      "fingerprint": "6aa6dbea6063720a61cb91d70c1d35a4385045792450961a03c278deeb85d2df",
+      "source": "shfmt",
+      "ruleId": "format",
+      "path": "scripts/frontend_release/verify-health.sh",
+      "count": 1
+    },
+    {
+      "fingerprint": "c5fc5dc40ca684485965292e8b72f25da13074424838c14d76169fedc38ba6c4",
+      "source": "shfmt",
+      "ruleId": "format",
+      "path": "scripts/github/deploy-backend-candidate.sh",
+      "count": 1
+    },
+    {
+      "fingerprint": "34589a36a8791336c7d3782f3c5c2f06ae7ea62a8306af3b4f156d886152b428",
+      "source": "shfmt",
+      "ruleId": "format",
+      "path": "scripts/github/report-blocked-backend-release.sh",
+      "count": 1
+    },
+    {
+      "fingerprint": "7fecf31e2ccd3363ff7c83b86c19e9eab77f68fee5a330c4df630d88c7ee23bf",
+      "source": "shfmt",
+      "ruleId": "format",
+      "path": "scripts/github/resolve-mcp-release-mode.sh",
+      "count": 1
+    },
+    {
+      "fingerprint": "a360d27e0341af69091cb198ef635855a3aa684b1da9725fe113049df5682999",
+      "source": "shfmt",
+      "ruleId": "format",
+      "path": "scripts/github/run-backend-migrations.sh",
+      "count": 1
+    },
+    {
+      "fingerprint": "ea9a5bf0e444d30509d4458429be9cc9bdf0da931199105d05b02e735b33962e",
+      "source": "shfmt",
+      "ruleId": "format",
+      "path": "scripts/github/verify-backend-correlated-logs.sh",
+      "count": 1
+    },
+    {
+      "fingerprint": "8022d89e580daac73808a9959dbd4a6a625d6525620eaec7f43610e4345c41a5",
+      "source": "shfmt",
+      "ruleId": "format",
+      "path": "scripts/github/verify-backend-production-health.sh",
+      "count": 1
+    },
+    {
+      "fingerprint": "b929ea6bae44cca33bfc4594e01ff9a8ebbfa8fb1bb1ce87c5fc100fe8051b23",
+      "source": "shfmt",
+      "ruleId": "format",
+      "path": "scripts/github/verify-mcp-release.sh",
       "count": 1
     }
   ]
