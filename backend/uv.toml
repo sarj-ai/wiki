@@ -5,6 +5,9 @@ index-strategy = "first-index"
 # Preserve the current reviewed third-party lockfile while the rolling cutoff
 # catches up. The exact-pinned Sarj analyzer packages remain exempt.
 [exclude-newer-package]
+# GHSA-6q48-6c7w-9gw2: admit certifi 2026.10.19 without relaxing the global cutoff.
+# Remove after 2026-10-27T02:24:17Z, when the release meets the seven-day policy.
+certifi = "2026-10-21T00:00:00Z"
 # Analyzer 1.36.0 requires Ruff 0.17.0; retain the global seven-day cutoff.
 ruff = "2026-10-10T00:00:00Z"
 # Python analyzer 1.36.0 requires this reviewed SQL parser release.
