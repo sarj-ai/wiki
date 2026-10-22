@@ -18,7 +18,12 @@ resource "google_iam_workload_identity_pool_provider" "github" {
     "attribute.repository" = "assertion.repository"
   }
 
-  attribute_condition = "assertion.repository == '${var.github_repo}'"
+  # Enforce the same main-only trust boundary as deployment and diagnostics jobs.
+  attribute_condition = join(" && ", [
+    "assertion.repository == '${var.github_repo}'",
+    "assertion.ref == 'refs/heads/main'",
+    "assertion.event_name in ['push', 'workflow_dispatch']",
+  ])
 
   oidc {
     issuer_uri = "https://token.actions.githubusercontent.com"
