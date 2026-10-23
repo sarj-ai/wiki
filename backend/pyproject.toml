@@ -1,7 +1,7 @@
 [project]
 dependencies = [
   "fastapi>=0.141.1",
-  "fastmcp==3.4.7",
+  "fastmcp==3.4.10",
   "mcp>=1.30.0",
   "uvicorn[standard]>=0.52.1",
   "sqlalchemy[asyncio]>=2.0.51",
@@ -57,6 +57,9 @@ dev = [
     "pip-audit>=2.10.0",
     "deptry>=0.25.1",
 ]
+
+[tool.uv]
+constraint-dependencies = ["filelock>=4.2.1", "opentelemetry-api>=1.45.1"]
 
 [tool.deptry.package_module_name_map]
 # Standards runs deptry in an isolated environment; these distributions do not

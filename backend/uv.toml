@@ -8,6 +8,11 @@ index-strategy = "first-index"
 # GHSA-6q48-6c7w-9gw2: admit certifi 2026.10.19 without relaxing the global cutoff.
 # Remove after 2026-10-27T02:24:17Z, when the release meets the seven-day policy.
 certifi = "2026-10-21T00:00:00Z"
+# Security patch GHSA-7xgj-8392-5q4r; remove after 2026-10-27.
+fastmcp = "2026-10-21T00:00:00Z"
+fastmcp-slim = "2026-10-21T00:00:00Z"
+# CVE-2026-112940/112913/112907; remove after 2026-10-24T16:48:15Z.
+filelock = "2026-10-17T16:48:15Z"
 # Analyzer 1.36.0 requires Ruff 0.17.0; retain the global seven-day cutoff.
 ruff = "2026-10-10T00:00:00Z"
 # Python analyzer 1.36.0 requires this reviewed SQL parser release.
@@ -17,7 +22,6 @@ typer = "2026-10-07T00:00:00Z"
 coverage = "2026-08-04T00:00:00Z"
 cryptography = "2026-08-04T00:00:00Z"
 fastapi = "2026-08-04T00:00:00Z"
-filelock = "2026-08-04T00:00:00Z"
 google-genai = "2026-08-04T00:00:00Z"
 pip = "2026-08-04T00:00:00Z"
 python-discovery = "2026-08-04T00:00:00Z"
