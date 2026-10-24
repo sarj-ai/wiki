@@ -1,5 +1,4 @@
-# ruff: file-ignore[implicit-namespace-package] -- standalone repository CLI
-from __future__ import annotations
+from __future__ import annotations  # ruff: ignore[implicit-namespace-package] -- standalone repository CLI, not an import package.
 
 from collections.abc import Callable, Mapping
 from datetime import timedelta

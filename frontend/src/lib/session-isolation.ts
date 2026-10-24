@@ -36,7 +36,6 @@ export function resetDocumentViewer(): void {
 export function broadcastSessionClear(): void {
   const channel = sessionChannel();
   if (!channel) return;
-  // eslint-disable-next-line unicorn/require-post-message-target-origin -- BroadcastChannel.postMessage has no target-origin parameter.
   channel.postMessage("clear");
 }
 

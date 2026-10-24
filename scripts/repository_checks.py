@@ -1,5 +1,4 @@
-# ruff: file-ignore[implicit-namespace-package] -- standalone repository CLI, not a package
-"""Executable repository documentation and consistency checks."""
+"""Executable repository documentation and consistency checks."""  # ruff: ignore[implicit-namespace-package] -- standalone repository CLI, not an import package.
 
 from __future__ import annotations
 

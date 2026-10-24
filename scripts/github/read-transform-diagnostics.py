@@ -1,5 +1,4 @@
-# ruff: file-ignore[implicit-namespace-package] -- standalone repository CLI, not an import package
-from __future__ import annotations
+from __future__ import annotations  # ruff: ignore[implicit-namespace-package] -- standalone repository CLI, not an import package.
 
 from datetime import datetime
 import json
@@ -576,12 +575,12 @@ def run_read() -> int:
     if request_ids and remaining > 0:
         clause = " OR ".join(
             f'jsonPayload.record.extra.request_id="{request_id}"'
-            for request_id in sorted(request_ids)
+            for request_id in sorted(request_ids)  # pyright: ignore[reportArgumentType] -- the comprehension admits request_id values only after its str guard.
         )
         correlated = read_records(clause, remaining)
         if not isinstance(correlated, list) or len(correlated) > remaining:
             raise ValueError
-        rows.extend(sanitize(correlated, task_id, request_ids))
+        rows.extend(sanitize(correlated, task_id, request_ids))  # pyright: ignore[reportArgumentType] -- every collected request_id passed the str guard above.
     sys.stdout.write(
         json.dumps({"records": rows, "returned_count": len(rows)}, sort_keys=True) + "\n"
     )
