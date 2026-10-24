@@ -1450,7 +1450,7 @@ class GoogleDriveService(DriveService):
             msg = "User has no encrypted Drive access token"
             raise ValueError(msg)
         access_token = decrypt_text(user.encrypted_access_token)
-        return Credentials(  # type: ignore[no-untyped-call]
+        return Credentials(  # type: ignore[no-untyped-call]  # google-auth exposes this credential constructor without annotations.
             token=access_token,
             expiry=(
                 user.google_access_token_expires_at.astimezone(UTC).replace(tzinfo=None)
@@ -1650,7 +1650,7 @@ def _log_invalid_provider_response(operation: str) -> None:
 
 @cache
 def drive_discovery_document() -> dict[str, Any]:
-    content = get_static_doc("drive", "v3")  # type: ignore[no-untyped-call]
+    content = get_static_doc("drive", "v3")  # type: ignore[no-untyped-call]  # google-api-python-client bundles this untyped discovery-document loader.
     if content is None:
         msg = "Bundled Drive v3 discovery document not found"
         raise RuntimeError(msg)

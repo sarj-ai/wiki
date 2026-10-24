@@ -10,6 +10,7 @@
     "noqa:RUF029": 1,
     "noqa:S404": 1,
     "noqa:S603": 3,
+    "noqa:TID251": 3,
     "pyright:reportAttributeAccessIssue": 1,
     "sarj-noqa:SARJ071": 1,
     "sarj-noqa:SARJ428": 2,
@@ -18,7 +19,7 @@
     "type-ignore:no-untyped-call": 2
   },
   "packages": {
-    "backend": 24
+    "backend": 27
   },
   "excluded_subtrees": [],
   "files": {
@@ -36,12 +37,16 @@
         "type-ignore:attr-defined": 1,
         "type-ignore:no-untyped-call": 2
       },
+      "backend/app/logging_config.py": {
+        "noqa:TID251": 1
+      },
       "backend/app/mcp/native_core.py": {
         "noqa:BLE001": 1
       },
       "backend/app/mcp/native_http_guard.py": {
         "noqa:BLE001": 1,
-        "noqa:RUF029": 1
+        "noqa:RUF029": 1,
+        "noqa:TID251": 1
       },
       "backend/app/mcp/protection.py": {
         "sarj-noqa:SARJ071": 1
@@ -52,6 +57,9 @@
       "backend/scripts/qa_document_transform_corpus.py": {
         "noqa:S404": 1,
         "noqa:S603": 3
+      },
+      "backend/tests/test_mcp_native_http_guard.py": {
+        "noqa:TID251": 1
       },
       "backend/tests/test_sidebar_cache.py": {
         "sarj-noqa:SARJ428": 2

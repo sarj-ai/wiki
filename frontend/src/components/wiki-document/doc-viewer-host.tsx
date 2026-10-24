@@ -310,7 +310,6 @@ function useDocumentLoading(
   const phaseRef = useRef<LoadingOverlayPhase>("masked");
   const visibleSinceRef = useRef(0);
 
-  /* eslint-disable react-hooks/set-state-in-effect -- Active/loading transitions intentionally reset this timer-driven UI state machine before scheduling its next phase. */
   useEffect(() => {
     const generation = generationRef.current + 1;
     generationRef.current = generation;
@@ -328,6 +327,7 @@ function useDocumentLoading(
     };
 
     if (!active) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- Reset the timer state machine immediately when its document becomes inactive.
       setSlow(false);
       setPhase(loading ? "masked" : "hidden");
       return cleanup;
@@ -392,7 +392,6 @@ function useDocumentLoading(
     );
     return cleanup;
   }, [active, loading, reducedMotion]);
-  /* eslint-enable react-hooks/set-state-in-effect -- Timer state transitions complete above. */
 
   return { phase: phaseState, slow };
 }
