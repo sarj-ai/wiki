@@ -1,0 +1,868 @@
+# Temporary native runner comparison. Remove this workflow before merging.
+name: Native runner comparison
+'on':
+  pull_request:
+    types:
+      - opened
+      - synchronize
+      - reopened
+permissions:
+  contents: read
+concurrency:
+  group: runner-comparison-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  baseline_ci_frontend_lint_and_typecheck:
+    name: Runner benchmark / baseline / ci-frontend / Frontend / Lint + typecheck + format
+    runs-on: blacksmith-2vcpu-ubuntu-2404
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version: 26.7.0
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Install dependencies
+        run: npm ci
+      - name: Prettier check
+        run: npm run format:check
+      - name: TypeScript check
+        run: npm run typecheck
+      - name: ESLint with exact baseline
+        run: npm run lint:baseline-check
+      - name: Knip
+        run: npm run knip
+      - name: Type coverage
+        run: npm run type-coverage
+      - name: npm audit
+        run: npm audit --omit=dev --audit-level=moderate
+    timeout-minutes: 20
+    if: github.event_name == 'pull_request'
+    defaults:
+      run:
+        working-directory: frontend
+    permissions:
+      contents: read
+  baseline_ci_frontend_test:
+    name: Runner benchmark / baseline / ci-frontend / Frontend / Unit tests
+    runs-on: blacksmith-2vcpu-ubuntu-2404
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version: 26.7.0
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Install dependencies
+        run: npm ci
+      - name: Run vitest
+        run: npm test
+    timeout-minutes: 20
+    if: '!cancelled()'
+    defaults:
+      run:
+        working-directory: frontend
+    permissions:
+      contents: read
+  baseline_ci_frontend_build:
+    name: Runner benchmark / baseline / ci-frontend / Frontend / Next.js build
+    runs-on: blacksmith-2vcpu-ubuntu-2404
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version: 26.7.0
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Restore Next.js incremental build cache
+        id: next-cache
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
+        with:
+          path: frontend/.next/cache
+          key: nextjs-v1-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('frontend/package-lock.json') }}-${{ github.sha
+            }}
+          restore-keys: |
+            nextjs-v1-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('frontend/package-lock.json') }}-
+      - name: Install dependencies
+        run: npm ci
+      - name: Build
+        run: npm run build
+        env:
+          NEXT_PUBLIC_API_URL: http://localhost:8000
+          NEXT_PUBLIC_RELEASE_SHA: ${{ github.sha }}
+      - name: Build Cloudflare Worker
+        run: npm run build:worker -- --skipNextBuild
+      - name: Smoke test packaged Worker runtime
+        run: bash scripts/smoke-worker.sh
+      - name: Save trusted main Next.js incremental build cache
+        if: ${{ success() && github.event_name == 'push' && github.ref == 'refs/heads/main' && steps.next-cache.outputs.cache-hit
+          != 'true' }}
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
+        with:
+          path: frontend/.next/cache
+          key: ${{ steps.next-cache.outputs.cache-primary-key }}
+    timeout-minutes: 20
+    if: '!cancelled()'
+    defaults:
+      run:
+        working-directory: frontend
+    permissions:
+      contents: read
+  arm_ci_frontend_lint_and_typecheck:
+    name: Runner benchmark / arm / ci-frontend / Frontend / Lint + typecheck + format
+    runs-on: blacksmith-2vcpu-ubuntu-2404-arm
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version: 26.7.0
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Install dependencies
+        run: npm ci
+      - name: Prettier check
+        run: npm run format:check
+      - name: TypeScript check
+        run: npm run typecheck
+      - name: ESLint with exact baseline
+        run: npm run lint:baseline-check
+      - name: Knip
+        run: npm run knip
+      - name: Type coverage
+        run: npm run type-coverage
+      - name: npm audit
+        run: npm audit --omit=dev --audit-level=moderate
+    timeout-minutes: 20
+    if: github.event_name == 'pull_request'
+    defaults:
+      run:
+        working-directory: frontend
+    permissions:
+      contents: read
+  arm_ci_frontend_test:
+    name: Runner benchmark / arm / ci-frontend / Frontend / Unit tests
+    runs-on: blacksmith-2vcpu-ubuntu-2404-arm
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version: 26.7.0
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Install dependencies
+        run: npm ci
+      - name: Run vitest
+        run: npm test
+    timeout-minutes: 20
+    if: '!cancelled()'
+    defaults:
+      run:
+        working-directory: frontend
+    permissions:
+      contents: read
+  arm_ci_frontend_build:
+    name: Runner benchmark / arm / ci-frontend / Frontend / Next.js build
+    runs-on: blacksmith-2vcpu-ubuntu-2404-arm
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version: 26.7.0
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Restore Next.js incremental build cache
+        id: next-cache
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
+        with:
+          path: frontend/.next/cache
+          key: nextjs-v1-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('frontend/package-lock.json') }}-${{ github.sha
+            }}
+          restore-keys: |
+            nextjs-v1-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('frontend/package-lock.json') }}-
+      - name: Install dependencies
+        run: npm ci
+      - name: Build
+        run: npm run build
+        env:
+          NEXT_PUBLIC_API_URL: http://localhost:8000
+          NEXT_PUBLIC_RELEASE_SHA: ${{ github.sha }}
+      - name: Build Cloudflare Worker
+        run: npm run build:worker -- --skipNextBuild
+      - name: Smoke test packaged Worker runtime
+        run: bash scripts/smoke-worker.sh
+      - name: Save trusted main Next.js incremental build cache
+        if: ${{ success() && github.event_name == 'push' && github.ref == 'refs/heads/main' && steps.next-cache.outputs.cache-hit
+          != 'true' }}
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
+        with:
+          path: frontend/.next/cache
+          key: ${{ steps.next-cache.outputs.cache-primary-key }}
+    timeout-minutes: 20
+    if: '!cancelled()'
+    defaults:
+      run:
+        working-directory: frontend
+    permissions:
+      contents: read
+  baseline_ci_backend_lint_and_typecheck:
+    name: Runner benchmark / baseline / ci-backend / Backend / Lint + typecheck
+    runs-on: blacksmith-2vcpu-ubuntu-2404
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - name: Install uv
+        uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d
+        with:
+          version-file: backend/uv.toml
+          enable-cache: true
+          cache-dependency-glob: backend/uv.lock
+      - name: Set up Python
+        run: uv python install
+      - name: Install dependencies
+        run: uv sync --group dev --locked
+      - name: Ruff check
+        run: uv run ruff check --output-format=github .
+      - name: Ruff format check
+        run: uv run ruff format --check .
+      - name: Identify Mypy cache toolchain
+        id: mypy-toolchain
+        run: |
+          uv run python -c 'import importlib.metadata, platform; print("python=" + platform.python_version()); print("mypy=" + importlib.metadata.version("mypy"))' >>"$GITHUB_OUTPUT"
+      - name: Restore Mypy incremental data
+        id: mypy-cache
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
+        with:
+          path: backend/.mypy_cache
+          key: mypy-v1-${{ runner.os }}-${{ runner.arch }}-py${{ steps.mypy-toolchain.outputs.python }}-mypy${{ steps.mypy-toolchain.outputs.mypy
+            }}-${{ hashFiles('backend/uv.lock', 'backend/pyproject.toml', 'backend/.python-version', 'backend/uv.toml', 'backend/mypy.ini',
+            'backend/.mypy.ini', 'backend/setup.cfg', '.sarj-standards.toml', '.github/workflows/ci-backend.yml') }}-${{ github.sha
+            }}
+          restore-keys: |
+            mypy-v1-${{ runner.os }}-${{ runner.arch }}-py${{ steps.mypy-toolchain.outputs.python }}-mypy${{ steps.mypy-toolchain.outputs.mypy }}-${{ hashFiles('backend/uv.lock', 'backend/pyproject.toml', 'backend/.python-version', 'backend/uv.toml', 'backend/mypy.ini', 'backend/.mypy.ini', 'backend/setup.cfg', '.sarj-standards.toml', '.github/workflows/ci-backend.yml') }}-
+            mypy-v1-${{ runner.os }}-${{ runner.arch }}-py${{ steps.mypy-toolchain.outputs.python }}-mypy${{ steps.mypy-toolchain.outputs.mypy }}-
+      - name: Mypy strict
+        run: uv run mypy app
+      - name: Basedpyright strict
+        run: uv run basedpyright -p pyrightconfig.json
+      - name: ty check (app)
+        run: uv run ty check app
+      - name: Vulture dead-code check
+        run: uv run vulture
+      - name: Import contracts
+        run: uv run lint-imports
+      - name: pip-audit
+        run: uv run pip-audit
+      - name: Save trusted main Mypy incremental data
+        if: ${{ success() && github.event_name == 'push' && github.ref == 'refs/heads/main' && steps.mypy-cache.outputs.cache-hit
+          != 'true' }}
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
+        with:
+          path: backend/.mypy_cache
+          key: ${{ steps.mypy-cache.outputs.cache-primary-key }}
+    timeout-minutes: 20
+    if: github.event_name == 'pull_request'
+    defaults:
+      run:
+        working-directory: backend
+    permissions:
+      contents: read
+  baseline_ci_backend_test:
+    name: Runner benchmark / baseline / ci-backend / Backend / Unit tests
+    runs-on: blacksmith-2vcpu-ubuntu-2404
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - name: Install uv
+        uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d
+        with:
+          version-file: backend/uv.toml
+          enable-cache: true
+          cache-dependency-glob: backend/uv.lock
+      - name: Set up Python
+        run: uv python install
+      - name: Install dependencies
+        run: uv sync --group dev --locked
+      - name: Run pytest
+        run: uv run pytest --cov=app --cov-report=term-missing --cov-fail-under=70
+    timeout-minutes: 20
+    if: '!cancelled()'
+    defaults:
+      run:
+        working-directory: backend
+    permissions:
+      contents: read
+  baseline_ci_backend_postgres_concurrency:
+    name: Runner benchmark / baseline / ci-backend / Backend / PostgreSQL concurrency
+    runs-on: blacksmith-2vcpu-ubuntu-2404
+    timeout-minutes: 10
+    services:
+      postgres:
+        image: postgres:18-bookworm
+        env:
+          POSTGRES_DB: wiki_polish29_qa
+          POSTGRES_HOST_AUTH_METHOD: trust
+        ports:
+          - 127.0.0.1:5432:5432
+        options: --health-cmd "pg_isready -U postgres -d wiki_polish29_qa" --health-interval 5s --health-timeout 5s --health-retries
+          10
+    env:
+      DATABASE_URL: postgresql+asyncpg://postgres@127.0.0.1:5432/wiki_polish29_qa
+      WIKI_POLISH29_QA_DATABASE_URL: postgresql+asyncpg://postgres@127.0.0.1:5432/wiki_polish29_qa
+      WIKI_MCP_QA_DATABASE_URL: postgresql+asyncpg://postgres@127.0.0.1:5432/wiki_polish29_qa
+      SECRET_KEY: disposable-postgres-concurrency-qa-only
+      FERNET_KEY: AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=
+      GOOGLE_CLIENT_ID: disposable-qa-client
+      GOOGLE_CLIENT_SECRET: disposable-qa-client-secret
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - name: Install uv
+        uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d
+        with:
+          version-file: backend/uv.toml
+          enable-cache: true
+          cache-dependency-glob: backend/uv.lock
+      - name: Set up Python
+        run: uv python install
+      - name: Install dependencies
+        run: uv sync --group dev --locked
+      - name: Apply actual schema migrations to the disposable database
+        run: uv run --locked alembic upgrade head
+      - name: Exercise concurrent source reservations and durable replay keys
+        run: uv run --locked pytest tests/test_task_source_dedupe_postgres.py tests/test_header_provenance_postgres.py tests/test_route_performance_postgres.py
+          tests/test_provider_performance_postgres.py tests/test_storage_performance_postgres.py tests/test_storage_hot_paths_postgres.py
+          tests/test_document_transform_qa_grants.py tests/test_document_transform_qa_submit_postgres.py tests/test_document_transform_qa_corpus_postgres.py
+          -q -rA tests/test_document_transform_qa_campaigns_postgres.py -q -rA
+      - name: Exercise MCP storage and client grants across database sessions
+        run: uv run --locked pytest tests/test_mcp_storage.py tests/test_mcp_grants.py tests/test_native_mcp_core.py tests/test_mcp_native_runtime.py
+          tests/test_mcp_native_admission.py -q -rA
+    if: '!cancelled()'
+    defaults:
+      run:
+        working-directory: backend
+    permissions:
+      contents: read
+  arm_ci_backend_lint_and_typecheck:
+    name: Runner benchmark / arm / ci-backend / Backend / Lint + typecheck
+    runs-on: blacksmith-2vcpu-ubuntu-2404-arm
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - name: Install uv
+        uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d
+        with:
+          version-file: backend/uv.toml
+          enable-cache: true
+          cache-dependency-glob: backend/uv.lock
+      - name: Set up Python
+        run: uv python install
+      - name: Install dependencies
+        run: uv sync --group dev --locked
+      - name: Ruff check
+        run: uv run ruff check --output-format=github .
+      - name: Ruff format check
+        run: uv run ruff format --check .
+      - name: Identify Mypy cache toolchain
+        id: mypy-toolchain
+        run: |
+          uv run python -c 'import importlib.metadata, platform; print("python=" + platform.python_version()); print("mypy=" + importlib.metadata.version("mypy"))' >>"$GITHUB_OUTPUT"
+      - name: Restore Mypy incremental data
+        id: mypy-cache
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
+        with:
+          path: backend/.mypy_cache
+          key: mypy-v1-${{ runner.os }}-${{ runner.arch }}-py${{ steps.mypy-toolchain.outputs.python }}-mypy${{ steps.mypy-toolchain.outputs.mypy
+            }}-${{ hashFiles('backend/uv.lock', 'backend/pyproject.toml', 'backend/.python-version', 'backend/uv.toml', 'backend/mypy.ini',
+            'backend/.mypy.ini', 'backend/setup.cfg', '.sarj-standards.toml', '.github/workflows/ci-backend.yml') }}-${{ github.sha
+            }}
+          restore-keys: |
+            mypy-v1-${{ runner.os }}-${{ runner.arch }}-py${{ steps.mypy-toolchain.outputs.python }}-mypy${{ steps.mypy-toolchain.outputs.mypy }}-${{ hashFiles('backend/uv.lock', 'backend/pyproject.toml', 'backend/.python-version', 'backend/uv.toml', 'backend/mypy.ini', 'backend/.mypy.ini', 'backend/setup.cfg', '.sarj-standards.toml', '.github/workflows/ci-backend.yml') }}-
+            mypy-v1-${{ runner.os }}-${{ runner.arch }}-py${{ steps.mypy-toolchain.outputs.python }}-mypy${{ steps.mypy-toolchain.outputs.mypy }}-
+      - name: Mypy strict
+        run: uv run mypy app
+      - name: Basedpyright strict
+        run: uv run basedpyright -p pyrightconfig.json
+      - name: ty check (app)
+        run: uv run ty check app
+      - name: Vulture dead-code check
+        run: uv run vulture
+      - name: Import contracts
+        run: uv run lint-imports
+      - name: pip-audit
+        run: uv run pip-audit
+      - name: Save trusted main Mypy incremental data
+        if: ${{ success() && github.event_name == 'push' && github.ref == 'refs/heads/main' && steps.mypy-cache.outputs.cache-hit
+          != 'true' }}
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
+        with:
+          path: backend/.mypy_cache
+          key: ${{ steps.mypy-cache.outputs.cache-primary-key }}
+    timeout-minutes: 20
+    if: github.event_name == 'pull_request'
+    defaults:
+      run:
+        working-directory: backend
+    permissions:
+      contents: read
+  arm_ci_backend_test:
+    name: Runner benchmark / arm / ci-backend / Backend / Unit tests
+    runs-on: blacksmith-2vcpu-ubuntu-2404-arm
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - name: Install uv
+        uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d
+        with:
+          version-file: backend/uv.toml
+          enable-cache: true
+          cache-dependency-glob: backend/uv.lock
+      - name: Set up Python
+        run: uv python install
+      - name: Install dependencies
+        run: uv sync --group dev --locked
+      - name: Run pytest
+        run: uv run pytest --cov=app --cov-report=term-missing --cov-fail-under=70
+    timeout-minutes: 20
+    if: '!cancelled()'
+    defaults:
+      run:
+        working-directory: backend
+    permissions:
+      contents: read
+  arm_ci_backend_postgres_concurrency:
+    name: Runner benchmark / arm / ci-backend / Backend / PostgreSQL concurrency
+    runs-on: blacksmith-2vcpu-ubuntu-2404-arm
+    timeout-minutes: 10
+    services:
+      postgres:
+        image: postgres:18-bookworm
+        env:
+          POSTGRES_DB: wiki_polish29_qa
+          POSTGRES_HOST_AUTH_METHOD: trust
+        ports:
+          - 127.0.0.1:5432:5432
+        options: --health-cmd "pg_isready -U postgres -d wiki_polish29_qa" --health-interval 5s --health-timeout 5s --health-retries
+          10
+    env:
+      DATABASE_URL: postgresql+asyncpg://postgres@127.0.0.1:5432/wiki_polish29_qa
+      WIKI_POLISH29_QA_DATABASE_URL: postgresql+asyncpg://postgres@127.0.0.1:5432/wiki_polish29_qa
+      WIKI_MCP_QA_DATABASE_URL: postgresql+asyncpg://postgres@127.0.0.1:5432/wiki_polish29_qa
+      SECRET_KEY: disposable-postgres-concurrency-qa-only
+      FERNET_KEY: AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=
+      GOOGLE_CLIENT_ID: disposable-qa-client
+      GOOGLE_CLIENT_SECRET: disposable-qa-client-secret
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - name: Install uv
+        uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d
+        with:
+          version-file: backend/uv.toml
+          enable-cache: true
+          cache-dependency-glob: backend/uv.lock
+      - name: Set up Python
+        run: uv python install
+      - name: Install dependencies
+        run: uv sync --group dev --locked
+      - name: Apply actual schema migrations to the disposable database
+        run: uv run --locked alembic upgrade head
+      - name: Exercise concurrent source reservations and durable replay keys
+        run: uv run --locked pytest tests/test_task_source_dedupe_postgres.py tests/test_header_provenance_postgres.py tests/test_route_performance_postgres.py
+          tests/test_provider_performance_postgres.py tests/test_storage_performance_postgres.py tests/test_storage_hot_paths_postgres.py
+          tests/test_document_transform_qa_grants.py tests/test_document_transform_qa_submit_postgres.py tests/test_document_transform_qa_corpus_postgres.py
+          -q -rA tests/test_document_transform_qa_campaigns_postgres.py -q -rA
+      - name: Exercise MCP storage and client grants across database sessions
+        run: uv run --locked pytest tests/test_mcp_storage.py tests/test_mcp_grants.py tests/test_native_mcp_core.py tests/test_mcp_native_runtime.py
+          tests/test_mcp_native_admission.py -q -rA
+    if: '!cancelled()'
+    defaults:
+      run:
+        working-directory: backend
+    permissions:
+      contents: read
+  baseline_ci_quality_repository_quality:
+    name: Runner benchmark / baseline / ci-quality / pre-commit (actionlint, hygiene, sarj rules)
+    runs-on: blacksmith-2vcpu-ubuntu-2404
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Install uv
+        uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d
+        with:
+          version-file: backend/uv.toml
+          enable-cache: true
+          cache-dependency-glob: backend/uv.lock
+      - name: Cache pre-commit environments
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
+        with:
+          path: ~/.cache/pre-commit
+          key: pre-commit-v4.6.2-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('backend/.python-version', '.pre-commit-config.yaml')
+            }}
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version: 26.7.0
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Install analysis dependencies
+        run: uv sync --locked --project backend
+      - name: Install frontend analysis dependencies
+        run: npm ci --prefix frontend --no-audit --no-fund --ignore-scripts
+      - name: Bootstrap analysis inputs
+        run: npm --prefix frontend run generate:api
+      - name: Verify executable repository documentation
+        run: make check-repository
+      - name: Suppression ratchet
+        run: uv run --project backend --locked sarj-ratchet .
+      - name: Verify exact Python Standards baseline
+        run: uv run --project backend --locked python scripts/check_standards.py --verify-python-baseline .
+      - name: Reject lint baseline growth
+        if: github.event_name == 'pull_request'
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: scripts/check-baseline-growth.sh "$BASE_SHA"
+      - name: Install pinned Terraform
+        uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e
+        with:
+          terraform_version: 1.15.8
+          terraform_wrapper: false
+      - name: Initialize locked local Terraform providers
+        run: terraform -chdir=terraform init -backend=false -input=false -lockfile=readonly
+      - name: Run pre-commit
+        env:
+          FORCE_FULL: 'true'
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: bash scripts/github/run-pre-commit.sh
+    timeout-minutes: 20
+    if: github.event_name == 'pull_request'
+    permissions:
+      contents: read
+  baseline_ci_quality_api_contract:
+    name: Runner benchmark / baseline / ci-quality / OpenAPI spec in sync
+    runs-on: blacksmith-2vcpu-ubuntu-2404
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - name: Install uv
+        uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d
+        with:
+          version-file: backend/uv.toml
+          enable-cache: true
+          cache-dependency-glob: backend/uv.lock
+      - name: Verify committed OpenAPI spec
+        working-directory: backend
+        run: uv run --locked python scripts/export_openapi.py --check ../frontend/openapi.json
+    timeout-minutes: 20
+    if: github.event_name == 'pull_request'
+  arm_ci_quality_repository_quality:
+    name: Runner benchmark / arm / ci-quality / pre-commit (actionlint, hygiene, sarj rules)
+    runs-on: blacksmith-2vcpu-ubuntu-2404-arm
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Install uv
+        uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d
+        with:
+          version-file: backend/uv.toml
+          enable-cache: true
+          cache-dependency-glob: backend/uv.lock
+      - name: Cache pre-commit environments
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
+        with:
+          path: ~/.cache/pre-commit
+          key: pre-commit-v4.6.2-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('backend/.python-version', '.pre-commit-config.yaml')
+            }}
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version: 26.7.0
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Install analysis dependencies
+        run: uv sync --locked --project backend
+      - name: Install frontend analysis dependencies
+        run: npm ci --prefix frontend --no-audit --no-fund --ignore-scripts
+      - name: Bootstrap analysis inputs
+        run: npm --prefix frontend run generate:api
+      - name: Verify executable repository documentation
+        run: make check-repository
+      - name: Suppression ratchet
+        run: uv run --project backend --locked sarj-ratchet .
+      - name: Verify exact Python Standards baseline
+        run: uv run --project backend --locked python scripts/check_standards.py --verify-python-baseline .
+      - name: Reject lint baseline growth
+        if: github.event_name == 'pull_request'
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: scripts/check-baseline-growth.sh "$BASE_SHA"
+      - name: Install pinned Terraform
+        uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e
+        with:
+          terraform_version: 1.15.8
+          terraform_wrapper: false
+      - name: Initialize locked local Terraform providers
+        run: terraform -chdir=terraform init -backend=false -input=false -lockfile=readonly
+      - name: Run pre-commit
+        env:
+          FORCE_FULL: 'true'
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: bash scripts/github/run-pre-commit.sh
+    timeout-minutes: 20
+    if: github.event_name == 'pull_request'
+    permissions:
+      contents: read
+  arm_ci_quality_api_contract:
+    name: Runner benchmark / arm / ci-quality / OpenAPI spec in sync
+    runs-on: blacksmith-2vcpu-ubuntu-2404-arm
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - name: Install uv
+        uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d
+        with:
+          version-file: backend/uv.toml
+          enable-cache: true
+          cache-dependency-glob: backend/uv.lock
+      - name: Verify committed OpenAPI spec
+        working-directory: backend
+        run: uv run --locked python scripts/export_openapi.py --check ../frontend/openapi.json
+    timeout-minutes: 20
+    if: github.event_name == 'pull_request'
+  baseline_ci_iac_required:
+    name: Runner benchmark / baseline / ci-iac / IaC / required
+    runs-on: blacksmith-2vcpu-ubuntu-2404
+    timeout-minutes: 10
+    env:
+      TF_PLUGIN_CACHE_DIR: /tmp/terraform-provider-cache
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - name: Install pinned Terraform
+        uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e
+        with:
+          terraform_version: 1.15.8
+          terraform_wrapper: false
+      - name: Prepare Terraform provider cache
+        run: mkdir -p "$TF_PLUGIN_CACHE_DIR"
+      - name: Restore Terraform providers
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
+        with:
+          path: ${{ env.TF_PLUGIN_CACHE_DIR }}
+          key: terraform-providers-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('terraform/.terraform.lock.hcl') }}
+          restore-keys: |
+            terraform-providers-${{ runner.os }}-${{ runner.arch }}-
+      - name: Validate real provider schemas and offline preview wiring
+        run: make check-iac
+      - name: Trivy config scan (gate HIGH+CRITICAL)
+        if: ${{ !cancelled() }}
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25
+        with:
+          scan-type: config
+          scan-ref: terraform
+          severity: HIGH,CRITICAL
+          exit-code: '1'
+          format: table
+          output: trivy-report.txt
+      - name: Publish report to job summary
+        id: trivy_summary_header
+        if: always()
+        run: printf '%s\n' '## Trivy IaC scan (terraform/)' "\`\`\`" >>"$GITHUB_STEP_SUMMARY"
+      - name: Append IaC scan report
+        id: trivy_summary_report
+        if: always() && steps.trivy_summary_header.outcome == 'success'
+        run: cat trivy-report.txt >>"$GITHUB_STEP_SUMMARY"
+      - name: Close IaC scan summary
+        if: always() && steps.trivy_summary_header.outcome == 'success' && steps.trivy_summary_report.outcome == 'success'
+        run: printf '%s\n' "\`\`\`" >>"$GITHUB_STEP_SUMMARY"
+    if: github.event_name == 'pull_request'
+    permissions:
+      contents: read
+  arm_ci_iac_required:
+    name: Runner benchmark / arm / ci-iac / IaC / required
+    runs-on: blacksmith-2vcpu-ubuntu-2404-arm
+    timeout-minutes: 10
+    env:
+      TF_PLUGIN_CACHE_DIR: /tmp/terraform-provider-cache
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - name: Install pinned Terraform
+        uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e
+        with:
+          terraform_version: 1.15.8
+          terraform_wrapper: false
+      - name: Prepare Terraform provider cache
+        run: mkdir -p "$TF_PLUGIN_CACHE_DIR"
+      - name: Restore Terraform providers
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
+        with:
+          path: ${{ env.TF_PLUGIN_CACHE_DIR }}
+          key: terraform-providers-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('terraform/.terraform.lock.hcl') }}
+          restore-keys: |
+            terraform-providers-${{ runner.os }}-${{ runner.arch }}-
+      - name: Validate real provider schemas and offline preview wiring
+        run: make check-iac
+      - name: Trivy config scan (gate HIGH+CRITICAL)
+        if: ${{ !cancelled() }}
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25
+        with:
+          scan-type: config
+          scan-ref: terraform
+          severity: HIGH,CRITICAL
+          exit-code: '1'
+          format: table
+          output: trivy-report.txt
+      - name: Publish report to job summary
+        id: trivy_summary_header
+        if: always()
+        run: printf '%s\n' '## Trivy IaC scan (terraform/)' "\`\`\`" >>"$GITHUB_STEP_SUMMARY"
+      - name: Append IaC scan report
+        id: trivy_summary_report
+        if: always() && steps.trivy_summary_header.outcome == 'success'
+        run: cat trivy-report.txt >>"$GITHUB_STEP_SUMMARY"
+      - name: Close IaC scan summary
+        if: always() && steps.trivy_summary_header.outcome == 'success' && steps.trivy_summary_report.outcome == 'success'
+        run: printf '%s\n' "\`\`\`" >>"$GITHUB_STEP_SUMMARY"
+    if: github.event_name == 'pull_request'
+    permissions:
+      contents: read
+  baseline_standards_standards:
+    runs-on: blacksmith-2vcpu-ubuntu-2404
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884
+        with:
+          version-file: backend/uv.toml
+          enable-cache: true
+          cache-dependency-glob: |
+            .sarj-standards.toml
+            **/uv.lock
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
+        with:
+          node-version: 24
+          check-latest: true
+      - name: Activate declared npm version
+        run: npm install --global npm@12.0.2 --ignore-scripts
+      - name: Install JavaScript dependencies
+        run: npm ci --no-audit --no-fund --ignore-scripts
+        working-directory: frontend
+      - name: Install Python dependencies
+        run: uv sync --locked --project backend
+      - name: Install the pinned native tool bootstrap
+        env:
+          UV_PYTHON_DOWNLOADS_JSON_URL: https://raw.githubusercontent.com/astral-sh/uv/4ecd0eff2a81e3ffdcd7cfee10d08936e4747c17/crates/uv-python-managed/download-metadata.json
+        run: uv run --no-config --no-project --python 3.15.0 --with code-standards==8.101.1 python -m sarj_standards.libs.adoption.native_bootstrap
+      - name: Install and attest applicable native tools
+        run: uvx --no-config --isolated --python 3.14 --from sarj-standards-bootstrap code-standards setup --tools-only
+      - name: Bootstrap analysis inputs
+        run: |
+          npm --prefix frontend run patches:apply
+      - name: Bootstrap analysis inputs (2)
+        run: |
+          npm --prefix frontend run generate:api
+      - name: Bootstrap analysis inputs (3)
+        run: |
+          npm --prefix frontend run typegen
+      - name: Bootstrap analysis inputs (4)
+        run: |
+          mise --no-config --no-env --no-hooks exec aqua:hashicorp/terraform@1.15.8 -- terraform -chdir=terraform init -backend=false -input=false -lockfile=readonly
+      - name: Run standards
+        env:
+          SARJ_STANDARDS_BASE: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha || github.event.before
+            }}
+        run: uvx --no-config --isolated --python 3.14 --from sarj-standards-bootstrap code-standards check --trust-repository-code
+          --format github
+    name: Runner benchmark / baseline / standards / standards
+    if: github.event_name == 'pull_request'
+    permissions:
+      contents: read
+  arm_standards_standards:
+    runs-on: blacksmith-2vcpu-ubuntu-2404-arm
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884
+        with:
+          version-file: backend/uv.toml
+          enable-cache: true
+          cache-dependency-glob: |
+            .sarj-standards.toml
+            **/uv.lock
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
+        with:
+          node-version: 24
+          check-latest: true
+      - name: Activate declared npm version
+        run: npm install --global npm@12.0.2 --ignore-scripts
+      - name: Install JavaScript dependencies
+        run: npm ci --no-audit --no-fund --ignore-scripts
+        working-directory: frontend
+      - name: Install Python dependencies
+        run: uv sync --locked --project backend
+      - name: Install the pinned native tool bootstrap
+        env:
+          UV_PYTHON_DOWNLOADS_JSON_URL: https://raw.githubusercontent.com/astral-sh/uv/4ecd0eff2a81e3ffdcd7cfee10d08936e4747c17/crates/uv-python-managed/download-metadata.json
+        run: uv run --no-config --no-project --python 3.15.0 --with code-standards==8.101.1 python -m sarj_standards.libs.adoption.native_bootstrap
+      - name: Install and attest applicable native tools
+        run: uvx --no-config --isolated --python 3.14 --from sarj-standards-bootstrap code-standards setup --tools-only
+      - name: Bootstrap analysis inputs
+        run: |
+          npm --prefix frontend run patches:apply
+      - name: Bootstrap analysis inputs (2)
+        run: |
+          npm --prefix frontend run generate:api
+      - name: Bootstrap analysis inputs (3)
+        run: |
+          npm --prefix frontend run typegen
+      - name: Bootstrap analysis inputs (4)
+        run: |
+          mise --no-config --no-env --no-hooks exec aqua:hashicorp/terraform@1.15.8 -- terraform -chdir=terraform init -backend=false -input=false -lockfile=readonly
+      - name: Run standards
+        env:
+          SARJ_STANDARDS_BASE: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha || github.event.before
+            }}
+        run: uvx --no-config --isolated --python 3.14 --from sarj-standards-bootstrap code-standards check --trust-repository-code
+          --format github
+    name: Runner benchmark / arm / standards / standards
+    if: github.event_name == 'pull_request'
+    permissions:
+      contents: read
