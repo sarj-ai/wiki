@@ -98,7 +98,7 @@
     "eslint-plugin-testing-library": "7.16.2",
     "eslint-plugin-unicorn": "79.0.0",
     "eslint-plugin-zod": "5.2.2",
-    "happy-dom": "^20.11.2",
+    "happy-dom": "^21.0.4",
     "jiti": "2.7.0",
     "knip": "^6.32.2",
     "lefthook": "2.1.10",
