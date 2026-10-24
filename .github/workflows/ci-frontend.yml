@@ -130,6 +130,12 @@ jobs:
           NEXT_PUBLIC_API_URL: http://localhost:8000
           NEXT_PUBLIC_RELEASE_SHA: ${{ github.sha }}
 
+      - name: Build Cloudflare Worker
+        run: npm run build:worker -- --skipNextBuild
+
+      - name: Smoke test packaged Worker runtime
+        run: bash scripts/smoke-worker.sh
+
       - name: Save trusted main Next.js incremental build cache
         if: ${{ success() && github.event_name == 'push' && github.ref == 'refs/heads/main' && steps.next-cache.outputs.cache-hit != 'true' }}
         uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0

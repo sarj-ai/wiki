@@ -117,6 +117,9 @@ jobs:
           NEXT_PUBLIC_API_URL: ${{ secrets.NEXT_PUBLIC_API_URL }}
           NEXT_PUBLIC_RELEASE_SHA: ${{ github.sha }}
 
+      - name: Smoke test packaged Worker runtime
+        run: bash scripts/smoke-worker.sh
+
       - name: Confirm main has not advanced before cloud authentication
         working-directory: .
         env:
@@ -130,7 +133,7 @@ jobs:
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-        run: uv run --no-project --with typer==0.27.2 --python 3.14 python -m scripts.frontend_release.rollback active --github-output >> "$GITHUB_OUTPUT"
+        run: uv run --no-project --with typer==0.27.2 --python 3.14 python -m scripts.frontend_release.rollback active --github-output >>"$GITHUB_OUTPUT"
       - name: Require an unused deployment receipt path
         env:
           WRANGLER_OUTPUT_FILE_PATH: ${{ runner.temp }}/frontend-deploy-${{ github.run_id }}-${{ github.run_attempt }}.jsonl
