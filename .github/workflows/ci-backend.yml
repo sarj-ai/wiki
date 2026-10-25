@@ -86,6 +86,8 @@ jobs:
         run: uv run mypy app
 
       - name: Basedpyright strict
+        env:
+          NODE_OPTIONS: --max-old-space-size=4096
         run: uv run basedpyright -p pyrightconfig.json
 
       - name: ty check (app)
