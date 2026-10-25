@@ -19,7 +19,7 @@ _MAX_REDIRECT_LENGTH = 8192
 
 
 class NativeOAuthMetadata(OAuthMetadata):
-    authorization_response_iss_parameter_supported: bool = False
+    authorization_response_iss_parameter_supported: bool | None = False
     client_id_metadata_document_supported: bool | None = False
 
 

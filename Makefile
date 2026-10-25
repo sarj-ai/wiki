@@ -5,7 +5,7 @@ STANDARDS_RUN := uvx --no-config --isolated --python 3.14 --from sarj-standards-
 .PHONY: branch-protection-check branch-protection-apply branch-protection-rollback
 
 help: ## List supported repository commands.
-	@uv run --no-project --with typer==0.27.2 --python 3.14 python scripts/repository_checks.py make-help Makefile
+	@uv run --no-project --with typer==0.27.3 --python 3.14 python scripts/repository_checks.py make-help Makefile
 
 setup-hooks: ## Install the repository Git hooks.
 	@sh scripts/github/install-hooks.sh
@@ -30,7 +30,7 @@ check: check-node check-quality check-backend check-frontend check-iac ## Run th
 	@echo "make check: all CI-mirror steps passed"
 
 check-node:
-	@uv run --no-project --with typer==0.27.2 --python 3.14 python scripts/repository_checks.py node
+	@uv run --no-project --with typer==0.27.3 --python 3.14 python scripts/repository_checks.py node
 
 check-quality: check-repository
 	@$(MAKE) standards-check
@@ -81,10 +81,10 @@ check-repository: ## Verify Markdown, README commands, and environment-example p
 	@uv run --project backend --locked python -m pytest -q scripts/github/test_release_gate.py scripts/github/test_frontend_rollback.py scripts/github/test_backend_recovery.py scripts/github/test_iac_ci.py scripts/github/test_deploy_cache_contract.py scripts/github/test_cli.py scripts/github/test_shell_entrypoints.py
 
 branch-protection-check: ## Compare live main-branch protection with the canonical policy.
-	@uv run --no-project --with typer==0.27.2 --python 3.14 python scripts/github/branch_protection.py check
+	@uv run --no-project --with typer==0.27.3 --python 3.14 python scripts/github/branch_protection.py check
 
 branch-protection-apply: ## Refuse unconfirmed apply; use the CLI with a reviewed fingerprint and target.
-	@uv run --no-project --with typer==0.27.2 --python 3.14 python scripts/github/branch_protection.py apply
+	@uv run --no-project --with typer==0.27.3 --python 3.14 python scripts/github/branch_protection.py apply
 
 branch-protection-rollback: ## Disabled; restore a reviewed policy instead of deleting protection.
-	@uv run --no-project --with typer==0.27.2 --python 3.14 python scripts/github/branch_protection.py rollback
+	@uv run --no-project --with typer==0.27.3 --python 3.14 python scripts/github/branch_protection.py rollback

@@ -62,7 +62,7 @@ class SidebarExtras(NamedTuple):
 
 
 def _doc_icon_models(
-    rows: Sequence[Row[tuple[FileId, str | None, str | None]]],
+    rows: Sequence[Row[FileId, str | None, str | None]],
 ) -> list[DocIconRead]:
     return [
         DocIconRead(drive_id=drive_id, icon=icon, cover_url=cover_url)
@@ -113,7 +113,7 @@ class ExtrasService(ABC):
 
 
 @cache
-def _sidebar_read_statement() -> CompoundSelect[tuple[object, ...]]:
+def _sidebar_read_statement() -> CompoundSelect[*tuple[object, ...]]:
     user_id = bindparam("sidebar_user_id", type_=Uuid)
     return union_all(
         select(
@@ -160,14 +160,22 @@ class PostgresExtrasService(ExtrasService):
         ).all():
             match kind:
                 case "preferences":
-                    preferences = PreferencesRead(
-                        show_non_doc_files=show_non_doc_files,
-                        hidden_workspace_ids=hidden_workspace_ids,
+                    preferences = PreferencesRead.model_validate(
+                        {
+                            "show_non_doc_files": show_non_doc_files,
+                            "hidden_workspace_ids": hidden_workspace_ids,
+                        }
                     )
                 case "folder":
-                    folder_icons.append(FolderIconRead(folder_drive_id=item_id, icon=icon))
+                    folder_icons.append(
+                        FolderIconRead.model_validate({"folder_drive_id": item_id, "icon": icon})
+                    )
                 case "sort":
-                    sort_orders.append(SortOrderRead(drive_id=item_id, sort_order=sort_order))
+                    sort_orders.append(
+                        SortOrderRead.model_validate(
+                            {"drive_id": item_id, "sort_order": sort_order}
+                        )
+                    )
                 case _:
                     msg = "Unexpected sidebar overlay kind"
                     raise ValueError(msg)

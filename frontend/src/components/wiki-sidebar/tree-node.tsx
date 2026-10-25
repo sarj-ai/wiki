@@ -10,6 +10,7 @@ import { SidebarMenuButton, SidebarMenuSub, SidebarMenuSubItem } from "@/compone
 import { useExpandedFolder } from "@/hooks/use-expanded-folders";
 import { folderFilesQueryOptions, useFolderFiles } from "@/hooks/use-wiki-tree";
 import { renderNodeIcon } from "@/lib/file-icons";
+import { handlePrefetchError } from "@/lib/handle-prefetch-error";
 import { resolveShortcutTarget } from "@/lib/shortcut-resolver";
 import { allowsReusableSpeculation, readNavigatorHints } from "@/lib/speculation-policy";
 import { cn } from "@/lib/utils";
@@ -119,7 +120,7 @@ function TreeNodeImpl({ depth, node, parentFolderId }: TreeNodeProps) {
     ) {
       return;
     }
-    void queryClient.prefetchQuery(folderFilesQueryOptions(folderId));
+    void queryClient.query(folderFilesQueryOptions(folderId)).catch(handlePrefetchError);
   }, HOVER_PREFETCH_DELAY_MS);
 
   const isDropIntoFolder = useIsDropIntoFolder(node.id);

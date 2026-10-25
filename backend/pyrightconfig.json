@@ -1,13 +1,8 @@
 {
   "extends": ".basedpyright-strict.json",
-  "include": [
-    "app",
-    "tests"
-  ],
-  "exclude": [
-    "alembic/versions",
-    "**/__pycache__"
-  ],
+  "include": ["app", "tests"],
+  "exclude": ["alembic/versions", "**/__pycache__"],
+  "extraPaths": [".."],
   "reportAny": false,
   "reportDeprecated": "error",
   "reportExplicitAny": false,

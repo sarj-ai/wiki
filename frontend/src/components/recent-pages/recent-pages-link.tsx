@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useEffect, useRef } from "react";
 
 import { useRecentPagesScope } from "@/components/recent-pages/recent-pages-session";
+import { handlePrefetchError } from "@/lib/handle-prefetch-error";
 import { readRecentDocs } from "@/lib/last-doc";
 import { recentPagesQueryOptions } from "@/lib/recent-pages-query";
 import { allowsReusableSpeculation, readNavigatorHints } from "@/lib/speculation-policy";
@@ -40,9 +41,7 @@ export function RecentPagesLink({
     if (!scope?.isActive()) return;
     router.prefetch("/");
     const ids = readRecentDocs(scope.userId).map((visit) => visit.fileId);
-    void scope.queryClient
-      .prefetchQuery(recentPagesQueryOptions(scope, ids))
-      .catch(() => console.warn("Recent-page prefetch could not finish"));
+    void scope.queryClient.query(recentPagesQueryOptions(scope, ids)).catch(handlePrefetchError);
   };
   const schedule = () => {
     if (state.current.committed || state.current.timer !== null || !allowsSpeculation()) return;

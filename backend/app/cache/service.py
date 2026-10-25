@@ -103,7 +103,7 @@ def _cache_envelope_text() -> ColumnElement[str]:
 
 
 @cache
-def _cache_get_statement() -> Select[tuple[str, str]]:
+def _cache_get_statement() -> Select[str, str]:
     # Reuse only the immutable statement shape. Each execution binds the
     # current namespace and rotation keys and evaluates its fresh TTL check.
     return select(CacheEntry.key, _cache_envelope_text()).where(
@@ -114,7 +114,7 @@ def _cache_get_statement() -> Select[tuple[str, str]]:
 
 
 @cache
-def _cache_bulk_get_statement(*, large: bool) -> Select[tuple[str, str]]:
+def _cache_bulk_get_statement(*, large: bool) -> Select[str, str]:
     if not large:
         return _cache_get_statement()
     lookup = (

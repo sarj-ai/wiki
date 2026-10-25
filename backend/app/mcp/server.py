@@ -59,8 +59,8 @@ _INPUTS: MappingProxyType[str, type[McpModel]] = MappingProxyType(
         "wiki_get_short_link": ShortLinkInput,
     }
 )
-_READ = ToolAnnotations(readOnlyHint=True, destructiveHint=False, idempotentHint=True)
-_WRITE = ToolAnnotations(readOnlyHint=False, destructiveHint=True, idempotentHint=True)
+_READ = ToolAnnotations(read_only_hint=True, destructive_hint=False, idempotent_hint=True)
+_WRITE = ToolAnnotations(read_only_hint=False, destructive_hint=True, idempotent_hint=True)
 
 
 class _ValidateArguments(Middleware):

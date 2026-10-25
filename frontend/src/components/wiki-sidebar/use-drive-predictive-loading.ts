@@ -4,6 +4,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { type PointerEvent as ReactPointerEvent, useEffect, useRef } from "react";
 
 import { driveTreeQueryOptions, folderFilesQueryOptions } from "@/hooks/use-wiki-tree";
+import { handlePrefetchError } from "@/lib/handle-prefetch-error";
 import { allowsReusableSpeculation, readNavigatorHints } from "@/lib/speculation-policy";
 
 export const DRIVE_PREFETCH_DELAY_MS = 150;
@@ -34,7 +35,7 @@ export function useDrivePredictiveLoading(driveId: string, expanded: boolean) {
     owner.pending = true;
     try {
       const treeOptions = driveTreeQueryOptions(driveId, true);
-      await queryClient.prefetchQuery(treeOptions);
+      await queryClient.query(treeOptions).catch(handlePrefetchError);
       const tree = queryClient.getQueryData(treeOptions.queryKey);
       if (
         ownerRef.current === owner &&
@@ -42,7 +43,7 @@ export function useDrivePredictiveLoading(driveId: string, expanded: boolean) {
         tree &&
         !tree.filesComplete
       ) {
-        await queryClient.prefetchQuery(folderFilesQueryOptions(driveId));
+        await queryClient.query(folderFilesQueryOptions(driveId)).catch(handlePrefetchError);
       }
     } finally {
       owner.pending = false;

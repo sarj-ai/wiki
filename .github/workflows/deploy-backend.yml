@@ -79,7 +79,7 @@ jobs:
         with:
           persist-credentials: false
       - name: Install uv
-        uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+        uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
         with:
           version-file: backend/uv.toml
           enable-cache: false
@@ -106,7 +106,7 @@ jobs:
           persist-credentials: false
 
       - name: Install uv
-        uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+        uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
         with:
           version-file: backend/uv.toml
 
@@ -130,10 +130,10 @@ jobs:
       - name: Configure Docker for Artifact Registry
         run: gcloud auth configure-docker ${{ env.REGION }}-docker.pkg.dev --quiet
 
-      - uses: docker/setup-buildx-action@37fe631027851001ddb9b187196cc803df7f5f0e # v4.3.0
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
 
       - name: Build and push image
-        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:
           build-args: RELEASE_SHA=${{ github.sha }}
           context: backend
@@ -220,7 +220,7 @@ jobs:
         with:
           persist-credentials: false
       - name: Install uv
-        uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+        uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
         with:
           version-file: backend/uv.toml
           enable-cache: false
@@ -230,7 +230,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           SOURCE_RUN_ATTEMPT: ${{ inputs.verification_run_attempt }}
           SOURCE_RUN_ID: ${{ inputs.verification_run_id }}
-        run: uv run --no-project --with typer==0.27.2 --python 3.14 python -m scripts.backend_release.recovery --verifier-sha "$GITHUB_SHA" source --run-id "$SOURCE_RUN_ID" --run-attempt "$SOURCE_RUN_ATTEMPT" --github-output >> "$GITHUB_OUTPUT"
+        run: uv run --no-project --with typer==0.27.3 --python 3.14 python -m scripts.backend_release.recovery --verifier-sha "$GITHUB_SHA" source --run-id "$SOURCE_RUN_ID" --run-attempt "$SOURCE_RUN_ATTEMPT" --github-output >>"$GITHUB_OUTPUT"
       - uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3.0.0
         with:
           workload_identity_provider: ${{ secrets.WIF_PROVIDER }}
@@ -245,7 +245,7 @@ jobs:
         run: scripts/github/verify-smart-create-queue.sh
       - name: Begin fresh verification window
         id: window
-        run: date -u +'started_at=%Y-%m-%dT%H:%M:%S.%NZ' >> "$GITHUB_OUTPUT"
+        run: date -u +'started_at=%Y-%m-%dT%H:%M:%S.%NZ' >>"$GITHUB_OUTPUT"
       - name: Verify revision and production health
         id: verify
         env:

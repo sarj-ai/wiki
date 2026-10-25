@@ -397,6 +397,25 @@ async def test_document_transform_admission_caps_all_active_owner_tasks() -> Non
     assert session.rollbacks == 1
 
 
+@pytest.mark.parametrize("counts", [(None, 0), (0, None), ("20", 0), (0, 10.5)])
+async def test_invalid_database_counts_fail_closed_before_task_admission(
+    counts: tuple[object, object],
+) -> None:
+    row = _task(request_hash="0" * 64)
+    session = _Session(True, None, None, None, counts)
+
+    with pytest.raises(TypeError, match="Active task count query returned an invalid value"):
+        await _service(session).create_or_replay(
+            kind=TaskKind.FILE_DOCUMENT_TRANSFORM,
+            owner_user_id=row.owner_user_id,
+            idempotency_key=row.idempotency_key,
+            payload=_in_place_payload(),
+        )
+
+    assert session.commits == 0
+    assert not any("INSERT INTO tasks" in str(statement) for statement in session.statements)
+
+
 async def test_document_transform_admission_replay_precedes_owner_cap() -> None:
     payload = _in_place_payload()
     serialized = task_service_module._serialize(payload)

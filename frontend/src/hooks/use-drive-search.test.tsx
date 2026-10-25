@@ -277,7 +277,7 @@ it("disables closed-palette reads without cancelling a shared foreground consume
     render(true);
     await vi.waitFor(() => expect(search).toHaveBeenCalledOnce());
     const signal = search.mock.calls[0]?.[2];
-    const foreground = client.fetchQuery({
+    const foreground = client.query({
       queryFn: async () => await WIKI_READ_API.driveSearch("roadmap", 10),
       queryKey: ["wiki", "drive-search", "roadmap"],
     });

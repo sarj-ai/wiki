@@ -98,7 +98,7 @@ describe("sparse optimistic entry ownership", () => {
 
   it("abandons rollback after a fresh read, including structurally equal optimistic values", async () => {
     const old = patch("a", "equal-to-server");
-    await client.fetchQuery({
+    await client.query({
       queryKey: KEY,
       queryFn: () => [{ id: "a", value: "equal-to-server" }],
     });
@@ -133,7 +133,7 @@ describe("sparse optimistic entry ownership", () => {
 
   it("does not resurrect a removed entry after a fresh read confirmed its absence", async () => {
     const old = patch("a", undefined);
-    await client.fetchQuery({ queryKey: KEY, queryFn: () => [] });
+    await client.query({ queryKey: KEY, queryFn: () => [] });
     old.rollback();
     old.settle();
     expect(client.getQueryData(KEY)).toEqual([]);

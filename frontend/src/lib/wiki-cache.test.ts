@@ -534,7 +534,7 @@ describe("optimisticMoveFile", () => {
       { driveId: "drive-1", parentFolderId: "folder-b" },
       { driveId: "drive-1", parentFolderId: undefined },
     );
-    await qc.fetchQuery({ queryKey: key, queryFn: () => qc.getQueryData<DriveTree>(key) });
+    await qc.query({ queryKey: key, queryFn: () => qc.getQueryData<DriveTree>(key) });
     old();
     expect(qc.getQueryData<DriveTree>(key)?.files[0]?.parentId).toBe("folder-b");
     const retired = optimisticMoveFile(

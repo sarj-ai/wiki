@@ -50,7 +50,7 @@ function RecoverBrowserSessionBoundary({ children }: { children: React.ReactNode
     void (async () => {
       // A fresh read may share the account menu's in-flight query. Cached
       // profiles alone cannot establish a browser persistence namespace.
-      const user = await queryClient.fetchQuery({ ...currentUserQueryOptions(), staleTime: 0 });
+      const user = await queryClient.query({ ...currentUserQueryOptions(), staleTime: 0 });
       if (lifetime.signal.aborted || !claimVerifiedBrowserUser(queryClient, user.id, session))
         return;
       setCurrentUserId(user.id);

@@ -299,8 +299,8 @@ class NativeOAuthHTTPGuard:
             settings.register_path: NativeOAuthEndpoint.REGISTER,
             settings.revoke_path: NativeOAuthEndpoint.REVOKE,
         }
-        # Installed MCP 1.29.1 authorize handler logs provider exceptions. Filter
-        # that exact logger only during guarded requests, before handler sinks.
+        # Authorization-provider exceptions can include private details. Filter
+        # that logger only during guarded requests, before handler sinks.
         logging.getLogger("mcp.server.auth.handlers.authorize").addFilter(_LOG_FILTER)
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
@@ -314,7 +314,11 @@ class NativeOAuthHTTPGuard:
                 body = await self._read(scope, receive, endpoint)
             nonce = self._validate(scope, body, endpoint)
         except ValueError, UnicodeError, RecursionError, TimeoutError:
-            error = "invalid_client_metadata" if endpoint == "register" else "invalid_request"
+            error = (
+                "invalid_client_metadata"
+                if endpoint is NativeOAuthEndpoint.REGISTER
+                else "invalid_request"
+            )
             await JSONResponse(
                 {"error": error, "error_description": "Invalid OAuth request"},
                 status_code=400,
@@ -322,8 +326,7 @@ class NativeOAuthHTTPGuard:
             )(scope, receive, send)
             return
         if endpoint is NativeOAuthEndpoint.REVOKE:
-            # SDK1.29 requires nullable client_secret to be present. Public
-            # requests were validated above; inject only the empty value.
+            # Normalize validated public revocations with an empty client_secret field.
             body = urlencode(
                 {**_fields(body, public_revocation=True), "client_secret": ""}
             ).encode()
@@ -423,7 +426,7 @@ class NativeOAuthHTTPGuard:
         headers = scope.get("headers", [])
         _validate_headers(headers)
         method = scope.get("method")
-        if method != ("GET" if endpoint == "authorize" else "POST"):
+        if method != ("GET" if endpoint is NativeOAuthEndpoint.AUTHORIZE else "POST"):
             raise NativeOAuthRequestError
         if len(scope.get("query_string", b"")) > _BODY_LIMIT:
             raise NativeOAuthRequestError
@@ -440,13 +443,13 @@ class NativeOAuthHTTPGuard:
             chunks.extend(chunk)
             if not message.get("more_body", False):
                 break
-        if endpoint == "authorize" and chunks:
+        if endpoint is NativeOAuthEndpoint.AUTHORIZE and chunks:
             raise NativeOAuthRequestError
         if endpoint != "authorize":
             content_type = dict(headers).get(b"content-type", b"").split(b";", 1)[0].strip()
             expected = (
                 b"application/json"
-                if endpoint == "register"
+                if endpoint is NativeOAuthEndpoint.REGISTER
                 else b"application/x-www-form-urlencoded"
             )
             if content_type != expected:
@@ -455,20 +458,23 @@ class NativeOAuthHTTPGuard:
 
     def _validate(self, scope: Scope, body: bytes, endpoint: NativeOAuthEndpoint) -> str | None:
         settings = self._settings
-        if endpoint == "register":
+        if endpoint is NativeOAuthEndpoint.REGISTER:
             _registration(body, settings.redirect_policy)
             return None
         values = _fields(
-            scope.get("query_string", b"") if endpoint == "authorize" else body,
+            scope.get("query_string", b"") if endpoint is NativeOAuthEndpoint.AUTHORIZE else body,
             public_revocation=endpoint is NativeOAuthEndpoint.REVOKE,
         )
         validate_registered_client_id(values.get("client_id", ""))
         _scope(values.get("scope"))
-        if endpoint in {"authorize", "token"} and values.get("resource") != settings.resource:
+        if (
+            endpoint in {NativeOAuthEndpoint.AUTHORIZE, NativeOAuthEndpoint.TOKEN}
+            and values.get("resource") != settings.resource
+        ):
             raise NativeOAuthRequestError
-        if endpoint == "authorize":
+        if endpoint is NativeOAuthEndpoint.AUTHORIZE:
             return self._validate_authorize(scope, values)
-        if endpoint == "token":
+        if endpoint is NativeOAuthEndpoint.TOKEN:
             self._validate_token(values)
         elif not {"client_id", "token"} <= set(values) <= {
             "client_id",

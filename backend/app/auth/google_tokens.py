@@ -189,6 +189,9 @@ class GoogleTokenManager:
 
     def _provider_sessions(self) -> async_sessionmaker[AsyncSession]:
         bind = self._db.bind
+        if bind is None:
+            message = "Google token provider sessions require a database bind"
+            raise RuntimeError(message)
         # A caller may bind its session to an existing transaction. Use its
         # engine, never that connection, for the credential lease and CAS.
         engine = bind if isinstance(bind, AsyncEngine) else bind.engine

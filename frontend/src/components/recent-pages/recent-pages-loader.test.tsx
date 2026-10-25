@@ -315,7 +315,7 @@ describe("RecentPagesLoader", () => {
     await vi.waitFor(() => expect(host).toHaveTextContent("Private page"));
     client.setQueryData(["wiki", "file", page.id], page);
     await expect(
-      client.fetchQuery({
+      client.query({
         queryFn: () => {
           throw new ApiError(403, "Permission denied");
         },
@@ -351,14 +351,16 @@ describe("RecentPagesLoader", () => {
     if (!scope) throw new Error("Recent-page scope missing");
     const previousKey = recentPagesQueryOptions(scope, [page.id]).queryKey;
     const prefetched =
-      mode === "prefetch" ? client.prefetchQuery(recentPagesQueryOptions(scope, [page.id])) : null;
+      mode === "prefetch"
+        ? client.query(recentPagesQueryOptions(scope, [page.id])).catch(() => null)
+        : null;
     await vi.waitFor(() => expect(getRecentFiles).toHaveBeenCalledOnce());
     const signal = getRecentFiles.mock.calls[0]?.[1];
     switch (change) {
       case 403:
       case 404:
         await client
-          .fetchQuery({
+          .query({
             queryFn: () => {
               throw new ApiError(change, "Permission denied");
             },
@@ -417,7 +419,7 @@ describe("RecentPagesLoader", () => {
       if (!scope) throw new Error("Recent-page scope missing");
       const prefetched =
         mode === "prefetch"
-          ? client.prefetchQuery(recentPagesQueryOptions(scope, [page.id]))
+          ? client.query(recentPagesQueryOptions(scope, [page.id])).catch(() => null)
           : null;
       await vi.waitFor(() => expect(getRecentFiles).toHaveBeenCalledOnce());
       const signal = getRecentFiles.mock.calls[0]?.[1];

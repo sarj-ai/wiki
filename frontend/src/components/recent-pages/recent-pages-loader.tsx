@@ -60,7 +60,7 @@ function UserRecentPages({ scope }: { scope: RecentPagesScope }) {
         setFileIds(ids);
         const retry = async () => {
           try {
-            await scope.queryClient.fetchQuery({
+            await scope.queryClient.query({
               ...recentPagesQueryOptions(scope, ids),
               staleTime: 0,
             });

@@ -29,7 +29,7 @@ repos:
         name: "sarj-config: strict Markdown"
         entry: markdownlint-cli2 --config .markdownlint.yaml
         language: node
-        additional_dependencies: [markdownlint-cli2@0.23.2]
+        additional_dependencies: [markdownlint-cli2@0.24.0]
         types: [markdown]
       - id: sarj-strict-taplo
         name: "sarj-config: strict TOML"

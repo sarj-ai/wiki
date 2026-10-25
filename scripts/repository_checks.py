@@ -40,7 +40,7 @@ def check_node() -> None:
     if match is None or tuple(map(int, match.groups())) < (26, 7, 0):
         message = (
             f"node >= 26.7.0 required (found {version}). Run mise install or "
-            "mise exec node@26.7.0 -- make check."
+            "mise exec -- make check."
         )
         raise ValueError(message)
 

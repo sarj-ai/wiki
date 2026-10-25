@@ -13,7 +13,7 @@ export function fetchAuthorizedFile(
   const options = fileQueryOptions(fileId);
   const failed = queryClient.getQueryState(options.queryKey)?.status === "error";
   return queryClient
-    .fetchQuery(failed ? { ...options, staleTime: 0 } : options)
+    .query(failed ? { ...options, staleTime: 0 } : options)
     .catch((error: unknown) => {
       if (!(error instanceof CancelledError) && !isAbortError(error))
         console.warn("Document metadata authorization failed");
