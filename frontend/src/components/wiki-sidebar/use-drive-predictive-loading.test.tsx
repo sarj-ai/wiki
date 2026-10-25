@@ -1,5 +1,5 @@
 // @vitest-environment happy-dom
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { CancelledError, QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { flushSync } from "react-dom";
 import { createRoot, type Root } from "react-dom/client";
 
@@ -80,7 +80,7 @@ describe("useDrivePredictiveLoading", () => {
   it("shares one preparation continuation across four overlapping primary activations", async () => {
     const pending = Promise.withResolvers<DriveTree>();
     API.getDriveFolders.mockReturnValue(pending.promise);
-    const prepare = vi.spyOn(queryClient, "prefetchQuery");
+    const prepare = vi.spyOn(queryClient, "query");
     mount();
     for (let index = 0; index < 4; index += 1) pointer("pointerdown", "mouse");
     await advance(0);
@@ -116,6 +116,22 @@ describe("useDrivePredictiveLoading", () => {
     await advance(0);
     expect(API.getDriveFolders).toHaveBeenCalledTimes(3);
     expect(API.getFolderFiles).toHaveBeenCalledTimes(2);
+  });
+
+  it.each(["query", "abort"] as const)("keeps canceled %s preparations quiet", async (kind) => {
+    const warn = vi.spyOn(console, "warn");
+    const error =
+      kind === "query"
+        ? new CancelledError()
+        : new DOMException("The hover read was retired", "AbortError");
+    API.getDriveFolders.mockRejectedValueOnce(error);
+    mount();
+    pointer("pointerdown", "mouse");
+    await advance(0);
+
+    expect(API.getDriveFolders).toHaveBeenCalledOnce();
+    expect(API.getFolderFiles).not.toHaveBeenCalled();
+    expect(warn).not.toHaveBeenCalled();
   });
 
   it("cancels speculative work after the last intent leaves", async () => {

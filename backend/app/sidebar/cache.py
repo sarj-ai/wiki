@@ -594,7 +594,7 @@ def _tree_transaction_epoch() -> ColumnElement[int]:
 
 
 @cache
-def _tree_refreshed_statement() -> Select[tuple[datetime]]:
+def _tree_refreshed_statement() -> Select[datetime]:
     return select(DriveTreeCache.refreshed_at).where(
         DriveTreeCache.user_id == bindparam("tree_user_id", type_=Uuid),
         DriveTreeCache.drive_id == bindparam("tree_drive_id", type_=Text),
@@ -604,7 +604,7 @@ def _tree_refreshed_statement() -> Select[tuple[datetime]]:
 @lru_cache(maxsize=4)
 def _tree_read_statement(
     transaction_epoch: ColumnElement[int], *, warm: bool
-) -> Select[tuple[datetime, int, str, str, str]]:
+) -> Select[datetime, int, str, str, str]:
     transaction_id = _tree_transaction_id()
     tuple_location = _tree_tuple_location()
     ciphertext: ColumnElement[str] = cast(DriveTreeCache.tree, Text)
@@ -637,7 +637,7 @@ def _tree_read_statement(
 @lru_cache(maxsize=4)
 def _conditional_tree_read_statement(
     transaction_epoch: ColumnElement[int], *, warm: bool
-) -> Select[tuple[datetime, int, str, str, str]]:
+) -> Select[datetime, int, str, str, str]:
     # Exact canonical request timestamps mask both identity work and ciphertext
     # on304. Changed rows retain the same exact decoded-version masking rule.
     unchanged = DriveTreeCache.refreshed_at == bindparam(

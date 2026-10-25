@@ -179,7 +179,7 @@ describe("admitted Move ownership above the responsive sidebar", () => {
 
   function toggle(): HTMLButtonElement {
     const element = host.querySelector('[data-slot="sidebar-trigger"]');
-    if (!(element instanceof HTMLButtonElement)) throw new Error("Sidebar toggle missing");
+    if (!(element instanceof HTMLButtonElement)) throw new TypeError("Sidebar toggle missing");
     return element;
   }
 
@@ -201,7 +201,7 @@ describe("admitted Move ownership above the responsive sidebar", () => {
     const dialog = [...document.querySelectorAll('[role="dialog"]')].find((element) =>
       element.textContent.includes(`Move “${ITEM.currentName}”`),
     );
-    if (!(dialog instanceof HTMLElement)) throw new Error("Move dialog missing");
+    if (!(dialog instanceof HTMLElement)) throw new TypeError("Move dialog missing");
     return dialog;
   }
 
@@ -209,7 +209,7 @@ describe("admitted Move ownership above the responsive sidebar", () => {
     const opener = document.querySelector(
       `button[aria-label="Actions for ${CSS.escape(ITEM.currentName)}"]`,
     );
-    if (!(opener instanceof HTMLButtonElement)) throw new Error("Actions trigger missing");
+    if (!(opener instanceof HTMLButtonElement)) throw new TypeError("Actions trigger missing");
     flushSync(() => {
       opener.focus();
       opener.dispatchEvent(new KeyboardEvent("keydown", { bubbles: true, key: "Enter" }));
@@ -218,7 +218,7 @@ describe("admitted Move ownership above the responsive sidebar", () => {
     const action = [...document.querySelectorAll('[role="menuitem"]')].find(
       (element) => element.textContent === "Move to…",
     );
-    if (!(action instanceof HTMLElement)) throw new Error("Move action missing");
+    if (!(action instanceof HTMLElement)) throw new TypeError("Move action missing");
     flushSync(() => action.click());
     await vi.waitFor(() => expect(document.body).toHaveTextContent(`Move “${ITEM.currentName}”`));
     await vi.advanceTimersByTimeAsync(0);
@@ -369,7 +369,7 @@ describe("admitted Move ownership above the responsive sidebar", () => {
         if (authority === "session") {
           flushSync(() => retireMutationSession(client));
         } else {
-          await client.fetchQuery({
+          await client.query({
             queryKey: wikiKeys.file(ITEM.fileId),
             queryFn: () => {
               throw new ApiError(authority, "Denied");
@@ -465,7 +465,7 @@ describe("admitted Move ownership above the responsive sidebar", () => {
       flushSync(() => button("Destination").click());
       render({ width: 390 });
       expect(document.querySelector("[data-source-child]")).toBeNull();
-      await client.fetchQuery({
+      await client.query({
         queryKey: wikiKeys.file(ITEM.fileId),
         queryFn: () => file,
       });
@@ -522,7 +522,7 @@ describe("admitted Move ownership above the responsive sidebar", () => {
       const dialog = document.querySelector('[role="dialog"]');
       render({ width: 390 });
       expect(document.querySelector("[data-source-child]")).toBeNull();
-      await client.fetchQuery({
+      await client.query({
         queryKey: wikiKeys.file(ITEM.fileId),
         queryFn: () => file,
       });
@@ -541,7 +541,7 @@ describe("admitted Move ownership above the responsive sidebar", () => {
       render();
       await openMove();
       await expect(
-        client.fetchQuery({
+        client.query({
           queryKey: wikiKeys.file(ITEM.fileId),
           queryFn: () => {
             throw new ApiError(status, "Denied");
@@ -599,7 +599,7 @@ function button(text: string): HTMLButtonElement {
   const result = [...document.querySelectorAll("button")].find(
     (element) => element.textContent === text,
   );
-  if (!(result instanceof HTMLButtonElement)) throw new Error(`Missing ${text}`);
+  if (!(result instanceof HTMLButtonElement)) throw new TypeError(`Missing ${text}`);
   return result;
 }
 

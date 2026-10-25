@@ -74,7 +74,7 @@ describe("idle document warmup ownership", () => {
       client.setQueryData(["wiki", "file", "recent"], FILE);
       vi.mocked(WIKI_READ_API.getFile).mockRejectedValue(new ApiError(status, "Read denied"));
       await client
-        .fetchQuery({
+        .query({
           queryKey: ["wiki", "file", "recent"],
           queryFn: async () => await WIKI_READ_API.getFile("recent"),
           staleTime: 0,

@@ -58,7 +58,7 @@ jobs:
           persist-credentials: false
 
       - name: Install uv
-        uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+        uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
         with:
           version-file: backend/uv.toml
           enable-cache: true
@@ -68,14 +68,16 @@ jobs:
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ~/.cache/pre-commit
-          key: pre-commit-v4.6.2-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('backend/.python-version', '.pre-commit-config.yaml') }}
+          key: pre-commit-v4.7.0-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('backend/.python-version', '.pre-commit-config.yaml') }}
 
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
-          node-version: 26.7.0
+          node-version: 26.12.1
           cache: npm
           cache-dependency-path: frontend/package-lock.json
 
+      - name: Activate declared npm version
+        run: npm install --global npm@12.2.1 --ignore-scripts
       - name: Install analysis dependencies
         run: uv sync --locked --project backend
       - name: Install frontend analysis dependencies
@@ -101,7 +103,7 @@ jobs:
       - name: Install pinned Terraform
         uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e # v4.0.1
         with:
-          terraform_version: 1.15.8
+          terraform_version: 1.17.0
           terraform_wrapper: false
 
       - name: Initialize locked local Terraform providers
@@ -125,7 +127,7 @@ jobs:
           persist-credentials: false
 
       - name: Install uv
-        uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+        uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
         with:
           version-file: backend/uv.toml
           enable-cache: true

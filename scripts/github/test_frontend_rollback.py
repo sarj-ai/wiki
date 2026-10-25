@@ -313,7 +313,7 @@ def test_workflow_uses_same_fresh_receipt_for_deploy_and_recovery(
         "run",
         "--no-project",
         "--with",
-        "typer==0.27.2",
+        "typer==0.27.3",
         "--python",
         "3.14",
         "python",

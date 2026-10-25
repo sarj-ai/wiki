@@ -21,7 +21,7 @@ const MOCKS = vi.hoisted(() => ({
     mimeType: "application/vnd.google-apps.document",
     name: "Document one",
   })),
-  prefetchQuery: vi.fn().mockResolvedValue(undefined),
+  query: vi.fn().mockResolvedValue(undefined),
   prefetchRoute: vi.fn(),
   strongIntent: vi.fn(),
 }));
@@ -29,8 +29,8 @@ const MOCKS = vi.hoisted(() => ({
 vi.mock("@tanstack/react-query", () => ({
   queryOptions: (options: unknown) => options,
   useQueryClient: () => ({
-    fetchQuery: async (...options: unknown[]) => {
-      await MOCKS.prefetchQuery(...options);
+    query: async (...options: unknown[]) => {
+      await MOCKS.query(...options);
       return MOCKS.getQueryData();
     },
     getQueryState: vi.fn(),
@@ -51,7 +51,7 @@ describe("predictive document intent", () => {
     setNavigatorHint("connection", undefined);
     setNavigatorHint("deviceMemory", undefined);
     useDocViewerStore.getState().reset();
-    MOCKS.prefetchQuery.mockReset().mockResolvedValue(undefined);
+    MOCKS.query.mockReset().mockResolvedValue(undefined);
     MOCKS.prefetchRoute.mockClear();
     MOCKS.strongIntent.mockClear();
     container = document.createElement("div");
@@ -77,12 +77,12 @@ describe("predictive document intent", () => {
 
     dispatchPointer(link, "pointerover", { pointerType: "mouse" });
     advance(DOCUMENT_INTENT_PREFETCH_MS - 1);
-    expect(MOCKS.prefetchQuery).not.toHaveBeenCalled();
+    expect(MOCKS.query).not.toHaveBeenCalled();
     expect(MOCKS.prefetchRoute).not.toHaveBeenCalled();
 
     advance(1);
-    expect(MOCKS.prefetchQuery).toHaveBeenCalledOnce();
-    expect(MOCKS.prefetchQuery.mock.calls[0]?.[0]).toMatchObject({
+    expect(MOCKS.query).toHaveBeenCalledOnce();
+    expect(MOCKS.query.mock.calls[0]?.[0]).toMatchObject({
       queryKey: ["wiki", "file", "doc-1"],
     });
     expect(MOCKS.prefetchRoute).toHaveBeenCalledExactlyOnceWith("/d/doc-1");
@@ -116,7 +116,7 @@ describe("predictive document intent", () => {
     dispatchPointer(link, "pointerout", { pointerType: "pen" });
     advance(50);
 
-    expect(MOCKS.prefetchQuery).toHaveBeenCalledOnce();
+    expect(MOCKS.query).toHaveBeenCalledOnce();
     dispatch(link, "focusout");
     advance(DOCUMENT_INTENT_PREWARM_MS);
     expect(useDocViewerStore.getState().prewarm).toBeNull();
@@ -130,7 +130,7 @@ describe("predictive document intent", () => {
     dispatchPointer(link, "pointerout", { pointerType: "mouse" });
     advance(DOCUMENT_INTENT_PREWARM_MS);
 
-    expect(MOCKS.prefetchQuery).not.toHaveBeenCalled();
+    expect(MOCKS.query).not.toHaveBeenCalled();
     expect(MOCKS.prefetchRoute).not.toHaveBeenCalled();
     expect(useDocViewerStore.getState().prewarm).toBeNull();
 
@@ -140,19 +140,19 @@ describe("predictive document intent", () => {
     });
     root = null;
     advance(DOCUMENT_INTENT_PREWARM_MS);
-    expect(MOCKS.prefetchQuery).not.toHaveBeenCalled();
+    expect(MOCKS.query).not.toHaveBeenCalled();
   });
 
   it.each(["hover leaves", "row unmounts", "Save-Data", "hidden tab", "disabled row"])(
     "discards authorized weak prewarm after %s while retaining its reusable authorization",
     async (scenario) => {
       const authorization = Promise.withResolvers<undefined>();
-      MOCKS.prefetchQuery.mockReturnValue(authorization.promise);
+      MOCKS.query.mockReturnValue(authorization.promise);
       renderHarness(root);
       const link = getLink(container);
       dispatchPointer(link, "pointerover", { pointerType: "mouse" });
       advance(DOCUMENT_INTENT_PREWARM_MS);
-      expect(MOCKS.prefetchQuery).toHaveBeenCalledTimes(2);
+      expect(MOCKS.query).toHaveBeenCalledTimes(2);
 
       switch (scenario) {
         case "hover leaves": {
@@ -184,13 +184,13 @@ describe("predictive document intent", () => {
       await flushAsync();
 
       expect(useDocViewerStore.getState().prewarm).toBeNull();
-      expect(MOCKS.prefetchQuery).toHaveBeenCalledTimes(2);
+      expect(MOCKS.query).toHaveBeenCalledTimes(2);
     },
   );
 
   it("does not attach an old hover authorization to a new hover generation", async () => {
     const authorization = Promise.withResolvers<undefined>();
-    MOCKS.prefetchQuery.mockReturnValue(authorization.promise);
+    MOCKS.query.mockReturnValue(authorization.promise);
     renderHarness(root);
     const link = getLink(container);
     dispatchPointer(link, "pointerover", { pointerType: "mouse" });
@@ -209,7 +209,7 @@ describe("predictive document intent", () => {
 
   it("lets committed navigation publish after its sidebar row unmounts", async () => {
     const authorization = Promise.withResolvers<undefined>();
-    MOCKS.prefetchQuery.mockReturnValue(authorization.promise);
+    MOCKS.query.mockReturnValue(authorization.promise);
     renderHarness(root);
     dispatchPointer(getLink(container), "pointerdown", { button: 0, pointerType: "mouse" });
     flushSync(() => root?.unmount());
@@ -218,14 +218,14 @@ describe("predictive document intent", () => {
     await flushAsync();
 
     expect(useDocViewerStore.getState().prewarm).toMatchObject({ fileId: "doc-1" });
-    expect(MOCKS.prefetchQuery).toHaveBeenCalledOnce();
+    expect(MOCKS.query).toHaveBeenCalledOnce();
   });
 
   it("discards committed prewarm when its browser session retires", async () => {
     const owner = {};
     claimBrowserSession(owner);
     const authorization = Promise.withResolvers<undefined>();
-    MOCKS.prefetchQuery.mockReturnValue(authorization.promise);
+    MOCKS.query.mockReturnValue(authorization.promise);
     renderHarness(root);
     dispatchPointer(getLink(container), "pointerdown", { button: 0, pointerType: "mouse" });
     retireBrowserSession(owner);
@@ -233,7 +233,7 @@ describe("predictive document intent", () => {
     await flushAsync();
 
     expect(useDocViewerStore.getState().prewarm).toBeNull();
-    expect(MOCKS.prefetchQuery).toHaveBeenCalledOnce();
+    expect(MOCKS.query).toHaveBeenCalledOnce();
   });
 
   it("flushes all stages for an unmodified primary pointerdown without rescheduling on focus", async () => {
@@ -245,11 +245,11 @@ describe("predictive document intent", () => {
     dispatch(link, "focusin");
 
     expect(MOCKS.strongIntent).toHaveBeenCalledOnce();
-    expect(MOCKS.prefetchQuery).toHaveBeenCalledOnce();
+    expect(MOCKS.query).toHaveBeenCalledOnce();
     expect(MOCKS.prefetchRoute).toHaveBeenCalledOnce();
     expect(useDocViewerStore.getState().prewarm).toMatchObject({ fileId: "doc-1" });
     advance(DOCUMENT_INTENT_PREWARM_MS);
-    expect(MOCKS.prefetchQuery).toHaveBeenCalledOnce();
+    expect(MOCKS.query).toHaveBeenCalledOnce();
   });
 
   it("ignores modified pointerdown but flushes a keyboard or assistive click", async () => {
@@ -261,12 +261,12 @@ describe("predictive document intent", () => {
       ctrlKey: true,
       pointerType: "mouse",
     });
-    expect(MOCKS.prefetchQuery).not.toHaveBeenCalled();
+    expect(MOCKS.query).not.toHaveBeenCalled();
 
     dispatch(link, "click", { detail: 0 });
     await flushAsync();
     expect(MOCKS.strongIntent).toHaveBeenCalledOnce();
-    expect(MOCKS.prefetchQuery).toHaveBeenCalledOnce();
+    expect(MOCKS.query).toHaveBeenCalledOnce();
     expect(MOCKS.prefetchRoute).toHaveBeenCalledOnce();
     expect(useDocViewerStore.getState().prewarm).toMatchObject({ fileId: "doc-1" });
   });
@@ -286,12 +286,12 @@ describe("predictive document intent", () => {
 
     dispatchPointer(link, "pointerover", { pointerType: "mouse" });
     advance(DOCUMENT_INTENT_PREWARM_MS);
-    expect(MOCKS.prefetchQuery).not.toHaveBeenCalled();
+    expect(MOCKS.query).not.toHaveBeenCalled();
     expect(useDocViewerStore.getState().prewarm).toBeNull();
 
     dispatchPointer(link, "pointerdown", { button: 0, pointerType: "mouse" });
     await flushAsync();
-    expect(MOCKS.prefetchQuery).toHaveBeenCalledOnce();
+    expect(MOCKS.query).toHaveBeenCalledOnce();
     expect(useDocViewerStore.getState().prewarm).toMatchObject({ fileId: "doc-1" });
   });
 
@@ -307,7 +307,7 @@ describe("predictive document intent", () => {
     dispatchPointer(getControl(), "pointerover", { pointerType: "mouse" });
     advance(DOCUMENT_INTENT_PREWARM_MS);
 
-    expect(MOCKS.prefetchQuery).toHaveBeenCalledOnce();
+    expect(MOCKS.query).toHaveBeenCalledOnce();
     expect(MOCKS.prefetchRoute).toHaveBeenCalledOnce();
     expect(useDocViewerStore.getState().prewarm).toBeNull();
   });
@@ -321,7 +321,7 @@ describe("predictive document intent", () => {
     advance(DOCUMENT_INTENT_PREWARM_MS);
 
     expect(MOCKS.strongIntent).not.toHaveBeenCalled();
-    expect(MOCKS.prefetchQuery).not.toHaveBeenCalled();
+    expect(MOCKS.query).not.toHaveBeenCalled();
     expect(MOCKS.prefetchRoute).not.toHaveBeenCalled();
     expect(useDocViewerStore.getState().prewarm).toBeNull();
   });

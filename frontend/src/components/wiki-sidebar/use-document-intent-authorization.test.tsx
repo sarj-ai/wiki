@@ -120,7 +120,7 @@ describe("document intent authorization outcome", () => {
       client.setQueryData(wikiKeys.file(FILE.id), FILE);
       vi.mocked(WIKI_READ_API.getFile).mockRejectedValue(new ApiError(status, "Read denied"));
       await client
-        .fetchQuery({
+        .query({
           queryFn: async () => await WIKI_READ_API.getFile(FILE.id),
           queryKey: wikiKeys.file(FILE.id),
           staleTime: 0,
@@ -166,7 +166,7 @@ describe("document intent authorization outcome", () => {
     client.setQueryData(wikiKeys.file(FILE.id), FILE);
     vi.mocked(WIKI_READ_API.getFile).mockRejectedValue(new ApiError(403, "Read denied"));
     await client
-      .fetchQuery({
+      .query({
         queryFn: async () => await WIKI_READ_API.getFile(FILE.id),
         queryKey: wikiKeys.file(FILE.id),
         staleTime: 0,
@@ -182,7 +182,7 @@ describe("document intent authorization outcome", () => {
       ),
     );
     const link = host.querySelector("a[href='#document']");
-    if (!(link instanceof HTMLAnchorElement)) throw new Error("Intent link missing");
+    if (!(link instanceof HTMLAnchorElement)) throw new TypeError("Intent link missing");
     flushSync(() => link.click());
     await vi.advanceTimersByTimeAsync(0);
     expect(host.textContent).toContain("Can't load this file");

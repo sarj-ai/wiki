@@ -4,11 +4,15 @@ import json
 import os
 from pathlib import Path
 import subprocess  # ruff: ignore[suspicious-subprocess-import] -- fixed repository verifier
+from typing import TYPE_CHECKING
 
 import pytest
 from scripts.backend_release import recovery
 import yaml
 
+
+if TYPE_CHECKING:
+    from scripts.github.release_gate import JsonObject
 
 SOURCE_SHA = "3c5937f7a559fc23ec655dd845efbdbac300943d"
 VERIFIER_SHA = "d" * 40
@@ -525,14 +529,14 @@ def test_recovery_job_is_exclusive_and_contains_no_deployment_mutations() -> Non
     script_calls = [step["run"] for step in steps if "run" in step]
     assert script_calls == [
         (
-            "uv run --no-project --with typer==0.27.2 --python 3.14 "
+            "uv run --no-project --with typer==0.27.3 --python 3.14 "
             'python -m scripts.backend_release.recovery --verifier-sha "$GITHUB_SHA" '
             'source --run-id "$SOURCE_RUN_ID" --run-attempt "$SOURCE_RUN_ATTEMPT" '
-            '--github-output >> "$GITHUB_OUTPUT"'
+            '--github-output >>"$GITHUB_OUTPUT"'
         ),
         "bash scripts/backend_release/verify-serving.sh",
         "scripts/github/verify-smart-create-queue.sh",
-        "date -u +'started_at=%Y-%m-%dT%H:%M:%S.%NZ' >> \"$GITHUB_OUTPUT\"",
+        "date -u +'started_at=%Y-%m-%dT%H:%M:%S.%NZ' >>\"$GITHUB_OUTPUT\"",
         "scripts/github/verify-backend-production-health.sh",
         "scripts/github/resolve-mcp-release-mode.sh",
         "scripts/github/verify-mcp-release.sh",
@@ -737,7 +741,9 @@ def test_mcp_disabled_inventory_covers_browser_route_shapes(tmp_path: Path) -> N
 
 
 def _mcp_revision(*, enabled: bool) -> dict:
-    env = [{"name": "MCP_NATIVE_ENABLED", "value": str(enabled).lower()}]
+    env: list[JsonObject] = [
+        {"name": "MCP_NATIVE_ENABLED", "value": str(enabled).lower()}
+    ]
     if enabled:
         env.extend(
             [

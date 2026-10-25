@@ -20,6 +20,7 @@ import { useBrowserUserId } from "@/lib/browser-user-context";
 import { displayFileName, isGoogleWorkspaceType, renderNodeIcon } from "@/lib/file-icons";
 import { openUrlFor } from "@/lib/file-urls";
 import { folderAncestorIds } from "@/lib/folder-ancestor-ids";
+import { handlePrefetchError } from "@/lib/handle-prefetch-error";
 import { resolveShortcutTarget, SHORTCUT_INACCESSIBLE_TOOLTIP } from "@/lib/shortcut-resolver";
 import { allowsReusableSpeculation, readNavigatorHints } from "@/lib/speculation-policy";
 import { cn } from "@/lib/utils";
@@ -79,7 +80,7 @@ export function CommandPalette() {
     if (result.shortcutInaccessible) return;
     const target = resolveShortcutTarget(result);
     if (target.targetMimeType === MIME_FORM || target.targetMimeType === MIME_FOLDER) return;
-    void qc.prefetchQuery(fileQueryOptions(target.targetId));
+    void qc.query(fileQueryOptions(target.targetId)).catch(handlePrefetchError);
     router.prefetch(`/d/${encodeURIComponent(target.targetId)}`);
   };
   const schedulePrepareResult = useDebouncedCallback((result: DriveSearchResult) => {

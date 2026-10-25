@@ -75,7 +75,7 @@ describe("query provider session ownership", () => {
     const pending = Promise.withResolvers<string>();
     let signal: AbortSignal | undefined;
     const retiredRead = retiredClient
-      .fetchQuery({
+      .query({
         queryFn: async (context) => {
           signal = context.signal;
           return await pending.promise;
@@ -158,7 +158,8 @@ describe("query provider session ownership", () => {
     await vi.advanceTimersByTimeAsync(0);
     expect(fetch).toHaveBeenCalledOnce();
     const request = fetch.mock.calls[0]?.[0];
-    if (!(request instanceof Request)) throw new Error("Expected the generated mutation request");
+    if (!(request instanceof Request))
+      throw new TypeError("Expected the generated mutation request");
 
     renderProvider("user-b");
     expect(request.signal.aborted).toBe(false);
@@ -176,7 +177,7 @@ describe("query provider session ownership", () => {
     vi.stubGlobal("fetch", fetch);
     renderProvider("user-a");
     const retiredRead = client
-      .fetchQuery({
+      .query({
         queryFn: async ({ signal }) =>
           await wikiReadHttp("/files/old-user", z.object({ value: z.string() }), {}, signal),
         queryKey: ["private-http-document"],
@@ -290,7 +291,7 @@ describe("query provider session ownership", () => {
       .fn<() => Promise<string>>()
       .mockRejectedValue(new ApiError(401, "Current session expired"));
     await client
-      .fetchQuery({
+      .query({
         queryFn: deniedRead,
         queryKey: ["current-document"],
       })

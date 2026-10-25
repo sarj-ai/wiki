@@ -11,7 +11,7 @@ describe("authenticated session cleanup", () => {
       id: string;
       name: string;
     }>();
-    const pending = queryClient.fetchQuery({
+    const pending = queryClient.query({
       queryFn: async () => await upstream,
       queryKey: ["wiki", "file", "private-file"],
     });

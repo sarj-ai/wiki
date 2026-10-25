@@ -17,7 +17,7 @@ def test_cold_quality_checks_initialize_locked_local_providers_after_tool_setup(
     initialize = (
         "terraform -chdir=terraform init -backend=false -input=false -lockfile=readonly"
     )
-    standards_initialize = f"mise --no-config --no-env --no-hooks exec aqua:hashicorp/terraform@1.15.8 -- {initialize}"
+    standards_initialize = f"mise --no-config --no-env --no-hooks exec aqua:hashicorp/terraform@1.17.0 -- {initialize}"
     manifest = tomllib.loads((ROOT / ".sarj-standards.toml").read_text())
     assert manifest["ci"]["bootstrap"] == [
         "npm --prefix frontend run patches:apply",
@@ -98,9 +98,7 @@ def test_iac_validation_uses_locked_provider_cache_without_weakening_gates() -> 
     steps = job["steps"]
     assert all("continue-on-error" not in step for step in steps)
     terraform_index = next(
-        index
-        for index, step in enumerate(steps)
-        if step.get("run") == "make check-iac"
+        index for index, step in enumerate(steps) if step.get("run") == "make check-iac"
     )
     assert "if" not in steps[terraform_index]
     trivy = next(

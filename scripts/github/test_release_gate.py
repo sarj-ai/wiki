@@ -2,10 +2,14 @@ from copy import deepcopy
 from pathlib import Path
 import runpy
 import shlex
+from typing import TYPE_CHECKING
 
 import pytest
 import yaml
 
+
+if TYPE_CHECKING:
+    from scripts.github.release_gate import JsonObject
 
 GATE = runpy.run_path(str(Path(__file__).with_name("release_gate.py")))
 SHA = "a" * 40
@@ -132,7 +136,7 @@ def test_gate_bootstraps_python_before_every_invocation(
         "run",
         "--no-project",
         "--with",
-        "typer==0.27.2",
+        "typer==0.27.3",
         "--python",
         "3.14",
         "python",
@@ -234,7 +238,9 @@ def test_main_advance_blocks_release() -> None:
 
 @pytest.mark.parametrize("result", ["failure", "cancelled", "skipped", None])
 def test_any_unsuccessful_gate_blocks_release(result: str | None) -> None:
-    needs = {name: {"result": "success"} for name in GATE["REQUIRED_JOBS"]}
+    needs: dict[str, JsonObject] = {
+        name: {"result": "success"} for name in GATE["REQUIRED_JOBS"]
+    }
     needs["ci-backend"]["result"] = result
     with pytest.raises(GATE["ReleaseBlockedError"], match="did not succeed"):
         GATE["validate_needs"](needs, SHA)
@@ -247,7 +253,9 @@ def test_missing_gate_blocks_release() -> None:
 
 @pytest.mark.parametrize("receipt_sha", [SHA, "b" * 40])
 def test_all_gates_require_matching_standards_sha(receipt_sha: str) -> None:
-    needs = {name: {"result": "success"} for name in GATE["REQUIRED_JOBS"]}
+    needs: dict[str, JsonObject] = {
+        name: {"result": "success"} for name in GATE["REQUIRED_JOBS"]
+    }
     needs["standards-receipt"]["outputs"] = {"release_sha": receipt_sha}
     if receipt_sha == SHA:
         GATE["validate_needs"](needs, SHA)
@@ -295,7 +303,9 @@ def test_shared_receipt_cannot_authorize_other_events(event: str) -> None:
 
 @pytest.mark.parametrize("selected", ["true", "false", "", None])
 def test_shared_dag_requires_explicit_component_selection(selected: str | None) -> None:
-    needs = {name: {"result": "success"} for name in GATE["REQUIRED_JOBS"]}
+    needs: dict[str, JsonObject] = {
+        name: {"result": "success"} for name in GATE["REQUIRED_JOBS"]
+    }
     needs["standards-receipt"]["outputs"] = {
         "release_sha": SHA,
         "backend": selected,

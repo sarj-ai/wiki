@@ -139,8 +139,6 @@ class NativeWikiOAuthProvider(OAuthProvider):
     async def register_client(self, client_info: OAuthClientInformationFull) -> None:
         async with oauth_boundary("register"):
             self.request("register")
-            if client_info.client_id is None:
-                raise NativeOAuthError
             self.redirects.validate_registration(
                 client_info.client_id, tuple(str(uri) for uri in (client_info.redirect_uris or []))
             )

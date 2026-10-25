@@ -494,7 +494,7 @@ class PostgresTaskService(TaskService):
         owner_user_id: uuid.UUID,
         payload: DocumentTransformRequest,
         request_hash: str,
-    ) -> Row[tuple[Task, bool]] | None:
+    ) -> Row[Task, bool] | None:
         source = payload.source
         source_predicate = (
             and_(
@@ -532,7 +532,7 @@ class PostgresTaskService(TaskService):
     async def _reuse_active_transform(
         self,
         *,
-        active_row: Row[tuple[Task, bool]],
+        active_row: Row[Task, bool],
         owner_user_id: uuid.UUID,
         idempotency_key: IdempotencyKey,
         request_hash: str,
@@ -597,9 +597,8 @@ class PostgresTaskService(TaskService):
             statement = statement.where(Task.kind == TaskKind.FILE_DOCUMENT_TRANSFORM)
         active_counts = (await self._db.execute(statement)).one()
         active_count, active_in_place_count = active_counts
-        if not isinstance(active_count, int) or not isinstance(active_in_place_count, int):
-            msg = "Active task count query returned an invalid value"
-            raise TypeError(msg)
+        active_count = _validated_active_count(active_count)
+        active_in_place_count = _validated_active_count(active_in_place_count)
         owner_limit_reached = active_count >= _MAX_ACTIVE_DOCUMENT_TRANSFORMS_PER_OWNER
         in_place_limit_reached = (
             payload.output_strategy is OutputStrategy.IN_PLACE
@@ -1242,9 +1241,16 @@ class PostgresTaskService(TaskService):
             raise OutputConflictError
 
 
+def _validated_active_count(value: object) -> int:
+    if not isinstance(value, int):
+        msg = "Active task count query returned an invalid value"
+        raise TypeError(msg)
+    return value
+
+
 def _task_ids_for_key(
     owner_user_id: UserId, kind: TaskKind, idempotency_key: IdempotencyKey
-) -> CompoundSelect[tuple[TaskId]]:
+) -> CompoundSelect[TaskId]:
     # Both keys have an owner/kind/key index. Resolve their at-most-two IDs
     # before reading Task rows instead of scanning the owner's retained history.
     return union_all(

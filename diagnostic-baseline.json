@@ -1,9 +1,9 @@
 {
   "schemaVersion": 2,
   "provenance": {
-    "bundleVersion": "8.126.2",
-    "consumerBaseSha": "9e1b777c52b2062e78e23c79da3fb705649bdea2",
-    "catalogDigest": "f6ee43d7fef2ded2cc5a717edd8dec7f59b41143f752535c4f3ed5920c040bda"
+    "bundleVersion": "8.129.4",
+    "consumerBaseSha": "1e5590f3468e62e9e59dfbd2e92936e28ba105a4",
+    "catalogDigest": "345fc448c8650ba05b1d751fa67d651ed016fde58a5ed435a0861e45ea92f42f"
   },
   "diagnostics": [
     {
@@ -4277,14 +4277,14 @@
       "count": 1
     },
     {
-      "fingerprint": "88837df37c675e5254d70dcf88eeb7168d7998f6f50847902469cc5cd586ee74",
+      "fingerprint": "482545842aab8bfcd473e27b883643c7810b7483db3b2c3682621ee03730d83b",
       "source": "sarj-python-lint",
       "ruleId": "no-excessive-cognitive-complexity",
       "path": "scripts/github/branch_protection.py",
       "count": 1
     },
     {
-      "fingerprint": "b69fc0712677e99ae95ef2eb651d2384bb4be28088d879229c2f612aba814292",
+      "fingerprint": "02836f4d48cc323c2666ce5fbbcc1e657904e05f8fd95267e9b71380a2d6f347",
       "source": "sarj-python-lint",
       "ruleId": "no-excessive-cognitive-complexity",
       "path": "scripts/github/read-transform-diagnostics.py",

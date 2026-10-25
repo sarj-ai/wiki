@@ -208,7 +208,7 @@ class _ConversionWitness:
 
 class _ObservedDocRow:
     def __init__(
-        self, row: Row[tuple[FileId, str | None, str | None]], witness: _ConversionWitness
+        self, row: Row[FileId, str | None, str | None], witness: _ConversionWitness
     ) -> None:
         self.row = row
         self.witness = witness
@@ -223,7 +223,7 @@ class _ObservedDocRow:
 class _ObservedRows:
     def __init__(
         self,
-        rows: Sequence[Row[tuple[FileId, str | None, str | None]]],
+        rows: Sequence[Row[FileId, str | None, str | None]],
         witness: _ConversionWitness,
     ) -> None:
         self.rows = rows

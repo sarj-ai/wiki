@@ -91,7 +91,7 @@ describe("round-six mutation lifecycle fixtures", () => {
     const staleRead = Promise.withResolvers<DocIcon[]>();
     let readSignal: AbortSignal | undefined;
     const read = client
-      .fetchQuery({
+      .query({
         queryKey: wikiKeys.docIcons,
         queryFn: async ({ signal }) => {
           readSignal = signal;
@@ -226,7 +226,7 @@ describe("round-six mutation lifecycle fixtures", () => {
       .mutateAsync({ showNonDocFiles: false })
       .catch((error: unknown) => error);
     await vi.advanceTimersByTimeAsync(0);
-    await client.fetchQuery({
+    await client.query({
       queryKey: wikiKeys.preferences,
       queryFn: () => ({ showNonDocFiles: true, hiddenWorkspaceIds: ["fresh"], extra: "fresh" }),
     });

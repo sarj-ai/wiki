@@ -19,7 +19,9 @@ def _migration_job(command: list[str], args: list[str], image: str) -> str:
                     "spec": {
                         "template": {
                             "spec": {
-                                "containers": [{"command": command, "args": args, "image": image}]
+                                "containers": [
+                                    {"command": command, "args": args, "image": image}
+                                ]
                             }
                         }
                     }
@@ -89,6 +91,8 @@ def test_migrations_only_execute_verified_image_update(
             described += described
         case "shape":
             described = "{}"
+        case _:
+            pass
     updated = _migration_job(
         ["wrong"] if fault == "updated-command" else [".venv/bin/alembic"],
         ["downgrade", "base"] if fault == "updated-args" else ["upgrade", "head"],
@@ -167,8 +171,8 @@ def test_pre_commit_ref_selection(
         "setup",
         "--tools-only",
         "--python",
-        "3.14.7",
-        "pre-commit==4.6.2",
+        "3.14.8",
+        "pre-commit==4.7.0",
         *expected,
     ]
 
@@ -242,7 +246,9 @@ jq() {
     monkeypatch.setenv("FAULT", fault)
     monkeypatch.setenv("HTTP_STATUS", "500" if fault == "http" else "200")
     monkeypatch.setenv("RESPONSE_ID", "foreign" if fault == "request-id" else "canary")
-    monkeypatch.setenv("CACHE_CONTROL", "public" if fault == "cache" else "private, no-store")
+    monkeypatch.setenv(
+        "CACHE_CONTROL", "public" if fault == "cache" else "private, no-store"
+    )
     command = ["bash", str(ROOT / "scripts/frontend_release/verify-health.sh")]
     if fault == "none":
         assert command_output(command) == "Frontend production revision verified."
@@ -269,7 +275,9 @@ jq() {
         ),
     ],
 )
-def test_workflow_calls_tested_entrypoint(workflow: str, step_name: str, entrypoint: str) -> None:
+def test_workflow_calls_tested_entrypoint(
+    workflow: str, step_name: str, entrypoint: str
+) -> None:
     document = yaml.safe_load((ROOT / ".github/workflows" / workflow).read_text())
     steps = [step for job in document["jobs"].values() for step in job.get("steps", [])]
     (step,) = [step for step in steps if step.get("name") == step_name]
