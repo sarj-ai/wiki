@@ -3,9 +3,12 @@ from datetime import UTC, datetime, timedelta
 from typing import override
 import uuid
 
+import httpx
 import jwt
+from loguru import logger
 import pytest
 
+from app.auth.encryption import encrypt_text
 from app.auth.errors import InvalidTokenError, TokenRevokedError
 from app.auth.jwt import (
     ALGORITHM,
@@ -94,11 +97,13 @@ class _JoinedDb:
 
 
 class _SessionService(GoogleAuthService):
-    def __init__(self, user: User, session: UserSession) -> None:
+    def __init__(
+        self, user: User, session: UserSession, http: httpx.AsyncClient | None = None
+    ) -> None:
         self.db = _FakeDb()
         super().__init__(
             dependency(self.db),
-            dependency(object()),
+            http if http is not None else dependency(object()),
         )
         self.user = user
         self.session = session
@@ -210,3 +215,48 @@ async def test_access_token_loads_session_and_user_in_one_query() -> None:
 
     assert await service.resolve_current_user(token) is fixture.user
     assert db.calls == 1
+
+
+@pytest.mark.parametrize(
+    ("status_code", "failed"), [(200, False), (400, True), (429, True), (503, True), (None, True)]
+)
+async def test_google_revocation_failures_are_observed_after_local_logout(
+    status_code: int | None, failed: bool
+) -> None:
+    fixture = _user_and_session()
+    user, session = fixture.user, fixture.session
+    refresh_token = "synthetic-google-refresh"
+    user.encrypted_refresh_token = encrypt_text(refresh_token)
+    user.google_token_generation = 7
+    messages: list[str] = []
+    calls: list[tuple[httpx.Request, int]] = []
+
+    def respond(request: httpx.Request) -> httpx.Response:
+        calls.append((request, service.db.commits))
+        if status_code is None:
+            msg = "synthetic transport failure"
+            raise httpx.ConnectError(msg, request=request)
+        return httpx.Response(status_code, text="synthetic provider detail")
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(respond)) as client:
+        service = _SessionService(user, session, client)
+        handler = logger.add(messages.append, format="{message}", level="WARNING")
+        try:
+            await service.revoke_session(create_access_token(UserId(user.id), session.id))
+        finally:
+            logger.remove(handler)
+
+    assert len(calls) == 1
+    request, commits_before_provider = calls[0]
+    assert request.url == "https://oauth2.googleapis.com/revoke"
+    assert request.content == f"token={refresh_token}".encode()
+    assert commits_before_provider == 1
+    assert session.revoked_at is not None
+    assert user.encrypted_refresh_token is None
+    assert user.token_version == 1
+    assert user.google_token_generation == 8
+    warning = "logout: Google token revocation failed"
+    assert any(warning in message for message in messages) is failed
+    assert all(refresh_token not in message for message in messages)
+    assert all("synthetic provider detail" not in message for message in messages)
+    assert all("synthetic transport failure" not in message for message in messages)

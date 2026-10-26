@@ -239,7 +239,8 @@ class GoogleAuthService(AuthService):
             return
         revoked = False
         with suppress(Exception):
-            await self._http.post(GOOGLE_REVOKE_URL, data={"token": refresh_token})
+            response = await self._http.post(GOOGLE_REVOKE_URL, data={"token": refresh_token})
+            response.raise_for_status()
             revoked = True
         if not revoked:
             logger.warning("logout: Google token revocation failed")
