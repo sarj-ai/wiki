@@ -6,6 +6,7 @@
     "SARJ465": 1
   },
   "backend/app/auth/google_tokens.py": {
+    "SARJ093": 1,
     "SARJ411": 1,
     "SARJ442": 1,
     "SARJ465": 1
@@ -21,6 +22,9 @@
   },
   "backend/app/cache/__init__.py": {
     "SARJ420": 1
+  },
+  "backend/app/document_transform/application.py": {
+    "SARJ093": 1
   },
   "backend/app/document_transform/authored_labels.py": {
     "SARJ444": 1
@@ -162,6 +166,9 @@
   "backend/app/document_transform/qa_corpus.py": {
     "SARJ444": 1
   },
+  "backend/app/document_transform/qa_grants.py": {
+    "SARJ093": 1
+  },
   "backend/app/document_transform/qa_router.py": {
     "SARJ451": 2
   },
@@ -175,11 +182,12 @@
     "SARJ447": 3
   },
   "backend/app/document_transform/slides_brand.py": {
-    "SARJ093": 2,
+    "SARJ093": 6,
     "SARJ444": 4,
     "SARJ447": 111
   },
   "backend/app/document_transform/slides_ir.py": {
+    "SARJ093": 1,
     "SARJ444": 1,
     "SARJ447": 9
   },
@@ -224,6 +232,9 @@
   "backend/app/files/router.py": {
     "SARJ451": 8
   },
+  "backend/app/mcp/context.py": {
+    "SARJ093": 1
+  },
   "backend/app/mcp/native_consent_router.py": {
     "SARJ451": 1
   },
@@ -255,6 +266,9 @@
   "backend/app/templates/router.py": {
     "SARJ451": 2
   },
+  "backend/scripts/benchmark_performance.py": {
+    "SARJ451": 2
+  },
   "backend/scripts/qa_document_transform.py": {
     "SARJ432": 1
   },
@@ -264,12 +278,13 @@
     "SARJ485": 1
   },
   "backend/scripts/qa_document_transform_corpus.py": {
-    "SARJ093": 2,
+    "SARJ093": 5,
     "SARJ442": 2,
     "SARJ444": 2,
     "SARJ447": 11
   },
   "backend/scripts/qa_export_drive_docs.py": {
+    "SARJ093": 1,
     "SARJ432": 1
   },
   "backend/scripts/qa_markdown_transform.py": {
@@ -286,7 +301,11 @@
     "SARJ439": 1
   },
   "backend/tests/test_alias_router.py": {
+    "SARJ093": 1,
     "SARJ442": 2
+  },
+  "backend/tests/test_aliases.py": {
+    "SARJ093": 4
   },
   "backend/tests/test_auth_cookies.py": {
     "SARJ442": 1,
@@ -300,6 +319,9 @@
     "SARJ445": 4,
     "SARJ447": 4,
     "SARJ477": 1
+  },
+  "backend/tests/test_bootstrap.py": {
+    "SARJ093": 1
   },
   "backend/tests/test_branch_protection.py": {
     "SARJ442": 3,
@@ -340,6 +362,7 @@
     "SARJ477": 10
   },
   "backend/tests/test_document_transform_application.py": {
+    "SARJ093": 1,
     "SARJ445": 3
   },
   "backend/tests/test_document_transform_bullet_style_projection.py": {
@@ -409,6 +432,7 @@
     "SARJ447": 1
   },
   "backend/tests/test_document_transform_qa_broker.py": {
+    "SARJ093": 1,
     "SARJ442": 1
   },
   "backend/tests/test_document_transform_qa_campaigns.py": {
@@ -475,12 +499,14 @@
     "SARJ477": 1
   },
   "backend/tests/test_drive_modules.py": {
+    "SARJ093": 1,
     "SARJ442": 2,
     "SARJ445": 7,
     "SARJ447": 16,
     "SARJ477": 8
   },
   "backend/tests/test_files_service.py": {
+    "SARJ093": 1,
     "SARJ442": 2,
     "SARJ445": 1,
     "SARJ447": 20,
@@ -515,6 +541,9 @@
   "backend/tests/test_health.py": {
     "SARJ445": 3
   },
+  "backend/tests/test_html_content.py": {
+    "SARJ093": 1
+  },
   "backend/tests/test_log_privacy.py": {
     "SARJ442": 1
   },
@@ -548,6 +577,7 @@
     "SARJ477": 2
   },
   "backend/tests/test_mcp_context.py": {
+    "SARJ093": 1,
     "SARJ445": 2
   },
   "backend/tests/test_mcp_grants.py": {
@@ -586,6 +616,9 @@
   },
   "backend/tests/test_mcp_storage.py": {
     "SARJ477": 1
+  },
+  "backend/tests/test_membership_gating.py": {
+    "SARJ093": 4
   },
   "backend/tests/test_native_content_ir.py": {
     "SARJ447": 6
@@ -671,6 +704,7 @@
     "SARJ447": 1
   },
   "backend/tests/test_provider_error_sanitization.py": {
+    "SARJ093": 1,
     "SARJ445": 2,
     "SARJ477": 2
   },
@@ -686,6 +720,7 @@
     "SARJ445": 8
   },
   "backend/tests/test_qa_document_transform_cloud.py": {
+    "SARJ093": 1,
     "SARJ445": 13
   },
   "backend/tests/test_qa_document_transform_corpus.py": {
@@ -709,6 +744,9 @@
   "backend/tests/test_qa_polish_rounds_cli.py": {
     "SARJ445": 1
   },
+  "backend/tests/test_recent_files_router.py": {
+    "SARJ093": 1
+  },
   "backend/tests/test_request_body.py": {
     "SARJ442": 5,
     "SARJ457": 5
@@ -716,6 +754,9 @@
   "backend/tests/test_retry.py": {
     "SARJ445": 1,
     "SARJ447": 1
+  },
+  "backend/tests/test_round7_provider.py": {
+    "SARJ093": 1
   },
   "backend/tests/test_shared_drive_transform_access.py": {
     "SARJ445": 3,
@@ -758,6 +799,9 @@
     "SARJ442": 1,
     "SARJ445": 1
   },
+  "backend/tests/test_task_unverified_output.py": {
+    "SARJ093": 1
+  },
   "backend/tests/test_templates.py": {
     "SARJ093": 1
   },
@@ -768,12 +812,16 @@
     "SARJ445": 1
   },
   "backend/tests/test_word_package.py": {
+    "SARJ068": 1,
     "SARJ445": 2
   },
   "backend/tests/test_word_runtime.py": {
     "SARJ445": 28,
     "SARJ447": 5,
     "SARJ477": 1
+  },
+  "scripts/backend_release/recovery.py": {
+    "SARJ093": 7
   },
   "scripts/check_baseline_growth.py": {
     "SARJ444": 1

@@ -62,7 +62,7 @@
     "@eslint/js": "10.0.1",
     "@hey-api/openapi-ts": "^0.99.0",
     "@opennextjs/cloudflare": "1.20.13",
-    "@sarj/eslint-plugin": "16.29.0",
+    "@sarj/eslint-plugin": "16.30.4",
     "@sarj/tsconfig": "0.2.3",
     "@shadcn/lint": "0.2.3",
     "@tailwindcss/postcss": "^4.3.3",
