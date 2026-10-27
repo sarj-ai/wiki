@@ -49,6 +49,9 @@ make standards-check
 `make check` mirrors CI. `make audit` performs network-backed dependency audits, and
 `make standards-check` verifies generated standards configuration, version pins, and code.
 
+Python baseline verification is serial by default. CI sets
+`WIKI_PYTHON_BASELINE_JOBS=2` to use the native checker's bounded worker budget.
+
 See the [439-pass performance record and reproduction commands](docs/performance.json) for
 frontend loading and backend latency work.
 
