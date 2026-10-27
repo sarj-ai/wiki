@@ -23,8 +23,7 @@ standards-upgrade: ## Upgrade all managed Standards packages and configuration.
 	@$(MAKE) standards-check
 
 setup: setup-hooks standards-sync ## Install backend, frontend, and repository tooling.
-	@uv sync --project backend --locked
-	@npm ci --prefix frontend
+	@bash scripts/setup.sh
 
 check: check-node check-quality check-backend check-frontend check-iac ## Run the complete local CI mirror.
 	@echo "make check: all CI-mirror steps passed"
