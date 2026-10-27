@@ -5,6 +5,5 @@ export interface OwnedRuleDocs {
 }
 
 export const createRule = ESLintUtils.RuleCreator<OwnedRuleDocs>(
-  (name) =>
-    `https://github.com/sarj-ai/wiki/blob/main/frontend/scripts/eslint-owned/README.md#${name}`,
+  (name) => `https://github.com/sarj-ai/wiki/blob/main/README.md#${name}`,
 );

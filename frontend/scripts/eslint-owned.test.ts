@@ -1240,6 +1240,31 @@ const REQUIREMENTS: readonly Requirement[] = [
     typed: false,
     language: "js",
   },
+  {
+    id: "no-identical-functions/default-super-home",
+    rule: "no-identical-functions",
+    code: "class First extends ParentA {\n run(value = super.read()) {\n  const a = value + 1;\n  const b = a + 1;\n  return b;\n }\n}\nclass Second extends ParentB {\n run(value = super.read()) {\n  const a = value + 1;\n  const b = a + 1;\n  return b;\n }\n}",
+    prefix:
+      "class ParentA { read(): number { return 1; } } class ParentB { read(): number { return 2; } }",
+    diagnostics: 0,
+    typed: true,
+  },
+  {
+    id: "no-identical-functions/default-this-home",
+    rule: "no-identical-functions",
+    code: "class First {\n value = 1;\n run(value = this.value) {\n  const a = value + 1;\n  const b = a + 1;\n  return b;\n }\n}\nclass Second {\n value = 2;\n run(value = this.value) {\n  const a = value + 1;\n  const b = a + 1;\n  return b;\n }\n}",
+    prefix: "",
+    diagnostics: 0,
+    typed: true,
+  },
+  {
+    id: "no-identical-functions/default-new-target",
+    rule: "no-identical-functions",
+    code: "class First {\n constructor(value = new.target) {\n  const name = value.name;\n  const size = name.length;\n  accept(size);\n }\n}\nclass Second {\n constructor(value = new.target) {\n  const name = value.name;\n  const size = name.length;\n  accept(size);\n }\n}",
+    prefix: "declare function accept(value: number): void;",
+    diagnostics: 0,
+    typed: true,
+  },
 ];
 
 const TEMPORARY_BASE = realpathSync(tmpdir());

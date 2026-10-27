@@ -1,6 +1,7 @@
 /**
  * Typed AST primitives. The erased-wrapper and checked visitor-key patterns are
- * adapted from the MIT Code Standards b4e7f901 helpers named in THIRD_PARTY_NOTICES.md.
+ * adapted from the MIT Code Standards b4e7f901 helpers identified in the root
+ * README.md#mit-helper-provenance.
  */
 import { AST_NODE_TYPES, type TSESLint, type TSESTree } from "@typescript-eslint/utils";
 

@@ -37,7 +37,7 @@ export default createRule<[number], "duplicate">({
 
     function receiverUse(node: FunctionNode): "meta" | "none" | "receiver" {
       let result: "none" | "receiver" = "none";
-      const stack: TSESTree.Node[] = [node.body];
+      const stack: TSESTree.Node[] = [...node.params, node.body];
       while (stack.length > 0) {
         const child = stack.pop();
         if (child === undefined) break;
