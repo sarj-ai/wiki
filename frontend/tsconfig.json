@@ -8,6 +8,7 @@
     "lib": ["dom", "dom.iterable", "dom.asynciterable", "ES2025"],
     "jsx": "react-jsx",
     "noEmit": true,
+    "allowImportingTsExtensions": true,
     "incremental": true,
     "skipLibCheck": true,
     "types": ["vitest/globals", "@testing-library/jest-dom"],
