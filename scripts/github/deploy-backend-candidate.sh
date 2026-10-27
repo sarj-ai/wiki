@@ -12,7 +12,7 @@ service_json=$(gcloud run services describe "$SERVICE" \
   --format=json)
 previous_revision=$(jq -r \
   '[.status.traffic[]? | select(.percent == 100) | .revisionName] | if length == 1 then .[0] else "" end' \
-  <<< "$service_json")
+  <<<"$service_json")
 if [[ -z "$previous_revision" ]]; then
   echo "Cloud Run does not have exactly one revision at 100% traffic" >&2
   exit 1
@@ -25,8 +25,8 @@ if [[ "$previous_image" == "$expected_revision_image" ]]; then
   echo "This immutable release is already serving production traffic" >&2
   exit 1
 fi
-echo "previous_revision=$previous_revision" >> "$GITHUB_OUTPUT"
-echo "started_at=$(date -u +'%Y-%m-%dT%H:%M:%S.%NZ')" >> "$GITHUB_OUTPUT"
+echo "previous_revision=$previous_revision" >>"$GITHUB_OUTPUT"
+echo "started_at=$(date -u +'%Y-%m-%dT%H:%M:%S.%NZ')" >>"$GITHUB_OUTPUT"
 
 gcloud run services update "$SERVICE" \
   --project "$PROJECT_ID" \
@@ -43,7 +43,7 @@ for _attempt in {1..6}; do
     --region "$REGION" \
     --format=json)
   candidate_revision=$(jq -r '.status.latestCreatedRevisionName // empty' \
-    <<< "$service_json")
+    <<<"$service_json")
   if [[ -n "$candidate_revision" ]]; then
     revision_json=$(gcloud run revisions describe "$candidate_revision" \
       --project "$PROJECT_ID" \
@@ -51,7 +51,7 @@ for _attempt in {1..6}; do
       --format=json)
     candidate_ready=$(jq -r \
       '[.status.conditions[]? | select(.type == "Ready") | .status][0] // empty' \
-      <<< "$revision_json")
+      <<<"$revision_json")
     if [[ "$candidate_ready" == 'True' ]]; then
       break
     fi
@@ -70,5 +70,5 @@ if [[ "$candidate_revision_image" != "$expected_revision_image" ]]; then
   echo "The no-traffic candidate does not resolve to the release image digest" >&2
   exit 1
 fi
-echo "new_revision=$candidate_revision" >> "$GITHUB_OUTPUT"
-echo "release_image=$expected_revision_image" >> "$GITHUB_OUTPUT"
+echo "new_revision=$candidate_revision" >>"$GITHUB_OUTPUT"
+echo "release_image=$expected_revision_image" >>"$GITHUB_OUTPUT"

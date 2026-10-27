@@ -10,7 +10,7 @@ _RUN_MIGRATIONS = _REPOSITORY_ROOT / "scripts/github/run-backend-migrations.sh"
 _LEGACY_CACHE_CLEANUP = _REPOSITORY_ROOT / "scripts/github/clear-legacy-drive-tree-cache.sh"
 _LEGACY_CACHE_CLEANUP_MODULE = _REPOSITORY_ROOT / "backend/app/cache/cleanup_legacy.py"
 _VERIFY_LOGS = _REPOSITORY_ROOT / "scripts/github/verify-backend-correlated-logs.sh"
-_MIGRATIONS_TERRAFORM = _REPOSITORY_ROOT / "terraform/dammam.tf"
+_MIGRATIONS_TERRAFORM = _REPOSITORY_ROOT / "terraform/migrations.tf"
 _BACKEND_CI = _REPOSITORY_ROOT / ".github/workflows/ci-backend.yml"
 _QA_TERRAFORM = _REPOSITORY_ROOT / "terraform/document_transform_qa.tf"
 

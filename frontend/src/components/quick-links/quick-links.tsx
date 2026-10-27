@@ -85,76 +85,78 @@ export function QuickLinks({ aliases, error = false, loading = false }: QuickLin
   };
 
   return (
-    <section className="mx-auto flex min-h-full w-full max-w-3xl flex-col px-4 py-16 sm:px-8 md:py-24">
-      <div className="relative">
-        <Search
-          aria-hidden
-          className="text-muted-foreground pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2"
-        />
-        <Input
-          aria-activedescendant={
-            filteredAliases.length > 0 ? `quick-link-${activeIndex}` : undefined
-          }
-          aria-controls="quick-links-results"
-          aria-expanded={filteredAliases.length > 0}
-          aria-label="Search quick links"
-          className="bg-card h-11 pl-9 text-base md:text-sm"
-          disabled={error || loading || aliases.length === 0}
-          onChange={(event) => {
-            setQuery(event.target.value);
-            setSelectedIndex(0);
-          }}
-          onKeyDown={handleKeyDown}
-          placeholder="Search by page, short link, or drive…"
-          ref={inputRef}
-          role="combobox"
-          value={query}
-        />
-      </div>
+    <div className="h-full overflow-y-auto">
+      <section className="mx-auto flex min-h-full w-full max-w-3xl flex-col px-4 py-16 sm:px-8 md:py-24">
+        <div className="relative">
+          <Search
+            aria-hidden
+            className="text-muted-foreground pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2"
+          />
+          <Input
+            aria-activedescendant={
+              filteredAliases.length > 0 ? `quick-link-${activeIndex}` : undefined
+            }
+            aria-controls="quick-links-results"
+            aria-expanded={filteredAliases.length > 0}
+            aria-label="Search quick links"
+            className="bg-card h-11 pl-9 text-base md:text-sm"
+            disabled={error || loading || aliases.length === 0}
+            onChange={(event) => {
+              setQuery(event.target.value);
+              setSelectedIndex(0);
+            }}
+            onKeyDown={handleKeyDown}
+            placeholder="Search by page, short link, or drive…"
+            ref={inputRef}
+            role="combobox"
+            value={query}
+          />
+        </div>
 
-      <div
-        aria-label="Recent quick links"
-        className="bg-card mt-3 overflow-hidden rounded-xl border shadow-xs"
-        id="quick-links-results"
-        role="listbox"
-      >
-        {loading ? (
-          <Message detail="Checking your current access…" title="Loading quick links" />
-        ) : error ? (
-          <Message
-            detail="Your accessible quick links could not be loaded. Try refreshing the page."
-            title="Unable to load quick links"
-          />
-        ) : aliases.length === 0 ? (
-          <Message
-            detail="Short links you open will appear here when you still have access to them."
-            title="No recent quick links"
-          />
-        ) : filteredAliases.length === 0 ? (
-          <Message
-            detail="Try another page name, alias, or drive."
-            title="No matching quick links"
-          />
-        ) : (
-          filteredAliases.map((item, index) => (
-            <QuickLinkRow
-              id={`quick-link-${index}`}
-              index={index}
-              item={item}
-              key={item.alias}
-              selected={index === activeIndex}
-              setSelectedIndex={setSelectedIndex}
+        <div
+          aria-label="Recent quick links"
+          className="bg-card mt-3 overflow-hidden rounded-xl border shadow-xs"
+          id="quick-links-results"
+          role="listbox"
+        >
+          {loading ? (
+            <Message detail="Checking your current access…" title="Loading quick links" />
+          ) : error ? (
+            <Message
+              detail="Your accessible quick links could not be loaded. Try refreshing the page."
+              title="Unable to load quick links"
             />
-          ))
-        )}
-      </div>
+          ) : aliases.length === 0 ? (
+            <Message
+              detail="Short links you open will appear here when you still have access to them."
+              title="No recent quick links"
+            />
+          ) : filteredAliases.length === 0 ? (
+            <Message
+              detail="Try another page name, alias, or drive."
+              title="No matching quick links"
+            />
+          ) : (
+            filteredAliases.map((item, index) => (
+              <QuickLinkRow
+                id={`quick-link-${index}`}
+                index={index}
+                item={item}
+                key={item.alias}
+                selected={index === activeIndex}
+                setSelectedIndex={setSelectedIndex}
+              />
+            ))
+          )}
+        </div>
 
-      {!error && !loading && aliases.length > 0 ? (
-        <p className="text-muted-foreground mt-3 hidden text-xs sm:block">
-          Use ↑ and ↓ to navigate, then Enter to open.
-        </p>
-      ) : null}
-    </section>
+        {!error && !loading && aliases.length > 0 ? (
+          <p className="text-muted-foreground mt-3 hidden text-xs sm:block">
+            Use ↑ and ↓ to navigate, then Enter to open.
+          </p>
+        ) : null}
+      </section>
+    </div>
   );
 }
 
@@ -195,8 +197,6 @@ function QuickLinkRow({ id, index, item, selected, setSelectedIndex }: QuickLink
   const intent = useDocumentIntent({
     disabled: false,
     fileId: item.fileId,
-    mimeType: item.mimeType,
-    title: item.name,
   });
   return (
     <Link

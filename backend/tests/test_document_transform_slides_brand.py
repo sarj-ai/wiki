@@ -14,6 +14,7 @@ from app.document_transform.slides_brand import (
     presentation_fingerprint,
 )
 from app.document_transform.slides_ir import (
+    SlideId,
     parse_google_presentation,
     sarj_logo_object_id,
 )
@@ -317,7 +318,7 @@ def test_existing_logo_with_off_page_geometry_reports_geometry_finding() -> None
 def test_deck_global_logo_id_collision_inside_element_group_fails_closed() -> None:
     presentation = _presentation()
     parsed = parse_google_presentation(presentation, title="Review")
-    logo_id = sarj_logo_object_id("slide-1")
+    logo_id = sarj_logo_object_id(SlideId("slide-1"))
     presentation["masters"] = [
         {
             "objectId": "master-1",
@@ -527,7 +528,7 @@ def test_unsafe_background_removes_only_exact_existing_logo(
 
     second = _format_plan(branded, parsed=parsed)
 
-    logo_id = sarj_logo_object_id("slide-1")
+    logo_id = sarj_logo_object_id(SlideId("slide-1"))
     assert [request for request in second.requests if "deleteObject" in request] == [
         {"deleteObject": {"objectId": logo_id}}
     ]

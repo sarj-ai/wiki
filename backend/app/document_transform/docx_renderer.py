@@ -6,7 +6,6 @@ from datetime import UTC, datetime
 from io import BytesIO
 import re
 from typing import Final, Literal, override
-import unicodedata
 from urllib.parse import urlparse
 from zipfile import ZIP_DEFLATED, ZipFile, ZipInfo
 
@@ -39,6 +38,11 @@ from app.document_transform.errors import (
     SourceTooLargeError,
     UnsupportedSourceError,
 )
+from app.document_transform.import_manifest import (
+    MarkdownImportBlock,
+    MarkdownImportInline,
+    MarkdownImportManifest,
+)
 from app.document_transform.limits import (
     MAX_DOCX_ESTIMATED_XML_BYTES,
     MAX_DOCX_HYPERLINKS,
@@ -48,6 +52,7 @@ from app.document_transform.limits import (
     MAX_DOCX_TABLE_COLUMNS,
     MAX_DOCX_TABLE_ROWS,
 )
+from app.document_transform.text_direction import first_strong_is_rtl
 
 
 _DOCUMENT = CURRENT_BRAND_MANIFEST.document
@@ -107,18 +112,9 @@ class _Block:
     start: int = 1
     checked: bool = False
     rows: tuple[tuple[str, ...], ...] = ()
-    inlines: tuple[_Inline, ...] = ()
-    cell_inlines: tuple[tuple[tuple[_Inline, ...], ...], ...] = ()
+    inlines: tuple[MarkdownImportInline, ...] = ()
+    cell_inlines: tuple[tuple[tuple[MarkdownImportInline, ...], ...], ...] = ()
     has_header: bool = False
-
-
-@dataclass(frozen=True, slots=True)
-class _Inline:
-    text: str
-    bold: bool = False
-    italic: bool = False
-    code: bool = False
-    url: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -140,41 +136,7 @@ class _LogoDimensions:
 @dataclass(frozen=True, slots=True)
 class _CheckMarker:
     checked: bool | None
-    inlines: tuple[_Inline, ...]
-
-
-@dataclass(frozen=True, slots=True)
-class MarkdownImportInline:
-    text: str
-    bold: bool = False
-    italic: bool = False
-    code: bool = False
-    url: str | None = None
-
-
-@dataclass(frozen=True, slots=True)
-class MarkdownImportBlock:
-    kind: str
-    text: str = ""
-    level: int = 0
-    ordered: bool = False
-    start: int = 1
-    list_group: int = 0
-    rows: tuple[tuple[str, ...], ...] = ()
-    links: tuple[tuple[str, str], ...] = ()
-    bold: tuple[str, ...] = ()
-    italic: tuple[str, ...] = ()
-    inline_code: tuple[str, ...] = ()
-    inline_signature: tuple[MarkdownImportInline, ...] = ()
-    cell_signatures: tuple[tuple[tuple[MarkdownImportInline, ...], ...], ...] = ()
-    checked: bool | None = None
-
-
-@dataclass(frozen=True, slots=True)
-class MarkdownImportManifest:
-    blocks: tuple[MarkdownImportBlock, ...]
-    branded: bool
-    header_title: str | None = None
+    inlines: tuple[MarkdownImportInline, ...]
 
 
 def render_markdown_docx(
@@ -207,10 +169,6 @@ def render_markdown_docx(
     output = BytesIO()
     document.save(output)
     return _canonicalize_archive(output.getvalue())
-
-
-# Compatibility-friendly verb form for callers that describe conversion.
-markdown_to_branded_docx = render_markdown_docx
 
 
 def validate_markdown_import(markdown: str, *, title: str) -> None:
@@ -263,7 +221,7 @@ def _render_complexity_counts(blocks: tuple[_Block, ...], title: str) -> tuple[i
     styled_spans = 0
     hyperlinks = 0
 
-    def count_inlines(inlines: tuple[_Inline, ...]) -> None:
+    def count_inlines(inlines: tuple[MarkdownImportInline, ...]) -> None:
         nonlocal inline_runs, styled_spans, hyperlinks
         inline_runs += len(inlines) + sum(inline.text.count("\n") for inline in inlines)
         styled_spans += sum(
@@ -362,7 +320,7 @@ def _manifest_block(
     list_group: int = 0,
 ) -> MarkdownImportBlock:
     inlines = _manifest_flat_inlines(block)
-    signature = tuple(_manifest_inline(inline) for inline in inlines)
+    signature = inlines if block.kind != "table" else ()
     if block.kind == "code":
         signature = (MarkdownImportInline(block.text, code=True),)
     return MarkdownImportBlock(
@@ -377,42 +335,23 @@ def _manifest_block(
         bold=tuple(inline.text for inline in inlines if inline.bold),
         italic=tuple(inline.text for inline in inlines if inline.italic),
         inline_code=tuple(inline.text for inline in inlines if inline.code),
-        inline_signature=signature if block.kind != "table" else (),
-        cell_signatures=_manifest_cell_signatures(block),
+        inline_signature=signature,
+        cell_signatures=block.cell_inlines,
         checked=block.checked if block.kind == "check" else None,
     )
 
 
-def _manifest_flat_inlines(block: _Block) -> tuple[_Inline, ...]:
+def _manifest_flat_inlines(block: _Block) -> tuple[MarkdownImportInline, ...]:
     if block.kind == "table":
         return tuple(inline for row in block.cell_inlines for cell in row for inline in cell)
     return block.inlines
 
 
-def _manifest_links(inlines: tuple[_Inline, ...]) -> tuple[tuple[str, str], ...]:
+def _manifest_links(inlines: tuple[MarkdownImportInline, ...]) -> tuple[tuple[str, str], ...]:
     return tuple(
         (inline.text, inline.url)
         for inline in inlines
         if inline.url is not None and _is_safe_link(inline.url)
-    )
-
-
-def _manifest_cell_signatures(
-    block: _Block,
-) -> tuple[tuple[tuple[MarkdownImportInline, ...], ...], ...]:
-    return tuple(
-        tuple(tuple(_manifest_inline(inline) for inline in cell) for cell in row)
-        for row in block.cell_inlines
-    )
-
-
-def _manifest_inline(inline: _Inline) -> MarkdownImportInline:
-    return MarkdownImportInline(
-        text=inline.text,
-        bold=inline.bold,
-        italic=inline.italic,
-        code=inline.code,
-        url=inline.url,
     )
 
 
@@ -1223,7 +1162,7 @@ def _set_cell_fill(cell: _Cell, color: str) -> None:
 
 def _append_inlines(
     paragraph: Paragraph,
-    inlines: tuple[_Inline, ...],
+    inlines: tuple[MarkdownImportInline, ...],
     *,
     force_bold: bool = False,
     branded: bool,
@@ -1252,7 +1191,7 @@ def _append_inlines(
 
 def _format_inline_run(
     run: Run,
-    inline: _Inline,
+    inline: MarkdownImportInline,
     *,
     force_bold: bool,
     hyperlink: bool = False,
@@ -1299,18 +1238,8 @@ def _format_run(
     _set_run_direction(run, run.text)
 
 
-def _first_strong_is_rtl(text: str) -> bool:
-    for character in text:
-        direction = unicodedata.bidirectional(character)
-        if direction in {"R", "AL"}:
-            return True
-        if direction == "L":
-            return False
-    return False
-
-
 def _set_paragraph_direction(paragraph: Paragraph, text: str) -> None:
-    if not _first_strong_is_rtl(text):
+    if not first_strong_is_rtl(text):
         return
     properties = _properties_element(paragraph, "_p", "w:pPr")
     bidi = properties.find(qn("w:bidi"))
@@ -1322,7 +1251,7 @@ def _set_paragraph_direction(paragraph: Paragraph, text: str) -> None:
 
 
 def _set_run_direction(run: Run, text: str) -> None:
-    if not _first_strong_is_rtl(text):
+    if not first_strong_is_rtl(text):
         return
     properties = _properties_element(run, "_r", "w:rPr")
     fonts = properties.find(qn("w:rFonts"))
@@ -1433,11 +1362,11 @@ def _table_widths(rows: tuple[tuple[str, ...], ...], columns: int) -> tuple[int,
     return tuple(widths)
 
 
-def _plain_inlines(text: str) -> tuple[_Inline, ...]:
-    return (_Inline(text),) if text else ()
+def _plain_inlines(text: str) -> tuple[MarkdownImportInline, ...]:
+    return (MarkdownImportInline(text),) if text else ()
 
 
-def _inline_text(inlines: tuple[_Inline, ...]) -> str:
+def _inline_text(inlines: tuple[MarkdownImportInline, ...]) -> str:
     return "".join(inline.text for inline in inlines)
 
 
@@ -1464,8 +1393,8 @@ class _BlockParseState:
     quote_depth: int = 0
     pending_kind: Literal["heading", "paragraph"] | None = None
     pending_heading_level: int = 0
-    table_rows: list[list[tuple[_Inline, ...]]] | None = None
-    current_table_row: list[tuple[_Inline, ...]] | None = None
+    table_rows: list[list[tuple[MarkdownImportInline, ...]]] | None = None
+    current_table_row: list[tuple[MarkdownImportInline, ...]] | None = None
 
 
 def _parse_blocks(
@@ -1638,7 +1567,7 @@ def _consume_table_token(state: _BlockParseState, kind: str) -> None:
         raise UnsupportedSourceError
 
 
-def _table_block_from_rows(table_rows: list[list[tuple[_Inline, ...]]]) -> _Block:
+def _table_block_from_rows(table_rows: list[list[tuple[MarkdownImportInline, ...]]]) -> _Block:
     width = max(len(row) for row in table_rows)
     normalized_inlines = tuple(tuple(row + [()] * (width - len(row))) for row in table_rows)
     rows = tuple(tuple(_inline_text(cell) for cell in row) for row in normalized_inlines)
@@ -1647,13 +1576,13 @@ def _table_block_from_rows(table_rows: list[list[tuple[_Inline, ...]]]) -> _Bloc
 
 @dataclass(slots=True)
 class _InlineParseState:
-    result: list[_Inline] = field(default_factory=list)
+    result: list[MarkdownImportInline] = field(default_factory=list)
     bold_depth: int = 0
     italic_depth: int = 0
     link_url: str | None = None
 
 
-def _parse_inline_tokens(tokens: list[Token] | None) -> tuple[_Inline, ...]:
+def _parse_inline_tokens(tokens: list[Token] | None) -> tuple[MarkdownImportInline, ...]:
     if tokens is None:
         raise UnsupportedSourceError
     state = _InlineParseState()
@@ -1703,7 +1632,7 @@ def _consume_inline_token(state: _InlineParseState, token: Token) -> None:
 
 
 def _append_inline(
-    result: list[_Inline],
+    result: list[MarkdownImportInline],
     text: str,
     *,
     bold: bool,
@@ -1713,7 +1642,7 @@ def _append_inline(
 ) -> None:
     if not text:
         return
-    value = _Inline(text, bold=bold, italic=italic, code=code, url=url)
+    value = MarkdownImportInline(text, bold=bold, italic=italic, code=code, url=url)
     previous = result[-1] if result else None
     if previous is not None and (
         previous.bold,
@@ -1721,7 +1650,7 @@ def _append_inline(
         previous.code,
         previous.url,
     ) == (bold, italic, code, url):
-        result[-1] = _Inline(
+        result[-1] = MarkdownImportInline(
             previous.text + text,
             bold=bold,
             italic=italic,
@@ -1732,7 +1661,7 @@ def _append_inline(
         result.append(value)
 
 
-def _strip_check_marker(inlines: tuple[_Inline, ...]) -> _CheckMarker:
+def _strip_check_marker(inlines: tuple[MarkdownImportInline, ...]) -> _CheckMarker:
     marker_length = 4
     visible = _inline_text(inlines)
     if len(visible) < marker_length or visible[:marker_length].casefold() not in {"[ ] ", "[x] "}:
@@ -1745,13 +1674,13 @@ def _strip_check_marker(inlines: tuple[_Inline, ...]) -> _CheckMarker:
             return _CheckMarker(None, inlines)
         marker_characters += len(inline.text)
     remaining = marker_length
-    stripped: list[_Inline] = []
+    stripped: list[MarkdownImportInline] = []
     for inline in inlines:
         if remaining >= len(inline.text):
             remaining -= len(inline.text)
             continue
         stripped.append(
-            _Inline(
+            MarkdownImportInline(
                 inline.text[remaining:],
                 bold=inline.bold,
                 italic=inline.italic,

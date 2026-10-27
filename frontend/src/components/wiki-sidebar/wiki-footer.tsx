@@ -59,7 +59,7 @@ export function WikiFooter() {
           <DropdownMenuTrigger asChild>
             <Button
               aria-label="Account menu"
-              className="hover:bg-sidebar-accent hover:text-sidebar-accent-foreground h-auto w-full justify-start px-2 py-1.5 font-normal"
+              className="group/account hover:bg-sidebar-accent hover:text-sidebar-accent-foreground h-auto w-full justify-start px-2 py-1.5 font-normal"
               ref={(element) => {
                 accountTrigger.current = element;
                 if (!element) return;
@@ -88,11 +88,14 @@ export function WikiFooter() {
                 <div className="truncate text-sm font-medium" title={user?.displayName ?? ""}>
                   {user?.displayName ?? "Signed in"}
                 </div>
-                <div className="text-muted-foreground truncate text-xs" title={user?.email ?? ""}>
+                <div
+                  className="text-muted-foreground truncate text-xs group-hover/account:text-inherit"
+                  title={user?.email ?? ""}
+                >
                   {user?.email ?? ""}
                 </div>
               </div>
-              <ChevronsUpDown className="text-muted-foreground size-4 shrink-0" />
+              <ChevronsUpDown className="text-muted-foreground size-4 shrink-0 group-hover/account:text-inherit" />
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent

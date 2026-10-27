@@ -29,6 +29,7 @@ name: Release Main
       - ".github/workflows/ci-frontend.yml"
       - ".github/workflows/deploy-frontend.yml"
       - "scripts/frontend_release/**"
+      - "scripts/wiki.py"
       - ".github/workflows/release-main.yml"
 
 permissions:
@@ -37,6 +38,10 @@ permissions:
 concurrency:
   group: release-main
   cancel-in-progress: false
+
+defaults:
+  run:
+    shell: bash
 
 jobs:
   ci-backend:
@@ -62,7 +67,9 @@ jobs:
     uses: ./.github/workflows/ci-iac.yml
 
   standards-receipt:
-    runs-on: blacksmith-2vcpu-ubuntu-2404
+    # Public copies can run every qualification gate without Sarj production access.
+    if: github.repository_id == '1183627122'
+    runs-on: ${{ vars.CI_RUNNER || 'ubuntu-24.04' }}
     timeout-minutes: 25
     permissions:
       contents: read

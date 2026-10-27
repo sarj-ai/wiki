@@ -33,7 +33,7 @@ class CloudTasksEnqueuer(TaskEnqueuer):
         document_transform_target_url: str | None = None,
         client: tasks_v2.CloudTasksAsyncClient | None = None,
     ) -> None:
-        if not _is_internal_smart_create_url(target_url):
+        if not _is_internal_task_url(target_url, expected_path="/internal/tasks/smart-create"):
             msg = "Cloud Tasks target must be the HTTPS internal Smart Create endpoint"
             raise ValueError(msg)
         self._client = client or tasks_v2.CloudTasksAsyncClient()
@@ -43,8 +43,8 @@ class CloudTasksEnqueuer(TaskEnqueuer):
             if document_transform_queue is not None
             else None
         )
-        if document_transform_target_url is not None and not _is_internal_document_transform_url(
-            document_transform_target_url
+        if document_transform_target_url is not None and not _is_internal_task_url(
+            document_transform_target_url, expected_path="/internal/tasks/document-transform"
         ):
             msg = "Cloud Tasks target must be the HTTPS internal Document Transform endpoint"
             raise ValueError(msg)
@@ -116,28 +116,14 @@ def _http_request_template(target_url: str, service_account: str) -> bytes:
     )
 
 
-def _is_internal_smart_create_url(target_url: str) -> bool:
+def _is_internal_task_url(target_url: str, *, expected_path: str) -> bool:
     parsed = urlsplit(target_url)
     has_authority = (
         parsed.hostname is not None and parsed.username is None and parsed.password is None
     )
     has_expected_location = (
         parsed.scheme == "https"
-        and parsed.path == "/internal/tasks/smart-create"
-        and not parsed.query
-        and not parsed.fragment
-    )
-    return has_authority and has_expected_location
-
-
-def _is_internal_document_transform_url(target_url: str) -> bool:
-    parsed = urlsplit(target_url)
-    has_authority = (
-        parsed.hostname is not None and parsed.username is None and parsed.password is None
-    )
-    has_expected_location = (
-        parsed.scheme == "https"
-        and parsed.path == "/internal/tasks/document-transform"
+        and parsed.path == expected_path
         and not parsed.query
         and not parsed.fragment
     )

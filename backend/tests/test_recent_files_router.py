@@ -24,7 +24,9 @@ from tests.support import dependency
 class _RecentFiles:
     def __init__(self) -> None:
         self.reads: list[list[FileId]] = []
-        self.accessible = {FileId(f"file-{index}"): _file(f"file-{index}") for index in range(6)}
+        self.accessible = {
+            FileId(f"file-{index}"): _file(FileId(f"file-{index}")) for index in range(6)
+        }
 
     async def get_search_metadata_many(self, file_ids: list[FileId]) -> dict[FileId, FileResponse]:
         self.reads.append(file_ids)
@@ -38,7 +40,7 @@ class _RecentDrive:
         return [DriveSummary(id=DriveId("drive-1"), name="Engineering")]
 
 
-def _file(file_id: str, mime_type: str = MIME_DOC) -> FileResponse:
+def _file(file_id: FileId, mime_type: str = MIME_DOC) -> FileResponse:
     return FileResponse(
         id=FileId(file_id),
         name=f"Current {file_id}",
@@ -140,8 +142,8 @@ async def test_recent_files_rechecks_access_and_names_each_landing(
 
 
 async def test_recent_files_never_includes_folders_or_shortcuts(recent_files: _RecentFiles) -> None:
-    recent_files.accessible[FileId("file-0")] = _file("file-0", MIME_FOLDER)
-    recent_files.accessible[FileId("file-1")] = _file("file-1", MIME_SHORTCUT)
+    recent_files.accessible[FileId("file-0")] = _file(FileId("file-0"), MIME_FOLDER)
+    recent_files.accessible[FileId("file-1")] = _file(FileId("file-1"), MIME_SHORTCUT)
     async with _client() as client:
         response = await client.get(
             "/files/recent", params=[("file_ids", "file-0"), ("file_ids", "file-1")]

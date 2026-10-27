@@ -34,7 +34,7 @@ from app.document_transform.schemas import (
     TransformMode,
     ValidationSummary,
 )
-from app.identifiers import DocsRevisionId, FileId, TaskId
+from app.identifiers import DocsRevisionId, DriveId, FileId, TaskId
 from scripts.qa_document_transform_corpus import (
     ArtifactFile,
     EvidenceManifest,
@@ -84,7 +84,7 @@ from scripts.qa_document_transform_corpus import (
 )
 
 
-_EMAIL = "nasr@sarj.ai"
+_EMAIL = "reviewer@example.com"
 
 
 def test_seeded_order_is_stable_across_drive_page_order() -> None:
@@ -121,7 +121,7 @@ def test_shared_drive_folder_listing_uses_complete_shared_drive_scope(
     )
 
     drive: Any = Drive()
-    assert _list_folder_children(drive, FileId("folder-a"), shared_drive_id="drive-a") == [
+    assert _list_folder_children(drive, FileId("folder-a"), shared_drive_id=DriveId("drive-a")) == [
         {"id": "doc-a"}
     ]
     assert calls == [
@@ -513,7 +513,7 @@ async def test_shared_drive_copy_preflight_does_not_require_private_ownership(
         expected_release_sha="a" * 40,
         seed="folder-copy",
         destination_folder_id=FileId("destination"),
-        source_drive_id="drive-a",
+        source_drive_id=DriveId("drive-a"),
         mode=TransformMode.BOTH,
         user_email=_EMAIL,
         cohort="corpus",
@@ -527,7 +527,7 @@ def test_uuid5_operation_key_is_stable_and_scoped() -> None:
     first = corpus_operation_key(
         expected_release_sha="a" * 40,
         seed="corpus-1",
-        source_id="doc-a",
+        source_id=FileId("doc-a"),
         destination_folder_id=FileId("destination"),
         mode=TransformMode.BOTH,
         cohort="corpus",
@@ -536,7 +536,7 @@ def test_uuid5_operation_key_is_stable_and_scoped() -> None:
     assert first == corpus_operation_key(
         expected_release_sha="a" * 40,
         seed="corpus-1",
-        source_id="doc-a",
+        source_id=FileId("doc-a"),
         destination_folder_id=FileId("destination"),
         mode=TransformMode.BOTH,
         cohort="corpus",
@@ -545,7 +545,7 @@ def test_uuid5_operation_key_is_stable_and_scoped() -> None:
     assert first != corpus_operation_key(
         expected_release_sha="a" * 40,
         seed="corpus-1",
-        source_id="doc-b",
+        source_id=FileId("doc-b"),
         destination_folder_id=FileId("destination"),
         mode=TransformMode.BOTH,
         cohort="corpus",
@@ -553,7 +553,7 @@ def test_uuid5_operation_key_is_stable_and_scoped() -> None:
     assert first != corpus_operation_key(
         expected_release_sha="a" * 40,
         seed="corpus-1",
-        source_id="doc-a",
+        source_id=FileId("doc-a"),
         destination_folder_id=FileId("destination"),
         mode=TransformMode.BOTH,
         cohort="canary",
@@ -561,7 +561,7 @@ def test_uuid5_operation_key_is_stable_and_scoped() -> None:
     assert first != corpus_operation_key(
         expected_release_sha="a" * 40,
         seed="corpus-1",
-        source_id="doc-a",
+        source_id=FileId("doc-a"),
         destination_folder_id=FileId("another-destination"),
         mode=TransformMode.BOTH,
         cohort="corpus",
@@ -578,15 +578,15 @@ def test_shared_drive_source_must_remain_copyable_and_in_the_bound_drive() -> No
             "capabilities": {"canCopy": True},
         }
     )
-    _require_copyable_source(metadata, expected_drive_id="drive-a")
+    _require_copyable_source(metadata, expected_drive_id=DriveId("drive-a"))
 
     with pytest.raises(QaError, match="source_not_copyable"):
         _require_copyable_source(
             metadata.model_copy(update={"can_copy": False}),
-            expected_drive_id="drive-a",
+            expected_drive_id=DriveId("drive-a"),
         )
     with pytest.raises(QaError, match="source_drive_changed"):
-        _require_copyable_source(metadata, expected_drive_id="drive-b")
+        _require_copyable_source(metadata, expected_drive_id=DriveId("drive-b"))
 
 
 def test_live_execution_is_hard_gated_to_all_folder_copies() -> None:
@@ -1296,6 +1296,7 @@ def _canary_arguments() -> _Arguments:
         canary=True,
         confirm_live_copy="CREATE_1_PRIVATE_CANARY",
         count=1,
+        user_email=_EMAIL,
         source_folder_id="canary-folder",
         destination_folder_id="qa-output-folder",
         execute=True,
@@ -1424,7 +1425,7 @@ def _source_evidence(
     operation_key = corpus_operation_key(
         expected_release_sha=expected_release_sha,
         seed=seed,
-        source_id="source",
+        source_id=FileId("source"),
         destination_folder_id=FileId("destination"),
         mode=TransformMode.BOTH,
         cohort=cohort,

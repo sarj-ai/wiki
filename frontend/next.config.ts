@@ -81,6 +81,15 @@ const NEXT_CONFIG: NextConfig = {
         // Static brand assets are immutable in practice; cache them instead of revalidating.
         source: "/brand/:path*",
       },
+      ...["/brand/sarj-loader-12132f41.svg", "/brand/sarj-loader-still-12132f41.svg"].map(
+        (source) => ({
+          headers: [
+            { key: "Cache-Control", value: "public, max-age=31536000, immutable" },
+            ...SECURITY_HEADERS,
+          ],
+          source,
+        }),
+      ),
       {
         headers: [
           { key: "Cache-Control", value: "no-cache, must-revalidate" },

@@ -17,43 +17,6 @@ if TYPE_CHECKING:
 _USAGE_ERROR = 2
 
 
-@pytest.fixture
-def readme_repository(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
-    (tmp_path / "README.md").write_text("Run `make setup`.\n", encoding="utf-8")
-    (tmp_path / "Makefile").write_text("setup:\n", encoding="utf-8")
-    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- the CLI resolves its repository root globally.
-        repository_checks, "ROOT", tmp_path
-    )
-    return tmp_path
-
-
-def test_readme_without_backend_makefile(readme_repository: Path) -> None:
-    assert not (readme_repository / "backend" / "Makefile").exists()
-    assert CliRunner().invoke(repository_checks.CLI, ["readme"]).exit_code == 0
-
-
-def test_readme_rejects_deleted_backend_target(readme_repository: Path) -> None:
-    (readme_repository / "README.md").write_text(
-        "Run `make -C backend setup`.\n", encoding="utf-8"
-    )
-
-    result = CliRunner().invoke(repository_checks.CLI, ["readme"])
-
-    assert result.exit_code == 1
-    assert "README references missing Make targets: ['setup']" in result.output
-
-
-def test_readme_accepts_existing_backend_target(readme_repository: Path) -> None:
-    backend = readme_repository / "backend"
-    backend.mkdir()
-    (backend / "Makefile").write_text("install:\n", encoding="utf-8")
-    (readme_repository / "README.md").write_text(
-        "Run `make -C backend install`.\n", encoding="utf-8"
-    )
-
-    assert CliRunner().invoke(repository_checks.CLI, ["readme"]).exit_code == 0
-
-
 @pytest.mark.parametrize(
     ("version", "exit_code"),
     [
@@ -230,9 +193,7 @@ def test_help_never_executes(cli: typer.Typer, flag: str) -> None:
         "repository-extra",
     ],
 )
-def test_invalid_arguments_never_execute(
-    cli: typer.Typer, arguments: list[str]
-) -> None:
+def test_invalid_arguments_never_execute(cli: typer.Typer, arguments: list[str]) -> None:
     assert CliRunner().invoke(cli, arguments).exit_code == _USAGE_ERROR
 
 
@@ -251,7 +212,7 @@ def test_recovery_source_passes_typed_values(monkeypatch: pytest.MonkeyPatch) ->
     assert result.exit_code == 0
     assert result.stdout == "b" * 40 + "\n"
     assert calls == [
-        recovery.SourceArguments(verifier_sha="a" * 40, run_id=123, run_attempt=2)
+        recovery.SourceArguments(verifier_sha="a" * 40, run_id=recovery.RunId(123), run_attempt=2)
     ]
 
 

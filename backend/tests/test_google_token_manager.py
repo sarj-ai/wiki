@@ -17,6 +17,7 @@ from app.auth.encryption import encrypt_text
 from app.auth.google_tokens import (
     GoogleReauthenticationRequiredError,
     GoogleTokenManager,
+    GoogleTokenProvider,
     ManagedGoogleToken,
     TokenSnapshot,
 )
@@ -147,7 +148,8 @@ async def test_valid_access_token_does_not_refresh() -> None:
         expires_at=datetime.now(UTC) + timedelta(minutes=10),
     )
 
-    token = await _MemoryTokenManager(state).ensure_valid(_user())
+    manager: GoogleTokenProvider = _MemoryTokenManager(state)
+    token = await manager.ensure_valid(_user())
 
     assert token.token == access_token
     assert state.refreshes == 0
@@ -213,7 +215,7 @@ async def test_google_auth_callback_forces_one_persisted_refresh() -> None:
         refresh_token=secrets.token_urlsafe(),
         expires_at=datetime.now(UTC) + timedelta(hours=1),
     )
-    manager = _MemoryTokenManager(state)
+    manager: GoogleTokenProvider = _MemoryTokenManager(state)
     prepared = await manager.prepare(_user())
 
     token, expiry = await asyncio.to_thread(prepared.refresh_handler, object())

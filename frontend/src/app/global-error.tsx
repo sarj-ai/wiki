@@ -3,7 +3,7 @@
 export default function GlobalError({ reset }: { reset: () => void }) {
   return (
     <html lang="en">
-      <body className="bg-background text-foreground m-0 flex min-h-screen items-center justify-center font-sans">
+      <body className="bg-background text-foreground font-system m-0 flex min-h-svh items-center justify-center px-4 py-6">
         <div className="p-8 text-center">
           <h1 className="mb-2 text-xl">Something went wrong</h1>
           <p className="mb-6 opacity-70">

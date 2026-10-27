@@ -4,7 +4,7 @@ from base64 import urlsafe_b64encode
 from dataclasses import dataclass
 from datetime import timedelta
 import hashlib
-import logging  # ruff: ignore[banned-api] -- assert SDK stdlib records are redacted only inside guarded OAuth requests.
+import logging  # Exercise SDK stdlib redaction inside guarded OAuth requests.
 import time
 from typing import override
 from urllib.parse import parse_qs, urlencode, urlsplit

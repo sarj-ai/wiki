@@ -1,4 +1,4 @@
-"""Executable repository documentation and consistency checks."""  # ruff: ignore[implicit-namespace-package] -- standalone repository CLI, not an import package.
+"""Executable repository consistency checks."""  # ruff: ignore[implicit-namespace-package] -- standalone repository CLI, not an import package.
 
 from __future__ import annotations
 
@@ -8,7 +8,7 @@ import re
 import shutil
 import subprocess  # ruff: ignore[suspicious-subprocess-import] -- resolved CLI executables, no shell
 import sys
-from typing import TYPE_CHECKING, Annotated
+from typing import TYPE_CHECKING
 
 import typer
 
@@ -18,8 +18,6 @@ if TYPE_CHECKING:
 
 
 ROOT = Path(__file__).resolve().parents[1]
-MAKE_TARGET = re.compile(r"^([A-Za-z0-9_.-]+):(?:\s|$)")
-MAKE_REFERENCE = re.compile(r"\bmake(?:\s+-C\s+(backend))?\s+([A-Za-z0-9_.-]+)")
 ENV_KEY = re.compile(r"^\s*(?:#\s*)?([A-Z][A-Z0-9_]*)\s*=")
 SETTINGS_FIELD = re.compile(r"^    ([A-Z][A-Z0-9_]*):")
 
@@ -40,34 +38,15 @@ def check_node() -> None:
     if match is None or tuple(map(int, match.groups())) < (26, 7, 0):
         message = (
             f"node >= 26.7.0 required (found {version}). Run mise install or "
-            "mise exec -- make check."
+            "mise exec -- uv run scripts/wiki.py check."
         )
         raise ValueError(message)
 
 
 def check_markdown() -> None:
     actual = _tracked_markdown()
-    expected = ["README.md"]
-    if actual != expected:
-        message = f"tracked Markdown must be exactly {expected}; found {actual}"
-        raise ValueError(message)
-
-
-def check_readme() -> None:
-    text = (ROOT / "README.md").read_text(encoding="utf-8")
-    root_targets = _make_targets(ROOT / "Makefile")
-    backend_makefile = ROOT / "backend" / "Makefile"
-    backend_targets = (
-        _make_targets(backend_makefile) if backend_makefile.exists() else set()
-    )
-    missing: list[str] = []
-    for match in MAKE_REFERENCE.finditer(text):
-        target = match.group(2)
-        targets = backend_targets if match.group(1) == "backend" else root_targets
-        if target not in targets:
-            missing.append(target)
-    if missing:
-        message = f"README references missing Make targets: {sorted(set(missing))}"
+    if actual:
+        message = f"tracked Markdown is not permitted; found {actual}"
         raise ValueError(message)
 
 
@@ -86,20 +65,8 @@ def check_env_example() -> None:
         raise ValueError(message)
 
 
-def make_help(makefile: Path) -> None:
-    entries: list[tuple[str, str]] = []
-    for line in makefile.read_text(encoding="utf-8").splitlines():
-        if " ## " not in line or not (match := MAKE_TARGET.match(line)):
-            continue
-        entries.append((match.group(1), line.split(" ## ", maxsplit=1)[1].strip()))
-    width = max((len(target) for target, _ in entries), default=0)
-    for target, description in entries:
-        sys.stdout.write(f"{target:<{width}}  {description}\n")
-
-
 def check_all() -> None:
     check_markdown()
-    check_readme()
     check_env_example()
 
 
@@ -129,26 +96,14 @@ def node_command() -> None:
     _run(check_node)
 
 
-@CLI.command("markdown", help="Enforce README.md as the only tracked Markdown")
+@CLI.command("markdown", help="Require no tracked Markdown files")
 def markdown_command() -> None:
     _run(check_markdown)
-
-
-@CLI.command("readme", help="Verify Make targets referenced by README.md")
-def readme_command() -> None:
-    _run(check_readme)
 
 
 @CLI.command("env", help="Compare .env.example keys with Pydantic Settings")
 def env_command() -> None:
     _run(check_env_example)
-
-
-@CLI.command("make-help", help="Print annotated Make targets")
-def help_command(
-    makefile: Annotated[Path, typer.Argument()] = ROOT / "Makefile",
-) -> None:
-    _run(lambda: make_help(makefile))
 
 
 def _tracked_markdown() -> list[str]:
@@ -159,9 +114,7 @@ def _tracked_markdown() -> list[str]:
         capture_output=True,
         text=True,
     )
-    return sorted(
-        line for line in result.stdout.splitlines() if line and (ROOT / line).is_file()
-    )
+    return sorted(line for line in result.stdout.splitlines() if line and (ROOT / line).is_file())
 
 
 def _git_executable() -> str:
@@ -170,14 +123,6 @@ def _git_executable() -> str:
         message = "git is required"
         raise RuntimeError(message)
     return executable
-
-
-def _make_targets(path: Path) -> set[str]:
-    targets: set[str] = set()
-    for line in path.read_text(encoding="utf-8").splitlines():
-        if match := MAKE_TARGET.match(line):
-            targets.add(match.group(1))
-    return targets
 
 
 def _settings_fields() -> set[str]:

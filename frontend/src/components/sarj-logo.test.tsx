@@ -11,7 +11,7 @@ describe("SarjLogo", () => {
     const container = document.createElement("div");
     const root = createRoot(container);
     flushSync(() => {
-      root.render(<SarjLogo priority size={28} />);
+      root.render(<SarjLogo size={28} />);
     });
 
     const logo = container.querySelector('[role="img"][aria-label="Sarj"]');

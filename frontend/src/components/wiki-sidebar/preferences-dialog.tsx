@@ -17,6 +17,8 @@ import { useSetPreferences } from "@/hooks/use-wiki-mutations";
 import { useDrives, usePreferences } from "@/hooks/use-wiki-tree";
 import { runWithErrorToast } from "@/lib/mutation-toast";
 
+import { DriveListFeedback } from "./drive-list-feedback";
+
 export function PreferencesDialog({
   onCloseAutoFocus,
   onOpenAutoFocus,
@@ -27,14 +29,19 @@ export function PreferencesDialog({
   const prefsQuery = usePreferences();
   const setPreferences = useSetPreferences();
 
+  const hasNoDrives = drivesQuery.isSuccess && drivesQuery.data.length === 0;
+  const hasPreferences = prefsQuery.data !== undefined;
   const showNonDocFiles = prefsQuery.data?.showNonDocFiles ?? true;
   const hiddenWorkspaceIds = prefsQuery.data?.hiddenWorkspaceIds ?? [];
   const hiddenSet = new Set(hiddenWorkspaceIds);
 
-  const updatePrefs = async (payload: Parameters<typeof setPreferences.mutateAsync>[0]) => {
-    await runWithErrorToast(async () => {
+  const updatePrefs = (payload: Parameters<typeof setPreferences.mutateAsync>[0]) => {
+    if (!hasPreferences) return;
+    void runWithErrorToast(async () => {
       await setPreferences.mutateAsync(payload);
-    }, "Failed to update preferences");
+    }, "Failed to update preferences").catch(() =>
+      console.warn("Preference update could not finish"),
+    );
   };
 
   return (
@@ -60,6 +67,29 @@ export function PreferencesDialog({
           role="region"
           tabIndex={0}
         >
+          {prefsQuery.isPending ? (
+            <p className="text-muted-foreground p-2 text-sm" role="status">
+              Loading preferences…
+            </p>
+          ) : null}
+          {prefsQuery.isError ? (
+            <div className="space-y-2 p-2 text-sm" role="alert">
+              <p>Preferences could not be loaded.</p>
+              <Button
+                disabled={prefsQuery.isFetching}
+                onClick={() => {
+                  void prefsQuery
+                    .refetch()
+                    .catch(() => console.warn("Preference retry could not finish"));
+                }}
+                size="sm"
+                type="button"
+                variant="outline"
+              >
+                Retry preferences
+              </Button>
+            </div>
+          ) : null}
           <section>
             <div className="text-muted-foreground mb-1 px-2 text-xs font-medium tracking-wide uppercase">
               Display
@@ -67,10 +97,11 @@ export function PreferencesDialog({
             <CheckboxRow
               checked={showNonDocFiles}
               description="Include Sheets, Slides, Forms, Drawings, PDFs and images in the sidebar."
+              disabled={!hasPreferences}
               id="pref-show-non-doc"
               label="Show non-Doc files"
               onChange={(next) => {
-                void updatePrefs({ showNonDocFiles: next });
+                updatePrefs({ showNonDocFiles: next });
               }}
             />
           </section>
@@ -79,15 +110,14 @@ export function PreferencesDialog({
             <div className="text-muted-foreground mb-1 px-2 text-xs font-medium tracking-wide uppercase">
               Visible drives
             </div>
-            {(drivesQuery.data ?? []).length === 0 && (
-              <div className="text-muted-foreground p-2 text-xs">No drives</div>
-            )}
+            <DriveListFeedback empty={hasNoDrives} query={drivesQuery} />
             <div className="space-y-0.5">
               {(drivesQuery.data ?? []).map((drive) => {
                 const isHidden = hiddenSet.has(drive.id);
                 return (
                   <CheckboxRow
                     checked={!isHidden}
+                    disabled={!hasPreferences}
                     id={`pref-drive-${drive.id}`}
                     key={drive.id}
                     label={drive.name}
@@ -95,7 +125,7 @@ export function PreferencesDialog({
                       const nextHidden = next
                         ? hiddenWorkspaceIds.filter((id) => id !== drive.id)
                         : [...hiddenWorkspaceIds, drive.id];
-                      void updatePrefs({ hiddenWorkspaceIds: nextHidden });
+                      updatePrefs({ hiddenWorkspaceIds: nextHidden });
                     }}
                   />
                 );
@@ -129,6 +159,7 @@ interface PreferencesDialogProps {
 function CheckboxRow({
   checked,
   description,
+  disabled,
   id,
   label,
   onChange,
@@ -136,6 +167,7 @@ function CheckboxRow({
   id: string;
   label: string;
   description?: string;
+  disabled: boolean;
   checked: boolean;
   onChange: (next: boolean) => void;
 }) {
@@ -147,13 +179,14 @@ function CheckboxRow({
       <Checkbox
         checked={checked}
         className="mt-0.5"
+        disabled={disabled}
         id={id}
         onCheckedChange={(next) => {
           onChange(next === true);
         }}
       />
       <div className="min-w-0 flex-1">
-        <div className="font-medium">{label}</div>
+        <div className="font-medium wrap-anywhere">{label}</div>
         {description ? <div className="text-muted-foreground text-xs">{description}</div> : null}
       </div>
     </label>

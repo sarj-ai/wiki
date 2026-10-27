@@ -35,6 +35,7 @@ name: CI Quality
       - "scripts/github/verify-mcp-release.sh"
       - "scripts/github/resolve-mcp-release-mode.sh"
       - "scripts/github/verify-smart-create-queue.sh"
+      - "scripts/wiki.py"
       - "scripts/backend_release/**"
       - "scripts/frontend_release/**"
       - ".github/workflows/release-main.yml"
@@ -47,10 +48,14 @@ concurrency:
   group: ci-quality-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
+defaults:
+  run:
+    shell: bash
+
 jobs:
   repository-quality:
     name: pre-commit (actionlint, hygiene, sarj rules)
-    runs-on: blacksmith-2vcpu-ubuntu-2404
+    runs-on: ${{ vars.CI_RUNNER || 'ubuntu-24.04' }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -85,8 +90,8 @@ jobs:
       - name: Bootstrap analysis inputs
         run: npm --prefix frontend run generate:api
 
-      - name: Verify executable repository documentation
-        run: make check-repository
+      - name: Verify repository consistency
+        run: uv run scripts/wiki.py check repository
 
       - name: Suppression ratchet
         run: uv run --project backend --locked sarj-ratchet .
@@ -120,7 +125,7 @@ jobs:
 
   api-contract:
     name: OpenAPI spec in sync
-    runs-on: blacksmith-2vcpu-ubuntu-2404
+    runs-on: ${{ vars.CI_RUNNER || 'ubuntu-24.04' }}
     permissions:
       contents: read
     steps:
@@ -141,7 +146,7 @@ jobs:
 
   secret-scan:
     name: gitleaks (full history)
-    runs-on: blacksmith-2vcpu-ubuntu-2404
+    runs-on: ${{ vars.CI_RUNNER || 'ubuntu-24.04' }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:

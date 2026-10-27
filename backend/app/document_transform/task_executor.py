@@ -43,7 +43,7 @@ from app.document_transform.google_presentation_gateway import (
     GooglePresentationGateway,
 )
 from app.document_transform.header_provenance import HeaderIdentityEvidence, HeaderIdentityProof
-from app.document_transform.models import PatchGenerator
+from app.document_transform.models import DocumentTransformRunner, PatchGenerator
 from app.document_transform.naming import polish_alias_candidates
 from app.document_transform.presentation_executor import PresentationTransformExecutor
 from app.document_transform.qa_broker import (
@@ -130,15 +130,6 @@ class ClaimedTaskStore(RetryTaskStore, Protocol):
         lease_token: uuid.UUID,
         result: DocumentTransformResult,
     ) -> TaskRead: ...
-
-
-class DocumentTransformRunner(Protocol):
-    async def execute(
-        self,
-        *,
-        operation_id: uuid.UUID,
-        request: DocumentTransformRequest,
-    ) -> DocumentTransformResult: ...
 
 
 class PolishShortLinks(Protocol):

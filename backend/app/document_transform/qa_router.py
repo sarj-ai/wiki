@@ -67,7 +67,7 @@ from app.document_transform.schemas import (
 )
 from app.drive.schemas import MIME_DOC, MIME_FOLDER
 from app.files.schemas import FileResponse
-from app.identifiers import DocsRevisionId, FileId, QaPlanId, QaRunId, TaskId
+from app.identifiers import DocsRevisionId, FileId, IdempotencyKey, QaPlanId, QaRunId, TaskId
 from app.models.document_transform_qa_corpus import (
     DocumentTransformQaCorpusCampaignId,
     DocumentTransformQaCorpusMemberId,
@@ -488,7 +488,7 @@ async def launch_document_transform_qa_run(
     if user.email.casefold() not in settings.DOCUMENT_TRANSFORM_QA_OPERATOR_EMAILS:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="QA operator required")
     try:
-        launch_key = uuid.UUID(idempotency_key or "")
+        launch_key = IdempotencyKey(uuid.UUID(idempotency_key or ""))
     except ValueError as exc:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,

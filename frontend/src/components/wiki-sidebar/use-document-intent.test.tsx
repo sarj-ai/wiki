@@ -10,7 +10,6 @@ import {
   useDocumentIntent,
 } from "@/components/wiki-sidebar/use-document-intent";
 import { claimBrowserSession, retireBrowserSession } from "@/lib/browser-session";
-import { MIME_DOC } from "@/types/wiki";
 
 const MOCKS = vi.hoisted(() => ({
   getQueryData: vi.fn(() => ({
@@ -332,9 +331,7 @@ function Harness({ disabled = false }: { disabled?: boolean }) {
   const intent = useDocumentIntent({
     disabled,
     fileId,
-    mimeType: MIME_DOC,
     onStrongIntent: MOCKS.strongIntent,
-    title: "Document one",
   });
   return (
     <Link href={`/d/${fileId}`} id="document-intent-control" {...intent}>

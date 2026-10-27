@@ -11,10 +11,14 @@ name: Read Transform Diagnostics
 permissions:
   contents: read
 
+defaults:
+  run:
+    shell: bash
+
 jobs:
   diagnostics:
     if: github.ref == 'refs/heads/main'
-    runs-on: blacksmith-2vcpu-ubuntu-2404
+    runs-on: ${{ vars.CI_RUNNER || 'ubuntu-24.04' }}
     timeout-minutes: 5
     permissions:
       contents: read

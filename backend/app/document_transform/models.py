@@ -5,14 +5,21 @@ import asyncio
 from dataclasses import asdict, dataclass
 from datetime import timedelta
 import json
-from typing import Literal, override
+from typing import Literal, Protocol, override
+import uuid
 
 from google import genai
 from google.genai import errors as genai_errors, types as genai_types
 
 from app.document_transform.errors import ModelUnavailableError
 from app.document_transform.ir import DocumentIR
-from app.document_transform.schemas import PatchEnvelope, TextPatch, TransformPhase
+from app.document_transform.schemas import (
+    DocumentTransformRequest,
+    DocumentTransformResult,
+    PatchEnvelope,
+    TextPatch,
+    TransformPhase,
+)
 from app.document_transform.unslop import scan_unslop_candidates
 
 
@@ -30,6 +37,15 @@ class GeminiModelPolicy:
             if not model or model.endswith("-latest") or model == "latest":
                 msg = "Exact Gemini model IDs are required"
                 raise ValueError(msg)
+
+
+class DocumentTransformRunner(Protocol):
+    async def execute(
+        self,
+        *,
+        operation_id: uuid.UUID,
+        request: DocumentTransformRequest,
+    ) -> DocumentTransformResult: ...
 
 
 class PatchGenerator(ABC):

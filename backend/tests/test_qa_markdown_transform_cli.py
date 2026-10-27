@@ -22,15 +22,19 @@ def _arguments() -> list[str]:
         "both",
         "--operation-id",
         "da031d91-efca-4d80-8de2-8fd1b34a2ac9",
+        "--user-email",
+        "reviewer@example.com",
         "--confirm-live-copy",
         "CREATE_LABELED_SIBLING",
     ]
 
 
 @pytest.mark.parametrize("mode", list(TransformMode))
-@pytest.mark.parametrize("email", [None, "reviewer@sarj.ai"], ids=["default-user", "explicit-user"])
+@pytest.mark.parametrize(
+    "email", ["reviewer@example.com", "another@example.com"], ids=["first-user", "second-user"]
+)
 def test_cli_passes_typed_options(
-    mode: TransformMode, email: str | None, monkeypatch: pytest.MonkeyPatch
+    mode: TransformMode, email: str, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     calls: list[qa_markdown_transform._Arguments] = []
     output: dict[str, object] = {"status": "completed"}
@@ -42,8 +46,7 @@ def test_cli_passes_typed_options(
     monkeypatch.setattr(qa_markdown_transform, "_run", run)
     arguments = _arguments()
     arguments[arguments.index("--mode") + 1] = mode.value
-    if email is not None:
-        arguments.extend(["--user-email", email])
+    arguments[arguments.index("--user-email") + 1] = email
     result = CliRunner().invoke(qa_markdown_transform.CLI, arguments)
     assert result.exit_code == 0
     assert result.stdout == json.dumps(output, indent=2, sort_keys=True) + "\n"
@@ -54,7 +57,7 @@ def test_cli_passes_typed_options(
             document_name="QA document",
             mode=mode,
             operation_id=uuid.UUID("da031d91-efca-4d80-8de2-8fd1b34a2ac9"),
-            user_email=email or "nasr@sarj.ai",
+            user_email=email,
             confirm_live_copy="CREATE_LABELED_SIBLING",
         )
     ]
@@ -69,6 +72,7 @@ def test_cli_passes_typed_options(
         "--mode",
         "--operation-id",
         "--confirm-live-copy",
+        "--user-email",
     ],
 )
 def test_required_options_fail_before_execution(

@@ -67,11 +67,11 @@ class _Files:
         self.editable = editable
         self.mime_type = mime_type
         self.inaccessible_ids = inaccessible_ids or set()
-        self.get_calls: list[str] = []
-        self.bulk_calls: list[list[str]] = []
+        self.get_calls: list[FileId] = []
+        self.bulk_calls: list[list[FileId]] = []
         self.can_edit_calls = 0
 
-    async def get(self, file_id: str) -> FileResponse:
+    async def get(self, file_id: FileId) -> FileResponse:
         self.get_calls.append(file_id)
         if not self.accessible or file_id in self.inaccessible_ids:
             msg = "File not available in Sarj Wiki"
@@ -86,16 +86,16 @@ class _Files:
             parent_folder_id=None,
         )
 
-    async def can_edit(self, _file_id: str) -> bool:
+    async def can_edit(self, _file_id: FileId) -> bool:
         self.can_edit_calls += 1
         return self.editable
 
-    async def require_access(self, file_id: str) -> None:
+    async def require_access(self, file_id: FileId) -> None:
         await self.get(file_id)
 
-    async def get_accessible_many(self, file_ids: list[str]) -> dict[str, FileResponse]:
+    async def get_accessible_many(self, file_ids: list[FileId]) -> dict[FileId, FileResponse]:
         self.bulk_calls.append(file_ids)
-        accessible: dict[str, FileResponse] = {}
+        accessible: dict[FileId, FileResponse] = {}
         for file_id in file_ids:
             try:
                 accessible[file_id] = await self.get(file_id)
@@ -103,7 +103,7 @@ class _Files:
                 continue
         return accessible
 
-    async def get_search_metadata_many(self, file_ids: list[str]) -> dict[str, FileResponse]:
+    async def get_search_metadata_many(self, file_ids: list[FileId]) -> dict[FileId, FileResponse]:
         return await self.get_accessible_many(file_ids)
 
 

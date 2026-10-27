@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import json
 from types import MappingProxyType
+from typing import override
 import uuid
 
 from app.document_transform.brand_manifest import CURRENT_BRAND_MANIFEST
@@ -13,8 +14,8 @@ from app.document_transform.errors import (
     SourceTooLargeError,
     UnsupportedSourceError,
 )
-from app.document_transform.models import PatchGenerator
-from app.document_transform.planner import TextTransformPlanner
+from app.document_transform.models import DocumentTransformRunner, PatchGenerator
+from app.document_transform.planner import TextTransformPlanner, TransformOutcome
 from app.document_transform.presentation_gateway import (
     PresentationDraft,
     PresentationGateway,
@@ -52,7 +53,7 @@ _OUTPUT_SUFFIX = MappingProxyType(
 )
 
 
-class PresentationTransformExecutor:
+class PresentationTransformExecutor(DocumentTransformRunner):
     def __init__(
         self,
         *,
@@ -65,6 +66,7 @@ class PresentationTransformExecutor:
         self._planner = TextTransformPlanner(generator=generator, allow_unslop_model=False)
         self._logo_uri = logo_uri
 
+    @override
     async def execute(
         self,
         *,
@@ -109,24 +111,11 @@ class PresentationTransformExecutor:
                 draft=recovered,
             )
 
-        planned = (
-            await self._planner.transform(source_parsed.document, request)
-            if source_parsed is not None
-            else None
+        planned = await self._preflight_native_source(
+            snapshot=snapshot,
+            parsed=source_parsed,
+            request=request,
         )
-        if source_parsed is not None:
-            if planned is None:  # pragma: no cover - mirrors source parser branch
-                message = "Native presentation plan was not created"
-                raise RuntimeError(message)
-            if snapshot.presentation is None:  # pragma: no cover - guarded by parser result
-                raise UnsupportedSourceError
-            build_slides_mutation_plan(
-                snapshot.presentation,
-                parsed=source_parsed,
-                transformed=planned.document,
-                mode=request.mode,
-                logo_uri=self._logo_uri,
-            )
         if not await self._gateway.source_is_unchanged(snapshot):
             raise SourceChangedError
         draft = recovered or await self._gateway.create_copy(
@@ -135,6 +124,48 @@ class PresentationTransformExecutor:
             source_sha256=source_sha256,
             output_name=request.output_name or f"{snapshot.title} — {_OUTPUT_SUFFIX[request.mode]}",
         )
+        return await self._transform_and_verify_copy(
+            operation_id=operation_id,
+            request=request,
+            snapshot=snapshot,
+            source_sha256=source_sha256,
+            draft=draft,
+            source_parsed=source_parsed,
+            planned=planned,
+        )
+
+    async def _preflight_native_source(
+        self,
+        *,
+        snapshot: PresentationSourceSnapshot,
+        parsed: ParsedPresentation | None,
+        request: DocumentTransformRequest,
+    ) -> TransformOutcome | None:
+        if parsed is None:
+            return None
+        planned = await self._planner.transform(parsed.document, request)
+        if snapshot.presentation is None:  # pragma: no cover - guarded by parser result
+            raise UnsupportedSourceError
+        build_slides_mutation_plan(
+            snapshot.presentation,
+            parsed=parsed,
+            transformed=planned.document,
+            mode=request.mode,
+            logo_uri=self._logo_uri,
+        )
+        return planned
+
+    async def _transform_and_verify_copy(
+        self,
+        *,
+        operation_id: uuid.UUID,
+        request: DocumentTransformRequest,
+        snapshot: PresentationSourceSnapshot,
+        source_sha256: str,
+        draft: PresentationDraft,
+        source_parsed: ParsedPresentation | None,
+        planned: TransformOutcome | None,
+    ) -> DocumentTransformResult:
         output_presentation = await self._gateway.get_presentation(draft.file_id)
         try:
             output_parsed = parse_google_presentation(
@@ -153,13 +184,12 @@ class PresentationTransformExecutor:
             )
 
         findings: list[TransformFinding] = []
-        if source_parsed is not None:
-            if (
-                output_parsed.document.semantic_sha256 != source_parsed.document.semantic_sha256
-                or output_parsed.protected_sha256 != source_parsed.protected_sha256
-            ):
-                raise OutputConflictError
-        else:
+        if source_parsed is not None and (
+            output_parsed.document.semantic_sha256 != source_parsed.document.semantic_sha256
+            or output_parsed.protected_sha256 != source_parsed.protected_sha256
+        ):
+            raise OutputConflictError
+        if source_parsed is None:
             planned = await self._planner.transform(output_parsed.document, request)
             findings.append(
                 TransformFinding(

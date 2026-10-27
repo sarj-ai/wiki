@@ -11,7 +11,7 @@ from fastmcp.server.auth import AuthProvider
 import pytest
 
 from app.document_transform.limits import MAX_MARKDOWN_BYTES
-from app.identifiers import TaskId
+from app.identifiers import TaskId, UserId
 from app.mcp.context import ValidatedMcpPrincipal
 from app.mcp.schemas import McpCapability
 from app.mcp.server import create_mcp_server
@@ -39,7 +39,7 @@ class Contexts:
                 message = "https://provider.invalid?access_token=secret-canary"
                 raise RuntimeError(message)
             yield SimpleNamespace(
-                principal=ValidatedMcpPrincipal(uuid.uuid7(), 1, self.capabilities)
+                principal=ValidatedMcpPrincipal(UserId(uuid.uuid7()), 1, self.capabilities)
             )
         finally:
             self.closed += 1

@@ -888,6 +888,7 @@ export function DocumentPolishDialog({
                   <Label>Markdown file</Label>
                   <input
                     accept=".md, text/markdown, text/plain"
+                    aria-hidden="true"
                     className="sr-only"
                     disabled={optionsLocked}
                     onChange={(event) => {
@@ -895,6 +896,7 @@ export function DocumentPolishDialog({
                       if (file) void loadMarkdownFile(file);
                     }}
                     ref={fileInputRef}
+                    tabIndex={-1}
                     type="file"
                   />
                   <Button
@@ -935,7 +937,7 @@ export function DocumentPolishDialog({
                     </span>
                   </div>
                   <Textarea
-                    className="min-h-44 resize-y font-mono text-xs leading-relaxed"
+                    className="min-h-44 resize-y"
                     disabled={optionsLocked}
                     id="polish-markdown-content"
                     onChange={(event) => {
@@ -948,6 +950,7 @@ export function DocumentPolishDialog({
                     }}
                     placeholder={"# Proposal\n\nPaste Markdown here…"}
                     value={displayedMarkdown}
+                    variant="code"
                   />
                   {markdownError ? (
                     <p className="text-destructive text-xs" role="alert">

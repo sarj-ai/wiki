@@ -417,7 +417,7 @@ def _observed_token_manager(
             self,
             user: User,
             *,
-            user_id: uuid.UUID,
+            user_id: UserId,
             force_generation: int,
             owner_task: asyncio.Task[object] | None,
         ) -> ManagedGoogleToken:

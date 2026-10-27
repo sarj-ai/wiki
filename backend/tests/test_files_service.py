@@ -116,7 +116,7 @@ async def test_create_rejects_unsupported_mime_type() -> None:
 async def test_http_errors_map_to_drive_upstream(
     monkeypatch: pytest.MonkeyPatch,
     google_status: int,
-    file_id: str,
+    file_id: FileId,
     expected_status: int,
 ) -> None:
     class _FakeFiles:

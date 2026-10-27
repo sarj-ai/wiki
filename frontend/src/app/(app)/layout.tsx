@@ -6,6 +6,7 @@ import { BrowserSessionBoundary } from "@/components/browser-session-boundary";
 import { ErrorBoundary } from "@/components/error-boundary";
 import { QueryProvider } from "@/components/query-provider";
 import { RedirectAfterLogin } from "@/components/redirect-after-login";
+import { SarjLoader } from "@/components/sarj-loader";
 import { SessionRefresh } from "@/components/session-refresh";
 import { SidebarProvider } from "@/components/ui/sidebar";
 import { Toaster } from "@/components/ui/sonner";
@@ -37,23 +38,10 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
 
 function WorkspaceSkeleton() {
   return (
-    <div aria-busy="true" aria-label="Loading workspace" className="bg-background flex min-h-svh">
-      <aside className="bg-sidebar hidden w-72 shrink-0 space-y-4 border-r p-4 md:block">
-        <SarjLogoSkeleton />
-        <div className="bg-muted h-8 animate-pulse rounded-md" />
-        <div className="text-muted-foreground text-xs">Loading workspace…</div>
-      </aside>
-      <main className="min-w-0 flex-1">
-        <div className="border-border flex h-10 items-center border-b px-4">
-          <div className="bg-muted h-3 w-40 animate-pulse rounded-sm" />
-        </div>
-      </main>
-    </div>
+    <main aria-busy="true" className="bg-background flex min-h-svh items-center justify-center p-6">
+      <SarjLoader label="Loading workspace…" />
+    </main>
   );
-}
-
-function SarjLogoSkeleton() {
-  return <div className="bg-muted h-7 w-20 animate-pulse rounded-sm" />;
 }
 
 async function AuthenticatedLayout({ children }: { children: React.ReactNode }) {

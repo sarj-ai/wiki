@@ -44,12 +44,12 @@ output "dammam_backend_url" {
 }
 
 output "dammam_database_connection_name" {
-  description = "Dammam SQL replica or promoted-primary connection name"
+  description = "Dammam production SQL connection name"
   value       = var.enable_dammam_stack ? google_sql_database_instance.dammam[0].connection_name : null
 }
 
 output "dammam_state_bucket" {
-  description = "Versioned Saudi bucket prepared for Terraform state migration"
+  description = "Versioned Saudi Terraform state bucket"
   value       = var.enable_dammam_stack ? google_storage_bucket.terraform_state_dammam[0].name : null
 }
 

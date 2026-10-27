@@ -17,6 +17,7 @@ import { MIME_DOC, MIME_FORM } from "@/types/wiki";
 import { ItemMenu } from "./item-menu";
 import { CHEVRON_OFFSET, ICON_COLUMN_WIDTH, rowIndent } from "./layout-constants";
 import { PickableIcon } from "./pickable-icon";
+import { RowActions } from "./row-actions";
 import { useDocumentIntent } from "./use-document-intent";
 import { useIsMovingFile } from "./use-in-flight-moves";
 import { useSidebarNavigation } from "./use-sidebar-navigation";
@@ -84,11 +85,9 @@ function FileRowContent({
   const intent = useDocumentIntent({
     disabled: isForm || route.inaccessible || isActive,
     fileId: route.targetId,
-    mimeType: route.isShortcut ? route.targetMimeType : node.mimeType,
     onStrongIntent: () => {
       markNav(route.targetId, "click");
     },
-    title: displayName,
   });
 
   const iconContent =
@@ -142,7 +141,7 @@ function FileRowContent({
       </div>
 
       {!route.isShortcut && !route.inaccessible && (
-        <div className="absolute top-1/2 right-1 flex -translate-y-1/2 items-center opacity-0 group-hover/navitem:opacity-100 focus-within:opacity-100">
+        <RowActions>
           <ItemMenu
             currentName={node.name}
             driveId={driveId}
@@ -150,7 +149,7 @@ function FileRowContent({
             isFolder={false}
             parentFolderId={parentFolderId}
           />
-        </div>
+        </RowActions>
       )}
       {isMoving ? (
         <div className="text-muted-foreground pointer-events-none absolute top-1/2 right-2 -translate-y-1/2">
@@ -179,6 +178,7 @@ function RowButton({
     return (
       <SidebarMenuButton
         className={cn("text-muted-foreground/60 cursor-not-allowed pr-8", isMoving && "opacity-60")}
+        data-sidebar-row="file"
         disabled
         style={{ paddingLeft: linkPadding }}
         title={titleAttr}
@@ -193,6 +193,7 @@ function RowButton({
         asChild
         className={cn("pr-8 transition-opacity", isMoving && "opacity-60")}
         data-file-id={node.id}
+        data-sidebar-row="file"
         isActive={isActive}
         style={{ paddingLeft: linkPadding }}
       >
@@ -217,6 +218,7 @@ function RowButton({
       asChild
       className={cn("pr-8 transition-opacity", isMoving && "opacity-60")}
       data-file-id={node.id}
+      data-sidebar-row="file"
       isActive={isActive}
       style={{ paddingLeft: linkPadding }}
     >

@@ -10,7 +10,7 @@ from sqlalchemy import and_, delete, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.document_transform.schemas import TransformMode
-from app.identifiers import AuthSessionId, FileId, QaPlanId, QaRunId, TaskId, UserId
+from app.identifiers import AuthSessionId, FileId, IdempotencyKey, QaPlanId, QaRunId, TaskId, UserId
 from app.models.auth_session import UserSession
 from app.models.document_transform_qa_grant import (
     DocumentTransformQaGrant,
@@ -125,7 +125,7 @@ class QaExecutionIdentity:
 async def prepare_idempotent_qa_launch(
     db: AsyncSession,
     *,
-    idempotency_key: uuid.UUID,
+    idempotency_key: IdempotencyKey,
     issuer_user_id: UserId,
     user_id: UserId,
     session_id: AuthSessionId,
@@ -1165,32 +1165,6 @@ async def _locked_run(db: AsyncSession, run_id: QaRunId) -> _LockedRun | None:
             .join(User, User.id == DocumentTransformQaRun.user_id)
             .join(UserSession, UserSession.id == DocumentTransformQaRun.user_session_id)
             .where(DocumentTransformQaRun.id == run_id)
-            .with_for_update()
-            .execution_options(populate_existing=True)
-        )
-    ).one_or_none()
-    if row is None:
-        return None
-    return _LockedRun(row[0], row[1], row[2], row[3], row[4])
-
-
-async def _locked_run_by_execution(db: AsyncSession, execution_name: str) -> _LockedRun | None:
-    row = (
-        await db.execute(
-            select(
-                DocumentTransformQaRun,
-                DocumentTransformQaGrant,
-                User,
-                UserSession,
-                func.clock_timestamp(),
-            )
-            .join(
-                DocumentTransformQaGrant,
-                DocumentTransformQaGrant.id == DocumentTransformQaRun.grant_id,
-            )
-            .join(User, User.id == DocumentTransformQaRun.user_id)
-            .join(UserSession, UserSession.id == DocumentTransformQaRun.user_session_id)
-            .where(DocumentTransformQaRun.execution_name == execution_name)
             .with_for_update()
             .execution_options(populate_existing=True)
         )

@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from typing import Annotated, Protocol
-import uuid
 
 from fastapi import APIRouter, Depends, Path, Response, status
 
@@ -16,7 +15,7 @@ from app.document_transform.schemas import (
 from app.files.dependencies import files_service_dep
 from app.files.errors import FilesError
 from app.files.schemas import FileResponse
-from app.identifiers import FileId, TaskId
+from app.identifiers import FileId, TaskId, UserId
 from app.models.user import User
 from app.openapi import authentication_responses
 from app.tasks.dependencies import task_service_dep
@@ -32,7 +31,7 @@ from app.tasks.schemas import (
 
 
 class TaskReader(Protocol):
-    async def get_for_owner(self, task_id: TaskId, owner_user_id: uuid.UUID) -> TaskRead: ...
+    async def get_for_owner(self, task_id: TaskId, owner_user_id: UserId) -> TaskRead: ...
 
     async def load_document_transform(self, task_id: TaskId) -> DocumentTransformTaskRecord: ...
 

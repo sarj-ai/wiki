@@ -5,8 +5,8 @@ import { notFound } from "next/navigation";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 
 import { Skeleton } from "@/components/ui/skeleton";
-import { DocSkeleton } from "@/components/wiki-document/doc-skeleton";
 import { useDocViewerStore } from "@/components/wiki-document/doc-viewer-store";
+import { DocumentLoading } from "@/components/wiki-document/document-loading";
 import { WikiToolbar } from "@/components/wiki-document/wiki-toolbar";
 import { WikiNotFound } from "@/components/wiki-not-found";
 import { useDocumentTitle } from "@/hooks/use-document-title";
@@ -178,7 +178,7 @@ function FilePageBody({
         mimeType,
         reloadKey,
         title: displayTitle,
-        ...(version === undefined ? {} : { version }),
+        ...(!(version === undefined) && { version }),
       },
       owner,
     );
@@ -219,7 +219,7 @@ function FilePageBody({
         </a>
       )}
       <div className="flex-1 overflow-hidden" ref={setOwnedSlot}>
-        {authority === "pending" ? <DocSkeleton /> : null}
+        {authority === "pending" ? <DocumentLoading /> : null}
       </div>
     </div>
   );
@@ -242,7 +242,7 @@ export function FilePagePending() {
         </div>
       </header>
       <div className="flex-1 overflow-hidden">
-        <DocSkeleton />
+        <DocumentLoading />
       </div>
     </div>
   );

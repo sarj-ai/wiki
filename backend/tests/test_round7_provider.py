@@ -17,7 +17,7 @@ from app.drive.schemas import MIME_DOC, MIME_FOLDER, MIME_SHORTCUT, DriveTree
 from app.files.breadcrumb import build_breadcrumb
 from app.files.errors import FileNotInScopeError
 from app.files.service import GoogleFilesService
-from app.identifiers import FileId, IdempotencyKey, TaskId, UserId
+from app.identifiers import DriveId, FileId, IdempotencyKey, TaskId, UserId
 from app.models.task import Task
 from app.models.user import User
 from app.smart_create.schemas import AIMode, BlankSource, SmartFileCreate
@@ -108,7 +108,7 @@ async def test_shortcut_work_is_principal_scoped_and_ordinary_rows_need_no_inven
     assert transport.batch_sizes == []
 
 
-def search_row(index: int, drive_id: str | None = SHARED.id) -> dict[str, object]:
+def search_row(index: int, drive_id: DriveId | None = SHARED.id) -> dict[str, object]:
     row: dict[str, object] = {"id": f"hit-{index}", "name": f"Hit {index} 絵", "mimeType": MIME_DOC}
     if drive_id is not None:
         row["driveId"] = drive_id

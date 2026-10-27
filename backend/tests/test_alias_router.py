@@ -133,7 +133,7 @@ async def test_alias_api_ensures_without_transform_submission(client: AsyncClien
     ],
 )
 async def test_alias_ensure_maps_fresh_authorization_and_candidate_failures(
-    client: AsyncClient, file_id: str, expected_status: int, expected_code: str
+    client: AsyncClient, file_id: FileId, expected_status: int, expected_code: str
 ) -> None:
     async with client:
         response = await client.post(f"/aliases/files/{file_id}/ensure")

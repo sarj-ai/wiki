@@ -19,9 +19,7 @@ export const DOCUMENT_INTENT_PREWARM_MS = 300;
 interface DocumentIntentOptions {
   disabled: boolean;
   fileId: string;
-  mimeType: string;
   onStrongIntent?: () => void;
-  title: string;
 }
 
 interface DocumentIntentHandlers {
@@ -82,7 +80,7 @@ export function useDocumentIntent({
       mimeType: file.mimeType,
       reloadKey: 0,
       title: file.name,
-      ...(file.modifiedTime === undefined ? {} : { version: file.modifiedTime }),
+      ...(!(file.modifiedTime === undefined) && { version: file.modifiedTime }),
     });
   };
 

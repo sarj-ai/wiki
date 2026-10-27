@@ -15,12 +15,7 @@ import { resolveShortcutTarget } from "@/lib/shortcut-resolver";
 import { allowsReusableSpeculation, readNavigatorHints } from "@/lib/speculation-policy";
 import { cn } from "@/lib/utils";
 import { EMPTY_NODES, indexSidebarNodes, indexVisibleDocuments } from "@/lib/wiki-indexes";
-import {
-  applyOptimisticOrder,
-  buildSiblingItems,
-  compareNodeOrder,
-  type KindedNode,
-} from "@/lib/wiki-tree";
+import { buildSiblingItems, type KindedNode, orderSiblingItems } from "@/lib/wiki-tree";
 import type { DriveNode } from "@/types/wiki";
 import { MIME_FOLDER } from "@/types/wiki";
 
@@ -31,6 +26,7 @@ import { FileRow } from "./file-row";
 import { ItemMenu } from "./item-menu";
 import { CHEVRON_OFFSET, ICON_COLUMN_WIDTH, rowIndent } from "./layout-constants";
 import { PickableIcon } from "./pickable-icon";
+import { RowActions } from "./row-actions";
 import { SortableItem } from "./sortable-item";
 import { useIsDropIntoFolder } from "./use-drag-over-store";
 import { useIsMovingFile } from "./use-in-flight-moves";
@@ -92,14 +88,6 @@ function resolveShortcutMeta(node: DriveNode): ShortcutMeta {
     isShortcut: s.isShortcut,
     tooltip: s.tooltip,
   };
-}
-
-function RowActions({ children }: { children: ReactNode }) {
-  return (
-    <div className="absolute top-1/2 right-1 z-20 flex -translate-y-1/2 items-center gap-0.5 opacity-0 group-hover/navitem:opacity-100 focus-within:opacity-100">
-      {children}
-    </div>
-  );
 }
 
 function TreeNodeImpl({ depth, node, parentFolderId }: TreeNodeProps) {
@@ -291,13 +279,15 @@ function buildChildItems(
   const count = folderChildren.length + filteredFiles.length;
   if (!expanded) return { count, items: EMPTY_CHILD_ITEMS };
 
-  const raw = buildSiblingItems(folderChildren, filteredFiles);
-
   const optimisticOrder = ctx.optimisticByContainer.get(`parent:${node.id}`) ?? null;
-  const sorted = optimisticOrder
-    ? raw
-    : raw.toSorted((a, b) => compareNodeOrder(a, b, ctx.sortOrderMap));
-  return { count, items: applyOptimisticOrder(sorted, optimisticOrder) };
+  return {
+    count,
+    items: orderSiblingItems(
+      buildSiblingItems(folderChildren, filteredFiles),
+      ctx.sortOrderMap,
+      optimisticOrder,
+    ),
+  };
 }
 
 function FolderHeader({
@@ -335,6 +325,7 @@ function FolderHeader({
           meta.inaccessible && "text-muted-foreground/60 cursor-not-allowed",
         )}
         data-file-id={node.id}
+        data-sidebar-row="folder"
         disabled={meta.inaccessible}
         onBlur={onHoverEnd}
         onClick={onToggle}
@@ -356,7 +347,7 @@ function FolderHeader({
         <span aria-hidden="true" className="shrink-0" style={{ width: ICON_COLUMN_WIDTH - 4 }} />
         <span className="truncate">{node.name}</span>
         {itemCount !== undefined && itemCount > 0 && (
-          <span className="text-muted-foreground/70 ml-auto shrink-0 pl-1 text-[10px] tabular-nums group-hover/navitem:opacity-0">
+          <span className="text-muted-foreground ml-auto shrink-0 pl-1 text-[10px] tabular-nums group-hover/navitem:opacity-0">
             {itemCount}
           </span>
         )}

@@ -65,11 +65,6 @@ class DocumentGatewayError(DocumentTransformError):
         self.http_status = http_status
 
 
-class HeaderConflictError(DocumentTransformError):
-    code = "header_conflict"
-    public_detail = "The source header needs review before Sarj branding can be applied"
-
-
 class InPlaceNotAllowedError(DocumentTransformError):
     code = "in_place_not_allowed"
     public_detail = "This document is not eligible for safe in-place transformation"
@@ -95,10 +90,6 @@ class UnsupportedTabMetadataError(InPlaceNeedsReviewError):
 
 class ActiveSuggestionsNeedsReviewError(InPlaceNeedsReviewError):
     public_detail = "Resolve active Google Docs suggestions before polishing in place"
-
-
-class ComplexStructureNeedsReviewError(InPlaceNeedsReviewError):
-    public_detail = "This document's protected structure needs review before polishing in place"
 
 
 class CustomHeaderNeedsReviewError(InPlaceNeedsReviewError):

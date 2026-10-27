@@ -1,11 +1,11 @@
 "use client";
 
-import { Loader2 } from "lucide-react";
-import { useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useShallow } from "zustand/react/shallow";
 
-import { DocSkeleton } from "@/components/wiki-document/doc-skeleton";
 import { type ActiveDoc, useDocViewerStore } from "@/components/wiki-document/doc-viewer-store";
+import { DocumentLoading } from "@/components/wiki-document/document-loading";
+import { useReducedMotion } from "@/hooks/use-reduced-motion";
 import { embedUrlFor } from "@/lib/file-urls";
 import { markNav } from "@/lib/perf-marks";
 import { cn } from "@/lib/utils";
@@ -275,23 +275,7 @@ function DocumentFrame({
           data-loading-phase={phase}
         >
           {announced ? (
-            <DocSkeleton
-              animated={false}
-              status={
-                <div
-                  aria-atomic="true"
-                  aria-live="polite"
-                  className="text-muted-foreground flex min-h-5 items-center justify-center gap-2 px-6 text-center text-xs font-medium"
-                  role="status"
-                >
-                  <Loader2
-                    aria-hidden="true"
-                    className="text-primary size-3.5 shrink-0 animate-spin motion-reduce:hidden"
-                  />
-                  <span>{slow ? "Still loading document…" : "Loading document…"}</span>
-                </div>
-              }
-            />
+            <DocumentLoading label={slow ? "Still loading document…" : "Loading document…"} />
           ) : null}
         </div>
       )}
@@ -394,30 +378,4 @@ function useDocumentLoading(
   }, [active, loading, reducedMotion]);
 
   return { phase: phaseState, slow };
-}
-
-function useReducedMotion(): boolean {
-  return useSyncExternalStore(subscribeToReducedMotion, reducedMotionSnapshot, () => false);
-}
-
-let reducedMotionQuery: MediaQueryList | null = null;
-let reducedMotionSubscribers = 0;
-
-function currentReducedMotionQuery(): MediaQueryList {
-  return (reducedMotionQuery ??= window.matchMedia("(prefers-reduced-motion: reduce)"));
-}
-
-function subscribeToReducedMotion(callback: () => void): () => void {
-  const query = currentReducedMotionQuery();
-  reducedMotionSubscribers += 1;
-  query.addEventListener("change", callback);
-  return () => {
-    query.removeEventListener("change", callback);
-    reducedMotionSubscribers -= 1;
-    if (reducedMotionSubscribers === 0) reducedMotionQuery = null;
-  };
-}
-
-function reducedMotionSnapshot(): boolean {
-  return currentReducedMotionQuery().matches;
 }

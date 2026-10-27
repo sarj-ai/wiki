@@ -5,7 +5,7 @@ from datetime import UTC, datetime
 import hashlib
 import json
 from types import MappingProxyType
-from typing import Any, NamedTuple, Protocol
+from typing import Any, NamedTuple, Protocol, override
 import uuid
 
 from loguru import logger
@@ -64,7 +64,7 @@ from app.document_transform.ir import (
     parse_markdown,
     rewrite_markdown,
 )
-from app.document_transform.models import PatchGenerator
+from app.document_transform.models import DocumentTransformRunner, PatchGenerator
 from app.document_transform.naming import (
     polished_document_name,
     suggested_document_title,
@@ -268,7 +268,7 @@ class QaCreatedCopyVerifier(Protocol):
     ) -> QaCopyPermissionEvidence: ...
 
 
-class DocumentTransformExecutor:
+class DocumentTransformExecutor(DocumentTransformRunner):
     def __init__(
         self,
         *,
@@ -302,6 +302,7 @@ class DocumentTransformExecutor:
         self._qa_destination_permission_verifier = qa_destination_permission_verifier
         self._qa_created_copy_verifier = qa_created_copy_verifier
 
+    @override
     async def execute(
         self,
         *,

@@ -16,7 +16,7 @@ if TYPE_CHECKING:
 
 SOURCE_SHA = "3c5937f7a559fc23ec655dd845efbdbac300943d"
 VERIFIER_SHA = "d" * 40
-RUN_ID = 34209018888
+RUN_ID = recovery.RunId(34209018888)
 RUN_ATTEMPT = 1
 SOURCE_RUN_READ_COUNT = 2
 ATTEMPT_JOB_COUNT = 19
@@ -39,7 +39,7 @@ class _ModeResolverRun:
 
 
 def receipts() -> dict:
-    repository = {"id": 1183627122, "full_name": "sarj-ai/wiki"}
+    repository = {"id": 1183627122, "full_name": "sarj-ai/wiki-internal"}
     run = {
         "id": RUN_ID,
         "workflow_id": recovery.WORKFLOW_ID,
@@ -99,9 +99,7 @@ def receipts() -> dict:
             "conclusion": "skipped",
             "steps": [],
         }
-        for index in range(
-            ATTEMPT_JOB_COUNT - 1 - len(recovery.REQUIRED_VERIFICATION_JOBS)
-        )
+        for index in range(ATTEMPT_JOB_COUNT - 1 - len(recovery.REQUIRED_VERIFICATION_JOBS))
     ]
     jobs = [job, *verification_jobs, *unrelated_jobs]
     return {
@@ -125,8 +123,7 @@ def service() -> dict:
 def test_historical_attempt_34209018888_authorizes_read_only_verification() -> None:
     data = receipts()
     assert (
-        data[recovery.source_jobs_endpoint(RUN_ID, RUN_ATTEMPT)]["total_count"]
-        == ATTEMPT_JOB_COUNT
+        data[recovery.source_jobs_endpoint(RUN_ID, RUN_ATTEMPT)]["total_count"] == ATTEMPT_JOB_COUNT
     )
     assert recovery.verify_source(data.__getitem__, RUN_ID, RUN_ATTEMPT) == SOURCE_SHA
 
@@ -169,9 +166,7 @@ def test_shared_main_release_attempt_preserves_recovery_receipt_boundaries(
     elif fault == "failed-migration":
         page["jobs"][0]["steps"][1]["conclusion"] = "failure"
     if fault in {None, "workflow-disabled"}:
-        assert (
-            recovery.verify_source(data.__getitem__, RUN_ID, RUN_ATTEMPT) == SOURCE_SHA
-        )
+        assert recovery.verify_source(data.__getitem__, RUN_ID, RUN_ATTEMPT) == SOURCE_SHA
     else:
         with pytest.raises(recovery.ReleaseBlockedError):
             recovery.verify_source(data.__getitem__, RUN_ID, RUN_ATTEMPT)
@@ -181,9 +176,7 @@ def test_obsolete_cleanup_failure_does_not_block_read_only_verification() -> Non
     data = receipts()
     page = data[recovery.source_jobs_endpoint(RUN_ID, RUN_ATTEMPT)]
     cleanup = page["jobs"][0]["steps"][-1]
-    assert (
-        cleanup["name"] == "Clear legacy global drive-tree cache after traffic switch"
-    )
+    assert cleanup["name"] == "Clear legacy global drive-tree cache after traffic switch"
     assert cleanup["conclusion"] == "failure"
 
     assert recovery.verify_source(data.__getitem__, RUN_ID, RUN_ATTEMPT) == SOURCE_SHA
@@ -209,9 +202,7 @@ def test_attempt_jobs_are_rechecked_after_receipt_validation() -> None:
 
 
 @pytest.mark.parametrize("advance", [False, True])
-def test_current_main_is_rechecked_after_receipt_reads(
-    monkeypatch: pytest.MonkeyPatch, *, advance: bool
-) -> None:
+def test_current_main_is_rechecked_after_receipt_reads(*, advance: bool) -> None:
     data = receipts()
     reads = []
 
@@ -225,7 +216,6 @@ def test_current_main_is_rechecked_after_receipt_reads(
             }
         return data[endpoint]
 
-    monkeypatch.setattr(recovery, "fetch_github", fetch)
     args = recovery.SourceArguments(
         verifier_sha=VERIFIER_SHA,
         run_id=RUN_ID,
@@ -233,14 +223,14 @@ def test_current_main_is_rechecked_after_receipt_reads(
     )
     if advance:
         with pytest.raises(recovery.ReleaseBlockedError, match="main advanced"):
-            recovery.verify_current_release(args)
+            recovery.verify_current_release(args, fetch=fetch)
     else:
-        recovery.verify_current_release(args)
+        recovery.verify_current_release(args, fetch=fetch)
     first_read, final_read = reads
     assert first_read == final_read
 
 
-def test_current_verifier_must_match_main(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_current_verifier_must_match_main() -> None:
     def fetch(endpoint: str) -> dict:
         assert endpoint.endswith("/git/ref/heads/main")
         return {
@@ -248,14 +238,13 @@ def test_current_verifier_must_match_main(monkeypatch: pytest.MonkeyPatch) -> No
             "object": {"type": "commit", "sha": "b" * 40},
         }
 
-    monkeypatch.setattr(recovery, "fetch_github", fetch)
     args = recovery.SourceArguments(
         verifier_sha=VERIFIER_SHA,
         run_id=RUN_ID,
         run_attempt=RUN_ATTEMPT,
     )
     with pytest.raises(recovery.ReleaseBlockedError, match="main advanced"):
-        recovery.verify_current_release(args)
+        recovery.verify_current_release(args, fetch=fetch)
 
 
 @pytest.mark.parametrize(
@@ -412,9 +401,7 @@ def test_single_latest_ready_revision_is_required() -> None:
     assert recovery.serving_revision(service()) == REVISION
 
 
-@pytest.mark.parametrize(
-    "case", ["split", "not-full", "not-latest", "invalid-name", "missing"]
-)
+@pytest.mark.parametrize("case", ["split", "not-full", "not-latest", "invalid-name", "missing"])
 def test_unverified_serving_revision_is_rejected(case: str) -> None:
     data = service()
     status = data["status"]
@@ -435,9 +422,7 @@ def test_unverified_serving_revision_is_rejected(case: str) -> None:
 
 
 @pytest.mark.parametrize("matching", [True, False])
-def test_serving_digest_is_checked_with_only_describe_commands(
-    monkeypatch: pytest.MonkeyPatch, *, matching: bool
-) -> None:
+def test_serving_digest_is_checked_with_only_describe_commands(*, matching: bool) -> None:
     image = "me-central2-docker.pkg.dev/sarj-docs/sarj-docs-dammam/backend"
     responses = iter(
         [DIGEST, json.dumps(service()), f"{image}@{DIGEST}" if matching else "foreign"]
@@ -448,7 +433,6 @@ def test_serving_digest_is_checked_with_only_describe_commands(
         commands.append(command)
         return next(responses)
 
-    monkeypatch.setattr(recovery, "command_output", execute)
     args = recovery.ServingArguments(
         verifier_sha=VERIFIER_SHA,
         source_sha=SOURCE_SHA,
@@ -459,10 +443,10 @@ def test_serving_digest_is_checked_with_only_describe_commands(
         image="backend",
     )
     if matching:
-        recovery.verify_serving(args)
+        recovery.verify_serving(args, execute=execute)
     else:
         with pytest.raises(recovery.ReleaseBlockedError):
-            recovery.verify_serving(args)
+            recovery.verify_serving(args, execute=execute)
     artifact, serving, revision = commands
     assert artifact[:5] == ["gcloud", "artifacts", "docker", "images", "describe"]
     assert artifact[5].endswith(f":{SOURCE_SHA}")
@@ -473,14 +457,11 @@ def test_serving_digest_is_checked_with_only_describe_commands(
 
 def test_recovery_job_is_exclusive_and_contains_no_deployment_mutations() -> None:
     root = Path(__file__).resolve().parents[2]
-    workflow = yaml.safe_load(
-        (root / ".github/workflows/deploy-backend.yml").read_text()
-    )
+    workflow = yaml.safe_load((root / ".github/workflows/deploy-backend.yml").read_text())
     inputs = workflow["on"]["workflow_dispatch"]["inputs"]
     assert set(inputs) == {"verification_run_id", "verification_run_attempt"}
     assert all(
-        isinstance(value["default"], str) and not value["default"]
-        for value in inputs.values()
+        isinstance(value["default"], str) and not value["default"] for value in inputs.values()
     )
     jobs = workflow["jobs"]
     verification = jobs["verify-existing"]
@@ -497,10 +478,7 @@ def test_recovery_job_is_exclusive_and_contains_no_deployment_mutations() -> Non
         "ci-iac",
         "standards-receipt",
     ):
-        assert (
-            jobs[job_name]["if"]
-            == f"inputs.release_needs == '' && {deployment_condition}"
-        )
+        assert jobs[job_name]["if"] == f"inputs.release_needs == '' && {deployment_condition}"
     assert deployment_condition in jobs["deploy"]["if"]
     assert "inputs.release_needs != ''" in jobs["deploy"]["if"]
     assert verification["if"] == (
@@ -570,9 +548,7 @@ def test_recovery_job_is_exclusive_and_contains_no_deployment_mutations() -> Non
 
 def test_recovery_workflow_binds_historical_source_sha_to_live_checks() -> None:
     root = Path(__file__).resolve().parents[2]
-    workflow = yaml.safe_load(
-        (root / ".github/workflows/deploy-backend.yml").read_text()
-    )
+    workflow = yaml.safe_load((root / ".github/workflows/deploy-backend.yml").read_text())
     steps = workflow["jobs"]["verify-existing"]["steps"]
     source_step = next(step for step in steps if step.get("id") == "source")
     assert source_step["env"] == {
@@ -587,9 +563,7 @@ def test_recovery_workflow_binds_historical_source_sha_to_live_checks() -> None:
         if step.get("run") == "bash scripts/backend_release/verify-serving.sh"
     ]
     assert len(serving_steps) == SERVING_CHECK_COUNT
-    assert all(
-        step["env"]["SOURCE_RELEASE_SHA"] == source_output for step in serving_steps
-    )
+    assert all(step["env"]["SOURCE_RELEASE_SHA"] == source_output for step in serving_steps)
     health_step = next(
         step
         for step in steps
@@ -708,17 +682,11 @@ def test_mcp_release_verifier_uses_exact_revision_and_post_probe_log_bound(
     result = _run_mcp_verifier(tmp_path, mode="enabled")
     assert result.completed.returncode == 0, result.completed.stderr
     revision = next(
-        index
-        for index, event in enumerate(result.trace)
-        if "revisions describe" in event
+        index for index, event in enumerate(result.trace) if "revisions describe" in event
     )
-    bearer = next(
-        index for index, event in enumerate(result.trace) if "bearer=true" in event
-    )
+    bearer = next(index for index, event in enumerate(result.trace) if "bearer=true" in event)
     bounded = result.trace.index("date")
-    logs = next(
-        index for index, event in enumerate(result.trace) if "logging read" in event
-    )
+    logs = next(index for index, event in enumerate(result.trace) if "logging read" in event)
     assert "wiki-backend-00001-test" in result.trace[revision]
     assert revision < bearer < bounded < logs
 
@@ -741,9 +709,7 @@ def test_mcp_disabled_inventory_covers_browser_route_shapes(tmp_path: Path) -> N
 
 
 def _mcp_revision(*, enabled: bool) -> dict:
-    env: list[JsonObject] = [
-        {"name": "MCP_NATIVE_ENABLED", "value": str(enabled).lower()}
-    ]
+    env: list[JsonObject] = [{"name": "MCP_NATIVE_ENABLED", "value": str(enabled).lower()}]
     if enabled:
         env.extend(
             [

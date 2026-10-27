@@ -1,11 +1,12 @@
 import asyncio
+from functools import partial
 import gzip
 import json
 from statistics import median
 from time import perf_counter
 from typing import TYPE_CHECKING, Annotated
 
-from fastapi import Depends, FastAPI
+from fastapi import APIRouter, Depends, FastAPI
 import httpx
 from pydantic import BaseModel
 
@@ -19,6 +20,28 @@ if TYPE_CHECKING:
 
 class DispatchRead(BaseModel):
     value: str
+
+
+class DispatchRouter:
+    @staticmethod
+    def build() -> APIRouter:
+        router = APIRouter()
+
+        def sync_factory() -> str:
+            return "ready"
+
+        async def async_factory() -> str:
+            return await asyncio.sleep(0, result="ready")
+
+        @router.get("/sync", response_model=DispatchRead, status_code=200)
+        async def sync_route(value: Annotated[str, Depends(sync_factory)]) -> DispatchRead:
+            return DispatchRead(value=value)
+
+        @router.get("/async", response_model=DispatchRead, status_code=200)
+        async def async_route(value: Annotated[str, Depends(async_factory)]) -> DispatchRead:
+            return DispatchRead(value=value)
+
+        return router
 
 
 def main() -> None:
@@ -35,7 +58,7 @@ def main() -> None:
         compressed = gzip.compress(payload, compresslevel=level)
         result[f"gzip_{level}"] = {
             "bytes": len(compressed),
-            "median_ms": _measure(lambda level=level: gzip.compress(payload, compresslevel=level)),
+            "median_ms": _measure(partial(gzip.compress, payload, compresslevel=level)),
         }
     print(json.dumps(result, indent=2))
 
@@ -69,20 +92,7 @@ def _tree() -> DriveTree:
 
 async def _dispatch() -> dict[str, float]:
     app = FastAPI()
-
-    def sync_factory() -> str:
-        return "ready"
-
-    async def async_factory() -> str:
-        return await asyncio.sleep(0, result="ready")
-
-    @app.get("/sync", response_model=DispatchRead, status_code=200)
-    async def sync_route(value: Annotated[str, Depends(sync_factory)]) -> DispatchRead:
-        return DispatchRead(value=value)
-
-    @app.get("/async", response_model=DispatchRead, status_code=200)
-    async def async_route(value: Annotated[str, Depends(async_factory)]) -> DispatchRead:
-        return DispatchRead(value=value)
+    app.include_router(DispatchRouter.build())
 
     result: dict[str, float] = {}
     async with httpx.AsyncClient(

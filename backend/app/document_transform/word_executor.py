@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+from typing import override
 import uuid
 
 from app.document_transform.errors import (
@@ -11,9 +12,11 @@ from app.document_transform.errors import (
     UnsupportedSourceError,
 )
 from app.document_transform.executor import DocumentTransformCheckpointStore
+from app.document_transform.models import DocumentTransformRunner
 from app.document_transform.naming import title_case_document_name
 from app.document_transform.schemas import (
     CopyCheckpointStage,
+    DocumentOutput,
     DocumentTransformCheckpoint,
     DocumentTransformRequest,
     DocumentTransformResult,
@@ -25,10 +28,11 @@ from app.document_transform.schemas import (
     WordCopyCheckpoint,
 )
 from app.document_transform.versions import WORD_PIPELINE_VERSION
-from app.document_transform.word_gateway import WORD_MIME, WordGateway
+from app.document_transform.word_gateway import WORD_MIME, WordGateway, WordSource
 from app.document_transform.word_package import (
     TARGET_FONT,
     UnsafeWordPackageError,
+    WordFormatResult,
     format_word_package,
 )
 from app.identifiers import TaskId
@@ -37,7 +41,7 @@ from app.identifiers import TaskId
 _MAX_OUTPUT_STEM = 250
 
 
-class WordTransformExecutor:
+class WordTransformExecutor(DocumentTransformRunner):
     def __init__(
         self,
         *,
@@ -55,6 +59,7 @@ class WordTransformExecutor:
         self._checkpoint = checkpoint
         self._generation = checkpoint_generation
 
+    @override
     async def execute(
         self, *, operation_id: uuid.UUID, request: DocumentTransformRequest
     ) -> DocumentTransformResult:
@@ -71,6 +76,35 @@ class WordTransformExecutor:
             formatted = format_word_package(source.content)
         except UnsafeWordPackageError as error:
             raise UnsupportedSourceError from error
+        checkpoint = await self._prepare_checkpoint(request, source, formatted)
+        checkpoint, recovered = await self._resolve_output(
+            operation_id, source=source, formatted=formatted, checkpoint=checkpoint
+        )
+        await self._gateway.verify_word(
+            recovered, expected=formatted.content, operation_id=operation_id, source=source
+        )
+        latest = await self._gateway.load_word(request.source)
+        if latest.binding != source.binding or latest.content != source.content:
+            raise SourceChangedError
+        if checkpoint.stage is CopyCheckpointStage.VERIFIED:
+            if checkpoint.result is None:
+                raise OutputConflictError
+            expected = self._result(operation_id, checkpoint)
+            if checkpoint.result != expected:
+                raise OutputConflictError
+            return checkpoint.result
+        result = self._result(operation_id, checkpoint)
+        await self._save(
+            checkpoint.model_copy(update={"stage": CopyCheckpointStage.VERIFIED, "result": result})
+        )
+        return result
+
+    async def _prepare_checkpoint(
+        self,
+        request: DocumentTransformRequest,
+        source: WordSource,
+        formatted: WordFormatResult,
+    ) -> WordCopyCheckpoint:
         request_sha256 = hashlib.sha256(
             json.dumps(
                 request.model_dump(mode="json"), sort_keys=True, separators=(",", ":")
@@ -110,6 +144,16 @@ class WordTransformExecutor:
             )
         ):
             raise OutputConflictError
+        return checkpoint
+
+    async def _resolve_output(
+        self,
+        operation_id: uuid.UUID,
+        *,
+        source: WordSource,
+        formatted: WordFormatResult,
+        checkpoint: WordCopyCheckpoint,
+    ) -> tuple[WordCopyCheckpoint, DocumentOutput]:
         recovered = await self._gateway.recover_word(
             operation_id,
             source=source,
@@ -149,24 +193,7 @@ class WordTransformExecutor:
                 update={"stage": CopyCheckpointStage.CREATED, "output": recovered}
             )
             await self._save(checkpoint)
-        await self._gateway.verify_word(
-            recovered, expected=formatted.content, operation_id=operation_id, source=source
-        )
-        latest = await self._gateway.load_word(request.source)
-        if latest.binding != source.binding or latest.content != source.content:
-            raise SourceChangedError
-        if checkpoint.stage is CopyCheckpointStage.VERIFIED:
-            if checkpoint.result is None:
-                raise OutputConflictError
-            expected = self._result(operation_id, checkpoint)
-            if checkpoint.result != expected:
-                raise OutputConflictError
-            return checkpoint.result
-        result = self._result(operation_id, checkpoint)
-        await self._save(
-            checkpoint.model_copy(update={"stage": CopyCheckpointStage.VERIFIED, "result": result})
-        )
-        return result
+        return checkpoint, recovered
 
     async def _save(self, checkpoint: WordCopyCheckpoint) -> None:
         self._generation = await self._store.save_document_transform_checkpoint(

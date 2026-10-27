@@ -25,6 +25,8 @@ import typer
 
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
+
     from scripts.github.release_gate import Fetch, JsonObject
 
 WORKFLOW_ID = 247052637
@@ -49,11 +51,11 @@ MAX_JOBS = 100
 FULL_TRAFFIC = 100
 
 
-def source_attempt_endpoint(run_id: int, run_attempt: int) -> str:
+def source_attempt_endpoint(run_id: RunId, run_attempt: int) -> str:
     return f"{API_PREFIX}/actions/runs/{run_id}/attempts/{run_attempt}"
 
 
-def source_jobs_endpoint(run_id: int, run_attempt: int) -> str:
+def source_jobs_endpoint(run_id: RunId, run_attempt: int) -> str:
     return f"{source_attempt_endpoint(run_id, run_attempt)}/jobs?per_page=100&page=1"
 
 
@@ -107,7 +109,7 @@ def verified_jobs(page: JsonObject) -> list[JsonObject]:
 
 
 def verify_prerequisite_jobs(
-    jobs: list[JsonObject], source_sha: str, run_id: int, run_attempt: int
+    jobs: list[JsonObject], source_sha: str, run_id: RunId, run_attempt: int
 ) -> None:
     for name in REQUIRED_VERIFICATION_JOBS:
         matches = [job for job in jobs if job.get("name") == name]
@@ -127,7 +129,7 @@ def verify_prerequisite_jobs(
 def verify_deploy_job(
     jobs: list[JsonObject],
     source_sha: str,
-    run_id: int,
+    run_id: RunId,
     run_attempt: int,
     *,
     shared: bool = False,
@@ -168,8 +170,8 @@ def verify_deploy_job(
         previous_number = number
 
 
-def verify_source(fetch: Fetch, run_id: int, run_attempt: int) -> str:
-    run_id = positive_id(run_id)
+def verify_source(fetch: Fetch, run_id: RunId, run_attempt: int) -> str:
+    run_id = RunId(positive_id(run_id))
     run_attempt = positive_id(run_attempt)
     attempt_endpoint = source_attempt_endpoint(run_id, run_attempt)
     jobs_endpoint = source_jobs_endpoint(run_id, run_attempt)
@@ -186,9 +188,7 @@ def verify_source(fetch: Fetch, run_id: int, run_attempt: int) -> str:
     page = fetch(jobs_endpoint)
     jobs = verified_jobs(page)
     verify_prerequisite_jobs(jobs, source_sha, run_id, run_attempt)
-    verify_deploy_job(
-        jobs, source_sha, run_id, run_attempt, shared=shared_workflow_id is not None
-    )
+    verify_deploy_job(jobs, source_sha, run_id, run_attempt, shared=shared_workflow_id is not None)
     # Attempt-specific metadata and jobs are immutable after completion. Re-read
     # both exact resources so a provider inconsistency cannot race authorization.
     require(fetch(attempt_endpoint) == run, "Source attempt metadata changed")
@@ -199,9 +199,7 @@ def verify_source(fetch: Fetch, run_id: int, run_attempt: int) -> str:
 def serving_revision(service: JsonObject) -> str:
     status = object_value(service.get("status"))
     traffic = status.get("traffic")
-    require(
-        isinstance(traffic, list) and len(traffic) == 1, "Ambiguous serving traffic"
-    )
+    require(isinstance(traffic, list) and len(traffic) == 1, "Ambiguous serving traffic")
     if not isinstance(traffic, list):
         msg = "Invalid serving traffic"
         raise ReleaseBlockedError(msg)
@@ -213,9 +211,7 @@ def serving_revision(service: JsonObject) -> str:
         and revision == status.get("latestReadyRevisionName"),
         "Serving revision is not the single latest ready revision",
     )
-    require(
-        re.fullmatch(r"[a-z][a-z0-9-]{0,62}", str(revision)), "Invalid revision name"
-    )
+    require(re.fullmatch(r"[a-z][a-z0-9-]{0,62}", str(revision)), "Invalid revision name")
     return str(revision)
 
 
@@ -233,19 +229,17 @@ class ServingArguments:
 @dataclass(frozen=True, kw_only=True)
 class SourceArguments:
     verifier_sha: str
-    run_id: int
+    run_id: RunId
     run_attempt: int
 
 
-def verify_serving(args: ServingArguments) -> None:
+def verify_serving(
+    args: ServingArguments, *, execute: Callable[[list[str]], str] = command_output
+) -> None:
     for value in (args.project, args.region, args.repository, args.service, args.image):
-        require(
-            re.fullmatch(r"[a-z][a-z0-9-]{0,62}", value), "Invalid cloud resource name"
-        )
-    image = (
-        f"{args.region}-docker.pkg.dev/{args.project}/{args.repository}/{args.image}"
-    )
-    digest = command_output(
+        require(re.fullmatch(r"[a-z][a-z0-9-]{0,62}", value), "Invalid cloud resource name")
+    image = f"{args.region}-docker.pkg.dev/{args.project}/{args.repository}/{args.image}"
+    digest = execute(
         [
             "gcloud",
             "artifacts",
@@ -258,11 +252,9 @@ def verify_serving(args: ServingArguments) -> None:
             "--format=value(image_summary.digest)",
         ]
     )
-    require(
-        re.fullmatch(r"sha256:[0-9a-f]{64}", digest), "Invalid immutable release digest"
-    )
+    require(re.fullmatch(r"sha256:[0-9a-f]{64}", digest), "Invalid immutable release digest")
     service = read_json(
-        command_output(
+        execute(
             [
                 "gcloud",
                 "run",
@@ -278,7 +270,7 @@ def verify_serving(args: ServingArguments) -> None:
         )
     )
     revision = serving_revision(service)
-    actual = command_output(
+    actual = execute(
         [
             "gcloud",
             "run",
@@ -298,22 +290,25 @@ def verify_serving(args: ServingArguments) -> None:
     )
 
 
-def verify_current_release(args: SourceArguments | ServingArguments) -> str | None:
+def verify_current_release(
+    args: SourceArguments | ServingArguments,
+    *,
+    fetch: Fetch = fetch_github,
+    execute: Callable[[list[str]], str] = command_output,
+) -> str | None:
     require(re.fullmatch(r"[0-9a-f]{40}", args.verifier_sha), "Invalid verifier SHA")
-    require_current_main(fetch_github, args.verifier_sha)
+    require_current_main(fetch, args.verifier_sha)
     if isinstance(args, SourceArguments):
-        source_sha = verify_source(fetch_github, args.run_id, args.run_attempt)
+        source_sha = verify_source(fetch, args.run_id, args.run_attempt)
     else:
         require(re.fullmatch(r"[0-9a-f]{40}", args.source_sha), "Invalid source SHA")
-        verify_serving(args)
+        verify_serving(args, execute=execute)
         source_sha = None
-    require_current_main(fetch_github, args.verifier_sha)
+    require_current_main(fetch, args.verifier_sha)
     return source_sha
 
 
-def _report(
-    args: SourceArguments | ServingArguments, *, github_output: bool = False
-) -> None:
+def _report(args: SourceArguments | ServingArguments, *, github_output: bool = False) -> None:
     try:
         source_sha = verify_current_release(args)
     except ReleaseBlockedError, OSError, ValueError, TypeError:
@@ -337,9 +332,7 @@ CLI = typer.Typer(
 
 
 @CLI.callback()
-def configure(
-    context: typer.Context, verifier_sha: Annotated[str, typer.Option()]
-) -> None:
+def configure(context: typer.Context, verifier_sha: Annotated[str, typer.Option()]) -> None:
     context.obj = verifier_sha
 
 
@@ -350,10 +343,14 @@ def _verifier_sha(context: typer.Context) -> str:
     return context.obj
 
 
+def _parse_run_id(value: str) -> RunId:
+    return RunId(int(value))
+
+
 @CLI.command("source")
 def source_command(
     context: typer.Context,
-    run_id: Annotated[int, typer.Option()],
+    run_id: Annotated[RunId, typer.Option(parser=_parse_run_id)],
     run_attempt: Annotated[int, typer.Option()],
     *,
     github_output: Annotated[bool, typer.Option("--github-output")] = False,

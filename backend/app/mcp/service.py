@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from typing import Protocol, override
 from urllib.parse import quote
 
 from app.config import settings
@@ -30,14 +31,30 @@ from app.tasks.errors import TaskNotFoundError
 from app.tasks.schemas import FailedTaskRead, PendingTaskRead, RunningTaskRead, TaskKind
 
 
-class McpReadService:
+class McpReader(Protocol):
+    def connection(self) -> ConnectionResponse: ...
+
+    async def search(self, request: SearchInput) -> SearchResponse: ...
+
+    async def get_document(self, request: DocumentInput) -> DocumentResponse: ...
+
+    async def get_admission(self, request: AdmissionInput) -> AdmissionResponse: ...
+
+    async def get_task(self, request: TaskInput) -> TaskResponse: ...
+
+    async def get_short_link(self, request: ShortLinkInput) -> ShortLinkResponse: ...
+
+
+class McpReadService(McpReader):
     def __init__(self, context: McpApplicationContext) -> None:
         self._context = context
 
+    @override
     def connection(self) -> ConnectionResponse:
         self._require_read()
         return ConnectionResponse(capabilities=sorted(self._context.principal.capabilities))
 
+    @override
     async def search(self, request: SearchInput) -> SearchResponse:
         self._require_read()
         async with self._context.drive.search_bounded(request.query, limit=request.limit) as found:
@@ -61,6 +78,7 @@ class McpReadService:
             truncated=found.truncated or len(hits) > len(results),
         )
 
+    @override
     async def get_document(self, request: DocumentInput) -> DocumentResponse:
         self._require_read()
         file = await self._context.files.get(request.file_id)
@@ -76,6 +94,7 @@ class McpReadService:
             document=self._document(file), can_edit=file.can_edit, excerpt=excerpt
         )
 
+    @override
     async def get_admission(self, request: AdmissionInput) -> AdmissionResponse:
         self._require_read()
         admission = await self._context.tasks.get_document_transform_admission(
@@ -83,6 +102,7 @@ class McpReadService:
         )
         return AdmissionResponse(admission=admission)
 
+    @override
     async def get_task(self, request: TaskInput) -> TaskResponse:
         self._require_read()
         task = await self._context.tasks.get_for_owner(
@@ -114,6 +134,7 @@ class McpReadService:
             retry_after_seconds=1 if isinstance(task, PendingTaskRead | RunningTaskRead) else None,
         )
 
+    @override
     async def get_short_link(self, request: ShortLinkInput) -> ShortLinkResponse:
         self._require_read()
         alias = (await self._context.aliases.get_for_file(request.file_id)).alias

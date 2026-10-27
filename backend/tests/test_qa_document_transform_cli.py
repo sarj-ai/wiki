@@ -16,15 +16,19 @@ def _arguments() -> list[str]:
         "both",
         "--output-name",
         "QA sibling",
+        "--user-email",
+        "reviewer@example.com",
         "--confirm-live-copy",
         "CREATE_LABELED_SIBLING",
     ]
 
 
 @pytest.mark.parametrize("mode", list(TransformMode))
-@pytest.mark.parametrize("email", [None, "reviewer@sarj.ai"], ids=["default-user", "explicit-user"])
+@pytest.mark.parametrize(
+    "email", ["reviewer@example.com", "another@example.com"], ids=["first-user", "second-user"]
+)
 def test_cli_passes_typed_options(
-    mode: TransformMode, email: str | None, monkeypatch: pytest.MonkeyPatch
+    mode: TransformMode, email: str, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     calls: list[qa_document_transform._Arguments] = []
     output: dict[str, object] = {"source": {"unchanged": True}}
@@ -36,8 +40,7 @@ def test_cli_passes_typed_options(
     monkeypatch.setattr(qa_document_transform, "_run", run)
     arguments = _arguments()
     arguments[3] = mode.value
-    if email is not None:
-        arguments.extend(["--user-email", email])
+    arguments[arguments.index("--user-email") + 1] = email
     result = CliRunner().invoke(qa_document_transform.CLI, arguments)
     assert result.exit_code == 0
     assert result.stdout == json.dumps(output, indent=2, sort_keys=True) + "\n"
@@ -46,14 +49,14 @@ def test_cli_passes_typed_options(
             source_id="source-document",
             mode=mode,
             output_name="QA sibling",
-            user_email=email or "nasr@sarj.ai",
+            user_email=email,
             confirm_live_copy="CREATE_LABELED_SIBLING",
         )
     ]
 
 
 @pytest.mark.parametrize(
-    "missing", ["--source-id", "--mode", "--output-name", "--confirm-live-copy"]
+    "missing", ["--source-id", "--mode", "--output-name", "--confirm-live-copy", "--user-email"]
 )
 def test_required_options_fail_before_execution(
     missing: str, monkeypatch: pytest.MonkeyPatch

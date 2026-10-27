@@ -71,7 +71,7 @@ export function WikiToolbar({
   };
 
   return (
-    <header className="border-border bg-background text-foreground flex h-10 shrink-0 items-center gap-1 overflow-hidden border-b px-4 sm:gap-2">
+    <header className="border-border bg-background text-foreground @container/toolbar flex h-10 shrink-0 items-center gap-1 overflow-hidden border-b px-4 sm:gap-2">
       <div className="flex min-w-0 flex-1 items-center gap-2 overflow-hidden">
         <span className="shrink-0">{renderMimeIcon(mimeType, "size-4")}</span>
         <nav
@@ -83,10 +83,14 @@ export function WikiToolbar({
             const isLast = index === trail.length - 1;
             return (
               <Fragment key={crumb.id}>
-                {index > 0 && <ChevronRight className="text-muted-foreground size-3.5 shrink-0" />}
+                {index > 0 && (
+                  <ChevronRight className="text-muted-foreground hidden size-3.5 shrink-0 @min-[40rem]/toolbar:block" />
+                )}
                 <span
                   className={
-                    isLast ? "truncate font-medium" : "text-muted-foreground shrink-0 truncate"
+                    isLast
+                      ? "truncate font-medium"
+                      : "text-muted-foreground hidden max-w-32 min-w-0 truncate @min-[40rem]/toolbar:block"
                   }
                 >
                   {crumb.name}
@@ -114,7 +118,9 @@ export function WikiToolbar({
         variant="outline"
       >
         {copied ? <Check className="size-3.5" /> : <Copy className="size-3.5" />}
-        <span className="hidden sm:inline">{copied ? "Copied" : "Copy link"}</span>
+        <span className="hidden @min-[40rem]/toolbar:inline">
+          {copied ? "Copied" : "Copy link"}
+        </span>
       </Button>
       {authority === "resolved" &&
       modifiedTime !== undefined &&
@@ -138,7 +144,7 @@ export function WikiToolbar({
             variant="outline"
           >
             <Sparkles className="size-3.5" />
-            <span className="hidden sm:inline">Polish</span>
+            <span className="hidden @min-[40rem]/toolbar:inline">Polish</span>
           </Button>
           {polishDialog.mounted ? (
             <LazyDocumentPolishDialog
@@ -166,7 +172,7 @@ export function WikiToolbar({
       ) : null}
       {authority === "resolved" ? (
         canEdit ? (
-          <div className="size-6 shrink-0 sm:w-24">
+          <div className="size-6 shrink-0 @min-[40rem]/toolbar:w-24">
             <ReorganizeDocument
               driveId={driveId}
               fileId={fileId}
@@ -176,11 +182,11 @@ export function WikiToolbar({
           </div>
         ) : null
       ) : (
-        <div className="size-6 shrink-0 sm:w-24">
+        <div className="size-6 shrink-0 @min-[40rem]/toolbar:w-24">
           <span aria-hidden className="bg-muted block size-full animate-pulse rounded-md" />
         </div>
       )}
-      <div className="size-6 shrink-0 sm:w-24">
+      <div className="size-6 shrink-0 @min-[40rem]/toolbar:w-24">
         {authority === "resolved" ? (
           canEdit ? (
             <ShortLinkDialog fileId={fileId} />
@@ -194,7 +200,7 @@ export function WikiToolbar({
       <Button asChild size="xs" variant="outline">
         <a aria-label={openLabel} href={openUrl} rel="noopener noreferrer" target="_blank">
           <ExternalLink className="size-3.5" />
-          <span className="hidden md:inline">{openLabel}</span>
+          <span className="hidden @min-[48rem]/toolbar:inline">{openLabel}</span>
         </a>
       </Button>
     </header>

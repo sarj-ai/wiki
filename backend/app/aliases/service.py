@@ -60,6 +60,11 @@ class AliasService(ABC):
     async def ensure_polish_for_file(self, file_id: FileId) -> DocumentAliasRead:
         raise NotImplementedError
 
+    async def ensure_for_file(
+        self, file_id: FileId, candidates: tuple[DocumentAliasValue, ...]
+    ) -> DocumentAliasRead:
+        raise NotImplementedError
+
 
 class PostgresAliasService(AliasService):
     def __init__(
@@ -130,6 +135,7 @@ class PostgresAliasService(AliasService):
         await self._db.commit()
         return _to_read(row)
 
+    @override
     async def ensure_for_file(
         self, file_id: FileId, candidates: tuple[DocumentAliasValue, ...]
     ) -> DocumentAliasRead:

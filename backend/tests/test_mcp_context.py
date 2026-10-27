@@ -9,6 +9,7 @@ import pytest
 
 from app.auth.google_tokens import GoogleReauthenticationRequiredError
 from app.drive.service import GoogleDriveService
+from app.identifiers import UserId
 from app.mcp.context import McpAuthorizationError, ValidatedMcpPrincipal, open_mcp_context
 from app.mcp.schemas import McpCapability
 from app.models.user import User
@@ -27,7 +28,7 @@ class Session:
     async def __aexit__(self, *args: object) -> None:
         self.closed = True
 
-    async def get(self, model: type[User], user_id: uuid.UUID) -> User | None:
+    async def get(self, model: type[User], user_id: UserId) -> User | None:
         assert model is User
         self.lookups.append(user_id)
         return self.user

@@ -39,6 +39,10 @@ env:
   SMART_CREATE_QUEUE_NAME: ${{ vars.SMART_CREATE_QUEUE_NAME || 'smart-create-dammam' }}
   DOCUMENT_TRANSFORM_QUEUE_NAME: ${{ vars.DOCUMENT_TRANSFORM_QUEUE_NAME || 'document-transform-dammam' }}
 
+defaults:
+  run:
+    shell: bash
+
 jobs:
   ci-backend:
     if: inputs.release_needs == '' && github.ref == 'refs/heads/main' && (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.verification_run_id == '' && inputs.verification_run_attempt == ''))
@@ -66,7 +70,7 @@ jobs:
 
   standards-receipt:
     if: inputs.release_needs == '' && github.ref == 'refs/heads/main' && (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.verification_run_id == '' && inputs.verification_run_attempt == ''))
-    runs-on: blacksmith-2vcpu-ubuntu-2404
+    runs-on: ${{ vars.CI_RUNNER || 'ubuntu-24.04' }}
     timeout-minutes: 25
     permissions:
       contents: read
@@ -94,7 +98,7 @@ jobs:
   deploy:
     if: ${{ !cancelled() && github.ref == 'refs/heads/main' && (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.verification_run_id == '' && inputs.verification_run_attempt == '')) && (inputs.release_needs != '' || (needs.ci-backend.result == 'success' && needs.ci-frontend.result == 'success' && needs.ci-quality.result == 'success' && needs.ci-iac.result == 'success' && needs.standards-receipt.result == 'success')) }}
     needs: [ci-backend, ci-frontend, ci-quality, ci-iac, standards-receipt]
-    runs-on: blacksmith-2vcpu-ubuntu-2404
+    runs-on: ${{ vars.CI_RUNNER || 'ubuntu-24.04' }}
 
     permissions:
       contents: read
@@ -209,7 +213,7 @@ jobs:
 
   verify-existing:
     if: github.ref == 'refs/heads/main' && github.event_name == 'workflow_dispatch' && inputs.verification_run_id != '' && inputs.verification_run_attempt != ''
-    runs-on: blacksmith-2vcpu-ubuntu-2404
+    runs-on: ${{ vars.CI_RUNNER || 'ubuntu-24.04' }}
     timeout-minutes: 15
     permissions:
       contents: read
@@ -279,7 +283,7 @@ jobs:
 
   reject-partial-verification-inputs:
     if: github.ref == 'refs/heads/main' && github.event_name == 'workflow_dispatch' && ((inputs.verification_run_id == '' && inputs.verification_run_attempt != '') || (inputs.verification_run_id != '' && inputs.verification_run_attempt == ''))
-    runs-on: blacksmith-2vcpu-ubuntu-2404
+    runs-on: ${{ vars.CI_RUNNER || 'ubuntu-24.04' }}
     timeout-minutes: 1
     permissions: {}
     steps:

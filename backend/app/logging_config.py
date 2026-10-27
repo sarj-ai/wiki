@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-import logging  # ruff: ignore[banned-api] -- intercept third-party stdlib records and relay them through Loguru.
+import logging  # Route third-party stdlib records through Loguru.
 import sys
 import time
 from types import FrameType

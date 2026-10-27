@@ -124,11 +124,11 @@ for required in PROJECT_ID REGION SERVICE MCP_VERIFIED_REVISION MCP_LOG_WINDOW_S
     exit 1
   fi
 done
-if [[ ! "$PROJECT_ID" =~ ^[a-z][a-z0-9-]{4,28}[a-z0-9]$ ]] \
-  || [[ ! "$REGION" =~ ^[a-z]([a-z0-9-]{0,61}[a-z0-9])?$ ]] \
-  || [[ ! "$SERVICE" =~ ^[a-z]([a-z0-9-]{0,61}[a-z0-9])?$ ]] \
-  || [[ ! "$MCP_VERIFIED_REVISION" =~ ^[a-z]([a-z0-9-]{0,61}[a-z0-9])?$ ]] \
-  || [[ ! "$MCP_LOG_WINDOW_START" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\.[0-9]+)?Z$ ]]; then
+if [[ ! "$PROJECT_ID" =~ ^[a-z][a-z0-9-]{4,28}[a-z0-9]$ ]] ||
+  [[ ! "$REGION" =~ ^[a-z]([a-z0-9-]{0,61}[a-z0-9])?$ ]] ||
+  [[ ! "$SERVICE" =~ ^[a-z]([a-z0-9-]{0,61}[a-z0-9])?$ ]] ||
+  [[ ! "$MCP_VERIFIED_REVISION" =~ ^[a-z]([a-z0-9-]{0,61}[a-z0-9])?$ ]] ||
+  [[ ! "$MCP_LOG_WINDOW_START" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\.[0-9]+)?Z$ ]]; then
   echo "Enabled MCP log-hygiene identifiers must be canonical and filter-safe" >&2
   exit 1
 fi
@@ -136,7 +136,7 @@ fi
 gcloud run revisions describe "$MCP_VERIFIED_REVISION" \
   --project "$PROJECT_ID" \
   --region "$REGION" \
-  --format=json > "$probe_dir/revision.json"
+  --format=json >"$probe_dir/revision.json"
 if ! jq -e \
   --arg revision "$MCP_VERIFIED_REVISION" \
   --arg service "$SERVICE" \
@@ -182,7 +182,7 @@ for _attempt in {1..12}; do
   gcloud logging read "$log_filter" \
     --project "$PROJECT_ID" \
     --limit 20 \
-    --format=json > "$probe_dir/logs.json"
+    --format=json >"$probe_dir/logs.json"
   log_count=$(jq 'length' "$probe_dir/logs.json")
   if [[ "$log_count" -ge 1 ]]; then
     break

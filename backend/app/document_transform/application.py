@@ -3,7 +3,6 @@ from __future__ import annotations
 import asyncio
 from dataclasses import dataclass
 from typing import Protocol
-import uuid
 
 from fastapi import HTTPException, status
 
@@ -94,7 +93,7 @@ async def get_current_document_polish(
 async def submit_document_transform(
     *,
     payload: DocumentTransformRequest,
-    owner_user_id: uuid.UUID,
+    owner_user_id: UserId,
     idempotency_key: IdempotencyKey,
     tasks: TaskService,
     enqueuer: TaskEnqueuer,

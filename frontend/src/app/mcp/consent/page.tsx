@@ -26,7 +26,12 @@ export default async function ConsentPage({
       {typeof intent === "string" && /^wm_intent_[A-Za-z0-9_-]{43}$/.test(intent) ? (
         <McpConsentLoader intent={intent} key={intent} />
       ) : (
-        <p role="alert">Invalid connection request. Start a new connection from your app.</p>
+        <section className="bg-card w-full space-y-3 rounded-xl border p-6">
+          <h1 className="text-xl font-semibold">Connection request unavailable</h1>
+          <p className="text-muted-foreground text-sm" role="alert">
+            Invalid connection request. Start a new connection from your app.
+          </p>
+        </section>
       )}
     </main>
   );

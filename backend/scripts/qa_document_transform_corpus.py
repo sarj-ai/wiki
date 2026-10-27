@@ -33,7 +33,6 @@ from sqlalchemy import select
 import typer
 
 from app.auth.google_tokens import GoogleTokenManager
-from app.cache.dependencies import cache_service_dep
 from app.config import settings
 from app.database import async_session
 from app.document_transform.brand_manifest import CURRENT_BRAND_MANIFEST
@@ -54,6 +53,7 @@ from app.document_transform.qa_contract import (
     QaCohort,
     required_document_count,
 )
+from app.document_transform.qa_resources import prepare_qa_drive
 from app.document_transform.safety import validate_patches
 from app.document_transform.schemas import (
     DocumentTransformResult,
@@ -66,7 +66,7 @@ from app.drive.retry import execute_with_retry
 from app.drive.schemas import MIME_DOC, MIME_FOLDER
 from app.drive.service import GoogleDriveService
 from app.files.service import GoogleFilesService
-from app.identifiers import FileId, TaskId
+from app.identifiers import DriveId, FileId, TaskId
 from app.models.user import User
 from app.tasks.schemas import (
     FailedTaskRead,
@@ -163,7 +163,7 @@ class FileMetadata(_StrictModel):
     mime_type: str = Field(alias="mimeType")
     parents: tuple[FileId, ...] = ()
     modified_time: str | None = Field(default=None, alias="modifiedTime")
-    drive_id: str | None = Field(default=None, alias="driveId")
+    drive_id: DriveId | None = Field(default=None, alias="driveId")
     owned_by_me: bool = Field(default=False, alias="ownedByMe")
     shared: bool = True
     can_edit: bool = False
@@ -176,7 +176,7 @@ class FileMetadata(_StrictModel):
 class SourceEvidence(_StrictModel):
     ordinal: Annotated[int, Field(ge=1)]
     source_id: FileId
-    drive_id: str | None
+    drive_id: DriveId | None
     parent_id: FileId
     modified_time: str
     revision_id: str
@@ -265,7 +265,7 @@ class EvidenceManifest(_StrictModel):
     seed_sha256: str
     mode: TransformMode
     source_folder_id: FileId
-    source_drive_id: str | None
+    source_drive_id: DriveId | None
     destination_folder_id: FileId
     destination_permission_inventory: tuple[PermissionEntry, ...]
     destination_permission_sha256: str
@@ -304,7 +304,7 @@ class SelectionResult(NamedTuple):
     sources: list[SourceEvidence]
     rejections: Counter[str]
     folder_source_ids: tuple[FileId, ...]
-    source_drive_id: str | None
+    source_drive_id: DriveId | None
 
 
 class SubmissionResult(NamedTuple):
@@ -403,7 +403,7 @@ class _Arguments:
     ledger: Path
     source_folder_id: str
     destination_folder_id: str
-    user_email: str = "nasr@sarj.ai"
+    user_email: str
     count: int = _DEFAULT_COUNT
     mode: TransformMode = TransformMode.BOTH
     execute: bool = False
@@ -426,7 +426,7 @@ def main(
     ledger: Annotated[Path, typer.Option("--ledger")],
     source_folder_id: Annotated[str, typer.Option("--source-folder-id")],
     destination_folder_id: Annotated[str, typer.Option("--destination-folder-id")],
-    user_email: Annotated[str, typer.Option("--user-email")] = "nasr@sarj.ai",
+    user_email: Annotated[str, typer.Option("--user-email")],
     count: Annotated[int, typer.Option("--count", hidden=True)] = _DEFAULT_COUNT,
     mode: Annotated[TransformMode, typer.Option("--mode")] = TransformMode.BOTH,
     execute: Annotated[bool, typer.Option("--execute")] = False,
@@ -497,12 +497,7 @@ async def _run(arguments: _Arguments) -> EvidenceManifest:
         if user is None:
             _fail("QA user is not present in the configured database")
         prepared = await GoogleTokenManager(db, http).prepare(user)
-        cache_service = cache_service_dep()
-        drive = GoogleDriveService(
-            prepared.user,
-            cache_service,
-            refresh_handler=prepared.refresh_handler,
-        )
+        drive = await prepare_qa_drive(prepared)
         files = GoogleFilesService(user=prepared.user, drive=drive)
         drive_client = GoogleDriveService.build_drive_client(
             prepared.user,
@@ -1047,7 +1042,7 @@ async def _inspect_candidate(
     expected_release_sha: str,
     seed: str,
     destination_folder_id: FileId,
-    source_drive_id: str | None,
+    source_drive_id: DriveId | None,
     mode: TransformMode,
     user_email: str,
     cohort: QaCohort,
@@ -1121,7 +1116,7 @@ def corpus_operation_key(
     *,
     expected_release_sha: str,
     seed: str,
-    source_id: str,
+    source_id: FileId,
     destination_folder_id: FileId,
     mode: TransformMode,
     cohort: QaCohort,
@@ -1191,7 +1186,7 @@ def _list_folder_children(
     drive_client: DriveResource,
     folder_id: FileId,
     *,
-    shared_drive_id: str | None,
+    shared_drive_id: DriveId | None,
     budget: _DriveTraversalBudget | None = None,
 ) -> list[dict[str, Any]]:
     budget = budget or _DriveTraversalBudget()
@@ -1346,7 +1341,7 @@ def _require_private_file(metadata: FileMetadata, user_email: str, *, expected_m
 def _require_copyable_source(
     metadata: FileMetadata,
     *,
-    expected_drive_id: str | None,
+    expected_drive_id: DriveId | None,
 ) -> None:
     if metadata.mime_type != MIME_DOC:
         _fail("wrong_mime_type")
@@ -1359,7 +1354,7 @@ def _require_copyable_source(
 def _require_source_parent(
     metadata: FileMetadata,
     *,
-    expected_drive_id: str | None,
+    expected_drive_id: DriveId | None,
 ) -> None:
     if metadata.mime_type != MIME_FOLDER:
         _fail("wrong_parent_mime_type")
