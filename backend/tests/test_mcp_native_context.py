@@ -12,6 +12,7 @@ from pydantic import ValidationError
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from app.identifiers import UserId
 from app.mcp.context import McpAuthorizationError, ValidatedMcpPrincipal
 from app.mcp.native_context import native_context_factory
 from app.mcp.schemas import McpCapability
@@ -94,11 +95,13 @@ async def test_each_open_revalidates_opaque_token_and_ignores_forged_cached_iden
         open_context = factory(monkeypatch, provider, contexts, http, incoming=cached)
         async with open_context() as opened:
             assert opened.principal == ValidatedMcpPrincipal(
-                _USER, 7, frozenset({McpCapability.READ})
+                UserId(_USER), 7, frozenset({McpCapability.READ})
             )
         provider.result = verified(revision=8, transform=True)
         async with open_context() as opened:
-            assert opened.principal == ValidatedMcpPrincipal(_USER, 8, frozenset(McpCapability))
+            assert opened.principal == ValidatedMcpPrincipal(
+                UserId(_USER), 8, frozenset(McpCapability)
+            )
         provider.result = None
         with pytest.raises(McpAuthorizationError):
             async with open_context():

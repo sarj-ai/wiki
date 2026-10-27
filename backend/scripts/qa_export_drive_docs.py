@@ -16,6 +16,7 @@ from app.auth.google_tokens import GoogleTokenManager
 from app.database import async_session
 from app.drive.retry import execute_with_retry
 from app.drive.service import GoogleDriveService
+from app.identifiers import FileId
 from app.models.user import User
 
 
@@ -33,15 +34,20 @@ def main(
     output_dir: Annotated[Path, typer.Option("--output-dir")],
     user_email: Annotated[str, typer.Option("--user-email")] = "nasr@sarj.ai",
 ) -> None:
-    print(json.dumps(asyncio.run(_run(file_id, output_dir, user_email)), indent=2, sort_keys=True))
+    print(
+        json.dumps(
+            asyncio.run(_run([FileId(value) for value in file_id], output_dir, user_email)),
+            indent=2,
+            sort_keys=True,
+        )
+    )
 
 
-async def _run(file_ids: list[str], output_dir: Path, user_email: str) -> list[dict[str, str]]:
+async def _run(file_ids: list[FileId], output_dir: Path, user_email: str) -> list[dict[str, str]]:
     output_dir = await asyncio.to_thread(Path.resolve, output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
     async with async_session() as db, httpx.AsyncClient(timeout=30) as http:
-        user = await db.scalar(select(User).where(User.email == user_email))
-        if user is None:
+        if (user := await db.scalar(select(User).where(User.email == user_email))) is None:
             msg = "QA user is not present in the local database"
             raise RuntimeError(msg)
         prepared = await GoogleTokenManager(db, http).prepare(user)

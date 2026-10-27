@@ -151,13 +151,13 @@ def _user() -> User:
     return u
 
 
-def _tree(drive_id: str) -> DriveTree:
+def _tree(drive_id: DriveId) -> DriveTree:
     return DriveTree(drive_id=DriveId(drive_id), folders=[], files=[], files_complete=True)
 
 
 async def test_load_aggregates_shell_reads_without_document_icons() -> None:
     user = _user()
-    cache = _FakeCacheService(_tree("d1"))
+    cache = _FakeCacheService(_tree(DriveId("d1")))
     files = _FakeFilesService()
     svc = AggregatingBootstrapService(
         drive=_FakeDriveService([DriveSummary(id=DriveId("d1"), name="Eng")]),
@@ -214,7 +214,7 @@ async def test_load_handles_empty_overlays() -> None:
         async def list_sort_orders(self) -> list[SortOrderRead]:
             return []
 
-    cache = _FakeCacheService(_tree("unused"))
+    cache = _FakeCacheService(_tree(DriveId("unused")))
     out = await AggregatingBootstrapService(
         drive=_FakeDriveService([]),
         extras=_EmptyExtras(),
@@ -257,7 +257,7 @@ async def test_bootstrap_preloads_only_the_first_visible_workspace(*, hide_all: 
                 hidden.append(DriveId("visible-second"))
             return PreferencesRead(show_non_doc_files=True, hidden_workspace_ids=hidden)
 
-    cache = _FakeCacheService(_tree("visible-second"))
+    cache = _FakeCacheService(_tree(DriveId("visible-second")))
     result = await AggregatingBootstrapService(
         drive=_FakeDriveService(
             [

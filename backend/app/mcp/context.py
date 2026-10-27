@@ -3,7 +3,6 @@ from __future__ import annotations
 from collections.abc import AsyncGenerator, Callable
 from contextlib import AbstractAsyncContextManager, asynccontextmanager
 from dataclasses import dataclass
-import uuid
 
 import httpx
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -12,6 +11,7 @@ from app.aliases.service import AliasService, PostgresAliasService
 from app.auth.google_tokens import GoogleReauthenticationRequiredError, GoogleTokenManager
 from app.drive.service import DriveService, GoogleDriveService
 from app.files.service import FilesService, GoogleFilesService
+from app.identifiers import UserId
 from app.mcp.schemas import McpCapability
 from app.models.user import User
 from app.tasks.service import PostgresTaskService, TaskService
@@ -24,7 +24,7 @@ class McpAuthorizationError(Exception):
 
 @dataclass(frozen=True, slots=True)
 class ValidatedMcpPrincipal:
-    user_id: uuid.UUID
+    user_id: UserId
     user_session_revision: int
     capabilities: frozenset[McpCapability]
 

@@ -34,27 +34,27 @@ class _FakeCache(SidebarCacheService):
     full_tree_reads = 0
     metadata_reads = 0
 
-    async def get_drive_tree(self, db: object, drive_id: str) -> CachedDriveTree:
+    async def get_drive_tree(self, db: object, drive_id: DriveId) -> CachedDriveTree:
         type(self).full_tree_reads += 1
         return CachedDriveTree(
             tree=_tree(drive_id),
             refreshed_at=datetime(2026, 8, 20, tzinfo=UTC),
         )
 
-    async def peek_drive_tree(self, db: object, drive_id: str) -> CachedDriveTree | None:
+    async def peek_drive_tree(self, db: object, drive_id: DriveId) -> CachedDriveTree | None:
         return None
 
-    async def get_drive_tree_refreshed_at(self, db: object, drive_id: str) -> datetime | None:
+    async def get_drive_tree_refreshed_at(self, db: object, drive_id: DriveId) -> datetime | None:
         type(self).metadata_reads += 1
         return datetime(2026, 8, 20, tzinfo=UTC)
 
     async def get_folder_children(self, folder_id: str) -> list:
         return []
 
-    async def invalidate_drive(self, db: object, drive_id: str) -> None:
+    async def invalidate_drive(self, db: object, drive_id: DriveId) -> None:
         return None
 
-    async def refresh_drive(self, db: object, drive_id: str) -> DriveTree:
+    async def refresh_drive(self, db: object, drive_id: DriveId) -> DriveTree:
         return _tree(drive_id)
 
 
@@ -69,19 +69,19 @@ class _FakeExtras:
             ),
         ]
 
-    async def upsert_doc_icon(self, drive_id: str, payload: object) -> DocIconRead:
+    async def upsert_doc_icon(self, drive_id: FileId, payload: object) -> DocIconRead:
         return DocIconRead(drive_id=FileId(drive_id), icon="📄", cover_url=None)
 
 
 class _FakeFiles:
-    async def require_access(self, file_id: str) -> None:
+    async def require_access(self, file_id: FileId) -> None:
         await self.get(file_id)
 
     async def get_accessible_ids(self, file_ids: list[FileId]) -> set[FileId]:
         assert file_ids == [ACCESSIBLE_DOC, INACCESSIBLE_DOC]
         return {ACCESSIBLE_DOC}
 
-    async def get(self, file_id: str) -> FileResponse:
+    async def get(self, file_id: FileId) -> FileResponse:
         if file_id == ACCESSIBLE_DOC:
             return FileResponse(
                 id=FileId(file_id),
@@ -95,7 +95,7 @@ class _FakeFiles:
         raise FileNotInScopeError(msg)
 
 
-def _tree(drive_id: str) -> DriveTree:
+def _tree(drive_id: DriveId) -> DriveTree:
     return DriveTree(drive_id=DriveId(drive_id), folders=[], files=[], files_complete=True)
 
 

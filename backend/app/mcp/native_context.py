@@ -7,6 +7,7 @@ import httpx
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from app.identifiers import UserId
 from app.mcp.context import (
     McpApplicationContext,
     McpAuthorizationError,
@@ -43,7 +44,7 @@ def native_context_factory(
         if verified.subject != str(claims.user_id):
             raise McpAuthorizationError
         principal = ValidatedMcpPrincipal(
-            user_id=claims.user_id,
+            user_id=UserId(claims.user_id),
             user_session_revision=claims.user_session_revision,
             capabilities=frozenset(McpCapability(scope) for scope in verified.scopes),
         )

@@ -6,7 +6,7 @@ import hashlib
 import json
 import math
 from operator import itemgetter
-from typing import Any, NamedTuple
+from typing import TYPE_CHECKING, Any, NamedTuple
 
 from app.document_transform.brand_manifest import CURRENT_BRAND_MANIFEST
 from app.document_transform.errors import SourceTooLargeError, UnsupportedSourceError
@@ -16,11 +16,16 @@ from app.document_transform.schemas import TransformFinding, TransformMode
 from app.document_transform.slides_ir import (
     ParsedPresentation,
     PlainSlideText,
+    SlideId,
     SlideTextLocator,
     parse_google_presentation,
     parse_plain_slide_text,
     sarj_logo_object_id,
 )
+
+
+if TYPE_CHECKING:
+    from pydantic import JsonValue
 
 
 MAX_SLIDES_MUTATION_REQUESTS = 1_000
@@ -1167,7 +1172,7 @@ def _has_visual_underlay(
         pages = _page_chain(presentation, slide)
     except UnsupportedSourceError:
         return True
-    expected_logo_id = sarj_logo_object_id(_required_string(slide, "objectId"))
+    expected_logo_id = sarj_logo_object_id(SlideId(_required_string(slide, "objectId")))
     object_ids = _object_id_occurrences(presentation)
     for page in pages:
         for element in _walk_elements(page.get("pageElements", [])):
@@ -1272,47 +1277,71 @@ def _logo_requests(
         return _LogoPlan(
             [],
             {},
-            [_unsafe_geometry_finding(_required_string(slide, "objectId")) for slide in slides],
+            [
+                _unsafe_geometry_finding(SlideId(_required_string(slide, "objectId")))
+                for slide in slides
+            ],
         )
     requests: list[dict[str, Any]] = []
     placements: dict[str, _Rect] = {}
     findings: list[TransformFinding] = []
     object_ids = _object_id_occurrences(presentation)
+    plan = _LogoPlan(requests, placements, findings)
     for slide in slides:
-        background = _effective_page_background(presentation, slide)
-        if background is None or _contrast_ratio("#000000", background) < _MIN_TEXT_CONTRAST:
-            slide_id = _required_string(slide, "objectId")
-            removal, removal_finding = _unsafe_contrast_logo_removal(
-                slide,
-                logo_uri=logo_uri,
-                layout=layout,
-                object_ids=object_ids,
-            )
-            if removal is not None:
-                requests.append(removal)
-            if removal_finding is not None:
-                findings.append(removal_finding)
-            findings.append(_logo_contrast_finding(slide_id))
-            continue
-        try:
-            inherited_elements = _inherited_page_elements(presentation, slide)
-        except UnsupportedSourceError:
-            findings.append(_unsafe_geometry_finding(_required_string(slide, "objectId")))
-            continue
-        request, placement, finding = _logo_request_for_slide(
+        _append_slide_logo_plan(
+            plan,
+            presentation,
             slide,
             logo_uri=logo_uri,
             layout=layout,
             object_ids=object_ids,
-            inherited_elements=inherited_elements,
         )
-        if finding is not None:
-            findings.append(finding)
-        if placement is not None:
-            placements[_required_string(slide, "objectId")] = placement
-        if request is not None:
-            requests.append(request)
-    return _LogoPlan(requests, placements, findings)
+    return plan
+
+
+def _append_slide_logo_plan(
+    plan: _LogoPlan,
+    presentation: dict[str, JsonValue],
+    slide: dict[str, JsonValue],
+    *,
+    logo_uri: str,
+    layout: _LogoLayout,
+    object_ids: dict[str, tuple[dict[str, JsonValue], ...]],
+) -> None:
+    requests, placements, findings = plan
+    background = _effective_page_background(presentation, slide)
+    if background is None or _contrast_ratio("#000000", background) < _MIN_TEXT_CONTRAST:
+        slide_id = SlideId(_required_string(slide, "objectId"))
+        removal, removal_finding = _unsafe_contrast_logo_removal(
+            slide,
+            logo_uri=logo_uri,
+            layout=layout,
+            object_ids=object_ids,
+        )
+        if removal is not None:
+            requests.append(removal)
+        if removal_finding is not None:
+            findings.append(removal_finding)
+        findings.append(_logo_contrast_finding(slide_id))
+        return
+    try:
+        inherited_elements = _inherited_page_elements(presentation, slide)
+    except UnsupportedSourceError:
+        findings.append(_unsafe_geometry_finding(SlideId(_required_string(slide, "objectId"))))
+        return
+    request, placement, finding = _logo_request_for_slide(
+        slide,
+        logo_uri=logo_uri,
+        layout=layout,
+        object_ids=object_ids,
+        inherited_elements=inherited_elements,
+    )
+    if finding is not None:
+        findings.append(finding)
+    if placement is not None:
+        placements[_required_string(slide, "objectId")] = placement
+    if request is not None:
+        requests.append(request)
 
 
 def _unsafe_contrast_logo_removal(
@@ -1322,7 +1351,7 @@ def _unsafe_contrast_logo_removal(
     layout: _LogoLayout,
     object_ids: dict[str, tuple[dict[str, Any], ...]],
 ) -> _LogoRemovalDecision:
-    slide_id = _required_string(slide, "objectId")
+    slide_id = SlideId(_required_string(slide, "objectId"))
     logo_id = sarj_logo_object_id(slide_id)
     existing = [
         element for element in _top_level_elements(slide) if element.get("objectId") == logo_id
@@ -1390,7 +1419,7 @@ def _logo_request_for_slide(
     object_ids: dict[str, tuple[dict[str, Any], ...]],
     inherited_elements: tuple[dict[str, Any], ...],
 ) -> _LogoDecision:
-    slide_id = _required_string(slide, "objectId")
+    slide_id = SlideId(_required_string(slide, "objectId"))
     logo_id = sarj_logo_object_id(slide_id)
     top_level = _top_level_elements(slide)
     existing = [element for element in top_level if element.get("objectId") == logo_id]
@@ -1423,17 +1452,10 @@ def _logo_request_for_slide(
     ):
         return _LogoDecision(None, None, _unsafe_geometry_finding(slide_id))
     if existing:
-        existing_bounds = _element_bounds(existing[0])
-        if (
-            existing_bounds is None
-            or not any(_rect_close(existing_bounds, candidate) for candidate in layout.candidates)
-            or any(_overlaps(existing_bounds, box) for box in occupied)
-            or not _existing_logo_is_exact(
-                existing[0],
-                logo_uri=logo_uri,
-                placement=existing_bounds,
-            )
-        ):
+        existing_bounds = _existing_logo_placement(
+            existing[0], logo_uri=logo_uri, layout=layout, occupied=occupied
+        )
+        if existing_bounds is None:
             return _LogoDecision(None, None, _logo_id_collision_finding(slide_id))
         return _LogoDecision(None, existing_bounds, None)
     return _LogoDecision(
@@ -1447,6 +1469,28 @@ def _logo_request_for_slide(
         placement,
         None,
     )
+
+
+def _existing_logo_placement(
+    element: dict[str, JsonValue],
+    *,
+    logo_uri: str,
+    layout: _LogoLayout,
+    occupied: tuple[_Rect, ...],
+) -> _Rect | None:
+    existing_bounds = _element_bounds(element)
+    if (
+        existing_bounds is None
+        or not any(_rect_close(existing_bounds, candidate) for candidate in layout.candidates)
+        or any(_overlaps(existing_bounds, box) for box in occupied)
+        or not _existing_logo_is_exact(
+            element,
+            logo_uri=logo_uri,
+            placement=existing_bounds,
+        )
+    ):
+        return None
+    return existing_bounds
 
 
 def _top_level_elements(slide: dict[str, Any]) -> list[dict[str, Any]]:
@@ -1631,7 +1675,7 @@ def _expected_brand_sha256(
     styles = [_expected_style(target) for target in style_targets]
     logos = [
         _canonical_logo(
-            object_id=sarj_logo_object_id(slide_id),
+            object_id=sarj_logo_object_id(SlideId(slide_id)),
             slide_id=slide_id,
             rect=rect,
         )
@@ -1693,7 +1737,7 @@ def _observed_logos(presentation: dict[str, Any]) -> list[dict[str, Any]]:
     logos: list[dict[str, Any]] = []
     page_width, page_height = _page_size(presentation)
     for slide in _slides(presentation):
-        slide_id = _required_string(slide, "objectId")
+        slide_id = SlideId(_required_string(slide, "objectId"))
         expected_id = sarj_logo_object_id(slide_id)
         for element in slide.get("pageElements", []):
             if not isinstance(element, dict):
@@ -1903,7 +1947,7 @@ def _object_id_occurrences(value: object) -> dict[str, tuple[dict[str, Any], ...
     return {object_id: tuple(elements) for object_id, elements in found.items()}
 
 
-def _unsafe_geometry_finding(slide_id: str) -> TransformFinding:
+def _unsafe_geometry_finding(slide_id: SlideId) -> TransformFinding:
     return TransformFinding(
         code="slide_geometry_unsafe",
         block_id=slide_id,
@@ -1911,7 +1955,7 @@ def _unsafe_geometry_finding(slide_id: str) -> TransformFinding:
     )
 
 
-def _logo_id_collision_finding(slide_id: str) -> TransformFinding:
+def _logo_id_collision_finding(slide_id: SlideId) -> TransformFinding:
     return TransformFinding(
         code="slide_logo_id_collision",
         block_id=slide_id,
@@ -1919,7 +1963,7 @@ def _logo_id_collision_finding(slide_id: str) -> TransformFinding:
     )
 
 
-def _logo_collision_finding(slide_id: str) -> TransformFinding:
+def _logo_collision_finding(slide_id: SlideId) -> TransformFinding:
     return TransformFinding(
         code="slide_logo_collision",
         block_id=slide_id,
@@ -1927,7 +1971,7 @@ def _logo_collision_finding(slide_id: str) -> TransformFinding:
     )
 
 
-def _logo_contrast_finding(slide_id: str) -> TransformFinding:
+def _logo_contrast_finding(slide_id: SlideId) -> TransformFinding:
     return TransformFinding(
         code="slide_logo_contrast_unresolved",
         block_id=slide_id,

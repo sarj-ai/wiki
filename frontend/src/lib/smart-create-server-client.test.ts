@@ -2,6 +2,15 @@
 
 import { smartCreateServerClient } from "@/lib/smart-create-server-client";
 
+function timeoutSignal(milliseconds: number): AbortSignal {
+  const controller = new AbortController();
+  setTimeout(
+    () => controller.abort(new DOMException("Deadline exceeded", "TimeoutError")),
+    milliseconds,
+  );
+  return controller.signal;
+}
+
 describe("smartCreateServerClient", () => {
   afterEach(() => {
     vi.unstubAllGlobals();
@@ -50,14 +59,7 @@ describe("smartCreateServerClient", () => {
 
   it("keeps the thirty-second POST deadline through stalled response ingestion without retry", async () => {
     vi.useFakeTimers();
-    vi.spyOn(AbortSignal, "timeout").mockImplementation((milliseconds) => {
-      const controller = new AbortController();
-      setTimeout(
-        () => controller.abort(new DOMException("Deadline exceeded", "TimeoutError")),
-        milliseconds,
-      );
-      return controller.signal;
-    });
+    vi.spyOn(AbortSignal, "timeout").mockImplementation(timeoutSignal);
     const cleanup = Promise.withResolvers<undefined>();
     const cancel = vi.fn<() => Promise<undefined>>().mockReturnValue(cleanup.promise);
     const body = new ReadableStream<Uint8Array>({
@@ -98,14 +100,7 @@ describe("smartCreateServerClient", () => {
 
   it("preserves a mutation body arriving inside the original total deadline", async () => {
     vi.useFakeTimers();
-    vi.spyOn(AbortSignal, "timeout").mockImplementation((milliseconds) => {
-      const controller = new AbortController();
-      setTimeout(
-        () => controller.abort(new DOMException("Deadline exceeded", "TimeoutError")),
-        milliseconds,
-      );
-      return controller.signal;
-    });
+    vi.spyOn(AbortSignal, "timeout").mockImplementation(timeoutSignal);
     let stream: ReadableStreamDefaultController<Uint8Array> | undefined;
     const body = new ReadableStream<Uint8Array>({
       start(controller) {

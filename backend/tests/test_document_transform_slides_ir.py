@@ -9,7 +9,7 @@ import pytest
 from app.document_transform import slides_ir
 from app.document_transform.errors import SourceTooLargeError, UnsupportedSourceError
 from app.document_transform.ir import BlockKind, utf16_length
-from app.document_transform.slides_ir import parse_google_presentation, sarj_logo_object_id
+from app.document_transform.slides_ir import SlideId, parse_google_presentation, sarj_logo_object_id
 
 
 def _text_shape(
@@ -219,7 +219,7 @@ def test_protected_inventory_preserves_structure_but_ignores_safe_text_content()
     )
 
     logo_added = deepcopy(source)
-    logo_id = sarj_logo_object_id("slide-1")
+    logo_id = sarj_logo_object_id(SlideId("slide-1"))
     logo_added["slides"][0]["pageElements"].insert(
         0,
         {
@@ -279,13 +279,13 @@ def test_protected_inventory_preserves_structure_but_ignores_safe_text_content()
             id="foreign-reserved-prefix",
         ),
         pytest.param(
-            sarj_logo_object_id("slide-1"),
+            sarj_logo_object_id(SlideId("slide-1")),
             "https://example.test/not-the-sarj-logo.png",
             False,
             id="wrong-pinned-source",
         ),
         pytest.param(
-            sarj_logo_object_id("slide-1"),
+            sarj_logo_object_id(SlideId("slide-1")),
             "https://wiki.sarj.ai/brand/sarj-logo-light.png",
             True,
             id="logo-is-not-top-level",
