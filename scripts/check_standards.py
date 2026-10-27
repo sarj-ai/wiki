@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 import json
+import os
 from pathlib import Path
 import sys
 from tempfile import TemporaryDirectory
@@ -61,6 +62,8 @@ def verify_python_baseline(paths: list[str]) -> int:
                 *_rule_arguments(PYTHON_RULES),
                 "--update-baseline",
                 str(generated),
+                "--jobs",
+                os.environ.get("WIKI_PYTHON_BASELINE_JOBS", "1"),  # ruff: ignore[banned-api] -- standalone CLI forwards the native analysis budget.
                 *python_paths,
             ]
         )

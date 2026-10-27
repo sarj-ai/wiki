@@ -33,6 +33,7 @@ def test_protected_pre_commit_check_runs_every_repository_quality_gate() -> None
     assert "\n    if:" not in protected_job
     assert "continue-on-error" not in protected_job
     assert "scripts/check_standards.py --verify-python-baseline ." in protected_job
+    assert 'WIKI_PYTHON_BASELINE_JOBS: "2"' in protected_job
     assert "run: bash scripts/github/run-pre-commit.sh" in protected_job
     assert workflow.count("name: pre-commit (actionlint, hygiene, sarj rules)") == 1
 
