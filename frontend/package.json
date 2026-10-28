@@ -62,7 +62,7 @@
     "@eslint/js": "10.0.1",
     "@hey-api/openapi-ts": "^0.99.0",
     "@opennextjs/cloudflare": "1.20.13",
-    "@sarj/eslint-plugin": "16.29.0",
+    "@sarj/eslint-plugin": "16.30.4",
     "@sarj/tsconfig": "0.2.3",
     "@shadcn/lint": "0.2.3",
     "@tailwindcss/postcss": "^4.3.3",
@@ -94,7 +94,6 @@
     "eslint-plugin-react": "7.37.5",
     "eslint-plugin-react-hooks": "7.1.1",
     "eslint-plugin-simple-import-sort": "14.0.0",
-    "eslint-plugin-sonarjs": "4.2.2",
     "eslint-plugin-testing-library": "7.16.2",
     "eslint-plugin-unicorn": "79.0.0",
     "eslint-plugin-zod": "5.2.2",
@@ -117,7 +116,9 @@
     "vite": "^8.3.5",
     "vitest": "^5.0.5",
     "wrangler": "4.152.0",
-    "eslint-plugin-regexp": "3.3.1"
+    "eslint-plugin-regexp": "3.3.1",
+    "@typescript-eslint/utils": "8.72.0",
+    "@typescript-eslint/rule-tester": "8.72.0"
   },
   "overrides": {
     "@node-minify/core": {

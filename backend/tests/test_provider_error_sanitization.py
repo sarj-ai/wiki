@@ -81,7 +81,7 @@ class _FailingFiles:
     def __init__(self, error: DriveUpstreamError) -> None:
         self._error = error
 
-    async def get_html_content(self, file_id: str) -> bytes:
+    async def get_html_content(self, file_id: FileId) -> bytes:
         raise self._error
 
 

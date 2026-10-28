@@ -15,7 +15,7 @@ import pytest
 
 from app.document_transform.application import TransformSubmission
 from app.files.errors import FileNotInScopeError
-from app.identifiers import TaskId
+from app.identifiers import TaskId, UserId
 from app.mcp.context import ValidatedMcpPrincipal
 from app.mcp.mutation import polish_document
 from app.mcp.schemas import McpCapability, PolishInput
@@ -45,7 +45,9 @@ class Contexts:
         self.opened += 1
         try:
             yield SimpleNamespace(
-                principal=ValidatedMcpPrincipal(self.user_id, 1, frozenset({McpCapability.READ})),
+                principal=ValidatedMcpPrincipal(
+                    UserId(self.user_id), 1, frozenset({McpCapability.READ})
+                ),
                 tasks=self,
             )
         finally:
@@ -207,7 +209,7 @@ async def test_completed_replay_rechecks_output_acl_before_return(
     monkeypatch.setattr("app.mcp.mutation.submit_document_transform", replay)
     services = Services()
     context: Any = SimpleNamespace(
-        principal=ValidatedMcpPrincipal(owner, 1, frozenset(McpCapability)),
+        principal=ValidatedMcpPrincipal(UserId(owner), 1, frozenset(McpCapability)),
         tasks=services,
         files=services,
     )

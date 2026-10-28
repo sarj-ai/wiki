@@ -10,7 +10,7 @@ from sqlalchemy import and_, delete, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.document_transform.schemas import TransformMode
-from app.identifiers import AuthSessionId, FileId, QaPlanId, QaRunId, TaskId, UserId
+from app.identifiers import AuthSessionId, FileId, IdempotencyKey, QaPlanId, QaRunId, TaskId, UserId
 from app.models.auth_session import UserSession
 from app.models.document_transform_qa_grant import (
     DocumentTransformQaGrant,
@@ -125,7 +125,7 @@ class QaExecutionIdentity:
 async def prepare_idempotent_qa_launch(
     db: AsyncSession,
     *,
-    idempotency_key: uuid.UUID,
+    idempotency_key: IdempotencyKey,
     issuer_user_id: UserId,
     user_id: UserId,
     session_id: AuthSessionId,

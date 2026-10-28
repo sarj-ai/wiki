@@ -8,6 +8,7 @@ import uuid
 import pytest
 
 from app.document_transform.application import TransformSubmission
+from app.identifiers import UserId
 from app.mcp.context import McpAuthorizationError, ValidatedMcpPrincipal
 from app.mcp.mutation import polish_document
 from app.mcp.schemas import MarkdownImportInput, McpCapability, PolishInput
@@ -39,7 +40,7 @@ class Tasks:
 
 def context(capabilities: frozenset[McpCapability], tasks: Tasks | None = None) -> Any:
     return SimpleNamespace(
-        principal=ValidatedMcpPrincipal(uuid.uuid7(), 1, capabilities),
+        principal=ValidatedMcpPrincipal(UserId(uuid.uuid7()), 1, capabilities),
         tasks=tasks or Tasks(),
         files=object(),
     )

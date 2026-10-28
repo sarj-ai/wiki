@@ -9,7 +9,7 @@ from tests.support import dependency
 
 
 class _HtmlFiles:
-    async def get_html_content(self, file_id: str) -> bytes:
+    async def get_html_content(self, file_id: FileId) -> bytes:
         assert file_id == "chart"
         return b"<!doctype html><script>document.body.dataset.ready='yes'</script>"
 

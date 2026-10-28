@@ -242,7 +242,7 @@ async def _prepare_launch(
 ):
     return await prepare_idempotent_qa_launch(
         db,
-        idempotency_key=idempotency_key,
+        idempotency_key=IdempotencyKey(idempotency_key),
         issuer_user_id=user.id,
         user_id=user.id,
         session_id=session.id,

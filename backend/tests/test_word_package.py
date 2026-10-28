@@ -81,7 +81,7 @@ def test_fields_do_not_disable_unrelated_body_and_bad_fields_fail_closed():
     field = (
         '<w:p><w:r><w:fldChar w:fldCharType="begin"/><w:fldChar w:fldCharType="end"/></w:r></w:p>'
     )
-    assert format_word_package(package(field + f"<w:p>{RUN}</w:p>")).changed_runs == 1
+    assert format_word_package(package(f"{field}<w:p>{RUN}</w:p>")).changed_runs == 1
     with pytest.raises(UnsafeWordPackageError):
         format_word_package(package(field.replace('w:fldCharType="end"', 'w:fldCharType="begin"')))
 

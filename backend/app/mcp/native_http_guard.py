@@ -4,7 +4,7 @@ import asyncio
 from dataclasses import dataclass
 import hashlib
 import json
-import logging  # ruff: ignore[banned-api] -- redact the MCP SDK stdlib logger before OAuth secrets reach handlers.
+import logging  # Redact the MCP SDK stdlib logger before OAuth secrets reach handlers.
 import re
 import secrets
 from typing import override

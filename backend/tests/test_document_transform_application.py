@@ -142,7 +142,7 @@ class SubmissionHarness:
         self,
         *,
         kind: TaskKind,
-        owner_user_id: uuid.UUID,
+        owner_user_id: UserId,
         idempotency_key: IdempotencyKey,
         payload: BaseModel,
         admit: Callable[[], Awaitable[None]],

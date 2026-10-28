@@ -13,7 +13,7 @@ from app.drive.schemas import SearchResult as DriveSearchResult
 from app.drive.service import BoundedSearchResult
 from app.files.errors import FileNotInScopeError
 from app.files.schemas import FileResponse
-from app.identifiers import FileId, IdempotencyKey, TaskId
+from app.identifiers import FileId, IdempotencyKey, TaskId, UserId
 from app.mcp.context import McpAuthorizationError, ValidatedMcpPrincipal
 from app.mcp.schemas import (
     AdmissionInput,
@@ -88,7 +88,7 @@ class Services:
 def make_context(services: Services, *, read: bool = True) -> Any:
     return SimpleNamespace(
         principal=ValidatedMcpPrincipal(
-            uuid.uuid7(), 1, frozenset({McpCapability.READ}) if read else frozenset()
+            UserId(uuid.uuid7()), 1, frozenset({McpCapability.READ}) if read else frozenset()
         ),
         drive=services,
         files=services,

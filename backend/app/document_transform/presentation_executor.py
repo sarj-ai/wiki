@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import json
 from types import MappingProxyType
+from typing import TYPE_CHECKING, override
 import uuid
 
 from app.document_transform.brand_manifest import CURRENT_BRAND_MANIFEST
@@ -20,6 +21,7 @@ from app.document_transform.presentation_gateway import (
     PresentationGateway,
     PresentationSourceSnapshot,
 )
+from app.document_transform.runner import DocumentTransformRunner
 from app.document_transform.schemas import (
     DocumentOutput,
     DocumentTransformRequest,
@@ -42,6 +44,11 @@ from app.drive.schemas import MIME_SLIDE
 from app.identifiers import DocsRevisionId, ModelId
 
 
+if TYPE_CHECKING:
+    from app.document_transform.planner import TransformOutcome
+    from app.document_transform.slides_brand import SlideMutationPlan
+
+
 PRESENTATION_REQUEST_BUILDER_VERSION = "google-slides-requests-v1"
 _OUTPUT_SUFFIX = MappingProxyType(
     {
@@ -52,7 +59,7 @@ _OUTPUT_SUFFIX = MappingProxyType(
 )
 
 
-class PresentationTransformExecutor:
+class PresentationTransformExecutor(DocumentTransformRunner):
     def __init__(
         self,
         *,
@@ -65,6 +72,7 @@ class PresentationTransformExecutor:
         self._planner = TextTransformPlanner(generator=generator, allow_unslop_model=False)
         self._logo_uri = logo_uri
 
+    @override
     async def execute(
         self,
         *,
@@ -82,51 +90,16 @@ class PresentationTransformExecutor:
 
         source_parsed = self._parse_native_source(snapshot)
         source_sha256 = _source_sha256(snapshot, source_parsed)
-        recovered = await self._gateway.recover_output(
-            operation_id,
-            expected_parent_folder_id=snapshot.parent_folder_id,
+        recovered = await self._recover_output(
+            operation_id=operation_id,
+            request=request,
+            snapshot=snapshot,
+            source_sha256=source_sha256,
         )
-        if recovered is not None and recovered.source_sha256 != source_sha256:
-            raise OutputConflictError
-        if recovered is not None and recovered.pending_mutation_sha256 is not None:
-            recovered = await self._gateway.reconcile_pending(recovered)
-        if recovered is not None and recovered.completed:
-            return self._recovered_result(
-                operation_id=operation_id,
-                request=request,
-                source_sha256=source_sha256,
-                draft=recovered,
-            )
-        if recovered is not None and (
-            recovered.pending_mutation_sha256 is not None
-            and recovered.applied_mutation_sha256 == recovered.pending_mutation_sha256
-        ):
-            await self._gateway.complete(draft=recovered)
-            return self._recovered_result(
-                operation_id=operation_id,
-                request=request,
-                source_sha256=source_sha256,
-                draft=recovered,
-            )
+        if isinstance(recovered, DocumentTransformResult):
+            return recovered
 
-        planned = (
-            await self._planner.transform(source_parsed.document, request)
-            if source_parsed is not None
-            else None
-        )
-        if source_parsed is not None:
-            if planned is None:  # pragma: no cover - mirrors source parser branch
-                message = "Native presentation plan was not created"
-                raise RuntimeError(message)
-            if snapshot.presentation is None:  # pragma: no cover - guarded by parser result
-                raise UnsupportedSourceError
-            build_slides_mutation_plan(
-                snapshot.presentation,
-                parsed=source_parsed,
-                transformed=planned.document,
-                mode=request.mode,
-                logo_uri=self._logo_uri,
-            )
+        planned = await self._plan_native_source(snapshot, source_parsed, request)
         if not await self._gateway.source_is_unchanged(snapshot):
             raise SourceChangedError
         draft = recovered or await self._gateway.create_copy(
@@ -182,6 +155,68 @@ class PresentationTransformExecutor:
             logo_uri=self._logo_uri,
         )
         findings.extend(mutation.findings)
+        return await self._apply_and_verify_output(
+            operation_id=operation_id,
+            request=request,
+            snapshot=snapshot,
+            source_sha256=source_sha256,
+            draft=draft,
+            planned=planned,
+            output_parsed=output_parsed,
+            mutation=mutation,
+            findings=findings,
+        )
+
+    async def _recover_output(
+        self,
+        *,
+        operation_id: uuid.UUID,
+        request: DocumentTransformRequest,
+        snapshot: PresentationSourceSnapshot,
+        source_sha256: str,
+    ) -> PresentationDraft | DocumentTransformResult | None:
+        recovered = await self._gateway.recover_output(
+            operation_id,
+            expected_parent_folder_id=snapshot.parent_folder_id,
+        )
+        if recovered is not None and recovered.source_sha256 != source_sha256:
+            raise OutputConflictError
+        if recovered is not None and recovered.pending_mutation_sha256 is not None:
+            recovered = await self._gateway.reconcile_pending(recovered)
+        if recovered is not None and recovered.completed:
+            return self._recovered_result(
+                operation_id=operation_id,
+                request=request,
+                source_sha256=source_sha256,
+                draft=recovered,
+            )
+        if recovered is not None and (
+            recovered.pending_mutation_sha256 is not None
+            and recovered.applied_mutation_sha256 == recovered.pending_mutation_sha256
+        ):
+            await self._gateway.complete(draft=recovered)
+            return self._recovered_result(
+                operation_id=operation_id,
+                request=request,
+                source_sha256=source_sha256,
+                draft=recovered,
+            )
+
+        return recovered
+
+    async def _apply_and_verify_output(
+        self,
+        *,
+        operation_id: uuid.UUID,
+        request: DocumentTransformRequest,
+        snapshot: PresentationSourceSnapshot,
+        source_sha256: str,
+        draft: PresentationDraft,
+        planned: TransformOutcome,
+        output_parsed: ParsedPresentation,
+        mutation: SlideMutationPlan,
+        findings: list[TransformFinding],
+    ) -> DocumentTransformResult:
         applied = await self._gateway.apply_requests_once(
             draft=draft,
             mutation_sha256=mutation.mutation_sha256,
@@ -198,22 +233,23 @@ class PresentationTransformExecutor:
             expected_protected_structure_sha256=output_parsed.protected_sha256,
             expected_brand_sha256=mutation.expected_brand_sha256,
         )
+        result_findings = [*findings]
         if not verification.content_preserved:
-            findings.append(
+            result_findings.append(
                 TransformFinding(
                     code="post_write_content_mismatch",
                     detail="Output text did not match the validated presentation plan",
                 )
             )
         if not verification.structure_preserved:
-            findings.append(
+            result_findings.append(
                 TransformFinding(
                     code="post_write_structure_mismatch",
                     detail="Output slide topology or protected content changed unexpectedly",
                 )
             )
         if not verification.brand_applied:
-            findings.append(
+            result_findings.append(
                 TransformFinding(
                     code="post_write_brand_mismatch",
                     detail="Output did not contain the complete pinned Sarj slide treatment",
@@ -225,7 +261,7 @@ class PresentationTransformExecutor:
             output=_output(applied),
             mode=request.mode,
             applied_patch_count=planned.applied_count,
-            findings=findings,
+            findings=result_findings,
             validation=ValidationSummary(
                 source_unchanged=True,
                 protected_content_preserved=(
@@ -239,7 +275,7 @@ class PresentationTransformExecutor:
             else [],
             tool_versions=_tool_versions(),
             pipeline_version=PRESENTATION_PIPELINE_VERSION,
-            needs_review=bool(findings),
+            needs_review=bool(result_findings),
             brand_profile_id=CURRENT_BRAND_MANIFEST.profile_id,
             brand_profile_sha256=CURRENT_BRAND_MANIFEST.sha256,
             deterministic_patch_count=planned.deterministic_count,
@@ -261,6 +297,32 @@ class PresentationTransformExecutor:
         ):
             await self._gateway.complete(draft=applied)
         return result
+
+    async def _plan_native_source(
+        self,
+        snapshot: PresentationSourceSnapshot,
+        source_parsed: ParsedPresentation | None,
+        request: DocumentTransformRequest,
+    ) -> TransformOutcome | None:
+        planned = (
+            await self._planner.transform(source_parsed.document, request)
+            if source_parsed is not None
+            else None
+        )
+        if source_parsed is not None:
+            if planned is None:  # pragma: no cover - mirrors source parser branch
+                message = "Native presentation plan was not created"
+                raise RuntimeError(message)
+            if snapshot.presentation is None:  # pragma: no cover - guarded by parser result
+                raise UnsupportedSourceError
+            build_slides_mutation_plan(
+                snapshot.presentation,
+                parsed=source_parsed,
+                transformed=planned.document,
+                mode=request.mode,
+                logo_uri=self._logo_uri,
+            )
+        return planned
 
     @staticmethod
     def _parse_native_source(

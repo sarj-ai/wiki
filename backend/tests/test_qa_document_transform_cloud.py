@@ -22,6 +22,7 @@ from app.document_transform.qa_contract import (
     PRODUCTION_QA_CANARY_TASK_URL,
     PRODUCTION_QA_EXCHANGE_URL,
 )
+from app.identifiers import FileId
 from scripts import qa_document_transform_cloud as worker
 
 
@@ -161,7 +162,7 @@ def _result() -> dict[str, object]:
     }
 
 
-def _permission(file_id: str, mime_type: str, parent: str | None) -> dict[str, object]:
+def _permission(file_id: FileId, mime_type: str, parent: str | None) -> dict[str, object]:
     return {
         "file_id": file_id,
         "mime_type": mime_type,
@@ -195,9 +196,11 @@ def _evidence() -> dict[str, object]:
             "operation_id": _TASK_ID,
             "source_sha256": "f" * 64,
             "output_revision_id": "output-revision",
-            "destination": _permission("destination", "application/vnd.google-apps.folder", None),
+            "destination": _permission(
+                FileId("destination"), "application/vnd.google-apps.folder", None
+            ),
             "output": _permission(
-                "output-document", "application/vnd.google-apps.document", "destination"
+                FileId("output-document"), "application/vnd.google-apps.document", "destination"
             ),
         },
     }

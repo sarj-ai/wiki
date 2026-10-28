@@ -326,7 +326,7 @@ class _Enqueuer(TaskEnqueuer):
 
 
 def _node(
-    file_id: str,
+    file_id: FileId,
     *,
     mime_type: str = MIME_DOC,
     parent_id: FileId = _SOURCE,
@@ -343,7 +343,7 @@ def _node(
 
 async def test_plan_selects_only_server_discovered_doc_and_forces_copy() -> None:
     authority = _authority()
-    drive = _Drive({_SOURCE: [_node("doc-1")]})
+    drive = _Drive({_SOURCE: [_node(FileId("doc-1"))]})
 
     first = await plan_qa_canary(authority, drive=drive, files=_Files())
     replay = await plan_qa_canary(authority, drive=drive, files=_Files())
@@ -361,9 +361,9 @@ async def test_plan_selects_only_server_discovered_doc_and_forces_copy() -> None
     "children",
     [
         [],
-        [_node("doc-1"), _node("doc-2")],
-        [_node("doc-1", modified_time=None)],
-        [_node("loop", mime_type=MIME_FOLDER, parent_id=_SOURCE)],
+        [_node(FileId("doc-1")), _node(FileId("doc-2"))],
+        [_node(FileId("doc-1"), modified_time=None)],
+        [_node(FileId("loop"), mime_type=MIME_FOLDER, parent_id=_SOURCE)],
     ],
     ids=("empty", "ambiguous", "missing-revision", "cycle"),
 )
@@ -373,7 +373,9 @@ async def test_plan_rejects_ambiguous_incomplete_or_cyclic_source(
     drive = _Drive(
         {
             _SOURCE: children,
-            FileId("loop"): [_node("loop", mime_type=MIME_FOLDER, parent_id=FileId("loop"))],
+            FileId("loop"): [
+                _node(FileId("loop"), mime_type=MIME_FOLDER, parent_id=FileId("loop"))
+            ],
         }
     )
 
@@ -383,11 +385,11 @@ async def test_plan_rejects_ambiguous_incomplete_or_cyclic_source(
 
 async def test_plan_key_changes_when_source_version_changes() -> None:
     first = await plan_qa_canary(
-        _authority(), drive=_Drive({_SOURCE: [_node("doc-1")]}), files=_Files()
+        _authority(), drive=_Drive({_SOURCE: [_node(FileId("doc-1"))]}), files=_Files()
     )
     changed = await plan_qa_canary(
         _authority(),
-        drive=_Drive({_SOURCE: [_node("doc-1", modified_time="2026-09-07T12:01:00Z")]}),
+        drive=_Drive({_SOURCE: [_node(FileId("doc-1"), modified_time="2026-09-07T12:01:00Z")]}),
         files=_Files(),
     )
 
@@ -396,12 +398,12 @@ async def test_plan_key_changes_when_source_version_changes() -> None:
 
 async def test_plan_key_changes_when_destination_permission_version_changes() -> None:
     first = await plan_qa_canary(
-        _authority(), drive=_Drive({_SOURCE: [_node("doc-1")]}), files=_Files()
+        _authority(), drive=_Drive({_SOURCE: [_node(FileId("doc-1"))]}), files=_Files()
     )
     changed = await plan_qa_canary(
         _authority(),
         drive=_Drive(
-            {_SOURCE: [_node("doc-1")]},
+            {_SOURCE: [_node(FileId("doc-1"))]},
             permission_snapshots=[_permission_snapshot(version="18")],
         ),
         files=_Files(),
@@ -516,7 +518,7 @@ async def test_plan_key_changes_when_destination_permission_version_changes() ->
 async def test_plan_rejects_every_non_owner_only_destination(
     snapshot: FilePermissionSnapshot,
 ) -> None:
-    drive = _Drive({_SOURCE: [_node("doc-1")]}, permission_snapshots=[snapshot])
+    drive = _Drive({_SOURCE: [_node(FileId("doc-1"))]}, permission_snapshots=[snapshot])
 
     with pytest.raises(QaGrantError):
         await plan_qa_canary(_authority(), drive=drive, files=_Files())
@@ -631,7 +633,7 @@ async def test_created_copy_proof_rejects_wrong_or_multiple_parents() -> None:
 
 async def test_submit_recomputes_plan_and_forces_server_bound_copy() -> None:
     authority = _authority()
-    drive = _Drive({_SOURCE: [_node("doc-1")]})
+    drive = _Drive({_SOURCE: [_node(FileId("doc-1"))]})
     files = _Files()
     plan = await plan_qa_canary(authority, drive=drive, files=files)
     task_store = _Tasks()
@@ -676,7 +678,7 @@ async def test_submit_rejects_stale_or_forged_plan_before_task_admission() -> No
         await submit_planned_qa_canary(
             _authority(),
             plan_id=QaPlanId(uuid.UUID("99999999-9999-4999-8999-999999999999")),
-            drive=_Drive({_SOURCE: [_node("doc-1")]}),
+            drive=_Drive({_SOURCE: [_node(FileId("doc-1"))]}),
             files=_Files(),
             tasks=task_store,
             enqueuer=_Enqueuer(),
@@ -688,7 +690,7 @@ async def test_read_resolves_only_current_plan_and_owner_scoped_task() -> None:
     authority = _authority()
     plan = await plan_qa_canary(
         authority,
-        drive=_Drive({_SOURCE: [_node("doc-1")]}),
+        drive=_Drive({_SOURCE: [_node(FileId("doc-1"))]}),
         files=_Files(),
     )
     tasks = _Tasks()
@@ -707,7 +709,7 @@ async def test_read_rejects_cross_run_task_binding_before_owner_read() -> None:
     authority = _authority()
     plan = await plan_qa_canary(
         authority,
-        drive=_Drive({_SOURCE: [_node("doc-1")]}),
+        drive=_Drive({_SOURCE: [_node(FileId("doc-1"))]}),
         files=_Files(),
     )
     tasks = _Tasks()
@@ -728,10 +730,10 @@ async def test_read_rejects_cross_run_task_binding_before_owner_read() -> None:
 @pytest.mark.parametrize(
     "current_children",
     [
-        [_node("doc-1", modified_time="2026-09-07T12:01:00Z")],
-        [_node("doc-1"), _node("doc-2")],
+        [_node(FileId("doc-1"), modified_time="2026-09-07T12:01:00Z")],
+        [_node(FileId("doc-1")), _node(FileId("doc-2"))],
         [],
-        [_node("loop", mime_type=MIME_FOLDER)],
+        [_node(FileId("loop"), mime_type=MIME_FOLDER)],
     ],
     ids=("edited", "added", "removed", "topology-changed"),
 )
@@ -741,7 +743,7 @@ async def test_submitted_read_survives_source_folder_churn(
     authority = _authority()
     original = await plan_qa_canary(
         authority,
-        drive=_Drive({_SOURCE: [_node("doc-1")]}),
+        drive=_Drive({_SOURCE: [_node(FileId("doc-1"))]}),
         files=_Files(),
     )
     tasks = _Tasks()
@@ -810,7 +812,7 @@ async def test_output_read_rejects_deleted_moved_or_revoked_output(failure: str)
 async def test_submit_rejects_destination_change_during_permission_readback() -> None:
     authority = _authority()
     drive = _Drive(
-        {_SOURCE: [_node("doc-1")]},
+        {_SOURCE: [_node(FileId("doc-1"))]},
         permission_snapshots=[
             _permission_snapshot(),
             _permission_snapshot(),

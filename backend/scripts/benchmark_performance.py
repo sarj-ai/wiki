@@ -5,7 +5,7 @@ from statistics import median
 from time import perf_counter
 from typing import TYPE_CHECKING, Annotated
 
-from fastapi import Depends, FastAPI
+from fastapi import APIRouter, Depends, FastAPI
 import httpx
 from pydantic import BaseModel
 
@@ -14,11 +14,34 @@ from app.identifiers import DriveId, FileId
 
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
+    from collections.abc import Awaitable, Callable
 
 
 class DispatchRead(BaseModel):
     value: str
+
+
+class DispatchRouter:
+    def __init__(
+        self,
+        sync_factory: Callable[[], str],
+        async_factory: Callable[[], Awaitable[str]],
+    ) -> None:
+        self._sync_factory = sync_factory
+        self._async_factory = async_factory
+
+    def build(self) -> APIRouter:
+        router = APIRouter()
+
+        @router.get("/sync", response_model=DispatchRead, status_code=200)
+        async def sync_route(value: Annotated[str, Depends(self._sync_factory)]) -> DispatchRead:
+            return DispatchRead(value=value)
+
+        @router.get("/async", response_model=DispatchRead, status_code=200)
+        async def async_route(value: Annotated[str, Depends(self._async_factory)]) -> DispatchRead:
+            return DispatchRead(value=value)
+
+        return router
 
 
 def main() -> None:
@@ -76,13 +99,7 @@ async def _dispatch() -> dict[str, float]:
     async def async_factory() -> str:
         return await asyncio.sleep(0, result="ready")
 
-    @app.get("/sync", response_model=DispatchRead, status_code=200)
-    async def sync_route(value: Annotated[str, Depends(sync_factory)]) -> DispatchRead:
-        return DispatchRead(value=value)
-
-    @app.get("/async", response_model=DispatchRead, status_code=200)
-    async def async_route(value: Annotated[str, Depends(async_factory)]) -> DispatchRead:
-        return DispatchRead(value=value)
+    app.include_router(DispatchRouter(sync_factory, async_factory).build())
 
     result: dict[str, float] = {}
     async with httpx.AsyncClient(

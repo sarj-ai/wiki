@@ -33,9 +33,7 @@ def test_readme_without_backend_makefile(readme_repository: Path) -> None:
 
 
 def test_readme_rejects_deleted_backend_target(readme_repository: Path) -> None:
-    (readme_repository / "README.md").write_text(
-        "Run `make -C backend setup`.\n", encoding="utf-8"
-    )
+    (readme_repository / "README.md").write_text("Run `make -C backend setup`.\n", encoding="utf-8")
 
     result = CliRunner().invoke(repository_checks.CLI, ["readme"])
 
@@ -230,9 +228,7 @@ def test_help_never_executes(cli: typer.Typer, flag: str) -> None:
         "repository-extra",
     ],
 )
-def test_invalid_arguments_never_execute(
-    cli: typer.Typer, arguments: list[str]
-) -> None:
+def test_invalid_arguments_never_execute(cli: typer.Typer, arguments: list[str]) -> None:
     assert CliRunner().invoke(cli, arguments).exit_code == _USAGE_ERROR
 
 
@@ -251,7 +247,7 @@ def test_recovery_source_passes_typed_values(monkeypatch: pytest.MonkeyPatch) ->
     assert result.exit_code == 0
     assert result.stdout == "b" * 40 + "\n"
     assert calls == [
-        recovery.SourceArguments(verifier_sha="a" * 40, run_id=123, run_attempt=2)
+        recovery.SourceArguments(verifier_sha="a" * 40, run_id=recovery.RunId(123), run_attempt=2)
     ]
 
 

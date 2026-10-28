@@ -8,7 +8,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 import secrets
 import threading
-from typing import TYPE_CHECKING, NamedTuple, TypeIs
+from typing import TYPE_CHECKING, NamedTuple, Protocol, TypeIs, override
 import uuid
 
 import httpx
@@ -23,6 +23,7 @@ from app.auth.encryption import decrypt_text, encrypt_text
 from app.auth.schemas import GoogleTokenResponse
 from app.auth.service import GOOGLE_OAUTH_URL, GOOGLE_REVOKE_URL
 from app.config import settings
+from app.identifiers import UserId
 from app.models.user import User
 from app.performance import increment, timed
 
@@ -93,12 +94,29 @@ class PreparedGoogleCredentials:
     refresh_handler: Callable[..., GoogleRefreshResult]
 
 
-class GoogleTokenManager:
+class GoogleTokenProvider(Protocol):
+    async def prepare(
+        self,
+        user: User,
+        *,
+        refresh_timeout: timedelta = _REFRESH_HANDLER_TIMEOUT,
+    ) -> PreparedGoogleCredentials: ...
+
+    async def ensure_valid(
+        self,
+        user: User,
+        *,
+        force_generation: int | None = None,
+    ) -> ManagedGoogleToken: ...
+
+
+class GoogleTokenManager(GoogleTokenProvider):
     def __init__(self, db: AsyncSession, http: httpx.AsyncClient) -> None:
         self._db = db
         self._http = http
         self._lock = asyncio.Lock()
 
+    @override
     async def prepare(
         self,
         user: User,
@@ -152,7 +170,7 @@ class GoogleTokenManager:
         self,
         user: User,
         *,
-        user_id: uuid.UUID,
+        user_id: UserId,
         force_generation: int,
         owner_task: asyncio.Task[object] | None,
     ) -> ManagedGoogleToken:
@@ -197,6 +215,7 @@ class GoogleTokenManager:
         engine = bind if isinstance(bind, AsyncEngine) else bind.engine
         return async_sessionmaker(engine, expire_on_commit=False)
 
+    @override
     async def ensure_valid(
         self,
         user: User,

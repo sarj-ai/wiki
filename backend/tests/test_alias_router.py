@@ -19,14 +19,14 @@ from app.aliases.schemas import (
     DocumentAliasValue,
     RecentDocumentAlias,
 )
-from app.aliases.service import AliasService
 from app.auth.dependencies import get_current_user
 from app.identifiers import FileId
 from app.main import app
+from tests.alias_support import StrictAliasService
 from tests.test_files_service import _user
 
 
-class _Aliases(AliasService):
+class _Aliases(StrictAliasService):
     def __init__(self) -> None:
         self.current: str | None = "eng-onboarding"
 
@@ -133,7 +133,7 @@ async def test_alias_api_ensures_without_transform_submission(client: AsyncClien
     ],
 )
 async def test_alias_ensure_maps_fresh_authorization_and_candidate_failures(
-    client: AsyncClient, file_id: str, expected_status: int, expected_code: str
+    client: AsyncClient, file_id: FileId, expected_status: int, expected_code: str
 ) -> None:
     async with client:
         response = await client.post(f"/aliases/files/{file_id}/ensure")

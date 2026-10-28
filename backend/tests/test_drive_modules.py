@@ -642,7 +642,7 @@ async def test_list_drives_singleflights_concurrent_request_calls(
 )
 async def test_resolve_member_drive_accepts_only_my_drive_ancestry(
     patch_drive_client: Any,
-    file_id: str,
+    file_id: FileId,
     locations: list[dict[str, Any]],
 ) -> None:
     client = _FakeClient(

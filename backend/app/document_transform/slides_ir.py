@@ -493,7 +493,7 @@ def _reject_reserved_sarj_logo_objects(value: object) -> None:
         _reject_reserved_sarj_logo_objects(child)
 
 
-def sarj_logo_object_id(slide_id: str) -> str:
+def sarj_logo_object_id(slide_id: SlideId) -> str:
     digest = hashlib.sha256(slide_id.encode()).hexdigest()[:32]
     return f"{_SARJ_LOGO_OBJECT_ID_PREFIX}{digest}"
 

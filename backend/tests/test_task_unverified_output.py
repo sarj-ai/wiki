@@ -15,7 +15,7 @@ from app.document_transform.schemas import (
 )
 from app.files.errors import FileNotInScopeError
 from app.files.schemas import FileResponse
-from app.identifiers import FileId, TaskId
+from app.identifiers import FileId, TaskId, UserId
 from app.models.user import User
 from app.tasks.errors import TaskNotFoundError
 from app.tasks.router import get_task
@@ -28,7 +28,7 @@ class TaskReaderStub:
         self.hidden = hidden
         self.loads = 0
 
-    async def get_for_owner(self, task_id: TaskId, owner_user_id: uuid.UUID) -> FailedTaskRead:
+    async def get_for_owner(self, task_id: TaskId, owner_user_id: UserId) -> FailedTaskRead:
         if self.hidden:
             raise TaskNotFoundError
         assert task_id == self.record.task.id
