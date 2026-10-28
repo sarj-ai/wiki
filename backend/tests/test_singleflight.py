@@ -151,3 +151,63 @@ async def test_cancelled_leader_releases_waiters_and_allows_a_fresh_retry() -> N
         await follower
     release.set()
     assert await sf.do("shared", work) == "done"
+
+
+@pytest.mark.parametrize(
+    "value",
+    [None, RuntimeError("value"), BaseException("value"), asyncio.CancelledError("value")],
+    ids=["none", "runtime-error-value", "base-exception-value", "cancelled-error-value"],
+)
+async def test_exception_valued_success_is_returned_to_followers(
+    value: BaseException | None,
+) -> None:
+    sf = Singleflight[BaseException | None]()
+    started = asyncio.Event()
+    release = asyncio.Event()
+
+    async def work() -> BaseException | None:
+        started.set()
+        await release.wait()
+        return value
+
+    leader = asyncio.create_task(sf.do("shared", work))
+    await started.wait()
+    follower = asyncio.create_task(sf.do("shared", work))
+    await asyncio.sleep(0)
+    release.set()
+    results = await asyncio.gather(leader, follower)
+
+    assert all(result is value for result in results)
+    assert all(not task.cancelled() and task.exception() is None for task in (leader, follower))
+    assert await sf.do("shared", work) is value
+
+
+@pytest.mark.parametrize("error_type", [RuntimeError, BaseException])
+async def test_coalesced_failure_preserves_exception_identity(
+    error_type: type[BaseException],
+) -> None:
+    sf = Singleflight[str]()
+    started = asyncio.Event()
+    release = asyncio.Event()
+    failure = error_type("provider-failure")
+
+    async def work() -> str:
+        started.set()
+        await release.wait()
+        raise failure
+
+    leader = asyncio.create_task(sf.do("shared", work))
+    await started.wait()
+    follower = asyncio.create_task(sf.do("shared", work))
+    await asyncio.sleep(0)
+    release.set()
+
+    for task in (leader, follower):
+        with pytest.raises(error_type) as caught:
+            await task
+        assert caught.value is failure
+
+    async def retry() -> str:
+        return "fresh"
+
+    assert await sf.do("shared", retry) == "fresh"
