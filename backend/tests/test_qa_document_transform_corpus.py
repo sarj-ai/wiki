@@ -2,18 +2,20 @@ from __future__ import annotations
 
 from collections.abc import Iterator
 from dataclasses import replace
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 import hashlib
 import json
 from pathlib import Path
 import subprocess
-from typing import Any, Literal, Never
+from typing import TYPE_CHECKING, Any, Literal, Never, override
 from unittest.mock import create_autospec
 import uuid
 
 import httpx
 import pytest
+from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.auth.google_tokens import GoogleTokenManager, ManagedGoogleToken
 from app.document_transform.brand_manifest import CURRENT_BRAND_MANIFEST
 from app.document_transform.executor import PIPELINE_VERSION
 from app.document_transform.gateway import SourceSnapshot
@@ -34,7 +36,8 @@ from app.document_transform.schemas import (
     TransformMode,
     ValidationSummary,
 )
-from app.identifiers import DocsRevisionId, FileId, TaskId
+from app.identifiers import DocsRevisionId, DriveId, FileId, GoogleUserId, TaskId, UserId
+from app.models.user import User
 from scripts.qa_document_transform_corpus import (
     ArtifactFile,
     EvidenceManifest,
@@ -72,6 +75,7 @@ from scripts.qa_document_transform_corpus import (
     _require_result_binding,
     _require_safe_semantic_delta,
     _require_transform_result,
+    _run,
     _submit_transform,
     _submitted_tasks,
     _validate_arguments,
@@ -82,6 +86,10 @@ from scripts.qa_document_transform_corpus import (
     permission_inventory_sha256,
     seeded_order,
 )
+
+
+if TYPE_CHECKING:
+    from app.cache.service import CacheService
 
 
 _EMAIL = "nasr@sarj.ai"
@@ -121,7 +129,7 @@ def test_shared_drive_folder_listing_uses_complete_shared_drive_scope(
     )
 
     drive: Any = Drive()
-    assert _list_folder_children(drive, FileId("folder-a"), shared_drive_id="drive-a") == [
+    assert _list_folder_children(drive, FileId("folder-a"), shared_drive_id=DriveId("drive-a")) == [
         {"id": "doc-a"}
     ]
     assert calls == [
@@ -513,7 +521,7 @@ async def test_shared_drive_copy_preflight_does_not_require_private_ownership(
         expected_release_sha="a" * 40,
         seed="folder-copy",
         destination_folder_id=FileId("destination"),
-        source_drive_id="drive-a",
+        source_drive_id=DriveId("drive-a"),
         mode=TransformMode.BOTH,
         user_email=_EMAIL,
         cohort="corpus",
@@ -527,7 +535,7 @@ def test_uuid5_operation_key_is_stable_and_scoped() -> None:
     first = corpus_operation_key(
         expected_release_sha="a" * 40,
         seed="corpus-1",
-        source_id="doc-a",
+        source_id=FileId("doc-a"),
         destination_folder_id=FileId("destination"),
         mode=TransformMode.BOTH,
         cohort="corpus",
@@ -536,7 +544,7 @@ def test_uuid5_operation_key_is_stable_and_scoped() -> None:
     assert first == corpus_operation_key(
         expected_release_sha="a" * 40,
         seed="corpus-1",
-        source_id="doc-a",
+        source_id=FileId("doc-a"),
         destination_folder_id=FileId("destination"),
         mode=TransformMode.BOTH,
         cohort="corpus",
@@ -545,7 +553,7 @@ def test_uuid5_operation_key_is_stable_and_scoped() -> None:
     assert first != corpus_operation_key(
         expected_release_sha="a" * 40,
         seed="corpus-1",
-        source_id="doc-b",
+        source_id=FileId("doc-b"),
         destination_folder_id=FileId("destination"),
         mode=TransformMode.BOTH,
         cohort="corpus",
@@ -553,7 +561,7 @@ def test_uuid5_operation_key_is_stable_and_scoped() -> None:
     assert first != corpus_operation_key(
         expected_release_sha="a" * 40,
         seed="corpus-1",
-        source_id="doc-a",
+        source_id=FileId("doc-a"),
         destination_folder_id=FileId("destination"),
         mode=TransformMode.BOTH,
         cohort="canary",
@@ -561,7 +569,7 @@ def test_uuid5_operation_key_is_stable_and_scoped() -> None:
     assert first != corpus_operation_key(
         expected_release_sha="a" * 40,
         seed="corpus-1",
-        source_id="doc-a",
+        source_id=FileId("doc-a"),
         destination_folder_id=FileId("another-destination"),
         mode=TransformMode.BOTH,
         cohort="corpus",
@@ -1424,7 +1432,7 @@ def _source_evidence(
     operation_key = corpus_operation_key(
         expected_release_sha=expected_release_sha,
         seed=seed,
-        source_id="source",
+        source_id=FileId("source"),
         destination_folder_id=FileId("destination"),
         mode=TransformMode.BOTH,
         cohort=cohort,
@@ -1529,3 +1537,71 @@ def _evidence_result(
         visual_judge=judge,
         verified_at=datetime.now(UTC),
     )
+
+
+async def test_run_awaits_cache_factory_and_preserves_failure_cleanup(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    expected_user = User(
+        id=UserId(uuid.uuid7()), google_id=GoogleUserId("cache-fixture"), email="cache@example.test"
+    )
+    token = ManagedGoogleToken(
+        "cache-fixture-token", datetime.now(UTC) + timedelta(hours=1), 1, "fixture-ciphertext"
+    )
+    events: list[str] = []
+    clients: list[httpx.AsyncClient] = []
+    expected_failure = RuntimeError("cache provider unavailable")
+
+    async def selected_user(_db: AsyncSession, user_email: str) -> User:
+        assert user_email == expected_user.email
+        events.append("selected-user")
+        return expected_user
+
+    class PreparedTokens(GoogleTokenManager):
+        @override
+        async def ensure_valid(
+            self, user: User, *, force_generation: int | None = None
+        ) -> ManagedGoogleToken:
+            assert user is expected_user
+            assert force_generation is None
+            events.append("prepared-user")
+            self._apply_to_user(user, token)
+            return token
+
+    async def failed_cache_factory() -> CacheService:
+        events.append("awaited-cache")
+        raise expected_failure
+
+    def unexpected_http(_request: httpx.Request) -> httpx.Response:
+        message = "cache failure must stop setup before any HTTP request"
+        raise AssertionError(message)
+
+    client_type = httpx.AsyncClient
+
+    def private_client(*, timeout: float) -> httpx.AsyncClient:
+        client = client_type(timeout=timeout, transport=httpx.MockTransport(unexpected_http))
+        clients.append(client)
+        return client
+
+    monkeypatch.setenv("WIKI_QA_ACCESS_TOKEN", "cache-fixture-token")
+    monkeypatch.delenv("CLOUD_RUN_JOB", raising=False)
+    monkeypatch.delenv("WIKI_QA_DURABLE_ARTIFACT_ROOT", raising=False)
+    arguments = replace(
+        _canary_arguments(),
+        manifest=tmp_path / "manifest.json",
+        ledger=tmp_path / "ledger.jsonl",
+        artifacts_dir=tmp_path / "artifacts",
+        user_email=expected_user.email,
+    )
+    with pytest.raises(RuntimeError, match=r"^cache provider unavailable$") as failure:
+        await _run(
+            arguments,
+            cache_factory=failed_cache_factory,
+            token_manager_factory=PreparedTokens,
+            user_reader=selected_user,
+            http_client_factory=private_client,
+        )
+    assert failure.value is expected_failure
+    assert events == ["selected-user", "prepared-user", "awaited-cache"]
+    assert len(clients) == 1
+    assert clients[0].is_closed

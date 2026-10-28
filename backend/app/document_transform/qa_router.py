@@ -67,7 +67,7 @@ from app.document_transform.schemas import (
 )
 from app.drive.schemas import MIME_DOC, MIME_FOLDER
 from app.files.schemas import FileResponse
-from app.identifiers import DocsRevisionId, FileId, QaPlanId, QaRunId, TaskId
+from app.identifiers import DocsRevisionId, FileId, IdempotencyKey, QaPlanId, QaRunId, TaskId
 from app.models.document_transform_qa_corpus import (
     DocumentTransformQaCorpusCampaignId,
     DocumentTransformQaCorpusMemberId,
@@ -512,7 +512,7 @@ async def launch_document_transform_qa_run(
     try:
         prepared = await prepare_idempotent_qa_launch(
             db,
-            idempotency_key=launch_key,
+            idempotency_key=IdempotencyKey(launch_key),
             issuer_user_id=user.id,
             user_id=user.id,
             session_id=payload.sid,
