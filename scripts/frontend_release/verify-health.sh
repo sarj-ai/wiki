@@ -11,13 +11,13 @@ verify_read_proxy() {
   local path status
   for path in auth/me sidebar/drives; do
     if ! status="$(curl --silent --show-error --max-time 30 \
-        --output "$proxy_body_file" \
-        --write-out '%{http_code}' \
-        --header 'Cookie: access_token=release-probe-invalid' \
-        --header 'X-Wiki-Read: 1' \
-        --header 'Sec-Fetch-Site: same-origin' \
-        --header "X-Request-ID: $canary_id" \
-        "https://wiki.sarj.ai/api/wiki/$path")"; then
+      --output "$proxy_body_file" \
+      --write-out '%{http_code}' \
+      --header 'Cookie: access_token=release-probe-invalid' \
+      --header 'X-Wiki-Read: 1' \
+      --header 'Sec-Fetch-Site: same-origin' \
+      --header "X-Request-ID: $canary_id" \
+      "https://wiki.sarj.ai/api/wiki/$path")"; then
       status=000
     fi
     if test "$status" != 401 || ! jq --exit-status \
@@ -30,11 +30,11 @@ verify_read_proxy() {
 
 for attempt in 1 2 3 4 5 6; do
   if ! status="$(curl --silent --show-error --max-time 15 \
-      --output "$body_file" \
-      --dump-header "$headers_file" \
-      --write-out '%{http_code}' \
-      --header "X-Request-ID: $canary_id" \
-      https://wiki.sarj.ai/health)"; then
+    --output "$body_file" \
+    --dump-header "$headers_file" \
+    --write-out '%{http_code}' \
+    --header "X-Request-ID: $canary_id" \
+    https://wiki.sarj.ai/health)"; then
     status=000
   fi
   response_id="$(awk -F ':' '
@@ -66,11 +66,11 @@ for attempt in 1 2 3 4 5 6; do
   if test "$response_id" = "$canary_id"; then
     request_id_ok=true
   fi
-  if test "$status" = 200 \
-    && test "$body_ok" = true \
-    && test "$request_id_ok" = true \
-    && test "$cache_ok" = true \
-    && verify_read_proxy; then
+  if test "$status" = 200 &&
+    test "$body_ok" = true &&
+    test "$request_id_ok" = true &&
+    test "$cache_ok" = true &&
+    verify_read_proxy; then
     echo "Frontend production revision verified."
     exit 0
   fi

@@ -92,7 +92,7 @@ if TYPE_CHECKING:
     from app.cache.service import CacheService
 
 
-_EMAIL = "nasr@sarj.ai"
+_EMAIL = "reviewer@example.com"
 
 
 def test_seeded_order_is_stable_across_drive_page_order() -> None:
@@ -586,15 +586,15 @@ def test_shared_drive_source_must_remain_copyable_and_in_the_bound_drive() -> No
             "capabilities": {"canCopy": True},
         }
     )
-    _require_copyable_source(metadata, expected_drive_id="drive-a")
+    _require_copyable_source(metadata, expected_drive_id=DriveId("drive-a"))
 
     with pytest.raises(QaError, match="source_not_copyable"):
         _require_copyable_source(
             metadata.model_copy(update={"can_copy": False}),
-            expected_drive_id="drive-a",
+            expected_drive_id=DriveId("drive-a"),
         )
     with pytest.raises(QaError, match="source_drive_changed"):
-        _require_copyable_source(metadata, expected_drive_id="drive-b")
+        _require_copyable_source(metadata, expected_drive_id=DriveId("drive-b"))
 
 
 def test_live_execution_is_hard_gated_to_all_folder_copies() -> None:
@@ -1304,6 +1304,7 @@ def _canary_arguments() -> _Arguments:
         canary=True,
         confirm_live_copy="CREATE_1_PRIVATE_CANARY",
         count=1,
+        user_email=_EMAIL,
         source_folder_id="canary-folder",
         destination_folder_id="qa-output-folder",
         execute=True,

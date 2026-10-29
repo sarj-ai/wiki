@@ -5,7 +5,7 @@ variable "project_id" {
 }
 
 variable "dammam_region" {
-  description = "Saudi GCP region used by the parallel migration stack"
+  description = "Saudi GCP region used by the canonical production stack"
   type        = string
   default     = "me-central2"
 }
@@ -161,10 +161,26 @@ variable "alert_email" {
   type        = string
 }
 
-variable "github_repo" {
-  description = "GitHub repository (owner/repo) for Workload Identity Federation"
+variable "github_repository_id" {
+  description = "Immutable GitHub repository ID authorized for production deployment"
   type        = string
-  default     = "sarj-ai/wiki"
+  default     = "1183627122"
+
+  validation {
+    condition     = can(regex("^[1-9][0-9]*$", var.github_repository_id))
+    error_message = "github_repository_id must be a positive numeric GitHub repository ID."
+  }
+}
+
+variable "github_repository_owner_id" {
+  description = "Immutable GitHub organization ID that owns the deployment repository"
+  type        = string
+  default     = "148175495"
+
+  validation {
+    condition     = can(regex("^[1-9][0-9]*$", var.github_repository_owner_id))
+    error_message = "github_repository_owner_id must be a positive numeric GitHub owner ID."
+  }
 }
 
 variable "enable_document_transform_qa_job" {

@@ -15,7 +15,7 @@ verify_job() {
         .[0].command == [".venv/bin/alembic"] and
         .[0].args == ["upgrade", "head"] and
         ($image == "" or .[0].image == $image)))
-  ' > /dev/null
+  ' >/dev/null
 }
 
 if ! gcloud run jobs describe "$MIGRATION_JOB" \

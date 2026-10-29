@@ -60,6 +60,7 @@
   --color-icon-generic: var(--icon-generic);
 
   --font-sans: var(--font-nunito);
+  --font-system: system-ui;
   --font-mono: var(--font-geist-mono);
 
   --radius-sm: calc(var(--radius) - 4px);
@@ -101,10 +102,10 @@
   --secondary: var(--purple-20);
   --secondary-foreground: var(--purple-100);
   --muted: oklch(0.9702 0 0);
-  --muted-foreground: oklch(0.5555 0 0);
+  --muted-foreground: oklch(0.53 0 0);
   --accent: oklch(0.9702 0 0);
   --accent-foreground: oklch(0.2046 0 0);
-  --destructive: oklch(0.5771 0.2152 27.33);
+  --destructive: oklch(0.515 0.192 27.33);
   --destructive-foreground: oklch(1 0 0);
   --warning: oklch(0.769 0.188 70.08);
   --overlay: oklch(0 0 0 / 50%);
@@ -266,4 +267,68 @@
 [data-slot="sidebar-menu-sub-item"],
 [data-slot="sidebar-menu-sub-item"] * {
   transition-property: none !important;
+}
+
+/* Keep motion preferences consistent across loading states and dialogs. */
+@media (prefers-reduced-motion: reduce) {
+  .animate-spin,
+  .animate-pulse,
+  .animate-reveal-pulse,
+  [data-slot="dialog-content"],
+  [data-slot="dialog-overlay"],
+  [data-slot="sheet-content"],
+  [data-slot="sheet-overlay"],
+  [data-sidebar="sidebar"][data-mobile="true"],
+  [data-slot="alert-dialog-content"],
+  [data-slot="alert-dialog-overlay"],
+  [data-slot="dropdown-menu-content"],
+  [data-slot="dropdown-menu-sub-content"],
+  [data-slot="popover-content"],
+  [data-slot="tooltip-content"] {
+    animation: none !important;
+    transition-duration: 0s !important;
+  }
+}
+
+/* Reserve label space when the drive row's actions appear on hover or focus. */
+[data-sidebar-row="drive"] {
+  padding-right: 5rem;
+}
+
+/* Expose row actions on touch devices where hover cannot reveal them. */
+@media (hover: none) {
+  [data-sidebar-row-actions] {
+    opacity: 1;
+  }
+}
+
+@media (pointer: coarse) {
+  [data-sidebar-row-actions] button {
+    min-width: 2.75rem;
+    min-height: 2.75rem;
+  }
+  [data-sidebar-row] {
+    min-height: 2.75rem;
+  }
+  [data-sidebar-row="drive"] {
+    padding-right: 9rem;
+  }
+  [data-sidebar-row="folder"] {
+    padding-right: 6.25rem;
+  }
+  [data-sidebar-row="file"] {
+    padding-right: 3.25rem;
+  }
+  [data-sidebar-row-actions="drive"] {
+    top: 0;
+    bottom: 0;
+  }
+  [data-slot="dialog-close"],
+  [data-slot="sheet-close"] {
+    display: flex;
+    min-width: 2.75rem;
+    min-height: 2.75rem;
+    align-items: center;
+    justify-content: center;
+  }
 }

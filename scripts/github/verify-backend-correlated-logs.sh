@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-completion_filter=$(cat <<EOF
+completion_filter=$(
+  cat <<EOF
 resource.type="cloud_run_revision"
 AND resource.labels.service_name="${SERVICE}"
 AND resource.labels.revision_name="${VERIFIED_REVISION}"
@@ -27,7 +28,8 @@ if [[ "$completion_count" -lt 1 ]]; then
   exit 1
 fi
 
-error_filter=$(cat <<EOF
+error_filter=$(
+  cat <<EOF
 resource.type="cloud_run_revision"
 AND resource.labels.service_name="${SERVICE}"
 AND resource.labels.revision_name="${VERIFIED_REVISION}"
@@ -59,4 +61,4 @@ fi
   echo "- Canary: \`${CANARY_ID}\`"
   echo "- Correlated completion logs: $completion_count"
   echo '- Error logs: 0'
-} >> "$GITHUB_STEP_SUMMARY"
+} >>"$GITHUB_STEP_SUMMARY"

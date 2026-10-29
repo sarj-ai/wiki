@@ -18,12 +18,13 @@ concurrency:
 
 defaults:
   run:
+    shell: bash
     working-directory: frontend
 
 jobs:
   changes:
     if: github.event_name == 'pull_request' && inputs.force_full != true
-    runs-on: blacksmith-2vcpu-ubuntu-2404
+    runs-on: ${{ vars.CI_RUNNER || 'ubuntu-24.04' }}
     timeout-minutes: 5
     outputs:
       runtime: ${{ steps.policy.outputs.frontend }}
@@ -41,7 +42,7 @@ jobs:
         run: bash scripts/github/runtime-ci-policy.sh --diff "$BASE_SHA" "$HEAD_SHA"
   lint-and-typecheck:
     name: Frontend / Lint + typecheck + format
-    runs-on: blacksmith-2vcpu-ubuntu-2404
+    runs-on: ${{ vars.CI_RUNNER || 'ubuntu-24.04' }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -80,7 +81,7 @@ jobs:
     needs: changes
     if: always() && (needs.changes.result != 'success' || needs.changes.outputs.runtime == 'true')
     name: Frontend / Unit tests
-    runs-on: blacksmith-2vcpu-ubuntu-2404
+    runs-on: ${{ vars.CI_RUNNER || 'ubuntu-24.04' }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -104,7 +105,7 @@ jobs:
     needs: changes
     if: always() && (needs.changes.result != 'success' || needs.changes.outputs.runtime == 'true')
     name: Frontend / Next.js build
-    runs-on: blacksmith-2vcpu-ubuntu-2404
+    runs-on: ${{ vars.CI_RUNNER || 'ubuntu-24.04' }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -172,7 +173,7 @@ jobs:
         )
       ) }}
     needs: [changes, lint-and-typecheck, test, build]
-    runs-on: blacksmith-2vcpu-ubuntu-2404
+    runs-on: ${{ vars.CI_RUNNER || 'ubuntu-24.04' }}
     timeout-minutes: 1
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1

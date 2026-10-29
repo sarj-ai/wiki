@@ -221,7 +221,7 @@ describe("RecentPagesLoader", () => {
     expect(link).toHaveAttribute("rel", "noopener noreferrer");
     expect(link).toHaveAttribute("title", "Current form — opens in a new tab");
     expect(documentIntent).toHaveBeenCalledWith(
-      expect.objectContaining({ disabled: true, fileId: "form-1", mimeType: MIME_FORM }),
+      expect.objectContaining({ disabled: true, fileId: "form-1" }),
     );
   });
 

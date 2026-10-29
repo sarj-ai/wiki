@@ -283,3 +283,33 @@ def test_review_and_actor_changes_need_separate_procedure(lab: Lab, setting: str
     with pytest.raises(ValueError, match="separately reviewed"):
         apply(lab.policy, expected)
     assert lab.github.writes == []
+
+
+def test_required_app_bound_check_can_be_added_without_removing_existing_checks(lab: Lab) -> None:
+    checks = lab.policy["required_status_checks"]["checks"]
+    checks.append({"context": "additional-security-check", "app_id": 15368})
+    apply(lab.policy, state_fingerprint())
+    assert MODULE["check"](lab.policy, "sarj-ai/wiki", "main")
+    assert lab.github.writes == [("repos/sarj-ai/wiki/branches/main/protection", "PUT")]
+
+
+def test_protection_without_status_checks_can_require_app_bound_checks(lab: Lab) -> None:
+    lab.github.remote["required_status_checks"] = None
+    apply(lab.policy, state_fingerprint())
+    assert MODULE["check"](lab.policy, "sarj-ai/wiki", "main")
+    assert lab.github.writes == [("repos/sarj-ai/wiki/branches/main/protection", "PUT")]
+
+
+@pytest.mark.parametrize("setting", ["enforce_admins", "required_signatures", "restrictions"])
+def test_absent_status_checks_do_not_allow_other_security_weakening(lab: Lab, setting: str) -> None:
+    lab.github.remote["required_status_checks"] = None
+    match setting:
+        case "required_signatures":
+            lab.github.signatures = True
+        case "restrictions":
+            lab.policy[setting] = {}
+        case _:
+            lab.policy[setting] = False
+    with pytest.raises(ValueError, match=r"weakening|separately reviewed"):
+        apply(lab.policy, state_fingerprint())
+    assert lab.github.writes == []

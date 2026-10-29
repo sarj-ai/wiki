@@ -21,7 +21,7 @@ const ERROR_CONFIG: Record<
     color: "text-warning",
     icon: ShieldX,
     message:
-      "Only @sarj.ai accounts can access Sarj Wiki. Please sign in with your Sarj work account.",
+      "This Google account is not authorized for this workspace. Sign in with your work account.",
     title: "Access restricted",
   },
   server_error: {
@@ -44,18 +44,22 @@ export default async function LoginPage({
   const errorConfig = errorType ? ERROR_CONFIG[errorType] : undefined;
 
   return (
-    <div className="bg-background text-foreground flex min-h-screen flex-col items-center justify-center px-4">
+    <main className="bg-background text-foreground flex min-h-svh flex-col items-center justify-center px-4 py-8">
+      <h1 className="sr-only">Sign in to Sarj Wiki</h1>
       <StashRedirect redirect={redirect} />
       <div className="flex w-full max-w-sm flex-col items-center gap-8">
         <div className="flex flex-col items-center gap-3">
-          <SarjLogo priority size={120} />
+          <SarjLogo size={120} />
           <p className="text-muted-foreground text-sm">Internal knowledge base for Sarj</p>
         </div>
 
         {errorConfig ? (
-          <div className="border-border bg-card w-full rounded-xl border p-5">
+          <div className="border-border bg-card w-full rounded-xl border p-5" role="alert">
             <div className="flex gap-3">
-              <errorConfig.icon className={`mt-0.5 size-5 shrink-0 ${errorConfig.color}`} />
+              <errorConfig.icon
+                aria-hidden="true"
+                className={`mt-0.5 size-5 shrink-0 ${errorConfig.color}`}
+              />
               <div className="flex flex-col gap-1.5">
                 <p className="text-card-foreground text-sm font-semibold">{errorConfig.title}</p>
                 <p className="text-muted-foreground text-sm leading-relaxed text-pretty">
@@ -90,6 +94,6 @@ export default async function LoginPage({
           </a>
         </Button>
       </div>
-    </div>
+    </main>
   );
 }

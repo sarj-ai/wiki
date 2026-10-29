@@ -184,7 +184,8 @@ export function CommandPalette() {
 
               <CommandPrimitive.Input
                 aria-label="Search Drive"
-                className="placeholder:text-muted-foreground/70 flex-1 bg-transparent text-base leading-none outline-none"
+                className="placeholder:text-muted-foreground min-w-0 flex-1 bg-transparent text-base leading-none outline-none"
+                maxLength={2048}
                 onKeyDown={handleInputKeyDown}
                 onValueChange={setQuery}
                 placeholder="Search Drive…"
@@ -352,7 +353,7 @@ function ResultRow({
       </span>
       <div className="min-w-0 flex-1">
         <div className="flex flex-col gap-0.5 sm:flex-row sm:items-baseline sm:gap-2">
-          <div className="text-foreground min-w-0 flex-1 font-medium break-words">
+          <div className="text-foreground min-w-0 flex-1 font-medium wrap-anywhere">
             {displayName}
           </div>
           {result.modifiedTime ? (
@@ -362,7 +363,7 @@ function ResultRow({
           ) : null}
         </div>
         {driveName ? (
-          <div className="text-muted-foreground text-xs break-words">{driveName}</div>
+          <div className="text-muted-foreground text-xs wrap-anywhere">{driveName}</div>
         ) : null}
       </div>
     </CommandItem>

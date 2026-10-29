@@ -25,6 +25,8 @@ import typer
 
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
+
     from scripts.github.release_gate import Fetch, JsonObject
 
 WORKFLOW_ID = 247052637
@@ -231,11 +233,13 @@ class SourceArguments:
     run_attempt: int
 
 
-def verify_serving(args: ServingArguments) -> None:
+def verify_serving(
+    args: ServingArguments, *, execute: Callable[[list[str]], str] = command_output
+) -> None:
     for value in (args.project, args.region, args.repository, args.service, args.image):
         require(re.fullmatch(r"[a-z][a-z0-9-]{0,62}", value), "Invalid cloud resource name")
     image = f"{args.region}-docker.pkg.dev/{args.project}/{args.repository}/{args.image}"
-    digest = command_output(
+    digest = execute(
         [
             "gcloud",
             "artifacts",
@@ -250,7 +254,7 @@ def verify_serving(args: ServingArguments) -> None:
     )
     require(re.fullmatch(r"sha256:[0-9a-f]{64}", digest), "Invalid immutable release digest")
     service = read_json(
-        command_output(
+        execute(
             [
                 "gcloud",
                 "run",
@@ -266,7 +270,7 @@ def verify_serving(args: ServingArguments) -> None:
         )
     )
     revision = serving_revision(service)
-    actual = command_output(
+    actual = execute(
         [
             "gcloud",
             "run",
@@ -286,16 +290,21 @@ def verify_serving(args: ServingArguments) -> None:
     )
 
 
-def verify_current_release(args: SourceArguments | ServingArguments) -> str | None:
+def verify_current_release(
+    args: SourceArguments | ServingArguments,
+    *,
+    fetch: Fetch = fetch_github,
+    execute: Callable[[list[str]], str] = command_output,
+) -> str | None:
     require(re.fullmatch(r"[0-9a-f]{40}", args.verifier_sha), "Invalid verifier SHA")
-    require_current_main(fetch_github, args.verifier_sha)
+    require_current_main(fetch, args.verifier_sha)
     if isinstance(args, SourceArguments):
-        source_sha = verify_source(fetch_github, args.run_id, args.run_attempt)
+        source_sha = verify_source(fetch, args.run_id, args.run_attempt)
     else:
         require(re.fullmatch(r"[0-9a-f]{40}", args.source_sha), "Invalid source SHA")
-        verify_serving(args)
+        verify_serving(args, execute=execute)
         source_sha = None
-    require_current_main(fetch_github, args.verifier_sha)
+    require_current_main(fetch, args.verifier_sha)
     return source_sha
 
 

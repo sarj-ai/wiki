@@ -39,7 +39,7 @@ class _ModeResolverRun:
 
 
 def receipts() -> dict:
-    repository = {"id": 1183627122, "full_name": "sarj-ai/wiki"}
+    repository = {"id": 1183627122, "full_name": "sarj-ai/wiki-internal"}
     run = {
         "id": RUN_ID,
         "workflow_id": recovery.WORKFLOW_ID,
@@ -202,9 +202,7 @@ def test_attempt_jobs_are_rechecked_after_receipt_validation() -> None:
 
 
 @pytest.mark.parametrize("advance", [False, True])
-def test_current_main_is_rechecked_after_receipt_reads(
-    monkeypatch: pytest.MonkeyPatch, *, advance: bool
-) -> None:
+def test_current_main_is_rechecked_after_receipt_reads(*, advance: bool) -> None:
     data = receipts()
     reads = []
 
@@ -218,7 +216,6 @@ def test_current_main_is_rechecked_after_receipt_reads(
             }
         return data[endpoint]
 
-    monkeypatch.setattr(recovery, "fetch_github", fetch)
     args = recovery.SourceArguments(
         verifier_sha=VERIFIER_SHA,
         run_id=RUN_ID,
@@ -226,14 +223,14 @@ def test_current_main_is_rechecked_after_receipt_reads(
     )
     if advance:
         with pytest.raises(recovery.ReleaseBlockedError, match="main advanced"):
-            recovery.verify_current_release(args)
+            recovery.verify_current_release(args, fetch=fetch)
     else:
-        recovery.verify_current_release(args)
+        recovery.verify_current_release(args, fetch=fetch)
     first_read, final_read = reads
     assert first_read == final_read
 
 
-def test_current_verifier_must_match_main(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_current_verifier_must_match_main() -> None:
     def fetch(endpoint: str) -> dict:
         assert endpoint.endswith("/git/ref/heads/main")
         return {
@@ -241,14 +238,13 @@ def test_current_verifier_must_match_main(monkeypatch: pytest.MonkeyPatch) -> No
             "object": {"type": "commit", "sha": "b" * 40},
         }
 
-    monkeypatch.setattr(recovery, "fetch_github", fetch)
     args = recovery.SourceArguments(
         verifier_sha=VERIFIER_SHA,
         run_id=RUN_ID,
         run_attempt=RUN_ATTEMPT,
     )
     with pytest.raises(recovery.ReleaseBlockedError, match="main advanced"):
-        recovery.verify_current_release(args)
+        recovery.verify_current_release(args, fetch=fetch)
 
 
 @pytest.mark.parametrize(
@@ -426,9 +422,7 @@ def test_unverified_serving_revision_is_rejected(case: str) -> None:
 
 
 @pytest.mark.parametrize("matching", [True, False])
-def test_serving_digest_is_checked_with_only_describe_commands(
-    monkeypatch: pytest.MonkeyPatch, *, matching: bool
-) -> None:
+def test_serving_digest_is_checked_with_only_describe_commands(*, matching: bool) -> None:
     image = "me-central2-docker.pkg.dev/sarj-docs/sarj-docs-dammam/backend"
     responses = iter(
         [DIGEST, json.dumps(service()), f"{image}@{DIGEST}" if matching else "foreign"]
@@ -439,7 +433,6 @@ def test_serving_digest_is_checked_with_only_describe_commands(
         commands.append(command)
         return next(responses)
 
-    monkeypatch.setattr(recovery, "command_output", execute)
     args = recovery.ServingArguments(
         verifier_sha=VERIFIER_SHA,
         source_sha=SOURCE_SHA,
@@ -450,10 +443,10 @@ def test_serving_digest_is_checked_with_only_describe_commands(
         image="backend",
     )
     if matching:
-        recovery.verify_serving(args)
+        recovery.verify_serving(args, execute=execute)
     else:
         with pytest.raises(recovery.ReleaseBlockedError):
-            recovery.verify_serving(args)
+            recovery.verify_serving(args, execute=execute)
     artifact, serving, revision = commands
     assert artifact[:5] == ["gcloud", "artifacts", "docker", "images", "describe"]
     assert artifact[5].endswith(f":{SOURCE_SHA}")

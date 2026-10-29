@@ -1,4 +1,5 @@
 import asyncio
+from functools import partial
 import gzip
 import json
 from statistics import median
@@ -58,7 +59,7 @@ def main() -> None:
         compressed = gzip.compress(payload, compresslevel=level)
         result[f"gzip_{level}"] = {
             "bytes": len(compressed),
-            "median_ms": _measure(lambda level=level: gzip.compress(payload, compresslevel=level)),
+            "median_ms": _measure(partial(gzip.compress, payload, compresslevel=level)),
         }
     print(json.dumps(result, indent=2))
 

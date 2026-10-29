@@ -1,0 +1,629 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <meta name="color-scheme" content="light" />
+    <title>Northstar launch — formatted</title>
+    <style>
+      :root {
+        color-scheme: light;
+        --purple: #2b165e;
+        --ink: #25212e;
+        --muted: #696272;
+        --line: #e8e4ed;
+        --soft: #f5f2fa;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        background: #f3f3f5;
+        color: var(--ink);
+        font:
+          15px/1.65 "Nunito Sans",
+          "Nunito",
+          Arial,
+          sans-serif;
+      }
+      main {
+        width: min(100% - 40px, 800px);
+        margin: 28px auto;
+        background: #fff;
+        padding: 52px 60px;
+        box-shadow: 0 2px 12px #2515300b;
+        border: 1px solid #ece9f0;
+        border-radius: 3px;
+      }
+      h1,
+      h2,
+      h3,
+      p,
+      ul,
+      ol {
+        margin-top: 0;
+      }
+      h1 {
+        font-size: 35px;
+        line-height: 1.15;
+        letter-spacing: -1.2px;
+        margin-bottom: 10px;
+      }
+      h2 {
+        font-size: 18px;
+        color: var(--purple);
+        line-height: 1.3;
+        margin: 27px 0 10px;
+      }
+      h3 {
+        font-size: 15px;
+        line-height: 1.4;
+      }
+      p {
+        margin-bottom: 15px;
+      }
+      li {
+        margin: 7px 0;
+      }
+      ul {
+        padding-left: 21px;
+      }
+      .eyebrow {
+        font-size: 10px;
+        letter-spacing: 1.7px;
+        text-transform: uppercase;
+        color: var(--muted);
+        font-weight: 700;
+      }
+      .subtitle {
+        font-size: 19px;
+        color: var(--muted);
+        margin-bottom: 24px;
+      }
+      .callout {
+        padding: 14px 18px;
+        border-left: 3px solid var(--purple);
+        background: var(--soft);
+        margin: 22px 0;
+      }
+      .metrics {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        margin: 22px 0;
+        overflow: hidden;
+      }
+      .metric {
+        padding: 15px 13px;
+        text-align: center;
+      }
+      .metric + .metric {
+        border-left: 1px solid var(--line);
+      }
+      .metric strong {
+        display: block;
+        font-size: 20px;
+        color: var(--purple);
+        line-height: 1.5;
+      }
+      .metric span {
+        font-size: 11px;
+        color: var(--muted);
+      }
+      table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 12px;
+        line-height: 1.5;
+      }
+      th {
+        text-align: left;
+        background: var(--purple);
+        color: #fff;
+        font-weight: 700;
+      }
+      th,
+      td {
+        padding: 10px 11px;
+        border-bottom: 1px solid var(--line);
+        vertical-align: top;
+      }
+      tr:nth-child(even) td {
+        background: #faf8fc;
+      }
+      .table-wrap {
+        max-width: 100%;
+        overflow: auto;
+        border: 1px solid var(--line);
+        border-radius: 7px;
+      }
+      .table-wrap:focus-visible {
+        outline: 2px solid var(--purple);
+        outline-offset: 3px;
+      }
+      footer {
+        margin-top: 30px;
+        padding-top: 14px;
+        border-top: 1px solid var(--line);
+        font-size: 10px;
+        color: var(--muted);
+      }
+      .tag {
+        display: inline-block;
+        padding: 3px 8px;
+        border-radius: 20px;
+        background: #ece6f7;
+        color: var(--purple);
+        font-size: 10px;
+        font-weight: 700;
+      }
+      .status-green {
+        background: #e8f4ec;
+        color: #24643a;
+      }
+      .status-amber {
+        background: #fff2d7;
+        color: #80510b;
+      }
+      .money {
+        text-align: right;
+        white-space: nowrap;
+        font-variant-numeric: tabular-nums;
+      }
+      .track {
+        height: 6px;
+        background: #eee8f7;
+        border-radius: 6px;
+        overflow: hidden;
+        margin-top: 6px;
+      }
+      .bar {
+        display: block;
+        height: 100%;
+        background: #7b54ae;
+      }
+      .muted {
+        color: var(--muted);
+      }
+      .sheet-title {
+        margin-bottom: 5px;
+      }
+      .sheet-notice {
+        font-size: 11px;
+        margin-bottom: 22px;
+        color: var(--muted);
+      }
+      .sheet-table {
+        min-width: 570px;
+      }
+      .sheet-table tfoot td {
+        font-weight: 700;
+        background: var(--soft);
+      }
+      .slides {
+        width: min(100% - 32px, 960px);
+        margin: 20px auto;
+        display: grid;
+        gap: 20px;
+      }
+      .slide {
+        min-width: 0;
+        overflow-wrap: anywhere;
+        aspect-ratio: auto;
+        min-height: 480px;
+        background: white;
+        padding: 40px 48px 68px;
+        position: relative;
+        overflow: hidden;
+        border-radius: 6px;
+        border: 1px solid var(--line);
+        box-shadow: 0 2px 12px #2515300b;
+      }
+      .slide h1 {
+        font-size: 44px;
+        margin: 28px 0 18px;
+        max-width: 700px;
+      }
+      .slide h2 {
+        font-size: 31px;
+        margin: 18px 0;
+      }
+      .slide p {
+        font-size: 18px;
+      }
+      .slide footer {
+        position: absolute;
+        bottom: 20px;
+        left: 48px;
+        right: 48px;
+        margin: 0;
+        padding-top: 8px;
+        font-size: 9px;
+      }
+      .slide.cover {
+        background: var(--purple);
+        color: white;
+      }
+      .decision-grid {
+        display: grid;
+        grid-template-columns: 1.2fr 1fr;
+        gap: 24px;
+        margin-top: 26px;
+      }
+      .slide.cover .eyebrow,
+      .slide.cover p,
+      .slide.cover footer {
+        color: #d9cdeb;
+      }
+      .slide.cover footer {
+        border-color: #6e578b;
+      }
+      .slide .metrics {
+        margin: 22px 0;
+      }
+      .slide .metric {
+        padding: 20px;
+      }
+      .slide .metric strong {
+        font-size: clamp(20px, 3vw, 29px);
+      }
+      .slide table {
+        font-size: 14px;
+      }
+      .timeline {
+        display: grid;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        gap: 14px;
+        margin-top: 35px;
+      }
+      .timeline .step {
+        border-top: 3px solid #b5a1ce;
+        padding-top: 13px;
+      }
+      .timeline strong {
+        display: block;
+        font-size: 21px;
+        color: var(--purple);
+      }
+      .timeline span {
+        font-size: 13px;
+      }
+      .risk {
+        font-size: 13px !important;
+        line-height: 1.6;
+      }
+      .original {
+        font-family: "Times New Roman", serif;
+      }
+      .original h1 {
+        font-family: Arial, sans-serif;
+        font-size: 37px;
+        color: #873ac7;
+        letter-spacing: 0;
+        margin-bottom: 26px;
+      }
+      .original .raw-summary {
+        font-family: Arial, sans-serif;
+        font-size: 25px;
+        line-height: 1.35;
+        color: #c84c15;
+      }
+      .original .raw-subtitle {
+        font-size: 22px;
+        color: #166a8f;
+      }
+      .original .raw-decision {
+        font-family: Arial, sans-serif;
+        font-size: 22px;
+        color: #8f2362;
+        line-height: 1.4;
+        font-weight: 700;
+        background: #fff4bd;
+        padding: 6px;
+      }
+      .original .raw-meta {
+        font-family: "Courier New", monospace;
+        color: #105d8a;
+      }
+      .original h2 {
+        font-family: Arial, sans-serif;
+        color: #7652aa;
+        font-size: 28px;
+      }
+      .original pre {
+        font:
+          12px/2 "Courier New",
+          monospace;
+        white-space: pre-wrap;
+        overflow-wrap: anywhere;
+        background: #f7f7f7;
+        padding: 12px;
+      }
+      .original ul {
+        list-style: none;
+        padding: 0;
+      }
+      .original li:nth-child(odd) {
+        font-family: Arial, sans-serif;
+        font-size: 17px;
+      }
+      .original li:nth-child(even) {
+        font-size: 20px;
+      }
+      .dashboard-grid {
+        display: grid;
+        grid-template-columns: 1.4fr 1fr;
+        gap: 20px;
+      }
+      .panel {
+        border: 1px solid var(--line);
+        padding: 17px;
+        border-radius: 8px;
+      }
+      .panel h2 {
+        margin-top: 0;
+      }
+      .progress {
+        display: flex;
+        justify-content: space-between;
+        font-size: 12px;
+        margin-bottom: 4px;
+      }
+      .large-number {
+        font-size: 32px;
+        font-weight: 700;
+        color: var(--purple);
+      }
+      @media (min-width: 1000px) {
+        .slide {
+          aspect-ratio: 16/9;
+        }
+      }
+      @media (max-width: 600px) {
+        body {
+          font-size: 14px;
+        }
+        main {
+          width: 100%;
+          margin: 0;
+          padding: 28px 21px;
+          border: 0;
+          border-radius: 0;
+          box-shadow: none;
+        }
+        h1 {
+          font-size: 29px;
+        }
+        .subtitle {
+          font-size: 17px;
+        }
+        .metric {
+          padding: 13px 7px;
+        }
+        .metric strong {
+          font-size: 17px;
+        }
+        .metric span {
+          font-size: 10px;
+        }
+        th,
+        td {
+          padding: 9px 7px;
+        }
+        .dashboard-grid {
+          grid-template-columns: 1fr;
+        }
+        .slides {
+          width: 100%;
+          margin: 0;
+          gap: 16px;
+        }
+        .slide {
+          aspect-ratio: auto;
+          min-height: 430px;
+          padding: 30px 22px 68px;
+          border-radius: 0;
+        }
+        .decision-grid {
+          grid-template-columns: 1fr;
+          gap: 4px;
+        }
+        .slide h1 {
+          font-size: 35px;
+        }
+        .slide h2 {
+          font-size: 25px;
+        }
+        .slide p {
+          font-size: 16px;
+        }
+        .slide footer {
+          left: 22px;
+          right: 22px;
+          bottom: 15px;
+        }
+        .slide .metric {
+          padding: 15px 5px;
+        }
+        .slide .metric strong {
+          font-size: 21px;
+        }
+        .timeline {
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+          gap: 18px;
+          margin-top: 22px;
+        }
+        .slide table {
+          font-size: 12px;
+        }
+        .slide .table-wrap {
+          margin-bottom: 40px;
+        }
+        .original h1 {
+          font-size: 30px;
+        }
+        .original .raw-summary {
+          font-size: 23px;
+        }
+        .original .raw-decision {
+          font-size: 19px;
+        }
+      }
+      @media print {
+        body {
+          background: white;
+        }
+        main {
+          width: 100%;
+          margin: 0;
+          padding: 0;
+          border: 0;
+          box-shadow: none;
+        }
+        .slides {
+          width: 100%;
+          margin: 0;
+        }
+        .slide {
+          break-after: page;
+          page-break-after: always;
+          box-shadow: none;
+        }
+        .table-wrap {
+          overflow: visible;
+        }
+        h2,
+        h3 {
+          break-after: avoid;
+        }
+        tr {
+          break-inside: avoid;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <main class="">
+      <p class="eyebrow">Project brief / Product &amp; Customer Success</p>
+      <h1>Northstar launch</h1>
+      <p class="subtitle">Make the first ten minutes count.</p>
+      <p>
+        Northstar gives new customers a clear path from signup to their first useful result. We will
+        replace a long setup checklist with three guided steps, then validate the experience with a
+        50-account pilot before the 24 November 2026 launch.
+      </p>
+      <div class="callout">
+        <strong>Decision</strong><br />Approve the 50-account pilot scope by 2 November.
+      </div>
+      <div class="metrics" aria-label="Project at a glance">
+        <div class="metric"><strong>50</strong><span>Pilot accounts</span></div>
+        <div class="metric"><strong>24 Nov</strong><span>2026 launch</span></div>
+        <div class="metric"><strong>$18,400</strong><span>Planned budget</span></div>
+      </div>
+      <h2>What changes</h2>
+      <ul>
+        <li>Replace the twelve-step checklist with three guided setup steps.</li>
+        <li>Offer a useful sample workspace before asking customers to import their own data.</li>
+        <li>Give Customer Success a clear view of accounts that need help.</li>
+      </ul>
+      <h2>How we measure success</h2>
+      <div class="table-wrap" role="region" aria-label="Northstar success measures" tabindex="0">
+        <table>
+          <caption
+            style="
+              position: absolute;
+              width: 1px;
+              height: 1px;
+              overflow: hidden;
+              clip-path: inset(50%);
+            "
+          >
+            Northstar success measures
+          </caption>
+          <thead>
+            <tr>
+              <th scope="col">Measure</th>
+              <th scope="col">Today</th>
+              <th scope="col">Target</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>Setup completion</td>
+              <td>70%</td>
+              <td>90%</td>
+            </tr>
+            <tr>
+              <td>Week-one activation</td>
+              <td>42%</td>
+              <td>60%</td>
+            </tr>
+            <tr>
+              <td>Time to first value</td>
+              <td>18 minutes</td>
+              <td>Under 10 minutes</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <h2>Rollout</h2>
+      <div class="table-wrap" role="region" aria-label="Northstar rollout milestones" tabindex="0">
+        <table>
+          <caption
+            style="
+              position: absolute;
+              width: 1px;
+              height: 1px;
+              overflow: hidden;
+              clip-path: inset(50%);
+            "
+          >
+            Northstar rollout milestones
+          </caption>
+          <thead>
+            <tr>
+              <th scope="col">Date</th>
+              <th scope="col">Milestone</th>
+              <th scope="col">Owner</th>
+              <th scope="col">Status</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>2 Nov</td>
+              <td>Pilot scope approved</td>
+              <td>Maya Chen</td>
+              <td>Complete</td>
+            </tr>
+            <tr>
+              <td>9 Nov</td>
+              <td>Prototype review</td>
+              <td>Luca Reed</td>
+              <td>In progress</td>
+            </tr>
+            <tr>
+              <td>16 Nov</td>
+              <td>50-account pilot</td>
+              <td>Sam Rivera</td>
+              <td>Planned</td>
+            </tr>
+            <tr>
+              <td>24 Nov</td>
+              <td>General availability</td>
+              <td>Maya Chen</td>
+              <td>Planned</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <h2>Guardrails</h2>
+      <ul>
+        <li>If pilot activation is below 60%, extend the pilot rather than widen the rollout.</li>
+        <li>Keep the current onboarding path available until the pilot is complete.</li>
+      </ul>
+      <footer>Northstar · Synthetic demo content · 27 October 2026</footer>
+    </main>
+  </body>
+</html>

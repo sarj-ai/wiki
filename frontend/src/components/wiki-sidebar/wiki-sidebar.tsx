@@ -9,7 +9,7 @@ import {
   rectIntersection,
 } from "@dnd-kit/core";
 import { usePathname } from "next/navigation";
-import { useEffect } from "react";
+import { useEffect, useId } from "react";
 
 import { ErrorBoundary } from "@/components/error-boundary";
 import { RecentPagesLink } from "@/components/recent-pages/recent-pages-link";
@@ -47,6 +47,7 @@ const cursorFirstCollision: CollisionDetection = (args) => {
 };
 
 export function WikiSidebar() {
+  const dragContextId = useId();
   const userId = useBrowserUserId();
   const pathname = usePathname();
   const drivesQuery = useDrives();
@@ -88,17 +89,22 @@ export function WikiSidebar() {
     );
 
     const targetId = activeDriveId;
+    let pulseTimer: number | undefined;
+    let revealed: HTMLElement | null = null;
     const handle = requestAnimationFrame(() => {
       const el = document.querySelector<HTMLElement>(`[data-file-id="${CSS.escape(targetId)}"]`);
       if (!el) return;
       el.scrollIntoView({ block: "nearest" });
+      revealed = el;
       el.classList.add("animate-reveal-pulse");
-      window.setTimeout(() => {
+      pulseTimer = window.setTimeout(() => {
         el.classList.remove("animate-reveal-pulse");
       }, 1200);
     });
     return () => {
       cancelAnimationFrame(handle);
+      window.clearTimeout(pulseTimer);
+      revealed?.classList.remove("animate-reveal-pulse");
     };
   }, [activeDriveId, breadcrumb, userId]);
 
@@ -115,6 +121,7 @@ export function WikiSidebar() {
             </SidebarHeader>
             <DndContext
               collisionDetection={cursorFirstCollision}
+              id={dragContextId}
               onDragCancel={reorder.onDragCancel}
               onDragEnd={reorder.onDragEnd}
               onDragOver={reorder.onDragOver}
@@ -198,7 +205,7 @@ function SidebarHomeLink() {
       className="focus-visible:ring-ring flex items-center gap-2 rounded-sm px-2 py-1.5 focus-visible:ring-2 focus-visible:outline-none"
       onNavigate={() => navigateSidebar("/")}
     >
-      <SarjLogo priority size={28} />
+      <SarjLogo size={28} />
     </RecentPagesLink>
   );
 }

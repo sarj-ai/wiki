@@ -1,4 +1,5 @@
 import asyncio
+from dataclasses import replace
 import json
 from pathlib import Path
 
@@ -24,7 +25,21 @@ def _arguments() -> list[str]:
         "source-folder",
         "--destination-folder-id",
         "private-folder",
+        "--user-email",
+        "reviewer@example.com",
     ]
+
+
+def _expected_arguments() -> corpus._Arguments:
+    return corpus._Arguments(
+        seed="qa",
+        expected_release_sha="a" * 40,
+        manifest=Path("manifest.json"),
+        ledger=Path("ledger.jsonl"),
+        source_folder_id="source-folder",
+        destination_folder_id="private-folder",
+        user_email="reviewer@example.com",
+    )
 
 
 def test_parser_preserves_defaults(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -32,16 +47,7 @@ def test_parser_preserves_defaults(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(corpus, "_report", calls.append)
     result = CliRunner().invoke(corpus.CLI, _arguments())
     assert result.exit_code == 0
-    assert calls == [
-        corpus._Arguments(
-            seed="qa",
-            expected_release_sha="a" * 40,
-            manifest=Path("manifest.json"),
-            ledger=Path("ledger.jsonl"),
-            source_folder_id="source-folder",
-            destination_folder_id="private-folder",
-        )
-    ]
+    assert calls == [_expected_arguments()]
 
 
 @pytest.mark.parametrize("mode", list(TransformMode))
@@ -54,8 +60,6 @@ def test_parser_preserves_all_explicit_options(
     monkeypatch.setattr(corpus, "_report", calls.append)
     arguments = [
         *_arguments(),
-        "--user-email",
-        "reviewer@sarj.ai",
         "--count",
         "1",
         "--mode",
@@ -81,14 +85,8 @@ def test_parser_preserves_all_explicit_options(
         arguments.append("--canary")
     assert CliRunner().invoke(corpus.CLI, arguments).exit_code == 0
     assert calls == [
-        corpus._Arguments(
-            seed="qa",
-            expected_release_sha="a" * 40,
-            manifest=Path("manifest.json"),
-            ledger=Path("ledger.jsonl"),
-            source_folder_id="source-folder",
-            destination_folder_id="private-folder",
-            user_email="reviewer@sarj.ai",
+        replace(
+            _expected_arguments(),
             count=1,
             mode=mode,
             execute=execute,
@@ -113,6 +111,7 @@ def test_parser_preserves_all_explicit_options(
         "--ledger",
         "--source-folder-id",
         "--destination-folder-id",
+        "--user-email",
     ],
 )
 def test_required_options_never_execute(missing: str, monkeypatch: pytest.MonkeyPatch) -> None:

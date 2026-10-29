@@ -25,6 +25,7 @@ concurrency:
 
 defaults:
   run:
+    shell: bash
     working-directory: frontend
 
 jobs:
@@ -54,7 +55,7 @@ jobs:
 
   standards-receipt:
     if: inputs.release_needs == '' && github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
-    runs-on: blacksmith-2vcpu-ubuntu-2404
+    runs-on: ${{ vars.CI_RUNNER || 'ubuntu-24.04' }}
     timeout-minutes: 25
     permissions:
       contents: read
@@ -82,7 +83,7 @@ jobs:
   deploy:
     if: ${{ !cancelled() && github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && (inputs.release_needs != '' || (needs.ci-backend.result == 'success' && needs.ci-frontend.result == 'success' && needs.ci-quality.result == 'success' && needs.ci-iac.result == 'success' && needs.standards-receipt.result == 'success')) }}
     needs: [ci-backend, ci-frontend, ci-quality, ci-iac, standards-receipt]
-    runs-on: blacksmith-2vcpu-ubuntu-2404
+    runs-on: ${{ vars.CI_RUNNER || 'ubuntu-24.04' }}
 
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1

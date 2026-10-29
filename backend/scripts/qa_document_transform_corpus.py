@@ -54,6 +54,7 @@ from app.document_transform.qa_contract import (
     QaCohort,
     required_document_count,
 )
+from app.document_transform.qa_resources import prepare_qa_drive
 from app.document_transform.safety import validate_patches
 from app.document_transform.schemas import (
     DocumentTransformResult,
@@ -166,7 +167,7 @@ class FileMetadata(_StrictModel):
     mime_type: str = Field(alias="mimeType")
     parents: tuple[FileId, ...] = ()
     modified_time: str | None = Field(default=None, alias="modifiedTime")
-    drive_id: str | None = Field(default=None, alias="driveId")
+    drive_id: DriveId | None = Field(default=None, alias="driveId")
     owned_by_me: bool = Field(default=False, alias="ownedByMe")
     shared: bool = True
     can_edit: bool = False
@@ -179,7 +180,7 @@ class FileMetadata(_StrictModel):
 class SourceEvidence(_StrictModel):
     ordinal: Annotated[int, Field(ge=1)]
     source_id: FileId
-    drive_id: str | None
+    drive_id: DriveId | None
     parent_id: FileId
     modified_time: str
     revision_id: str
@@ -268,7 +269,7 @@ class EvidenceManifest(_StrictModel):
     seed_sha256: str
     mode: TransformMode
     source_folder_id: FileId
-    source_drive_id: str | None
+    source_drive_id: DriveId | None
     destination_folder_id: FileId
     destination_permission_inventory: tuple[PermissionEntry, ...]
     destination_permission_sha256: str
@@ -307,7 +308,7 @@ class SelectionResult(NamedTuple):
     sources: list[SourceEvidence]
     rejections: Counter[str]
     folder_source_ids: tuple[FileId, ...]
-    source_drive_id: str | None
+    source_drive_id: DriveId | None
 
 
 class SubmissionResult(NamedTuple):
@@ -357,7 +358,7 @@ class JudgeResponse(_StrictModel):
 
 
 class QaError(RuntimeError):
-    """A deterministic QA invariant failed."""
+    pass
 
 
 @dataclass(slots=True)
@@ -406,7 +407,7 @@ class _Arguments:
     ledger: Path
     source_folder_id: str
     destination_folder_id: str
-    user_email: str = "nasr@sarj.ai"
+    user_email: str
     count: int = _DEFAULT_COUNT
     mode: TransformMode = TransformMode.BOTH
     execute: bool = False
@@ -429,7 +430,7 @@ def main(
     ledger: Annotated[Path, typer.Option("--ledger")],
     source_folder_id: Annotated[str, typer.Option("--source-folder-id")],
     destination_folder_id: Annotated[str, typer.Option("--destination-folder-id")],
-    user_email: Annotated[str, typer.Option("--user-email")] = "nasr@sarj.ai",
+    user_email: Annotated[str, typer.Option("--user-email")],
     count: Annotated[int, typer.Option("--count", hidden=True)] = _DEFAULT_COUNT,
     mode: Annotated[TransformMode, typer.Option("--mode")] = TransformMode.BOTH,
     execute: Annotated[bool, typer.Option("--execute")] = False,
@@ -517,12 +518,7 @@ async def _run(
         if user is None:
             _fail("QA user is not present in the configured database")
         prepared = await token_manager_factory(db, http).prepare(user)
-        cache_service = await cache_factory()
-        drive = GoogleDriveService(
-            prepared.user,
-            cache_service,
-            refresh_handler=prepared.refresh_handler,
-        )
+        drive = await prepare_qa_drive(prepared, cache_factory=cache_factory)
         files = GoogleFilesService(user=prepared.user, drive=drive)
         drive_client = GoogleDriveService.build_drive_client(
             prepared.user,
@@ -1370,7 +1366,7 @@ def _require_private_file(metadata: FileMetadata, user_email: str, *, expected_m
 def _require_copyable_source(
     metadata: FileMetadata,
     *,
-    expected_drive_id: str | None,
+    expected_drive_id: DriveId | None,
 ) -> None:
     if metadata.mime_type != MIME_DOC:
         _fail("wrong_mime_type")
@@ -1383,7 +1379,7 @@ def _require_copyable_source(
 def _require_source_parent(
     metadata: FileMetadata,
     *,
-    expected_drive_id: str | None,
+    expected_drive_id: DriveId | None,
 ) -> None:
     if metadata.mime_type != MIME_FOLDER:
         _fail("wrong_parent_mime_type")

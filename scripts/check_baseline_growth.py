@@ -6,6 +6,7 @@ import sys
 from typing import Annotated, Literal, NamedTuple, Never
 
 from pydantic import BaseModel, Field, RootModel
+import typer
 
 
 class _Count(BaseModel):
@@ -19,8 +20,7 @@ class _FindingKey(NamedTuple):
 
 _PositiveInt = Annotated[int, Field(gt=0)]
 _VERSION_RE = re.compile(r'^(?:bundle|version)\s*=\s*"([^"]+)"', re.MULTILINE)
-_GROWTH_POSITIONAL_COUNT = 2
-_INITIAL_ARG_COUNT = 4
+CLI = typer.Typer(add_completion=False, add_help_option=False, pretty_exceptions_enable=False)
 
 
 class _Baseline(RootModel[dict[str, dict[str, _PositiveInt | _Count]]]):
@@ -57,9 +57,7 @@ def main(
     base = _load(base_path)
     current = _load(current_path)
     allow_new_rules = _versions_differ(standards_base, standards_current)
-    base_config_text = (
-        Path(base_config).read_text(encoding="utf-8") if base_config else None
-    )
+    base_config_text = Path(base_config).read_text(encoding="utf-8") if base_config else None
     base_rules = {rule for _, rule in base}
     declared = _declared_rebaseline(
         bootstrap=bootstrap,
@@ -105,9 +103,7 @@ def main(
     if exempted:
         sys.stderr.write(
             "Standards upgrade (pin version changed): absorbed findings for newly "
-            "adopted rules (shrink-only from here):\n"
-            + "\n".join(sorted(exempted))
-            + "\n"
+            "adopted rules (shrink-only from here):\n" + "\n".join(sorted(exempted)) + "\n"
         )
     return 0
 
@@ -140,9 +136,7 @@ def _declared_rebaseline(
     if standards_base is None or standards_current is None:
         _abort("--bootstrap requires both Standards manifest paths")
 
-    declaration = _Bootstrap.model_validate_json(
-        Path(bootstrap).read_text(encoding="utf-8")
-    )
+    declaration = _Bootstrap.model_validate_json(Path(bootstrap).read_text(encoding="utf-8"))
     if declaration.merge_base != merge_base:
         sys.stderr.write(
             f"{bootstrap}: declaration is inert for merge-base {merge_base}; "
@@ -167,14 +161,10 @@ def _declared_rebaseline(
     declared: dict[_FindingKey, _BootstrapGrowth] = {}
     for filename, rules in declaration.allowances[allowance_path].items():
         if f"{changed_prefix}{filename}" in changed:
-            _abort(
-                f"{bootstrap}: cannot re-baseline changed source {changed_prefix}{filename}"
-            )
+            _abort(f"{bootstrap}: cannot re-baseline changed source {changed_prefix}{filename}")
         for rule, counts in rules.items():
             if counts.after <= counts.before:
-                _abort(
-                    f"{bootstrap}: {filename}/{rule} must declare actual growth"
-                )
+                _abort(f"{bootstrap}: {filename}/{rule} must declare actual growth")
             declared[_FindingKey(filename, rule)] = counts
     if not declared:
         _abort(f"{bootstrap}: declaration has no exact allowances")
@@ -190,9 +180,7 @@ def check_initial(*, baseline_path: str, changed_path: str, prefix: str) -> int:
     baseline = _parse(baseline_path)
     changed = set(Path(changed_path).read_text(encoding="utf-8").splitlines())
     exempted_changed = sorted(
-        f"{prefix}{filename}"
-        for filename in baseline.root
-        if f"{prefix}{filename}" in changed
+        f"{prefix}{filename}" for filename in baseline.root if f"{prefix}{filename}" in changed
     )
     if not exempted_changed:
         return 0
@@ -204,16 +192,12 @@ def check_initial(*, baseline_path: str, changed_path: str, prefix: str) -> int:
     return 1
 
 
-def _adopted_at_bump(
-    rule: str, *, allow_new_rules: bool, base_config_text: str | None
-) -> bool:
+def _adopted_at_bump(rule: str, *, allow_new_rules: bool, base_config_text: str | None) -> bool:
     if not allow_new_rules:
         return False
     if base_config_text is None:
         return True
-    return (
-        re.search(rf"(?<![\w/@-]){re.escape(rule)}(?![\w/-])", base_config_text) is None
-    )
+    return re.search(rf"(?<![\w/@-]){re.escape(rule)}(?![\w/-])", base_config_text) is None
 
 
 def _versions_differ(standards_base: str | None, standards_current: str | None) -> bool:
@@ -225,9 +209,7 @@ def _versions_differ(standards_base: str | None, standards_current: str | None) 
 def _pin_version(path: str) -> str:
     match = _VERSION_RE.search(Path(path).read_text(encoding="utf-8"))
     if match is None:
-        sys.stderr.write(
-            f'{path}: no `bundle = "..."` or `version = "..."` key found\n'
-        )
+        sys.stderr.write(f'{path}: no `bundle = "..."` or `version = "..."` key found\n')
         raise SystemExit(2)
     return match.group(1)
 
@@ -245,17 +227,7 @@ def _parse(path: str) -> _Baseline:
     return _Baseline.model_validate_json(Path(path).read_text(encoding="utf-8"))
 
 
-def _pop_option(arguments: list[str], name: str) -> str | None:
-    if name not in arguments:
-        return None
-    index = arguments.index(name)
-    if index + 1 >= len(arguments):
-        _usage()
-    arguments.pop(index)
-    return arguments.pop(index)
-
-
-def _usage() -> None:
+def _usage() -> Never:
     sys.stderr.write(
         "usage: check_baseline_growth.py [--standards-base FILE --standards-current FILE]\n"
         "                                [--base-config FILE]\n"
@@ -267,33 +239,64 @@ def _usage() -> None:
     raise SystemExit(2)
 
 
-if __name__ == "__main__":
-    argv = sys.argv[1:]
-    if len(argv) == _INITIAL_ARG_COUNT and argv[0] == "--initial":
+@CLI.command(add_help_option=False)
+def _check_command(
+    base_path: Annotated[str, typer.Argument()],
+    current_path: Annotated[str, typer.Argument()],
+    initial_prefix: Annotated[str | None, typer.Argument()] = None,
+    *,
+    initial: Annotated[bool, typer.Option("--initial")] = False,
+    standards_base: Annotated[str | None, typer.Option()] = None,
+    standards_current: Annotated[str | None, typer.Option()] = None,
+    base_config: Annotated[str | None, typer.Option()] = None,
+    bootstrap: Annotated[str | None, typer.Option()] = None,
+    merge_base: Annotated[str | None, typer.Option()] = None,
+    allowance_path: Annotated[str | None, typer.Option()] = None,
+    changed_files: Annotated[str | None, typer.Option()] = None,
+    changed_prefix: Annotated[str | None, typer.Option()] = None,
+) -> None:
+    if initial:
+        if initial_prefix is None or any(
+            value is not None
+            for value in (
+                standards_base,
+                standards_current,
+                base_config,
+                bootstrap,
+                merge_base,
+                allowance_path,
+                changed_files,
+                changed_prefix,
+            )
+        ):
+            _usage()
         raise SystemExit(
-            check_initial(baseline_path=argv[1], changed_path=argv[2], prefix=argv[3])
+            check_initial(baseline_path=base_path, changed_path=current_path, prefix=initial_prefix)
         )
-    standards_base_arg = _pop_option(argv, "--standards-base")
-    standards_current_arg = _pop_option(argv, "--standards-current")
-    base_config_arg = _pop_option(argv, "--base-config")
-    bootstrap_arg = _pop_option(argv, "--bootstrap")
-    merge_base_arg = _pop_option(argv, "--merge-base")
-    allowance_path_arg = _pop_option(argv, "--allowance-path")
-    changed_files_arg = _pop_option(argv, "--changed-files")
-    changed_prefix_arg = _pop_option(argv, "--changed-prefix")
-    if len(argv) != _GROWTH_POSITIONAL_COUNT:
+    if initial_prefix is not None:
         _usage()
     raise SystemExit(
         main(
-            base_path=argv[0],
-            current_path=argv[1],
-            standards_base=standards_base_arg,
-            standards_current=standards_current_arg,
-            base_config=base_config_arg,
-            bootstrap=bootstrap_arg,
-            merge_base=merge_base_arg,
-            allowance_path=allowance_path_arg,
-            changed_files=changed_files_arg,
-            changed_prefix=changed_prefix_arg,
+            base_path=base_path,
+            current_path=current_path,
+            standards_base=standards_base,
+            standards_current=standards_current,
+            base_config=base_config,
+            bootstrap=bootstrap,
+            merge_base=merge_base,
+            allowance_path=allowance_path,
+            changed_files=changed_files,
+            changed_prefix=changed_prefix,
         )
     )
+
+
+def cli() -> None:
+    try:
+        CLI(standalone_mode=False)
+    except typer.TyperException:
+        _usage()
+
+
+if __name__ == "__main__":
+    cli()

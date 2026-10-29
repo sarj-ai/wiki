@@ -30,7 +30,7 @@ function ShortLinkDialogForFile({ fileId }: { fileId: string }) {
         variant="outline"
       >
         <Link2 className="size-3.5" />
-        <span className="hidden sm:inline">Short link</span>
+        <span className="hidden @min-[40rem]/toolbar:inline">Short link</span>
       </Button>
       {dialog.mounted ? (
         <ShortLinkEditor fileId={fileId} onOpenChange={dialog.onOpenChange} open={dialog.open} />

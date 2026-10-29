@@ -32,7 +32,7 @@ CLI = typer.Typer(
 def main(
     file_id: Annotated[list[str], typer.Option("--file-id")],
     output_dir: Annotated[Path, typer.Option("--output-dir")],
-    user_email: Annotated[str, typer.Option("--user-email")] = "nasr@sarj.ai",
+    user_email: Annotated[str, typer.Option("--user-email")],
 ) -> None:
     print(
         json.dumps(

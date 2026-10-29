@@ -2,7 +2,6 @@ import { cn } from "@/lib/utils";
 
 interface SarjLogoProps {
   className?: string;
-  priority?: boolean;
   size?: number;
 }
 

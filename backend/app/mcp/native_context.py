@@ -1,6 +1,5 @@
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
-import uuid
 
 from fastmcp.server.dependencies import get_access_token
 import httpx
@@ -21,7 +20,7 @@ from app.mcp.server import ContextFactory
 
 class _VerifiedClaims(BaseModel):
     model_config = ConfigDict(extra="ignore", hide_input_in_errors=True)
-    user_id: uuid.UUID
+    user_id: UserId
     user_session_revision: int = Field(strict=True, ge=0)
 
 

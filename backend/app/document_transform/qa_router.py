@@ -488,7 +488,7 @@ async def launch_document_transform_qa_run(
     if user.email.casefold() not in settings.DOCUMENT_TRANSFORM_QA_OPERATOR_EMAILS:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="QA operator required")
     try:
-        launch_key = uuid.UUID(idempotency_key or "")
+        launch_key = IdempotencyKey(uuid.UUID(idempotency_key or ""))
     except ValueError as exc:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
@@ -512,7 +512,7 @@ async def launch_document_transform_qa_run(
     try:
         prepared = await prepare_idempotent_qa_launch(
             db,
-            idempotency_key=IdempotencyKey(launch_key),
+            idempotency_key=launch_key,
             issuer_user_id=user.id,
             user_id=user.id,
             session_id=payload.sid,

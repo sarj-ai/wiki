@@ -12,7 +12,11 @@ from google.genai import errors as genai_errors, types as genai_types
 
 from app.document_transform.errors import ModelUnavailableError
 from app.document_transform.ir import DocumentIR
-from app.document_transform.schemas import PatchEnvelope, TextPatch, TransformPhase
+from app.document_transform.schemas import (
+    PatchEnvelope,
+    TextPatch,
+    TransformPhase,
+)
 from app.document_transform.unslop import scan_unslop_candidates
 
 

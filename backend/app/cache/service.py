@@ -56,7 +56,7 @@ class _ProtectedCacheValue(NamedTuple):
     envelope: str
 
 
-def _needs_crypto_offload(envelopes: Iterable[object]) -> bool:
+def _needs_crypto_offload(envelopes: Iterable[JsonValue]) -> bool:
     ciphertext_bytes = 0
     for envelope in envelopes:
         if not isinstance(envelope, str):
@@ -339,7 +339,7 @@ class CachePSqlService(CacheService):
                 if physical_key_owners.setdefault(candidate, owner) != owner:
                     return {}
         queried_keys = list(physical_key_owners)
-        rows_by_key: dict[str, object] = {}
+        rows_by_key: dict[str, JsonValue] = {}
         with timed("cache"):
             for offset in range(0, len(queried_keys), _MAX_LOOKUP_KEYS_PER_QUERY):
                 chunk = queried_keys[offset : offset + _MAX_LOOKUP_KEYS_PER_QUERY]
@@ -457,7 +457,7 @@ class CachePSqlService(CacheService):
         self,
         namespace: CacheNamespace,
         physical_by_logical: dict[str, tuple[str, ...]],
-        rows_by_key: dict[str, object],
+        rows_by_key: dict[str, JsonValue],
     ) -> dict[str, JsonValue]:
         values: dict[str, JsonValue] = {}
         for logical_key, physical_keys in physical_by_logical.items():

@@ -18,6 +18,8 @@ import { cn } from "@/lib/utils";
 import { EMPTY_NODES, indexDestinationFolders } from "@/lib/wiki-indexes";
 import type { DriveNode } from "@/types/wiki";
 
+import { DriveListFeedback } from "./drive-list-feedback";
+
 export function FolderPickerDialog({
   allowedDriveId,
   onOpenChange,
@@ -28,6 +30,7 @@ export function FolderPickerDialog({
   const visibleDrives = (drives.data ?? []).filter(
     (drive) => allowedDriveId === undefined || drive.id === allowedDriveId,
   );
+  const hasNoDestinations = drives.isSuccess && visibleDrives.length === 0;
   return (
     <Dialog onOpenChange={onOpenChange} open={open}>
       <DialogContent className="max-w-md">
@@ -35,14 +38,13 @@ export function FolderPickerDialog({
           <DialogTitle>Choose destination</DialogTitle>
           <DialogDescription>Select a workspace or folder for the new file.</DialogDescription>
         </DialogHeader>
-        <ScrollArea className="h-80 rounded-md border">
+        <ScrollArea className="h-[min(20rem,50dvh)] rounded-md border">
           <div className="space-y-0.5 p-1.5">
-            {drives.isPending ? (
-              <div className="text-muted-foreground flex h-24 items-center justify-center gap-2 text-sm">
-                <Loader2 className="size-4 animate-spin" />
-                Loading folders…
-              </div>
-            ) : null}
+            <DriveListFeedback
+              empty={hasNoDestinations}
+              emptyMessage="No available destinations."
+              query={drives}
+            />
             {visibleDrives.map((drive) => (
               <DriveFolderRow
                 driveId={drive.id}
@@ -96,7 +98,7 @@ function DriveFolderRow({ driveId, driveName, onSelect }: DriveFolderRowProps) {
           <ChevronRight className={cn("size-3.5 transition-transform", expanded && "rotate-90")} />
         </Button>
         <Button
-          className="h-8 flex-1 justify-start gap-2 px-2"
+          className="h-8 min-w-0 flex-1 justify-start gap-2 px-2"
           onClick={() => {
             onSelect({ driveId, driveName, folderId: driveId, folderPath: [] });
           }}
@@ -111,6 +113,22 @@ function DriveFolderRow({ driveId, driveName, onSelect }: DriveFolderRowProps) {
       {expanded && tree.isPending ? (
         <div className="text-muted-foreground flex items-center gap-2 py-1 pl-8 text-xs">
           <Loader2 className="size-3 animate-spin" /> Loading…
+        </div>
+      ) : null}
+      {expanded && tree.isError ? (
+        <div className="space-y-2 py-2 pl-8 text-xs" role="alert">
+          <p>Folders could not be loaded.</p>
+          <Button
+            disabled={tree.isFetching}
+            onClick={() => {
+              void tree.refetch().catch(() => console.warn("Folder retry could not finish"));
+            }}
+            size="sm"
+            type="button"
+            variant="outline"
+          >
+            Retry folders
+          </Button>
         </div>
       ) : null}
       {expanded
@@ -168,7 +186,7 @@ function FolderRow({
           ) : null}
         </Button>
         <Button
-          className="h-8 flex-1 justify-start gap-2 px-2 font-normal"
+          className="h-8 min-w-0 flex-1 justify-start gap-2 px-2 font-normal"
           onClick={() => {
             onSelect({
               driveId,

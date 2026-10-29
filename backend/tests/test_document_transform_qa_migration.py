@@ -13,7 +13,7 @@ _ATOMIC_CHECK = "ck_document_transform_qa_run_atomic_state"
 
 
 class _MigrationLoadError(RuntimeError):
-    """The migration module did not expose the required test contract."""
+    pass
 
 
 @runtime_checkable

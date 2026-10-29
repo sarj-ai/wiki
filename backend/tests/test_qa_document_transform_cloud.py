@@ -162,7 +162,7 @@ def _result() -> dict[str, object]:
     }
 
 
-def _permission(file_id: FileId, mime_type: str, parent: str | None) -> dict[str, object]:
+def _permission(file_id: FileId, mime_type: str, parent: str | None) -> dict[str, str | None]:
     return {
         "file_id": file_id,
         "mime_type": mime_type,
@@ -775,9 +775,19 @@ async def test_worker_rejects_non_rotating_capability(
         await _run(monkeypatch, handler)
 
 
-def test_cloud_entrypoint_rejects_all_runtime_arguments_without_echoing_values() -> None:
+@pytest.mark.parametrize(
+    "arguments",
+    [
+        pytest.param(["--help"], id="help"),
+        pytest.param(["--run-id=secret"], id="runtime-override"),
+        pytest.param(["secret"], id="positional"),
+    ],
+)
+def test_cloud_entrypoint_rejects_all_runtime_arguments_without_echoing_values(
+    arguments: list[str],
+) -> None:
     result = subprocess.run(
-        [sys.executable, "-m", "scripts.qa_document_transform_cloud", "--run-id=secret"],
+        [sys.executable, "-m", "scripts.qa_document_transform_cloud", *arguments],
         cwd=Path(__file__).parents[1],
         env={"PATH": "/usr/bin:/bin"},
         capture_output=True,
@@ -785,7 +795,8 @@ def test_cloud_entrypoint_rejects_all_runtime_arguments_without_echoing_values()
         check=False,
     )
     assert result.returncode == 1
-    assert '"error": "runtime_overrides_forbidden"' in result.stderr
+    assert not result.stdout
+    assert json.loads(result.stderr) == {"error": "runtime_overrides_forbidden", "status": "failed"}
     assert "secret" not in result.stderr
 
 

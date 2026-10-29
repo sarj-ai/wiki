@@ -32,7 +32,7 @@ if TYPE_CHECKING:
 
 
 class QaCorpusCampaignError(Exception):
-    """A campaign could not be created or read without weakening its bindings."""
+    pass
 
 
 _CORPUS_SIZE = 20

@@ -221,7 +221,7 @@ describe("document-local loading surface", () => {
     view.unmount();
   });
 
-  it("never flashes skeleton content when the iframe is ready inside the delay", () => {
+  it("never flashes the loader when the iframe is ready inside the delay", () => {
     const view = renderViewer(doc("a"));
 
     loadIframe("a");
@@ -230,7 +230,7 @@ describe("document-local loading surface", () => {
     runFrame();
 
     expect(status()).toBeNull();
-    expect(document.querySelector('[data-slot="skeleton"]')).toBeNull();
+    expect(overlay()?.querySelector("picture")).toBeNull();
     expect(overlay()?.dataset["loadingPhase"]).toBe("masked-exiting");
     advance(DOCUMENT_LOADING_EXIT_MS);
     expect(overlay()).toBeNull();
@@ -295,7 +295,6 @@ describe("document-local loading surface", () => {
     advance(DOCUMENT_LOADING_DELAY_MS);
 
     expect(status()).toHaveTextContent("Loading document…");
-    expect(status()?.querySelector("svg")).toHaveClass("motion-reduce:hidden");
     loadIframe("a");
     advance(0);
     advance(DOCUMENT_LOADING_MIN_MS);

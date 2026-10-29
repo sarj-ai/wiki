@@ -3,19 +3,21 @@ from __future__ import annotations
 from collections.abc import Iterable
 from dataclasses import dataclass
 from typing import Any, NamedTuple
-import unicodedata
+
+from pydantic import JsonValue
 
 from app.document_transform.brand_manifest import (
     CURRENT_BRAND_MANIFEST,
     HEADER_TITLE_SEPARATOR,
     trusted_document_logo_description,
 )
-from app.document_transform.docx_renderer import (
+from app.document_transform.import_manifest import (
     MarkdownImportBlock,
     MarkdownImportInline,
     MarkdownImportManifest,
 )
 from app.document_transform.ir import utf16_length
+from app.document_transform.text_direction import first_strong_is_rtl
 
 
 _ORDERED_GLYPH_TYPES = frozenset(
@@ -205,18 +207,20 @@ def _observed_paragraph_block(
     list_groups: dict[tuple[str, int], int],
     next_list_group: int,
 ) -> MarkdownImportBlock | None:
-    text = _paragraph_text(paragraph)
+    runs = tuple(_text_runs(paragraph))
+    text = "".join(content for content, _ in runs).removesuffix("\n")
     if not text and not _is_rule(paragraph):
         return None
     structure = _paragraph_structure(
         paragraph,
+        text=text,
+        runs=runs,
         lists=lists,
         expected_title=expected_title,
         is_first=is_first,
         list_groups=list_groups,
         next_list_group=next_list_group,
     )
-    runs = tuple(_text_runs(paragraph))
     signature = _inline_signature(
         runs,
         ignore_bold=structure.kind in {"title", "heading"},
@@ -243,13 +247,14 @@ def _observed_paragraph_block(
 def _paragraph_structure(
     paragraph: dict[str, Any],
     *,
+    text: str,
+    runs: tuple[_TextRun, ...],
     lists: dict[str, Any],
     expected_title: str | None,
     is_first: bool,
     list_groups: dict[tuple[str, int], int],
     next_list_group: int,
 ) -> _ParagraphStructure:
-    text = _paragraph_text(paragraph)
     if is_first and expected_title is not None and text == expected_title:
         return _ParagraphStructure(
             kind="title", level=1, ordered=False, start=1, list_group=0, checked=None
@@ -279,7 +284,6 @@ def _paragraph_structure(
         return _ParagraphStructure(
             kind="rule", level=0, ordered=False, start=1, list_group=0, checked=None
         )
-    runs = tuple(_text_runs(paragraph))
     if runs and all(_font_family(run_style).casefold() in _CODE_FONTS for _, run_style in runs):
         return _ParagraphStructure(
             kind="code", level=0, ordered=False, start=1, list_group=0, checked=None
@@ -526,7 +530,7 @@ def _text_runs(paragraph: dict[str, Any]) -> Iterable[_TextRun]:
         if content:
             runs[index] = _TextRun(content.removesuffix("\n"), style)
             break
-    return tuple(_TextRun(content, style) for content, style in runs if content)
+    return tuple(run for run in runs if run.content)
 
 
 def _inline_signature(
@@ -1517,7 +1521,7 @@ def _runs_match_brand(
         if (
             not is_code
             and family != tokens.font_family
-            and not (family == tokens.complex_script_font_family and _first_strong_is_rtl(content))
+            and not (family == tokens.complex_script_font_family and first_strong_is_rtl(content))
         ):
             return False
         size = _effective_dimension_points(style, inherited, "fontSize")
@@ -1654,17 +1658,7 @@ def _color_matches(value: object, expected_hex: str) -> bool:
     return all(abs(left - right) <= 1 / 255 for left, right in zip(actual, expected, strict=True))
 
 
-def _first_strong_is_rtl(text: str) -> bool:
-    for character in text:
-        direction = unicodedata.bidirectional(character)
-        if direction in {"R", "AL"}:
-            return True
-        if direction == "L":
-            return False
-    return False
-
-
-def _rule_brand_matches(paragraph: dict[str, Any]) -> bool:
+def _rule_brand_matches(paragraph: dict[str, JsonValue]) -> bool:
     style = paragraph.get("paragraphStyle", {})
     border = style.get("borderBottom", {}) if isinstance(style, dict) else {}
     color = border.get("color") if isinstance(border, dict) else None
@@ -1685,15 +1679,3 @@ def _values_for_key(value: object, target: str) -> tuple[object, ...]:
         case _:
             pass
     return tuple(found)
-
-
-def _body_paragraphs(tab: dict[str, Any]) -> Iterable[dict[str, Any]]:
-    body = tab.get("body", {})
-    content = body.get("content", []) if isinstance(body, dict) else []
-    if not isinstance(content, list):
-        return ()
-    return tuple(
-        paragraph
-        for element in content
-        if isinstance(element, dict) and isinstance((paragraph := element.get("paragraph")), dict)
-    )

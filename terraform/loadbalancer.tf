@@ -561,3 +561,34 @@ resource "google_compute_global_forwarding_rule" "backend_http_redirect" {
   ip_address            = google_compute_global_address.backend_lb.address
   load_balancing_scheme = "EXTERNAL_MANAGED"
 }
+
+resource "google_compute_region_network_endpoint_group" "backend_dammam" {
+  count                 = var.enable_dammam_stack ? 1 : 0
+  name                  = "sarj-docs-backend-neg-dammam"
+  region                = var.dammam_region
+  network_endpoint_type = "SERVERLESS"
+
+  cloud_run {
+    service = google_cloud_run_v2_service.backend_dammam[0].name
+  }
+}
+
+resource "google_compute_backend_service" "backend_dammam" {
+  count                 = var.enable_dammam_stack ? 1 : 0
+  name                  = "sarj-docs-backend-service-dammam"
+  protocol              = "HTTPS"
+  timeout_sec           = 30
+  load_balancing_scheme = "EXTERNAL_MANAGED"
+  enable_cdn            = false
+  edge_security_policy  = google_compute_security_policy.edge_armor.id
+  security_policy       = google_compute_security_policy.backend_armor.id
+
+  backend {
+    group = google_compute_region_network_endpoint_group.backend_dammam[0].id
+  }
+
+  log_config {
+    enable      = true
+    sample_rate = 1.0
+  }
+}

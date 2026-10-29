@@ -13,14 +13,17 @@ resource "google_iam_workload_identity_pool_provider" "github" {
   display_name                       = "GitHub OIDC"
 
   attribute_mapping = {
-    "google.subject"       = "assertion.sub"
-    "attribute.actor"      = "assertion.actor"
-    "attribute.repository" = "assertion.repository"
+    "google.subject"                = "assertion.sub"
+    "attribute.actor"               = "assertion.actor"
+    "attribute.repository"          = "assertion.repository"
+    "attribute.repository_id"       = "assertion.repository_id"
+    "attribute.repository_owner_id" = "assertion.repository_owner_id"
   }
 
-  # Enforce the same main-only trust boundary as deployment and diagnostics jobs.
+  # Numeric identities survive renames and prevent a new repository inheriting trust.
   attribute_condition = join(" && ", [
-    "assertion.repository == '${var.github_repo}'",
+    "assertion.repository_id == '${var.github_repository_id}'",
+    "assertion.repository_owner_id == '${var.github_repository_owner_id}'",
     "assertion.ref == 'refs/heads/main'",
     "assertion.event_name in ['push', 'workflow_dispatch']",
   ])
@@ -68,6 +71,6 @@ resource "google_service_account_iam_binding" "github_actions_wif" {
   service_account_id = google_service_account.github_actions.name
   role               = "roles/iam.workloadIdentityUser"
   members = [
-    "principalSet://iam.googleapis.com/${google_iam_workload_identity_pool.github.name}/attribute.repository/${var.github_repo}",
+    "principalSet://iam.googleapis.com/${google_iam_workload_identity_pool.github.name}/attribute.repository_id/${var.github_repository_id}",
   ]
 }

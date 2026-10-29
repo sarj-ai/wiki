@@ -6,7 +6,9 @@ import hashlib
 import json
 import math
 from operator import itemgetter
-from typing import TYPE_CHECKING, Any, NamedTuple
+from typing import Any, NamedTuple
+
+from pydantic import JsonValue
 
 from app.document_transform.brand_manifest import CURRENT_BRAND_MANIFEST
 from app.document_transform.errors import SourceTooLargeError, UnsupportedSourceError
@@ -17,15 +19,12 @@ from app.document_transform.slides_ir import (
     ParsedPresentation,
     PlainSlideText,
     SlideId,
+    SlideObjectId,
     SlideTextLocator,
     parse_google_presentation,
     parse_plain_slide_text,
     sarj_logo_object_id,
 )
-
-
-if TYPE_CHECKING:
-    from pydantic import JsonValue
 
 
 MAX_SLIDES_MUTATION_REQUESTS = 1_000
@@ -94,7 +93,7 @@ class _StyleRun:
 
 @dataclass(frozen=True, slots=True)
 class _StyleTarget:
-    object_id: str
+    object_id: SlideObjectId
     placeholder_type: str | None
     runs: tuple[_StyleRun, ...]
 
@@ -147,7 +146,7 @@ class _StyleRunDecision(NamedTuple):
 
 class _LogoPlan(NamedTuple):
     requests: list[dict[str, Any]]
-    placements: dict[str, _Rect]
+    placements: dict[SlideId, _Rect]
     findings: list[TransformFinding]
 
 
@@ -188,7 +187,7 @@ def build_slides_mutation_plan(
     requests: list[dict[str, Any]] = []
     findings: list[TransformFinding] = []
     style_targets: tuple[_StyleTarget, ...] = ()
-    logo_rects: dict[str, _Rect] = {}
+    logo_rects: dict[SlideId, _Rect] = {}
     if mode is TransformMode.UNSLOP:
         requests.extend(text_requests)
         _, scan_findings = _style_targets(presentation)
@@ -264,7 +263,7 @@ def _text_delta_requests(
         if delete_end is not None:
             _append_delete_delta(
                 deltas,
-                object_id=str(locator.object_id),
+                object_id=locator.object_id,
                 locator_start=locator.start_index,
                 offsets=offsets,
                 source_start=source_index + 1,
@@ -275,7 +274,7 @@ def _text_delta_requests(
         if source_character != target_character:
             _append_case_delta(
                 deltas,
-                object_id=str(locator.object_id),
+                object_id=locator.object_id,
                 absolute_start=locator.start_index + offsets[source_index],
                 absolute_end=locator.start_index + offsets[source_index + 1],
                 target_character=target_character,
@@ -284,7 +283,7 @@ def _text_delta_requests(
     if source_index >= 0:
         _append_delete_delta(
             deltas,
-            object_id=str(locator.object_id),
+            object_id=locator.object_id,
             locator_start=locator.start_index,
             offsets=offsets,
             source_start=0,
@@ -300,7 +299,7 @@ def _text_delta_requests(
 def _append_delete_delta(
     deltas: list[tuple[int, list[dict[str, Any]]]],
     *,
-    object_id: str,
+    object_id: SlideObjectId,
     locator_start: int,
     offsets: list[int],
     source_start: int,
@@ -319,7 +318,7 @@ def _append_delete_delta(
 def _append_case_delta(
     deltas: list[tuple[int, list[dict[str, Any]]]],
     *,
-    object_id: str,
+    object_id: SlideObjectId,
     absolute_start: int,
     absolute_end: int,
     target_character: str,
@@ -341,7 +340,7 @@ def _append_case_delta(
     )
 
 
-def _delete_text_request(object_id: str, start: int, end: int) -> dict[str, Any]:
+def _delete_text_request(object_id: SlideObjectId, start: int, end: int) -> dict[str, JsonValue]:
     if end <= start:
         raise UnsupportedSourceError
     return {
@@ -479,7 +478,7 @@ def _style_target(
     theme_colors: dict[str, str] | None,
     object_ids: dict[str, tuple[dict[str, Any], ...]],
 ) -> _StyleDecision:
-    object_id = _required_string(element, "objectId")
+    object_id = SlideObjectId(_required_string(element, "objectId"))
     shape = element.get("shape")
     if not isinstance(shape, dict):
         finding = _unsupported_text_finding(object_id) if _has_visible_text(element) else None
@@ -532,7 +531,7 @@ def _style_eligibility(
     element: dict[str, Any],
     *,
     shape: dict[str, Any],
-    object_id: str,
+    object_id: SlideObjectId,
     page_background: str | None,
     theme_colors: dict[str, str] | None,
     ancestors: tuple[dict[str, Any], ...],
@@ -572,7 +571,7 @@ def _small_narrative_text_finding(
     theme_colors: dict[str, str] | None,
     object_ids: dict[str, tuple[dict[str, Any], ...]],
 ) -> TransformFinding | None:
-    object_id = _required_string(element, "objectId")
+    object_id = SlideObjectId(_required_string(element, "objectId"))
     shape = element.get("shape")
     if not isinstance(shape, dict) or _placeholder_type(shape) not in _NARRATIVE_PLACEHOLDER_TYPES:
         return None
@@ -633,7 +632,7 @@ def _small_narrative_text_finding(
 def _target_style_run(
     plain_text: PlainSlideText,
     *,
-    object_id: str,
+    object_id: SlideObjectId,
     desired_style: dict[str, Any],
     background: str,
     theme_colors: dict[str, str] | None,
@@ -984,7 +983,7 @@ def _has_visible_text(value: object) -> bool:
     )
 
 
-def _unsupported_text_finding(object_id: str) -> TransformFinding:
+def _unsupported_text_finding(object_id: SlideObjectId) -> TransformFinding:
     return TransformFinding(
         code="slide_text_target_unsupported",
         block_id=object_id,
@@ -992,7 +991,7 @@ def _unsupported_text_finding(object_id: str) -> TransformFinding:
     )
 
 
-def _unresolved_style_finding(object_id: str) -> TransformFinding:
+def _unresolved_style_finding(object_id: SlideObjectId) -> TransformFinding:
     return TransformFinding(
         code="slide_text_style_unresolved",
         block_id=object_id,
@@ -1000,7 +999,7 @@ def _unresolved_style_finding(object_id: str) -> TransformFinding:
     )
 
 
-def _role_unresolved_finding(object_id: str) -> TransformFinding:
+def _role_unresolved_finding(object_id: SlideObjectId) -> TransformFinding:
     return TransformFinding(
         code="slide_text_role_unresolved",
         block_id=object_id,
@@ -1008,7 +1007,7 @@ def _role_unresolved_finding(object_id: str) -> TransformFinding:
     )
 
 
-def _inherited_style_finding(object_id: str) -> TransformFinding:
+def _inherited_style_finding(object_id: SlideObjectId) -> TransformFinding:
     return TransformFinding(
         code="slide_text_style_inherited_unresolved",
         block_id=object_id,
@@ -1016,7 +1015,7 @@ def _inherited_style_finding(object_id: str) -> TransformFinding:
     )
 
 
-def _fit_unresolved_finding(object_id: str) -> TransformFinding:
+def _fit_unresolved_finding(object_id: SlideObjectId) -> TransformFinding:
     return TransformFinding(
         code="slide_text_fit_unresolved",
         block_id=object_id,
@@ -1024,7 +1023,7 @@ def _fit_unresolved_finding(object_id: str) -> TransformFinding:
     )
 
 
-def _contrast_unresolved_finding(object_id: str) -> TransformFinding:
+def _contrast_unresolved_finding(object_id: SlideObjectId) -> TransformFinding:
     return TransformFinding(
         code="slide_text_contrast_unresolved",
         block_id=object_id,
@@ -1125,7 +1124,7 @@ def _page_chain(
         return (slide,)
     if not isinstance(layout_id, str):
         raise UnsupportedSourceError
-    layout = _page_by_id(presentation.get("layouts"), layout_id)
+    layout = _page_by_id(presentation.get("layouts"), SlideObjectId(layout_id))
     layout_properties = layout.get("layoutProperties")
     if not isinstance(layout_properties, dict):
         raise UnsupportedSourceError
@@ -1134,7 +1133,7 @@ def _page_chain(
         return slide, layout
     if not isinstance(master_id, str):
         raise UnsupportedSourceError
-    master = _page_by_id(presentation.get("masters"), master_id)
+    master = _page_by_id(presentation.get("masters"), SlideObjectId(master_id))
     return slide, layout, master
 
 
@@ -1283,7 +1282,7 @@ def _logo_requests(
             ],
         )
     requests: list[dict[str, Any]] = []
-    placements: dict[str, _Rect] = {}
+    placements: dict[SlideId, _Rect] = {}
     findings: list[TransformFinding] = []
     object_ids = _object_id_occurrences(presentation)
     plan = _LogoPlan(requests, placements, findings)
@@ -1311,18 +1310,14 @@ def _append_slide_logo_plan(
     requests, placements, findings = plan
     background = _effective_page_background(presentation, slide)
     if background is None or _contrast_ratio("#000000", background) < _MIN_TEXT_CONTRAST:
-        slide_id = SlideId(_required_string(slide, "objectId"))
-        removal, removal_finding = _unsafe_contrast_logo_removal(
+        removal = _unsafe_contrast_logo_plan(
             slide,
             logo_uri=logo_uri,
             layout=layout,
             object_ids=object_ids,
         )
-        if removal is not None:
-            requests.append(removal)
-        if removal_finding is not None:
-            findings.append(removal_finding)
-        findings.append(_logo_contrast_finding(slide_id))
+        requests.extend(removal.requests)
+        findings.extend(removal.findings)
         return
     try:
         inherited_elements = _inherited_page_elements(presentation, slide)
@@ -1339,9 +1334,29 @@ def _append_slide_logo_plan(
     if finding is not None:
         findings.append(finding)
     if placement is not None:
-        placements[_required_string(slide, "objectId")] = placement
+        placements[SlideId(_required_string(slide, "objectId"))] = placement
     if request is not None:
         requests.append(request)
+
+
+def _unsafe_contrast_logo_plan(
+    slide: dict[str, JsonValue],
+    *,
+    logo_uri: str,
+    layout: _LogoLayout,
+    object_ids: dict[str, tuple[dict[str, JsonValue], ...]],
+) -> _LogoPlan:
+    removal, finding = _unsafe_contrast_logo_removal(
+        slide, logo_uri=logo_uri, layout=layout, object_ids=object_ids
+    )
+    requests: list[dict[str, JsonValue]] = []
+    findings: list[TransformFinding] = []
+    if removal is not None:
+        requests.append(removal)
+    if finding is not None:
+        findings.append(finding)
+    findings.append(_logo_contrast_finding(SlideId(_required_string(slide, "objectId"))))
+    return _LogoPlan(requests, {}, findings)
 
 
 def _unsafe_contrast_logo_removal(
@@ -1363,16 +1378,7 @@ def _unsafe_contrast_logo_removal(
         return _LogoRemovalDecision(None, _logo_id_collision_finding(slide_id))
     if not _element_geometry_is_safe(existing[0], layout=layout):
         return _LogoRemovalDecision(None, _unsafe_geometry_finding(slide_id))
-    bounds = _element_bounds(existing[0])
-    if (
-        bounds is None
-        or not any(_rect_close(bounds, candidate) for candidate in layout.candidates)
-        or not _existing_logo_is_exact(
-            existing[0],
-            logo_uri=logo_uri,
-            placement=bounds,
-        )
-    ):
+    if _owned_logo_bounds(existing[0], logo_uri=logo_uri, layout=layout) is None:
         return _LogoRemovalDecision(None, _logo_id_collision_finding(slide_id))
     return _LogoRemovalDecision({"deleteObject": {"objectId": logo_id}}, None)
 
@@ -1452,7 +1458,7 @@ def _logo_request_for_slide(
     ):
         return _LogoDecision(None, None, _unsafe_geometry_finding(slide_id))
     if existing:
-        existing_bounds = _existing_logo_placement(
+        existing_bounds = _owned_logo_bounds(
             existing[0], logo_uri=logo_uri, layout=layout, occupied=occupied
         )
         if existing_bounds is None:
@@ -1471,26 +1477,22 @@ def _logo_request_for_slide(
     )
 
 
-def _existing_logo_placement(
+def _owned_logo_bounds(
     element: dict[str, JsonValue],
     *,
     logo_uri: str,
     layout: _LogoLayout,
-    occupied: tuple[_Rect, ...],
+    occupied: tuple[_Rect, ...] = (),
 ) -> _Rect | None:
-    existing_bounds = _element_bounds(element)
+    bounds = _element_bounds(element)
     if (
-        existing_bounds is None
-        or not any(_rect_close(existing_bounds, candidate) for candidate in layout.candidates)
-        or any(_overlaps(existing_bounds, box) for box in occupied)
-        or not _existing_logo_is_exact(
-            element,
-            logo_uri=logo_uri,
-            placement=existing_bounds,
-        )
+        bounds is None
+        or not any(_rect_close(bounds, candidate) for candidate in layout.candidates)
+        or any(_overlaps(bounds, box) for box in occupied)
+        or not _existing_logo_is_exact(element, logo_uri=logo_uri, placement=bounds)
     ):
         return None
-    return existing_bounds
+    return bounds
 
 
 def _top_level_elements(slide: dict[str, Any]) -> list[dict[str, Any]]:
@@ -1505,7 +1507,7 @@ def _top_level_elements(slide: dict[str, Any]) -> list[dict[str, Any]]:
 def _occupied_bounds(
     elements: list[dict[str, Any]],
     *,
-    logo_id: str,
+    logo_id: SlideObjectId,
     layout: _LogoLayout,
 ) -> tuple[_Rect, ...] | None:
     occupied: list[_Rect] = []
@@ -1619,7 +1621,7 @@ def _is_placeholder_template(element: dict[str, Any]) -> bool:
     return isinstance(shape, dict) and isinstance(shape.get("placeholder"), dict)
 
 
-def _page_by_id(raw: object, object_id: str) -> dict[str, Any]:
+def _page_by_id(raw: object, object_id: SlideObjectId) -> dict[str, JsonValue]:
     if not isinstance(raw, list):
         raise UnsupportedSourceError
     matches = [page for page in raw if isinstance(page, dict) and page.get("objectId") == object_id]
@@ -1639,8 +1641,8 @@ def _element_geometry_is_safe(element: dict[str, Any], *, layout: _LogoLayout) -
 
 def _create_logo_request(
     *,
-    logo_id: str,
-    slide_id: str,
+    logo_id: SlideObjectId,
+    slide_id: SlideId,
     logo_uri: str,
     layout: _LogoLayout,
     placement: _Rect,
@@ -1670,12 +1672,12 @@ def _create_logo_request(
 def _expected_brand_sha256(
     *,
     style_targets: tuple[_StyleTarget, ...],
-    logo_rects: dict[str, _Rect],
+    logo_rects: dict[SlideId, _Rect],
 ) -> str:
     styles = [_expected_style(target) for target in style_targets]
     logos = [
         _canonical_logo(
-            object_id=sarj_logo_object_id(SlideId(slide_id)),
+            object_id=sarj_logo_object_id(slide_id),
             slide_id=slide_id,
             rect=rect,
         )
@@ -1763,7 +1765,9 @@ def _observed_logos(presentation: dict[str, Any]) -> list[dict[str, Any]]:
     return logos
 
 
-def _canonical_logo(*, object_id: str, slide_id: str, rect: _Rect) -> dict[str, Any]:
+def _canonical_logo(
+    *, object_id: SlideObjectId, slide_id: SlideId, rect: _Rect
+) -> dict[str, JsonValue]:
     return {
         "objectId": object_id,
         "slideId": slide_id,
@@ -1979,7 +1983,7 @@ def _logo_contrast_finding(slide_id: SlideId) -> TransformFinding:
     )
 
 
-def _small_text_finding(object_id: str) -> TransformFinding:
+def _small_text_finding(object_id: SlideObjectId) -> TransformFinding:
     return TransformFinding(
         code="slide_text_too_small",
         block_id=object_id,

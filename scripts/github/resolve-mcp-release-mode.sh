@@ -20,7 +20,7 @@ trap 'rm -f -- "$revision_file"' EXIT
 gcloud run revisions describe "$MCP_VERIFIED_REVISION" \
   --project "$PROJECT_ID" \
   --region "$REGION" \
-  --format=json > "$revision_file"
+  --format=json >"$revision_file"
 
 expected_service=$SERVICE
 revision_service=$(jq -r '.metadata.labels["serving.knative.dev/service"] // ""' "$revision_file")
@@ -33,7 +33,7 @@ fi
 
 flag_count=$(jq '[.spec.containers[0].env[]? | select(.name == "MCP_NATIVE_ENABLED")] | length' "$revision_file")
 enabled_flag=$(jq -r '[.spec.containers[0].env[]? | select(.name == "MCP_NATIVE_ENABLED")][0].value // ""' "$revision_file")
-if [[ "$flag_count" != 1 || ( "$enabled_flag" != true && "$enabled_flag" != false ) ]]; then
+if [[ "$flag_count" != 1 || ("$enabled_flag" != true && "$enabled_flag" != false) ]]; then
   echo "The exact revision must contain one canonical MCP_NATIVE_ENABLED flag" >&2
   exit 1
 fi
@@ -65,4 +65,4 @@ else
   mode=disabled
 fi
 
-printf 'mode=%s\n' "$mode" >> "$GITHUB_OUTPUT"
+printf 'mode=%s\n' "$mode" >>"$GITHUB_OUTPUT"

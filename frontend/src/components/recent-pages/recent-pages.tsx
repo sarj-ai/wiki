@@ -114,8 +114,6 @@ function RecentPageRow({ page }: { page: RecentPage }) {
   const intent = useDocumentIntent({
     disabled: isForm,
     fileId: page.id,
-    mimeType: page.mimeType,
-    title: page.name,
   });
   const linkClassName =
     "hover:bg-accent/60 focus-visible:ring-ring flex min-h-20 items-center gap-3 p-4 outline-none focus-visible:ring-2 focus-visible:ring-inset";

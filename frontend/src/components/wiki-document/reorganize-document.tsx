@@ -91,7 +91,9 @@ function ReorganizeDocumentForFile({
         ) : (
           <Sparkles className="size-3.5" />
         )}
-        <span className="hidden sm:inline">{checking ? "Checking…" : "Re-organize"}</span>
+        <span className="hidden @min-[40rem]/toolbar:inline">
+          {checking ? "Checking…" : "Re-organize"}
+        </span>
       </Button>
       {proposal === null ? null : (
         <ReorganizationConfirmation
@@ -229,7 +231,7 @@ function Location({
       </span>
       <div className="mt-1 flex items-start gap-1.5 text-sm font-medium">
         <Folder className="mt-0.5 size-3.5 shrink-0" />
-        <span className="break-words">{destinationLabel(destination)}</span>
+        <span className="min-w-0 flex-1 wrap-anywhere">{destinationLabel(destination)}</span>
       </div>
     </div>
   );

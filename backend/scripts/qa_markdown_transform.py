@@ -14,14 +14,13 @@ from sqlalchemy import select
 import typer
 
 from app.auth.google_tokens import GoogleTokenManager
-from app.cache.dependencies import cache_service_dep
 from app.config import settings
 from app.database import async_session
 from app.document_transform.executor import DocumentTransformExecutor
 from app.document_transform.google_gateway import GoogleDocumentGateway
 from app.document_transform.models import GeminiModelPolicy, VertexGeminiPatchGenerator
+from app.document_transform.qa_resources import prepare_qa_drive
 from app.document_transform.schemas import DocumentTransformRequest, MarkdownSource, TransformMode
-from app.drive.service import GoogleDriveService
 from app.files.service import GoogleFilesService
 from app.identifiers import FileId
 from app.models.user import User
@@ -56,7 +55,7 @@ def main(
     mode: Annotated[TransformMode, typer.Option("--mode")],
     operation_id: Annotated[uuid.UUID, typer.Option("--operation-id")],
     confirm_live_copy: Annotated[str, typer.Option("--confirm-live-copy")],
-    user_email: Annotated[str, typer.Option("--user-email")] = "nasr@sarj.ai",
+    user_email: Annotated[str, typer.Option("--user-email")],
 ) -> None:
     arguments = _Arguments(
         markdown_file=markdown_file,
@@ -80,16 +79,13 @@ async def _run(arguments: _Arguments) -> dict[str, object]:
         raise RuntimeError(msg)
     markdown = arguments.markdown_file.resolve().read_text(encoding="utf-8")
     async with async_session() as db, httpx.AsyncClient(timeout=30) as http:
-        user = await db.scalar(select(User).where(User.email == arguments.user_email))
-        if user is None:
+        if (
+            user := await db.scalar(select(User).where(User.email == arguments.user_email))
+        ) is None:
             msg = "QA user is not present in the local database"
             raise RuntimeError(msg)
         prepared = await GoogleTokenManager(db, http).prepare(user)
-        drive = GoogleDriveService(
-            prepared.user,
-            cache_service_dep(),
-            refresh_handler=prepared.refresh_handler,
-        )
+        drive = await prepare_qa_drive(prepared)
         files = GoogleFilesService(user=prepared.user, drive=drive)
         gateway = GoogleDocumentGateway(
             user=prepared.user,

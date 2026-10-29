@@ -22,7 +22,7 @@ _MAX_INSPECTION_DELAY = timedelta(seconds=2)
 
 
 class QaLaunchError(Exception):
-    """The configured Cloud Run job could not be launched and attested safely."""
+    pass
 
 
 class AccessTokenProvider(Protocol):

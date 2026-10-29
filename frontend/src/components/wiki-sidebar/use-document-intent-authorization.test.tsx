@@ -38,8 +38,6 @@ function IntentLink() {
   const handlers = useDocumentIntent({
     disabled: false,
     fileId: FILE.id,
-    mimeType: MIME_DOC,
-    title: FILE.name,
   });
   return (
     <a {...handlers} href="#document">

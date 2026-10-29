@@ -15,6 +15,7 @@ import uuid
 import httpx
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, ValidationError, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+import typer
 
 from app.document_transform.qa_contract import (
     PRODUCTION_QA_BOOTSTRAP_URL,
@@ -51,10 +52,11 @@ _TRANSIENT_ATTEMPTS = 3
 _TRANSIENT_STATUS_CODES = frozenset({429, 502, 503, 504})
 _MIME_DOC = "application/vnd.google-apps.document"
 _MIME_FOLDER = "application/vnd.google-apps.folder"
+CLI = typer.Typer(add_completion=False, add_help_option=False, pretty_exceptions_enable=False)
 
 
 class QaWorkerError(Exception):
-    """The immutable workload binding or broker response is invalid."""
+    pass
 
 
 class _RuntimeBinding(BaseSettings):
@@ -693,8 +695,14 @@ def _validate_runtime(runtime: _RuntimeBinding) -> None:
 
 
 def main() -> None:
-    if len(sys.argv) != 1:
+    try:
+        CLI(standalone_mode=False)
+    except typer.TyperException:
         _fail("runtime_overrides_forbidden")
+
+
+@CLI.command(add_help_option=False)
+def _run_command() -> None:
     try:
         asyncio.run(_main())
     except (httpx.HTTPError, ValidationError, QaWorkerError):  # fmt: skip

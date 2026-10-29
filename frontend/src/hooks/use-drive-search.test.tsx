@@ -6,7 +6,7 @@ import { wikiKeys } from "@/lib/wiki-keys";
 import { WIKI_READ_API } from "@/lib/wiki-read-api";
 import { MIME_DOC, MIME_FOLDER, MIME_HTML, MIME_PDF, MIME_SHEET, MIME_SLIDE } from "@/types/wiki";
 
-import { useDriveSearch, useDriveSearchSnippet } from "./use-drive-search";
+import { useDriveSearchSnippet, useDriveSearchState } from "./use-drive-search";
 
 vi.mock("@/lib/wiki-read-api", () => ({
   WIKI_READ_API: { driveSearch: vi.fn(), driveSearchSnippet: vi.fn() },
@@ -161,7 +161,7 @@ describe("search preview request budget", () => {
 });
 
 function CachedSearchProbe({ query }: { query: string }) {
-  useDriveSearch(query);
+  useDriveSearchState(query);
   return null;
 }
 
@@ -207,7 +207,7 @@ it("collects abandoned search terms after ten minutes while preserving an observ
 });
 
 function SearchProbe({ enabled }: { enabled: boolean }) {
-  const result = useDriveSearch("roadmap", enabled);
+  const result = useDriveSearchState("roadmap", enabled).query;
   return <span>{result.fetchStatus}</span>;
 }
 

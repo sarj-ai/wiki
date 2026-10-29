@@ -1,0 +1,29 @@
+{
+  "upstream": {
+    "repository": "sarj-ai/platform",
+    "commit": "12132f41bb3ef4850f7cad2cc5cab844f60afa35",
+    "path": "products/platform/apps/web/rive/sarj-loader/scene.rml"
+  },
+  "source": {
+    "path": "frontend/rive/sarj-loader/scene.rml",
+    "sha256": "579cb4c9376a0026422b9904e4491e9eb71b6d7c2a50c521a13e8ea626038b0a"
+  },
+  "generator": {
+    "path": "backend/scripts/generate_sarj_loader.py",
+    "sha256": "f3ca7e0a578935fee0f947297b76f9bace0e441ec4e75ca561f8d4cf6ee85c2e"
+  },
+  "format": "SVG/SMIL",
+  "duration_seconds": 3,
+  "artifacts": [
+    {
+      "path": "frontend/public/brand/sarj-loader-12132f41.svg",
+      "sha256": "fa79e340e15fdc4b5c834cfcb7f5bd7764eef010a698c6e1c53aca384663ab8c",
+      "bytes": 150396
+    },
+    {
+      "path": "frontend/public/brand/sarj-loader-still-12132f41.svg",
+      "sha256": "ab0bf41c35a48228131b6748cd877abb126d0cdbb7a0fe46e5bb14bef3a4ffba",
+      "bytes": 33788
+    }
+  ]
+}

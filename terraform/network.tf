@@ -23,3 +23,23 @@ resource "google_service_networking_connection" "private_vpc" {
 
   depends_on = [google_project_service.apis["servicenetworking.googleapis.com"]]
 }
+
+resource "google_compute_subnetwork" "dammam" {
+  count         = var.enable_dammam_stack ? 1 : 0
+  name          = "sarj-docs-subnet-dammam"
+  ip_cidr_range = "10.0.2.0/24"
+  region        = var.dammam_region
+  network       = google_compute_network.vpc.id
+}
+
+resource "google_vpc_access_connector" "dammam" {
+  count         = var.enable_dammam_stack ? 1 : 0
+  name          = "sarj-docs-connector-dmm"
+  region        = var.dammam_region
+  ip_cidr_range = "10.8.2.0/28"
+  network       = google_compute_network.vpc.id
+  min_instances = 2
+  max_instances = 3
+
+  depends_on = [google_project_service.apis["vpcaccess.googleapis.com"]]
+}

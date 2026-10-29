@@ -23,6 +23,7 @@ import { cn } from "@/lib/utils";
 import { EMPTY_NODES, indexDestinationFolders } from "@/lib/wiki-indexes";
 import type { DriveNode } from "@/types/wiki";
 
+import { DriveListFeedback } from "./drive-list-feedback";
 import { rowIndent } from "./layout-constants";
 
 export function MoveFileDialog({
@@ -36,6 +37,7 @@ export function MoveFileDialog({
   open,
 }: MoveFileDialogProps) {
   const drivesQuery = useDrives();
+  const hasNoDestinations = drivesQuery.isSuccess && drivesQuery.data.length === 0;
   const moveFile = useMoveFile();
   const [selection] = useState(() =>
     createStore<DestinationSelection>((set) => ({
@@ -103,6 +105,11 @@ export function MoveFileDialog({
           tabIndex={0}
         >
           <div className="space-y-0.5 p-1">
+            <DriveListFeedback
+              empty={hasNoDestinations}
+              emptyMessage="No available destinations."
+              query={drivesQuery}
+            />
             {(drivesQuery.data ?? []).map((drive) => (
               <DriveRow
                 disabledId={disabledId}
@@ -127,7 +134,7 @@ export function MoveFileDialog({
           <Button
             disabled={!selectedId || moveFile.isPending}
             onClick={() => {
-              void handleConfirm();
+              void handleConfirm().catch(() => console.warn("Move confirmation could not finish"));
             }}
           >
             {moveFile.isPending ? (
@@ -194,7 +201,8 @@ const FolderRow = memo(function FolderRowContent({
         <Button
           aria-expanded={expanded}
           aria-label={`${expanded ? "Collapse" : "Expand"} ${folder.name}`}
-          className="hover:bg-muted size-4 shrink-0 rounded-sm"
+          className="hover:bg-muted size-6 shrink-0 rounded-sm"
+          disabled={subFolders.length === 0}
           onClick={() => {
             setExpanded((v) => !v);
           }}
@@ -208,7 +216,7 @@ const FolderRow = memo(function FolderRowContent({
         </Button>
         <Button
           className={cn(
-            "h-7 flex-1 justify-start gap-1 px-2 font-normal",
+            "h-7 min-w-0 flex-1 justify-start gap-1 px-2 font-normal",
             selected && "bg-accent",
             isDisabled && "opacity-40",
           )}
@@ -261,7 +269,7 @@ const DriveRow = memo(function DriveRowContent({
         <Button
           aria-expanded={expanded}
           aria-label={`${expanded ? "Collapse" : "Expand"} ${driveName}`}
-          className="hover:bg-muted size-4 shrink-0 rounded-sm"
+          className="hover:bg-muted size-6 shrink-0 rounded-sm"
           onClick={() => {
             setExpanded((v) => !v);
           }}
@@ -273,7 +281,7 @@ const DriveRow = memo(function DriveRowContent({
         </Button>
         <Button
           className={cn(
-            "h-7 flex-1 justify-start gap-1 px-2",
+            "h-7 min-w-0 flex-1 justify-start gap-1 px-2",
             selected && !isDriveDisabled && "bg-accent",
             isDriveDisabled && "opacity-60",
           )}
@@ -290,9 +298,28 @@ const DriveRow = memo(function DriveRowContent({
         </Button>
       </div>
       {expanded && treeQuery.isLoading ? (
-        <div className="text-muted-foreground flex items-center gap-2 px-4 py-1 text-xs">
+        <div
+          className="text-muted-foreground flex items-center gap-2 px-4 py-1 text-xs"
+          role="status"
+        >
           <Loader2 className="size-3 animate-spin" />
           Loading folders…
+        </div>
+      ) : null}
+      {expanded && treeQuery.isError ? (
+        <div className="space-y-2 px-4 py-2 text-xs" role="alert">
+          <p>Folders could not be loaded.</p>
+          <Button
+            disabled={treeQuery.isFetching}
+            onClick={() => {
+              void treeQuery.refetch().catch(() => console.warn("Folder retry could not finish"));
+            }}
+            size="sm"
+            type="button"
+            variant="outline"
+          >
+            Retry folders
+          </Button>
         </div>
       ) : null}
       {expanded && !treeQuery.isLoading

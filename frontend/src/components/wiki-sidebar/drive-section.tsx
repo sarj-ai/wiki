@@ -135,7 +135,8 @@ export function DriveSection({
           >
             <Button
               aria-expanded={expanded}
-              className="flex h-8 w-full items-center justify-start gap-1 px-2 py-0 pr-14 text-xs"
+              className="flex h-8 w-full items-center justify-start gap-1 px-2 py-0 text-xs"
+              data-sidebar-row="drive"
               onBlur={predictiveLoading.onBlur}
               onClick={() => {
                 setExpanded(!expanded);
@@ -159,7 +160,10 @@ export function DriveSection({
               <span className="truncate">{drive.name}</span>
             </Button>
           </SidebarGroupLabel>
-          <div className="absolute top-1 right-1 flex items-center gap-0.5 opacity-0 group-hover/driveheader:opacity-100 focus-within:opacity-100">
+          <div
+            className="absolute top-1 right-1 flex items-center gap-0.5 opacity-0 group-hover/driveheader:opacity-100 focus-within:opacity-100"
+            data-sidebar-row-actions="drive"
+          >
             <DriveAccessSheet drive={drive} />
             <DropdownMenu>
               <DropdownMenuTrigger asChild>

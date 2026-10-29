@@ -11,4 +11,4 @@ set -euo pipefail
   echo '- Migration compatibility with the previous revision is not proven, so rollback safety is not guaranteed.'
   echo '- The workflow orders migrations before the traffic switch and stops immediately if they fail.'
   echo '- Stop subsequent merges, inspect the bounded release evidence, and repair forward.'
-} >> "$GITHUB_STEP_SUMMARY"
+} >>"$GITHUB_STEP_SUMMARY"

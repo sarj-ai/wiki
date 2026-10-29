@@ -49,9 +49,3 @@ resource "google_service_account_iam_member" "backend_acts_as_task_invoker" {
   role               = "roles/iam.serviceAccountUser"
   member             = "serviceAccount:${google_service_account.backend.email}"
 }
-
-# Allow public access to the backend — JWT + @sarj.ai domain
-# enforcement at the app layer is the real auth boundary. The GCLB
-# + Cloudflare layer on top (see loadbalancer.tf / cloudflare.tf)
-# terminates TLS, applies WAF rules, and scrubs bad traffic before
-# it reaches Cloud Run.

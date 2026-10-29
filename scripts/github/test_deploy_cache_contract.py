@@ -26,6 +26,7 @@ _DEPLOY_NEEDS = {
 }
 _READY_FENCE_COUNTS = {"backend": 1, "frontend": 2}
 _JOB_RESULTS = ("success", "failure", "cancelled", "skipped")
+_PORTABLE_RUNNER = "${{ vars.CI_RUNNER || 'ubuntu-24.04' }}"
 
 
 def _workflow(name: str) -> dict[str, Any]:
@@ -38,6 +39,50 @@ def _named_step(steps: list[dict[str, Any]], name: str) -> dict[str, Any]:
 
 def _step_index(steps: list[dict[str, Any]], name: str) -> int:
     return steps.index(_named_step(steps, name))
+
+
+def test_qualification_runners_work_without_private_services_and_allow_an_owned_override() -> None:
+    for path in (ROOT / ".github" / "workflows").glob("*.yml"):
+        workflow = _workflow(path.name)
+        for job in workflow["jobs"].values():
+            if "runs-on" not in job:
+                continue
+            expected = (
+                "ubuntu-24.04"
+                if path.name in {"standards.yml", "commit-policy.yml"}
+                else _PORTABLE_RUNNER
+            )
+            assert job["runs-on"] == expected
+
+
+def test_ci_image_uses_a_portable_builder_and_retains_the_required_loaded_image_scan() -> None:
+    image = _workflow("ci-backend.yml")["jobs"]["image"]
+    steps = image["steps"]
+    builder = next(
+        step for step in steps if step.get("uses", "").startswith("docker/setup-buildx-action@")
+    )
+    build = _named_step(steps, "Build image")
+    scan = _named_step(steps, "Trivy image scan")
+
+    assert build["uses"] == "docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc"
+    assert build["with"] == {
+        "context": "backend",
+        "push": False,
+        "load": True,
+        "tags": "backend:ci",
+        "cache-from": "type=gha,scope=backend-ci",
+        "cache-to": "type=gha,mode=max,scope=backend-ci",
+        "provenance": False,
+        "sbom": False,
+    }
+    assert steps.index(builder) < steps.index(build) < steps.index(scan)
+    assert scan["with"]["image-ref"] == "backend:ci"
+    assert scan["with"]["severity"] == "HIGH,CRITICAL"
+    assert scan["with"]["exit-code"] == "1"
+    assert not any(step.get("uses", "").startswith("useblacksmith/") for step in steps)
+    assert all(
+        "if" not in step and "continue-on-error" not in step for step in [builder, build, scan]
+    )
 
 
 def test_component_ci_runs_once_on_main_through_shared_release() -> None:
@@ -93,9 +138,7 @@ def test_backend_deploy_runs_only_for_production_inputs() -> None:
             "backend/Dockerfile.qa",
         }
     )
-    assert deploy_workflow["jobs"]["ci-backend"]["uses"] == (
-        "./.github/workflows/ci-backend.yml"
-    )
+    assert deploy_workflow["jobs"]["ci-backend"]["uses"] == ("./.github/workflows/ci-backend.yml")
     assert "ci-backend" in deploy_workflow["jobs"]["deploy"]["needs"]
 
 
@@ -228,8 +271,7 @@ def test_deploy_ready_fences_remain_before_credentials_and_mutation() -> None:
         ready = [
             index
             for index, step in enumerate(steps)
-            if step.get("run")
-            == f"bash scripts/github/verify-release-gate.sh ready {component}"
+            if step.get("run") == f"bash scripts/github/verify-release-gate.sh ready {component}"
         ]
         assert len(ready) == _READY_FENCE_COUNTS[component]
 
@@ -239,9 +281,7 @@ def test_deploy_ready_fences_remain_before_credentials_and_mutation() -> None:
                 for index, step in enumerate(steps)
                 if step.get("uses", "").startswith("google-github-actions/auth@")
             )
-            assert (
-                ready[0] < auth < _step_index(steps, "Deploy candidate without traffic")
-            )
+            assert ready[0] < auth < _step_index(steps, "Deploy candidate without traffic")
         else:
             build = _step_index(steps, "Build for Cloudflare Workers")
             capture = _step_index(steps, "Capture current production version")
@@ -310,9 +350,7 @@ def _actions_expression(expression: str, values: dict[str, _ActionsValue]) -> ob
     body = expression.strip().removeprefix("${{").removesuffix("}}")
     body = body.replace("always()", "True")
     body = re.sub(r"(?<!')\btrue\b(?!')", "True", body)
-    body = re.sub(
-        r"\b(?:needs|github|inputs)(?:\.[a-z_-]+)+", lambda m: repr(values[m[0]]), body
-    )
+    body = re.sub(r"\b(?:needs|github|inputs)(?:\.[a-z_-]+)+", lambda m: repr(values[m[0]]), body)
     body = body.replace("!=", "\0").replace("!", " not ").replace("\0", "!=")
     body = body.replace("&&", " and ").replace("||", " or ")
     return _evaluate_node(ast.parse(" ".join(body.split()), mode="eval").body)
@@ -332,8 +370,9 @@ def _evaluate_node(node: ast.expr) -> object:
             return _evaluate_node(left) != _evaluate_node(right)
         case ast.Constant(value=value):
             return value
-    msg = f"Unsupported Actions expression node: {ast.dump(node)}"
-    raise AssertionError(msg)
+        case _:
+            msg = f"Unsupported Actions expression node: {ast.dump(node)}"
+            raise AssertionError(msg)
 
 
 @pytest.mark.parametrize(
@@ -372,12 +411,8 @@ def test_required_ci_aggregators_skip_only_shapes_the_gate_accepts(
             "inputs.force_full": force_full,
             "needs.changes.outputs.runtime": runtime,
         }
-        values.update(
-            (f"needs.{job}.result", result) for job, result in job_results.items()
-        )
-        environment = {
-            result_env[job]: result for job, result in job_results.items()
-        }
+        values.update((f"needs.{job}.result", result) for job, result in job_results.items())
+        environment = {result_env[job]: result for job, result in job_results.items()}
         forced = _actions_expression(gate_env["FORCE_FULL"], values)
         environment["FORCE_FULL"] = "true" if forced else "false"
         environment["RUNTIME_SELECTED"] = runtime
@@ -399,15 +434,14 @@ def test_required_ci_aggregators_skip_only_shapes_the_gate_accepts(
         (["backend/app/main.py"], True, True),
         (["backend/uv.lock"], True, True),
         (["frontend/openapi.json"], True, True),
-        pytest.param(
-            ["frontend/scripts/patch-generated.ts"], True, True, id="typed-api-generator"
-        ),
+        pytest.param(["frontend/scripts/patch-generated.ts"], True, True, id="typed-api-generator"),
         pytest.param(
             ["frontend/scripts/patch-generated.mjs"], True, True, id="legacy-api-generator"
         ),
         (["frontend/src/lib/generated/types.ts"], True, True),
         ([".github/workflows/ci-backend.yml"], True, True),
         (["scripts/github/runtime-ci-policy.sh"], True, True),
+        pytest.param(["scripts/wiki.py"], True, True, id="shared-typed-cli"),
         (["docs/notes.txt"], True, True),
         (["unknown\nbackend/app/main.py"], True, True),
         (["backend/tests/old.py", "frontend/src/new.ts"], True, True),
@@ -462,9 +496,7 @@ def test_runtime_diff_preserves_routing_and_fails_open_on_unavailable_diff(
     log = command_output(["bash", "-e", "-c", selection["run"]])
 
     assert output.read_text() == (
-        "backend=true\nfrontend=true\n"
-        if diff_status
-        else "backend=true\nfrontend=false\n"
+        "backend=true\nfrontend=true\n" if diff_status else "backend=true\nfrontend=false\n"
     )
     assert ("::warning::Change detection failed" in log) is bool(diff_status)
     assert (tmp_path / "git-calls").read_text() == (
@@ -486,9 +518,7 @@ def test_runtime_required_gates_reject_failure_missing_outputs_and_unexpected_sk
     assert steps[1]["with"]["version-file"] == "backend/uv.toml"
     gate = steps[2]
     baseline = dict.fromkeys(gate["env"], "success")
-    baseline.update(
-        FORCE_FULL="false", ROUTING_RESULT="success", RUNTIME_SELECTED="true"
-    )
+    baseline.update(FORCE_FULL="false", ROUTING_RESULT="success", RUNTIME_SELECTED="true")
     runtime_keys = (
         ["TEST_RESULT", "POSTGRES_RESULT"]
         if component == "backend"
@@ -522,9 +552,7 @@ def test_runtime_required_gates_reject_failure_missing_outputs_and_unexpected_sk
         for key in runtime_keys
         for result in ["success", "failure"]
     )
-    scenarios.append(
-        ({**unselected, "FORCE_FULL": "true", "ROUTING_RESULT": "skipped"}, False)
-    )
+    scenarios.append(({**unselected, "FORCE_FULL": "true", "ROUTING_RESULT": "skipped"}, False))
     for environment, expected in scenarios:
         for name, value in environment.items():
             monkeypatch.setenv(name, value)

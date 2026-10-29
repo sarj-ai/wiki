@@ -7,7 +7,13 @@ import uuid
 import pytest
 
 from app.document_transform.brand_manifest import CURRENT_BRAND_MANIFEST
-from app.document_transform.errors import InPlaceNotAllowedError, SourceTooLargeError
+from app.document_transform.errors import (
+    DocumentTransformError,
+    InPlaceNotAllowedError,
+    OutputConflictError,
+    SourceTooLargeError,
+    UnsupportedSourceError,
+)
 from app.document_transform.google_presentation_gateway import PPTX_MIME_TYPE
 from app.document_transform.models import PatchGenerator
 from app.document_transform.presentation_executor import PresentationTransformExecutor
@@ -26,6 +32,7 @@ from app.document_transform.schemas import (
     TransformMode,
     TransformPhase,
 )
+from app.document_transform.slides_ir import MAX_PRESENTATION_SLIDES
 from app.drive.schemas import MIME_SLIDE
 from app.identifiers import FileId
 
@@ -173,11 +180,17 @@ class PresentationGatewaySpy:
         self.completed += 1
 
 
+@pytest.fixture
+def presentation_gateway_factory() -> type[PresentationGatewaySpy]:
+    return PresentationGatewaySpy
+
+
 @pytest.mark.parametrize("mime_type", [MIME_SLIDE, PPTX_MIME_TYPE])
 async def test_presentation_copy_is_revision_fenced_branded_and_keeps_source(
     mime_type: str,
+    presentation_gateway_factory: type[PresentationGatewaySpy],
 ) -> None:
-    gateway = PresentationGatewaySpy(mime_type=mime_type)
+    gateway = presentation_gateway_factory(mime_type=mime_type)
     executor = PresentationTransformExecutor(
         gateway=gateway,
         generator=NoopPatchGenerator(),
@@ -209,8 +222,122 @@ async def test_presentation_copy_is_revision_fenced_branded_and_keeps_source(
     assert result.needs_review is (mime_type == PPTX_MIME_TYPE)
 
 
-async def test_presentation_in_place_rejects_before_any_gateway_call() -> None:
-    gateway = PresentationGatewaySpy(mime_type=MIME_SLIDE)
+@pytest.mark.parametrize(
+    "changed_field",
+    [
+        pytest.param("text", id="changed-text"),
+        pytest.param("object_id", id="changed-protected-object-id"),
+    ],
+)
+async def test_native_copy_fingerprint_mismatch_rejects_before_mutation(
+    changed_field: str,
+    presentation_gateway_factory: type[PresentationGatewaySpy],
+) -> None:
+    gateway = presentation_gateway_factory(mime_type=MIME_SLIDE)
+    output_body = gateway.output_presentation["slides"][0]["pageElements"][0]
+    if changed_field == "text":
+        text_run = output_body["shape"]["text"]["textElements"][1]
+        changed_text = "This copy has different text.\n"
+        text_run["textRun"]["content"] = changed_text
+        text_run["endIndex"] = len(changed_text)
+    else:
+        output_body["objectId"] = "changed-body"
+    generator = NoopPatchGenerator()
+    executor = PresentationTransformExecutor(
+        gateway=gateway,
+        generator=generator,
+        logo_uri="https://wiki.sarj.ai/brand/sarj-logo-light.png",
+    )
+
+    with pytest.raises(OutputConflictError):
+        await executor.execute(
+            operation_id=uuid.uuid7(),
+            request=_request(output_strategy=OutputStrategy.COPY),
+        )
+
+    assert gateway.created == 1
+    assert gateway.requests == []
+    assert gateway.completed == 0
+    assert generator.calls == 0
+
+
+@pytest.mark.parametrize(
+    ("slide_count", "expected_error"),
+    [
+        pytest.param(0, UnsupportedSourceError, id="unsupported-structure"),
+        pytest.param(
+            MAX_PRESENTATION_SLIDES + 1,
+            SourceTooLargeError,
+            id="too-many-slides",
+        ),
+    ],
+)
+async def test_native_copy_parse_error_propagates_before_mutation(
+    slide_count: int,
+    expected_error: type[DocumentTransformError],
+    presentation_gateway_factory: type[PresentationGatewaySpy],
+) -> None:
+    gateway = presentation_gateway_factory(mime_type=MIME_SLIDE)
+    gateway.output_presentation["slides"] *= slide_count
+    executor = PresentationTransformExecutor(
+        gateway=gateway,
+        generator=NoopPatchGenerator(),
+        logo_uri="https://wiki.sarj.ai/brand/sarj-logo-light.png",
+    )
+
+    with pytest.raises(expected_error):
+        await executor.execute(
+            operation_id=uuid.uuid7(),
+            request=_request(output_strategy=OutputStrategy.COPY),
+        )
+
+    assert gateway.created == 1
+    assert gateway.requests == []
+    assert gateway.completed == 0
+
+
+@pytest.mark.parametrize(
+    "slide_count",
+    [
+        pytest.param(0, id="no-slides"),
+        pytest.param(MAX_PRESENTATION_SLIDES + 1, id="exceeds-slide-limit"),
+    ],
+)
+async def test_uneditable_pptx_conversion_returns_copy_for_review_without_mutation(
+    slide_count: int,
+    presentation_gateway_factory: type[PresentationGatewaySpy],
+) -> None:
+    gateway = presentation_gateway_factory(mime_type=PPTX_MIME_TYPE)
+    gateway.output_presentation["slides"] *= slide_count
+    generator = NoopPatchGenerator()
+    executor = PresentationTransformExecutor(
+        gateway=gateway,
+        generator=generator,
+        logo_uri="https://wiki.sarj.ai/brand/sarj-logo-light.png",
+    )
+
+    result = await executor.execute(
+        operation_id=uuid.uuid7(),
+        request=_request(output_strategy=OutputStrategy.COPY),
+    )
+
+    assert gateway.created == 1
+    assert gateway.requests == []
+    assert gateway.completed == 0
+    assert generator.calls == 0
+    assert result.output.file_id == "output"
+    assert result.changed is False
+    assert result.needs_review is True
+    assert result.validation.protected_content_preserved is False
+    assert result.validation.structure_preserved is False
+    assert result.applied_patch_count == 0
+    assert {finding.code for finding in result.findings} == {"pptx_conversion_not_safely_editable"}
+
+
+async def test_presentation_in_place_rejects_before_any_gateway_call(
+    presentation_gateway_factory: type[PresentationGatewaySpy],
+) -> None:
+    gateway = presentation_gateway_factory(mime_type=MIME_SLIDE)
     executor = PresentationTransformExecutor(
         gateway=gateway,
         generator=NoopPatchGenerator(),
@@ -227,8 +354,10 @@ async def test_presentation_in_place_rejects_before_any_gateway_call() -> None:
     assert gateway.requests == []
 
 
-async def test_exact_pending_commit_recovery_completes_without_reapplying() -> None:
-    gateway = PresentationGatewaySpy(mime_type=MIME_SLIDE)
+async def test_exact_pending_commit_recovery_completes_without_reapplying(
+    presentation_gateway_factory: type[PresentationGatewaySpy],
+) -> None:
+    gateway = presentation_gateway_factory(mime_type=MIME_SLIDE)
     executor = PresentationTransformExecutor(
         gateway=gateway,
         generator=NoopPatchGenerator(),
@@ -263,8 +392,10 @@ async def test_exact_pending_commit_recovery_completes_without_reapplying() -> N
     assert {finding.code for finding in recovered.findings} == {"recovered_completed_output"}
 
 
-async def test_known_post_write_verification_mismatch_is_not_completed() -> None:
-    gateway = PresentationGatewaySpy(mime_type=MIME_SLIDE)
+async def test_known_post_write_verification_mismatch_is_not_completed(
+    presentation_gateway_factory: type[PresentationGatewaySpy],
+) -> None:
+    gateway = presentation_gateway_factory(mime_type=MIME_SLIDE)
     gateway.verification_brand_applied = False
     executor = PresentationTransformExecutor(
         gateway=gateway,
@@ -282,8 +413,10 @@ async def test_known_post_write_verification_mismatch_is_not_completed() -> None
     assert "post_write_brand_mismatch" in {finding.code for finding in result.findings}
 
 
-async def test_presentation_contextual_unslop_never_invokes_model() -> None:
-    gateway = PresentationGatewaySpy(mime_type=MIME_SLIDE)
+async def test_presentation_contextual_unslop_never_invokes_model(
+    presentation_gateway_factory: type[PresentationGatewaySpy],
+) -> None:
+    gateway = presentation_gateway_factory(mime_type=MIME_SLIDE)
     for presentation in (gateway.snapshot.presentation, gateway.output_presentation):
         assert presentation is not None
         text_run = presentation["slides"][0]["pageElements"][0]["shape"]["text"]["textElements"][1]
@@ -309,8 +442,9 @@ async def test_presentation_contextual_unslop_never_invokes_model() -> None:
 
 async def test_native_mutation_limits_are_checked_before_copy(
     monkeypatch: pytest.MonkeyPatch,
+    presentation_gateway_factory: type[PresentationGatewaySpy],
 ) -> None:
-    gateway = PresentationGatewaySpy(mime_type=MIME_SLIDE)
+    gateway = presentation_gateway_factory(mime_type=MIME_SLIDE)
     executor = PresentationTransformExecutor(
         gateway=gateway,
         generator=NoopPatchGenerator(),

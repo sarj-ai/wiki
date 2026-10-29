@@ -1,7 +1,6 @@
 .DS_Store
 *.pem
-.claude/*
-!.claude/settings.json
+.claude/
 *.tfvars
 *.tfstate*
 .terraform/

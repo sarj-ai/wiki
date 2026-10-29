@@ -18,7 +18,7 @@ import typer
 type JsonValue = str | int | bool | list[JsonValue] | dict[str, JsonValue] | None
 type JsonObject = dict[str, JsonValue]
 type Fetch = Callable[[str], JsonObject]
-REPOSITORY = "sarj-ai/wiki"
+REPOSITORY = "sarj-ai/wiki-internal"
 REPOSITORY_ID = 1183627122
 GITHUB_ACTIONS_APP_ID = 15368
 MAX_RESPONSE_BYTES = 2_000_000
@@ -58,6 +58,7 @@ FRONTEND_RELEASE_PATHS = (
     "scripts/frontend_release/**",
 )
 SHARED_RELEASE_PATHS = (
+    "scripts/wiki.py",
     MAIN_RELEASE_PATH,
     "scripts/github/release_gate.py",
     "scripts/github/verify-release-gate.sh",
@@ -97,9 +98,7 @@ def require_ci_gates(environment: Mapping[str, str], component: str) -> None:
         )
         require(environment.get("IMAGE_RESULT") == "success", "CI image failed")
     else:
-        require(
-            environment.get("BUILD_RESULT") == expected, "Unexpected CI build result"
-        )
+        require(environment.get("BUILD_RESULT") == expected, "Unexpected CI build result")
 
 
 def object_value(value: JsonValue) -> JsonObject:
@@ -110,9 +109,7 @@ def object_value(value: JsonValue) -> JsonObject:
     return value
 
 
-def validate_context(
-    environment: Mapping[str, str], component: str, checkout_sha: str
-) -> str:
+def validate_context(environment: Mapping[str, str], component: str, checkout_sha: str) -> str:
     sha = environment.get("GITHUB_SHA", "")
     require(component in {"backend", "frontend", "main"}, "Unknown release workflow")
     require(
@@ -134,13 +131,8 @@ def validate_context(
         environment.get("GITHUB_WORKFLOW_SHA") == sha,
         "Workflow does not match release SHA",
     )
-    expected_workflow = (
-        f"{REPOSITORY}/.github/workflows/deploy-{component}.yml@refs/heads/main"
-    )
-    if (
-        component == "main"
-        or environment.get("GITHUB_WORKFLOW_REF") == MAIN_RELEASE_REF
-    ):
+    expected_workflow = f"{REPOSITORY}/.github/workflows/deploy-{component}.yml@refs/heads/main"
+    if component == "main" or environment.get("GITHUB_WORKFLOW_REF") == MAIN_RELEASE_REF:
         require(
             environment.get("GITHUB_EVENT_NAME") == "push",
             "Untrusted shared release event",
@@ -166,8 +158,7 @@ def require_current_main(fetch: Fetch, sha: str) -> None:
 def validate_repository(value: JsonValue) -> None:
     repository = object_value(value)
     require(
-        repository.get("id") == REPOSITORY_ID
-        and repository.get("full_name") == REPOSITORY,
+        repository.get("id") == REPOSITORY_ID and repository.get("full_name") == REPOSITORY,
         "Untrusted receipt repository",
     )
 
@@ -206,9 +197,7 @@ def standards_receipt(fetch: Fetch, sha: str) -> bool:
         "Standards workflow identity changed",
     )
     # Exact server-side filters and total_count prevent pagination from hiding ambiguity.
-    page = fetch(
-        f"{WORKFLOW}/runs?event=push&branch=main&head_sha={sha}&per_page=2&page=1"
-    )
+    page = fetch(f"{WORKFLOW}/runs?event=push&branch=main&head_sha={sha}&per_page=2&page=1")
     runs = page.get("workflow_runs")
     require(isinstance(runs, list), "Invalid Standards run listing")
     if not isinstance(runs, list):
@@ -373,9 +362,7 @@ def release_components(fetch: Fetch, sha: str) -> dict[str, bool]:
     except ReleaseBlockedError:
         # Missing history, rebased main, or unavailable receipts select both;
         # they never exempt qualification or the fresh-main deployment fences.
-        sys.stderr.write(
-            "::warning::No usable main release baseline; selecting both components\n"
-        )
+        sys.stderr.write("::warning::No usable main release baseline; selecting both components\n")
         return {"backend": True, "frontend": True}
 
 
@@ -425,31 +412,22 @@ def fetch_github(endpoint: str) -> JsonObject:
 
 def execute(phase: str, component: str) -> str:
     raw = read_json(sys.stdin.read())
-    require(
-        all(isinstance(value, str) for value in raw.values()), "Invalid release input"
-    )
+    require(all(isinstance(value, str) for value in raw.values()), "Invalid release input")
     environment = {key: str(value) for key, value in raw.items()}
-    sha = validate_context(
-        environment, component, command_output(["git", "rev-parse", "HEAD"])
-    )
+    sha = validate_context(environment, component, command_output(["git", "rev-parse", "HEAD"]))
     match phase:
         case "components":
             require(component == "main", "Routing requires the shared main workflow")
             require_current_main(fetch_github, sha)
             selected = release_components(fetch_github, sha)
             require_current_main(fetch_github, sha)
-            with Path(environment["GITHUB_OUTPUT"]).open(
-                "a", encoding="utf-8"
-            ) as output:
+            with Path(environment["GITHUB_OUTPUT"]).open("a", encoding="utf-8") as output:
                 output.writelines(
-                    f"{name}={str(enabled).lower()}\n"
-                    for name, enabled in selected.items()
+                    f"{name}={str(enabled).lower()}\n" for name, enabled in selected.items()
                 )
         case "standards":
             wait_for_standards(fetch_github, sha)
-            with Path(environment["GITHUB_OUTPUT"]).open(
-                "a", encoding="utf-8"
-            ) as output:
+            with Path(environment["GITHUB_OUTPUT"]).open("a", encoding="utf-8") as output:
                 output.write(f"release_sha={sha}\n")
         case _:
             shared = environment.get("GITHUB_WORKFLOW_REF") == MAIN_RELEASE_REF
