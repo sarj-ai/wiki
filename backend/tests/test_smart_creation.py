@@ -11,7 +11,6 @@ from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.aliases.schemas import DocumentAliasForFile, DocumentAliasRead, DocumentAliasValue
-from app.aliases.service import AliasService
 from app.drive.schemas import MIME_DOC, MIME_FOLDER, DriveNode, DriveTree
 from app.extras.schemas import (
     DocIconRead,
@@ -48,6 +47,7 @@ from app.tasks.schemas import (
 from app.tasks.service import TaskService
 from app.templates.schemas import TemplateCatalogRead, TemplateMimeType, TemplateRead
 from app.templates.service import TemplateCatalogService
+from tests.alias_support import StrictAliasService
 
 
 _DOC_MIME: TemplateMimeType = "application/vnd.google-apps.document"
@@ -141,7 +141,7 @@ class _Files(FilesService):
         raise NotImplementedError
 
 
-class _Aliases(AliasService):
+class _Aliases(StrictAliasService):
     saved: DocumentAliasValue | None = None
 
     def __init__(self, error: Exception | None = None) -> None:

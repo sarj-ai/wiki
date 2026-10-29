@@ -27,14 +27,12 @@ BOOLEAN_SETTINGS = (
     "allow_fork_syncing",
 )
 
-type JsonValue = (
-    bool | int | float | str | list[JsonValue] | dict[str, JsonValue] | None
-)
+type JsonValue = bool | int | float | str | list[JsonValue] | dict[str, JsonValue] | None
 type JsonObject = dict[str, JsonValue]
 
 
 class MissingProtectionError(RuntimeError):
-    """The branch does not have protection configured."""
+    pass
 
 
 @dataclass(frozen=True, slots=True)
@@ -58,9 +56,7 @@ def _api(
     )
     if result.returncode:
         missing_markers = ("Branch not protected",)
-        if result.returncode == 1 and any(
-            marker in result.stderr for marker in missing_markers
-        ):
+        if result.returncode == 1 and any(marker in result.stderr for marker in missing_markers):
             raise MissingProtectionError(endpoint)
         message = result.stderr.strip() or f"gh api exited {result.returncode}"
         raise RuntimeError(message)
@@ -100,9 +96,7 @@ def _normalize_policy(policy: JsonObject) -> JsonObject:
         if not isinstance(policy[name], bool):
             msg = "Protection flags must be explicit booleans"
             raise TypeError(msg)
-    normalized = {
-        key: value for key, value in policy.items() if key != "required_signatures"
-    }
+    normalized = {key: value for key, value in policy.items() if key != "required_signatures"}
     checks = normalized.get("required_status_checks")
     if not isinstance(checks, dict):
         msg = "Policy requires an explicit nonempty app-bound status-check object"
@@ -138,9 +132,7 @@ def _checks(value: JsonValue, *, require_app: bool = False) -> list[JsonValue]:
             or context in contexts
             or set(entry) != {"context", "app_id"}
         ):
-            msg = (
-                "Required check contexts must be unique, nonblank and have exact fields"
-            )
+            msg = "Required check contexts must be unique, nonblank and have exact fields"
             raise ValueError(msg)
         contexts.add(context)
         app_id = entry.get("app_id")
@@ -167,11 +159,9 @@ def check(policy: JsonObject, repository: str, branch: str) -> bool:
         return False
     if remote is None:
         return False
-    return _normalize_remote(remote) == _normalize_policy(
-        policy
-    ) and _signatures_enabled(endpoints.signatures) == bool(
-        policy.get("required_signatures")
-    )
+    return _normalize_remote(remote) == _normalize_policy(policy) and _signatures_enabled(
+        endpoints.signatures
+    ) == bool(policy.get("required_signatures"))
 
 
 def _normalize_remote(remote: JsonObject) -> JsonObject:
@@ -262,9 +252,7 @@ def apply(
         signature_method = "POST" if policy.get("required_signatures") else "DELETE"
         _api(endpoints.signatures, method=signature_method)
     if not check(policy, repository, branch):
-        msg = (
-            "Protection final readback differs; inspect partial changes before retrying"
-        )
+        msg = "Protection final readback differs; inspect partial changes before retrying"
         raise RuntimeError(msg)
     sys.stdout.write(f"applied branch protection to {repository}:{branch}\n")
 
@@ -282,9 +270,7 @@ def _confirmed_state(
     return state
 
 
-def _reject_weakening(
-    state: JsonObject, desired: JsonObject, *, signatures: bool
-) -> None:
+def _reject_weakening(state: JsonObject, desired: JsonObject, *, signatures: bool) -> None:
     current = state["protection"]
     if not isinstance(current, dict):
         msg = "Current protection must be explicit before applying a policy"
@@ -312,17 +298,16 @@ def _reject_weakening(
         raise ValueError(msg)
     old_checks = current.get("required_status_checks")
     new_checks = desired.get("required_status_checks")
-    if isinstance(old_checks, dict) and isinstance(new_checks, dict):
-        if old_checks.get("strict") and not new_checks.get("strict"):
-            msg = "Strict status-check weakening is unavailable in this safety tool"
+    if not isinstance(old_checks, dict) or not isinstance(new_checks, dict):
+        return
+    if old_checks.get("strict") and not new_checks.get("strict"):
+        msg = "Strict status-check weakening is unavailable in this safety tool"
+        raise ValueError(msg)
+    new_ids = _check_ids(new_checks.get("checks"))
+    for context, app_id in _check_ids(old_checks.get("checks")).items():
+        if context not in new_ids or (app_id not in {None, -1} and new_ids[context] != app_id):
+            msg = "Removing checks or changing established app bindings is unavailable"
             raise ValueError(msg)
-        new_ids = _check_ids(new_checks.get("checks"))
-        for context, app_id in _check_ids(old_checks.get("checks")).items():
-            if context not in new_ids or (
-                app_id not in {None, -1} and new_ids[context] != app_id
-            ):
-                msg = "Removing checks or changing established app bindings is unavailable"
-                raise ValueError(msg)
 
 
 def _check_ids(value: JsonValue) -> dict[str, JsonValue]:
@@ -408,8 +393,7 @@ def _run(args: _Arguments) -> int:
     if args.command == "snapshot":
         state = snapshot(args.repository, args.branch)
         sys.stdout.write(
-            json.dumps({"fingerprint": fingerprint(state), "state": state}, indent=2)
-            + "\n"
+            json.dumps({"fingerprint": fingerprint(state), "state": state}, indent=2) + "\n"
         )
         return 0
     decoded: JsonValue = json.loads(args.policy.read_text(encoding="utf-8"))
@@ -419,13 +403,9 @@ def _run(args: _Arguments) -> int:
     match args.command:
         case _Command.CHECK:
             if not check(decoded, args.repository, args.branch):
-                sys.stderr.write(
-                    f"branch protection differs for {args.repository}:{args.branch}\n"
-                )
+                sys.stderr.write(f"branch protection differs for {args.repository}:{args.branch}\n")
                 return 1
-            sys.stdout.write(
-                f"branch protection matches {args.repository}:{args.branch}\n"
-            )
+            sys.stdout.write(f"branch protection matches {args.repository}:{args.branch}\n")
         case _Command.APPLY:
             apply(
                 decoded,

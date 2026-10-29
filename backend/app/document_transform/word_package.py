@@ -86,7 +86,7 @@ PRESERVED_RUN_PROPERTIES = frozenset(
 
 
 class UnsafeWordPackageError(ValueError):
-    """The input cannot be bounded or safely interpreted as an ordinary Word package."""
+    pass
 
 
 @dataclass(frozen=True, slots=True)

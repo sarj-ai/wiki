@@ -19,7 +19,7 @@ class Session:
     def __init__(self, user: User | None) -> None:
         self.user = user
         self.closed = False
-        self.lookups: list[uuid.UUID] = []
+        self.lookups: list[UserId] = []
         self.commits = 0
 
     async def __aenter__(self) -> Self:

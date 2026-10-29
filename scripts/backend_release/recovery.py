@@ -184,7 +184,7 @@ def verify_source(fetch: Fetch, run_id: RunId, run_attempt: int) -> str:
             "Untrusted shared release workflow",
         )
         shared_workflow_id = WorkflowId(positive_id(workflow.get("id")))
-    source_sha = verify_source_run(run, RunId(run_id), run_attempt, shared_workflow_id)
+    source_sha = verify_source_run(run, run_id, run_attempt, shared_workflow_id)
     page = fetch(jobs_endpoint)
     jobs = verified_jobs(page)
     verify_prerequisite_jobs(jobs, source_sha, run_id, run_attempt)
@@ -344,13 +344,17 @@ def _verifier_sha(context: typer.Context) -> str:
 
 
 def _parse_run_id(value: str) -> RunId:
-    return RunId(int(value))
+    try:
+        return RunId(int(value))
+    except ValueError as exc:
+        message = f"{value!r} is not a valid int."
+        raise typer.BadParameter(message) from exc
 
 
 @CLI.command("source")
 def source_command(
     context: typer.Context,
-    run_id: Annotated[RunId, typer.Option(parser=_parse_run_id)],
+    run_id: Annotated[RunId, typer.Option(parser=_parse_run_id, metavar="<int>")],
     run_attempt: Annotated[int, typer.Option()],
     *,
     github_output: Annotated[bool, typer.Option("--github-output")] = False,

@@ -28,4 +28,4 @@ class DrivePermissionsUpstreamError(DrivePermissionsError):
 
 
 class DriveTraversalIncompleteError(Exception):
-    """A bounded Drive listing could not prove that its result was complete."""
+    pass

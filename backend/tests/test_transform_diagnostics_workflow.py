@@ -2,6 +2,8 @@ from copy import deepcopy
 import json
 from pathlib import Path
 import runpy
+import subprocess
+import sys
 from typing import Any
 
 import pytest
@@ -564,6 +566,67 @@ def test_lifecycle_drives_bounded_correlated_lookup(
     assert "SECRET" not in output
 
 
+@pytest.fixture
+def diagnostics_cli(tmp_path: Path) -> Path:
+    script = tmp_path / "read-transform-diagnostics.py"
+    script.write_bytes((ROOT / "scripts/github/read-transform-diagnostics.py").read_bytes())
+    gcloud = tmp_path / "gcloud"
+    gcloud.write_text('#!/bin/sh\n: > "$0.called"\nexit 99\n')
+    gcloud.chmod(0o700)
+    return script
+
+
+@pytest.mark.parametrize(
+    ("arguments", "expected"),
+    [
+        pytest.param(["--validate-only"], 0, id="preauth-validation"),
+        pytest.param(["--help"], 1, id="help-rejected"),
+        pytest.param(["--unexpected=SECRET"], 1, id="unknown-rejected"),
+    ],
+)
+def test_diagnostics_cli_validation_and_argument_errors_do_not_read_logs(
+    diagnostics_cli: Path, arguments: list[str], expected: int
+) -> None:
+    result = subprocess.run(
+        [sys.executable, str(diagnostics_cli), *arguments],
+        env={"QA_TASK_ID": TASK, "PATH": str(diagnostics_cli.parent)},
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert result.returncode == expected
+    assert not result.stdout
+    assert result.stderr == (
+        "" if expected == 0 else "Diagnostic read rejected or unavailable; no raw logs emitted.\n"
+    )
+    assert "SECRET" not in result.stderr
+    assert not (diagnostics_cli.parent / "gcloud.called").exists()
+
+
+@pytest.mark.parametrize(
+    "task_id",
+    [
+        pytest.param("", id="missing"),
+        pytest.param("SECRET", id="untrusted"),
+        pytest.param(TASK.upper(), id="noncanonical"),
+    ],
+)
+def test_diagnostics_cli_rejects_invalid_task_before_authentication_or_log_reads(
+    diagnostics_cli: Path, task_id: str
+) -> None:
+    result = subprocess.run(
+        [sys.executable, str(diagnostics_cli), "--validate-only"],
+        env={"QA_TASK_ID": task_id, "PATH": str(diagnostics_cli.parent)},
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert result.returncode == 1
+    assert not result.stdout
+    assert result.stderr == "Diagnostic read rejected or unavailable; no raw logs emitted.\n"
+    assert not (diagnostics_cli.parent / "gcloud.called").exists()
+
+
 def test_workflow_uses_main_only_existing_wif_and_no_input_shell_interpolation() -> None:
     workflow = yaml.safe_load(
         (ROOT / ".github/workflows/read-transform-diagnostics.yml").read_text()
@@ -573,8 +636,27 @@ def test_workflow_uses_main_only_existing_wif_and_no_input_shell_interpolation()
     assert job["env"] == {"QA_TASK_ID": "${{ inputs.task_id }}"}
     steps = job["steps"]
     assert steps[0]["with"]["persist-credentials"] is False
-    assert steps[1]["run"].endswith("--validate-only")
-    assert steps[2]["with"] == {
+    setup = next(step for step in steps if step.get("uses", "").startswith("astral-sh/setup-uv@"))
+    validate = next(
+        step
+        for step in steps
+        if step.get("name") == "Validate exact task UUID before authentication"
+    )
+    authenticate = next(
+        step for step in steps if step.get("uses", "").startswith("google-github-actions/auth@")
+    )
+    read = next(
+        step for step in steps if step.get("name") == "Read only bounded allowlisted diagnostics"
+    )
+    assert setup["with"]["version"] == "0.13.5"
+    assert validate["run"] == (
+        "uv run --script scripts/github/read-transform-diagnostics.py --validate-only"
+    )
+    assert read["run"] == "uv run --script scripts/github/read-transform-diagnostics.py"
+    assert (
+        steps.index(setup) < steps.index(validate) < steps.index(authenticate) < steps.index(read)
+    )
+    assert authenticate["with"] == {
         "workload_identity_provider": "${{ secrets.WIF_PROVIDER }}",
         "service_account": "${{ secrets.WIF_SERVICE_ACCOUNT }}",
     }

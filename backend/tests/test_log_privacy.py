@@ -9,11 +9,11 @@ from app.aliases.schemas import (
     DocumentAliasValue,
     DocumentAliasWrite,
 )
-from app.aliases.service import AliasService
 from app.identifiers import FileId
+from tests.alias_support import StrictAliasService
 
 
-class _Aliases(AliasService):
+class _Aliases(StrictAliasService):
     async def get_for_file(self, file_id: FileId) -> DocumentAliasForFile:
         raise NotImplementedError
 

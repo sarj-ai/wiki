@@ -6,7 +6,7 @@ import os
 from pathlib import Path
 import sys
 from tempfile import TemporaryDirectory
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Annotated
 
 from sarj_iac_lint.__main__ import main as iac_main
 from sarj_iac_lint.rules import REGISTRY as IAC_RULES
@@ -14,6 +14,7 @@ from sarj_python_lint.__main__ import main as python_main
 from sarj_python_lint.rules import REGISTRY as PYTHON_RULES
 from sarj_sql_lint.__main__ import main as sql_main
 from sarj_sql_lint.rules import REGISTRY as SQL_RULES
+import typer
 
 
 if TYPE_CHECKING:
@@ -21,6 +22,7 @@ if TYPE_CHECKING:
 
 
 _BASELINE = Path(__file__).resolve().parents[1] / "python-standards-baseline.json"
+CLI = typer.Typer(add_completion=False, pretty_exceptions_enable=False)
 _IGNORED_DIRS = frozenset(
     {
         ".git",
@@ -153,10 +155,23 @@ def _source_files(root: Path) -> Iterator[Path]:
                 yield directory / name
 
 
+@CLI.command()
+def _check_command(
+    paths: Annotated[list[str] | None, typer.Argument()] = None,
+    *,
+    update_baseline: Annotated[bool, typer.Option("--update-python-baseline")] = False,
+    verify_baseline: Annotated[bool, typer.Option("--verify-python-baseline")] = False,
+) -> None:
+    if update_baseline and verify_baseline:
+        message = "Choose one Python baseline operation."
+        raise typer.BadParameter(message)
+    arguments = paths or ["."]
+    if update_baseline:
+        raise SystemExit(update_python_baseline(arguments))
+    if verify_baseline:
+        raise SystemExit(verify_python_baseline(arguments))
+    raise SystemExit(main(arguments))
+
+
 if __name__ == "__main__":
-    arguments = sys.argv[1:]
-    if arguments[:1] == ["--update-python-baseline"]:
-        raise SystemExit(update_python_baseline(arguments[1:] or ["."]))
-    if arguments[:1] == ["--verify-python-baseline"]:
-        raise SystemExit(verify_python_baseline(arguments[1:] or ["."]))
-    raise SystemExit(main(arguments or ["."]))
+    CLI()

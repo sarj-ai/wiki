@@ -61,7 +61,7 @@ class _Files:
         accessible: bool = True,
         editable: bool = True,
         mime_type: str = "application/vnd.google-apps.document",
-        inaccessible_ids: set[str] | None = None,
+        inaccessible_ids: set[FileId] | None = None,
     ) -> None:
         self.accessible = accessible
         self.editable = editable
@@ -385,7 +385,7 @@ async def test_recent_bulk_resolves_once_and_omits_inaccessible_items() -> None:
     inaccessible_alias = DocumentAlias(
         alias="people-org-chart", file_id="file-2", created_by=_user().id
     )
-    files = _Files(inaccessible_ids={"file-2"})
+    files = _Files(inaccessible_ids={FileId("file-2")})
 
     result = await _service(
         _Session(recent_rows=[accessible_alias, inaccessible_alias]), files

@@ -15,7 +15,7 @@ from app.identifiers import DriveId, FileId
 
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
+    from collections.abc import Awaitable, Callable
 
 
 class DispatchRead(BaseModel):
@@ -23,22 +23,23 @@ class DispatchRead(BaseModel):
 
 
 class DispatchRouter:
-    @staticmethod
-    def build() -> APIRouter:
+    def __init__(
+        self,
+        sync_factory: Callable[[], str],
+        async_factory: Callable[[], Awaitable[str]],
+    ) -> None:
+        self._sync_factory = sync_factory
+        self._async_factory = async_factory
+
+    def build(self) -> APIRouter:
         router = APIRouter()
 
-        def sync_factory() -> str:
-            return "ready"
-
-        async def async_factory() -> str:
-            return await asyncio.sleep(0, result="ready")
-
         @router.get("/sync", response_model=DispatchRead, status_code=200)
-        async def sync_route(value: Annotated[str, Depends(sync_factory)]) -> DispatchRead:
+        async def sync_route(value: Annotated[str, Depends(self._sync_factory)]) -> DispatchRead:
             return DispatchRead(value=value)
 
         @router.get("/async", response_model=DispatchRead, status_code=200)
-        async def async_route(value: Annotated[str, Depends(async_factory)]) -> DispatchRead:
+        async def async_route(value: Annotated[str, Depends(self._async_factory)]) -> DispatchRead:
             return DispatchRead(value=value)
 
         return router
@@ -92,7 +93,14 @@ def _tree() -> DriveTree:
 
 async def _dispatch() -> dict[str, float]:
     app = FastAPI()
-    app.include_router(DispatchRouter.build())
+
+    def sync_factory() -> str:
+        return "ready"
+
+    async def async_factory() -> str:
+        return await asyncio.sleep(0, result="ready")
+
+    app.include_router(DispatchRouter(sync_factory, async_factory).build())
 
     result: dict[str, float] = {}
     async with httpx.AsyncClient(

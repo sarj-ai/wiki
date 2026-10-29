@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from collections.abc import AsyncIterator, Iterator
 from datetime import UTC, datetime
+from typing import TYPE_CHECKING
 import uuid
 
 from httpx import ASGITransport, AsyncClient
@@ -24,6 +25,12 @@ from app.sidebar.dependencies import sidebar_cache_service_dep
 from tests.test_files_service import _FakeDriveService, _user
 
 
+if TYPE_CHECKING:
+    from sqlalchemy.ext.asyncio import AsyncSession
+
+    from app.extras.schemas import DocIconWrite
+
+
 MEMBER_DRIVE = DriveId("member-drive")
 OTHER_DRIVE = DriveId("someone-elses-drive")
 ACCESSIBLE_DOC = FileId("accessible-doc")
@@ -34,27 +41,29 @@ class _FakeCache(SidebarCacheService):
     full_tree_reads = 0
     metadata_reads = 0
 
-    async def get_drive_tree(self, db: object, drive_id: DriveId) -> CachedDriveTree:
+    async def get_drive_tree(self, db: AsyncSession, drive_id: DriveId) -> CachedDriveTree:
         type(self).full_tree_reads += 1
         return CachedDriveTree(
             tree=_tree(drive_id),
             refreshed_at=datetime(2026, 8, 20, tzinfo=UTC),
         )
 
-    async def peek_drive_tree(self, db: object, drive_id: DriveId) -> CachedDriveTree | None:
+    async def peek_drive_tree(self, db: AsyncSession, drive_id: DriveId) -> CachedDriveTree | None:
         return None
 
-    async def get_drive_tree_refreshed_at(self, db: object, drive_id: DriveId) -> datetime | None:
+    async def get_drive_tree_refreshed_at(
+        self, db: AsyncSession, drive_id: DriveId
+    ) -> datetime | None:
         type(self).metadata_reads += 1
         return datetime(2026, 8, 20, tzinfo=UTC)
 
     async def get_folder_children(self, folder_id: str) -> list:
         return []
 
-    async def invalidate_drive(self, db: object, drive_id: DriveId) -> None:
+    async def invalidate_drive(self, db: AsyncSession, drive_id: DriveId) -> None:
         return None
 
-    async def refresh_drive(self, db: object, drive_id: DriveId) -> DriveTree:
+    async def refresh_drive(self, db: AsyncSession, drive_id: DriveId) -> DriveTree:
         return _tree(drive_id)
 
 
@@ -69,7 +78,7 @@ class _FakeExtras:
             ),
         ]
 
-    async def upsert_doc_icon(self, drive_id: FileId, payload: object) -> DocIconRead:
+    async def upsert_doc_icon(self, drive_id: FileId, payload: DocIconWrite) -> DocIconRead:
         return DocIconRead(drive_id=FileId(drive_id), icon="📄", cover_url=None)
 
 

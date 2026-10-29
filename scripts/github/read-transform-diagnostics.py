@@ -1,4 +1,9 @@
-from __future__ import annotations  # ruff: ignore[implicit-namespace-package] -- standalone repository CLI, not an import package.
+# /// script
+# requires-python = "==3.14.8"
+# dependencies = ["typer==0.27.3"]
+# ///
+
+from __future__ import annotations
 
 from datetime import datetime
 import json
@@ -7,7 +12,10 @@ import re
 import subprocess  # ruff: ignore[suspicious-subprocess-import] -- fixed read-only gcloud CLI without shell
 import sys
 from types import MappingProxyType
+from typing import Annotated
 import uuid
+
+import typer
 
 
 MAX_COUNT = 1_000_000
@@ -23,6 +31,7 @@ BULLET_SNAPSHOT_FIELDS = frozenset(
     for state in ("true", "false", "missing", "malformed")
 )
 MAX_PROVIDER_ORDINAL = 200
+CLI = typer.Typer(add_completion=False, add_help_option=False, pretty_exceptions_enable=False)
 PROVIDER_FIELDS = MappingProxyType(
     {
         "header_recovery_reason": frozenset(
@@ -174,6 +183,7 @@ PROVIDER_FIELDS = MappingProxyType(
     }
 )
 READ_FAILURES = (ValueError, TypeError, KeyError, OSError, subprocess.TimeoutExpired)
+_FAILURE_MESSAGE = "Diagnostic read rejected or unavailable; no raw logs emitted.\n"
 BOOLEAN_FIELDS = frozenset(
     [
         "header_recovery_paragraph_mapping",
@@ -558,16 +568,14 @@ def read_records(clause: str, limit: int) -> object:
     return json.loads(result.stdout)
 
 
-def run_read() -> int:
-    task_id = validate_task_id(os.environ.get("QA_TASK_ID", ""))  # ruff: ignore[banned-api] -- stdlib-only pre-auth CLI validation, no application settings dependencies
-    if sys.argv[1:] == ["--validate-only"]:
+def run_read(*, validate_only: bool = False) -> int:
+    task_id = validate_task_id(os.environ.get("QA_TASK_ID", ""))  # ruff: ignore[banned-api] -- pre-auth validation reads only the task ID, not application settings
+    if validate_only:
         return 0
-    if sys.argv[1:]:
-        raise ValueError
     records = read_records(f'jsonPayload.record.extra.task_id="{task_id}"', MAX_ROWS)
     rows = sanitize(records, task_id)
     request_ids = frozenset(
-        row["request_id"] for row in rows if isinstance(row.get("request_id"), str)
+        request_id for row in rows if isinstance(request_id := row.get("request_id"), str)
     )
     if len(request_ids) > MAX_ATTEMPTS or not isinstance(records, list):
         raise ValueError
@@ -575,26 +583,39 @@ def run_read() -> int:
     if request_ids and remaining > 0:
         clause = " OR ".join(
             f'jsonPayload.record.extra.request_id="{request_id}"'
-            for request_id in sorted(request_ids)  # pyright: ignore[reportArgumentType] -- the comprehension admits request_id values only after its str guard.
+            for request_id in sorted(request_ids)
         )
         correlated = read_records(clause, remaining)
         if not isinstance(correlated, list) or len(correlated) > remaining:
             raise ValueError
-        rows.extend(sanitize(correlated, task_id, request_ids))  # pyright: ignore[reportArgumentType] -- every collected request_id passed the str guard above.
+        rows.extend(sanitize(correlated, task_id, request_ids))
     sys.stdout.write(
         json.dumps({"records": rows, "returned_count": len(rows)}, sort_keys=True) + "\n"
     )
     return 0
 
 
-def main() -> int:
+def main(*, validate_only: bool = False) -> int:
     try:
-        return run_read()
+        return run_read(validate_only=validate_only)
     except READ_FAILURES:
         # Never echo subprocess output, exceptions, input or log messages.
-        sys.stderr.write("Diagnostic read rejected or unavailable; no raw logs emitted.\n")
+        sys.stderr.write(_FAILURE_MESSAGE)
         return 1
 
 
+@CLI.command(add_help_option=False)
+def _read_command(*, validate_only: Annotated[bool, typer.Option()] = False) -> None:
+    raise SystemExit(main(validate_only=validate_only))
+
+
+def cli() -> None:
+    try:
+        CLI(standalone_mode=False)
+    except typer.TyperException:
+        sys.stderr.write(_FAILURE_MESSAGE)
+        raise SystemExit(1) from None
+
+
 if __name__ == "__main__":
-    raise SystemExit(main())
+    cli()

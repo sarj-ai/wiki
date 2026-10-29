@@ -43,7 +43,7 @@ from app.document_transform.google_presentation_gateway import (
     GooglePresentationGateway,
 )
 from app.document_transform.header_provenance import HeaderIdentityEvidence, HeaderIdentityProof
-from app.document_transform.models import DocumentTransformRunner, PatchGenerator
+from app.document_transform.models import PatchGenerator
 from app.document_transform.naming import polish_alias_candidates
 from app.document_transform.presentation_executor import PresentationTransformExecutor
 from app.document_transform.qa_broker import (
@@ -52,6 +52,7 @@ from app.document_transform.qa_broker import (
     read_owner_only_file_permission_proof,
 )
 from app.document_transform.qa_grants import QaGrantError
+from app.document_transform.runner import DocumentTransformRunner as DocumentTransformRunner
 from app.document_transform.schemas import (
     DocumentTransformCheckpoint,
     DocumentTransformRequest,

@@ -5,6 +5,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { Sidebar, SidebarProvider, SidebarTrigger } from "./sidebar";
 
 const viewport = vi.hoisted(() => ({ mobile: true }));
+const COOKIE_WRITE = vi.fn().mockResolvedValue(undefined);
 vi.mock("@/hooks/use-is-mobile", () => ({ useIsMobile: () => viewport.mobile }));
 
 describe("responsive sidebar ownership", () => {
@@ -13,8 +14,9 @@ describe("responsive sidebar ownership", () => {
 
   beforeEach(() => {
     viewport.mobile = true;
+    COOKIE_WRITE.mockClear();
     vi.useFakeTimers();
-    vi.stubGlobal("cookieStore", { set: vi.fn().mockResolvedValue(undefined) });
+    vi.stubGlobal("cookieStore", { set: COOKIE_WRITE });
     host = document.createElement("div");
     document.body.append(host);
     root = createRoot(host);
@@ -28,10 +30,11 @@ describe("responsive sidebar ownership", () => {
     vi.useRealTimers();
   });
 
-  function mount() {
+  function mount(persistState?: boolean) {
+    const persistence = persistState === undefined ? {} : { persistState };
     flushSync(() =>
       root.render(
-        <SidebarProvider>
+        <SidebarProvider {...persistence}>
           <Sidebar>
             <Link href="/">Recent pages</Link>
           </Sidebar>
@@ -78,5 +81,34 @@ describe("responsive sidebar ownership", () => {
     expect(trigger()).toHaveAttribute("aria-expanded", "false");
     flushSync(() => trigger().click());
     expect(document.querySelector('[role="dialog"]')).not.toBeNull();
+  });
+
+  it("keeps normal desktop sidebar preference persistence enabled by default", () => {
+    viewport.mobile = false;
+    mount();
+    flushSync(() => trigger().click());
+    expect(COOKIE_WRITE).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({
+        name: "sidebar_state",
+        path: "/",
+        value: "false",
+      }),
+    );
+  });
+
+  it("preserves existing preferences when an isolated sidebar is toggled or its shortcut is used", () => {
+    viewport.mobile = false;
+    mount(false);
+    flushSync(() => trigger().click());
+    expect(trigger()).toHaveAttribute("aria-expanded", "false");
+    flushSync(() =>
+      window.dispatchEvent(new KeyboardEvent("keydown", { ctrlKey: true, key: "b" })),
+    );
+    expect(trigger()).toHaveAttribute("aria-expanded", "true");
+    flushSync(() =>
+      window.dispatchEvent(new KeyboardEvent("keydown", { key: "b", metaKey: true })),
+    );
+    expect(trigger()).toHaveAttribute("aria-expanded", "false");
+    expect(COOKIE_WRITE).not.toHaveBeenCalled();
   });
 });

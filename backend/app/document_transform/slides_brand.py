@@ -1285,37 +1285,58 @@ def _logo_requests(
     placements: dict[SlideId, _Rect] = {}
     findings: list[TransformFinding] = []
     object_ids = _object_id_occurrences(presentation)
+    plan = _LogoPlan(requests, placements, findings)
     for slide in slides:
-        background = _effective_page_background(presentation, slide)
-        if background is None or _contrast_ratio("#000000", background) < _MIN_TEXT_CONTRAST:
-            removal = _unsafe_contrast_logo_plan(
-                slide,
-                logo_uri=logo_uri,
-                layout=layout,
-                object_ids=object_ids,
-            )
-            requests.extend(removal.requests)
-            findings.extend(removal.findings)
-            continue
-        try:
-            inherited_elements = _inherited_page_elements(presentation, slide)
-        except UnsupportedSourceError:
-            findings.append(_unsafe_geometry_finding(SlideId(_required_string(slide, "objectId"))))
-            continue
-        request, placement, finding = _logo_request_for_slide(
+        _append_slide_logo_plan(
+            plan,
+            presentation,
             slide,
             logo_uri=logo_uri,
             layout=layout,
             object_ids=object_ids,
-            inherited_elements=inherited_elements,
         )
-        if finding is not None:
-            findings.append(finding)
-        if placement is not None:
-            placements[SlideId(_required_string(slide, "objectId"))] = placement
-        if request is not None:
-            requests.append(request)
-    return _LogoPlan(requests, placements, findings)
+    return plan
+
+
+def _append_slide_logo_plan(
+    plan: _LogoPlan,
+    presentation: dict[str, JsonValue],
+    slide: dict[str, JsonValue],
+    *,
+    logo_uri: str,
+    layout: _LogoLayout,
+    object_ids: dict[str, tuple[dict[str, JsonValue], ...]],
+) -> None:
+    requests, placements, findings = plan
+    background = _effective_page_background(presentation, slide)
+    if background is None or _contrast_ratio("#000000", background) < _MIN_TEXT_CONTRAST:
+        removal = _unsafe_contrast_logo_plan(
+            slide,
+            logo_uri=logo_uri,
+            layout=layout,
+            object_ids=object_ids,
+        )
+        requests.extend(removal.requests)
+        findings.extend(removal.findings)
+        return
+    try:
+        inherited_elements = _inherited_page_elements(presentation, slide)
+    except UnsupportedSourceError:
+        findings.append(_unsafe_geometry_finding(SlideId(_required_string(slide, "objectId"))))
+        return
+    request, placement, finding = _logo_request_for_slide(
+        slide,
+        logo_uri=logo_uri,
+        layout=layout,
+        object_ids=object_ids,
+        inherited_elements=inherited_elements,
+    )
+    if finding is not None:
+        findings.append(finding)
+    if placement is not None:
+        placements[SlideId(_required_string(slide, "objectId"))] = placement
+    if request is not None:
+        requests.append(request)
 
 
 def _unsafe_contrast_logo_plan(

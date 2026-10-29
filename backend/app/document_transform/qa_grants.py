@@ -38,7 +38,7 @@ _QA_LAUNCH_ADVISORY_LOCK = 0x51414C41554E4348
 
 
 class QaGrantError(Exception):
-    """A QA grant or capability is invalid, expired, revoked, or mismatched."""
+    pass
 
 
 @dataclass(frozen=True, slots=True)

@@ -108,8 +108,8 @@ async def test_shortcut_work_is_principal_scoped_and_ordinary_rows_need_no_inven
     assert transport.batch_sizes == []
 
 
-def search_row(index: int, drive_id: DriveId | None = SHARED.id) -> dict[str, object]:
-    row: dict[str, object] = {"id": f"hit-{index}", "name": f"Hit {index} 絵", "mimeType": MIME_DOC}
+def search_row(index: int, drive_id: DriveId | None = SHARED.id) -> dict[str, str]:
+    row: dict[str, str] = {"id": f"hit-{index}", "name": f"Hit {index} 絵", "mimeType": MIME_DOC}
     if drive_id is not None:
         row["driveId"] = drive_id
     return row

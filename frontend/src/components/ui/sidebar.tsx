@@ -63,12 +63,14 @@ function SidebarProvider({
   defaultOpen = true,
   onOpenChange: setOpenProp,
   open: openProp,
+  persistState = true,
   style,
   ...props
 }: React.ComponentProps<"div"> & {
   defaultOpen?: boolean;
   open?: boolean;
   onOpenChange?: (open: boolean) => void;
+  persistState?: boolean;
 }) {
   const isMobile = useIsMobile();
   const [mobileDrawer, setMobileDrawer] = React.useState({ isMobile, open: false });
@@ -91,14 +93,16 @@ function SidebarProvider({
         _setOpen(openState);
       }
 
-      void cookieStore.set({
-        expires: Date.now() + SIDEBAR_COOKIE_MAX_AGE * 1_000,
-        name: SIDEBAR_COOKIE_NAME,
-        path: "/",
-        value: String(openState),
-      });
+      if (persistState) {
+        void cookieStore.set({
+          expires: Date.now() + SIDEBAR_COOKIE_MAX_AGE * 1_000,
+          name: SIDEBAR_COOKIE_NAME,
+          path: "/",
+          value: String(openState),
+        });
+      }
     },
-    [setOpenProp, open],
+    [setOpenProp, open, persistState],
   );
 
   const toggleSidebar = React.useCallback(() => {

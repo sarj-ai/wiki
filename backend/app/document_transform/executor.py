@@ -64,7 +64,7 @@ from app.document_transform.ir import (
     parse_markdown,
     rewrite_markdown,
 )
-from app.document_transform.models import DocumentTransformRunner, PatchGenerator
+from app.document_transform.models import PatchGenerator
 from app.document_transform.naming import (
     polished_document_name,
     suggested_document_title,
@@ -110,6 +110,7 @@ from app.document_transform.native_visual_authority import (
     visual_authority_block_ids,
 )
 from app.document_transform.planner import TextTransformPlanner, TransformOutcome
+from app.document_transform.runner import DocumentTransformRunner
 from app.document_transform.schemas import (
     CopyCheckpoint,
     CopyCheckpointStage,

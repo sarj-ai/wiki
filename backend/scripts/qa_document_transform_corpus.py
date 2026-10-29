@@ -33,6 +33,7 @@ from sqlalchemy import select
 import typer
 
 from app.auth.google_tokens import GoogleTokenManager
+from app.cache.dependencies import cache_service_dep
 from app.config import settings
 from app.database import async_session
 from app.document_transform.brand_manifest import CURRENT_BRAND_MANIFEST
@@ -78,9 +79,12 @@ from app.tasks.schemas import (
 
 
 if TYPE_CHECKING:
-    from collections.abc import Iterable
+    from collections.abc import Awaitable, Callable, Iterable
 
     from googleapiclient._apis.drive.v3.resources import DriveResource
+    from sqlalchemy.ext.asyncio import AsyncSession
+
+    from app.cache.service import CacheService
 
 _API_BASE_URL = PRODUCTION_WIKI_API_ORIGIN
 _ACCESS_TOKEN_ENV = "WIKI_QA_ACCESS_TOKEN"
@@ -354,7 +358,7 @@ class JudgeResponse(_StrictModel):
 
 
 class QaError(RuntimeError):
-    """A deterministic QA invariant failed."""
+    pass
 
 
 @dataclass(slots=True)
@@ -485,19 +489,36 @@ def _report(arguments: _Arguments) -> None:
     )
 
 
-async def _run(arguments: _Arguments) -> EvidenceManifest:
+class _QaHttpClientFactory(Protocol):
+    def __call__(self, *, timeout: float) -> httpx.AsyncClient: ...
+
+
+async def _qa_user_by_email(db: AsyncSession, user_email: str) -> User | None:
+    return await db.scalar(select(User).where(User.email == user_email))
+
+
+async def _run(
+    arguments: _Arguments,
+    *,
+    cache_factory: Callable[[], Awaitable[CacheService]] = cache_service_dep,
+    token_manager_factory: Callable[
+        [AsyncSession, httpx.AsyncClient], GoogleTokenManager
+    ] = GoogleTokenManager,
+    user_reader: Callable[[AsyncSession, str], Awaitable[User | None]] = _qa_user_by_email,
+    http_client_factory: _QaHttpClientFactory = httpx.AsyncClient,
+) -> EvidenceManifest:
     _validate_arguments(arguments)
     paths = _resolve_run_paths(arguments)
     mode = arguments.mode
     cohort: QaCohort = "canary" if arguments.canary else "corpus"
-    async with async_session() as db, httpx.AsyncClient(timeout=30) as http:
+    async with async_session() as db, http_client_factory(timeout=30) as http:
         environment = QaSecrets()
         access_token = _qa_access_token(environment)
-        user = await db.scalar(select(User).where(User.email == arguments.user_email))
+        user = await user_reader(db, arguments.user_email)
         if user is None:
             _fail("QA user is not present in the configured database")
-        prepared = await GoogleTokenManager(db, http).prepare(user)
-        drive = await prepare_qa_drive(prepared)
+        prepared = await token_manager_factory(db, http).prepare(user)
+        drive = await prepare_qa_drive(prepared, cache_factory=cache_factory)
         files = GoogleFilesService(user=prepared.user, drive=drive)
         drive_client = GoogleDriveService.build_drive_client(
             prepared.user,
@@ -1016,7 +1037,9 @@ async def _select_sources(
                 expected_release_sha=expected_release_sha,
                 seed=seed,
                 destination_folder_id=destination_folder_id,
-                source_drive_id=root.drive_id,
+                source_drive_id=(
+                    None if (source_drive_id := root.drive_id) is None else DriveId(source_drive_id)
+                ),
                 mode=mode,
                 user_email=user_email,
                 cohort=cohort,
@@ -1149,7 +1172,9 @@ def _list_folder_doc_metadata(
         children = _list_folder_children(
             drive_client,
             folder_id,
-            shared_drive_id=root.drive_id,
+            shared_drive_id=(
+                None if (shared_drive_id := root.drive_id) is None else DriveId(shared_drive_id)
+            ),
             budget=budget,
         )
         for child in children:

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
-from typing import override
+from typing import TYPE_CHECKING, override
 import uuid
 
 from app.document_transform.errors import (
@@ -12,11 +12,10 @@ from app.document_transform.errors import (
     UnsupportedSourceError,
 )
 from app.document_transform.executor import DocumentTransformCheckpointStore
-from app.document_transform.models import DocumentTransformRunner
 from app.document_transform.naming import title_case_document_name
+from app.document_transform.runner import DocumentTransformRunner
 from app.document_transform.schemas import (
     CopyCheckpointStage,
-    DocumentOutput,
     DocumentTransformCheckpoint,
     DocumentTransformRequest,
     DocumentTransformResult,
@@ -28,14 +27,19 @@ from app.document_transform.schemas import (
     WordCopyCheckpoint,
 )
 from app.document_transform.versions import WORD_PIPELINE_VERSION
-from app.document_transform.word_gateway import WORD_MIME, WordGateway, WordSource
+from app.document_transform.word_gateway import WORD_MIME, WordGateway
 from app.document_transform.word_package import (
     TARGET_FONT,
     UnsafeWordPackageError,
-    WordFormatResult,
     format_word_package,
 )
 from app.identifiers import TaskId
+
+
+if TYPE_CHECKING:
+    from app.document_transform.schemas import DocumentOutput
+    from app.document_transform.word_gateway import WordSource
+    from app.document_transform.word_package import WordFormatResult
 
 
 _MAX_OUTPUT_STEM = 250
@@ -76,9 +80,9 @@ class WordTransformExecutor(DocumentTransformRunner):
             formatted = format_word_package(source.content)
         except UnsafeWordPackageError as error:
             raise UnsupportedSourceError from error
-        checkpoint = await self._prepare_checkpoint(request, source, formatted)
-        checkpoint, recovered = await self._resolve_output(
-            operation_id, source=source, formatted=formatted, checkpoint=checkpoint
+        checkpoint = await self._checkpoint_for_request(request, source, formatted)
+        checkpoint, recovered = await self._recover_or_create(
+            operation_id, checkpoint, source, formatted
         )
         await self._gateway.verify_word(
             recovered, expected=formatted.content, operation_id=operation_id, source=source
@@ -99,7 +103,7 @@ class WordTransformExecutor(DocumentTransformRunner):
         )
         return result
 
-    async def _prepare_checkpoint(
+    async def _checkpoint_for_request(
         self,
         request: DocumentTransformRequest,
         source: WordSource,
@@ -146,13 +150,12 @@ class WordTransformExecutor(DocumentTransformRunner):
             raise OutputConflictError
         return checkpoint
 
-    async def _resolve_output(
+    async def _recover_or_create(
         self,
         operation_id: uuid.UUID,
-        *,
+        checkpoint: WordCopyCheckpoint,
         source: WordSource,
         formatted: WordFormatResult,
-        checkpoint: WordCopyCheckpoint,
     ) -> tuple[WordCopyCheckpoint, DocumentOutput]:
         recovered = await self._gateway.recover_word(
             operation_id,

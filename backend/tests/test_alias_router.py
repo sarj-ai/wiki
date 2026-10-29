@@ -19,14 +19,14 @@ from app.aliases.schemas import (
     DocumentAliasValue,
     RecentDocumentAlias,
 )
-from app.aliases.service import AliasService
 from app.auth.dependencies import get_current_user
 from app.identifiers import FileId
 from app.main import app
+from tests.alias_support import StrictAliasService
 from tests.test_files_service import _user
 
 
-class _Aliases(AliasService):
+class _Aliases(StrictAliasService):
     def __init__(self) -> None:
         self.current: str | None = "eng-onboarding"
 

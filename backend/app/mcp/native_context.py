@@ -43,7 +43,7 @@ def native_context_factory(
         if verified.subject != str(claims.user_id):
             raise McpAuthorizationError
         principal = ValidatedMcpPrincipal(
-            user_id=claims.user_id,
+            user_id=UserId(claims.user_id),
             user_session_revision=claims.user_session_revision,
             capabilities=frozenset(McpCapability(scope) for scope in verified.scopes),
         )

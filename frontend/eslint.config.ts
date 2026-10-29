@@ -5,12 +5,12 @@ import nextVitals from "eslint-config-next/core-web-vitals";
 import nextTs from "eslint-config-next/typescript";
 import prettier from "eslint-config-prettier/flat";
 import importX from "eslint-plugin-import-x";
-import sonarjs from "eslint-plugin-sonarjs";
 import testingLibrary from "eslint-plugin-testing-library";
 import unicorn from "eslint-plugin-unicorn";
 import tseslint from "typescript-eslint";
 
 import sarjStrict from "./eslint.strict.mjs";
+import wikiOwned from "./scripts/eslint-owned/index.ts";
 
 const { dirname: tsconfigRootDir } = import.meta;
 const { "flat/react": testingLibraryReact } = testingLibrary.configs;
@@ -125,18 +125,18 @@ export default defineConfig([
       ],
     },
   },
-  // Exclude heuristic complexity and duplication thresholds while retaining correctness rules.
+  // Keep the eight independently tested Wiki correctness rules explicit.
   {
-    plugins: { sonarjs },
+    plugins: { "wiki-owned": wikiOwned },
     rules: {
-      "sonarjs/no-all-duplicated-branches": "error",
-      "sonarjs/no-collapsible-if": "error",
-      "sonarjs/no-element-overwrite": "error",
-      "sonarjs/no-identical-expressions": "error",
-      "sonarjs/no-identical-functions": "error",
-      "sonarjs/no-redundant-jump": "error",
-      "sonarjs/no-use-of-empty-return-value": "error",
-      "sonarjs/prefer-immediate-return": "error",
+      "wiki-owned/no-all-duplicated-branches": "error",
+      "wiki-owned/no-collapsible-if": "error",
+      "wiki-owned/no-element-overwrite": "error",
+      "wiki-owned/no-identical-expressions": "error",
+      "wiki-owned/no-identical-functions": "error",
+      "wiki-owned/no-redundant-jump": "error",
+      "wiki-owned/no-use-of-empty-return-value": "error",
+      "wiki-owned/prefer-immediate-return": "error",
     },
   },
   {

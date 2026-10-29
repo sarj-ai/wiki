@@ -38,7 +38,7 @@ _FILE_METADATA_BATCH_SIZE = 100
 
 
 class QaCorpusPlanError(Exception):
-    """The configured source folder could not produce one complete stable plan."""
+    pass
 
 
 class UnsupportedCorpusReason(StrEnum):
