@@ -27,7 +27,7 @@ function failure(status: number, code?: ActionErrorCode): Response {
   const sourceChanged = status === 409 && code === "document_transform_source_changed";
   return Response.json(
     {
-      ...(sourceChanged ? { code } : {}),
+      ...(sourceChanged && { code }),
       error: sourceChanged
         ? SOURCE_CHANGED_MESSAGE
         : "Document transform request could not be completed",

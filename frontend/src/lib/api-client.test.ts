@@ -123,7 +123,8 @@ describe("error mapping", () => {
       expect(body.locked).toBe(true);
     });
     const request = fetchMock.mock.calls[0]?.[0];
-    if (!(request instanceof Request)) throw new Error("Expected the generated mutation request");
+    if (!(request instanceof Request))
+      throw new TypeError("Expected the generated mutation request");
     retireBrowserSession(owner);
     expect(request.signal.aborted).toBe(false);
     await expect(pending).resolves.toMatchObject({ name: "AbortError" });
@@ -254,7 +255,8 @@ describe("401 refresh-and-replay", () => {
         expect(fetchMock).toHaveBeenCalledOnce();
       });
       const request = fetchMock.mock.calls[0]?.[0];
-      if (!(request instanceof Request)) throw new Error("Expected the generated mutation request");
+      if (!(request instanceof Request))
+        throw new TypeError("Expected the generated mutation request");
       retireBrowserSession(previous);
       claimBrowserSession(replacement);
       expect(request.signal.aborted).toBe(false);
@@ -280,7 +282,7 @@ describe("401 refresh-and-replay", () => {
       expect(fetchMock).toHaveBeenCalledOnce();
     });
     const request = fetchMock.mock.calls[0]?.[0];
-    if (!(request instanceof Request)) throw new Error("Expected the generated read request");
+    if (!(request instanceof Request)) throw new TypeError("Expected the generated read request");
     retireBrowserSession(owner);
     expect(request.signal.aborted).toBe(true);
     response.resolve(jsonResponse({ detail: "old session expired" }, 401));
@@ -304,7 +306,7 @@ describe("401 refresh-and-replay", () => {
     });
     const mutationRequest = fetchMock.mock.calls[0]?.[0];
     if (!(mutationRequest instanceof Request))
-      throw new Error("Expected the generated mutation request");
+      throw new TypeError("Expected the generated mutation request");
     retireBrowserSession(owner);
     expect(mutationRequest.signal.aborted).toBe(false);
     expect(fetchMock.mock.calls[1]?.[1]?.signal?.aborted).toBe(true);
@@ -356,7 +358,8 @@ describe("401 refresh-and-replay", () => {
         expect(fetchMock).toHaveBeenCalledTimes(3);
       });
       const request = fetchMock.mock.calls[2]?.[0];
-      if (!(request instanceof Request)) throw new Error("Expected the replay mutation request");
+      if (!(request instanceof Request))
+        throw new TypeError("Expected the replay mutation request");
       retireBrowserSession(owner);
       claimBrowserSession(replacement);
       expect(request.signal.aborted).toBe(false);

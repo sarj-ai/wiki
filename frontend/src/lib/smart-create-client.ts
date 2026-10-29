@@ -94,7 +94,7 @@ const SmartCreateApi = {
     );
     return result.templates.map((template) => ({
       categoryPath: template.category_path,
-      ...(template.description === null ? {} : { description: template.description }),
+      ...(!(template.description === null) && { description: template.description }),
       driveId: template.drive_id,
       driveName: template.drive_name,
       fileId: template.file_id,
@@ -171,7 +171,7 @@ function parseTask(task: z.infer<typeof TaskSchema>): SmartCreateTask {
     case "failed":
       return {
         errorCode: task.error_code,
-        ...(task.error_detail === null ? {} : { errorDetail: task.error_detail }),
+        ...(!(task.error_detail === null) && { errorDetail: task.error_detail }),
         id: task.id,
         status: "failed",
       };

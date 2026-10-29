@@ -94,13 +94,13 @@ async function runSmartOperation(
   }
   return {
     data: response.body,
-    ...(response.idempotencyReplayed === undefined
-      ? {}
-      : { replayed: response.idempotencyReplayed }),
+    ...(!(response.idempotencyReplayed === undefined) && {
+      replayed: response.idempotencyReplayed,
+    }),
     ok: true,
   };
 }
 
 function failure(status: number, error: string, code?: ActionErrorCode): ActionResult<never> {
-  return { ...(code === undefined ? {} : { code }), error, ok: false, status };
+  return { ...(!(code === undefined) && { code }), error, ok: false, status };
 }

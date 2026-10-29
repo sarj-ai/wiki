@@ -120,6 +120,6 @@ function button(text: string): HTMLButtonElement {
   const result = [...document.querySelectorAll("button")].find(
     (element) => element.textContent === text,
   );
-  if (!(result instanceof HTMLButtonElement)) throw new Error(`Missing ${text}`);
+  if (!(result instanceof HTMLButtonElement)) throw new TypeError(`Missing ${text}`);
   return result;
 }

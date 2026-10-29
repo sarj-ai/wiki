@@ -102,7 +102,7 @@ describe("file action menu preparation", () => {
     openMenu();
     await vi.waitFor(() => expect(document.querySelector('[role="menu"]')).not.toBeNull());
     const content = document.querySelector('[role="menu"]');
-    if (!(content instanceof HTMLElement)) throw new Error("Menu content missing");
+    if (!(content instanceof HTMLElement)) throw new TypeError("Menu content missing");
     flushSync(() => {
       content.dispatchEvent(new KeyboardEvent("keydown", { bubbles: true, key: "Escape" }));
     });

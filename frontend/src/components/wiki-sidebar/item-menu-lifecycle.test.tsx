@@ -42,7 +42,7 @@ const FILE: FileDetail = {
 
 function submitRename() {
   const input = document.querySelector("input");
-  if (!(input instanceof HTMLInputElement)) throw new Error("Name input missing");
+  if (!(input instanceof HTMLInputElement)) throw new TypeError("Name input missing");
   const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set?.bind(
     input,
   );
@@ -106,7 +106,7 @@ describe("used item-action body lifetime", () => {
   async function openRename() {
     renderMenu();
     const trigger = host.querySelector("button");
-    if (!(trigger instanceof HTMLButtonElement)) throw new Error("Menu trigger missing");
+    if (!(trigger instanceof HTMLButtonElement)) throw new TypeError("Menu trigger missing");
     flushSync(() => {
       trigger.dispatchEvent(new KeyboardEvent("keydown", { bubbles: true, key: "Enter" }));
     });
@@ -114,7 +114,7 @@ describe("used item-action body lifetime", () => {
     const action = [...document.querySelectorAll('[role="menuitem"]')].find(
       (item) => item.textContent === "Rename",
     );
-    if (!(action instanceof HTMLElement)) throw new Error("Rename action missing");
+    if (!(action instanceof HTMLElement)) throw new TypeError("Rename action missing");
     flushSync(() => action.click());
     await vi.waitFor(() => expect(document.querySelector('[role="dialog"]')).not.toBeNull());
   }
@@ -124,7 +124,7 @@ describe("used item-action body lifetime", () => {
     async (label) => {
       renderMenu();
       const trigger = host.querySelector("button");
-      if (!(trigger instanceof HTMLButtonElement)) throw new Error("Menu trigger missing");
+      if (!(trigger instanceof HTMLButtonElement)) throw new TypeError("Menu trigger missing");
       flushSync(() => {
         trigger.focus();
         trigger.dispatchEvent(new KeyboardEvent("keydown", { bubbles: true, key: "Enter" }));
@@ -133,7 +133,7 @@ describe("used item-action body lifetime", () => {
       const action = [...document.querySelectorAll('[role="menuitem"]')].find(
         (item) => item.textContent === label,
       );
-      if (!(action instanceof HTMLElement)) throw new Error("Action missing");
+      if (!(action instanceof HTMLElement)) throw new TypeError("Action missing");
       flushSync(() => action.click());
       await vi.waitFor(() =>
         expect(document.querySelector('[role="dialog"], [role="alertdialog"]')).not.toBeNull(),
@@ -142,7 +142,7 @@ describe("used item-action body lifetime", () => {
       const cancel = [...document.querySelectorAll("button")].find(
         (button) => button.textContent === "Cancel",
       );
-      if (!(cancel instanceof HTMLButtonElement)) throw new Error("Cancel missing");
+      if (!(cancel instanceof HTMLButtonElement)) throw new TypeError("Cancel missing");
       flushSync(() => cancel.click());
       await vi.advanceTimersByTimeAsync(250);
       expect(document.querySelector('[role="dialog"], [role="alertdialog"]')).toBeNull();
@@ -176,7 +176,7 @@ describe("used item-action body lifetime", () => {
     submitRename();
     await vi.advanceTimersByTimeAsync(0);
     const dialog = document.querySelector('[role="dialog"]');
-    if (!(dialog instanceof HTMLElement)) throw new Error("Name dialog missing");
+    if (!(dialog instanceof HTMLElement)) throw new TypeError("Name dialog missing");
     flushSync(() => {
       dialog.dispatchEvent(new KeyboardEvent("keydown", { bubbles: true, key: "Escape" }));
     });
