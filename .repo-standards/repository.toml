@@ -1,0 +1,8 @@
+enabled_rules = ["repository/artifacts/makefile-growth", "repository/artifacts/untyped-javascript", "repository/artifacts/local-residue"]
+repository_id = "wiki"
+components = []
+
+[[javascript.artifacts]]
+path = "frontend/eslint.strict.mjs"
+kind = "tool-config"
+reason = "Managed Code Standards preset loaded directly by the checked TypeScript ESLint configuration; its JavaScript entrypoint preserves the published loader contract."

@@ -1,0 +1,5744 @@
+{
+  "components": {
+    "schemas": {
+      "AIMode": {
+        "additionalProperties": false,
+        "properties": {
+          "description": {
+            "maxLength": 2000,
+            "minLength": 3,
+            "title": "Description",
+            "type": "string"
+          },
+          "file_type": {
+            "enum": [
+              "document",
+              "presentation"
+            ],
+            "title": "File Type",
+            "type": "string"
+          },
+          "invoking_drive_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Invoking Drive Id"
+          },
+          "invoking_folder_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Invoking Folder Id"
+          },
+          "kind": {
+            "const": "ai",
+            "title": "Kind",
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "description",
+          "file_type"
+        ],
+        "title": "AIMode",
+        "type": "object"
+      },
+      "BlankSource": {
+        "additionalProperties": false,
+        "properties": {
+          "file_type": {
+            "enum": [
+              "document",
+              "presentation"
+            ],
+            "title": "File Type",
+            "type": "string"
+          },
+          "kind": {
+            "const": "blank",
+            "title": "Kind",
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "file_type"
+        ],
+        "title": "BlankSource",
+        "type": "object"
+      },
+      "BootstrapRead": {
+        "properties": {
+          "doc_icons": {
+            "items": {
+              "$ref": "#/components/schemas/DocIconRead"
+            },
+            "title": "Doc Icons",
+            "type": "array"
+          },
+          "drives": {
+            "items": {
+              "$ref": "#/components/schemas/DriveSummary"
+            },
+            "title": "Drives",
+            "type": "array"
+          },
+          "first_drive_tree": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/DriveTree"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "folder_icons": {
+            "items": {
+              "$ref": "#/components/schemas/FolderIconRead"
+            },
+            "title": "Folder Icons",
+            "type": "array"
+          },
+          "me": {
+            "$ref": "#/components/schemas/UserProfile"
+          },
+          "preferences": {
+            "$ref": "#/components/schemas/PreferencesRead"
+          },
+          "sort_orders": {
+            "items": {
+              "$ref": "#/components/schemas/SortOrderRead"
+            },
+            "title": "Sort Orders",
+            "type": "array"
+          }
+        },
+        "required": [
+          "drives",
+          "preferences",
+          "folder_icons",
+          "doc_icons",
+          "sort_orders",
+          "first_drive_tree",
+          "me"
+        ],
+        "title": "BootstrapRead",
+        "type": "object"
+      },
+      "BreadcrumbItem": {
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name"
+        ],
+        "title": "BreadcrumbItem",
+        "type": "object"
+      },
+      "CancelledTaskRead": {
+        "properties": {
+          "attempt_count": {
+            "const": 0,
+            "title": "Attempt Count",
+            "type": "integer"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "error_code": {
+            "title": "Error Code",
+            "type": "null"
+          },
+          "error_detail": {
+            "title": "Error Detail",
+            "type": "null"
+          },
+          "finished_at": {
+            "format": "date-time",
+            "title": "Finished At",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/TaskKind"
+          },
+          "resource_id": {
+            "title": "Resource Id",
+            "type": "null"
+          },
+          "result": {
+            "title": "Result",
+            "type": "null"
+          },
+          "started_at": {
+            "title": "Started At",
+            "type": "null"
+          },
+          "status": {
+            "const": "cancelled",
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "kind",
+          "created_at",
+          "status",
+          "result",
+          "resource_id",
+          "error_code",
+          "error_detail",
+          "attempt_count",
+          "started_at",
+          "finished_at"
+        ],
+        "title": "CancelledTaskRead",
+        "type": "object"
+      },
+      "CurrentDocumentPolish": {
+        "additionalProperties": false,
+        "properties": {
+          "result": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/DocumentTransformResult"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "result"
+        ],
+        "title": "CurrentDocumentPolish",
+        "type": "object"
+      },
+      "DocIconRead": {
+        "properties": {
+          "cover_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cover Url"
+          },
+          "drive_id": {
+            "title": "Drive Id",
+            "type": "string"
+          },
+          "icon": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Icon"
+          }
+        },
+        "required": [
+          "drive_id",
+          "icon",
+          "cover_url"
+        ],
+        "title": "DocIconRead",
+        "type": "object"
+      },
+      "DocIconWrite": {
+        "properties": {
+          "cover_url": {
+            "anyOf": [
+              {
+                "format": "uri",
+                "maxLength": 2083,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cover Url"
+          },
+          "icon": {
+            "anyOf": [
+              {
+                "maxLength": 8,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Icon"
+          }
+        },
+        "title": "DocIconWrite",
+        "type": "object"
+      },
+      "DocumentAliasForFile": {
+        "properties": {
+          "alias": {
+            "anyOf": [
+              {
+                "maxLength": 32,
+                "minLength": 5,
+                "pattern": "^[a-z]{2,12}(?:-[a-z]{2,12}){1,2}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Alias"
+          }
+        },
+        "required": [
+          "alias"
+        ],
+        "title": "DocumentAliasForFile",
+        "type": "object"
+      },
+      "DocumentAliasRead": {
+        "properties": {
+          "alias": {
+            "maxLength": 32,
+            "minLength": 5,
+            "pattern": "^[a-z]{2,12}(?:-[a-z]{2,12}){1,2}$",
+            "title": "Alias",
+            "type": "string"
+          },
+          "file_id": {
+            "title": "File Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "alias",
+          "file_id"
+        ],
+        "title": "DocumentAliasRead",
+        "type": "object"
+      },
+      "DocumentAliasWrite": {
+        "properties": {
+          "alias": {
+            "maxLength": 32,
+            "minLength": 5,
+            "pattern": "^[a-z]{2,12}(?:-[a-z]{2,12}){1,2}$",
+            "title": "Alias",
+            "type": "string"
+          }
+        },
+        "required": [
+          "alias"
+        ],
+        "title": "DocumentAliasWrite",
+        "type": "object"
+      },
+      "DocumentOutput": {
+        "additionalProperties": false,
+        "properties": {
+          "file_id": {
+            "title": "File Id",
+            "type": "string"
+          },
+          "media_type": {
+            "default": "application/vnd.google-apps.document",
+            "title": "Media Type",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "parent_folder_id": {
+            "title": "Parent Folder Id",
+            "type": "string"
+          },
+          "web_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Web Url"
+          }
+        },
+        "required": [
+          "file_id",
+          "name",
+          "parent_folder_id"
+        ],
+        "title": "DocumentOutput",
+        "type": "object"
+      },
+      "DocumentTransformAdmission": {
+        "additionalProperties": false,
+        "properties": {
+          "status": {
+            "$ref": "#/components/schemas/TaskStatus"
+          },
+          "task_id": {
+            "format": "uuid",
+            "title": "Task Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "task_id",
+          "status"
+        ],
+        "title": "DocumentTransformAdmission",
+        "type": "object"
+      },
+      "DocumentTransformCapabilities": {
+        "additionalProperties": false,
+        "properties": {
+          "copy": {
+            "const": true,
+            "default": true,
+            "title": "Copy",
+            "type": "boolean"
+          },
+          "in_place": {
+            "title": "In Place",
+            "type": "boolean"
+          },
+          "presentation_copy": {
+            "const": true,
+            "default": true,
+            "title": "Presentation Copy",
+            "type": "boolean"
+          },
+          "presentation_in_place": {
+            "const": false,
+            "default": false,
+            "title": "Presentation In Place",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "in_place"
+        ],
+        "title": "DocumentTransformCapabilities",
+        "type": "object"
+      },
+      "DocumentTransformRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "copy_destination_folder_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Optional destination for a Drive file copy.",
+            "title": "Copy Destination Folder Id"
+          },
+          "mode": {
+            "$ref": "#/components/schemas/TransformMode",
+            "description": "format applies document styling; unslop conservatively edits prose; both runs both."
+          },
+          "output_name": {
+            "anyOf": [
+              {
+                "maxLength": 255,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Optional name for a Drive file copy; Markdown uses source.name.",
+            "title": "Output Name"
+          },
+          "output_strategy": {
+            "$ref": "#/components/schemas/OutputStrategy",
+            "default": "copy",
+            "description": "copy creates a sibling; in_place is available only for eligible native Google Docs."
+          },
+          "source": {
+            "description": "Inline Markdown, a signed GCS upload reference, or a Drive file.",
+            "discriminator": {
+              "mapping": {
+                "drive_file": "#/components/schemas/DriveFileSource",
+                "markdown": "#/components/schemas/MarkdownSource",
+                "uploaded_markdown": "#/components/schemas/MarkdownSource"
+              },
+              "propertyName": "kind"
+            },
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/DriveFileSource"
+              },
+              {
+                "$ref": "#/components/schemas/MarkdownSource"
+              }
+            ],
+            "title": "Source"
+          }
+        },
+        "required": [
+          "source",
+          "mode"
+        ],
+        "title": "DocumentTransformRequest",
+        "type": "object"
+      },
+      "DocumentTransformResult": {
+        "additionalProperties": false,
+        "properties": {
+          "access_scope": {
+            "default": "inherited",
+            "enum": [
+              "inherited",
+              "owner_only"
+            ],
+            "title": "Access Scope",
+            "type": "string"
+          },
+          "applied_patch_count": {
+            "minimum": 0.0,
+            "title": "Applied Patch Count",
+            "type": "integer"
+          },
+          "artifact_kind": {
+            "default": "document",
+            "enum": [
+              "document",
+              "presentation"
+            ],
+            "title": "Artifact Kind",
+            "type": "string"
+          },
+          "brand_profile_id": {
+            "default": "sarj-2026-v4",
+            "title": "Brand Profile Id",
+            "type": "string"
+          },
+          "brand_profile_sha256": {
+            "default": "bbc319b0152be2a645099c0d88516ebf13b375bdadb5b443ef7037da027dcb22",
+            "title": "Brand Profile Sha256",
+            "type": "string"
+          },
+          "changed": {
+            "default": true,
+            "title": "Changed",
+            "type": "boolean"
+          },
+          "deterministic_patch_count": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Deterministic Patch Count",
+            "type": "integer"
+          },
+          "findings": {
+            "items": {
+              "$ref": "#/components/schemas/TransformFinding"
+            },
+            "title": "Findings",
+            "type": "array"
+          },
+          "header_identity": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/HeaderIdentityEvidence"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "llm_invoked": {
+            "default": false,
+            "title": "Llm Invoked",
+            "type": "boolean"
+          },
+          "mode": {
+            "$ref": "#/components/schemas/TransformMode"
+          },
+          "model_ids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Model Ids",
+            "type": "array"
+          },
+          "model_patch_count": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Model Patch Count",
+            "type": "integer"
+          },
+          "needs_review": {
+            "title": "Needs Review",
+            "type": "boolean"
+          },
+          "operation_id": {
+            "format": "uuid",
+            "title": "Operation Id",
+            "type": "string"
+          },
+          "output": {
+            "$ref": "#/components/schemas/DocumentOutput"
+          },
+          "output_revision_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Output Revision Id"
+          },
+          "output_strategy": {
+            "$ref": "#/components/schemas/OutputStrategy",
+            "default": "copy"
+          },
+          "pipeline_version": {
+            "title": "Pipeline Version",
+            "type": "string"
+          },
+          "promoted_heading_count": {
+            "default": 0,
+            "maximum": 20.0,
+            "minimum": 0.0,
+            "title": "Promoted Heading Count",
+            "type": "integer"
+          },
+          "short_link_alias": {
+            "anyOf": [
+              {
+                "maxLength": 32,
+                "minLength": 5,
+                "pattern": "^[a-z]{2,12}(?:-[a-z]{2,12}){1,2}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Short Link Alias"
+          },
+          "short_link_status": {
+            "anyOf": [
+              {
+                "enum": [
+                  "ready",
+                  "unavailable"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Short Link Status"
+          },
+          "source_revision_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Revision Id"
+          },
+          "source_sha256": {
+            "title": "Source Sha256",
+            "type": "string"
+          },
+          "tool_versions": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "title": "Tool Versions",
+            "type": "object"
+          },
+          "validation": {
+            "$ref": "#/components/schemas/ValidationSummary"
+          }
+        },
+        "required": [
+          "operation_id",
+          "source_sha256",
+          "output",
+          "mode",
+          "applied_patch_count",
+          "findings",
+          "validation",
+          "model_ids",
+          "tool_versions",
+          "pipeline_version",
+          "needs_review"
+        ],
+        "title": "DocumentTransformResult",
+        "type": "object"
+      },
+      "DriveFileSource": {
+        "additionalProperties": false,
+        "properties": {
+          "expected_modified_time": {
+            "description": "Drive modifiedTime read before submission; rejects stale requests.",
+            "title": "Expected Modified Time",
+            "type": "string"
+          },
+          "file_id": {
+            "description": "ID of the Drive file to transform.",
+            "title": "File Id",
+            "type": "string"
+          },
+          "kind": {
+            "const": "drive_file",
+            "title": "Kind",
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "file_id",
+          "expected_modified_time"
+        ],
+        "title": "DriveFileSource",
+        "type": "object"
+      },
+      "DriveNode": {
+        "properties": {
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "mime_type": {
+            "title": "Mime Type",
+            "type": "string"
+          },
+          "modified_time": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Modified Time"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "parent_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Parent Id"
+          },
+          "shortcut_inaccessible": {
+            "default": false,
+            "title": "Shortcut Inaccessible",
+            "type": "boolean"
+          },
+          "shortcut_target_drive_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Shortcut Target Drive Id"
+          },
+          "shortcut_target_drive_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Shortcut Target Drive Name"
+          },
+          "shortcut_target_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Shortcut Target Id"
+          },
+          "shortcut_target_mime_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Shortcut Target Mime Type"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "mime_type",
+          "parent_id",
+          "modified_time"
+        ],
+        "title": "DriveNode",
+        "type": "object"
+      },
+      "DrivePermission": {
+        "properties": {
+          "allow_file_discovery": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Allow File Discovery"
+          },
+          "deleted": {
+            "default": false,
+            "title": "Deleted",
+            "type": "boolean"
+          },
+          "display_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Display Name"
+          },
+          "domain": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Domain"
+          },
+          "email_address": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Email Address"
+          },
+          "expiration_time": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expiration Time"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "inherited": {
+            "default": false,
+            "title": "Inherited",
+            "type": "boolean"
+          },
+          "pending_owner": {
+            "default": false,
+            "title": "Pending Owner",
+            "type": "boolean"
+          },
+          "permission_details": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/DrivePermissionDetail"
+            },
+            "title": "Permission Details",
+            "type": "array"
+          },
+          "principal_type": {
+            "title": "Principal Type",
+            "type": "string"
+          },
+          "role": {
+            "title": "Role",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "principal_type",
+          "role"
+        ],
+        "title": "DrivePermission",
+        "type": "object"
+      },
+      "DrivePermissionDetail": {
+        "properties": {
+          "inherited": {
+            "title": "Inherited",
+            "type": "boolean"
+          },
+          "permission_type": {
+            "title": "Permission Type",
+            "type": "string"
+          },
+          "role": {
+            "title": "Role",
+            "type": "string"
+          }
+        },
+        "required": [
+          "permission_type",
+          "role",
+          "inherited"
+        ],
+        "title": "DrivePermissionDetail",
+        "type": "object"
+      },
+      "DrivePermissionsPage": {
+        "properties": {
+          "access_model": {
+            "title": "Access Model",
+            "type": "string"
+          },
+          "drive_id": {
+            "title": "Drive Id",
+            "type": "string"
+          },
+          "next_page_token": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Page Token"
+          },
+          "permissions": {
+            "items": {
+              "$ref": "#/components/schemas/DrivePermission"
+            },
+            "title": "Permissions",
+            "type": "array"
+          }
+        },
+        "required": [
+          "drive_id",
+          "access_model",
+          "permissions"
+        ],
+        "title": "DrivePermissionsPage",
+        "type": "object"
+      },
+      "DriveSummary": {
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "is_personal": {
+            "default": false,
+            "title": "Is Personal",
+            "type": "boolean"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name"
+        ],
+        "title": "DriveSummary",
+        "type": "object"
+      },
+      "DriveTree": {
+        "properties": {
+          "drive_id": {
+            "title": "Drive Id",
+            "type": "string"
+          },
+          "files": {
+            "items": {
+              "$ref": "#/components/schemas/DriveNode"
+            },
+            "title": "Files",
+            "type": "array"
+          },
+          "files_complete": {
+            "title": "Files Complete",
+            "type": "boolean"
+          },
+          "folders": {
+            "items": {
+              "$ref": "#/components/schemas/DriveNode"
+            },
+            "title": "Folders",
+            "type": "array"
+          }
+        },
+        "required": [
+          "drive_id",
+          "folders",
+          "files",
+          "files_complete"
+        ],
+        "title": "DriveTree",
+        "type": "object"
+      },
+      "ErrorResponse": {
+        "properties": {
+          "detail": {
+            "title": "Detail",
+            "type": "string"
+          }
+        },
+        "required": [
+          "detail"
+        ],
+        "title": "ErrorResponse",
+        "type": "object"
+      },
+      "FailedTaskRead": {
+        "properties": {
+          "attempt_count": {
+            "exclusiveMinimum": 0.0,
+            "title": "Attempt Count",
+            "type": "integer"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "error_code": {
+            "title": "Error Code",
+            "type": "string"
+          },
+          "error_detail": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Detail"
+          },
+          "finished_at": {
+            "format": "date-time",
+            "title": "Finished At",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/TaskKind"
+          },
+          "resource_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Resource Id"
+          },
+          "result": {
+            "title": "Result",
+            "type": "null"
+          },
+          "started_at": {
+            "format": "date-time",
+            "title": "Started At",
+            "type": "string"
+          },
+          "status": {
+            "const": "failed",
+            "title": "Status",
+            "type": "string"
+          },
+          "unverified_output": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/UnverifiedTaskOutput"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "kind",
+          "created_at",
+          "status",
+          "result",
+          "resource_id",
+          "error_code",
+          "error_detail",
+          "attempt_count",
+          "started_at",
+          "finished_at"
+        ],
+        "title": "FailedTaskRead",
+        "type": "object"
+      },
+      "FileCopy": {
+        "properties": {
+          "name": {
+            "maxLength": 255,
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "title": "FileCopy",
+        "type": "object"
+      },
+      "FileCreate": {
+        "properties": {
+          "mime_type": {
+            "title": "Mime Type",
+            "type": "string"
+          },
+          "name": {
+            "maxLength": 255,
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          },
+          "parent_folder_id": {
+            "title": "Parent Folder Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "parent_folder_id",
+          "name",
+          "mime_type"
+        ],
+        "title": "FileCreate",
+        "type": "object"
+      },
+      "FileDetail": {
+        "properties": {
+          "breadcrumb": {
+            "items": {
+              "$ref": "#/components/schemas/BreadcrumbItem"
+            },
+            "title": "Breadcrumb",
+            "type": "array"
+          },
+          "can_add_children": {
+            "default": false,
+            "title": "Can Add Children",
+            "type": "boolean"
+          },
+          "can_edit": {
+            "default": false,
+            "title": "Can Edit",
+            "type": "boolean"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "drive_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Drive Id"
+          },
+          "drive_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Drive Name"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "mime_type": {
+            "title": "Mime Type",
+            "type": "string"
+          },
+          "modified_time": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Modified Time"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "parent_folder_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Parent Folder Id"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "mime_type",
+          "parent_folder_id",
+          "drive_id",
+          "modified_time",
+          "drive_name",
+          "breadcrumb"
+        ],
+        "title": "FileDetail",
+        "type": "object"
+      },
+      "FileMove": {
+        "properties": {
+          "new_parent_folder_id": {
+            "title": "New Parent Folder Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "new_parent_folder_id"
+        ],
+        "title": "FileMove",
+        "type": "object"
+      },
+      "FileRename": {
+        "properties": {
+          "name": {
+            "maxLength": 255,
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "title": "FileRename",
+        "type": "object"
+      },
+      "FileResponse": {
+        "properties": {
+          "can_add_children": {
+            "default": false,
+            "title": "Can Add Children",
+            "type": "boolean"
+          },
+          "can_edit": {
+            "default": false,
+            "title": "Can Edit",
+            "type": "boolean"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "drive_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Drive Id"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "mime_type": {
+            "title": "Mime Type",
+            "type": "string"
+          },
+          "modified_time": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Modified Time"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "parent_folder_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Parent Folder Id"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "mime_type",
+          "parent_folder_id",
+          "drive_id",
+          "modified_time"
+        ],
+        "title": "FileResponse",
+        "type": "object"
+      },
+      "FindingSeverity": {
+        "enum": [
+          "informational",
+          "review"
+        ],
+        "title": "FindingSeverity",
+        "type": "string"
+      },
+      "FolderIconRead": {
+        "properties": {
+          "folder_drive_id": {
+            "title": "Folder Drive Id",
+            "type": "string"
+          },
+          "icon": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Icon"
+          }
+        },
+        "required": [
+          "folder_drive_id",
+          "icon"
+        ],
+        "title": "FolderIconRead",
+        "type": "object"
+      },
+      "FolderIconWrite": {
+        "properties": {
+          "icon": {
+            "anyOf": [
+              {
+                "maxLength": 8,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Icon"
+          }
+        },
+        "title": "FolderIconWrite",
+        "type": "object"
+      },
+      "HTTPValidationError": {
+        "properties": {
+          "detail": {
+            "items": {
+              "$ref": "#/components/schemas/ValidationError"
+            },
+            "title": "Detail",
+            "type": "array"
+          }
+        },
+        "title": "HTTPValidationError",
+        "type": "object"
+      },
+      "HeaderIdentityEvidence": {
+        "additionalProperties": false,
+        "properties": {
+          "file_id": {
+            "title": "File Id",
+            "type": "string"
+          },
+          "headers": {
+            "items": {
+              "$ref": "#/components/schemas/ManagedHeaderIdentity"
+            },
+            "maxItems": 50,
+            "minItems": 1,
+            "title": "Headers",
+            "type": "array"
+          },
+          "operation_id": {
+            "format": "uuid",
+            "title": "Operation Id",
+            "type": "string"
+          },
+          "profile_sha256": {
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Profile Sha256",
+            "type": "string"
+          },
+          "tab_ids": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 50,
+            "minItems": 1,
+            "title": "Tab Ids",
+            "type": "array"
+          },
+          "title_sha256": {
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Title Sha256",
+            "type": "string"
+          },
+          "version": {
+            "default": 1,
+            "enum": [
+              1,
+              2
+            ],
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "operation_id",
+          "file_id",
+          "profile_sha256",
+          "title_sha256",
+          "tab_ids",
+          "headers"
+        ],
+        "title": "HeaderIdentityEvidence",
+        "type": "object"
+      },
+      "ManagedHeaderIdentity": {
+        "additionalProperties": false,
+        "properties": {
+          "fingerprint_sha256": {
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Fingerprint Sha256",
+            "type": "string"
+          },
+          "header_id": {
+            "title": "Header Id",
+            "type": "string"
+          },
+          "tab_id": {
+            "title": "Tab Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "tab_id",
+          "header_id",
+          "fingerprint_sha256"
+        ],
+        "title": "ManagedHeaderIdentity",
+        "type": "object"
+      },
+      "MarkdownSource": {
+        "additionalProperties": false,
+        "properties": {
+          "content": {
+            "default": "",
+            "description": "Inline UTF-8 Markdown, up to 512 KiB; omitted for uploads.",
+            "maxLength": 524288,
+            "title": "Content",
+            "type": "string"
+          },
+          "destination_folder_id": {
+            "description": "Writable Google Drive folder in which to create the document.",
+            "title": "Destination Folder Id",
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "markdown",
+              "uploaded_markdown"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "name": {
+            "description": "Title of the new Google Doc.",
+            "maxLength": 255,
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          },
+          "upload_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "ID returned by POST /document-transforms/uploads.",
+            "title": "Upload Id"
+          }
+        },
+        "required": [
+          "kind",
+          "name",
+          "destination_folder_id"
+        ],
+        "title": "MarkdownSource",
+        "type": "object"
+      },
+      "MarkdownUpload": {
+        "additionalProperties": false,
+        "properties": {
+          "expires_in_seconds": {
+            "title": "Expires In Seconds",
+            "type": "integer"
+          },
+          "headers": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "title": "Headers",
+            "type": "object"
+          },
+          "method": {
+            "const": "PUT",
+            "default": "PUT",
+            "title": "Method",
+            "type": "string"
+          },
+          "upload_id": {
+            "format": "uuid",
+            "title": "Upload Id",
+            "type": "string"
+          },
+          "url": {
+            "title": "Url",
+            "type": "string"
+          }
+        },
+        "required": [
+          "upload_id",
+          "url",
+          "headers",
+          "expires_in_seconds"
+        ],
+        "title": "MarkdownUpload",
+        "type": "object"
+      },
+      "OutputStrategy": {
+        "enum": [
+          "copy",
+          "in_place"
+        ],
+        "title": "OutputStrategy",
+        "type": "string"
+      },
+      "PendingTaskRead": {
+        "properties": {
+          "attempt_count": {
+            "const": 0,
+            "title": "Attempt Count",
+            "type": "integer"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "error_code": {
+            "title": "Error Code",
+            "type": "null"
+          },
+          "error_detail": {
+            "title": "Error Detail",
+            "type": "null"
+          },
+          "finished_at": {
+            "title": "Finished At",
+            "type": "null"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/TaskKind"
+          },
+          "resource_id": {
+            "title": "Resource Id",
+            "type": "null"
+          },
+          "result": {
+            "title": "Result",
+            "type": "null"
+          },
+          "started_at": {
+            "title": "Started At",
+            "type": "null"
+          },
+          "status": {
+            "const": "pending",
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "kind",
+          "created_at",
+          "status",
+          "result",
+          "resource_id",
+          "error_code",
+          "error_detail",
+          "attempt_count",
+          "started_at",
+          "finished_at"
+        ],
+        "title": "PendingTaskRead",
+        "type": "object"
+      },
+      "PreferencesRead": {
+        "properties": {
+          "hidden_workspace_ids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Hidden Workspace Ids",
+            "type": "array"
+          },
+          "show_non_doc_files": {
+            "title": "Show Non Doc Files",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "show_non_doc_files",
+          "hidden_workspace_ids"
+        ],
+        "title": "PreferencesRead",
+        "type": "object"
+      },
+      "PreferencesWrite": {
+        "properties": {
+          "hidden_workspace_ids": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 500,
+            "title": "Hidden Workspace Ids",
+            "type": "array"
+          },
+          "show_non_doc_files": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Show Non Doc Files"
+          }
+        },
+        "title": "PreferencesWrite",
+        "type": "object"
+      },
+      "ProposalDestination": {
+        "additionalProperties": false,
+        "properties": {
+          "drive_id": {
+            "title": "Drive Id",
+            "type": "string"
+          },
+          "drive_name": {
+            "title": "Drive Name",
+            "type": "string"
+          },
+          "folder_id": {
+            "title": "Folder Id",
+            "type": "string"
+          },
+          "folder_path": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Folder Path",
+            "type": "array"
+          }
+        },
+        "required": [
+          "folder_id",
+          "drive_id",
+          "drive_name",
+          "folder_path"
+        ],
+        "title": "ProposalDestination",
+        "type": "object"
+      },
+      "QaGrantBinding": {
+        "additionalProperties": false,
+        "properties": {
+          "destination_folder_id": {
+            "maxLength": 255,
+            "minLength": 1,
+            "title": "Destination Folder Id",
+            "type": "string"
+          },
+          "image_digest": {
+            "pattern": "^sha256:[0-9a-f]{64}$",
+            "title": "Image Digest",
+            "type": "string"
+          },
+          "mode": {
+            "$ref": "#/components/schemas/TransformMode"
+          },
+          "release_sha": {
+            "pattern": "^[0-9a-f]{40}$",
+            "title": "Release Sha",
+            "type": "string"
+          },
+          "source_folder_id": {
+            "maxLength": 255,
+            "minLength": 1,
+            "title": "Source Folder Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "release_sha",
+          "image_digest",
+          "source_folder_id",
+          "destination_folder_id",
+          "mode"
+        ],
+        "title": "QaGrantBinding",
+        "type": "object"
+      },
+      "QaGrantIssueResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "expires_at": {
+            "format": "date-time",
+            "title": "Expires At",
+            "type": "string"
+          },
+          "grant_id": {
+            "title": "Grant Id",
+            "type": "string"
+          },
+          "grant_token": {
+            "title": "Grant Token",
+            "type": "string"
+          }
+        },
+        "required": [
+          "grant_id",
+          "grant_token",
+          "expires_at"
+        ],
+        "title": "QaGrantIssueResponse",
+        "type": "object"
+      },
+      "QaLaunchResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "execution_name": {
+            "title": "Execution Name",
+            "type": "string"
+          },
+          "run_id": {
+            "format": "uuid",
+            "title": "Run Id",
+            "type": "string"
+          },
+          "status": {
+            "const": "execution_bound",
+            "default": "execution_bound",
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "run_id",
+          "execution_name"
+        ],
+        "title": "QaLaunchResponse",
+        "type": "object"
+      },
+      "RecentDocumentAlias": {
+        "properties": {
+          "alias": {
+            "maxLength": 32,
+            "minLength": 5,
+            "pattern": "^[a-z]{2,12}(?:-[a-z]{2,12}){1,2}$",
+            "title": "Alias",
+            "type": "string"
+          },
+          "drive_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Drive Name"
+          },
+          "file_id": {
+            "title": "File Id",
+            "type": "string"
+          },
+          "mime_type": {
+            "title": "Mime Type",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "alias",
+          "file_id",
+          "name",
+          "mime_type",
+          "drive_name"
+        ],
+        "title": "RecentDocumentAlias",
+        "type": "object"
+      },
+      "RecentDocumentAliasesRequest": {
+        "properties": {
+          "aliases": {
+            "items": {
+              "maxLength": 32,
+              "minLength": 5,
+              "pattern": "^[a-z]{2,12}(?:-[a-z]{2,12}){1,2}$",
+              "type": "string"
+            },
+            "maxItems": 50,
+            "title": "Aliases",
+            "type": "array"
+          }
+        },
+        "required": [
+          "aliases"
+        ],
+        "title": "RecentDocumentAliasesRequest",
+        "type": "object"
+      },
+      "RecentFile": {
+        "properties": {
+          "drive_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Drive Name"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "mime_type": {
+            "title": "Mime Type",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "mime_type",
+          "drive_name"
+        ],
+        "title": "RecentFile",
+        "type": "object"
+      },
+      "RecentFilesResponse": {
+        "properties": {
+          "pages": {
+            "items": {
+              "$ref": "#/components/schemas/RecentFile"
+            },
+            "maxItems": 5,
+            "title": "Pages",
+            "type": "array"
+          }
+        },
+        "required": [
+          "pages"
+        ],
+        "title": "RecentFilesResponse",
+        "type": "object"
+      },
+      "ReorganizationProposalRead": {
+        "additionalProperties": false,
+        "properties": {
+          "current_destination": {
+            "$ref": "#/components/schemas/ProposalDestination"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          },
+          "suggested_destination": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ProposalDestination"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "current_destination",
+          "suggested_destination",
+          "reason"
+        ],
+        "title": "ReorganizationProposalRead",
+        "type": "object"
+      },
+      "RunningTaskRead": {
+        "properties": {
+          "attempt_count": {
+            "exclusiveMinimum": 0.0,
+            "title": "Attempt Count",
+            "type": "integer"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "error_code": {
+            "title": "Error Code",
+            "type": "null"
+          },
+          "error_detail": {
+            "title": "Error Detail",
+            "type": "null"
+          },
+          "finished_at": {
+            "title": "Finished At",
+            "type": "null"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/TaskKind"
+          },
+          "resource_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Resource Id"
+          },
+          "result": {
+            "title": "Result",
+            "type": "null"
+          },
+          "started_at": {
+            "format": "date-time",
+            "title": "Started At",
+            "type": "string"
+          },
+          "status": {
+            "const": "running",
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "kind",
+          "created_at",
+          "status",
+          "result",
+          "resource_id",
+          "error_code",
+          "error_detail",
+          "attempt_count",
+          "started_at",
+          "finished_at"
+        ],
+        "title": "RunningTaskRead",
+        "type": "object"
+      },
+      "SearchResult": {
+        "properties": {
+          "drive_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Drive Id"
+          },
+          "drive_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Drive Name"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "mime_type": {
+            "title": "Mime Type",
+            "type": "string"
+          },
+          "modified_time": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Modified Time"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "parent_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Parent Id"
+          },
+          "shortcut_inaccessible": {
+            "default": false,
+            "title": "Shortcut Inaccessible",
+            "type": "boolean"
+          },
+          "shortcut_target_drive_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Shortcut Target Drive Name"
+          },
+          "shortcut_target_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Shortcut Target Id"
+          },
+          "shortcut_target_mime_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Shortcut Target Mime Type"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "mime_type",
+          "drive_id",
+          "drive_name",
+          "parent_id",
+          "modified_time"
+        ],
+        "title": "SearchResult",
+        "type": "object"
+      },
+      "SmartCreateResult": {
+        "additionalProperties": false,
+        "properties": {
+          "file": {
+            "$ref": "#/components/schemas/FileResponse"
+          },
+          "task_id": {
+            "format": "uuid",
+            "title": "Task Id",
+            "type": "string"
+          },
+          "warnings": {
+            "items": {
+              "$ref": "#/components/schemas/SmartCreateWarning"
+            },
+            "title": "Warnings",
+            "type": "array"
+          }
+        },
+        "required": [
+          "task_id",
+          "file",
+          "warnings"
+        ],
+        "title": "SmartCreateResult",
+        "type": "object"
+      },
+      "SmartCreateWarning": {
+        "additionalProperties": false,
+        "properties": {
+          "code": {
+            "title": "Code",
+            "type": "string"
+          },
+          "detail": {
+            "title": "Detail",
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "detail"
+        ],
+        "title": "SmartCreateWarning",
+        "type": "object"
+      },
+      "SmartFileCreate": {
+        "additionalProperties": false,
+        "properties": {
+          "alias": {
+            "maxLength": 32,
+            "minLength": 5,
+            "pattern": "^[a-z]{2,12}(?:-[a-z]{2,12}){1,2}$",
+            "title": "Alias",
+            "type": "string"
+          },
+          "emoji": {
+            "maxLength": 8,
+            "minLength": 1,
+            "title": "Emoji",
+            "type": "string"
+          },
+          "name": {
+            "maxLength": 255,
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          },
+          "parent_folder_id": {
+            "title": "Parent Folder Id",
+            "type": "string"
+          },
+          "source": {
+            "discriminator": {
+              "mapping": {
+                "blank": "#/components/schemas/BlankSource",
+                "template": "#/components/schemas/TemplateSource"
+              },
+              "propertyName": "kind"
+            },
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/BlankSource"
+              },
+              {
+                "$ref": "#/components/schemas/TemplateSource"
+              }
+            ],
+            "title": "Source"
+          }
+        },
+        "required": [
+          "source",
+          "parent_folder_id",
+          "name",
+          "emoji",
+          "alias"
+        ],
+        "title": "SmartFileCreate",
+        "type": "object"
+      },
+      "SmartProposalRead": {
+        "additionalProperties": false,
+        "properties": {
+          "alias": {
+            "maxLength": 32,
+            "minLength": 5,
+            "pattern": "^[a-z]{2,12}(?:-[a-z]{2,12}){1,2}$",
+            "title": "Alias",
+            "type": "string"
+          },
+          "destination": {
+            "$ref": "#/components/schemas/ProposalDestination"
+          },
+          "emoji": {
+            "maxLength": 8,
+            "minLength": 1,
+            "title": "Emoji",
+            "type": "string"
+          },
+          "name": {
+            "maxLength": 255,
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          },
+          "source": {
+            "discriminator": {
+              "mapping": {
+                "blank": "#/components/schemas/BlankSource",
+                "template": "#/components/schemas/TemplateSource"
+              },
+              "propertyName": "kind"
+            },
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/BlankSource"
+              },
+              {
+                "$ref": "#/components/schemas/TemplateSource"
+              }
+            ],
+            "title": "Source"
+          }
+        },
+        "required": [
+          "name",
+          "emoji",
+          "alias",
+          "destination",
+          "source"
+        ],
+        "title": "SmartProposalRead",
+        "type": "object"
+      },
+      "SnippetResult": {
+        "properties": {
+          "file_id": {
+            "title": "File Id",
+            "type": "string"
+          },
+          "match_term": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Match Term"
+          },
+          "mime_type": {
+            "title": "Mime Type",
+            "type": "string"
+          },
+          "snippet": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Snippet"
+          }
+        },
+        "required": [
+          "file_id",
+          "mime_type",
+          "snippet",
+          "match_term"
+        ],
+        "title": "SnippetResult",
+        "type": "object"
+      },
+      "SortOrderBulkResult": {
+        "properties": {
+          "updated": {
+            "title": "Updated",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "updated"
+        ],
+        "title": "SortOrderBulkResult",
+        "type": "object"
+      },
+      "SortOrderBulkWrite": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/SortOrderWrite"
+            },
+            "maxItems": 10000,
+            "title": "Items",
+            "type": "array"
+          }
+        },
+        "title": "SortOrderBulkWrite",
+        "type": "object"
+      },
+      "SortOrderRead": {
+        "properties": {
+          "drive_id": {
+            "title": "Drive Id",
+            "type": "string"
+          },
+          "sort_order": {
+            "title": "Sort Order",
+            "type": "number"
+          }
+        },
+        "required": [
+          "drive_id",
+          "sort_order"
+        ],
+        "title": "SortOrderRead",
+        "type": "object"
+      },
+      "SortOrderWrite": {
+        "properties": {
+          "drive_id": {
+            "title": "Drive Id",
+            "type": "string"
+          },
+          "sort_order": {
+            "title": "Sort Order",
+            "type": "number"
+          }
+        },
+        "required": [
+          "drive_id",
+          "sort_order"
+        ],
+        "title": "SortOrderWrite",
+        "type": "object"
+      },
+      "SucceededTaskRead": {
+        "properties": {
+          "attempt_count": {
+            "exclusiveMinimum": 0.0,
+            "title": "Attempt Count",
+            "type": "integer"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "error_code": {
+            "title": "Error Code",
+            "type": "null"
+          },
+          "error_detail": {
+            "title": "Error Detail",
+            "type": "null"
+          },
+          "finished_at": {
+            "format": "date-time",
+            "title": "Finished At",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/TaskKind"
+          },
+          "resource_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Resource Id"
+          },
+          "result": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SmartCreateResult"
+              },
+              {
+                "$ref": "#/components/schemas/DocumentTransformResult"
+              }
+            ],
+            "title": "Result"
+          },
+          "started_at": {
+            "format": "date-time",
+            "title": "Started At",
+            "type": "string"
+          },
+          "status": {
+            "const": "succeeded",
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "kind",
+          "created_at",
+          "status",
+          "result",
+          "resource_id",
+          "error_code",
+          "error_detail",
+          "attempt_count",
+          "started_at",
+          "finished_at"
+        ],
+        "title": "SucceededTaskRead",
+        "type": "object"
+      },
+      "TaskKind": {
+        "enum": [
+          "file.smart_create",
+          "file.document_transform"
+        ],
+        "title": "TaskKind",
+        "type": "string"
+      },
+      "TaskStatus": {
+        "enum": [
+          "pending",
+          "running",
+          "succeeded",
+          "failed",
+          "cancelled"
+        ],
+        "title": "TaskStatus",
+        "type": "string"
+      },
+      "TemplateCatalogRead": {
+        "properties": {
+          "templates": {
+            "items": {
+              "$ref": "#/components/schemas/TemplateRead"
+            },
+            "title": "Templates",
+            "type": "array"
+          }
+        },
+        "required": [
+          "templates"
+        ],
+        "title": "TemplateCatalogRead",
+        "type": "object"
+      },
+      "TemplateRead": {
+        "properties": {
+          "category_path": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Category Path",
+            "type": "array"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "drive_id": {
+            "title": "Drive Id",
+            "type": "string"
+          },
+          "drive_name": {
+            "title": "Drive Name",
+            "type": "string"
+          },
+          "file_id": {
+            "title": "File Id",
+            "type": "string"
+          },
+          "mime_type": {
+            "enum": [
+              "application/vnd.google-apps.document",
+              "application/vnd.google-apps.presentation"
+            ],
+            "title": "Mime Type",
+            "type": "string"
+          },
+          "modified_time": {
+            "title": "Modified Time",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "file_id",
+          "drive_id",
+          "drive_name",
+          "name",
+          "description",
+          "mime_type",
+          "modified_time",
+          "category_path"
+        ],
+        "title": "TemplateRead",
+        "type": "object"
+      },
+      "TemplateSource": {
+        "additionalProperties": false,
+        "properties": {
+          "kind": {
+            "const": "template",
+            "title": "Kind",
+            "type": "string"
+          },
+          "mime_type": {
+            "enum": [
+              "application/vnd.google-apps.document",
+              "application/vnd.google-apps.presentation"
+            ],
+            "title": "Mime Type",
+            "type": "string"
+          },
+          "template_drive_id": {
+            "title": "Template Drive Id",
+            "type": "string"
+          },
+          "template_file_id": {
+            "title": "Template File Id",
+            "type": "string"
+          },
+          "template_modified_time": {
+            "title": "Template Modified Time",
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "template_file_id",
+          "template_drive_id",
+          "template_modified_time",
+          "mime_type"
+        ],
+        "title": "TemplateSource",
+        "type": "object"
+      },
+      "TransformFinding": {
+        "additionalProperties": false,
+        "properties": {
+          "block_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Block Id"
+          },
+          "code": {
+            "title": "Code",
+            "type": "string"
+          },
+          "detail": {
+            "title": "Detail",
+            "type": "string"
+          },
+          "severity": {
+            "$ref": "#/components/schemas/FindingSeverity",
+            "default": "review"
+          }
+        },
+        "required": [
+          "code",
+          "detail"
+        ],
+        "title": "TransformFinding",
+        "type": "object"
+      },
+      "TransformMode": {
+        "enum": [
+          "format",
+          "unslop",
+          "both"
+        ],
+        "title": "TransformMode",
+        "type": "string"
+      },
+      "UnverifiedTaskOutput": {
+        "properties": {
+          "file_id": {
+            "title": "File Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "file_id"
+        ],
+        "title": "UnverifiedTaskOutput",
+        "type": "object"
+      },
+      "UserProfile": {
+        "properties": {
+          "avatar_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Avatar Url"
+          },
+          "display_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Display Name"
+          },
+          "email": {
+            "format": "email",
+            "title": "Email",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "email",
+          "display_name",
+          "avatar_url"
+        ],
+        "title": "UserProfile",
+        "type": "object"
+      },
+      "ValidationError": {
+        "properties": {
+          "ctx": {
+            "title": "Context",
+            "type": "object"
+          },
+          "input": {
+            "title": "Input"
+          },
+          "loc": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "title": "Location",
+            "type": "array"
+          },
+          "msg": {
+            "title": "Message",
+            "type": "string"
+          },
+          "type": {
+            "title": "Error Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "loc",
+          "msg",
+          "type"
+        ],
+        "title": "ValidationError",
+        "type": "object"
+      },
+      "ValidationSummary": {
+        "additionalProperties": false,
+        "properties": {
+          "protected_content_preserved": {
+            "title": "Protected Content Preserved",
+            "type": "boolean"
+          },
+          "source_unchanged": {
+            "title": "Source Unchanged",
+            "type": "boolean"
+          },
+          "structure_preserved": {
+            "title": "Structure Preserved",
+            "type": "boolean"
+          },
+          "unsafe_patch_count": {
+            "minimum": 0.0,
+            "title": "Unsafe Patch Count",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "source_unchanged",
+          "protected_content_preserved",
+          "structure_preserved",
+          "unsafe_patch_count"
+        ],
+        "title": "ValidationSummary",
+        "type": "object"
+      }
+    },
+    "securitySchemes": {
+      "APIKeyCookie": {
+        "in": "cookie",
+        "name": "access_token",
+        "type": "apiKey"
+      },
+      "HTTPBearer": {
+        "scheme": "bearer",
+        "type": "http"
+      },
+      "RefreshCookie": {
+        "in": "cookie",
+        "name": "refresh_token",
+        "type": "apiKey"
+      }
+    }
+  },
+  "info": {
+    "title": "Sarj Wiki API",
+    "version": "0.1.0"
+  },
+  "openapi": "3.1.0",
+  "paths": {
+    "/aliases/files/{file_id}": {
+      "delete": {
+        "operationId": "retire_file_alias",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "file_id",
+            "required": true,
+            "schema": {
+              "minLength": 1,
+              "title": "File Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Authentication is required or the session is invalid."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyCookie": []
+          },
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Retire File Alias",
+        "tags": [
+          "aliases"
+        ]
+      },
+      "get": {
+        "operationId": "get_file_alias",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "file_id",
+            "required": true,
+            "schema": {
+              "minLength": 1,
+              "title": "File Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DocumentAliasForFile"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Authentication is required or the session is invalid."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyCookie": []
+          },
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get File Alias",
+        "tags": [
+          "aliases"
+        ]
+      },
+      "put": {
+        "operationId": "save_file_alias",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "file_id",
+            "required": true,
+            "schema": {
+              "minLength": 1,
+              "title": "File Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DocumentAliasWrite"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DocumentAliasRead"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Authentication is required or the session is invalid."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyCookie": []
+          },
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Save File Alias",
+        "tags": [
+          "aliases"
+        ]
+      }
+    },
+    "/aliases/files/{file_id}/ensure": {
+      "post": {
+        "operationId": "ensure_file_alias",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "file_id",
+            "required": true,
+            "schema": {
+              "minLength": 1,
+              "title": "File Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DocumentAliasRead"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Authentication is required or the session is invalid."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyCookie": []
+          },
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Ensure File Alias",
+        "tags": [
+          "aliases"
+        ]
+      }
+    },
+    "/aliases/recent": {
+      "post": {
+        "operationId": "get_recent_aliases",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RecentDocumentAliasesRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/RecentDocumentAlias"
+                  },
+                  "title": "Response Get Recent Aliases",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Authentication is required or the session is invalid."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyCookie": []
+          },
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get Recent Aliases",
+        "tags": [
+          "aliases"
+        ]
+      }
+    },
+    "/aliases/{alias}": {
+      "get": {
+        "operationId": "resolve_alias",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "alias",
+            "required": true,
+            "schema": {
+              "maxLength": 32,
+              "minLength": 1,
+              "pattern": "^[a-z]{2,12}(?:-[a-z]{2,12}){1,2}$",
+              "title": "Alias",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DocumentAliasRead"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Authentication is required or the session is invalid."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyCookie": []
+          },
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Resolve Alias",
+        "tags": [
+          "aliases"
+        ]
+      }
+    },
+    "/auth/logout": {
+      "post": {
+        "operationId": "logout",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "message": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "message"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Session revoked."
+          }
+        },
+        "summary": "Logout",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/auth/me": {
+      "get": {
+        "operationId": "get_current_user",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserProfile"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Authentication is required or the session is invalid."
+          }
+        },
+        "security": [
+          {
+            "APIKeyCookie": []
+          },
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Me",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/auth/refresh": {
+      "post": {
+        "operationId": "refresh_session",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Authentication is required or the session is invalid."
+          }
+        },
+        "security": [
+          {
+            "RefreshCookie": []
+          }
+        ],
+        "summary": "Refresh",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/bootstrap": {
+      "get": {
+        "operationId": "get_bootstrap",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "defer_doc_icons",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Defer Doc Icons",
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BootstrapRead"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Authentication is required or the session is invalid."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyCookie": []
+          },
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Bootstrap",
+        "tags": [
+          "bootstrap"
+        ]
+      }
+    },
+    "/document-transforms": {
+      "post": {
+        "description": "Submit a transform and poll the task in the Location header. Supply a new UUID in Idempotency-Key for each intended operation; reuse that UUID and the identical body for safe retries. After an ambiguous timeout, check GET /document-transforms/admissions/{idempotency_key} before resubmitting. For pasted Markdown, use source.kind=markdown with UTF-8 content. For a file, POST /document-transforms/uploads, PUT the bytes to the returned GCS URL, and submit source.kind=uploaded_markdown with upload_id, name, and destination_folder_id. Set mode to format, unslop, or both. Copy is the default.",
+        "operationId": "create_document_transform",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Idempotency-Key",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DocumentTransformRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "discriminator": {
+                    "mapping": {
+                      "cancelled": "#/components/schemas/CancelledTaskRead",
+                      "failed": "#/components/schemas/FailedTaskRead",
+                      "pending": "#/components/schemas/PendingTaskRead",
+                      "running": "#/components/schemas/RunningTaskRead",
+                      "succeeded": "#/components/schemas/SucceededTaskRead"
+                    },
+                    "propertyName": "status"
+                  },
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/PendingTaskRead"
+                    },
+                    {
+                      "$ref": "#/components/schemas/RunningTaskRead"
+                    },
+                    {
+                      "$ref": "#/components/schemas/SucceededTaskRead"
+                    },
+                    {
+                      "$ref": "#/components/schemas/FailedTaskRead"
+                    },
+                    {
+                      "$ref": "#/components/schemas/CancelledTaskRead"
+                    }
+                  ],
+                  "title": "Response Create Document Transform"
+                }
+              }
+            },
+            "description": "Accepted task, or the task retained for an identical retry.",
+            "headers": {
+              "Idempotency-Replayed": {
+                "schema": {
+                  "enum": [
+                    "true",
+                    "false"
+                  ],
+                  "type": "string"
+                }
+              },
+              "Location": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Retry-After": {
+                "schema": {
+                  "type": "integer"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Authentication is required or the session is invalid."
+          },
+          "409": {
+            "description": "The source changed after this transformation was requested",
+            "headers": {
+              "X-Wiki-Error-Code": {
+                "schema": {
+                  "enum": [
+                    "document_transform_source_changed"
+                  ],
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Markdown input exceeds a bounded conversion limit"
+          },
+          "422": {
+            "description": "In-place transformation is limited to native Google Docs"
+          },
+          "503": {
+            "description": "In-place document transformation is disabled"
+          }
+        },
+        "security": [
+          {
+            "APIKeyCookie": []
+          },
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Import Markdown or polish a Drive document",
+        "tags": [
+          "document-transforms"
+        ]
+      }
+    },
+    "/document-transforms/admissions/{idempotency_key}": {
+      "get": {
+        "description": "Use the same Idempotency-Key UUID after a timed-out or disconnected POST. A retained admission returns the task ID and status without resubmitting the transform.",
+        "operationId": "get_document_transform_admission",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "idempotency_key",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Idempotency Key",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DocumentTransformAdmission"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Authentication is required or the session is invalid."
+          },
+          "404": {
+            "description": "No retained admission for this owner and key"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyCookie": []
+          },
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Recover a transform submission by idempotency key",
+        "tags": [
+          "document-transforms"
+        ]
+      }
+    },
+    "/document-transforms/capabilities": {
+      "get": {
+        "operationId": "get_document_transform_capabilities",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DocumentTransformCapabilities"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Authentication is required or the session is invalid."
+          }
+        },
+        "security": [
+          {
+            "APIKeyCookie": []
+          },
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get Document Transform Capabilities",
+        "tags": [
+          "document-transforms"
+        ]
+      }
+    },
+    "/document-transforms/current": {
+      "get": {
+        "operationId": "get_current_document_polish",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "file_id",
+            "required": true,
+            "schema": {
+              "maxLength": 128,
+              "minLength": 1,
+              "title": "File Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "mode",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/TransformMode"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CurrentDocumentPolish"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Authentication is required or the session is invalid."
+          },
+          "422": {
+            "description": "The source is not a native Google Doc"
+          },
+          "503": {
+            "description": "The latest Google Docs revision could not be verified"
+          }
+        },
+        "security": [
+          {
+            "APIKeyCookie": []
+          },
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get Current Polish",
+        "tags": [
+          "document-transforms"
+        ]
+      }
+    },
+    "/document-transforms/qa/grants": {
+      "post": {
+        "operationId": "issue_document_transform_qa_grant_document_transforms_qa_grants_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/QaGrantBinding"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/QaGrantIssueResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "description": "A same-site login is required"
+          },
+          "409": {
+            "description": "Binding mismatch"
+          },
+          "410": {
+            "description": "The legacy grant flow is disabled in launcher mode"
+          },
+          "422": {
+            "description": "The legacy grant request is invalid"
+          }
+        },
+        "security": [
+          {
+            "APIKeyCookie": []
+          },
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Issue Document Transform Qa Grant",
+        "tags": [
+          "document-transform-qa"
+        ]
+      }
+    },
+    "/document-transforms/qa/launch": {
+      "post": {
+        "description": "Launch only the configured job and bind its server-issued execution identity.",
+        "operationId": "launch_document_transform_qa_run_document_transforms_qa_launch_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/QaGrantBinding"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/QaLaunchResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "description": "A same-site login is required"
+          },
+          "403": {
+            "description": "The authenticated user is not an allowed QA operator"
+          },
+          "409": {
+            "description": "Binding mismatch"
+          },
+          "422": {
+            "description": "A UUIDv7 idempotency key is required"
+          },
+          "502": {
+            "description": "The execution could not be safely launched or attested"
+          },
+          "503": {
+            "description": "The default-off launcher is disabled"
+          }
+        },
+        "security": [
+          {
+            "APIKeyCookie": []
+          },
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Launch Document Transform Qa Run",
+        "tags": [
+          "document-transform-qa"
+        ]
+      }
+    },
+    "/document-transforms/uploads": {
+      "post": {
+        "description": "PUT UTF-8 Markdown bytes to url with exactly the returned headers, then submit source.kind=uploaded_markdown and upload_id to POST /document-transforms. The upload URL expires after ten minutes; uploads are private and limited to 512 KiB.",
+        "operationId": "create_markdown_upload",
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MarkdownUpload"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Authentication is required or the session is invalid."
+          }
+        },
+        "security": [
+          {
+            "APIKeyCookie": []
+          },
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get a signed GCS URL for direct Markdown upload",
+        "tags": [
+          "document-transforms"
+        ]
+      }
+    },
+    "/drive-search": {
+      "get": {
+        "operationId": "search_drive",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "q",
+            "required": true,
+            "schema": {
+              "maxLength": 2048,
+              "minLength": 1,
+              "title": "Q",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit_per_drive",
+            "required": false,
+            "schema": {
+              "default": 20,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Limit Per Drive",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/SearchResult"
+                  },
+                  "title": "Response Search Drive",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Authentication is required or the session is invalid."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyCookie": []
+          },
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Search",
+        "tags": [
+          "drive-search"
+        ]
+      }
+    },
+    "/drive-search/snippet": {
+      "get": {
+        "operationId": "get_search_snippet",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "file_id",
+            "required": true,
+            "schema": {
+              "minLength": 1,
+              "title": "File Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "q",
+            "required": true,
+            "schema": {
+              "maxLength": 2048,
+              "minLength": 1,
+              "title": "Q",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "mime_type",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 256,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Mime Type"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SnippetResult"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Authentication is required or the session is invalid."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyCookie": []
+          },
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Snippet",
+        "tags": [
+          "drive-search"
+        ]
+      }
+    },
+    "/extras/doc-icons": {
+      "get": {
+        "operationId": "list_doc_icons",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/DocIconRead"
+                  },
+                  "title": "Response List Doc Icons",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Authentication is required or the session is invalid."
+          }
+        },
+        "security": [
+          {
+            "APIKeyCookie": []
+          },
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "List Doc Icons",
+        "tags": [
+          "extras"
+        ]
+      }
+    },
+    "/extras/doc-icons/{drive_id}": {
+      "put": {
+        "operationId": "set_doc_icon",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "drive_id",
+            "required": true,
+            "schema": {
+              "title": "Drive Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DocIconWrite"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DocIconRead"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Authentication is required or the session is invalid."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyCookie": []
+          },
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Set Doc Icon",
+        "tags": [
+          "extras"
+        ]
+      }
+    },
+    "/extras/folder-icons": {
+      "get": {
+        "operationId": "list_folder_icons",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/FolderIconRead"
+                  },
+                  "title": "Response List Folder Icons",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Authentication is required or the session is invalid."
+          }
+        },
+        "security": [
+          {
+            "APIKeyCookie": []
+          },
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "List My Folder Icons",
+        "tags": [
+          "extras"
+        ]
+      }
+    },
+    "/extras/folder-icons/{folder_drive_id}": {
+      "put": {
+        "operationId": "set_folder_icon",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "folder_drive_id",
+            "required": true,
+            "schema": {
+              "minLength": 1,
+              "title": "Folder Drive Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FolderIconWrite"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FolderIconRead"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Authentication is required or the session is invalid."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyCookie": []
+          },
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Set Folder Icon",
+        "tags": [
+          "extras"
+        ]
+      }
+    },
+    "/extras/preferences": {
+      "get": {
+        "operationId": "read_preferences",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PreferencesRead"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Authentication is required or the session is invalid."
+          }
+        },
+        "security": [
+          {
+            "APIKeyCookie": []
+          },
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Read Preferences",
+        "tags": [
+          "extras"
+        ]
+      },
+      "put": {
+        "operationId": "write_preferences",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PreferencesWrite"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PreferencesRead"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Authentication is required or the session is invalid."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyCookie": []
+          },
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Write Preferences",
+        "tags": [
+          "extras"
+        ]
+      }
+    },
+    "/extras/sort-order": {
+      "get": {
+        "operationId": "list_sort_orders",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/SortOrderRead"
+                  },
+                  "title": "Response List Sort Orders",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Authentication is required or the session is invalid."
+          }
+        },
+        "security": [
+          {
+            "APIKeyCookie": []
+          },
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "List My Sort Orders",
+        "tags": [
+          "extras"
+        ]
+      },
+      "put": {
+        "operationId": "set_sort_orders",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SortOrderBulkWrite"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SortOrderBulkResult"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Authentication is required or the session is invalid."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyCookie": []
+          },
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Bulk Set Sort Orders",
+        "tags": [
+          "extras"
+        ]
+      }
+    },
+    "/files": {
+      "post": {
+        "operationId": "create_file",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FileCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FileResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Authentication is required or the session is invalid."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyCookie": []
+          },
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Create File",
+        "tags": [
+          "files"
+        ]
+      }
+    },
+    "/files/recent": {
+      "get": {
+        "operationId": "read_recent_files",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "file_ids",
+            "required": true,
+            "schema": {
+              "items": {
+                "maxLength": 128,
+                "minLength": 1,
+                "pattern": "^[A-Za-z0-9_-]+$",
+                "type": "string"
+              },
+              "maxItems": 6,
+              "minItems": 1,
+              "title": "File Ids",
+              "type": "array"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RecentFilesResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Authentication is required or the session is invalid."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyCookie": []
+          },
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Read Recent Files",
+        "tags": [
+          "files"
+        ]
+      }
+    },
+    "/files/smart": {
+      "post": {
+        "operationId": "create_smart_file",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Idempotency-Key",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SmartFileCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "discriminator": {
+                    "mapping": {
+                      "cancelled": "#/components/schemas/CancelledTaskRead",
+                      "failed": "#/components/schemas/FailedTaskRead",
+                      "pending": "#/components/schemas/PendingTaskRead",
+                      "running": "#/components/schemas/RunningTaskRead",
+                      "succeeded": "#/components/schemas/SucceededTaskRead"
+                    },
+                    "propertyName": "status"
+                  },
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/PendingTaskRead"
+                    },
+                    {
+                      "$ref": "#/components/schemas/RunningTaskRead"
+                    },
+                    {
+                      "$ref": "#/components/schemas/SucceededTaskRead"
+                    },
+                    {
+                      "$ref": "#/components/schemas/FailedTaskRead"
+                    },
+                    {
+                      "$ref": "#/components/schemas/CancelledTaskRead"
+                    }
+                  ],
+                  "title": "Response Create Smart File"
+                }
+              }
+            },
+            "description": "Accepted task or an existing idempotent task.",
+            "headers": {
+              "Idempotency-Replayed": {
+                "schema": {
+                  "type": "boolean"
+                }
+              },
+              "Retry-After": {
+                "schema": {
+                  "type": "integer"
+                }
+              },
+              "Server-Timing": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Authentication is required or the session is invalid."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyCookie": []
+          },
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Create Smart File",
+        "tags": [
+          "files"
+        ]
+      }
+    },
+    "/files/smart-proposal": {
+      "post": {
+        "operationId": "create_smart_proposal",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AIMode"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SmartProposalRead"
+                }
+              }
+            },
+            "description": "Smart creation proposal.",
+            "headers": {
+              "Server-Timing": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Authentication is required or the session is invalid."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyCookie": []
+          },
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Create Smart Proposal",
+        "tags": [
+          "files"
+        ]
+      }
+    },
+    "/files/{file_id}": {
+      "delete": {
+        "operationId": "delete_file",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "file_id",
+            "required": true,
+            "schema": {
+              "minLength": 1,
+              "title": "File Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Authentication is required or the session is invalid."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyCookie": []
+          },
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Delete File",
+        "tags": [
+          "files"
+        ]
+      },
+      "get": {
+        "operationId": "read_file",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "file_id",
+            "required": true,
+            "schema": {
+              "minLength": 1,
+              "title": "File Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FileDetail"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Authentication is required or the session is invalid."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyCookie": []
+          },
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Read File",
+        "tags": [
+          "files"
+        ]
+      }
+    },
+    "/files/{file_id}/content": {
+      "get": {
+        "operationId": "read_file_content",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "file_id",
+            "required": true,
+            "schema": {
+              "minLength": 1,
+              "title": "File Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Rendered document content."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Authentication is required or the session is invalid."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyCookie": []
+          },
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Read Html Content",
+        "tags": [
+          "files"
+        ]
+      }
+    },
+    "/files/{file_id}/copy": {
+      "post": {
+        "operationId": "copy_file",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "file_id",
+            "required": true,
+            "schema": {
+              "minLength": 1,
+              "title": "File Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FileCopy"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FileResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Authentication is required or the session is invalid."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyCookie": []
+          },
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Copy File",
+        "tags": [
+          "files"
+        ]
+      }
+    },
+    "/files/{file_id}/move": {
+      "patch": {
+        "operationId": "move_file",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "file_id",
+            "required": true,
+            "schema": {
+              "minLength": 1,
+              "title": "File Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FileMove"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FileResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Authentication is required or the session is invalid."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyCookie": []
+          },
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Move File",
+        "tags": [
+          "files"
+        ]
+      }
+    },
+    "/files/{file_id}/rename": {
+      "patch": {
+        "operationId": "rename_file",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "file_id",
+            "required": true,
+            "schema": {
+              "minLength": 1,
+              "title": "File Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FileRename"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FileResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Authentication is required or the session is invalid."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyCookie": []
+          },
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Rename File",
+        "tags": [
+          "files"
+        ]
+      }
+    },
+    "/files/{file_id}/reorganize-proposal": {
+      "post": {
+        "operationId": "propose_file_reorganization",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "file_id",
+            "required": true,
+            "schema": {
+              "minLength": 1,
+              "title": "File Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReorganizationProposalRead"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Authentication is required or the session is invalid."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyCookie": []
+          },
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Propose File Reorganization",
+        "tags": [
+          "files"
+        ]
+      }
+    },
+    "/sidebar/drives": {
+      "get": {
+        "operationId": "list_drives",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/DriveSummary"
+                  },
+                  "title": "Response List Drives",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Authentication is required or the session is invalid."
+          }
+        },
+        "security": [
+          {
+            "APIKeyCookie": []
+          },
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get Drives",
+        "tags": [
+          "sidebar"
+        ]
+      }
+    },
+    "/sidebar/drives/{drive_id}/folders": {
+      "get": {
+        "operationId": "get_drive_tree",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "drive_id",
+            "required": true,
+            "schema": {
+              "title": "Drive Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DriveTree"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "304": {
+            "description": "The cached tree matches If-None-Match and has no response body.",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "ETag": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Authentication is required or the session is invalid."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyCookie": []
+          },
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get Drive Folders",
+        "tags": [
+          "sidebar"
+        ]
+      }
+    },
+    "/sidebar/drives/{drive_id}/permissions": {
+      "get": {
+        "operationId": "list_drive_permissions",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "drive_id",
+            "required": true,
+            "schema": {
+              "title": "Drive Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "page_token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 4096,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Page Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DrivePermissionsPage"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Authentication is required or the session is invalid."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyCookie": []
+          },
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get Drive Permissions",
+        "tags": [
+          "sidebar"
+        ]
+      }
+    },
+    "/sidebar/drives/{drive_id}/refresh": {
+      "post": {
+        "operationId": "refresh_drive_tree",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "drive_id",
+            "required": true,
+            "schema": {
+              "title": "Drive Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DriveTree"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Authentication is required or the session is invalid."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyCookie": []
+          },
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Refresh Drive Folders",
+        "tags": [
+          "sidebar"
+        ]
+      }
+    },
+    "/sidebar/folders/{folder_id}/files": {
+      "get": {
+        "operationId": "list_folder_files",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "folder_id",
+            "required": true,
+            "schema": {
+              "minLength": 1,
+              "title": "Folder Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/DriveNode"
+                  },
+                  "title": "Response List Folder Files",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Authentication is required or the session is invalid."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyCookie": []
+          },
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get Folder Files",
+        "tags": [
+          "sidebar"
+        ]
+      }
+    },
+    "/tasks/{task_id}": {
+      "get": {
+        "operationId": "get_task",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "task_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Task Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "discriminator": {
+                    "mapping": {
+                      "cancelled": "#/components/schemas/CancelledTaskRead",
+                      "failed": "#/components/schemas/FailedTaskRead",
+                      "pending": "#/components/schemas/PendingTaskRead",
+                      "running": "#/components/schemas/RunningTaskRead",
+                      "succeeded": "#/components/schemas/SucceededTaskRead"
+                    },
+                    "propertyName": "status"
+                  },
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/PendingTaskRead"
+                    },
+                    {
+                      "$ref": "#/components/schemas/RunningTaskRead"
+                    },
+                    {
+                      "$ref": "#/components/schemas/SucceededTaskRead"
+                    },
+                    {
+                      "$ref": "#/components/schemas/FailedTaskRead"
+                    },
+                    {
+                      "$ref": "#/components/schemas/CancelledTaskRead"
+                    }
+                  ],
+                  "title": "Response Get Task"
+                }
+              }
+            },
+            "description": "Current task state.",
+            "headers": {
+              "Retry-After": {
+                "schema": {
+                  "type": "integer"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Authentication is required or the session is invalid."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyCookie": []
+          },
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get Task",
+        "tags": [
+          "tasks"
+        ]
+      }
+    },
+    "/templates": {
+      "get": {
+        "operationId": "list_templates",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "refresh",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Refresh",
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TemplateCatalogRead"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Authentication is required or the session is invalid."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyCookie": []
+          },
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "List Templates",
+        "tags": [
+          "templates"
+        ]
+      }
+    }
+  }
+}

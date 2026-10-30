@@ -1,0 +1,10 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": ["config:recommended"],
+  "packageRules": [
+    {
+      "groupName": "Sarj Standards",
+      "matchPackageNames": ["@sarj/eslint-plugin", "@sarj/tsconfig", "sarj-lint-configs"]
+    }
+  ]
+}

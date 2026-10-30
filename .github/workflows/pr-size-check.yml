@@ -1,0 +1,58 @@
+name: Pull-request size
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  size:
+    runs-on: ${{ vars.CI_RUNNER || 'ubuntu-24.04' }}
+    timeout-minutes: 10
+    steps:
+      - name: Check out pull request
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Install uv
+        uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
+        with:
+          version: '0.13.5'
+          enable-cache: true
+          save-cache: false
+          cache-dependency-glob: .sarj-standards.toml
+      - name: Measure pull-request size
+        env:
+          REPOSITORY_STANDARDS_VERSION: 6.14.0
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+          test -n "$PR_BASE_SHA"
+          test -n "$PR_HEAD_SHA"
+          uvx --no-config --isolated --python 3.15.0 \
+            --from "repo-standards==$REPOSITORY_STANDARDS_VERSION" \
+            repo-standards pull-request size . \
+            --base "$PR_BASE_SHA" --head "$PR_HEAD_SHA" \
+            --generated-attribute pr-size-excluded \
+            --report-path "$RUNNER_TEMP/repo-standards-pr-size.json" \
+            --format text >"$RUNNER_TEMP/repo-standards-pr-size.txt"
+      - name: Open pull-request size summary
+        run: printf '## Pull-request size\n\n```text\n' >"$RUNNER_TEMP/repo-standards-pr-size.md"
+      - name: Write pull-request size summary
+        run: cat "$RUNNER_TEMP/repo-standards-pr-size.txt" >>"$RUNNER_TEMP/repo-standards-pr-size.md"
+      - name: Close pull-request size summary
+        run: printf '```\n' >>"$RUNNER_TEMP/repo-standards-pr-size.md"
+      - name: Publish pull-request size summary
+        run: cat "$RUNNER_TEMP/repo-standards-pr-size.md" >>"$GITHUB_STEP_SUMMARY"

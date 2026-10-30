@@ -1,0 +1,48 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "sarj-wiki",
+  "main": ".open-next/worker.js",
+  "compatibility_date": "2026-08-22",
+  "compatibility_flags": ["nodejs_compat"],
+  "placement": {
+    "region": "gcp:me-central2",
+  },
+  "assets": {
+    "binding": "ASSETS",
+    "directory": ".open-next/assets",
+    "html_handling": "none",
+  },
+  "routes": [
+    {
+      "pattern": "wiki.sarj.ai",
+      "custom_domain": true,
+    },
+  ],
+  "observability": {
+    "enabled": true,
+    "head_sampling_rate": 1,
+    "logs": {
+      "enabled": true,
+      "head_sampling_rate": 1,
+      "invocation_logs": true,
+    },
+  },
+  "ratelimits": [
+    {
+      "name": "SMART_PROPOSAL_RATE_LIMITER",
+      "namespace_id": "26080201",
+      "simple": {
+        "limit": 10,
+        "period": 60,
+      },
+    },
+    {
+      "name": "SMART_CREATE_RATE_LIMITER",
+      "namespace_id": "26080202",
+      "simple": {
+        "limit": 5,
+        "period": 60,
+      },
+    },
+  ],
+}

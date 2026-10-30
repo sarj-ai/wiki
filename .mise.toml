@@ -1,0 +1,6 @@
+[tools]
+"aqua:koalaman/shellcheck" = "0.11.0"
+node = "26.12.1"
+npm = "12.2.1"
+terraform = "1.17.0"
+uv = "0.13.5"

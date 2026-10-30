@@ -1,0 +1,9 @@
+{
+  "fingerprints": [],
+  "include_warnings": true,
+  "policy": "sarj",
+  "policy_version": 29,
+  "repository_id": "wiki",
+  "schema_version": 2,
+  "scope_digest": "bc8ed252d30aca8cf1d1610d0fabfc8ce1b311d4c449709d1b44baf6f1337315"
+}

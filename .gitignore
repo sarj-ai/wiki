@@ -1,0 +1,11 @@
+.DS_Store
+*.pem
+.claude/
+*.tfvars
+*.tfstate*
+.terraform/
+.mcp.json
+.playwright-mcp/
+.stamps/
+backend/.drive-organizer/
+__pycache__/

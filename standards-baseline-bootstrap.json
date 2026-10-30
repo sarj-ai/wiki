@@ -1,0 +1,359 @@
+{
+  "schema_version": 1,
+  "merge_base": "d1f5913d57f992cbb33dba24f00ec5cd5a2e46cd",
+  "from_bundle": "8.43.2",
+  "to_bundle": "8.55.2",
+  "reason": "Exact unchanged-source findings exposed by the tested Standards upgrade; the baseline remains shrink-only after this migration.",
+  "allowances": {
+    "frontend/eslint-suppressions.json": {
+      "src/app/actions/wiki-actions.ts": {
+        "@sarj/prefer-nominal-id-types": {
+          "before": 0,
+          "after": 1
+        }
+      },
+      "src/app/api/document-transforms/[[...path]]/route.test.ts": {
+        "@sarj/require-camelcase-properties": {
+          "before": 0,
+          "after": 1
+        }
+      },
+      "src/app/go/[alias]/route.test.ts": {
+        "@sarj/require-camelcase-properties": {
+          "before": 0,
+          "after": 1
+        }
+      },
+      "src/app/login/page.tsx": {
+        "@sarj/require-camelcase-properties": {
+          "before": 0,
+          "after": 3
+        }
+      },
+      "src/components/mcp/mcp-connections.test.tsx": {
+        "@sarj/require-camelcase-properties": {
+          "before": 0,
+          "after": 8
+        }
+      },
+      "src/components/mcp/mcp-connections.tsx": {
+        "@sarj/require-camelcase-properties": {
+          "before": 0,
+          "after": 5
+        }
+      },
+      "src/components/mcp/mcp-consent-loader.test.tsx": {
+        "@sarj/require-camelcase-properties": {
+          "before": 0,
+          "after": 3
+        }
+      },
+      "src/components/mcp/mcp-consent-loader.tsx": {
+        "@sarj/require-camelcase-properties": {
+          "before": 0,
+          "after": 2
+        }
+      },
+      "src/components/mcp/mcp-consent.tsx": {
+        "unicorn/prefer-default-parameters": {
+          "before": 0,
+          "after": 1
+        }
+      },
+      "src/components/mcp/mcp-pages.test.tsx": {
+        "@sarj/require-camelcase-properties": {
+          "before": 0,
+          "after": 3
+        }
+      },
+      "src/components/query-provider-session-ownership.test.tsx": {
+        "unicorn/prefer-type-error": {
+          "before": 0,
+          "after": 1
+        }
+      },
+      "src/components/quick-links/quick-links-loader.tsx": {
+        "unicorn/no-unnecessary-array-flat-map": {
+          "before": 0,
+          "after": 1
+        }
+      },
+      "src/components/ui/focus-return.test.tsx": {
+        "unicorn/prefer-type-error": {
+          "before": 0,
+          "after": 2
+        }
+      },
+      "src/components/wiki-document/doc-viewer-host.tsx": {
+        "unicorn/prefer-default-parameters": {
+          "before": 0,
+          "after": 1
+        }
+      },
+      "src/components/wiki-document/doc-viewer-store.test.ts": {
+        "unicorn/no-unnecessary-parameters": {
+          "before": 0,
+          "after": 1
+        }
+      },
+      "src/components/wiki-document/doc-warmup-lifecycle.test.tsx": {
+        "unicorn/no-unnecessary-default-arguments": {
+          "before": 0,
+          "after": 1
+        }
+      },
+      "src/components/wiki-document/document-polish-dialog.test.tsx": {
+        "unicorn/no-unnecessary-default-arguments": {
+          "before": 0,
+          "after": 4
+        }
+      },
+      "src/components/wiki-document/document-polish-recovery.test.tsx": {
+        "@sarj/require-camelcase-properties": {
+          "before": 0,
+          "after": 1
+        }
+      },
+      "src/components/wiki-document/document-polish-recovery.tsx": {
+        "@sarj/require-camelcase-properties": {
+          "before": 0,
+          "after": 1
+        }
+      },
+      "src/components/wiki-search/command-palette-lifecycle.test.tsx": {
+        "unicorn/prefer-type-error": {
+          "before": 0,
+          "after": 4
+        }
+      },
+      "src/components/wiki-search/command-palette-navigation.test.tsx": {
+        "unicorn/no-unnecessary-parameters": {
+          "before": 0,
+          "after": 1
+        },
+        "unicorn/prefer-type-error": {
+          "before": 0,
+          "after": 2
+        }
+      },
+      "src/components/wiki-search/command-palette.tsx": {
+        "@sarj/prefer-nominal-id-types": {
+          "before": 0,
+          "after": 1
+        }
+      },
+      "src/components/wiki-sidebar/drive-access-sheet-state.test.tsx": {
+        "@sarj/require-camelcase-properties": {
+          "before": 0,
+          "after": 9
+        },
+        "unicorn/no-unnecessary-parameters": {
+          "before": 0,
+          "after": 1
+        }
+      },
+      "src/components/wiki-sidebar/drive-access-sheet.test.ts": {
+        "@sarj/require-camelcase-properties": {
+          "before": 0,
+          "after": 9
+        }
+      },
+      "src/components/wiki-sidebar/folder-picker-focus.test.tsx": {
+        "unicorn/prefer-type-error": {
+          "before": 0,
+          "after": 1
+        }
+      },
+      "src/components/wiki-sidebar/item-menu-lifecycle.test.tsx": {
+        "unicorn/prefer-type-error": {
+          "before": 0,
+          "after": 7
+        }
+      },
+      "src/components/wiki-sidebar/item-menu.test.tsx": {
+        "unicorn/prefer-type-error": {
+          "before": 0,
+          "after": 1
+        }
+      },
+      "src/components/wiki-sidebar/move-dialog-outlet.test.tsx": {
+        "unicorn/no-unnecessary-default-arguments": {
+          "before": 0,
+          "after": 1
+        },
+        "unicorn/prefer-type-error": {
+          "before": 0,
+          "after": 5
+        }
+      },
+      "src/components/wiki-sidebar/move-dialog-outlet.tsx": {
+        "@sarj/prefer-nominal-id-types": {
+          "before": 0,
+          "after": 1
+        }
+      },
+      "src/components/wiki-sidebar/tree-node-observers.test.tsx": {
+        "unicorn/no-unnecessary-parameters": {
+          "before": 0,
+          "after": 1
+        }
+      },
+      "src/components/wiki-sidebar/use-document-intent-authorization.test.tsx": {
+        "unicorn/prefer-type-error": {
+          "before": 0,
+          "after": 1
+        }
+      },
+      "src/components/wiki-sidebar/use-drive-tree-index.test.tsx": {
+        "unicorn/no-unnecessary-parameters": {
+          "before": 0,
+          "after": 1
+        }
+      },
+      "src/components/wiki-sidebar/use-sidebar-navigation.test.tsx": {
+        "unicorn/prefer-type-error": {
+          "before": 0,
+          "after": 2
+        }
+      },
+      "src/components/wiki-sidebar/use-wiki-reorder.ts": {
+        "@sarj/prefer-nominal-id-types": {
+          "before": 0,
+          "after": 3
+        }
+      },
+      "src/components/wiki-sidebar/wiki-footer.test.tsx": {
+        "unicorn/prefer-type-error": {
+          "before": 0,
+          "after": 2
+        }
+      },
+      "src/hooks/use-expanded-folders.ts": {
+        "@sarj/prefer-nominal-id-types": {
+          "before": 0,
+          "after": 3
+        }
+      },
+      "src/lib/alias-client.test.ts": {
+        "@sarj/require-camelcase-properties": {
+          "before": 0,
+          "after": 4
+        }
+      },
+      "src/lib/alias-client.ts": {
+        "@sarj/require-camelcase-properties": {
+          "before": 0,
+          "after": 4
+        }
+      },
+      "src/lib/api-client.test.ts": {
+        "@sarj/require-camelcase-properties": {
+          "before": 0,
+          "after": 15
+        },
+        "unicorn/prefer-type-error": {
+          "before": 0,
+          "after": 5
+        }
+      },
+      "src/lib/browser-transport-boundary.test.ts": {
+        "unicorn/no-unnecessary-array-flat-map": {
+          "before": 0,
+          "after": 2
+        }
+      },
+      "src/lib/build-destination-sort-orders.test.ts": {
+        "@sarj/prefer-nominal-id-types": {
+          "before": 0,
+          "after": 1
+        }
+      },
+      "src/lib/document-transform-api.test.ts": {
+        "@sarj/require-camelcase-properties": {
+          "before": 0,
+          "after": 117
+        }
+      },
+      "src/lib/document-transform-api.ts": {
+        "@sarj/require-camelcase-properties": {
+          "before": 0,
+          "after": 95
+        }
+      },
+      "src/lib/mcp-consent-client.test.ts": {
+        "@sarj/require-camelcase-properties": {
+          "before": 0,
+          "after": 8
+        }
+      },
+      "src/lib/mcp-consent-client.ts": {
+        "@sarj/require-camelcase-properties": {
+          "before": 0,
+          "after": 11
+        }
+      },
+      "src/lib/reorganize-client.test.ts": {
+        "@sarj/require-camelcase-properties": {
+          "before": 0,
+          "after": 10
+        }
+      },
+      "src/lib/reorganize-client.ts": {
+        "@sarj/require-camelcase-properties": {
+          "before": 0,
+          "after": 13
+        }
+      },
+      "src/lib/server-api.test.ts": {
+        "@sarj/require-camelcase-properties": {
+          "before": 0,
+          "after": 1
+        },
+        "unicorn/no-unnecessary-parameters": {
+          "before": 0,
+          "after": 1
+        }
+      },
+      "src/lib/smart-create-client.test.ts": {
+        "@sarj/require-camelcase-properties": {
+          "before": 0,
+          "after": 34
+        }
+      },
+      "src/lib/smart-create-client.ts": {
+        "@sarj/require-camelcase-properties": {
+          "before": 0,
+          "after": 33
+        }
+      },
+      "src/lib/wiki-api.ts": {
+        "@sarj/prefer-nominal-id-types": {
+          "before": 0,
+          "after": 1
+        },
+        "@sarj/require-camelcase-properties": {
+          "before": 0,
+          "after": 28
+        }
+      },
+      "src/lib/wiki-cache.ts": {
+        "@sarj/prefer-nominal-id-types": {
+          "before": 0,
+          "after": 1
+        }
+      },
+      "src/lib/wiki-read-client.test.ts": {
+        "@sarj/require-camelcase-properties": {
+          "before": 0,
+          "after": 9
+        }
+      },
+      "src/lib/wiki-tree.test.ts": {
+        "unicorn/no-unnecessary-parameters": {
+          "before": 0,
+          "after": 1
+        }
+      }
+    }
+  }
+}

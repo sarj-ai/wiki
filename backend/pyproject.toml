@@ -1,0 +1,277 @@
+[project]
+dependencies = [
+  "fastapi>=0.162.0",
+  "fastmcp==4.1.3",
+  "mcp>=2.3.0",
+  "uvicorn[standard]>=0.54.0",
+  "sqlalchemy[asyncio]>=2.1.6",
+  "asyncpg>=0.32.0",
+  "alembic>=1.20.1",
+  "cryptography>=50.0.2",
+  "httpx>=0.28.1",
+  "google-api-python-client>=2.201.0",
+  "google-api-core>=2.43.0",
+  "google-auth>=2.62.0",
+  "google-auth-httplib2>=0.4.4",
+  "google-genai>=2.33.0",
+  "google-cloud-tasks>=2.26.0",
+  "httplib2>=0.32.0",
+  "pydantic-settings>=2.16.1",
+  "pyjwt>=2.15.1",
+  "loguru>=0.7.3",
+  "tenacity>=9.1.4,<9.2",  # google-genai 2.33.0 requires the 9.1 compatibility line.
+  "cloud-sql-python-connector[asyncpg]>=1.23.0",
+  "pydantic[email]>=2.14.1",
+  "pydantic-core>=2.50.1",
+  "starlette>=1.10.0",
+  "py-key-value-aio>=0.4.6",
+  "python-docx>=1.2.0",
+  "markdown-it-py==4.2.0",
+  "defusedxml>=0.7.1",
+  "typer>=0.27.3",
+  "google-cloud-storage>=3.17.1",
+]
+description = "Internal knowledge base API for Sarj"
+name = "sarj-docs-backend"
+requires-python = ">=3.14"
+version = "0.1.0"
+
+[dependency-groups]
+dev = [
+    "ruff>=0.17.2",
+    "mypy>=2.4.0",
+    "pytest>=9.1.1",
+    "pytest-asyncio>=1.4.0",
+    "pytest-cov>=7.1.0",
+    "types-requests>=2.33.0.20261006",
+    "types-httplib2>=0.32.0.20260720",
+    "vulture>=2.16",
+    "basedpyright>=1.40.2",
+    "ty>=0.0.91",
+    "google-api-python-client-stubs>=1.40.0",
+    "types-defusedxml>=0.7.0.20260504",
+    "sarj-iac-lint==0.30.3",
+    "sarj-python-lint==1.84.0",
+    "sarj-sql-lint==0.30.1",
+    "import-linter>=2.15",
+    "pip-audit>=2.10.1",
+    "deptry>=0.25.1",
+]
+
+[tool.deptry.package_module_name_map]
+# Standards runs deptry in an isolated environment; these distributions do not
+# expose their import names to that environment's package metadata.
+google-api-python-client = "googleapiclient"
+google-api-core = "google"
+google-auth = "google"
+google-cloud-storage = "google"
+google-cloud-tasks = "google"
+google-genai = "google"
+cloud-sql-python-connector = "google"
+python-docx = "docx"
+py-key-value-aio = "key_value"
+
+[tool.deptry.per_rule_ignores]
+# Executables and SQLAlchemy's driver string are used outside Python imports.
+DEP002 = ["alembic", "asyncpg", "uvicorn"]
+
+[tool.hatch.build.targets.wheel]
+packages = ["app"]
+
+[build-system]
+build-backend = "hatchling.build"
+requires = ["hatchling"]
+
+[tool.ruff]
+extend = ".ruff-strict.toml"
+extend-exclude = ["alembic/versions"]
+line-length = 100
+target-version = "py314"
+
+[tool.ruff.lint.extend-per-file-ignores]
+# FastAPI object factories run on the event loop to avoid a thread-pool hop.
+"app/*/dependencies.py" = ["unused-async"]
+"alembic/env.py" = ["ALL"]
+"app/**" = [
+  # FastAPI, Pydantic, and SQLAlchemy evaluate annotations for dependency
+  # injection, schema generation, and ORM mapping; type-only rewrites are not
+  # safe as a blanket rule here under Python 3.14's annotation semantics.
+  "typing-only-first-party-import",
+  "typing-only-third-party-import",
+  "typing-only-standard-library-import",
+]
+"app/auth/service.py" = [
+  "magic-value-comparison",
+  "no-self-use",
+  "too-many-statements-in-try-clause",
+]
+"app/database.py" = [
+  "any-type",
+  "global-statement",
+  "yield-in-context-manager-in-async-generator",
+]
+"app/drive/retry.py" = ["any-type", "magic-value-comparison"]
+"app/drive/service.py" = ["any-type", "magic-value-comparison"]
+"app/drive/snippets.py" = ["magic-value-comparison"]
+"app/files/errors.py" = ["magic-value-comparison"]
+"app/files/router.py" = ["too-many-positional-arguments"]
+"app/smart_create/router.py" = ["too-many-positional-arguments"]
+"app/files/service.py" = ["any-type", "magic-value-comparison"]
+"app/logging_config.py" = ["global-statement"]
+"app/main.py" = ["unused-async"]
+"app/sidebar/cache.py" = ["no-self-use"]
+"scripts/**" = [
+  # This key shadows the canonical `.ruff-strict.toml` entry for the same glob,
+  # so the exemptions that file grants `scripts/**` have to be restated here.
+  "implicit-namespace-package",
+  "print",
+  "hardcoded-password-string",
+  "raise-vanilla-class",
+  "raise-vanilla-args",
+  "blind-except",
+  "import-outside-top-level",
+]
+"test_*.py" = [
+  "missing-return-type-undocumented-public-function",
+  "missing-return-type-private-function",
+]
+"tests/**" = [
+  "any-type",
+  "assert",
+  "unused-method-argument",
+  "boolean-type-hint-positional-argument",
+  "boolean-default-value-positional-argument",
+  "boolean-positional-value-in-call",
+  "float-equality-comparison",
+  "magic-value-comparison",
+  "private-member-access",
+  "suspicious-subprocess-import",
+  "subprocess-without-shell-equals-true",
+  "start-process-with-partial-path",
+  "pytest-fixture-autouse",
+  "no-self-use",
+  "unused-async",
+  "typing-only-first-party-import",
+  "typing-only-third-party-import",
+  "typing-only-standard-library-import",
+  "import-outside-top-level",
+]
+
+[tool.ruff.lint.isort]
+combine-as-imports = true
+force-sort-within-sections = true
+known-first-party = ["app"]
+lines-after-imports = 2
+
+[tool.importlinter]
+include_external_packages = true
+root_package = "app"
+
+[[tool.importlinter.contracts]]
+allow_indirect_imports = true
+forbidden_modules = ["googleapiclient", "google", "google_auth_oauthlib"]
+name = "Routers never call Google APIs directly"
+source_modules = [
+  "app.auth.router",
+  "app.bootstrap.router",
+  "app.extras.router",
+  "app.files.router",
+  "app.sidebar.router",
+  "app.drive.search_router",
+  "app.smart_create.router",
+  "app.templates.router",
+]
+type = "forbidden"
+
+[[tool.importlinter.contracts]]
+forbidden_modules = [
+  "app.auth.router",
+  "app.bootstrap.router",
+  "app.extras.router",
+  "app.files.router",
+  "app.sidebar.router",
+  "app.drive.search_router",
+  "app.smart_create.router",
+  "app.templates.router",
+]
+name = "Services never import routers (no upward dependencies)"
+source_modules = [
+  "app.auth.service",
+  "app.bootstrap.service",
+  "app.drive.service",
+  "app.extras.service",
+  "app.files.service",
+  "app.sidebar.cache",
+  "app.smart_create.service",
+  "app.templates.service",
+]
+type = "forbidden"
+
+[tool.mypy]
+python_version = "3.14"
+strict = true
+# Not implied by strict — bumps worth keeping explicit:
+disallow_any_unimported = true # see Google override below
+local_partial_types = true     # mypy 2.0 default; opt in early
+warn_unreachable = true
+# disallow_any_explicit deliberately off — Pydantic BaseModel and Google API
+# params dicts both surface as Any without their respective mypy plugins, and
+# the false-positive rate exceeds the bug-find rate on this codebase.
+enable_error_code = [
+  "deprecated",                # PEP 702 — track FastAPI/SQLAlchemy deprecations
+  "explicit-override",         # require @override on subclass methods (fits ABC pattern)
+  "mutable-override",
+  "redundant-self",
+  "narrowed-type-not-subtype",
+  "unimported-reveal",
+]
+exclude = ["^alembic/versions/"]
+
+[[tool.mypy.overrides]]
+ignore_missing_imports = true
+module = [
+  "googleapiclient.*",
+  "google.auth.*",
+  "google.oauth2.*",
+  "google_auth_httplib2",
+]
+# Silence cascades from unstubbed Google API symbols. mypy strict otherwise
+# flags Credentials(...) etc. as untyped calls and treats every return value
+# as Any; pyright sees these as fully typed, so we defer to pyright here.
+disallow_any_unimported = false
+disallow_untyped_calls = false
+
+[tool.ty.src]
+exclude = ["alembic/versions"]
+include = ["app", "tests"]
+
+[tool.ty.rules]
+# ty (astral) is still pre-1.0; start at its default strict posture.
+unused-ignore-comment = "error"
+
+[tool.vulture]
+exclude = ["alembic/versions/", "app/__pycache__/"]
+ignore_decorators = [
+  "@app.*",
+  "@router.*",
+  "@pytest.fixture",
+  "@field_validator",
+  "@asynccontextmanager",
+]
+ignore_names = [
+  "lifespan",
+  "model_config",
+  # field_validator requires the classmethod's first param to be named `cls`;
+  # vulture's decorator-aware ignore doesn't reach function parameters, so we
+  # whitelist the name instead.
+  "cls",
+]
+min_confidence = 80
+paths = ["app"]
+
+[tool.pytest.ini_options]
+empty_parameter_set_mark = "fail_at_collect"
+addopts = ["-ra", "--strict-markers", "--strict-config"]
+asyncio_mode = "auto"
+pythonpath = ["."]
+testpaths = ["tests"]

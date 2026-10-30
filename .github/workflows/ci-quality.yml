@@ -1,0 +1,172 @@
+name: CI Quality
+
+"on":
+  workflow_call:
+    inputs:
+      force_full:
+        description: Check all files when qualifying a cumulative main release
+        type: boolean
+        default: false
+  push:
+    branches: [main]
+    # Main releases call this workflow once as an exact-SHA prerequisite. Avoid a
+    # second standalone copy when every changed path is already routed there.
+    paths-ignore:
+      - "backend/.dockerignore"
+      - "backend/Dockerfile"
+      - "backend/alembic.ini"
+      - "backend/alembic/**"
+      - "backend/app/**"
+      - "backend/pyproject.toml"
+      - "backend/uv.lock"
+      - "backend/uv.toml"
+      - "frontend/**"
+      - ".github/workflows/ci-frontend.yml"
+      - ".github/workflows/deploy-backend.yml"
+      - ".github/workflows/deploy-frontend.yml"
+      - "scripts/github/release_gate.py"
+      - "scripts/github/verify-release-gate.sh"
+      - "scripts/github/deploy-backend-candidate.sh"
+      - "scripts/github/report-blocked-backend-release.sh"
+      - "scripts/github/run-backend-migrations.sh"
+      - "scripts/github/switch-backend-production-traffic.sh"
+      - "scripts/github/verify-backend-production-health.sh"
+      - "scripts/github/verify-backend-correlated-logs.sh"
+      - "scripts/github/verify-mcp-release.sh"
+      - "scripts/github/resolve-mcp-release-mode.sh"
+      - "scripts/github/verify-smart-create-queue.sh"
+      - "scripts/wiki.py"
+      - "scripts/backend_release/**"
+      - "scripts/frontend_release/**"
+      - ".github/workflows/release-main.yml"
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-quality-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  repository-quality:
+    name: pre-commit (actionlint, hygiene, sarj rules)
+    runs-on: ${{ vars.CI_RUNNER || 'ubuntu-24.04' }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
+        with:
+          version-file: backend/uv.toml
+          enable-cache: true
+          cache-dependency-glob: backend/uv.lock
+
+      - name: Cache pre-commit environments
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.cache/pre-commit
+          key: pre-commit-v4.7.0-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('backend/.python-version', '.pre-commit-config.yaml') }}
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 26.12.1
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Activate declared npm version
+        run: npm install --global npm@12.2.1 --ignore-scripts
+      - name: Install analysis dependencies
+        run: uv sync --locked --project backend
+      - name: Install frontend analysis dependencies
+        run: npm ci --prefix frontend --no-audit --no-fund --ignore-scripts
+      - name: Bootstrap analysis inputs
+        run: npm --prefix frontend run generate:api
+
+      - name: Verify repository consistency
+        run: uv run scripts/wiki.py check repository
+
+      - name: Suppression ratchet
+        run: uv run --project backend --locked sarj-ratchet .
+
+      - name: Verify exact Python Standards baseline
+        env:
+          WIKI_PYTHON_BASELINE_JOBS: "2"
+        run: uv run --project backend --locked python scripts/standards_checks/check_standards.py --verify-python-baseline .
+
+      - name: Reject lint baseline growth
+        if: github.event_name == 'pull_request'
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: scripts/check-baseline-growth.sh "$BASE_SHA"
+
+      - name: Install pinned Terraform
+        uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e # v4.0.1
+        with:
+          terraform_version: 1.17.0
+          terraform_wrapper: false
+
+      - name: Initialize locked local Terraform providers
+        run: terraform -chdir=terraform init -backend=false -input=false -lockfile=readonly
+
+      - name: Run pre-commit
+        env:
+          FORCE_FULL: ${{ inputs.force_full }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: bash scripts/github/run-pre-commit.sh
+
+  api-contract:
+    name: OpenAPI spec in sync
+    runs-on: ${{ vars.CI_RUNNER || 'ubuntu-24.04' }}
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
+        with:
+          version-file: backend/uv.toml
+          enable-cache: true
+          cache-dependency-glob: backend/uv.lock
+
+      - name: Verify committed OpenAPI spec
+        working-directory: backend
+        run: uv run --locked python scripts/export_openapi.py --check ../frontend/openapi.json
+
+  secret-scan:
+    name: gitleaks (full history)
+    runs-on: ${{ vars.CI_RUNNER || 'ubuntu-24.04' }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Download pinned Gitleaks
+        env:
+          GITLEAKS_SHA256: 551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb
+          GITLEAKS_VERSION: 8.30.1
+        run: curl --fail --location --silent --show-error --output gitleaks.tar.gz "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz"
+      - name: Verify Gitleaks archive digest
+        env:
+          GITLEAKS_SHA256: 551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb
+          GITLEAKS_VERSION: 8.30.1
+        run: sha256sum --check --strict <<<"${GITLEAKS_SHA256}  gitleaks.tar.gz"
+      - name: Extract verified Gitleaks
+        run: tar -xzf gitleaks.tar.gz gitleaks
+      - name: Run gitleaks
+        env:
+          GITLEAKS_SHA256: 551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb
+          GITLEAKS_VERSION: 8.30.1
+        run: ./gitleaks detect --source . --redact --verbose

@@ -1,0 +1,975 @@
+{
+  "backend/app/aliases/router.py": {
+    "SARJ451": 7
+  },
+  "backend/app/auth/google_tokens.py": {
+    "SARJ411": 1,
+    "SARJ442": 1,
+    "SARJ528": 3
+  },
+  "backend/app/auth/router.py": {
+    "SARJ451": 4
+  },
+  "backend/app/bootstrap/router.py": {
+    "SARJ451": 2
+  },
+  "backend/app/document_transform/brand.py": {
+    "SARJ444": 1,
+    "SARJ447": 4
+  },
+  "backend/app/document_transform/bullet_stage_diagnostics.py": {
+    "SARJ444": 1,
+    "SARJ528": 2
+  },
+  "backend/app/document_transform/bullet_style_projection.py": {
+    "SARJ444": 1,
+    "SARJ447": 7,
+    "SARJ528": 2
+  },
+  "backend/app/document_transform/copy_font_defense.py": {
+    "SARJ447": 9
+  },
+  "backend/app/document_transform/copy_identity.py": {
+    "SARJ447": 3,
+    "SARJ528": 3
+  },
+  "backend/app/document_transform/copy_visual_authority.py": {
+    "SARJ447": 4
+  },
+  "backend/app/document_transform/custom_furniture.py": {
+    "SARJ444": 1,
+    "SARJ447": 3,
+    "SARJ528": 3
+  },
+  "backend/app/document_transform/docx_renderer.py": {
+    "SARJ026": 2,
+    "SARJ093": 1,
+    "SARJ442": 5,
+    "SARJ528": 2
+  },
+  "backend/app/document_transform/executor.py": {
+    "SARJ093": 1,
+    "SARJ442": 1,
+    "SARJ444": 4,
+    "SARJ447": 10
+  },
+  "backend/app/document_transform/gateway.py": {
+    "SARJ447": 9
+  },
+  "backend/app/document_transform/gcs_uploads.py": {
+    "SARJ477": 2,
+    "SARJ528": 2
+  },
+  "backend/app/document_transform/google_gateway.py": {
+    "SARJ430": 1,
+    "SARJ442": 4,
+    "SARJ444": 21,
+    "SARJ447": 121,
+    "SARJ477": 2,
+    "SARJ528": 29
+  },
+  "backend/app/document_transform/google_presentation_gateway.py": {
+    "SARJ447": 19,
+    "SARJ477": 2,
+    "SARJ528": 14
+  },
+  "backend/app/document_transform/header_recovery.py": {
+    "SARJ444": 2,
+    "SARJ447": 2
+  },
+  "backend/app/document_transform/ir.py": {
+    "SARJ444": 5,
+    "SARJ447": 8,
+    "SARJ528": 2
+  },
+  "backend/app/document_transform/markdown_import.py": {
+    "SARJ447": 93,
+    "SARJ528": 10
+  },
+  "backend/app/document_transform/native_date_flow.py": {
+    "SARJ444": 3,
+    "SARJ447": 14,
+    "SARJ528": 1
+  },
+  "backend/app/document_transform/native_font_context.py": {
+    "SARJ444": 1,
+    "SARJ447": 13
+  },
+  "backend/app/document_transform/native_font_defense.py": {
+    "SARJ444": 1,
+    "SARJ447": 16
+  },
+  "backend/app/document_transform/native_font_noop.py": {
+    "SARJ444": 1,
+    "SARJ447": 14
+  },
+  "backend/app/document_transform/native_font_proof.py": {
+    "SARJ093": 2,
+    "SARJ444": 3,
+    "SARJ447": 31
+  },
+  "backend/app/document_transform/native_font_semantics.py": {
+    "SARJ444": 1,
+    "SARJ447": 14
+  },
+  "backend/app/document_transform/native_footer.py": {
+    "SARJ447": 1
+  },
+  "backend/app/document_transform/native_footer_flow.py": {
+    "SARJ442": 2,
+    "SARJ444": 2,
+    "SARJ447": 13,
+    "SARJ528": 2
+  },
+  "backend/app/document_transform/native_pagination.py": {
+    "SARJ444": 6,
+    "SARJ447": 10,
+    "SARJ481": 1,
+    "SARJ528": 2
+  },
+  "backend/app/document_transform/native_paragraph_layout.py": {
+    "SARJ444": 2,
+    "SARJ447": 12
+  },
+  "backend/app/document_transform/native_preservation.py": {
+    "SARJ447": 4
+  },
+  "backend/app/document_transform/native_table_font.py": {
+    "SARJ444": 1,
+    "SARJ447": 24,
+    "SARJ528": 1
+  },
+  "backend/app/document_transform/native_visual_authority.py": {
+    "SARJ444": 1,
+    "SARJ447": 5
+  },
+  "backend/app/document_transform/planner.py": {
+    "SARJ444": 1
+  },
+  "backend/app/document_transform/presentation_gateway.py": {
+    "SARJ447": 3
+  },
+  "backend/app/document_transform/provider_diagnostics.py": {
+    "SARJ444": 3,
+    "SARJ447": 3
+  },
+  "backend/app/document_transform/qa_broker.py": {
+    "SARJ444": 2
+  },
+  "backend/app/document_transform/qa_campaigns.py": {
+    "SARJ528": 2
+  },
+  "backend/app/document_transform/qa_corpus.py": {
+    "SARJ444": 1
+  },
+  "backend/app/document_transform/qa_router.py": {
+    "SARJ451": 2
+  },
+  "backend/app/document_transform/router.py": {
+    "SARJ451": 6
+  },
+  "backend/app/document_transform/safety.py": {
+    "SARJ444": 1
+  },
+  "backend/app/document_transform/schemas.py": {
+    "SARJ447": 3
+  },
+  "backend/app/document_transform/slides_brand.py": {
+    "SARJ444": 2,
+    "SARJ447": 108,
+    "SARJ528": 4
+  },
+  "backend/app/document_transform/slides_ir.py": {
+    "SARJ444": 1,
+    "SARJ447": 9,
+    "SARJ528": 7
+  },
+  "backend/app/document_transform/source_access.py": {
+    "SARJ447": 1
+  },
+  "backend/app/document_transform/tab_metadata.py": {
+    "SARJ444": 2,
+    "SARJ447": 3,
+    "SARJ528": 2
+  },
+  "backend/app/document_transform/tab_names.py": {
+    "SARJ444": 1
+  },
+  "backend/app/document_transform/tab_structure.py": {
+    "SARJ444": 2,
+    "SARJ447": 7,
+    "SARJ528": 1
+  },
+  "backend/app/document_transform/tab_structure_execution.py": {
+    "SARJ444": 3,
+    "SARJ447": 18
+  },
+  "backend/app/document_transform/word_gateway.py": {
+    "SARJ447": 3
+  },
+  "backend/app/document_transform/word_package.py": {
+    "SARJ444": 2
+  },
+  "backend/app/drive/search_router.py": {
+    "SARJ451": 3
+  },
+  "backend/app/drive/service.py": {
+    "SARJ442": 2,
+    "SARJ447": 10
+  },
+  "backend/app/extras/router.py": {
+    "SARJ451": 9
+  },
+  "backend/app/files/router.py": {
+    "SARJ451": 8
+  },
+  "backend/app/mcp/native_consent_router.py": {
+    "SARJ451": 1,
+    "SARJ528": 2
+  },
+  "backend/app/mcp/native_http_guard.py": {
+    "SARJ528": 2
+  },
+  "backend/app/mcp/protection.py": {
+    "SARJ528": 2
+  },
+  "backend/app/mcp/server.py": {
+    "SARJ442": 1
+  },
+  "backend/app/mcp/storage.py": {
+    "SARJ528": 1
+  },
+  "backend/app/models/task.py": {
+    "SARJ528": 3
+  },
+  "backend/app/models/wiki.py": {
+    "SARJ528": 2
+  },
+  "backend/app/openapi.py": {
+    "SARJ447": 1
+  },
+  "backend/app/sidebar/cache.py": {
+    "SARJ528": 2
+  },
+  "backend/app/sidebar/router.py": {
+    "SARJ451": 6
+  },
+  "backend/app/smart_create/router.py": {
+    "SARJ451": 4
+  },
+  "backend/app/tasks/internal_auth.py": {
+    "SARJ528": 3
+  },
+  "backend/app/tasks/internal_router.py": {
+    "SARJ008": 1,
+    "SARJ451": 1
+  },
+  "backend/app/tasks/router.py": {
+    "SARJ451": 2
+  },
+  "backend/app/tasks/service.py": {
+    "SARJ528": 5
+  },
+  "backend/app/templates/router.py": {
+    "SARJ451": 2
+  },
+  "backend/scripts/benchmark_performance.py": {
+    "SARJ528": 1
+  },
+  "backend/scripts/qa_document_transform.py": {
+    "SARJ528": 1
+  },
+  "backend/scripts/qa_document_transform_cloud.py": {
+    "SARJ444": 1,
+    "SARJ447": 1,
+    "SARJ485": 1,
+    "SARJ528": 1
+  },
+  "backend/scripts/qa_document_transform_corpus.py": {
+    "SARJ093": 2,
+    "SARJ442": 2,
+    "SARJ444": 2,
+    "SARJ447": 11
+  },
+  "backend/scripts/qa_markdown_transform.py": {
+    "SARJ528": 1
+  },
+  "backend/scripts/qa_polish_rounds.py": {
+    "SARJ444": 2
+  },
+  "backend/tests/advanced_round6_support.py": {
+    "SARJ528": 4
+  },
+  "backend/tests/round7_provider_support.py": {
+    "SARJ528": 3
+  },
+  "backend/tests/round7_reads_support.py": {
+    "SARJ528": 2
+  },
+  "backend/tests/support.py": {
+    "SARJ447": 6,
+    "SARJ477": 2,
+    "SARJ528": 3
+  },
+  "backend/tests/test_advanced_round6.py": {
+    "SARJ439": 1
+  },
+  "backend/tests/test_alias_router.py": {
+    "SARJ442": 2
+  },
+  "backend/tests/test_aliases.py": {
+    "SARJ528": 2
+  },
+  "backend/tests/test_auth_cookies.py": {
+    "SARJ442": 1,
+    "SARJ445": 4
+  },
+  "backend/tests/test_auth_tokens.py": {
+    "SARJ442": 2,
+    "SARJ528": 1
+  },
+  "backend/tests/test_authored_labels.py": {
+    "SARJ442": 2,
+    "SARJ445": 4,
+    "SARJ447": 4,
+    "SARJ477": 1,
+    "SARJ528": 1
+  },
+  "backend/tests/test_branch_protection.py": {
+    "SARJ442": 3,
+    "SARJ445": 1
+  },
+  "backend/tests/test_bulk_round6_postgres.py": {
+    "SARJ528": 4
+  },
+  "backend/tests/test_cache_protection.py": {
+    "SARJ528": 1
+  },
+  "backend/tests/test_cache_service.py": {
+    "SARJ528": 5
+  },
+  "backend/tests/test_client_reuse.py": {
+    "SARJ445": 2,
+    "SARJ528": 4
+  },
+  "backend/tests/test_copy_font_defense.py": {
+    "SARJ445": 4,
+    "SARJ447": 9,
+    "SARJ477": 2
+  },
+  "backend/tests/test_copy_font_preservation.py": {
+    "SARJ445": 1,
+    "SARJ447": 5
+  },
+  "backend/tests/test_copy_header_recovery.py": {
+    "SARJ442": 2,
+    "SARJ445": 8,
+    "SARJ447": 2,
+    "SARJ477": 3,
+    "SARJ528": 3
+  },
+  "backend/tests/test_copy_visual_authority.py": {
+    "SARJ445": 1,
+    "SARJ447": 2,
+    "SARJ477": 1
+  },
+  "backend/tests/test_custom_furniture.py": {
+    "SARJ445": 5,
+    "SARJ447": 13,
+    "SARJ477": 1,
+    "SARJ528": 2
+  },
+  "backend/tests/test_document_transform.py": {
+    "SARJ442": 21,
+    "SARJ445": 51,
+    "SARJ447": 15,
+    "SARJ477": 10,
+    "SARJ528": 22
+  },
+  "backend/tests/test_document_transform_application.py": {
+    "SARJ445": 3
+  },
+  "backend/tests/test_document_transform_bullet_style_projection.py": {
+    "SARJ442": 1,
+    "SARJ445": 1,
+    "SARJ447": 3
+  },
+  "backend/tests/test_document_transform_copy_identity.py": {
+    "SARJ442": 2,
+    "SARJ445": 1,
+    "SARJ447": 2
+  },
+  "backend/tests/test_document_transform_docx.py": {
+    "SARJ445": 3
+  },
+  "backend/tests/test_document_transform_footer_flow.py": {
+    "SARJ445": 3,
+    "SARJ447": 4,
+    "SARJ477": 1,
+    "SARJ528": 1
+  },
+  "backend/tests/test_document_transform_header_identity.py": {
+    "SARJ445": 2,
+    "SARJ447": 2
+  },
+  "backend/tests/test_document_transform_header_preservation.py": {
+    "SARJ442": 2,
+    "SARJ445": 2,
+    "SARJ447": 1
+  },
+  "backend/tests/test_document_transform_header_provenance.py": {
+    "SARJ445": 5,
+    "SARJ447": 2
+  },
+  "backend/tests/test_document_transform_heading_hierarchy.py": {
+    "SARJ447": 6
+  },
+  "backend/tests/test_document_transform_marker_diagnostics.py": {
+    "SARJ445": 4,
+    "SARJ447": 2,
+    "SARJ528": 1
+  },
+  "backend/tests/test_document_transform_native_date_flow.py": {
+    "SARJ445": 12,
+    "SARJ447": 4,
+    "SARJ477": 5
+  },
+  "backend/tests/test_document_transform_native_footer.py": {
+    "SARJ447": 5,
+    "SARJ477": 1
+  },
+  "backend/tests/test_document_transform_native_list_subranges.py": {
+    "SARJ445": 2,
+    "SARJ447": 1
+  },
+  "backend/tests/test_document_transform_native_lists.py": {
+    "SARJ447": 3,
+    "SARJ528": 1
+  },
+  "backend/tests/test_document_transform_native_safety_diagnostics.py": {
+    "SARJ445": 1,
+    "SARJ447": 5,
+    "SARJ477": 1
+  },
+  "backend/tests/test_document_transform_protected_content.py": {
+    "SARJ445": 1,
+    "SARJ447": 3
+  },
+  "backend/tests/test_document_transform_provider_diagnostics.py": {
+    "SARJ447": 1,
+    "SARJ528": 2
+  },
+  "backend/tests/test_document_transform_qa_broker.py": {
+    "SARJ442": 1
+  },
+  "backend/tests/test_document_transform_qa_campaigns.py": {
+    "SARJ445": 4,
+    "SARJ528": 6
+  },
+  "backend/tests/test_document_transform_qa_campaigns_postgres.py": {
+    "SARJ445": 2,
+    "SARJ477": 2,
+    "SARJ528": 4
+  },
+  "backend/tests/test_document_transform_qa_corpus.py": {
+    "SARJ442": 2,
+    "SARJ445": 6
+  },
+  "backend/tests/test_document_transform_qa_corpus_postgres.py": {
+    "SARJ093": 1,
+    "SARJ528": 12
+  },
+  "backend/tests/test_document_transform_qa_corpus_schema.py": {
+    "SARJ477": 1,
+    "SARJ528": 3
+  },
+  "backend/tests/test_document_transform_qa_grants.py": {
+    "SARJ528": 2
+  },
+  "backend/tests/test_document_transform_qa_migration.py": {
+    "SARJ477": 5,
+    "SARJ528": 11
+  },
+  "backend/tests/test_document_transform_qa_router.py": {
+    "SARJ445": 74,
+    "SARJ447": 3,
+    "SARJ457": 38,
+    "SARJ477": 45,
+    "SARJ528": 91
+  },
+  "backend/tests/test_document_transform_repeat.py": {
+    "SARJ445": 1,
+    "SARJ447": 1
+  },
+  "backend/tests/test_document_transform_slides_brand.py": {
+    "SARJ444": 1,
+    "SARJ447": 24
+  },
+  "backend/tests/test_document_transform_slides_ir.py": {
+    "SARJ442": 1,
+    "SARJ445": 7,
+    "SARJ447": 6
+  },
+  "backend/tests/test_document_transform_tab_metadata.py": {
+    "SARJ445": 4,
+    "SARJ447": 3,
+    "SARJ477": 1,
+    "SARJ528": 1
+  },
+  "backend/tests/test_document_transform_tab_names.py": {
+    "SARJ442": 1
+  },
+  "backend/tests/test_document_transform_tab_structure.py": {
+    "SARJ447": 2,
+    "SARJ528": 1
+  },
+  "backend/tests/test_document_transform_tab_structure_execution.py": {
+    "SARJ442": 1,
+    "SARJ447": 4,
+    "SARJ528": 1
+  },
+  "backend/tests/test_document_transform_task_executor.py": {
+    "SARJ442": 13,
+    "SARJ445": 10,
+    "SARJ477": 4,
+    "SARJ528": 9
+  },
+  "backend/tests/test_document_transform_typography.py": {
+    "SARJ447": 5,
+    "SARJ477": 1,
+    "SARJ528": 1
+  },
+  "backend/tests/test_drive_modules.py": {
+    "SARJ442": 2,
+    "SARJ445": 7,
+    "SARJ447": 16,
+    "SARJ477": 8,
+    "SARJ528": 2
+  },
+  "backend/tests/test_files_service.py": {
+    "SARJ442": 2,
+    "SARJ445": 1,
+    "SARJ447": 20,
+    "SARJ477": 26
+  },
+  "backend/tests/test_footer_inherited_font.py": {
+    "SARJ447": 2,
+    "SARJ528": 1
+  },
+  "backend/tests/test_footer_shape_diagnostics.py": {
+    "SARJ447": 1
+  },
+  "backend/tests/test_google_presentation_gateway.py": {
+    "SARJ442": 3,
+    "SARJ445": 1,
+    "SARJ447": 8,
+    "SARJ477": 9,
+    "SARJ528": 21
+  },
+  "backend/tests/test_google_token_manager.py": {
+    "SARJ442": 3
+  },
+  "backend/tests/test_header_postcondition_recovery.py": {
+    "SARJ442": 3,
+    "SARJ444": 1,
+    "SARJ447": 3
+  },
+  "backend/tests/test_header_provenance_postgres.py": {
+    "SARJ442": 1
+  },
+  "backend/tests/test_header_provenance_transaction.py": {
+    "SARJ528": 4
+  },
+  "backend/tests/test_header_recovery_diagnostics.py": {
+    "SARJ447": 4,
+    "SARJ528": 3
+  },
+  "backend/tests/test_health.py": {
+    "SARJ445": 3,
+    "SARJ528": 1
+  },
+  "backend/tests/test_log_privacy.py": {
+    "SARJ442": 1
+  },
+  "backend/tests/test_markdown_footer_proof.py": {
+    "SARJ447": 5
+  },
+  "backend/tests/test_markdown_gcs_uploads.py": {
+    "SARJ445": 4,
+    "SARJ477": 2,
+    "SARJ528": 5
+  },
+  "backend/tests/test_markdown_header_proof.py": {
+    "SARJ447": 2,
+    "SARJ528": 1
+  },
+  "backend/tests/test_markdown_header_style_diagnostics.py": {
+    "SARJ528": 1
+  },
+  "backend/tests/test_markdown_header_zero_dimension.py": {
+    "SARJ528": 1
+  },
+  "backend/tests/test_markdown_import.py": {
+    "SARJ442": 4,
+    "SARJ445": 1,
+    "SARJ447": 16
+  },
+  "backend/tests/test_markdown_native_header_title.py": {
+    "SARJ445": 1,
+    "SARJ447": 3
+  },
+  "backend/tests/test_mcp_adversarial.py": {
+    "SARJ445": 2,
+    "SARJ447": 1,
+    "SARJ477": 1,
+    "SARJ528": 1
+  },
+  "backend/tests/test_mcp_bounded_search.py": {
+    "SARJ445": 3,
+    "SARJ447": 1,
+    "SARJ477": 2,
+    "SARJ528": 6
+  },
+  "backend/tests/test_mcp_context.py": {
+    "SARJ445": 2,
+    "SARJ528": 2
+  },
+  "backend/tests/test_mcp_grants.py": {
+    "SARJ445": 1
+  },
+  "backend/tests/test_mcp_identity.py": {
+    "SARJ442": 1,
+    "SARJ528": 7
+  },
+  "backend/tests/test_mcp_mutation.py": {
+    "SARJ445": 2,
+    "SARJ477": 2,
+    "SARJ528": 4
+  },
+  "backend/tests/test_mcp_native_admission.py": {
+    "SARJ445": 3
+  },
+  "backend/tests/test_mcp_native_composition.py": {
+    "SARJ477": 1,
+    "SARJ528": 2
+  },
+  "backend/tests/test_mcp_native_context.py": {
+    "SARJ445": 2,
+    "SARJ528": 1
+  },
+  "backend/tests/test_mcp_native_provider.py": {
+    "SARJ445": 2,
+    "SARJ528": 6
+  },
+  "backend/tests/test_mcp_native_runtime.py": {
+    "SARJ445": 1,
+    "SARJ528": 2
+  },
+  "backend/tests/test_mcp_protection.py": {
+    "SARJ528": 1
+  },
+  "backend/tests/test_mcp_schemas.py": {
+    "SARJ442": 1,
+    "SARJ447": 4
+  },
+  "backend/tests/test_mcp_server.py": {
+    "SARJ445": 2,
+    "SARJ447": 1,
+    "SARJ477": 2,
+    "SARJ528": 4
+  },
+  "backend/tests/test_mcp_storage.py": {
+    "SARJ477": 1
+  },
+  "backend/tests/test_membership_gating.py": {
+    "SARJ528": 2
+  },
+  "backend/tests/test_native_content_ir.py": {
+    "SARJ447": 6
+  },
+  "backend/tests/test_native_font_components.py": {
+    "SARJ447": 3
+  },
+  "backend/tests/test_native_font_defense.py": {
+    "SARJ442": 1,
+    "SARJ447": 1
+  },
+  "backend/tests/test_native_font_noop.py": {
+    "SARJ442": 1,
+    "SARJ445": 1,
+    "SARJ447": 4,
+    "SARJ477": 1,
+    "SARJ528": 1
+  },
+  "backend/tests/test_native_font_proof.py": {
+    "SARJ447": 4,
+    "SARJ528": 2
+  },
+  "backend/tests/test_native_font_proof_diagnostics.py": {
+    "SARJ447": 2
+  },
+  "backend/tests/test_native_font_proof_v2.py": {
+    "SARJ447": 8,
+    "SARJ528": 2
+  },
+  "backend/tests/test_native_font_shift_execution.py": {
+    "SARJ445": 2,
+    "SARJ447": 2,
+    "SARJ477": 1
+  },
+  "backend/tests/test_native_mcp_core.py": {
+    "SARJ445": 10
+  },
+  "backend/tests/test_native_pagination.py": {
+    "SARJ442": 1,
+    "SARJ445": 2,
+    "SARJ447": 2
+  },
+  "backend/tests/test_native_paragraph_layout.py": {
+    "SARJ445": 9,
+    "SARJ447": 4,
+    "SARJ477": 3,
+    "SARJ528": 1
+  },
+  "backend/tests/test_native_preservation_findings.py": {
+    "SARJ445": 2,
+    "SARJ447": 1,
+    "SARJ477": 2,
+    "SARJ528": 2
+  },
+  "backend/tests/test_native_spacer_layout.py": {
+    "SARJ442": 1,
+    "SARJ444": 1,
+    "SARJ445": 2,
+    "SARJ447": 3
+  },
+  "backend/tests/test_native_tab_icons.py": {
+    "SARJ445": 1,
+    "SARJ477": 1,
+    "SARJ528": 2
+  },
+  "backend/tests/test_native_table_font.py": {
+    "SARJ447": 6
+  },
+  "backend/tests/test_native_table_font_execution.py": {
+    "SARJ445": 13,
+    "SARJ477": 3
+  },
+  "backend/tests/test_native_visual_authority.py": {
+    "SARJ445": 1,
+    "SARJ447": 5,
+    "SARJ477": 1
+  },
+  "backend/tests/test_openapi_contract.py": {
+    "SARJ447": 1
+  },
+  "backend/tests/test_presentation_transform.py": {
+    "SARJ093": 1,
+    "SARJ442": 7,
+    "SARJ445": 1,
+    "SARJ447": 4,
+    "SARJ477": 1,
+    "SARJ528": 3
+  },
+  "backend/tests/test_provider_error_envelope.py": {
+    "SARJ447": 1,
+    "SARJ528": 3
+  },
+  "backend/tests/test_provider_error_sanitization.py": {
+    "SARJ445": 2,
+    "SARJ477": 2,
+    "SARJ528": 2
+  },
+  "backend/tests/test_provider_performance_postgres.py": {
+    "SARJ528": 4
+  },
+  "backend/tests/test_provider_round3.py": {
+    "SARJ528": 1
+  },
+  "backend/tests/test_provider_round4.py": {
+    "SARJ477": 2
+  },
+  "backend/tests/test_qa_corpus_cli.py": {
+    "SARJ442": 1,
+    "SARJ445": 8
+  },
+  "backend/tests/test_qa_document_transform_cli.py": {
+    "SARJ442": 1,
+    "SARJ445": 8,
+    "SARJ528": 5
+  },
+  "backend/tests/test_qa_document_transform_cloud.py": {
+    "SARJ445": 13,
+    "SARJ528": 9
+  },
+  "backend/tests/test_qa_document_transform_corpus.py": {
+    "SARJ442": 2,
+    "SARJ445": 31,
+    "SARJ447": 1,
+    "SARJ477": 7,
+    "SARJ528": 15
+  },
+  "backend/tests/test_qa_export_drive_docs.py": {
+    "SARJ445": 3,
+    "SARJ528": 2
+  },
+  "backend/tests/test_qa_markdown_transform_cli.py": {
+    "SARJ442": 1,
+    "SARJ445": 10,
+    "SARJ477": 2,
+    "SARJ528": 9
+  },
+  "backend/tests/test_qa_pdf_process_safety.py": {
+    "SARJ445": 9,
+    "SARJ477": 4,
+    "SARJ528": 4
+  },
+  "backend/tests/test_qa_polish_rounds_cli.py": {
+    "SARJ445": 1
+  },
+  "backend/tests/test_request_body.py": {
+    "SARJ442": 5,
+    "SARJ457": 5,
+    "SARJ528": 1
+  },
+  "backend/tests/test_retry.py": {
+    "SARJ445": 1,
+    "SARJ447": 1
+  },
+  "backend/tests/test_round6_cache_postgres.py": {
+    "SARJ528": 4
+  },
+  "backend/tests/test_round6_cache_reuse.py": {
+    "SARJ528": 4
+  },
+  "backend/tests/test_round6_sidebar_reuse.py": {
+    "SARJ528": 4
+  },
+  "backend/tests/test_round7_reads.py": {
+    "SARJ528": 4
+  },
+  "backend/tests/test_route_performance_postgres.py": {
+    "SARJ528": 4
+  },
+  "backend/tests/test_routes_round5.py": {
+    "SARJ528": 9
+  },
+  "backend/tests/test_runtime_validation.py": {
+    "SARJ528": 1
+  },
+  "backend/tests/test_security_headers.py": {
+    "SARJ528": 1
+  },
+  "backend/tests/test_shared_drive_transform_access.py": {
+    "SARJ445": 3,
+    "SARJ447": 3,
+    "SARJ528": 1
+  },
+  "backend/tests/test_sidebar_cache.py": {
+    "SARJ445": 1,
+    "SARJ528": 1
+  },
+  "backend/tests/test_smart_create.py": {
+    "SARJ442": 1,
+    "SARJ490": 1,
+    "SARJ528": 1
+  },
+  "backend/tests/test_smart_create_executor.py": {
+    "SARJ442": 1
+  },
+  "backend/tests/test_smart_create_router_tasks.py": {
+    "SARJ442": 3,
+    "SARJ445": 2
+  },
+  "backend/tests/test_smart_creation.py": {
+    "SARJ093": 1,
+    "SARJ442": 1
+  },
+  "backend/tests/test_spacer_diagnostics.py": {
+    "SARJ447": 3,
+    "SARJ528": 1
+  },
+  "backend/tests/test_spacer_style_dependencies.py": {
+    "SARJ442": 1,
+    "SARJ447": 2
+  },
+  "backend/tests/test_spacer_style_values.py": {
+    "SARJ442": 1,
+    "SARJ447": 7,
+    "SARJ528": 2
+  },
+  "backend/tests/test_storage_hot_paths_postgres.py": {
+    "SARJ528": 8
+  },
+  "backend/tests/test_storage_performance_postgres.py": {
+    "SARJ528": 4
+  },
+  "backend/tests/test_task_internal_auth.py": {
+    "SARJ442": 1,
+    "SARJ445": 3,
+    "SARJ528": 3
+  },
+  "backend/tests/test_task_queue.py": {
+    "SARJ442": 1,
+    "SARJ445": 1
+  },
+  "backend/tests/test_task_source_dedupe_postgres.py": {
+    "SARJ528": 5
+  },
+  "backend/tests/test_tasks.py": {
+    "SARJ528": 4
+  },
+  "backend/tests/test_templates.py": {
+    "SARJ093": 1
+  },
+  "backend/tests/test_terminal_text_runs.py": {
+    "SARJ447": 1
+  },
+  "backend/tests/test_transform_diagnostics_workflow.py": {
+    "SARJ445": 1,
+    "SARJ528": 7
+  },
+  "backend/tests/test_word_package.py": {
+    "SARJ445": 2
+  },
+  "backend/tests/test_word_runtime.py": {
+    "SARJ445": 28,
+    "SARJ447": 5,
+    "SARJ477": 1,
+    "SARJ528": 1
+  },
+  "scripts/frontend_release/rollback.py": {
+    "SARJ528": 1
+  },
+  "scripts/github/branch_protection.py": {
+    "SARJ477": 1,
+    "SARJ528": 2
+  },
+  "scripts/github/read-transform-diagnostics.py": {
+    "SARJ444": 1,
+    "SARJ528": 1
+  },
+  "scripts/github/release_gate.py": {
+    "SARJ528": 1
+  },
+  "scripts/github/test_backend_recovery.py": {
+    "SARJ528": 2
+  },
+  "scripts/github/test_cli.py": {
+    "SARJ445": 11,
+    "SARJ477": 2,
+    "SARJ528": 6
+  },
+  "scripts/github/test_deploy_cache_contract.py": {
+    "SARJ447": 4,
+    "SARJ528": 2
+  },
+  "scripts/github/test_frontend_rollback.py": {
+    "SARJ445": 12,
+    "SARJ477": 1,
+    "SARJ528": 4
+  },
+  "scripts/github/test_release_gate.py": {
+    "SARJ528": 2
+  }
+}

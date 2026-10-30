@@ -1,0 +1,91 @@
+name: CI IaC
+
+"on":
+  workflow_call:
+  push:
+    branches: [main]
+    paths:
+      - "terraform/**"
+      - ".github/workflows/ci-iac.yml"
+      - "scripts/check-terraform.sh"
+      - "scripts/wiki.py"
+      - ".mise.toml"
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-iac-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  # One job carries the required check: both scans take seconds, and Blacksmith
+  # bills every job a full minute.
+  required:
+    name: IaC / required
+    runs-on: ${{ vars.CI_RUNNER || 'ubuntu-24.04' }}
+    timeout-minutes: 10
+    env:
+      TF_PLUGIN_CACHE_DIR: /tmp/terraform-provider-cache
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
+        with:
+          version-file: backend/uv.toml
+          enable-cache: true
+
+      - name: Install pinned Terraform
+        uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e # v4.0.1
+        with:
+          terraform_version: 1.17.0
+          terraform_wrapper: false
+
+      - name: Prepare Terraform provider cache
+        run: mkdir -p "$TF_PLUGIN_CACHE_DIR"
+
+      - name: Restore Terraform providers
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ env.TF_PLUGIN_CACHE_DIR }}
+          key: terraform-providers-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('terraform/.terraform.lock.hcl') }}
+          restore-keys: |
+            terraform-providers-${{ runner.os }}-${{ runner.arch }}-
+
+      - name: Validate real provider schemas and offline preview wiring
+        run: uv run scripts/wiki.py check iac
+
+      - name: Trivy config scan (gate HIGH+CRITICAL)
+        if: ${{ !cancelled() }}
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          scan-type: config
+          scan-ref: terraform
+          severity: HIGH,CRITICAL
+          exit-code: "1"
+          format: table
+          output: trivy-report.txt
+
+      - name: Prepare IaC scan summary
+        id: trivy_summary_header
+        if: always()
+        run: printf '%s\n' '## Trivy IaC scan (terraform/)' "\`\`\`" >"$RUNNER_TEMP/trivy-summary.md"
+      - name: Append IaC scan report
+        id: trivy_summary_report
+        if: always() && steps.trivy_summary_header.outcome == 'success'
+        run: cat trivy-report.txt >>"$RUNNER_TEMP/trivy-summary.md"
+      - name: Close IaC scan summary
+        id: trivy_summary_footer
+        if: always() && steps.trivy_summary_header.outcome == 'success' && steps.trivy_summary_report.outcome == 'success'
+        run: printf '%s\n' "\`\`\`" >>"$RUNNER_TEMP/trivy-summary.md"
+      - name: Upload IaC scan summary
+        if: always() && steps.trivy_summary_header.outcome == 'success' && steps.trivy_summary_report.outcome == 'success' && steps.trivy_summary_footer.outcome == 'success'
+        run: cat "$RUNNER_TEMP/trivy-summary.md" >>"$GITHUB_STEP_SUMMARY"

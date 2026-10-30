@@ -1,0 +1,167 @@
+name: Deploy Frontend
+
+"on":
+  workflow_call:
+    inputs:
+      release_needs:
+        description: Exact qualification results from the trusted main release DAG
+        type: string
+        required: true
+    secrets:
+      NEXT_PUBLIC_API_URL:
+        required: true
+      CLOUDFLARE_API_TOKEN:
+        required: true
+      CLOUDFLARE_ACCOUNT_ID:
+        required: true
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-frontend
+  cancel-in-progress: false
+
+defaults:
+  run:
+    shell: bash
+    working-directory: frontend
+
+jobs:
+  ci-backend:
+    if: inputs.release_needs == '' && github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+    permissions:
+      contents: read
+    uses: ./.github/workflows/ci-backend.yml
+
+  ci-frontend:
+    if: inputs.release_needs == '' && github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+    permissions:
+      contents: read
+    uses: ./.github/workflows/ci-frontend.yml
+
+  ci-quality:
+    if: inputs.release_needs == '' && github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+    permissions:
+      contents: read
+    uses: ./.github/workflows/ci-quality.yml
+
+  ci-iac:
+    if: inputs.release_needs == '' && github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+    permissions:
+      contents: read
+    uses: ./.github/workflows/ci-iac.yml
+
+  standards-receipt:
+    if: inputs.release_needs == '' && github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+    runs-on: ${{ vars.CI_RUNNER || 'ubuntu-24.04' }}
+    timeout-minutes: 25
+    permissions:
+      contents: read
+      actions: read
+      checks: read
+    outputs:
+      release_sha: ${{ steps.receipt.outputs.release_sha }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Install uv
+        uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
+        with:
+          version-file: backend/uv.toml
+          enable-cache: false
+
+      - name: Verify exact main Standards receipt
+        id: receipt
+        working-directory: .
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: bash scripts/github/verify-release-gate.sh standards frontend
+
+  deploy:
+    if: ${{ !cancelled() && github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && (inputs.release_needs != '' || (needs.ci-backend.result == 'success' && needs.ci-frontend.result == 'success' && needs.ci-quality.result == 'success' && needs.ci-iac.result == 'success' && needs.standards-receipt.result == 'success')) }}
+    needs: [ci-backend, ci-frontend, ci-quality, ci-iac, standards-receipt]
+    runs-on: ${{ vars.CI_RUNNER || 'ubuntu-24.04' }}
+
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
+        with:
+          version-file: backend/uv.toml
+
+      - name: Recheck immutable main release before credentials
+        working-directory: .
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_NEEDS: ${{ inputs.release_needs || toJSON(needs) }}
+        run: bash scripts/github/verify-release-gate.sh ready frontend
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 26.12.1
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Activate declared npm version
+        run: npm install --global npm@12.2.1 --ignore-scripts
+      - name: Install frontend dependencies
+        working-directory: .
+        run: npm ci --prefix frontend
+
+      - name: Build for Cloudflare Workers
+        run: npm run build:worker
+        env:
+          NEXT_PUBLIC_API_URL: ${{ secrets.NEXT_PUBLIC_API_URL }}
+          NEXT_PUBLIC_RELEASE_SHA: ${{ github.sha }}
+
+      - name: Smoke test packaged Worker runtime
+        run: bash scripts/smoke-worker.sh
+
+      - name: Confirm main has not advanced before cloud authentication
+        working-directory: .
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_NEEDS: ${{ inputs.release_needs || toJSON(needs) }}
+        run: bash scripts/github/verify-release-gate.sh ready frontend
+
+      - name: Capture current production version
+        id: previous
+        working-directory: .
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: uv run --no-project --with typer==0.27.3 --python 3.14 python -m scripts.frontend_release.rollback active --github-output >>"$GITHUB_OUTPUT"
+      - name: Require an unused deployment receipt path
+        env:
+          WRANGLER_OUTPUT_FILE_PATH: ${{ runner.temp }}/frontend-deploy-${{ github.run_id }}-${{ github.run_attempt }}.jsonl
+        run: test ! -e "$WRANGLER_OUTPUT_FILE_PATH"
+      - name: Deploy to Cloudflare
+        id: deploy
+        run: npm run deploy
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          WRANGLER_OUTPUT_FILE_PATH: ${{ runner.temp }}/frontend-deploy-${{ github.run_id }}-${{ github.run_attempt }}.jsonl
+
+      - name: Verify exact production revision
+        id: verify
+        working-directory: .
+        run: bash scripts/frontend_release/verify-health.sh
+
+      - name: Roll back an unverified frontend release
+        if: ${{ always() && steps.previous.outcome == 'success' && steps.verify.outcome != 'success' }}
+        working-directory: .
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          PREVIOUS_VERSION: ${{ steps.previous.outputs.version_id }}
+          CANDIDATE_RECEIPT: ${{ runner.temp }}/frontend-deploy-${{ github.run_id }}-${{ github.run_attempt }}.jsonl
+        run: |
+          uv run --no-project --with typer==0.27.3 --python 3.14 python -m scripts.frontend_release.rollback \
+            rollback --previous "$PREVIOUS_VERSION" --receipt "$CANDIDATE_RECEIPT"

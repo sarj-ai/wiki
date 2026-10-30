@@ -1,0 +1,78 @@
+min_version: 2.2.1
+assert_lefthook_installed: true
+
+pre-commit:
+  parallel: false
+  commands:
+    # priority: 1 runs this before every other command (lefthook otherwise
+    # orders alphabetically). It costs ~0s and stops hooks from running
+    # silently on the wrong node major.
+    node-version:
+      priority: 1
+      run: uv run scripts/wiki.py check node
+      fail_text: "AGENT: hooks require node >= 26.7.0. Fix: run 'mise install' (repo ships .mise.toml) or prefix with 'mise exec node@26.12.1 --', and retry. NEVER use --no-verify."
+    standards-config:
+      run: uvx --no-config --isolated --python 3.14 --from sarj-standards-bootstrap code-standards doctor
+      fail_text: "AGENT: canonical Standards configs drifted. Fix: run 'uv run scripts/wiki.py standards sync', stage the result, and retry. NEVER use --no-verify."
+    baseline-growth:
+      run: scripts/check-baseline-growth.sh
+      fail_text: "AGENT: a lint baseline grew. Fix the new finding instead of increasing its allowance, regenerate the smaller baseline, stage it, and retry. NEVER use --no-verify."
+    backend-ruff:
+      root: backend/
+      glob: "*.py"
+      run: >-
+        ../scripts/check-fully-staged.sh {staged_files} &&
+        uv run ruff check --fix {staged_files}
+      stage_fixed: true
+      fail_text: "AGENT: Ruff rejected staged Python. Fix: run 'uv run ruff check --fix .' in backend/ (or 'uv run scripts/wiki.py fix'), repair what remains by hand, stage, and retry. NEVER use --no-verify."
+    backend-ruff-format:
+      root: backend/
+      glob: "*.py"
+      run: >-
+        ../scripts/check-fully-staged.sh {staged_files} &&
+        uv run ruff format {staged_files}
+      stage_fixed: true
+      fail_text: "AGENT: staged Python is not ruff-formatted. Fix: run 'uv run ruff format <files>' in backend/, stage the result, and retry. NEVER use --no-verify."
+    # Staged-only by design: whole-project `tsc --noEmit` lived here once and
+    # blocked valid commits on OTHER files' type errors while costing ~10s per
+    # commit. Type checking still gates every push — pre-push runs `uv run scripts/wiki.py check`, whose check-frontend step mirrors the CI "TypeScript check".
+    frontend-eslint:
+      root: frontend/
+      glob: "*.{js,jsx,mjs,cjs,ts,tsx,mts,cts}"
+      # Standards owns warning promotion; the canonical staged gate checks the approved baseline.
+      run: >-
+        ../scripts/check-fully-staged.sh {staged_files} &&
+        npm exec --call "next typegen" &&
+        npm exec --call "eslint --fix --no-warn-ignored --suppressions-location eslint-suppressions.json {staged_files}"
+      stage_fixed: true
+      fail_text: "AGENT: ESLint rejected staged frontend code. Fix: run 'uv run scripts/wiki.py fix' (applies eslint --fix), repair what remains by hand, stage, and retry. NEVER use --no-verify."
+    frontend-prettier:
+      root: frontend/
+      glob: "*.{js,jsx,mjs,cjs,ts,tsx,mts,cts,json,css,md,yml,yaml}"
+      run: npm exec --call "prettier --check --ignore-unknown {staged_files}"
+      fail_text: "AGENT: staged frontend files are not Prettier-formatted. Fix: run 'npm run format' in frontend/ (or prettier --write on the listed files), stage, and retry. NEVER use --no-verify."
+    markdownlint:
+      glob: "*.md"
+      run: frontend/node_modules/.bin/markdownlint-cli2 --config .markdownlint.yaml {staged_files}
+      fail_text: "AGENT: markdownlint rejected staged Markdown against the canonical .markdownlint.yaml. Fix: repair the reported lines (markdownlint-cli2 --fix handles most), stage, and retry. NEVER use --no-verify."
+    taplo:
+      glob: "*.toml"
+      run: frontend/node_modules/.bin/taplo lint --config .taplo.toml {staged_files}
+      fail_text: "AGENT: taplo rejected staged TOML against the canonical .taplo.toml. Fix: repair the reported keys, stage, and retry. NEVER use --no-verify."
+    standards:
+      run: UV_CACHE_DIR="${UV_CACHE_DIR:-/tmp/sarj-docs-uv-cache}" SKIP=sarj-strict-markdownlint,sarj-strict-taplo uvx --python 3.14 pre-commit run
+      fail_text: "AGENT: a pre-commit hook (hygiene, gitleaks, actionlint, or a sarj-* rule) rejected staged files. Fix: repair the reported finding (sarj rules accept a narrow '# sarj-noqa: SARJ0XX — reason' only with justification), stage, and retry. NEVER use --no-verify."
+
+    code-standards:
+      run: uvx --no-config --isolated --python 3.14 --from sarj-standards-bootstrap code-standards check --staged --fix --trust-repository-code
+pre-push:
+  parallel: true
+  commands:
+    check:
+      run: uv run scripts/wiki.py check
+      fail_text: "AGENT: 'uv run scripts/wiki.py check' (the exact CI mirror) failed. Fix: rerun 'uv run scripts/wiki.py check', repair the first failing step ('uv run scripts/wiki.py fix' applies the autofixable lint/format part), and push again. NEVER use --no-verify."
+
+commit-msg:
+  commands:
+    repo-standards-commit-message:
+      run: uvx --no-config --isolated --python 3.14 --from sarj-standards-bootstrap code-standards commit-message "{1}"

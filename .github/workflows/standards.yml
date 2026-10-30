@@ -1,0 +1,74 @@
+# Managed by code-standards; regenerate with `code-standards show ci --output .github/workflows/standards.yml`.
+name: Standards
+
+on:
+  pull_request:
+  merge_group:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: standards-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  standards:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - name: Harden the runner
+        uses: step-security/harden-runner@dc2769abcc0fcfbadfc1df54081c1608579ef6b2 # v2.22.2
+        with:
+          egress-policy: audit
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
+        with:
+          version-file: "backend/uv.toml"
+          enable-cache: true
+          cache-dependency-glob: |
+            .sarj-standards.toml
+            **/uv.lock
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+          check-latest: true
+      - name: Activate declared npm version
+        run: npm install --global npm@12.2.1 --ignore-scripts
+      - name: Install JavaScript dependencies
+        run: npm ci --no-audit --no-fund --ignore-scripts
+        working-directory: "frontend"
+      - name: Install Python dependencies
+        run: uv sync --locked --project backend
+      - name: Install the pinned native tool bootstrap
+        env:
+          UV_PYTHON_DOWNLOADS_JSON_URL: https://raw.githubusercontent.com/astral-sh/uv/4ecd0eff2a81e3ffdcd7cfee10d08936e4747c17/crates/uv-python-managed/download-metadata.json
+        run: uv run --no-config --no-project --python 3.15.0 --with code-standards==8.147.0 python -m sarj_standards.libs.adoption.native_bootstrap
+      - name: Install and attest applicable native tools
+        run: uvx --no-config --isolated --python 3.14 --from sarj-standards-bootstrap code-standards setup --tools-only
+      - name: Bootstrap analysis inputs
+        run: |
+          npm --prefix frontend run patches:apply
+      - name: Bootstrap analysis inputs (2)
+        run: |
+          npm --prefix frontend run generate:api
+      - name: Bootstrap analysis inputs (3)
+        run: |
+          npm --prefix frontend run typegen
+      - name: Bootstrap analysis inputs (4)
+        run: |
+          mise --no-config --no-env --no-hooks exec aqua:hashicorp/terraform@1.17.0 -- terraform -chdir=terraform init -backend=false -input=false -lockfile=readonly
+      - name: Run standards
+        shell: bash
+        env:
+          SARJ_STANDARDS_BASE: >-
+            ${{ !(github.event_name == 'push' && github.event.created &&
+            github.event.before == '0000000000000000000000000000000000000000') &&
+            (github.event.pull_request.base.sha || github.event.merge_group.base_sha ||
+            github.event.before) || '' }}
+        run: uvx --no-config --isolated --python 3.14 --from sarj-standards-bootstrap code-standards check --trust-repository-code --format github

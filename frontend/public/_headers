@@ -1,0 +1,8 @@
+/_next/static/*
+  Cache-Control: public, max-age=31536000, immutable
+
+/brand/sarj-loader-12132f41.svg
+  Cache-Control: public, max-age=31536000, immutable
+
+/brand/sarj-loader-still-12132f41.svg
+  Cache-Control: public, max-age=31536000, immutable

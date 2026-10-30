@@ -1,0 +1,55 @@
+# Managed by `code-standards setup`; commit this file.
+bundle = "8.147.0"
+rule_profile = "all"
+schema = 4
+
+[capabilities]
+disable = [
+  "swiftformat",
+  "swiftlint",
+  "ktlint",
+  "detekt",
+  "mobile-security",
+  "markdownlint",
+  "taplo",
+  "zizmor",
+  "checkov",
+  "jscpd",
+  "knip",
+]
+
+[artifacts]
+durable = [
+  "**/README.md",
+  "docs/**",
+  "**/docs/**",
+  "architecture/**",
+  "**/adr/**",
+  ".github/**",
+  "**/AGENTS.md",
+  "**/CLAUDE.md",
+]
+
+[dest]
+kotlin = "."
+python = "backend"
+swift = "."
+typescript = "frontend"
+
+[hooks]
+manager = "lefthook"
+
+[text]
+exclude = ["**/.env.example"]
+
+[baseline]
+diagnostics = "diagnostic-baseline.json"
+
+[ci]
+bootstrap = [
+  "npm --prefix frontend run patches:apply",
+  "npm --prefix frontend run generate:api",
+  "npm --prefix frontend run typegen",
+  "mise --no-config --no-env --no-hooks exec aqua:hashicorp/terraform@1.17.0 -- terraform -chdir=terraform init -backend=false -input=false -lockfile=readonly",
+]
+runner = "ubuntu-24.04"

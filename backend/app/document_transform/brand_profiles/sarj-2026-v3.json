@@ -1,0 +1,61 @@
+{
+  "schema_version": 1,
+  "profile_id": "sarj-2026-v3",
+  "assets": {
+    "logo_uri": "https://wiki.sarj.ai/brand/sarj-logo-light.png",
+    "logo_sha256": "c7b088d8caa20b39bcbf885fc142ea291aa5233c011e4859d126b8e45fec8afd",
+    "logo_pixel_width": 977,
+    "logo_pixel_height": 528
+  },
+  "colors": {
+    "primary": "#392868",
+    "primary_dark": "#281B4B",
+    "primary_tint": "#EEECFA",
+    "tint_foreground": "#4D3D80",
+    "ink": "#0A0A0A",
+    "muted": "#737373",
+    "paper": "#FFFFFF",
+    "subtle": "#F5F5F5",
+    "border": "#E5E5E5",
+    "chart_ramp": ["#281B4B", "#392868", "#4D3D80", "#6D6595", "#948FB3", "#B9B6CE"]
+  },
+  "document": {
+    "font_family": "Nunito",
+    "body_size_pt": 11,
+    "h1_size_pt": 22,
+    "h2_size_pt": 15,
+    "h3_size_pt": 12,
+    "caption_size_pt": 9,
+    "line_spacing_percent": 115,
+    "paragraph_space_above_pt": 2,
+    "paragraph_space_below_pt": 6,
+    "horizontal_margin_pt": 72,
+    "vertical_margin_pt": 72,
+    "header": {
+      "font_family": "Nunito",
+      "size_pt": 9,
+      "color": "#737373",
+      "bold": true,
+      "alignment": "END",
+      "line_spacing_percent": 100,
+      "space_above_pt": 0,
+      "space_below_pt": 0,
+      "logo_width_pt": 52,
+      "logo_height_pt": 28,
+      "logo_size_tolerance_pt": 0.25,
+      "max_title_chars": 160
+    }
+  },
+  "slides": {
+    "canvas_width": 1280,
+    "canvas_height": 720,
+    "safe_inset": 64,
+    "gaps": [8, 16, 24, 32, 48, 64],
+    "title_size_pt": 36,
+    "deck_title_size_pt": 52,
+    "body_size_pt": 18,
+    "caption_size_pt": 12,
+    "max_bullets": 5,
+    "max_cards": 3
+  }
+}

@@ -1,0 +1,196 @@
+name: CI Frontend
+
+"on":
+  workflow_call:
+    inputs:
+      force_full:
+        description: Preserve complete qualification for reusable deployment calls
+        type: boolean
+        default: true
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-frontend-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    shell: bash
+    working-directory: frontend
+
+jobs:
+  changes:
+    if: github.event_name == 'pull_request' && inputs.force_full != true
+    runs-on: ${{ vars.CI_RUNNER || 'ubuntu-24.04' }}
+    timeout-minutes: 5
+    outputs:
+      runtime: ${{ steps.policy.outputs.frontend }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Select runtime qualification
+        id: policy
+        working-directory: .
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: bash scripts/github/runtime-ci-policy.sh --diff "$BASE_SHA" "$HEAD_SHA"
+  lint-and-typecheck:
+    name: Frontend / Lint + typecheck + format
+    runs-on: ${{ vars.CI_RUNNER || 'ubuntu-24.04' }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 26.12.1
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Activate declared npm version
+        run: npm install --global npm@12.2.1 --ignore-scripts
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Prettier check
+        run: npm run format:check
+
+      - name: TypeScript check
+        run: npm run typecheck
+
+      - name: ESLint with exact baseline
+        run: npm run lint:baseline-check
+
+      - name: Knip
+        run: npm run knip
+
+      - name: Type coverage
+        run: npm run type-coverage
+
+      - name: npm audit
+        run: npm audit --omit=dev --audit-level=moderate
+
+  test:
+    needs: changes
+    if: always() && (needs.changes.result != 'success' || needs.changes.outputs.runtime == 'true')
+    name: Frontend / Unit tests
+    runs-on: ${{ vars.CI_RUNNER || 'ubuntu-24.04' }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 26.12.1
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Activate declared npm version
+        run: npm install --global npm@12.2.1 --ignore-scripts
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run vitest
+        run: npm test
+
+  build:
+    needs: changes
+    if: always() && (needs.changes.result != 'success' || needs.changes.outputs.runtime == 'true')
+    name: Frontend / Next.js build
+    runs-on: ${{ vars.CI_RUNNER || 'ubuntu-24.04' }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 26.12.1
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Activate declared npm version
+        run: npm install --global npm@12.2.1 --ignore-scripts
+      - name: Restore Next.js incremental build cache
+        id: next-cache
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: frontend/.next/cache
+          key: nextjs-v1-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('frontend/package-lock.json') }}-${{ github.sha }}
+          restore-keys: |
+            nextjs-v1-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('frontend/package-lock.json') }}-
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build
+        run: npm run build
+        env:
+          NEXT_PUBLIC_API_URL: http://localhost:8000
+          NEXT_PUBLIC_RELEASE_SHA: ${{ github.sha }}
+
+      - name: Build Cloudflare Worker
+        run: npm run build:worker -- --skipNextBuild
+
+      - name: Smoke test packaged Worker runtime
+        run: bash scripts/smoke-worker.sh
+
+      - name: Save trusted main Next.js incremental build cache
+        if: ${{ success() && github.event_name == 'push' && github.ref == 'refs/heads/main' && steps.next-cache.outputs.cache-hit != 'true' }}
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: frontend/.next/cache
+          key: ${{ steps.next-cache.outputs.cache-primary-key }}
+
+  required:
+    name: Frontend / required
+    # Skip only the result shapes release_gate.py accepts; any other shape runs
+    # the gate, so a skipped required check can never hide a failure.
+    if: >-
+      ${{ always() && !(
+        needs.lint-and-typecheck.result == 'success' && (
+          (
+            (github.event_name != 'pull_request' || inputs.force_full == true) &&
+            needs.changes.result == 'skipped' &&
+            needs.test.result == 'success' && needs.build.result == 'success'
+          ) || (
+            github.event_name == 'pull_request' && inputs.force_full != true &&
+            needs.changes.result == 'success' && needs.changes.outputs.runtime == 'true' &&
+            needs.test.result == 'success' && needs.build.result == 'success'
+          ) || (
+            github.event_name == 'pull_request' && inputs.force_full != true &&
+            needs.changes.result == 'success' && needs.changes.outputs.runtime == 'false' &&
+            needs.test.result == 'skipped' && needs.build.result == 'skipped'
+          )
+        )
+      ) }}
+    needs: [changes, lint-and-typecheck, test, build]
+    runs-on: ${{ vars.CI_RUNNER || 'ubuntu-24.04' }}
+    timeout-minutes: 1
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Install uv for the required gate
+        uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
+        with:
+          version-file: backend/uv.toml
+          enable-cache: false
+      - name: Require every frontend gate
+        working-directory: .
+        env:
+          FORCE_FULL: ${{ github.event_name != 'pull_request' || inputs.force_full == true }}
+          ROUTING_RESULT: ${{ needs.changes.result }}
+          RUNTIME_SELECTED: ${{ needs.changes.outputs.runtime }}
+          BUILD_RESULT: ${{ needs.build.result }}
+          LINT_RESULT: ${{ needs.lint-and-typecheck.result }}
+          TEST_RESULT: ${{ needs.test.result }}
+        run: uv run --no-project --with typer==0.27.3 --python 3.14 python scripts/github/release_gate.py ci frontend

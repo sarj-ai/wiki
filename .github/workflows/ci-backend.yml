@@ -1,0 +1,307 @@
+name: CI Backend
+
+"on":
+  workflow_call:
+    inputs:
+      force_full:
+        description: Preserve complete qualification for reusable deployment calls
+        type: boolean
+        default: true
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-backend-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    shell: bash
+    working-directory: backend
+
+jobs:
+  changes:
+    if: github.event_name == 'pull_request' && inputs.force_full != true
+    runs-on: ${{ vars.CI_RUNNER || 'ubuntu-24.04' }}
+    timeout-minutes: 5
+    outputs:
+      runtime: ${{ steps.policy.outputs.backend }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Select runtime qualification
+        id: policy
+        working-directory: .
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: bash scripts/github/runtime-ci-policy.sh --diff "$BASE_SHA" "$HEAD_SHA"
+  lint-and-typecheck:
+    name: Backend / Lint + typecheck
+    runs-on: ${{ vars.CI_RUNNER || 'ubuntu-24.04' }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+          fetch-depth: 0
+      - name: Install uv
+        uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
+        with:
+          version-file: backend/uv.toml
+          enable-cache: true
+          cache-dependency-glob: backend/uv.lock
+
+      - name: Set up Python
+        run: uv python install
+
+      - name: Install dependencies
+        run: uv sync --group dev --locked
+
+      - name: Ruff check
+        run: uv run ruff check --output-format=github .
+
+      - name: Ruff format check
+        run: uv run ruff format --check .
+
+      - name: Identify Mypy cache toolchain
+        id: mypy-toolchain
+        run: |
+          uv run python -c 'import importlib.metadata, platform; print("python=" + platform.python_version()); print("mypy=" + importlib.metadata.version("mypy"))' >>"$GITHUB_OUTPUT"
+
+      - name: Restore Mypy incremental data
+        id: mypy-cache
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: backend/.mypy_cache
+          key: mypy-v1-${{ runner.os }}-${{ runner.arch }}-py${{ steps.mypy-toolchain.outputs.python }}-mypy${{ steps.mypy-toolchain.outputs.mypy }}-${{ hashFiles('backend/uv.lock', 'backend/pyproject.toml', 'backend/.python-version', 'backend/uv.toml', 'backend/mypy.ini', 'backend/.mypy.ini', 'backend/setup.cfg', '.sarj-standards.toml', '.github/workflows/ci-backend.yml') }}-${{ github.sha }}
+          restore-keys: |
+            mypy-v1-${{ runner.os }}-${{ runner.arch }}-py${{ steps.mypy-toolchain.outputs.python }}-mypy${{ steps.mypy-toolchain.outputs.mypy }}-${{ hashFiles('backend/uv.lock', 'backend/pyproject.toml', 'backend/.python-version', 'backend/uv.toml', 'backend/mypy.ini', 'backend/.mypy.ini', 'backend/setup.cfg', '.sarj-standards.toml', '.github/workflows/ci-backend.yml') }}-
+            mypy-v1-${{ runner.os }}-${{ runner.arch }}-py${{ steps.mypy-toolchain.outputs.python }}-mypy${{ steps.mypy-toolchain.outputs.mypy }}-
+
+      - name: Mypy strict
+        run: uv run mypy app
+
+      - name: Basedpyright strict
+        env:
+          NODE_OPTIONS: --max-old-space-size=4096
+        run: uv run basedpyright -p pyrightconfig.json
+
+      - name: ty check (app)
+        run: uv run ty check app
+
+      - name: Vulture dead-code check
+        run: uv run vulture
+
+      - name: Import contracts
+        run: uv run lint-imports
+
+      - name: pip-audit
+        run: uv run pip-audit
+
+      - name: Save trusted main Mypy incremental data
+        if: ${{ success() && github.event_name == 'push' && github.ref == 'refs/heads/main' && steps.mypy-cache.outputs.cache-hit != 'true' }}
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: backend/.mypy_cache
+          key: ${{ steps.mypy-cache.outputs.cache-primary-key }}
+
+  test:
+    needs: changes
+    if: always() && (needs.changes.result != 'success' || needs.changes.outputs.runtime == 'true')
+    name: Backend / Unit tests
+    runs-on: ${{ vars.CI_RUNNER || 'ubuntu-24.04' }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
+        with:
+          version-file: backend/uv.toml
+          enable-cache: true
+          cache-dependency-glob: backend/uv.lock
+
+      - name: Set up Python
+        run: uv python install
+
+      - name: Install dependencies
+        run: uv sync --group dev --locked
+
+      - name: Run pytest
+        run: uv run pytest --cov=app --cov-report=term-missing --cov-fail-under=70
+
+  postgres-concurrency:
+    needs: changes
+    if: always() && (needs.changes.result != 'success' || needs.changes.outputs.runtime == 'true')
+    name: Backend / PostgreSQL concurrency
+    runs-on: ${{ vars.CI_RUNNER || 'ubuntu-24.04' }}
+    timeout-minutes: 10
+    services:
+      postgres:
+        image: postgres:18-bookworm
+        env:
+          POSTGRES_DB: wiki_polish29_qa
+          POSTGRES_HOST_AUTH_METHOD: trust
+        ports:
+          - "127.0.0.1:5432:5432"
+        options: >-
+          --health-cmd "pg_isready -U postgres -d wiki_polish29_qa"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      # Disposable runner-local fixtures only; no cloud or repository secrets.
+      DATABASE_URL: postgresql+asyncpg://postgres@127.0.0.1:5432/wiki_polish29_qa
+      WIKI_POLISH29_QA_DATABASE_URL: postgresql+asyncpg://postgres@127.0.0.1:5432/wiki_polish29_qa
+      WIKI_MCP_QA_DATABASE_URL: postgresql+asyncpg://postgres@127.0.0.1:5432/wiki_polish29_qa
+      SECRET_KEY: disposable-postgres-concurrency-qa-only
+      FERNET_KEY: AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=
+      GOOGLE_CLIENT_ID: disposable-qa-client
+      GOOGLE_CLIENT_SECRET: disposable-qa-client-secret
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
+        with:
+          version-file: backend/uv.toml
+          enable-cache: true
+          cache-dependency-glob: backend/uv.lock
+
+      - name: Set up Python
+        run: uv python install
+
+      - name: Install dependencies
+        run: uv sync --group dev --locked
+
+      - name: Create a fresh configured-domain auth database
+        run: |
+          uv run --locked python - <<'PYTHON'
+          import asyncio
+
+          import asyncpg
+
+          async def main() -> None:
+              connection = await asyncpg.connect(
+                  host="127.0.0.1", user="postgres", database="wiki_polish29_qa"
+              )
+              try:
+                  await connection.execute("CREATE DATABASE wiki_auth_migration_qa_ci")
+              finally:
+                  await connection.close()
+
+          asyncio.run(main())
+          PYTHON
+
+      - name: Exercise configured-domain auth through actual fresh migrations
+        env:
+          DATABASE_URL: postgresql+asyncpg://postgres@127.0.0.1:5432/wiki_auth_migration_qa_ci
+          WIKI_AUTH_MIGRATION_QA_DATABASE_URL: postgresql+asyncpg://postgres@127.0.0.1:5432/wiki_auth_migration_qa_ci
+          ALLOWED_DOMAIN: example.org
+        run: uv run --locked pytest tests/test_auth_domain_migration.py -q -rA
+
+      - name: Apply actual schema migrations to the disposable database
+        run: uv run --locked alembic upgrade head
+
+      - name: Exercise concurrent source reservations and durable replay keys
+        run: >-
+          uv run --locked pytest tests/test_task_source_dedupe_postgres.py
+          tests/test_header_provenance_postgres.py
+          tests/test_route_performance_postgres.py
+          tests/test_provider_performance_postgres.py
+          tests/test_storage_performance_postgres.py
+          tests/test_storage_hot_paths_postgres.py
+          tests/test_document_transform_qa_grants.py
+          tests/test_document_transform_qa_submit_postgres.py
+          tests/test_document_transform_qa_corpus_postgres.py -q -rA
+          tests/test_document_transform_qa_campaigns_postgres.py -q -rA
+
+      - name: Exercise MCP storage and client grants across database sessions
+        run: >-
+          uv run --locked pytest tests/test_mcp_storage.py tests/test_mcp_grants.py
+          tests/test_native_mcp_core.py tests/test_mcp_native_runtime.py
+          tests/test_mcp_native_admission.py -q -rA
+
+  image:
+    name: Backend / Image build + Trivy scan
+    runs-on: ${{ vars.CI_RUNNER || 'ubuntu-24.04' }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+
+      - name: Build image
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: backend
+          push: false
+          load: true
+          tags: backend:ci
+          cache-from: type=gha,scope=backend-ci
+          cache-to: type=gha,mode=max,scope=backend-ci
+          provenance: false
+          sbom: false
+
+      - name: Trivy image scan
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          image-ref: backend:ci
+          format: table
+          severity: HIGH,CRITICAL
+          exit-code: "1"
+
+  required:
+    name: Backend / required
+    # Skip only the result shapes release_gate.py accepts; any other shape runs
+    # the gate, so a skipped required check can never hide a failure.
+    if: >-
+      ${{ always() && !(
+        needs.lint-and-typecheck.result == 'success' && needs.image.result == 'success' && (
+          (
+            (github.event_name != 'pull_request' || inputs.force_full == true) &&
+            needs.changes.result == 'skipped' &&
+            needs.test.result == 'success' && needs.postgres-concurrency.result == 'success'
+          ) || (
+            github.event_name == 'pull_request' && inputs.force_full != true &&
+            needs.changes.result == 'success' && needs.changes.outputs.runtime == 'true' &&
+            needs.test.result == 'success' && needs.postgres-concurrency.result == 'success'
+          ) || (
+            github.event_name == 'pull_request' && inputs.force_full != true &&
+            needs.changes.result == 'success' && needs.changes.outputs.runtime == 'false' &&
+            needs.test.result == 'skipped' && needs.postgres-concurrency.result == 'skipped'
+          )
+        )
+      ) }}
+    needs: [changes, lint-and-typecheck, test, postgres-concurrency, image]
+    runs-on: ${{ vars.CI_RUNNER || 'ubuntu-24.04' }}
+    timeout-minutes: 1
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Install uv for the required gate
+        uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
+        with:
+          version-file: backend/uv.toml
+          enable-cache: false
+      - name: Require every backend gate
+        working-directory: .
+        env:
+          FORCE_FULL: ${{ github.event_name != 'pull_request' || inputs.force_full == true }}
+          ROUTING_RESULT: ${{ needs.changes.result }}
+          RUNTIME_SELECTED: ${{ needs.changes.outputs.runtime }}
+          IMAGE_RESULT: ${{ needs.image.result }}
+          LINT_RESULT: ${{ needs.lint-and-typecheck.result }}
+          POSTGRES_RESULT: ${{ needs.postgres-concurrency.result }}
+          TEST_RESULT: ${{ needs.test.result }}
+        run: uv run --no-project --with typer==0.27.3 --python 3.14 python scripts/github/release_gate.py ci backend

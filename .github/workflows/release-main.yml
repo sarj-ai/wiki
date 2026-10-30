@@ -1,0 +1,130 @@
+name: Release Main
+
+"on":
+  push:
+    branches: [main]
+    paths:
+      - "backend/.dockerignore"
+      - "backend/Dockerfile"
+      - "backend/alembic.ini"
+      - "backend/alembic/**"
+      - "backend/app/**"
+      - "backend/pyproject.toml"
+      - "backend/uv.lock"
+      - "backend/uv.toml"
+      - ".github/workflows/deploy-backend.yml"
+      - "scripts/github/release_gate.py"
+      - "scripts/github/verify-release-gate.sh"
+      - "scripts/github/deploy-backend-candidate.sh"
+      - "scripts/github/report-blocked-backend-release.sh"
+      - "scripts/github/run-backend-migrations.sh"
+      - "scripts/github/switch-backend-production-traffic.sh"
+      - "scripts/github/verify-backend-production-health.sh"
+      - "scripts/github/verify-backend-correlated-logs.sh"
+      - "scripts/github/verify-mcp-release.sh"
+      - "scripts/github/resolve-mcp-release-mode.sh"
+      - "scripts/github/verify-smart-create-queue.sh"
+      - "scripts/backend_release/**"
+      - "frontend/**"
+      - ".github/workflows/ci-frontend.yml"
+      - ".github/workflows/deploy-frontend.yml"
+      - "scripts/frontend_release/**"
+      - "scripts/wiki.py"
+      - ".github/workflows/release-main.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-main
+  cancel-in-progress: false
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  ci-backend:
+    permissions:
+      contents: read
+    uses: ./.github/workflows/ci-backend.yml
+
+  ci-frontend:
+    permissions:
+      contents: read
+    uses: ./.github/workflows/ci-frontend.yml
+
+  ci-quality:
+    permissions:
+      contents: read
+    uses: ./.github/workflows/ci-quality.yml
+    with:
+      force_full: true
+
+  ci-iac:
+    permissions:
+      contents: read
+    uses: ./.github/workflows/ci-iac.yml
+
+  standards-receipt:
+    # Public copies can run every qualification gate without Sarj production access.
+    if: github.repository_id == '1183627122'
+    runs-on: ${{ vars.CI_RUNNER || 'ubuntu-24.04' }}
+    timeout-minutes: 25
+    permissions:
+      contents: read
+      actions: read
+      checks: read
+    outputs:
+      backend: ${{ steps.components.outputs.backend }}
+      frontend: ${{ steps.components.outputs.frontend }}
+      release_sha: ${{ steps.receipt.outputs.release_sha }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
+        with:
+          version-file: backend/uv.toml
+          enable-cache: false
+      - name: Select cumulative production changes
+        id: components
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: bash scripts/github/verify-release-gate.sh components main
+      - name: Verify exact main Standards receipt
+        id: receipt
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: bash scripts/github/verify-release-gate.sh standards main
+
+  backend-deploy:
+    needs: [ci-backend, ci-frontend, ci-quality, ci-iac, standards-receipt]
+    if: needs.standards-receipt.outputs.backend == 'true'
+    permissions:
+      contents: read
+      actions: read
+      checks: read
+      id-token: write
+    uses: ./.github/workflows/deploy-backend.yml
+    with:
+      release_needs: ${{ toJSON(needs) }}
+    secrets:
+      WIF_PROVIDER: ${{ secrets.WIF_PROVIDER }}
+      WIF_SERVICE_ACCOUNT: ${{ secrets.WIF_SERVICE_ACCOUNT }}
+
+  frontend-deploy:
+    needs: [ci-backend, ci-frontend, ci-quality, ci-iac, standards-receipt]
+    if: needs.standards-receipt.outputs.frontend == 'true'
+    permissions:
+      contents: read
+      actions: read
+      checks: read
+    uses: ./.github/workflows/deploy-frontend.yml
+    with:
+      release_needs: ${{ toJSON(needs) }}
+    secrets:
+      NEXT_PUBLIC_API_URL: ${{ secrets.NEXT_PUBLIC_API_URL }}
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}

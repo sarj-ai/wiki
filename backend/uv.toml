@@ -1,0 +1,63 @@
+required-version = "==0.13.5"
+exclude-newer = "7 days"
+index-strategy = "first-index"
+constraint-dependencies = ["filelock>=4.2.1", "opentelemetry-api>=1.45.1"]
+
+# Exact reviewed release publication cutoffs for the 2026-10-25 dependency upgrade.
+# Keep the global seven-day maturity policy for other packages. Remove third-party
+# exceptions after 2026-11-01, when the reviewed releases meet that policy.
+[exclude-newer-package]
+alembic = "2026-10-22T03:24:38Z"
+asyncpg = "2026-10-06T20:32:41Z"
+basedpyright = "2026-10-04T11:28:31Z"
+certifi = "2026-10-21T00:00:00Z"
+cloud-sql-python-connector = "2026-10-15T18:22:11Z"
+cryptography = "2026-09-30T15:30:05Z"
+defusedxml = "2021-03-08T10:59:27Z"
+deptry = "2026-03-18T23:22:31Z"
+fastapi = "2026-10-23T18:47:34Z"
+fastmcp = "2026-10-20T22:32:29Z"
+google-api-core = "2026-10-22T23:43:16Z"
+google-api-python-client = "2026-09-30T22:06:22Z"
+google-api-python-client-stubs = "2026-08-22T20:28:57Z"
+google-auth = "2026-10-12T19:20:49Z"
+google-auth-httplib2 = "2026-10-01T18:14:26Z"
+google-cloud-storage = "2026-10-15T17:49:58Z"
+google-cloud-tasks = "2026-10-01T18:18:29Z"
+google-genai = "2026-10-23T00:06:29Z"
+httplib2 = "2026-06-26T10:13:57Z"
+httpx = "2024-12-06T15:37:24Z"
+import-linter = "2026-09-04T14:47:57Z"
+loguru = "2024-12-06T11:20:57Z"
+markdown-it-py = "2026-05-07T12:08:29Z"
+mcp = "2026-10-02T22:06:57Z"
+mypy = "2026-10-01T20:40:40Z"
+pip-audit = "2026-06-10T22:17:02Z"
+py-key-value-aio = "2026-09-18T15:29:53Z"
+pydantic = "2026-10-11T18:37:56Z"
+pydantic-core = "2026-10-11T18:35:45Z"
+pydantic-settings = "2026-10-20T11:37:20Z"
+pyjwt = "2026-09-28T18:40:43Z"
+pytest = "2026-06-19T10:58:33Z"
+pytest-asyncio = "2026-05-26T09:56:05Z"
+pytest-cov = "2026-03-21T20:11:17Z"
+python-docx = "2025-06-16T20:46:28Z"
+ruff = "2026-10-22T18:38:01Z"
+# Standards owns exact first-party tool pins; uv.lock retains artifact hashes.
+# Allow published bundle updates without changing third-party maturity cutoffs.
+sarj-iac-lint = false
+sarj-python-lint = false
+sarj-rule-contracts = false
+sarj-sql-lint = false
+sqlalchemy = "2026-10-21T19:44:48Z"
+starlette = "2026-10-24T15:04:13Z"
+tenacity = "2026-10-07T12:13:02Z"
+ty = "2026-10-22T18:24:53Z"
+typer = "2026-10-06T17:24:17Z"
+types-defusedxml = "2026-05-04T05:22:51Z"
+types-httplib2 = "2026-07-20T05:26:54Z"
+types-requests = "2026-10-06T08:15:58Z"
+uvicorn = "2026-09-25T06:52:38Z"
+vulture = "2026-03-25T14:41:28Z"
+fastmcp-slim = "2026-10-20T22:30:59Z"
+sqlglot = "2026-10-20T17:14:04Z"

@@ -1,0 +1,11 @@
+{
+  "$schema": "https://unpkg.com/knip@6/schema.json",
+  "entry": [
+    "src/app/**/{page,layout,loading,not-found,error,template,default}.{ts,tsx}",
+    "open-next.config.ts"
+  ],
+  "ignore": ["src/components/ui/**", "src/test-stubs/**"],
+  "ignoreDependencies": ["@taplo/cli", "lefthook", "markdownlint-cli2", "react-doctor"],
+  "ignoreExportsUsedInFile": true,
+  "lefthook": false
+}

@@ -1,0 +1,334 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
+
+@custom-variant dark (&:is(.dark *));
+
+/* Expose Wiki's explicit theme to isolated HTML documents. Embedded pages can
+   stay portable and use prefers-color-scheme without importing Wiki code. */
+.html-theme-frame {
+  color-scheme: light;
+}
+
+.dark .html-theme-frame {
+  color-scheme: dark;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-warning: var(--warning);
+  --color-overlay: var(--overlay);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-ring: var(--sidebar-ring);
+  --color-icon-folder: var(--icon-folder);
+  --color-icon-doc: var(--icon-doc);
+  --color-icon-sheet: var(--icon-sheet);
+  --color-icon-slide: var(--icon-slide);
+  --color-icon-drawing: var(--icon-drawing);
+  --color-icon-form: var(--icon-form);
+  --color-icon-pdf: var(--icon-pdf);
+  --color-icon-image: var(--icon-image);
+  --color-icon-generic: var(--icon-generic);
+
+  --font-sans: var(--font-nunito);
+  --font-system: system-ui;
+  --font-mono: var(--font-geist-mono);
+
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+
+  --shadow-2xs: var(--shadow-2xs);
+  --shadow-xs: var(--shadow-xs);
+  --shadow-sm: var(--shadow-sm);
+  --shadow: var(--shadow);
+  --shadow-md: var(--shadow-md);
+  --shadow-lg: var(--shadow-lg);
+  --shadow-xl: var(--shadow-xl);
+  --shadow-2xl: var(--shadow-2xl);
+}
+
+:root {
+  /* Sarj.ai brand purple ramp (purple-100 = brand primary, #2B165E). */
+  --purple-100: oklch(0.2798 0.1196 289.74);
+  --purple-90: oklch(0.3493 0.1229 293.08);
+  --purple-80: oklch(0.4165 0.1312 295.94);
+  --purple-70: oklch(0.4922 0.1316 297.87);
+  --purple-60: oklch(0.5748 0.1264 301.09);
+  --purple-50: oklch(0.6613 0.1133 302.43);
+  --purple-40: oklch(0.7478 0.0885 302.63);
+  --purple-30: oklch(0.8322 0.0571 301.13);
+  --purple-20: oklch(0.9049 0.0264 300.25);
+  --purple-10: oklch(0.9516 0.015 298.56);
+
+  --background: oklch(0.9554 0.0131 71.33);
+  --foreground: oklch(0.2442 0.0064 0.59);
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.2442 0.0064 0.59);
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.2442 0.0064 0.59);
+  --primary: var(--purple-100);
+  --primary-foreground: oklch(1 0 0);
+  --secondary: var(--purple-20);
+  --secondary-foreground: var(--purple-100);
+  --muted: oklch(0.9702 0 0);
+  --muted-foreground: oklch(0.53 0 0);
+  --accent: oklch(0.9702 0 0);
+  --accent-foreground: oklch(0.2046 0 0);
+  --destructive: oklch(0.515 0.192 27.33);
+  --destructive-foreground: oklch(1 0 0);
+  --warning: oklch(0.769 0.188 70.08);
+  --overlay: oklch(0 0 0 / 50%);
+  --border: oklch(0.873 0 0);
+  --input: oklch(0.873 0 0);
+  --ring: var(--purple-100);
+  --chart-1: oklch(0.6407 0.1795 46.22);
+  --chart-2: oklch(0.6049 0.107 184.17);
+  --chart-3: oklch(0.3972 0.0698 227.19);
+  --chart-4: oklch(0.829 0.1712 81.04);
+  --chart-5: oklch(0.7724 0.1728 65.37);
+  /* Sidebar base surface mirrors the main background so the sidebar
+     and Navigator toolbar read as one unified chrome. --sidebar-accent
+     is the brand purple and represents the ACTIVE/selected row. Hover
+     uses a translucent version (``bg-sidebar-accent/40``) so it reads
+     as a softer purple tint distinct from the solid highlight. */
+  --sidebar: var(--background);
+  --sidebar-foreground: var(--foreground);
+  --sidebar-primary: var(--purple-100);
+  --sidebar-primary-foreground: oklch(1 0 0);
+  --sidebar-accent: var(--purple-100);
+  --sidebar-accent-foreground: oklch(1 0 0);
+  --sidebar-border: var(--border);
+  --sidebar-ring: var(--purple-100);
+  /* File-type icon tints — Google Workspace brand colors so each type
+     reads instantly (Docs blue, Sheets green, …). Dark mode lifts
+     lightness a touch for legibility on the dark surface. */
+  --icon-folder: oklch(0.4979 0.0094 253.91);
+  --icon-doc: oklch(0.6304 0.18 259.96);
+  --icon-sheet: oklch(0.6122 0.1507 154.1);
+  --icon-slide: oklch(0.8077 0.1662 82.7);
+  --icon-drawing: oklch(0.6257 0.2058 29.08);
+  --icon-form: oklch(0.4742 0.1862 294.78);
+  --icon-pdf: oklch(0.6083 0.209 27.03);
+  --icon-image: oklch(0.6821 0.118 210.05);
+  --icon-generic: oklch(0.6388 0.0327 229.55);
+
+  --radius: 0.625rem;
+
+  --shadow-2xs: 0 1px 3px 0px oklch(0 0 0 / 0.05);
+  --shadow-xs: 0 1px 3px 0px oklch(0 0 0 / 0.05);
+  --shadow-sm: 0 1px 3px 0px oklch(0 0 0 / 0.1), 0 1px 2px -1px oklch(0 0 0 / 0.1);
+  --shadow: 0 1px 3px 0px oklch(0 0 0 / 0.1), 0 1px 2px -1px oklch(0 0 0 / 0.1);
+  --shadow-md: 0 1px 3px 0px oklch(0 0 0 / 0.1), 0 2px 4px -1px oklch(0 0 0 / 0.1);
+  --shadow-lg: 0 1px 3px 0px oklch(0 0 0 / 0.1), 0 4px 6px -1px oklch(0 0 0 / 0.1);
+  --shadow-xl: 0 1px 3px 0px oklch(0 0 0 / 0.1), 0 8px 10px -1px oklch(0 0 0 / 0.1);
+  --shadow-2xl: 0 1px 3px 0px oklch(0 0 0 / 0.25);
+}
+
+.dark {
+  --background: oklch(0.2011 0.0039 286.04);
+  --foreground: oklch(0.9851 0 0);
+  --card: oklch(0.2046 0 0);
+  --card-foreground: oklch(0.9851 0 0);
+  --popover: oklch(0.2046 0 0);
+  --popover-foreground: oklch(0.9851 0 0);
+  --primary: oklch(0.9851 0 0);
+  --primary-foreground: oklch(0.1448 0 0);
+  --secondary: var(--purple-80);
+  --secondary-foreground: oklch(0.9851 0 0);
+  --muted: oklch(0.2686 0 0);
+  --muted-foreground: oklch(0.709 0 0);
+  --accent: oklch(0.2686 0 0);
+  --accent-foreground: oklch(0.9851 0 0);
+  --destructive: oklch(0.7106 0.1661 22.22);
+  --destructive-foreground: oklch(1 0 0);
+  --warning: oklch(0.828 0.189 84.43);
+  --overlay: oklch(0 0 0 / 50%);
+  --border: oklch(1 0 0 / 10.2%);
+  --input: oklch(1 0 0 / 14.9%);
+  --ring: var(--purple-60);
+  --chart-1: oklch(0.6407 0.1795 46.22);
+  --chart-2: oklch(0.7019 0.1577 160.44);
+  --chart-3: oklch(0.7724 0.1728 65.37);
+  --chart-4: oklch(0.6217 0.2589 305.31);
+  --chart-5: oklch(0.6435 0.2452 16.5);
+  /* Match --background so the sidebar and Navigator toolbar share the
+     exact same surface color in dark mode. Brand purple shifts to a
+     lighter ramp value for legibility on the dark surface. */
+  --sidebar: var(--background);
+  --sidebar-foreground: var(--foreground);
+  --sidebar-primary: oklch(0.9851 0 0);
+  --sidebar-primary-foreground: oklch(0.9851 0 0);
+  --sidebar-accent: var(--purple-80);
+  --sidebar-accent-foreground: oklch(1 0 0);
+  --sidebar-border: var(--border);
+  --sidebar-ring: var(--purple-60);
+  --icon-folder: oklch(0.72 0.012 253.91);
+  --icon-doc: oklch(0.72 0.15 259.96);
+  --icon-sheet: oklch(0.72 0.145 154.1);
+  --icon-slide: oklch(0.83 0.1662 82.7);
+  --icon-drawing: oklch(0.72 0.17 29.08);
+  --icon-form: oklch(0.68 0.15 294.78);
+  --icon-pdf: oklch(0.71 0.17 27.03);
+  --icon-image: oklch(0.76 0.11 210.05);
+  --icon-generic: oklch(0.74 0.033 229.55);
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+    /* Thin, token-tinted scrollbars everywhere (sidebar, palette,
+       dropdowns, main). --muted-foreground at 35% stays visible on
+       both the light cream and dark surfaces — --border would melt
+       into the dark background at its 10% alpha. */
+    scrollbar-width: thin;
+    scrollbar-color: color-mix(in oklab, var(--muted-foreground) 35%, transparent) transparent;
+  }
+  body {
+    @apply bg-background text-foreground;
+  }
+  button,
+  [role="button"],
+  a {
+    cursor: pointer;
+  }
+  /* Reserve the scrollbar gutter in the sidebar tree so rows don't
+     re-truncate/jitter when expanding a folder tips the tree into
+     overflow. Targeted by data-slot to avoid editing the vendored
+     shadcn sidebar.tsx. */
+  [data-slot="sidebar-content"] {
+    scrollbar-gutter: stable;
+  }
+}
+
+/* One-shot pulse drawing the eye to a sidebar row that just became
+   active — used by the auto-reveal effect when navigating from the
+   command palette. Uses the sidebar accent ring so it harmonises
+   with the existing data-active highlight rather than fighting it. */
+@keyframes reveal-pulse {
+  0% {
+    box-shadow: 0 0 0 0 var(--sidebar-ring);
+  }
+  60% {
+    box-shadow: 0 0 0 4px transparent;
+  }
+  100% {
+    box-shadow: 0 0 0 0 transparent;
+  }
+}
+
+@utility animate-reveal-pulse {
+  animation: reveal-pulse 1.2s ease-out;
+}
+
+/* ------------------------------------------------------------------
+   Sortable-row drop animation kill switch.
+
+   DragOverlay keeps the source row hidden during drag, but a stray
+   CSS transition on ANY descendant (shadcn's button sizing, chevron
+   rotation, icon button colors, anything) can still fire when the
+   row repaints on drop and read to users as the name text sliding
+   back to its pre-drop slot. Nuke every descendant transition at CSS
+   level — the Navigator sidebar doesn't rely on any of them (no
+   icon-mode collapse; chevron rotate is acceptable instant).
+------------------------------------------------------------------ */
+[data-slot="sidebar-menu-item"],
+[data-slot="sidebar-menu-item"] *,
+[data-slot="sidebar-menu-sub-item"],
+[data-slot="sidebar-menu-sub-item"] * {
+  transition-property: none !important;
+}
+
+/* Keep motion preferences consistent across loading states and dialogs. */
+@media (prefers-reduced-motion: reduce) {
+  .animate-spin,
+  .animate-pulse,
+  .animate-reveal-pulse,
+  [data-slot="dialog-content"],
+  [data-slot="dialog-overlay"],
+  [data-slot="sheet-content"],
+  [data-slot="sheet-overlay"],
+  [data-sidebar="sidebar"][data-mobile="true"],
+  [data-slot="alert-dialog-content"],
+  [data-slot="alert-dialog-overlay"],
+  [data-slot="dropdown-menu-content"],
+  [data-slot="dropdown-menu-sub-content"],
+  [data-slot="popover-content"],
+  [data-slot="tooltip-content"] {
+    animation: none !important;
+    transition-duration: 0s !important;
+  }
+}
+
+/* Reserve label space when the drive row's actions appear on hover or focus. */
+[data-sidebar-row="drive"] {
+  padding-right: 5rem;
+}
+
+/* Expose row actions on touch devices where hover cannot reveal them. */
+@media (hover: none) {
+  [data-sidebar-row-actions] {
+    opacity: 1;
+  }
+}
+
+@media (pointer: coarse) {
+  [data-sidebar-row-actions] button {
+    min-width: 2.75rem;
+    min-height: 2.75rem;
+  }
+  [data-sidebar-row] {
+    min-height: 2.75rem;
+  }
+  [data-sidebar-row="drive"] {
+    padding-right: 9rem;
+  }
+  [data-sidebar-row="folder"] {
+    padding-right: 6.25rem;
+  }
+  [data-sidebar-row="file"] {
+    padding-right: 3.25rem;
+  }
+  [data-sidebar-row-actions="drive"] {
+    top: 0;
+    bottom: 0;
+  }
+  [data-slot="dialog-close"],
+  [data-slot="sheet-close"] {
+    display: flex;
+    min-width: 2.75rem;
+    min-height: 2.75rem;
+    align-items: center;
+    justify-content: center;
+  }
+}

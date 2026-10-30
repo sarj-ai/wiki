@@ -1,0 +1,35 @@
+project_id     = "sarj-docs"
+dammam_region  = "me-central2"
+frontend_url   = "https://wiki.sarj.ai"
+backend_domain = "api-wiki.sarj.ai"
+db_tier        = "db-f1-micro"
+
+# Google OAuth credentials — create at console.cloud.google.com
+# under APIs & Services → Credentials → OAuth 2.0 Client IDs.
+google_client_id     = "<oauth-client-id>"
+google_client_secret = "<oauth-client-secret>"
+
+# Fernet key for encrypting per-user OAuth tokens at rest in Postgres.
+# Generate with: python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+fernet_key = "<fernet-key>"
+cache_fernet_key = "<newest-cache-fernet-key>,<previous-cache-fernet-key>"
+
+# Native MCP remains disabled by default. In a separately reviewed provisioning
+# apply, set both booleans true and supply both independent keys below. Never
+# enable the routes without the independent secrets attached at exact versions.
+# enable_mcp_native = true
+provision_mcp_native_secrets = false
+# Keep the lock key stable across credential-ring rotation. The merge/default
+# plan provisions nothing.
+# mcp_native_fernet_keys = "<newest-mcp-fernet-key>,<previous-mcp-fernet-key>"
+# mcp_native_lock_key    = "<stable-independent-mcp-lock-key>"
+
+alert_email = "alerts@sarj.ai"
+
+# Document-transform corpus QA remains absent by default. Activation requires a
+# reviewed digest-pinned QA image and an explicit application-layer operator allowlist.
+enable_document_transform_qa_job = false
+# document_transform_qa_image = "me-central2-docker.pkg.dev/sarj-docs/sarj-docs-dammam/document-transform-qa@sha256:<64-hex-digest>"
+# document_transform_qa_release_sha = "<40-character-source-sha>"
+# document_transform_qa_operator_emails = ["security-qa@sarj.ai"]
+# document_transform_qa_corpus_source_folder_id = "<exact-Security-folder-id>"

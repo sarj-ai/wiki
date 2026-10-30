@@ -1,0 +1,13 @@
+# Review-size policy is read from the trusted pull-request base revision.
+**/yarn.lock pr-size-excluded
+**/uv.lock pr-size-excluded
+**/pnpm-lock.yaml pr-size-excluded
+**/package-lock.json pr-size-excluded
+**/bun.lock pr-size-excluded
+
+# Keep hash-bound loader sources and generated assets reproducible on every checkout.
+backend/scripts/generate_sarj_loader.py text eol=lf
+frontend/rive/sarj-loader/scene.rml text eol=lf
+frontend/rive/sarj-loader/provenance.json text eol=lf
+frontend/public/brand/sarj-loader-12132f41.svg text eol=lf
+frontend/public/brand/sarj-loader-still-12132f41.svg text eol=lf
