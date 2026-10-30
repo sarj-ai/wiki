@@ -62,9 +62,7 @@ def active_deployment(raw: str) -> Deployment:
     require(len(latest) == 1, "Ambiguous latest deployment")
     deployment = latest[0]
     versions = deployment.get("versions")
-    require(
-        isinstance(versions, list) and len(versions) == 1, "Split or missing traffic"
-    )
+    require(isinstance(versions, list) and len(versions) == 1, "Split or missing traffic")
     if not isinstance(versions, list):
         msg = "Invalid traffic receipt"
         raise ReleaseBlockedError(msg)
@@ -73,18 +71,14 @@ def active_deployment(raw: str) -> Deployment:
         version.get("percentage") == FULL_TRAFFIC,
         "Expected exactly 100 percent traffic",
     )
-    return Deployment(
-        version_id(deployment.get("id")), version_id(version.get("version_id"))
-    )
+    return Deployment(version_id(deployment.get("id")), version_id(version.get("version_id")))
 
 
 def candidate_version(receipt: Path) -> str:
     with receipt.open(encoding="utf-8") as source:
         raw = source.read(MAX_RESPONSE_BYTES + 1)
     require(len(raw) <= MAX_RESPONSE_BYTES, "Oversized deployment receipt")
-    entries = [
-        object_value(json.loads(line)) for line in raw.splitlines() if line.strip()
-    ]
+    entries = [object_value(json.loads(line)) for line in raw.splitlines() if line.strip()]
     deploys = [entry for entry in entries if entry.get("type") == "deploy"]
     require(len(deploys) == 1, "Missing or ambiguous candidate receipt")
     deploy = deploys[0]
@@ -105,9 +99,7 @@ def current_deployment() -> Deployment:
     )
 
 
-def reconcile(
-    previous: str, receipt: Path, *, pause: Callable[[float], None] = time.sleep
-) -> None:
+def reconcile(previous: str, receipt: Path, *, pause: Callable[[float], None] = time.sleep) -> None:
     previous = version_id(previous)
     current = current_deployment()
     if current.version == previous:

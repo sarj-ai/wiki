@@ -136,8 +136,7 @@ class GoogleAuthService(AuthService):
             logger.warning("auth: refresh token replay detected")
             msg = "Token has been revoked"
             raise TokenRevokedError(msg)
-        user = await self._load_user(payload.sub)
-        if user is None:
+        if (user := await self._load_user(payload.sub)) is None:
             msg = "User not found"
             raise TokenRevokedError(msg)
         if not hmac.compare_digest(str(payload.tv), str(user.token_version)):
@@ -176,8 +175,7 @@ class GoogleAuthService(AuthService):
         if payload.type != "access":
             msg = "Invalid token type"
             raise InvalidTokenError(msg)
-        identity = await self._load_access_identity(payload.sid, payload.sub)
-        if identity is None:
+        if (identity := await self._load_access_identity(payload.sid, payload.sub)) is None:
             msg = "Token has been revoked"
             raise TokenRevokedError(msg)
         session, user = identity

@@ -1722,20 +1722,6 @@
       "count": 1
     },
     {
-      "fingerprint": "a979e78711867074d680b2a37e9bd29ffc5ffa57baeec029ae3e715ad0ed2862",
-      "source": "ruff",
-      "ruleId": "INP001",
-      "path": "scripts/check_baseline_growth.py",
-      "count": 1
-    },
-    {
-      "fingerprint": "ad49ce10a51d1d73b3bdd89a341bc996130126d761e56c329d7a0b3b571e2725",
-      "source": "ruff",
-      "ruleId": "INP001",
-      "path": "scripts/check_standards.py",
-      "count": 1
-    },
-    {
       "fingerprint": "aba64e62df3ef1f562cc1e50aa0e23641fef0785a6f7f8fcbdc2b8dcd97d8ede",
       "source": "ruff",
       "ruleId": "S608",
@@ -4193,13 +4179,6 @@
       "count": 1
     },
     {
-      "fingerprint": "7a804d3bb8e2917a85a44adb83b0b373795dc5350b617bddc703e6fd42f63ebe",
-      "source": "sarj-python-lint",
-      "ruleId": "no-excessive-cognitive-complexity",
-      "path": "scripts/check_baseline_growth.py",
-      "count": 1
-    },
-    {
       "fingerprint": "9be7b1f9533923c07c92167802c94a45f2b920a97b042d030fe10689980aff2d",
       "source": "sarj-python-lint",
       "ruleId": "no-excessive-cognitive-complexity",
@@ -5810,13 +5789,6 @@
       "count": 1
     },
     {
-      "fingerprint": "210aeb6cdd4b29acb03954ec64aa5d860df136cef82af07466bc4d86a7f95280",
-      "source": "sarj-python-lint",
-      "ruleId": "prefer-precise-object-contract",
-      "path": "scripts/check_standards.py",
-      "count": 1
-    },
-    {
       "fingerprint": "570ba7240a05680f586d208500a77db5651f4aaacef057ad336673ebe26a956d",
       "source": "sarj-python-lint",
       "ruleId": "prefer-precise-object-contract",
@@ -6374,34 +6346,6 @@
       "source": "sarj-python-lint",
       "ruleId": "prefer-required-constructor-parameters",
       "path": "backend/app/templates/service.py",
-      "count": 1
-    },
-    {
-      "fingerprint": "713ea6807e7a91a4029b880ac0ca196fe782b9e68ffd2b18bb9e057453ca103e",
-      "source": "sarj-python-lint",
-      "ruleId": "prefer-walrus-awaited-none-guard",
-      "path": "backend/app/auth/service.py",
-      "count": 1
-    },
-    {
-      "fingerprint": "e93879a8088533e5bd56b45788921345100af65b674d0458e25002bb3f60932d",
-      "source": "sarj-python-lint",
-      "ruleId": "prefer-walrus-awaited-none-guard",
-      "path": "backend/app/auth/service.py",
-      "count": 1
-    },
-    {
-      "fingerprint": "1c386a18e212df5bc185febc6b7de219be93058f2ae26c2ec90c6ae954584c5b",
-      "source": "sarj-python-lint",
-      "ruleId": "prefer-walrus-awaited-none-guard",
-      "path": "backend/app/sidebar/cache.py",
-      "count": 1
-    },
-    {
-      "fingerprint": "8628e29e458b037d355c09f1f8a74db687f5621e1e01b8d7bb7ceca76802ceec",
-      "source": "sarj-python-lint",
-      "ruleId": "prefer-walrus-awaited-none-guard",
-      "path": "backend/app/sidebar/cache.py",
       "count": 1
     },
     {

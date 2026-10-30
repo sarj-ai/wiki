@@ -137,9 +137,7 @@ def test_read_failure_never_attempts_rollback(
     ]
 
 
-def test_oversized_receipt_is_rejected(
-    receipt: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_oversized_receipt_is_rejected(receipt: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(rollback, "MAX_RESPONSE_BYTES", 1)
     with pytest.raises(rollback.ReleaseBlockedError):
         rollback.candidate_version(receipt)
@@ -150,14 +148,10 @@ def test_command_timeout_is_normalized_without_leaking_output(
 ) -> None:
     def timeout(*_args: object, **_kwargs: object) -> None:
         command = "wrangler"
-        raise release_gate.subprocess.TimeoutExpired(
-            command, 30, output="private-output"
-        )
+        raise release_gate.subprocess.TimeoutExpired(command, 30, output="private-output")
 
     monkeypatch.setattr(release_gate.subprocess, "run", timeout)
-    with pytest.raises(
-        rollback.ReleaseBlockedError, match="completion is unconfirmed"
-    ) as error:
+    with pytest.raises(rollback.ReleaseBlockedError, match="completion is unconfirmed") as error:
         release_gate.command_output(["unused"])
     assert "private-output" not in str(error.value)
 
@@ -277,15 +271,11 @@ def test_workflow_uses_same_fresh_receipt_for_deploy_and_recovery(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     root = Path(__file__).resolve().parents[2]
-    workflow = yaml.safe_load(
-        (root / ".github/workflows/deploy-frontend.yml").read_text()
-    )
+    workflow = yaml.safe_load((root / ".github/workflows/deploy-frontend.yml").read_text())
     steps = workflow["jobs"]["deploy"]["steps"]
     (deploy,) = [step for step in steps if step.get("id") == "deploy"]
     (recover,) = [
-        step
-        for step in steps
-        if step.get("name") == "Roll back an unverified frontend release"
+        step for step in steps if step.get("name") == "Roll back an unverified frontend release"
     ]
     receipt_path = deploy["env"]["WRANGLER_OUTPUT_FILE_PATH"]
     assert (
@@ -303,9 +293,7 @@ def test_workflow_uses_same_fresh_receipt_for_deploy_and_recovery(
     monkeypatch.setenv("WRANGLER_OUTPUT_FILE_PATH", str(output))
     release_gate.command_output(["bash", "-e", "-c", guard["run"]])
     output.write_text("stale receipt", encoding="utf-8")
-    with pytest.raises(
-        release_gate.ReleaseBlockedError, match="Release command failed"
-    ):
+    with pytest.raises(release_gate.ReleaseBlockedError, match="Release command failed"):
         release_gate.command_output(["bash", "-e", "-c", guard["run"]])
     invocation = shlex.split(recover["run"].replace("\\\n", ""))
     assert invocation == [
