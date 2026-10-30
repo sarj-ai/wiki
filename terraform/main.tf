@@ -21,6 +21,7 @@ resource "google_project_service" "apis" {
     "cloudtasks.googleapis.com",
     "cloudscheduler.googleapis.com",
     "docs.googleapis.com",
+    "slides.googleapis.com",
     "cloudasset.googleapis.com",
     "storage.googleapis.com",
     "iamcredentials.googleapis.com",
