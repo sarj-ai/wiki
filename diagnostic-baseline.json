@@ -1,9 +1,9 @@
 {
   "schemaVersion": 2,
   "provenance": {
-    "bundleVersion": "8.147.0",
-    "consumerBaseSha": "a21dd46ec9607082f5e2778ffd8c732f1aa12ea1",
-    "catalogDigest": "bab7ce5db7343875a2dc47722d215c99d9f5fd9e9d9edb76302123768db44bc6"
+    "bundleVersion": "8.165.8",
+    "consumerBaseSha": "3a6960510311a9d835ea5ac84948751d276de136",
+    "catalogDigest": "faf49ec2679958b911e18dd79ad65cb26a27bf81513586c2fc12ab79cb453c81"
   },
   "diagnostics": [
     {
@@ -6528,6 +6528,27 @@
       "source": "sarj-python-lint",
       "ruleId": "require-pydantic-for-mapping-shape",
       "path": "backend/tests/test_smart_create.py",
+      "count": 1
+    },
+    {
+      "fingerprint": "47716371562104c7543f0fb0bfaed91f8f6ec70d6537f25259c739c5293a8380",
+      "source": "sarj-python-lint",
+      "ruleId": "service-singleton-delegates-to-bulk",
+      "path": "backend/app/files/service.py",
+      "count": 1
+    },
+    {
+      "fingerprint": "51d11c4bc1fc383d303efebc94acea46cc45a8ccc0c5d5e288a654ed16f690a7",
+      "source": "sarj-python-lint",
+      "ruleId": "service-singleton-delegates-to-bulk",
+      "path": "backend/app/files/service.py",
+      "count": 1
+    },
+    {
+      "fingerprint": "d02cf1e95876c34b90243cc3800cab9bfabc96cb734fdef4bcb61871beb2661d",
+      "source": "sarj-python-lint",
+      "ruleId": "service-singleton-delegates-to-bulk",
+      "path": "backend/app/files/service.py",
       "count": 1
     },
     {
