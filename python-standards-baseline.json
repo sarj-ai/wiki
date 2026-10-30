@@ -1,6 +1,6 @@
 {
   "backend/app/aliases/router.py": {
-    "SARJ451": 7
+    "SARJ451": 6
   },
   "backend/app/auth/google_tokens.py": {
     "SARJ411": 1,
@@ -12,6 +12,15 @@
   },
   "backend/app/bootstrap/router.py": {
     "SARJ451": 2
+  },
+  "backend/app/cache/service.py": {
+    "SARJ556": 4
+  },
+  "backend/app/config.py": {
+    "SARJ532": 6
+  },
+  "backend/app/database_config.py": {
+    "SARJ532": 1
   },
   "backend/app/document_transform/brand.py": {
     "SARJ444": 1,
@@ -221,7 +230,10 @@
     "SARJ451": 9
   },
   "backend/app/files/router.py": {
-    "SARJ451": 8
+    "SARJ451": 6
+  },
+  "backend/app/files/service.py": {
+    "SARJ556": 3
   },
   "backend/app/mcp/native_consent_router.py": {
     "SARJ451": 1,
