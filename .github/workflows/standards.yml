@@ -66,6 +66,7 @@ jobs:
       - name: Run standards
         shell: bash
         env:
+          NODE_OPTIONS: --max-old-space-size=4096
           SARJ_STANDARDS_BASE: >-
             ${{ !(github.event_name == 'push' && github.event.created &&
             github.event.before == '0000000000000000000000000000000000000000') &&
