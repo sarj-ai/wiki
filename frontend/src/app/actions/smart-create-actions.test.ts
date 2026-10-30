@@ -17,9 +17,9 @@ vi.mock("next/headers", () => ({
 vi.mock("@opennextjs/cloudflare", () => ({
   getCloudflareContext: () => ({
     env: {
-      ...(mocks.createBindingAvailable
-        ? { SMART_CREATE_RATE_LIMITER: { limit: mocks.createLimit } }
-        : {}),
+      ...(mocks.createBindingAvailable && {
+        SMART_CREATE_RATE_LIMITER: { limit: mocks.createLimit },
+      }),
       SMART_PROPOSAL_RATE_LIMITER: { limit: mocks.proposalLimit },
     },
   }),

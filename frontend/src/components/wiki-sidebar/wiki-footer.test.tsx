@@ -106,7 +106,8 @@ describe("account menu preferences transition", () => {
       const preferences = [...document.querySelectorAll('[role="menuitem"]')].find(
         (item) => item.textContent === "Preferences",
       );
-      if (!(preferences instanceof HTMLElement)) throw new Error("Preferences menu item missing");
+      if (!(preferences instanceof HTMLElement))
+        throw new TypeError("Preferences menu item missing");
       flushSync(() => preferences.click());
       await vi.waitFor(() => expect(document.querySelector('[role="dialog"]')).not.toBeNull());
       await vi.advanceTimersByTimeAsync(0);
@@ -257,7 +258,7 @@ async function openPreferences() {
   const preferences = [...document.querySelectorAll('[role="menuitem"]')].find(
     (item) => item.textContent === "Preferences",
   );
-  if (!(preferences instanceof HTMLElement)) throw new Error("Preferences menu item missing");
+  if (!(preferences instanceof HTMLElement)) throw new TypeError("Preferences menu item missing");
   flushSync(() => preferences.click());
   await vi.waitFor(() => expect(document.querySelector('[role="dialog"]')).not.toBeNull());
   await vi.advanceTimersByTimeAsync(0);

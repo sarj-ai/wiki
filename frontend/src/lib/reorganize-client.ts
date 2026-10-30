@@ -38,10 +38,10 @@ export async function proposeFileReorganization(fileId: string): Promise<Reorgan
   const proposal = ProposalSchema.parse(JSON.parse(body));
   return {
     currentDestination: toDestination(proposal.current_destination),
-    ...(proposal.reason === null ? {} : { reason: proposal.reason }),
-    ...(proposal.suggested_destination === null
-      ? {}
-      : { suggestedDestination: toDestination(proposal.suggested_destination) }),
+    ...(!(proposal.reason === null) && { reason: proposal.reason }),
+    ...(!(proposal.suggested_destination === null) && {
+      suggestedDestination: toDestination(proposal.suggested_destination),
+    }),
   };
 }
 

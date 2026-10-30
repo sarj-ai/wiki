@@ -11,6 +11,8 @@ repos:
         args: [--allow-multiple-documents]
       - id: check-added-large-files
         args: [--maxkb=512]
+        # Generated locks retain their native package and secret checks.
+        exclude: '^(?:backend/uv\.lock|frontend/package-lock\.json)$'
       - id: detect-private-key
 
   - repo: https://github.com/gitleaks/gitleaks

@@ -1,16 +1,18 @@
-from collections.abc import Sequence
+from typing import TYPE_CHECKING
 
 import sqlalchemy as sa
-from alembic import op
 from sqlalchemy.dialects.postgresql import ARRAY, UUID
+
+from alembic import op
+
+
+if TYPE_CHECKING:
+    from collections.abc import Sequence
 
 revision: str = "0001_baseline"
 down_revision: str | None = None
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
-
-_IAM_ROLE = "sarj-docs-backend@sarj-docs.iam"
-_APP_ROLE = "sarj_wiki_app"
 
 
 def upgrade() -> None:
@@ -178,19 +180,19 @@ def upgrade() -> None:
             ),
         )
 
-    op.execute(f"""
+    op.execute("""
         DO $$
         BEGIN
-            IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = '{_IAM_ROLE}')
+            IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'sarj-docs-backend@sarj-docs.iam')
                AND NOT EXISTS (
                    SELECT 1
                    FROM pg_auth_members m
                    JOIN pg_roles granted ON granted.oid = m.roleid
                    JOIN pg_roles member ON member.oid = m.member
-                   WHERE granted.rolname = '{_APP_ROLE}'
-                     AND member.rolname = '{_IAM_ROLE}'
+                   WHERE granted.rolname = 'sarj_wiki_app'
+                     AND member.rolname = 'sarj-docs-backend@sarj-docs.iam'
                ) THEN
-                EXECUTE 'GRANT {_APP_ROLE} TO "{_IAM_ROLE}"';
+                EXECUTE 'GRANT sarj_wiki_app TO "sarj-docs-backend@sarj-docs.iam"';
             END IF;
         END
         $$;
@@ -198,4 +200,5 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    raise NotImplementedError("baseline migration; restore from a DB snapshot")
+    msg = "baseline migration; restore from a DB snapshot"
+    raise NotImplementedError(msg)

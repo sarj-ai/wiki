@@ -369,7 +369,7 @@ function lookupNodeMeta(nodes: readonly DriveNode[], fileId: string): CachedNode
     if (node.id === fileId && node.mimeType !== MIME_SHORTCUT) {
       return {
         mimeType: node.mimeType,
-        ...(node.modifiedTime === undefined ? {} : { modifiedTime: node.modifiedTime }),
+        ...(!(node.modifiedTime === undefined) && { modifiedTime: node.modifiedTime }),
         name: node.name,
       };
     }

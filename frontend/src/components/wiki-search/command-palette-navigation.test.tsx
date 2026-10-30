@@ -131,7 +131,7 @@ describe("document selection from a mobile sidebar search opening", () => {
   async function openSearch() {
     flushSync(() => button("Open drawer").click());
     const opener = host.querySelector('[aria-label="Open search"]');
-    if (!(opener instanceof HTMLButtonElement)) throw new Error("Search opener missing");
+    if (!(opener instanceof HTMLButtonElement)) throw new TypeError("Search opener missing");
     flushSync(() => {
       opener.focus();
       opener.click();
@@ -364,7 +364,7 @@ function button(text: string): HTMLButtonElement {
 
 function input(): HTMLInputElement {
   const element = document.querySelector('[aria-label="Search Drive"]');
-  if (!(element instanceof HTMLInputElement)) throw new Error("Search input missing");
+  if (!(element instanceof HTMLInputElement)) throw new TypeError("Search input missing");
   return element;
 }
 

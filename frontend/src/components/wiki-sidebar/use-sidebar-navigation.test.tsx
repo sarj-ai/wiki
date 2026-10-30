@@ -114,14 +114,14 @@ describe("mobile sidebar native accepted navigation", () => {
 
   function open() {
     const element = host.querySelector("button");
-    if (!(element instanceof HTMLButtonElement)) throw new Error("Open control missing");
+    if (!(element instanceof HTMLButtonElement)) throw new TypeError("Open control missing");
     flushSync(() => element.click());
     expect(host).toHaveTextContent("Sidebar open");
   }
 
   function select(init: MouseEventInit = {}) {
     const element = host.querySelector("a");
-    if (!(element instanceof HTMLAnchorElement)) throw new Error("Destination missing");
+    if (!(element instanceof HTMLAnchorElement)) throw new TypeError("Destination missing");
     flushSync(() =>
       element.dispatchEvent(
         new MouseEvent("click", { bubbles: true, cancelable: true, button: 0, ...init }),

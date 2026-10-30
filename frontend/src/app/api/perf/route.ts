@@ -7,7 +7,7 @@ const MAX_BODY_BYTES = 2048;
 const BODY_TIMEOUT_MS = 5_000;
 const PhaseSchema = z.enum(["click", "commit", "toolbarPaint", "iframeMount", "iframeLoad"]);
 const VisibilitySchema = z.enum(["hidden", "visible"]);
-const ZPERF_EVENT = z.strictObject({
+const ZperfEventSchema = z.strictObject({
   durationMs: z.number().min(0).max(120_000),
   navigationId: z.uuid(),
   phase: PhaseSchema,
@@ -38,7 +38,7 @@ async function post(request: Request): Promise<Response> {
           : 400;
     return new Response(null, { status });
   }
-  const parsed = ZPERF_EVENT.safeParse(decoded);
+  const parsed = ZperfEventSchema.safeParse(decoded);
   if (!parsed.success) return new Response(null, { status: 400 });
 
   const ray = request.headers.get("cf-ray")?.split("-").at(-1);
@@ -46,8 +46,8 @@ async function post(request: Request): Promise<Response> {
     JSON.stringify({
       event: "wiki.performance",
       ...parsed.data,
-      ...(ray === undefined ? {} : { colo: ray }),
-      ...(frontendReleaseSha() === undefined ? {} : { release: frontendReleaseSha() }),
+      ...(!(ray === undefined) && { colo: ray }),
+      ...(!(frontendReleaseSha() === undefined) && { release: frontendReleaseSha() }),
     }),
   );
   return new Response(null, {

@@ -162,7 +162,7 @@ describe("native overlay focus return", () => {
             ?.dispatchEvent(new KeyboardEvent("keydown", { bubbles: true, key: "Escape" }));
         } else {
           const overlay = document.querySelector('[data-slot="dialog-overlay"]');
-          if (!(overlay instanceof HTMLElement)) throw new Error("Dialog backdrop missing");
+          if (!(overlay instanceof HTMLElement)) throw new TypeError("Dialog backdrop missing");
           overlay.dispatchEvent(
             new PointerEvent("pointerdown", {
               bubbles: true,
@@ -334,7 +334,7 @@ function button(label: string): HTMLButtonElement {
   const found = [...document.querySelectorAll("button")].find(
     (element) => element.textContent === label,
   );
-  if (!(found instanceof HTMLButtonElement)) throw new Error(`Missing ${label}`);
+  if (!(found instanceof HTMLButtonElement)) throw new TypeError(`Missing ${label}`);
   return found;
 }
 

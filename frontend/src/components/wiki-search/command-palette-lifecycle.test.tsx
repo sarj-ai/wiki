@@ -114,7 +114,7 @@ describe("current-query search and native focus ownership", () => {
 
   function opener(): HTMLButtonElement {
     const element = host.querySelector('[aria-label="Open search"]');
-    if (!(element instanceof HTMLButtonElement)) throw new Error("Search opener missing");
+    if (!(element instanceof HTMLButtonElement)) throw new TypeError("Search opener missing");
     return element;
   }
 
@@ -212,7 +212,7 @@ describe("current-query search and native focus ownership", () => {
     await vi.advanceTimersByTimeAsync(250);
     await vi.advanceTimersByTimeAsync(0);
     const clear = document.querySelector('[aria-label="Clear search"]');
-    if (!(clear instanceof HTMLButtonElement)) throw new Error("Clear control missing");
+    if (!(clear instanceof HTMLButtonElement)) throw new TypeError("Clear control missing");
     flushSync(() => {
       clear.focus();
       clear.click();
@@ -234,7 +234,7 @@ describe("current-query search and native focus ownership", () => {
     await vi.advanceTimersByTimeAsync(0);
     expect(WIKI_READ_API.driveSearch).toHaveBeenCalledOnce();
     const clear = document.querySelector('[aria-label="Clear search"]');
-    if (!(clear instanceof HTMLButtonElement)) throw new Error("Clear control missing");
+    if (!(clear instanceof HTMLButtonElement)) throw new TypeError("Clear control missing");
     flushSync(() => {
       clear.focus();
       clear.click();
@@ -309,7 +309,7 @@ describe("current-query search and native focus ownership", () => {
 
 function input(): HTMLInputElement {
   const element = document.querySelector('[aria-label="Search Drive"]');
-  if (!(element instanceof HTMLInputElement)) throw new Error("Search field missing");
+  if (!(element instanceof HTMLInputElement)) throw new TypeError("Search field missing");
   return element;
 }
 

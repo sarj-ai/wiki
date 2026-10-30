@@ -32,10 +32,10 @@ export async function transformHttp(
     cache: "no-store",
     headers: {
       "x-wiki-transform": "1",
-      ...(body === undefined ? {} : { "content-type": "application/json" }),
-      ...(key === undefined ? {} : { "idempotency-key": key }),
+      ...(!(body === undefined) && { "content-type": "application/json" }),
+      ...(!(key === undefined) && { "idempotency-key": key }),
     },
-    ...(body === undefined ? {} : { body }),
+    ...(!(body === undefined) && { body }),
     signal: requestSignal,
   });
   // Once headers arrive, a retired owner need not read the mutation's response.
@@ -64,7 +64,7 @@ export async function transformHttp(
       ok: false,
       status: response.status,
       error,
-      ...(code === undefined ? {} : { code }),
+      ...(!(code === undefined) && { code }),
     };
   }
   const replayHeader = response.headers.get("idempotency-replayed");
@@ -73,10 +73,9 @@ export async function transformHttp(
   return {
     ok: true,
     data: responseBody,
-    ...(body === undefined
-      ? {}
-      : replayHeader === "true" || replayHeader === "false"
-        ? { replayed: replayHeader === "true" }
-        : {}),
+    ...(body !== undefined &&
+      (replayHeader === "true" || replayHeader === "false") && {
+        replayed: replayHeader === "true",
+      }),
   };
 }

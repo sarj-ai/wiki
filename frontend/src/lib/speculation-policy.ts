@@ -14,15 +14,13 @@ export function readNavigatorHints(value: Navigator): NavigatorHints {
   const effectiveType: unknown = readObjectValue(connection, "effectiveType");
   const saveData: unknown = readObjectValue(connection, "saveData");
   return {
-    ...(typeof deviceMemory === "number" ? { deviceMemory } : {}),
-    ...(typeof effectiveType === "string" || typeof saveData === "boolean"
-      ? {
-          connection: {
-            ...(typeof effectiveType === "string" ? { effectiveType } : {}),
-            ...(typeof saveData === "boolean" ? { saveData } : {}),
-          },
-        }
-      : {}),
+    ...(typeof deviceMemory === "number" && { deviceMemory }),
+    ...((typeof effectiveType === "string" || typeof saveData === "boolean") && {
+      connection: {
+        ...(typeof effectiveType === "string" && { effectiveType }),
+        ...(typeof saveData === "boolean" && { saveData }),
+      },
+    }),
   };
 }
 

@@ -80,7 +80,7 @@ async function authorizeAndWarm(
             mimeType: file.mimeType,
             reloadKey: 0,
             title: file.name,
-            ...(file.modifiedTime === undefined ? {} : { version: file.modifiedTime }),
+            ...(!(file.modifiedTime === undefined) && { version: file.modifiedTime }),
           },
         ],
   );

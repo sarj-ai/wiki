@@ -133,7 +133,7 @@ export function makeWikiApi(client?: Client) {
         {
           query: {
             q: query,
-            ...(limitPerDrive === undefined ? {} : { limit_per_drive: limitPerDrive }),
+            ...(!(limitPerDrive === undefined) && { limit_per_drive: limitPerDrive }),
           },
         },
         SearchResultsSchema,
@@ -150,7 +150,7 @@ export function makeWikiApi(client?: Client) {
           query: {
             file_id: fileId,
             q: query,
-            ...(mimeType === undefined ? {} : { mime_type: mimeType }),
+            ...(!(mimeType === undefined) && { mime_type: mimeType }),
           },
         },
         snippetResult,
@@ -244,9 +244,9 @@ export function makeWikiApi(client?: Client) {
         writePreferences,
         {
           body: {
-            ...(payload.hiddenWorkspaceIds === undefined
-              ? {}
-              : { hidden_workspace_ids: payload.hiddenWorkspaceIds }),
+            ...(!(payload.hiddenWorkspaceIds === undefined) && {
+              hidden_workspace_ids: payload.hiddenWorkspaceIds,
+            }),
             show_non_doc_files: payload.showNonDocFiles ?? null,
           },
         },

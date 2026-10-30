@@ -204,7 +204,7 @@ export const DOCUMENT_TRANSFORM_API = {
     );
     return {
       ...parseTask(TaskSchema.parse(JSON.parse(response.data))),
-      ...(response.replayed === undefined ? {} : { replayed: response.replayed }),
+      ...(!(response.replayed === undefined) && { replayed: response.replayed }),
     };
   },
 
@@ -315,10 +315,10 @@ function parseTask(task: z.infer<typeof TaskSchema>): DocumentTransformTask {
     case "failed":
       return {
         errorCode: task.error_code,
-        ...(task.error_detail === null ? {} : { errorDetail: task.error_detail }),
+        ...(!(task.error_detail === null) && { errorDetail: task.error_detail }),
         id: task.id,
         status: "failed",
-        ...(task.unverified_output ? { unverifiedOutputId: task.unverified_output.file_id } : {}),
+        ...(!!task.unverified_output && { unverifiedOutputId: task.unverified_output.file_id }),
       };
     case "succeeded":
       return { id: task.id, result: parseResult(task.result), status: "succeeded" };

@@ -62,9 +62,9 @@ function smartCreateResponse(response: Response, body: string): SmartUpstreamRes
     const replayHeader = response.headers.get("idempotency-replayed");
     return {
       body,
-      ...(replayHeader === "true" || replayHeader === "false"
-        ? { idempotencyReplayed: replayHeader === "true" }
-        : {}),
+      ...((replayHeader === "true" || replayHeader === "false") && {
+        idempotencyReplayed: replayHeader === "true",
+      }),
       ok: true,
       status: response.status,
     };
@@ -78,8 +78,8 @@ function smartCreateResponse(response: Response, body: string): SmartUpstreamRes
       : undefined;
   return {
     body,
-    ...(error === undefined ? {} : { error }),
-    ...(errorCode === undefined ? {} : { errorCode }),
+    ...(!(error === undefined) && { error }),
+    ...(!(errorCode === undefined) && { errorCode }),
     ok: false,
     status: response.status,
   };
