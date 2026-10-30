@@ -1,4 +1,4 @@
-# Wiki-owned integration: full Standards scan with ESLint enforced by CI Frontend.
+# Wiki-owned integration: Backend owns Python types; Frontend owns ESLint.
 name: Standards
 
 on:
@@ -66,12 +66,12 @@ jobs:
       - name: Run standards
         shell: bash
         env:
-          NODE_OPTIONS: --max-old-space-size=4096
           SARJ_STANDARDS_BASE: >-
             ${{ !(github.event_name == 'push' && github.event.created &&
             github.event.before == '0000000000000000000000000000000000000000') &&
             (github.event.pull_request.base.sha || github.event.merge_group.base_sha ||
             github.event.before) || '' }}
-        # Match the full local scan; Frontend CI owns the complete ESLint gate.
+        # Required Backend CI owns the complete Python type check with its 4 GB heap.
+        # Required Frontend CI owns the complete ESLint gate.
         # Full scope also avoids React Doctor's fractional baseline timeout.
-        run: uvx --no-config --isolated --python 3.14 --from sarj-standards-bootstrap code-standards check --trust-repository-code --skip-eslint --format github .
+        run: uvx --no-config --isolated --python 3.14 --from sarj-standards-bootstrap code-standards check --trust-repository-code --skip-python-type-check --skip-eslint --format github .

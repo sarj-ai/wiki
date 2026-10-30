@@ -170,7 +170,13 @@ def _quality_checks() -> tuple[Command, ...]:
     return (
         *_repository_checks(),
         _standards("doctor"),
-        _standards("check", "--trust-repository-code", "--skip-eslint", "."),
+        _standards(
+            "check",
+            "--trust-repository-code",
+            "--skip-python-type-check",
+            "--skip-eslint",
+            ".",
+        ),
         _project(
             "python",
             "scripts/standards_checks/check_standards.py",
