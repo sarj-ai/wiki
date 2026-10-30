@@ -1,4 +1,4 @@
-# Managed by code-standards; regenerate with `code-standards show ci --output .github/workflows/standards.yml`.
+# Wiki-owned integration: full Standards scan with ESLint enforced by CI Frontend.
 name: Standards
 
 on:
