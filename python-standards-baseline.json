@@ -10,9 +10,6 @@
   "backend/app/auth/router.py": {
     "SARJ451": 4
   },
-  "backend/app/auth/service.py": {
-    "SARJ432": 2
-  },
   "backend/app/bootstrap/router.py": {
     "SARJ451": 2
   },
@@ -252,7 +249,6 @@
     "SARJ447": 1
   },
   "backend/app/sidebar/cache.py": {
-    "SARJ432": 2,
     "SARJ528": 2
   },
   "backend/app/sidebar/router.py": {
@@ -940,12 +936,6 @@
     "SARJ445": 28,
     "SARJ447": 5,
     "SARJ477": 1,
-    "SARJ528": 1
-  },
-  "scripts/check_baseline_growth.py": {
-    "SARJ444": 1
-  },
-  "scripts/check_standards.py": {
     "SARJ528": 1
   },
   "scripts/frontend_release/rollback.py": {

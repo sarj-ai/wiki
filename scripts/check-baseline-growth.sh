@@ -33,11 +33,11 @@ for baseline in python-standards-baseline.json frontend/eslint-suppressions.json
     prefix="frontend/"
   fi
   if [[ "$initializing_diagnostic_baselines" == true ]]; then
-    uv run --project backend --locked python scripts/check_baseline_growth.py \
+    uv run --project backend --locked python scripts/standards_checks/check_baseline_growth.py \
       --initial "$baseline" "$temp_dir/changed-files" "$prefix"
   elif git show "$base_sha:$baseline" >"$base_file" 2>/dev/null; then
     if [[ "$baseline" == frontend/* ]]; then
-      uv run --project backend --locked python scripts/check_baseline_growth.py \
+      uv run --project backend --locked python scripts/standards_checks/check_baseline_growth.py \
         --standards-base "$temp_dir/base-standards.toml" \
         --standards-current .sarj-standards.toml \
         --base-config "$temp_dir/base-eslint-configs.txt" \
@@ -48,13 +48,13 @@ for baseline in python-standards-baseline.json frontend/eslint-suppressions.json
         --changed-prefix "$prefix" \
         "$base_file" "$baseline"
     else
-      uv run --project backend --locked python scripts/check_baseline_growth.py \
+      uv run --project backend --locked python scripts/standards_checks/check_baseline_growth.py \
         --standards-base "$temp_dir/base-standards.toml" \
         --standards-current .sarj-standards.toml \
         "$base_file" "$baseline"
     fi
   else
-    uv run --project backend --locked python scripts/check_baseline_growth.py \
+    uv run --project backend --locked python scripts/standards_checks/check_baseline_growth.py \
       --initial "$baseline" "$temp_dir/changed-files" "$prefix"
   fi
 done

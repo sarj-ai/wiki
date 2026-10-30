@@ -157,9 +157,23 @@ def _declared_rebaseline(
     if set(declaration.allowances) != {allowance_path}:
         _abort(f"{bootstrap}: allowances must name exactly {allowance_path!r}")
 
-    changed = set(Path(changed_files).read_text(encoding="utf-8").splitlines())
+    return _validated_allowances(
+        declaration.allowances[allowance_path],
+        bootstrap=bootstrap,
+        changed=set(Path(changed_files).read_text(encoding="utf-8").splitlines()),
+        changed_prefix=changed_prefix,
+    )
+
+
+def _validated_allowances(
+    allowances: dict[str, dict[str, _BootstrapGrowth]],
+    *,
+    bootstrap: str,
+    changed: set[str],
+    changed_prefix: str,
+) -> dict[_FindingKey, _BootstrapGrowth]:
     declared: dict[_FindingKey, _BootstrapGrowth] = {}
-    for filename, rules in declaration.allowances[allowance_path].items():
+    for filename, rules in allowances.items():
         if f"{changed_prefix}{filename}" in changed:
             _abort(f"{bootstrap}: cannot re-baseline changed source {changed_prefix}{filename}")
         for rule, counts in rules.items():

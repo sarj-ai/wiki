@@ -10,7 +10,7 @@ from typer.testing import CliRunner
 
 
 ROOT = Path(__file__).parents[2]
-GROWTH = runpy.run_path(str(ROOT / "scripts/check_baseline_growth.py"))
+GROWTH = runpy.run_path(str(ROOT / "scripts/standards_checks/check_baseline_growth.py"))
 
 
 @dataclass(frozen=True)
@@ -33,16 +33,16 @@ def _run(script: Path, *arguments: str, cwd: Path) -> subprocess.CompletedProces
 
 @pytest.fixture
 def standards_project(tmp_path: Path) -> _StandardsProject:
-    scripts = tmp_path / "repository/scripts"
+    scripts = tmp_path / "repository/scripts/standards_checks"
     scripts.mkdir(parents=True)
     script = scripts / "check_standards.py"
-    script.write_bytes((ROOT / "scripts/check_standards.py").read_bytes())
+    script.write_bytes((ROOT / "scripts/standards_checks/check_standards.py").read_bytes())
     source = tmp_path / "repository/source"
     source.mkdir()
     (source / "target.py").write_text(
         "def collect(**kwargs: object) -> dict[str, object]:\n    return kwargs\n"
     )
-    baseline = scripts.parent / "python-standards-baseline.json"
+    baseline = scripts.parents[1] / "python-standards-baseline.json"
     baseline.write_text("{}")
     return _StandardsProject(script=script, source=source, baseline=baseline)
 

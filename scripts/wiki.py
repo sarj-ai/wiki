@@ -171,7 +171,12 @@ def _quality_checks() -> tuple[Command, ...]:
         *_repository_checks(),
         _standards("doctor"),
         _standards("check", "--trust-repository-code"),
-        _project("python", "scripts/check_standards.py", "--verify-python-baseline", "."),
+        _project(
+            "python",
+            "scripts/standards_checks/check_standards.py",
+            "--verify-python-baseline",
+            ".",
+        ),
         _project("sarj-ratchet", "."),
         # Full subprocess fan-out can deadlock on macOS; native hooks and CI retain these checks.
         Command(

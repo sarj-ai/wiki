@@ -18,10 +18,10 @@ import typer
 
 
 if TYPE_CHECKING:
-    from collections.abc import Iterator, Mapping, Sequence
+    from collections.abc import Iterable, Iterator, Sequence
 
 
-_BASELINE = Path(__file__).resolve().parents[1] / "python-standards-baseline.json"
+_BASELINE = Path(__file__).resolve().parents[2] / "python-standards-baseline.json"
 CLI = typer.Typer(add_completion=False, pretty_exceptions_enable=False)
 _IGNORED_DIRS = frozenset(
     {
@@ -120,7 +120,7 @@ def _run_iac(paths: list[str]) -> int:
     return iac_main(["check", *_rule_arguments(IAC_RULES), *paths])
 
 
-def _rule_arguments(registry: Mapping[str, object]) -> list[str]:
+def _rule_arguments(registry: Iterable[str]) -> list[str]:
     return [part for rule in sorted(registry) for part in ("--rule", rule)]
 
 

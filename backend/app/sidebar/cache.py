@@ -278,8 +278,7 @@ class PostgresSidebarCacheService(SidebarCacheService):
         await db.commit()
         if row is None:
             return None
-        tree = await self._reuse_or_decode_tree(db, row, decoded, decoder)
-        if tree is None:
+        if (tree := await self._reuse_or_decode_tree(db, row, decoded, decoder)) is None:
             return None
         if datetime.now(UTC) - row.version.refreshed_at > settings.SIDEBAR_CACHE_TTL:
             self._schedule_refresh(drive_id)
@@ -322,8 +321,7 @@ class PostgresSidebarCacheService(SidebarCacheService):
         if snapshot is None:
             cached = await self.get_drive_tree(db, drive_id)
             return ConditionalDriveTree(cached, cached.refreshed_at)
-        tree = await self._reuse_or_decode_tree(db, snapshot, decoded, decoder)
-        if tree is None:
+        if (tree := await self._reuse_or_decode_tree(db, snapshot, decoded, decoder)) is None:
             cached = await self.get_drive_tree(db, drive_id)
             return ConditionalDriveTree(cached, cached.refreshed_at)
         return ConditionalDriveTree(CachedDriveTree(tree, refreshed_at), refreshed_at)
