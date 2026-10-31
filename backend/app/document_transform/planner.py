@@ -2,9 +2,10 @@ from __future__ import annotations
 
 from dataclasses import dataclass, replace
 
+from app.document_transform.errors import ModelUnavailableError
 from app.document_transform.ir import BlockKind, DocumentIR
 from app.document_transform.models import PatchGenerator
-from app.document_transform.safety import PatchDecision, validate_patches
+from app.document_transform.safety import REPAIRABLE_REWRITE_CODES, PatchDecision, validate_patches
 from app.document_transform.schemas import (
     DocumentTransformRequest,
     TextPatch,
@@ -111,6 +112,8 @@ class TextTransformPlanner:
         decision = validate_patches(document, patches, phase=phase, aggressive_unslop=aggressive)
         if aggressive and decision.accepted:
             decision = await self._review_rewrites(document, decision)
+        if aggressive and decision.findings:
+            decision = await self._repair_rewrites(document, patches, decision)
         count = len(decision.accepted)
         return TransformOutcome(
             document=document.replace_blocks(decision.accepted),
@@ -121,6 +124,50 @@ class TextTransformPlanner:
             llm_invoked=True,
         )
 
+    async def _repair_rewrites(
+        self, document: DocumentIR, patches: list[TextPatch], decision: PatchDecision
+    ) -> PatchDecision:
+        repair_ids = {
+            finding.block_id
+            for finding in decision.findings
+            if finding.code in REPAIRABLE_REWRITE_CODES
+        } - {
+            finding.block_id
+            for finding in decision.findings
+            if finding.code not in REPAIRABLE_REWRITE_CODES
+        }
+        if not repair_ids:
+            return decision
+        try:
+            proposals = await self._generator.repair(document, patches, decision.findings)
+        except ModelUnavailableError:
+            return decision
+        restricted = replace(
+            document, blocks=tuple(block for block in document.blocks if block.id in repair_ids)
+        )
+        repaired = validate_patches(
+            restricted, proposals, phase=TransformPhase.UNSLOP, aggressive_unslop=True
+        )
+        safely_repaired = frozenset(repaired.accepted)
+        if repaired.accepted:
+            repaired = await self._review_rewrites(restricted, repaired)
+        remaining = tuple(
+            finding
+            for finding in decision.findings
+            if finding.block_id not in safely_repaired
+            or finding.code not in REPAIRABLE_REWRITE_CODES
+        )
+        previous = {(finding.code, finding.block_id) for finding in remaining}
+        return PatchDecision(
+            accepted={**decision.accepted, **repaired.accepted},
+            findings=remaining
+            + tuple(
+                finding
+                for finding in repaired.findings
+                if (finding.code, finding.block_id) not in previous
+            ),
+        )
+
     async def _review_rewrites(
         self, document: DocumentIR, decision: PatchDecision
     ) -> PatchDecision:
@@ -129,21 +176,21 @@ class TextTransformPlanner:
             TextPatch(block_id=block_id, expected_sha256=by_id[block_id].sha256, replacement=text)
             for block_id, text in decision.accepted.items()
         ]
-        verified = await self._generator.verify(document, proposed)
+        verified = await self._generator.review(document, proposed)
         rejected = tuple(
             TransformFinding(
                 code="semantic_review_rejected",
                 block_id=block_id,
-                detail="The proposed rewrite did not pass independent fact and meaning preservation review",
+                detail=verified.rejected[block_id],
             )
             for block_id in decision.accepted
-            if block_id not in verified
+            if block_id not in verified.approved
         )
         return PatchDecision(
             accepted={
                 block_id: text
                 for block_id, text in decision.accepted.items()
-                if block_id in verified
+                if block_id in verified.approved
             },
             findings=decision.findings + rejected,
         )

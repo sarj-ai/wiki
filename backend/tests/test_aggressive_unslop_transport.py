@@ -62,6 +62,7 @@ async def test_real_sdk_serializes_structured_rewrite_and_review_without_samplin
                         expected_sha256=block.sha256,
                         replacement_sha256=hashlib.sha256(replacement.encode()).hexdigest(),
                         equivalent=True,
+                        reason="The bird's hidden singing location and ability are preserved.",
                     )
                 ]
             ).model_dump_json(),
@@ -107,8 +108,13 @@ async def test_real_sdk_serializes_structured_rewrite_and_review_without_samplin
         assert "temperature" not in request.generation_config.model_fields_set
         assert request.generation_config.response_mime_type == "application/json"
         assert request.generation_config.response_schema is None
-    for request, envelope in zip(requests, (PatchEnvelope, PatchReviewEnvelope), strict=True):
-        assert request.generation_config.response_json_schema == envelope.model_json_schema()
+    for request, envelope, field in zip(
+        requests, (PatchEnvelope, PatchReviewEnvelope), ("patches", "reviews"), strict=True
+    ):
+        schema = request.generation_config.response_json_schema
+        expected = envelope.model_json_schema()
+        expected["properties"][field].pop("maxItems")
+        assert schema == expected
         assert '"additional_properties"' not in json.dumps(
             request.generation_config.response_json_schema
         )
@@ -120,9 +126,16 @@ async def test_real_sdk_serializes_structured_rewrite_and_review_without_samplin
     )
 
 
-@pytest.mark.parametrize("review", [False, True])
+@pytest.mark.parametrize(
+    ("review", "oversized", "blank_reason"),
+    [(False, False, False), (False, True, False), (True, False, False), (True, False, True)],
+)
 async def test_json_schema_responses_still_enforce_strict_local_validation(
-    sdk_client_factory: Callable[[httpx.AsyncClient], genai.Client], *, review: bool
+    sdk_client_factory: Callable[[httpx.AsyncClient], genai.Client],
+    *,
+    review: bool,
+    oversized: bool,
+    blank_reason: bool,
 ) -> None:
     document = parse_markdown(
         "The hidden bird can sing from dense scrub beside the path while remaining unseen by observers.",
@@ -144,12 +157,17 @@ async def test_json_schema_responses_still_enforce_strict_local_validation(
                         "replacement_sha256": hashlib.sha256(
                             patch.replacement.encode()
                         ).hexdigest(),
-                        "equivalent": "true",
+                        "equivalent": True if blank_reason else "true",
+                        "reason": " "
+                        if blank_reason
+                        else "All source facts are preserved in this fixture.",
                     }
                 ]
             }
         )
         if review
+        else json.dumps({"patches": [patch.model_dump()] * 101})
+        if oversized
         else '{"patches":[],"unexpected":"must be rejected"}'
     )
 
