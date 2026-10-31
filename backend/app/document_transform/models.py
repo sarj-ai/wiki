@@ -13,6 +13,7 @@ from google.genai import errors as genai_errors, types as genai_types
 
 from app.document_transform.errors import ModelUnavailableError
 from app.document_transform.ir import DocumentIR, TextBlock
+from app.document_transform.model_diagnostics import log_model_failure
 from app.document_transform.schemas import (
     PatchEnvelope,
     PatchReviewEnvelope,
@@ -122,7 +123,7 @@ class VertexGeminiPatchGenerator(PatchGenerator):
             )
         )
         last_error: Exception | None = None
-        for model in attempts:
+        for attempt, model in enumerate(attempts, start=1):
             try:
                 return await self._generate_once(
                     model=model,
@@ -131,6 +132,7 @@ class VertexGeminiPatchGenerator(PatchGenerator):
                     escalated=model != primary_model,
                 )
             except (TimeoutError, ValueError, genai_errors.APIError) as exc:
+                log_model_failure(operation=phase, attempt=attempt, error=exc)
                 last_error = exc
         raise ModelUnavailableError from last_error
 
@@ -154,7 +156,6 @@ class VertexGeminiPatchGenerator(PatchGenerator):
                     response_mime_type="application/json",
                     response_schema=PatchEnvelope,
                     max_output_tokens=16_384,
-                    temperature=0,
                     thinking_config=(
                         None
                         if model == self._policy.fallback_model
@@ -200,14 +201,22 @@ class VertexGeminiPatchGenerator(PatchGenerator):
             if not pairs:
                 continue
             last_error: Exception | None = None
-            for model in dict.fromkeys(
-                (self._policy.restyle_model, self._policy.unslop_model, self._policy.fallback_model)
+            for attempt, model in enumerate(
+                dict.fromkeys(
+                    (
+                        self._policy.restyle_model,
+                        self._policy.unslop_model,
+                        self._policy.fallback_model,
+                    )
+                ),
+                start=1,
             ):
                 try:
                     reviews = await self._review_once(model=model, pairs=pairs)
                     approved.update(_validated_reviews(pairs, reviews))
                     break
                 except (TimeoutError, ValueError, genai_errors.APIError) as exc:
+                    log_model_failure(operation="review", attempt=attempt, error=exc)
                     last_error = exc
             else:
                 raise ModelUnavailableError from last_error
@@ -227,7 +236,6 @@ class VertexGeminiPatchGenerator(PatchGenerator):
                     system_instruction=UNSLOP_REVIEW_INSTRUCTION,
                     response_mime_type="application/json",
                     response_schema=PatchReviewEnvelope,
-                    temperature=0,
                     max_output_tokens=16_384,
                     thinking_config=None
                     if model == self._policy.fallback_model

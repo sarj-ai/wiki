@@ -26,12 +26,21 @@ if [[ "$previous_image" == "$expected_revision_image" ]]; then
   exit 1
 fi
 echo "previous_revision=$previous_revision" >>"$GITHUB_OUTPUT"
-echo "started_at=$(date -u +'%Y-%m-%dT%H:%M:%S.%NZ')" >>"$GITHUB_OUTPUT"
+started_at=$(date -u +'%Y-%m-%dT%H:%M:%S.%NZ')
+echo "started_at=$started_at" >>"$GITHUB_OUTPUT"
+
+candidate_env_arguments=()
+if jq -e 'any(.spec.template.spec.containers[0].env[]?;
+  .name == "DOCUMENT_TRANSFORM_FALLBACK_MODEL" and .value == "gemini-2.5-flash-lite")' \
+  <<<"$service_json" >/dev/null; then
+  candidate_env_arguments+=(--remove-env-vars=DOCUMENT_TRANSFORM_FALLBACK_MODEL)
+fi
 
 gcloud run services update "$SERVICE" \
   --project "$PROJECT_ID" \
   --region "$REGION" \
   --image "$candidate_image" \
+  "${candidate_env_arguments[@]}" \
   --no-traffic \
   --quiet
 
@@ -60,6 +69,12 @@ for _attempt in {1..6}; do
 done
 if [[ -z "$candidate_revision" || "$candidate_ready" != 'True' ]]; then
   echo "The no-traffic Cloud Run candidate did not become ready" >&2
+  exit 1
+fi
+if [[ ${#candidate_env_arguments[@]} -gt 0 ]] &&
+  jq -e 'any(.spec.containers[0].env[]?;
+    .name == "DOCUMENT_TRANSFORM_FALLBACK_MODEL")' <<<"$revision_json" >/dev/null; then
+  echo "The no-traffic candidate retained the retired model override" >&2
   exit 1
 fi
 candidate_revision_image=$(gcloud run revisions describe "$candidate_revision" \

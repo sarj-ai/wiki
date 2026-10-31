@@ -1,5 +1,5 @@
 from datetime import timedelta
-from typing import Annotated, Literal, Self
+from typing import Annotated, Literal, Self, override
 
 from cryptography.fernet import Fernet
 from pydantic import (
@@ -10,9 +10,15 @@ from pydantic import (
     field_validator,
     model_validator,
 )
-from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic_settings import (
+    BaseSettings,
+    NestedSecretsSettingsSource,
+    PydanticBaseSettingsSource,
+    SettingsConfigDict,
+)
 
 from app.database_config import DatabaseSettings, NonEmptyStr
+from app.document_settings import DocumentSettings
 from app.mcp.redirect_policy import McpRedirectPolicy
 
 
@@ -42,6 +48,8 @@ class Settings(DatabaseSettings):
         env_file=".env",
         env_file_encoding="utf-8",
         extra="ignore",
+        env_nested_delimiter="_",
+        env_nested_max_split=1,
     )
 
     SECRET_KEY: Annotated[SecretStr, Field(min_length=32)]
@@ -69,43 +77,29 @@ class Settings(DatabaseSettings):
     GEMINI_LOCATION: NonEmptyStr = "global"
     GEMINI_MODEL: NonEmptyStr = "gemini-3.5-flash-lite"
     GEMINI_REORGANIZATION_MODEL: NonEmptyStr = "gemini-3.5-flash"
-    DOCUMENT_TRANSFORM_UNSLOP_MODEL: NonEmptyStr = "gemini-3.1-flash-lite"
-    DOCUMENT_TRANSFORM_FALLBACK_MODEL: NonEmptyStr = "gemini-2.5-flash-lite"
-    DOCUMENT_TRANSFORM_RESTYLE_MODEL: NonEmptyStr = "gemini-3.8-flash"
-    DOCUMENT_TRANSFORM_LOGO_URI: HttpUrl = HttpUrl("https://wiki.sarj.ai/brand/sarj-logo-light.png")
-    DOCUMENT_TRANSFORM_IN_PLACE_ENABLED: bool = False
-    DOCUMENT_TRANSFORM_QUEUE: NonEmptyStr | None = None
-    DOCUMENT_TRANSFORM_TARGET_URL: NonEmptyStr | None = None
-    DOCUMENT_TRANSFORM_UPLOAD_BUCKET: NonEmptyStr | None = None
-    DOCUMENT_TRANSFORM_UPLOAD_SIGNER: NonEmptyStr | None = None
+    DOCUMENT: DocumentSettings = Field(default_factory=DocumentSettings)
     CLOUD_TASKS_QUEUE: NonEmptyStr | None = None
     CLOUD_TASKS_LOCATION: NonEmptyStr | None = None
     CLOUD_TASKS_TARGET_URL: NonEmptyStr | None = None
     CLOUD_TASKS_INVOKER_SERVICE_ACCOUNT: NonEmptyStr | None = None
-    DOCUMENT_TRANSFORM_QA_AUDIENCE: NonEmptyStr | None = None
-    DOCUMENT_TRANSFORM_QA_BOOTSTRAP_URL: NonEmptyStr | None = None
-    DOCUMENT_TRANSFORM_QA_SERVICE_ACCOUNT: NonEmptyStr | None = None
-    DOCUMENT_TRANSFORM_QA_IMAGE_DIGEST: Annotated[
-        str | None, Field(pattern=r"^sha256:[0-9a-f]{64}$")
-    ] = None
-    DOCUMENT_TRANSFORM_QA_JOB: Annotated[
-        str | None,
-        Field(
-            pattern=r"^projects/[a-z][a-z0-9-]{4,28}[a-z0-9]/locations/[a-z0-9-]+/jobs/[a-z][a-z0-9-]{0,61}[a-z0-9]$"
-        ),
-    ] = None
-    DOCUMENT_TRANSFORM_QA_IMAGE: Annotated[
-        str | None,
-        Field(
-            pattern=r"^[a-z0-9-]+-docker[.]pkg[.]dev/[a-z0-9-]+/[a-z0-9-]+/[a-z0-9-]+@sha256:[0-9a-f]{64}$"
-        ),
-    ] = None
-    DOCUMENT_TRANSFORM_QA_RELEASE_SHA: Annotated[str | None, Field(pattern=r"^[0-9a-f]{40}$")] = (
-        None
-    )
-    DOCUMENT_TRANSFORM_QA_BACKEND_SERVICE_ACCOUNT: NonEmptyStr | None = None
-    DOCUMENT_TRANSFORM_QA_CORPUS_SOURCE_FOLDER_ID: NonEmptyStr | None = None
-    DOCUMENT_TRANSFORM_QA_OPERATOR_EMAILS: tuple[str, ...] = ()
+
+    @classmethod
+    @override
+    def settings_customise_sources(
+        cls,
+        settings_cls: type[BaseSettings],
+        init_settings: PydanticBaseSettingsSource,
+        env_settings: PydanticBaseSettingsSource,
+        dotenv_settings: PydanticBaseSettingsSource,
+        file_secret_settings: PydanticBaseSettingsSource,
+    ) -> tuple[PydanticBaseSettingsSource, ...]:
+        return super().settings_customise_sources(
+            settings_cls,
+            init_settings,
+            env_settings,
+            dotenv_settings,
+            NestedSecretsSettingsSource(file_secret_settings),
+        )
 
     @property
     def frontend_origin(self) -> str:
@@ -125,87 +119,15 @@ class Settings(DatabaseSettings):
             msg = "Cloud Tasks settings must be configured together"
             raise ValueError(msg)
         transform_config = (
-            self.DOCUMENT_TRANSFORM_QUEUE,
-            self.DOCUMENT_TRANSFORM_TARGET_URL,
+            self.DOCUMENT.TRANSFORM_QUEUE,
+            self.DOCUMENT.TRANSFORM_TARGET_URL,
         )
-        if any(value is not None for value in transform_config) and not all(
-            value is not None for value in transform_config
-        ):
-            msg = "Document Transform queue settings must be configured together"
-            raise ValueError(msg)
         if any(value is not None for value in transform_config) and not all(
             value is not None for value in task_config
         ):
             msg = "Document Transform requires the shared Cloud Tasks settings"
             raise ValueError(msg)
-        self._validate_qa_config()
         return self
-
-    def _validate_qa_config(self) -> None:
-        qa_base_config = (
-            self.DOCUMENT_TRANSFORM_QA_AUDIENCE,
-            self.DOCUMENT_TRANSFORM_QA_SERVICE_ACCOUNT,
-            self.DOCUMENT_TRANSFORM_QA_IMAGE_DIGEST,
-        )
-        qa_launcher_config = (
-            self.DOCUMENT_TRANSFORM_QA_BOOTSTRAP_URL,
-            self.DOCUMENT_TRANSFORM_QA_JOB,
-            self.DOCUMENT_TRANSFORM_QA_IMAGE,
-            self.DOCUMENT_TRANSFORM_QA_RELEASE_SHA,
-            self.DOCUMENT_TRANSFORM_QA_BACKEND_SERVICE_ACCOUNT,
-        )
-        base_configured = any(value is not None for value in qa_base_config)
-        launcher_configured = any(value is not None for value in qa_launcher_config) or bool(
-            self.DOCUMENT_TRANSFORM_QA_OPERATOR_EMAILS
-        )
-        if base_configured and not all(value is not None for value in qa_base_config):
-            msg = "Document Transform QA legacy base settings must be configured together"
-            raise ValueError(msg)
-        if launcher_configured and (
-            not all(value is not None for value in qa_base_config)
-            or not all(value is not None for value in qa_launcher_config)
-            or not self.DOCUMENT_TRANSFORM_QA_OPERATOR_EMAILS
-        ):
-            msg = "Document Transform QA launcher settings and operator allowlist must be complete"
-            raise ValueError(msg)
-        if (
-            self.DOCUMENT_TRANSFORM_QA_IMAGE is not None
-            and self.DOCUMENT_TRANSFORM_QA_IMAGE_DIGEST is not None
-            and not self.DOCUMENT_TRANSFORM_QA_IMAGE.endswith(
-                f"@{self.DOCUMENT_TRANSFORM_QA_IMAGE_DIGEST}"
-            )
-        ):
-            msg = "Document Transform QA image and digest must identify the same immutable image"
-            raise ValueError(msg)
-
-    @field_validator(
-        "DOCUMENT_TRANSFORM_UNSLOP_MODEL",
-        "DOCUMENT_TRANSFORM_FALLBACK_MODEL",
-        "DOCUMENT_TRANSFORM_RESTYLE_MODEL",
-    )
-    @classmethod
-    def document_transform_models_are_exact(cls, value: str) -> str:
-        if value == "latest" or value.endswith("-latest"):
-            msg = "Document Transform requires an exact Gemini model ID"
-            raise ValueError(msg)
-        return value
-
-    @field_validator("DOCUMENT_TRANSFORM_QA_OPERATOR_EMAILS")
-    @classmethod
-    def qa_operator_emails_are_exact(cls, values: tuple[str, ...]) -> tuple[str, ...]:
-        if any(
-            not value
-            or value != value.casefold()
-            or not value.endswith("@sarj.ai")
-            or any(character.isspace() for character in value)
-            for value in values
-        ):
-            msg = "Document Transform QA operators must be lowercase sarj.ai email addresses"
-            raise ValueError(msg)
-        if len(values) != len(set(values)):
-            msg = "Document Transform QA operators must be unique"
-            raise ValueError(msg)
-        return values
 
     @model_validator(mode="after")
     def cookie_domain_matches_application_hosts(self) -> Self:
@@ -290,7 +212,7 @@ class Settings(DatabaseSettings):
             msg = "Native MCP requires explicitly verified client callback paths"
             raise ValueError(msg)
         if not all(
-            (self.GOOGLE_CLOUD_PROJECT, self.CLOUD_TASKS_QUEUE, self.DOCUMENT_TRANSFORM_QUEUE)
+            (self.GOOGLE_CLOUD_PROJECT, self.CLOUD_TASKS_QUEUE, self.DOCUMENT.TRANSFORM_QUEUE)
         ):
             msg = "Native MCP requires the existing Cloud Tasks and document transformation queues"
             raise ValueError(msg)
@@ -314,3 +236,11 @@ def load_environment_settings[SettingsModel: BaseSettings](
 
 
 settings = load_environment_settings(Settings)
+
+
+def document_settings_dep() -> DocumentSettings:
+    return settings.DOCUMENT
+
+
+def document_transform_in_place_enabled() -> bool:
+    return settings.DOCUMENT.TRANSFORM_IN_PLACE_ENABLED

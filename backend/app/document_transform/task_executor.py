@@ -23,7 +23,6 @@ from app.auth.google_tokens import (
     GoogleTokenUnavailableError,
 )
 from app.cache.service import CacheService
-from app.config import settings
 from app.document_transform.brand_manifest import CURRENT_BRAND_MANIFEST
 from app.document_transform.errors import (
     DestinationAccessChangedError,
@@ -191,6 +190,7 @@ class DriveDocumentTransformTaskExecutor(DocumentTransformTaskExecutor):
         http: httpx.AsyncClient,
         generator: PatchGenerator,
         logo_uri: str,
+        in_place_enabled: bool,
     ) -> None:
         self._db = db
         self._tasks = tasks
@@ -198,6 +198,7 @@ class DriveDocumentTransformTaskExecutor(DocumentTransformTaskExecutor):
         self._http = http
         self._generator = generator
         self._logo_uri = logo_uri
+        self._in_place_enabled = in_place_enabled
 
     @override
     async def execute(self, task_id: TaskId) -> TaskRead:
@@ -239,7 +240,7 @@ class DriveDocumentTransformTaskExecutor(DocumentTransformTaskExecutor):
                 )
             if (
                 claimed_payload.output_strategy is OutputStrategy.IN_PLACE
-                and not settings.DOCUMENT_TRANSFORM_IN_PLACE_ENABLED
+                and not self._in_place_enabled
             ):
                 return await self._tasks.fail(
                     task_id,

@@ -88,7 +88,7 @@ def smart_create_task_request_authenticator_dep() -> TaskRequestAuthenticator:
 
 
 def document_transform_task_request_authenticator_dep() -> TaskRequestAuthenticator:
-    return _task_request_authenticator(settings.DOCUMENT_TRANSFORM_TARGET_URL)
+    return _task_request_authenticator(settings.DOCUMENT.TRANSFORM_TARGET_URL)
 
 
 async def require_smart_create_cloud_task(

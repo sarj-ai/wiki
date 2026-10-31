@@ -16,6 +16,8 @@ import typer
 if TYPE_CHECKING:
     from collections.abc import Callable
 
+    from pydantic_settings import BaseSettings
+
 
 ROOT = Path(__file__).resolve().parents[1]
 ENV_KEY = re.compile(r"^\s*(?:#\s*)?([A-Z][A-Z0-9_]*)\s*=")
@@ -138,8 +140,11 @@ def _settings_fields() -> set[str]:
         for line in path.read_text(encoding="utf-8").splitlines()
         if (match := SETTINGS_FIELD.match(line))
     }
-    for field in declared_fields:
-        os.environ.pop(field, None)  # ruff: ignore[banned-api] -- hermetic import setup
+    prefixes = tuple(f"{field}_" for field in declared_fields)
+    environment_keys = tuple(os.environ)  # ruff: ignore[banned-api] -- hermetic import excludes nested settings too
+    for key in environment_keys:
+        if key.upper() in declared_fields or key.upper().startswith(prefixes):
+            os.environ.pop(key, None)  # ruff: ignore[banned-api] -- hermetic import setup
     os.environ.update(  # ruff: ignore[banned-api] -- hermetic import setup
         {
             "DATABASE_URL": "postgresql+asyncpg://postgres:postgres@localhost:5432/wiki",
@@ -149,11 +154,27 @@ def _settings_fields() -> set[str]:
             "FERNET_KEY": "MDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDA=",
         }
     )
-    from app.config import (  # ruff: ignore[import-outside-top-level] -- after env setup
+    from app.config import (  # ruff: ignore[import-outside-top-level] -- after hermetic environment setup
         Settings,
     )
 
-    return set(Settings.model_fields)
+    return _settings_environment_names(Settings)
+
+
+def _settings_environment_names(model: type[BaseSettings]) -> set[str]:
+    from pydantic_settings import (  # ruff: ignore[import-outside-top-level] -- keep Node and help checks independent of backend dependencies
+        BaseSettings,
+    )
+
+    delimiter = model.model_config.get("env_nested_delimiter")
+    expected: set[str] = set()
+    for name, field in model.model_fields.items():
+        annotation = field.annotation
+        if delimiter and isinstance(annotation, type) and issubclass(annotation, BaseSettings):
+            expected.update(f"{name}{delimiter}{child}" for child in annotation.model_fields)
+        else:
+            expected.add(name)
+    return expected
 
 
 if __name__ == "__main__":

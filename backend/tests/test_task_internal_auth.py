@@ -45,8 +45,8 @@ async def test_document_transform_auth_uses_route_specific_audience(
         return _claims(token, audience)
 
     monkeypatch.setattr(
-        settings,
-        "DOCUMENT_TRANSFORM_TARGET_URL",
+        settings.DOCUMENT,
+        "TRANSFORM_TARGET_URL",
         _DOCUMENT_TRANSFORM_AUDIENCE,
     )
     monkeypatch.setattr(settings, "CLOUD_TASKS_INVOKER_SERVICE_ACCOUNT", _EMAIL)

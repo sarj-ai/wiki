@@ -1,3 +1,4 @@
+from app.config import document_transform_in_place_enabled
 from app.document_transform.application import submit_document_transform
 from app.mcp.context import McpApplicationContext
 from app.mcp.schemas import (
@@ -26,6 +27,7 @@ async def polish_document(
         tasks=context.tasks,
         enqueuer=enqueuer,
         files=context.files,
+        in_place_enabled=document_transform_in_place_enabled(),
     )
     # Replays can already be terminal: use the same owner/output-ACL read boundary.
     public = await McpReadService(context).get_task(TaskInput(task_id=submission.task.id))

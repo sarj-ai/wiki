@@ -17,8 +17,9 @@ from app.auth.dependencies import get_current_user, http_client_dep
 from app.auth.jwt import decode_token
 from app.cache.dependencies import cache_service_dep
 from app.cache.service import CacheService
-from app.config import settings
+from app.config import document_settings_dep, settings
 from app.database import get_db
+from app.document_settings import DocumentSettings
 from app.document_transform.qa_broker import QaCanaryBroker
 from app.document_transform.qa_campaigns import (
     CreatedQaCorpusCampaign,
@@ -293,14 +294,16 @@ def qa_canary_broker_dep(
 
 def qa_launcher_dep(
     http: Annotated[httpx.AsyncClient, Depends(http_client_dep)],
+    *,
+    document_settings: Annotated[DocumentSettings, Depends(document_settings_dep)],
 ) -> CloudRunQaLauncher:
     project = settings.GOOGLE_CLOUD_PROJECT
-    job = settings.DOCUMENT_TRANSFORM_QA_JOB
-    image = settings.DOCUMENT_TRANSFORM_QA_IMAGE
-    release = settings.DOCUMENT_TRANSFORM_QA_RELEASE_SHA
-    worker = settings.DOCUMENT_TRANSFORM_QA_SERVICE_ACCOUNT
-    backend = settings.DOCUMENT_TRANSFORM_QA_BACKEND_SERVICE_ACCOUNT
-    bootstrap_url = settings.DOCUMENT_TRANSFORM_QA_BOOTSTRAP_URL
+    job = document_settings.TRANSFORM_QA_JOB
+    image = document_settings.TRANSFORM_QA_IMAGE
+    release = document_settings.TRANSFORM_QA_RELEASE_SHA
+    worker = document_settings.TRANSFORM_QA_SERVICE_ACCOUNT
+    backend = document_settings.TRANSFORM_QA_BACKEND_SERVICE_ACCOUNT
+    bootstrap_url = document_settings.TRANSFORM_QA_BOOTSTRAP_URL
     if project is None or job is None or image is None or release is None:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
@@ -324,26 +327,28 @@ def qa_launcher_dep(
     )
 
 
-def _configured_binding(body: QaGrantBinding) -> None:
+def _configured_binding(body: QaGrantBinding, *, document_settings: DocumentSettings) -> None:
     if (
-        settings.DOCUMENT_TRANSFORM_QA_IMAGE_DIGEST is None
-        or settings.DOCUMENT_TRANSFORM_QA_AUDIENCE is None
+        document_settings.TRANSFORM_QA_IMAGE_DIGEST is None
+        or document_settings.TRANSFORM_QA_AUDIENCE is None
     ):
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="QA grants are disabled"
         )
-    configured_release = settings.DOCUMENT_TRANSFORM_QA_RELEASE_SHA or settings.RELEASE_SHA
+    configured_release = document_settings.TRANSFORM_QA_RELEASE_SHA or settings.RELEASE_SHA
     if (
         body.release_sha != configured_release
-        or body.image_digest != settings.DOCUMENT_TRANSFORM_QA_IMAGE_DIGEST
+        or body.image_digest != document_settings.TRANSFORM_QA_IMAGE_DIGEST
     ):
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT, detail="QA release binding mismatch"
         )
 
 
-def _require_configured_corpus_source(authority: QaAuthority) -> None:
-    configured_source = settings.DOCUMENT_TRANSFORM_QA_CORPUS_SOURCE_FOLDER_ID
+def _require_configured_corpus_source(
+    authority: QaAuthority, *, document_settings: DocumentSettings
+) -> None:
+    configured_source = document_settings.TRANSFORM_QA_CORPUS_SOURCE_FOLDER_ID
     if configured_source is None:
         raise _no_store_http_error(
             status.HTTP_503_SERVICE_UNAVAILABLE, "QA corpus planning is disabled"
@@ -352,16 +357,22 @@ def _require_configured_corpus_source(authority: QaAuthority) -> None:
         raise _no_store_http_error(status.HTTP_409_CONFLICT, "QA corpus source binding mismatch")
 
 
-def _require_legacy_qa_flow() -> None:
-    if settings.DOCUMENT_TRANSFORM_QA_JOB is not None:
+def _require_legacy_qa_flow(
+    *, document_settings: Annotated[DocumentSettings, Depends(document_settings_dep)]
+) -> None:
+    if document_settings.TRANSFORM_QA_JOB is not None:
         raise _no_store_http_error(
             status.HTTP_410_GONE,
             "Legacy QA grant flow is disabled when the backend launcher is configured",
         )
 
 
-def _require_exchange_flow(request: Request) -> None:
-    if settings.DOCUMENT_TRANSFORM_QA_JOB is None:
+def _require_exchange_flow(
+    request: Request,
+    *,
+    document_settings: Annotated[DocumentSettings, Depends(document_settings_dep)],
+) -> None:
+    if document_settings.TRANSFORM_QA_JOB is None:
         return
     if list(request.query_params.multi_items()) != [("operation", "renew")]:
         raise _no_store_http_error(
@@ -384,9 +395,13 @@ def _require_execution_selector(identity: str, requested: str) -> None:
         raise QaLaunchError
 
 
-async def _require_qa_workload(authorization: Annotated[str | None, Header()] = None) -> None:
-    audience = settings.DOCUMENT_TRANSFORM_QA_AUDIENCE
-    service_account = settings.DOCUMENT_TRANSFORM_QA_SERVICE_ACCOUNT
+async def _require_qa_workload(
+    authorization: Annotated[str | None, Header()] = None,
+    *,
+    document_settings: Annotated[DocumentSettings, Depends(document_settings_dep)],
+) -> None:
+    audience = document_settings.TRANSFORM_QA_AUDIENCE
+    service_account = document_settings.TRANSFORM_QA_SERVICE_ACCOUNT
     if audience is None or service_account is None:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
@@ -423,9 +438,11 @@ async def issue_document_transform_qa_grant(
     user: Annotated[User, Depends(get_current_user)],
     db: Annotated[AsyncSession, Depends(get_db)],
     response: Response,
+    *,
+    document_settings: Annotated[DocumentSettings, Depends(document_settings_dep)],
 ) -> QaGrantIssueResponse:
     body = await _parse_legacy_body(request, QaGrantBinding)
-    _configured_binding(body)
+    _configured_binding(body, document_settings=document_settings)
     token = request.cookies.get("access_token")
     if token is None or request.headers.get("origin") != settings.frontend_origin:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED)
@@ -482,10 +499,11 @@ async def launch_document_transform_qa_run(
     launcher: Annotated[CloudRunQaLauncher, Depends(qa_launcher_dep)],
     response: Response,
     idempotency_key: Annotated[str | None, Header(alias="Idempotency-Key")] = None,
+    document_settings: Annotated[DocumentSettings, Depends(document_settings_dep)],
 ) -> QaLaunchResponse:
     """Launch only the configured job and bind its server-issued execution identity."""
-    _configured_binding(body)
-    if user.email.casefold() not in settings.DOCUMENT_TRANSFORM_QA_OPERATOR_EMAILS:
+    _configured_binding(body, document_settings=document_settings)
+    if user.email.casefold() not in document_settings.TRANSFORM_QA_OPERATOR_EMAILS:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="QA operator required")
     try:
         launch_key = IdempotencyKey(uuid.UUID(idempotency_key or ""))
@@ -583,14 +601,16 @@ async def exchange_document_transform_qa_grant(
     request: Request,
     db: Annotated[AsyncSession, Depends(get_db)],
     response: Response,
+    *,
+    document_settings: Annotated[DocumentSettings, Depends(document_settings_dep)],
 ) -> QaCapabilityResponse:
-    launcher_renewal = settings.DOCUMENT_TRANSFORM_QA_JOB is not None
+    launcher_renewal = document_settings.TRANSFORM_QA_JOB is not None
     body = (
         await _parse_legacy_body(request, QaLauncherRenewal)
         if launcher_renewal
         else await _parse_legacy_body(request, QaGrantExchange)
     )
-    _configured_binding(body)
+    _configured_binding(body, document_settings=document_settings)
     try:
         capability = await _exchange_capability(db, body)
         await db.commit()
@@ -654,10 +674,14 @@ async def bootstrap_document_transform_qa_run(
     db: Annotated[AsyncSession, Depends(get_db)],
     launcher: Annotated[CloudRunQaLauncher, Depends(qa_launcher_dep)],
     response: Response,
+    *,
+    document_settings: Annotated[DocumentSettings, Depends(document_settings_dep)],
 ) -> QaBootstrapResponse:
     """Bootstrap the sole bound execution without accepting caller-selected IDs."""
     try:
-        await _require_qa_workload(request.headers.get("Authorization"))
+        await _require_qa_workload(
+            request.headers.get("Authorization"), document_settings=document_settings
+        )
     except HTTPException as exc:
         raise _no_store_http_error(exc.status_code, str(exc.detail)) from exc
     try:
@@ -711,6 +735,8 @@ async def authorize_document_transform_qa_canary_session(
     request: Request,
     db: Annotated[AsyncSession, Depends(get_db)],
     response: Response,
+    *,
+    document_settings: Annotated[DocumentSettings, Depends(document_settings_dep)],
 ) -> QaCanarySessionResponse:
     """Prove the immutable scope for future canary-only broker operations.
 
@@ -718,7 +744,7 @@ async def authorize_document_transform_qa_canary_session(
     Run entrypoint remains fail-closed until the separately reviewed brokered
     Drive and transform operations are implemented.
     """
-    authority = await _authorize_canary_request(request, db)
+    authority = await _authorize_canary_request(request, db, document_settings=document_settings)
     _prevent_token_caching(response)
     return _canary_session_response(authority)
 
@@ -729,9 +755,11 @@ async def plan_document_transform_qa_canary(
     db: Annotated[AsyncSession, Depends(get_db)],
     broker: Annotated[QaCanaryBroker, Depends(qa_canary_broker_dep)],
     response: Response,
+    *,
+    document_settings: Annotated[DocumentSettings, Depends(document_settings_dep)],
 ) -> QaCanaryPlanResponse:
     """Select the only canary source without accepting a caller-chosen file ID."""
-    authority = await _authorize_canary_request(request, db)
+    authority = await _authorize_canary_request(request, db, document_settings=document_settings)
     try:
         plan = await broker.plan(authority)
     except QaGrantError as exc:
@@ -757,10 +785,12 @@ async def plan_document_transform_qa_corpus(
     db: Annotated[AsyncSession, Depends(get_db)],
     broker: Annotated[QaCanaryBroker, Depends(qa_canary_broker_dep)],
     response: Response,
+    *,
+    document_settings: Annotated[DocumentSettings, Depends(document_settings_dep)],
 ) -> QaCorpusPlan:
     """Snapshot the complete source corpus bound into the current capability."""
-    authority = await _authorize_canary_request(request, db)
-    _require_configured_corpus_source(authority)
+    authority = await _authorize_canary_request(request, db, document_settings=document_settings)
+    _require_configured_corpus_source(authority, document_settings=document_settings)
     try:
         plan = await broker.plan_corpus(authority)
     except QaGrantError as exc:
@@ -777,16 +807,21 @@ async def create_document_transform_qa_corpus_campaign(
     db: Annotated[AsyncSession, Depends(get_db)],
     broker: Annotated[QaCanaryBroker, Depends(qa_canary_broker_dep)],
     response: Response,
+    *,
+    document_settings: Annotated[DocumentSettings, Depends(document_settings_dep)],
 ) -> QaCorpusCampaignCreateResponse:
     """Freeze one exact campaign after reauthorizing its Drive-derived plan."""
-    authorized = await _authorize_canary_request_as(request, db, QaCapabilityAuthorization)
-    _require_configured_corpus_source(authorized.authority)
+    authorized = await _authorize_canary_request_as(
+        request, db, QaCapabilityAuthorization, document_settings=document_settings
+    )
+    _require_configured_corpus_source(authorized.authority, document_settings=document_settings)
     try:
         created = await _create_or_replay_corpus_campaign(
             request=request,
             db=db,
             broker=broker,
             initial_authority=authorized.authority,
+            document_settings=document_settings,
         )
         campaign_response = _bounded_campaign_response(
             _campaign_create_response(created.campaign, replayed=created.replayed)
@@ -806,10 +841,14 @@ async def read_document_transform_qa_corpus_campaign(
     request: Request,
     db: Annotated[AsyncSession, Depends(get_db)],
     response: Response,
+    *,
+    document_settings: Annotated[DocumentSettings, Depends(document_settings_dep)],
 ) -> QaCorpusCampaignResponse:
     """Read one campaign only through the current capability and owner binding."""
-    authorized = await _authorize_canary_request_as(request, db, QaCapabilityAuthorization)
-    _require_configured_corpus_source(authorized.authority)
+    authorized = await _authorize_canary_request_as(
+        request, db, QaCapabilityAuthorization, document_settings=document_settings
+    )
+    _require_configured_corpus_source(authorized.authority, document_settings=document_settings)
     try:
         campaign = await load_qa_corpus_campaign_for_authority(db, authority=authorized.authority)
         campaign = _require_corpus_campaign(campaign)
@@ -836,9 +875,12 @@ async def submit_document_transform_qa_canary(
     tasks: Annotated[TaskService, Depends(task_service_dep)],
     enqueuer: Annotated[TaskEnqueuer, Depends(task_enqueuer_dep)],
     response: Response,
+    document_settings: Annotated[DocumentSettings, Depends(document_settings_dep)],
 ) -> QaCanarySubmissionResponse:
     """Recompute a server-selected plan and submit only its forced-copy task."""
-    authorized = await _authorize_canary_request_as(request, db, QaCanarySubmissionAuthorization)
+    authorized = await _authorize_canary_request_as(
+        request, db, QaCanarySubmissionAuthorization, document_settings=document_settings
+    )
     try:
         submission = await broker.submit(
             authorized.authority,
@@ -854,7 +896,7 @@ async def submit_document_transform_qa_canary(
         )
         await db.commit()
         authorized = await _authorize_canary_request_as(
-            request, db, QaCanarySubmissionAuthorization
+            request, db, QaCanarySubmissionAuthorization, document_settings=document_settings
         )
     except QaGrantError as exc:
         await db.rollback()
@@ -882,9 +924,11 @@ async def read_document_transform_qa_canary_task(
     broker: Annotated[QaCanaryBroker, Depends(qa_canary_broker_dep)],
     tasks: Annotated[TaskService, Depends(task_service_dep)],
     response: Response,
+    *,
+    document_settings: Annotated[DocumentSettings, Depends(document_settings_dep)],
 ) -> QaCanaryTaskResponse:
     """Read the task derived from the current authority and its server plan."""
-    read = await _read_canary_task(request, db, broker, tasks)
+    read = await _read_canary_task(request, db, broker, tasks, document_settings=document_settings)
     _prevent_token_caching(response)
     return _bounded_response(_task_response(read.task), _MAX_QA_TASK_RESPONSE_BYTES)
 
@@ -896,15 +940,21 @@ async def read_document_transform_qa_canary_result(
     broker: Annotated[QaCanaryBroker, Depends(qa_canary_broker_dep)],
     tasks: Annotated[TaskService, Depends(task_service_dep)],
     response: Response,
+    *,
+    document_settings: Annotated[DocumentSettings, Depends(document_settings_dep)],
 ) -> QaCanaryResultResponse:
     """Return a bounded result only for this capability's successful canary."""
-    read = await _read_canary_task(request, db, broker, tasks)
+    read = await _read_canary_task(request, db, broker, tasks, document_settings=document_settings)
     result = _require_succeeded_transform(
         read.task,
         authority=read.authorized.authority,
     )
-    verified_output = await _authorize_canary_output(request, db, broker, read, result)
-    permission_evidence = await _read_canary_permission_evidence(request, db, broker, tasks, read)
+    verified_output = await _authorize_canary_output(
+        request, db, broker, read, result, document_settings=document_settings
+    )
+    permission_evidence = await _read_canary_permission_evidence(
+        request, db, broker, tasks, read, document_settings=document_settings
+    )
     _require_permission_evidence_binding(
         result,
         permission_evidence,
@@ -944,15 +994,21 @@ async def read_document_transform_qa_canary_evidence(
     broker: Annotated[QaCanaryBroker, Depends(qa_canary_broker_dep)],
     tasks: Annotated[TaskService, Depends(task_service_dep)],
     response: Response,
+    *,
+    document_settings: Annotated[DocumentSettings, Depends(document_settings_dep)],
 ) -> QaCanaryEvidenceResponse:
     """Return bounded structured evidence; raw PDF artifacts are never transported."""
-    read = await _read_canary_task(request, db, broker, tasks)
+    read = await _read_canary_task(request, db, broker, tasks, document_settings=document_settings)
     result = _require_succeeded_transform(
         read.task,
         authority=read.authorized.authority,
     )
-    await _authorize_canary_output(request, db, broker, read, result)
-    permission_evidence = await _read_canary_permission_evidence(request, db, broker, tasks, read)
+    await _authorize_canary_output(
+        request, db, broker, read, result, document_settings=document_settings
+    )
+    permission_evidence = await _read_canary_permission_evidence(
+        request, db, broker, tasks, read, document_settings=document_settings
+    )
     _require_permission_evidence_binding(
         result,
         permission_evidence,
@@ -973,8 +1029,12 @@ async def _read_canary_task(
     db: AsyncSession,
     broker: QaCanaryBroker,
     tasks: TaskService,
+    *,
+    document_settings: DocumentSettings,
 ) -> _ReadCanaryTask:
-    authorized = await _authorize_canary_request_as(request, db, QaCanaryReadAuthorization)
+    authorized = await _authorize_canary_request_as(
+        request, db, QaCanaryReadAuthorization, document_settings=document_settings
+    )
     try:
         submission = await load_qa_canary_submission(db, authority=authorized.authority)
         task = await broker.read_task(
@@ -982,7 +1042,9 @@ async def _read_canary_task(
             submission=submission,
             tasks=tasks,
         )
-        authorized = await _authorize_canary_request_as(request, db, QaCanaryReadAuthorization)
+        authorized = await _authorize_canary_request_as(
+            request, db, QaCanaryReadAuthorization, document_settings=document_settings
+        )
     except (QaGrantError, TaskError) as exc:
         raise _canary_state_unavailable() from exc
     return _ReadCanaryTask(authorized=authorized, submission=submission, task=task)
@@ -994,10 +1056,14 @@ async def _authorize_canary_output(
     broker: QaCanaryBroker,
     read: _ReadCanaryTask,
     result: DocumentTransformResult,
+    *,
+    document_settings: DocumentSettings,
 ) -> FileResponse:
     try:
         output = await broker.authorize_output(read.authorized.authority, output=result.output)
-        await _authorize_canary_request_as(request, db, QaCanaryReadAuthorization)
+        await _authorize_canary_request_as(
+            request, db, QaCanaryReadAuthorization, document_settings=document_settings
+        )
     except (QaGrantError, TaskError) as exc:
         raise _canary_state_unavailable() from exc
     return output
@@ -1009,6 +1075,8 @@ async def _read_canary_permission_evidence(
     broker: QaCanaryBroker,
     tasks: TaskService,
     read: _ReadCanaryTask,
+    *,
+    document_settings: DocumentSettings,
 ) -> QaCopyPermissionEvidence:
     try:
         evidence = await broker.read_permission_evidence(
@@ -1016,7 +1084,9 @@ async def _read_canary_permission_evidence(
             submission=read.submission,
             tasks=tasks,
         )
-        await _authorize_canary_request_as(request, db, QaCanaryReadAuthorization)
+        await _authorize_canary_request_as(
+            request, db, QaCanaryReadAuthorization, document_settings=document_settings
+        )
     except (QaGrantError, TaskError) as exc:
         raise _canary_state_unavailable() from exc
     return evidence
@@ -1191,8 +1261,12 @@ def _bounded_response[ResponseModel: BaseModel](
     return response
 
 
-async def _authorize_canary_request(request: Request, db: AsyncSession) -> QaAuthority:
-    authorized = await _authorize_canary_request_as(request, db, QaCapabilityAuthorization)
+async def _authorize_canary_request(
+    request: Request, db: AsyncSession, *, document_settings: DocumentSettings
+) -> QaAuthority:
+    authorized = await _authorize_canary_request_as(
+        request, db, QaCapabilityAuthorization, document_settings=document_settings
+    )
     return authorized.authority
 
 
@@ -1200,9 +1274,13 @@ async def _authorize_canary_request_as[QaAuthorization: QaCapabilityAuthorizatio
     request: Request,
     db: AsyncSession,
     body_type: type[QaAuthorization],
+    *,
+    document_settings: DocumentSettings,
 ) -> _AuthorizedCanaryRequest[QaAuthorization]:
     try:
-        await _require_qa_workload(request.headers.get("Authorization"))
+        await _require_qa_workload(
+            request.headers.get("Authorization"), document_settings=document_settings
+        )
     except HTTPException as exc:
         raise _no_store_http_error(exc.status_code, str(exc.detail)) from exc
     capability_token = request.headers.get("X-Wiki-QA-Capability")
@@ -1217,7 +1295,7 @@ async def _authorize_canary_request_as[QaAuthorization: QaCapabilityAuthorizatio
             status.HTTP_422_UNPROCESSABLE_CONTENT, "QA request is invalid"
         ) from exc
     try:
-        _configured_binding(body)
+        _configured_binding(body, document_settings=document_settings)
         authority = await authorize_qa_capability(
             db,
             capability_token=capability_token,
@@ -1280,14 +1358,17 @@ async def _create_or_replay_corpus_campaign(
     db: AsyncSession,
     broker: QaCanaryBroker,
     initial_authority: QaAuthority,
+    document_settings: DocumentSettings,
 ) -> CreatedQaCorpusCampaign:
     if (
         existing := await load_qa_corpus_campaign_for_authority(db, authority=initial_authority)
     ) is not None:
         return CreatedQaCorpusCampaign(campaign=existing, replayed=True)
     candidate = await broker.plan_corpus_campaign(initial_authority)
-    refreshed = await _authorize_canary_request_as(request, db, QaCapabilityAuthorization)
-    _require_configured_corpus_source(refreshed.authority)
+    refreshed = await _authorize_canary_request_as(
+        request, db, QaCapabilityAuthorization, document_settings=document_settings
+    )
+    _require_configured_corpus_source(refreshed.authority, document_settings=document_settings)
     if refreshed.authority != initial_authority:
         raise QaGrantError
     return await create_or_load_qa_corpus_campaign(

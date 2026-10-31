@@ -5,13 +5,15 @@ import uuid
 
 from fastapi import FastAPI, HTTPException
 from httpx import ASGITransport, AsyncClient
+from pydantic import JsonValue
 import pytest
 from sqlalchemy.exc import IntegrityError
 
 from app.auth.dependencies import get_current_user
-from app.config import settings
+from app.config import document_settings_dep, settings
 from app.csrf import CookieOriginMiddleware
 from app.database import get_db
+from app.document_settings import DocumentSettings
 from app.document_transform import qa_router
 from app.document_transform.application import TransformSubmission
 from app.document_transform.qa_broker import (
@@ -191,9 +193,10 @@ class _AttestedLauncher:
         )
 
 
-def _application(db: _Db, user: User) -> FastAPI:
+def _application(db: _Db, user: User, *, document_config: DocumentSettings) -> FastAPI:
     application = FastAPI()
     application.add_middleware(CookieOriginMiddleware, allowed_origin=settings.frontend_origin)
+    application.dependency_overrides[document_settings_dep] = lambda: document_config
     application.include_router(qa_router.issuer_router)
     application.include_router(qa_router.workload_router)
     application.dependency_overrides[get_current_user] = lambda: user
@@ -202,13 +205,18 @@ def _application(db: _Db, user: User) -> FastAPI:
     return application
 
 
-def _configure(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(settings, "RELEASE_SHA", _RELEASE)
-    monkeypatch.setattr(settings, "DOCUMENT_TRANSFORM_QA_IMAGE_DIGEST", _DIGEST)
-    monkeypatch.setattr(settings, "DOCUMENT_TRANSFORM_QA_AUDIENCE", _AUDIENCE)
-    monkeypatch.setattr(settings, "DOCUMENT_TRANSFORM_QA_SERVICE_ACCOUNT", _SERVICE_ACCOUNT)
-    monkeypatch.setattr(settings, "DOCUMENT_TRANSFORM_QA_RELEASE_SHA", _RELEASE)
-    monkeypatch.setattr(settings, "DOCUMENT_TRANSFORM_QA_OPERATOR_EMAILS", ("qa@example.test",))
+@pytest.fixture
+def document_config() -> DocumentSettings:
+    return settings.DOCUMENT.model_copy(
+        deep=True,
+        update={
+            "TRANSFORM_QA_IMAGE_DIGEST": _DIGEST,
+            "TRANSFORM_QA_AUDIENCE": _AUDIENCE,
+            "TRANSFORM_QA_SERVICE_ACCOUNT": _SERVICE_ACCOUNT,
+            "TRANSFORM_QA_RELEASE_SHA": _RELEASE,
+            "TRANSFORM_QA_OPERATOR_EMAILS": ("qa@example.test",),
+        },
+    )
 
 
 def _oidc(monkeypatch: pytest.MonkeyPatch, claims: dict[str, Any]) -> None:
@@ -231,11 +239,10 @@ def _oidc(monkeypatch: pytest.MonkeyPatch, claims: dict[str, Any]) -> None:
 
 @pytest.mark.parametrize("origin", [None, "https://hostile.test", "null"])
 async def test_issuer_rejects_missing_hostile_and_null_origin(
-    monkeypatch: pytest.MonkeyPatch, origin: str | None
+    origin: str | None, *, document_config: DocumentSettings
 ) -> None:
-    _configure(monkeypatch)
     db = _Db()
-    application = _application(db, _user())
+    application = _application(db, _user(), document_config=document_config)
     headers = {} if origin is None else {"Origin": origin}
     async with AsyncClient(
         transport=ASGITransport(app=application), base_url="http://api.test"
@@ -250,10 +257,9 @@ async def test_issuer_rejects_missing_hostile_and_null_origin(
     assert db.commits == 0
 
 
-async def test_issuer_rejects_bearer_only(monkeypatch: pytest.MonkeyPatch) -> None:
-    _configure(monkeypatch)
+async def test_issuer_rejects_bearer_only(*, document_config: DocumentSettings) -> None:
     db = _Db()
-    application = _application(db, _user())
+    application = _application(db, _user(), document_config=document_config)
     async with AsyncClient(
         transport=ASGITransport(app=application), base_url="http://api.test"
     ) as http:
@@ -268,9 +274,10 @@ async def test_issuer_rejects_bearer_only(monkeypatch: pytest.MonkeyPatch) -> No
 
 async def test_issuer_binds_exact_cookie_user_session_and_disables_caching(
     monkeypatch: pytest.MonkeyPatch,
+    *,
+    document_config: DocumentSettings,
 ) -> None:
-    _configure(monkeypatch)
-    monkeypatch.setattr(settings, "DOCUMENT_TRANSFORM_QA_JOB", None)
+    document_config.TRANSFORM_QA_JOB = None
     user = _user()
     session_id = AuthSessionId(uuid.UUID("33333333-3333-4333-8333-333333333333"))
     monkeypatch.setattr(
@@ -290,7 +297,7 @@ async def test_issuer_binds_exact_cookie_user_session_and_disables_caching(
 
     monkeypatch.setattr(qa_router, "issue_qa_grant", issue)
     db = _Db()
-    application = _application(db, user)
+    application = _application(db, user, document_config=document_config)
     async with AsyncClient(
         transport=ASGITransport(app=application), base_url="http://api.test"
     ) as http:
@@ -308,12 +315,12 @@ async def test_issuer_binds_exact_cookie_user_session_and_disables_caching(
 
 
 async def test_launcher_mode_disables_legacy_grant_issuer_before_database_mutation(
-    monkeypatch: pytest.MonkeyPatch,
+    *,
+    document_config: DocumentSettings,
 ) -> None:
-    _configure(monkeypatch)
-    monkeypatch.setattr(settings, "DOCUMENT_TRANSFORM_QA_JOB", "configured-job")
+    document_config.TRANSFORM_QA_JOB = "configured-job"
     db = _Db()
-    application = _application(db, _user())
+    application = _application(db, _user(), document_config=document_config)
     async with AsyncClient(
         transport=ASGITransport(app=application), base_url="http://api.test"
     ) as http:
@@ -330,12 +337,12 @@ async def test_launcher_mode_disables_legacy_grant_issuer_before_database_mutati
 
 
 async def test_launcher_mode_retires_legacy_issuer_before_sensitive_body_parsing(
-    monkeypatch: pytest.MonkeyPatch,
+    *,
+    document_config: DocumentSettings,
 ) -> None:
-    _configure(monkeypatch)
-    monkeypatch.setattr(settings, "DOCUMENT_TRANSFORM_QA_JOB", "configured-job")
+    document_config.TRANSFORM_QA_JOB = "configured-job"
     db = _Db()
-    application = _application(db, _user())
+    application = _application(db, _user(), document_config=document_config)
     secret = "malformed-legacy-grant-secret"
     async with AsyncClient(
         transport=ASGITransport(app=application), base_url="http://api.test"
@@ -354,8 +361,9 @@ async def test_launcher_mode_retires_legacy_issuer_before_sensitive_body_parsing
 
 async def test_backend_owned_launcher_prepares_launches_attests_then_binds(
     monkeypatch: pytest.MonkeyPatch,
+    *,
+    document_config: DocumentSettings,
 ) -> None:
-    _configure(monkeypatch)
     user = _user()
     session_id = AuthSessionId(uuid.UUID("33333333-3333-4333-8333-333333333333"))
     run_id = uuid.UUID("55555555-5555-4555-8555-555555555555")
@@ -401,7 +409,7 @@ async def test_backend_owned_launcher_prepares_launches_attests_then_binds(
     monkeypatch.setattr(qa_router, "prepare_idempotent_qa_launch", prepare)
     monkeypatch.setattr(qa_router, "bind_qa_bootstrap_execution", bind)
     db = _Db()
-    application = _application(db, user)
+    application = _application(db, user, document_config=document_config)
     application.dependency_overrides[qa_router.qa_launcher_dep] = _Launcher
     async with AsyncClient(
         transport=ASGITransport(app=application), base_url="http://api.test"
@@ -425,12 +433,12 @@ async def test_backend_owned_launcher_prepares_launches_attests_then_binds(
 
 
 async def test_backend_owned_launcher_is_default_off_before_ledger_mutation(
-    monkeypatch: pytest.MonkeyPatch,
+    *,
+    document_config: DocumentSettings,
 ) -> None:
-    _configure(monkeypatch)
-    monkeypatch.setattr(settings, "DOCUMENT_TRANSFORM_QA_JOB", None)
+    document_config.TRANSFORM_QA_JOB = None
     db = _Db()
-    application = _application(db, _user())
+    application = _application(db, _user(), document_config=document_config)
     application.dependency_overrides.pop(qa_router.qa_launcher_dep)
     application.dependency_overrides[qa_router.http_client_dep] = lambda: None
     async with AsyncClient(
@@ -447,12 +455,12 @@ async def test_backend_owned_launcher_is_default_off_before_ledger_mutation(
 
 
 async def test_launcher_rejects_non_operator_before_ledger_mutation(
-    monkeypatch: pytest.MonkeyPatch,
+    *,
+    document_config: DocumentSettings,
 ) -> None:
-    _configure(monkeypatch)
-    monkeypatch.setattr(settings, "DOCUMENT_TRANSFORM_QA_OPERATOR_EMAILS", ("other@sarj.ai",))
+    document_config.TRANSFORM_QA_OPERATOR_EMAILS = ("other@sarj.ai",)
     db = _Db()
-    application = _application(db, _user())
+    application = _application(db, _user(), document_config=document_config)
     async with AsyncClient(
         transport=ASGITransport(app=application), base_url="http://api.test"
     ) as http:
@@ -468,11 +476,10 @@ async def test_launcher_rejects_non_operator_before_ledger_mutation(
 
 @pytest.mark.parametrize("key", [None, "not-a-uuid", "11111111-1111-4111-8111-111111111111"])
 async def test_launcher_requires_uuid7_idempotency_before_ledger_mutation(
-    monkeypatch: pytest.MonkeyPatch, key: str | None
+    key: str | None, *, document_config: DocumentSettings
 ) -> None:
-    _configure(monkeypatch)
     db = _Db()
-    application = _application(db, _user())
+    application = _application(db, _user(), document_config=document_config)
     headers = {"Origin": settings.frontend_origin}
     if key is not None:
         headers["Idempotency-Key"] = key
@@ -491,8 +498,9 @@ async def test_launcher_requires_uuid7_idempotency_before_ledger_mutation(
 
 async def test_launcher_global_single_flight_collision_never_starts_job(
     monkeypatch: pytest.MonkeyPatch,
+    *,
+    document_config: DocumentSettings,
 ) -> None:
-    _configure(monkeypatch)
     user = _user()
     session_id = AuthSessionId(uuid.UUID("33333333-3333-4333-8333-333333333333"))
     monkeypatch.setattr(
@@ -507,7 +515,7 @@ async def test_launcher_global_single_flight_collision_never_starts_job(
 
     monkeypatch.setattr(qa_router, "prepare_idempotent_qa_launch", prepare)
     db = _Db()
-    application = _application(db, user)
+    application = _application(db, user, document_config=document_config)
     async with AsyncClient(
         transport=ASGITransport(app=application), base_url="http://api.test"
     ) as http:
@@ -524,8 +532,9 @@ async def test_launcher_global_single_flight_collision_never_starts_job(
 
 async def test_launcher_same_key_replay_cannot_launch_while_claim_is_in_progress(
     monkeypatch: pytest.MonkeyPatch,
+    *,
+    document_config: DocumentSettings,
 ) -> None:
-    _configure(monkeypatch)
     user = _user()
     session_id = AuthSessionId(uuid.UUID("33333333-3333-4333-8333-333333333333"))
     monkeypatch.setattr(
@@ -548,7 +557,7 @@ async def test_launcher_same_key_replay_cannot_launch_while_claim_is_in_progress
 
     monkeypatch.setattr(qa_router, "prepare_idempotent_qa_launch", prepare)
     db = _Db()
-    application = _application(db, user)
+    application = _application(db, user, document_config=document_config)
     application.dependency_overrides[qa_router.qa_launcher_dep] = _NeverLauncher
     async with AsyncClient(
         transport=ASGITransport(app=application), base_url="http://api.test"
@@ -567,12 +576,13 @@ async def test_launcher_same_key_replay_cannot_launch_while_claim_is_in_progress
 
 
 async def test_default_off_exchange_is_503_before_database_mutation(
-    monkeypatch: pytest.MonkeyPatch,
+    *,
+    document_config: DocumentSettings,
 ) -> None:
-    monkeypatch.setattr(settings, "DOCUMENT_TRANSFORM_QA_AUDIENCE", None)
-    monkeypatch.setattr(settings, "DOCUMENT_TRANSFORM_QA_SERVICE_ACCOUNT", None)
+    document_config.TRANSFORM_QA_AUDIENCE = None
+    document_config.TRANSFORM_QA_SERVICE_ACCOUNT = None
     db = _Db()
-    application = _application(db, _user())
+    application = _application(db, _user(), document_config=document_config)
     async with AsyncClient(
         transport=ASGITransport(app=application), base_url="http://api.test"
     ) as http:
@@ -612,12 +622,14 @@ async def test_default_off_exchange_is_503_before_database_mutation(
     ids=("bad-issuer", "bad-audience", "bad-email", "unverified-email"),
 )
 async def test_exchange_rejects_bad_oidc_before_database_mutation(
-    monkeypatch: pytest.MonkeyPatch, claims: dict[str, Any]
+    monkeypatch: pytest.MonkeyPatch,
+    claims: dict[str, JsonValue],
+    *,
+    document_config: DocumentSettings,
 ) -> None:
-    _configure(monkeypatch)
     _oidc(monkeypatch, claims)
     db = _Db()
-    application = _application(db, _user())
+    application = _application(db, _user(), document_config=document_config)
     async with AsyncClient(
         transport=ASGITransport(app=application), base_url="http://api.test"
     ) as http:
@@ -630,8 +642,9 @@ async def test_exchange_rejects_bad_oidc_before_database_mutation(
     assert db.commits == db.rollbacks == 0
 
 
-async def test_exchange_binding_mismatch_does_not_consume(monkeypatch: pytest.MonkeyPatch) -> None:
-    _configure(monkeypatch)
+async def test_exchange_binding_mismatch_does_not_consume(
+    monkeypatch: pytest.MonkeyPatch, *, document_config: DocumentSettings
+) -> None:
     _oidc(
         monkeypatch,
         {
@@ -650,7 +663,7 @@ async def test_exchange_binding_mismatch_does_not_consume(monkeypatch: pytest.Mo
 
     monkeypatch.setattr(qa_router, "consume_qa_grant", consume)
     db = _Db()
-    application = _application(db, _user())
+    application = _application(db, _user(), document_config=document_config)
     body = _body()
     body["release_sha"] = "d" * 40
     async with AsyncClient(
@@ -667,9 +680,10 @@ async def test_exchange_binding_mismatch_does_not_consume(monkeypatch: pytest.Mo
 
 async def test_exchange_success_is_no_store_and_passes_nonce(
     monkeypatch: pytest.MonkeyPatch,
+    *,
+    document_config: DocumentSettings,
 ) -> None:
-    _configure(monkeypatch)
-    monkeypatch.setattr(settings, "DOCUMENT_TRANSFORM_QA_JOB", None)
+    document_config.TRANSFORM_QA_JOB = None
     _oidc(
         monkeypatch,
         {
@@ -694,7 +708,7 @@ async def test_exchange_success_is_no_store_and_passes_nonce(
 
     monkeypatch.setattr(qa_router, "consume_qa_grant", consume)
     db = _Db()
-    application = _application(db, _user())
+    application = _application(db, _user(), document_config=document_config)
     async with AsyncClient(
         transport=ASGITransport(app=application), base_url="http://api.test"
     ) as http:
@@ -712,9 +726,10 @@ async def test_exchange_success_is_no_store_and_passes_nonce(
 
 async def test_launcher_mode_disables_legacy_exchange_before_database_mutation(
     monkeypatch: pytest.MonkeyPatch,
+    *,
+    document_config: DocumentSettings,
 ) -> None:
-    _configure(monkeypatch)
-    monkeypatch.setattr(settings, "DOCUMENT_TRANSFORM_QA_JOB", "configured-job")
+    document_config.TRANSFORM_QA_JOB = "configured-job"
     _oidc(
         monkeypatch,
         {
@@ -725,7 +740,7 @@ async def test_launcher_mode_disables_legacy_exchange_before_database_mutation(
         },
     )
     db = _Db()
-    application = _application(db, _user())
+    application = _application(db, _user(), document_config=document_config)
     async with AsyncClient(
         transport=ASGITransport(app=application), base_url="http://api.test"
     ) as http:
@@ -741,12 +756,12 @@ async def test_launcher_mode_disables_legacy_exchange_before_database_mutation(
 
 
 async def test_launcher_mode_retires_legacy_exchange_before_sensitive_body_parsing(
-    monkeypatch: pytest.MonkeyPatch,
+    *,
+    document_config: DocumentSettings,
 ) -> None:
-    _configure(monkeypatch)
-    monkeypatch.setattr(settings, "DOCUMENT_TRANSFORM_QA_JOB", "configured-job")
+    document_config.TRANSFORM_QA_JOB = "configured-job"
     db = _Db()
-    application = _application(db, _user())
+    application = _application(db, _user(), document_config=document_config)
     secret = "malformed-legacy-exchange-secret"
     async with AsyncClient(
         transport=ASGITransport(app=application), base_url="http://api.test"
@@ -770,16 +785,17 @@ async def test_launcher_mode_retires_legacy_exchange_before_sensitive_body_parsi
 async def test_launcher_mode_rejects_wrong_exchange_selector_before_oidc_or_body(
     monkeypatch: pytest.MonkeyPatch,
     query: str,
+    *,
+    document_config: DocumentSettings,
 ) -> None:
-    _configure(monkeypatch)
-    monkeypatch.setattr(settings, "DOCUMENT_TRANSFORM_QA_JOB", "configured-job")
+    document_config.TRANSFORM_QA_JOB = "configured-job"
 
     def unexpected_authenticator(**_kwargs: object) -> object:
         pytest.fail("wrong launcher exchange selector reached workload authentication")
 
     monkeypatch.setattr(qa_router, "GoogleOidcTaskRequestAuthenticator", unexpected_authenticator)
     db = _Db()
-    application = _application(db, _user())
+    application = _application(db, _user(), document_config=document_config)
     async with AsyncClient(
         transport=ASGITransport(app=application), base_url="http://api.test"
     ) as http:
@@ -796,9 +812,10 @@ async def test_launcher_mode_rejects_wrong_exchange_selector_before_oidc_or_body
 
 async def test_launcher_mode_exchange_allows_only_strict_submitted_task_renewal(
     monkeypatch: pytest.MonkeyPatch,
+    *,
+    document_config: DocumentSettings,
 ) -> None:
-    _configure(monkeypatch)
-    monkeypatch.setattr(settings, "DOCUMENT_TRANSFORM_QA_JOB", "configured-job")
+    document_config.TRANSFORM_QA_JOB = "configured-job"
     _oidc(
         monkeypatch,
         {
@@ -823,7 +840,7 @@ async def test_launcher_mode_exchange_allows_only_strict_submitted_task_renewal(
 
     monkeypatch.setattr(qa_router, "renew_qa_capability", renew)
     db = _Db()
-    application = _application(db, _user())
+    application = _application(db, _user(), document_config=document_config)
     async with AsyncClient(
         transport=ASGITransport(app=application), base_url="http://api.test"
     ) as http:
@@ -860,11 +877,11 @@ def test_bootstrap_has_no_production_prepare_or_bind_route() -> None:
 
 
 async def test_bootstrap_authenticates_before_parsing_or_reflecting_json(
-    monkeypatch: pytest.MonkeyPatch,
+    *,
+    document_config: DocumentSettings,
 ) -> None:
-    _configure(monkeypatch)
     db = _Db()
-    application = _application(db, _user())
+    application = _application(db, _user(), document_config=document_config)
     secret = "not-json-secret-that-must-not-be-reflected"
     async with AsyncClient(
         transport=ASGITransport(app=application), base_url="http://api.test"
@@ -883,8 +900,9 @@ async def test_bootstrap_authenticates_before_parsing_or_reflecting_json(
 
 async def test_bootstrap_authenticated_malformed_json_is_generic_and_no_store(
     monkeypatch: pytest.MonkeyPatch,
+    *,
+    document_config: DocumentSettings,
 ) -> None:
-    _configure(monkeypatch)
     _oidc(
         monkeypatch,
         {
@@ -895,7 +913,7 @@ async def test_bootstrap_authenticated_malformed_json_is_generic_and_no_store(
         },
     )
     db = _Db()
-    application = _application(db, _user())
+    application = _application(db, _user(), document_config=document_config)
     secret = "not-json-secret-that-must-not-be-reflected"
     async with AsyncClient(
         transport=ASGITransport(app=application), base_url="http://api.test"
@@ -915,8 +933,9 @@ async def test_bootstrap_authenticated_malformed_json_is_generic_and_no_store(
 
 async def test_bootstrap_success_commits_exact_binding_and_is_no_store(
     monkeypatch: pytest.MonkeyPatch,
+    *,
+    document_config: DocumentSettings,
 ) -> None:
-    _configure(monkeypatch)
     _oidc(
         monkeypatch,
         {
@@ -953,7 +972,7 @@ async def test_bootstrap_success_commits_exact_binding_and_is_no_store(
     monkeypatch.setattr(qa_router, "read_active_qa_execution", read_identity)
     monkeypatch.setattr(qa_router, "bootstrap_attested_qa_execution", bootstrap)
     db = _Db()
-    application = _application(db, _user())
+    application = _application(db, _user(), document_config=document_config)
     async with AsyncClient(
         transport=ASGITransport(app=application), base_url="http://api.test"
     ) as http:
@@ -976,8 +995,9 @@ async def test_bootstrap_success_commits_exact_binding_and_is_no_store(
 
 async def test_bootstrap_stale_execution_selector_cannot_burn_bound_run_capability(
     monkeypatch: pytest.MonkeyPatch,
+    *,
+    document_config: DocumentSettings,
 ) -> None:
-    _configure(monkeypatch)
     _oidc(
         monkeypatch,
         {
@@ -997,7 +1017,7 @@ async def test_bootstrap_stale_execution_selector_cannot_burn_bound_run_capabili
     monkeypatch.setattr(qa_router, "read_active_qa_execution", read_identity)
     monkeypatch.setattr(qa_router, "bootstrap_attested_qa_execution", bootstrap)
     db = _Db()
-    application = _application(db, _user())
+    application = _application(db, _user(), document_config=document_config)
     secret_execution = "job/executions/sensitive-name"
     body = _bootstrap_body() | {"execution_name": secret_execution}
     async with AsyncClient(
@@ -1019,8 +1039,9 @@ async def test_bootstrap_stale_execution_selector_cannot_burn_bound_run_capabili
 
 async def test_canary_session_requires_capability_without_database_authorization(
     monkeypatch: pytest.MonkeyPatch,
+    *,
+    document_config: DocumentSettings,
 ) -> None:
-    _configure(monkeypatch)
     _oidc(
         monkeypatch,
         {
@@ -1039,7 +1060,7 @@ async def test_canary_session_requires_capability_without_database_authorization
 
     monkeypatch.setattr(qa_router, "authorize_qa_capability", authorize)
     db = _Db()
-    application = _application(db, _user())
+    application = _application(db, _user(), document_config=document_config)
     body = _issuer_body() | {"execution_name": "job/executions/one"}
     async with AsyncClient(
         transport=ASGITransport(app=application), base_url="http://api.test"
@@ -1057,8 +1078,9 @@ async def test_canary_session_requires_capability_without_database_authorization
 
 async def test_canary_session_returns_only_bound_scope_and_is_no_store(
     monkeypatch: pytest.MonkeyPatch,
+    *,
+    document_config: DocumentSettings,
 ) -> None:
-    _configure(monkeypatch)
     _oidc(
         monkeypatch,
         {
@@ -1089,7 +1111,7 @@ async def test_canary_session_returns_only_bound_scope_and_is_no_store(
 
     monkeypatch.setattr(qa_router, "authorize_qa_capability", authorize)
     db = _Db()
-    application = _application(db, _user())
+    application = _application(db, _user(), document_config=document_config)
     body = _issuer_body() | {"execution_name": "job/executions/one"}
     async with AsyncClient(
         transport=ASGITransport(app=application), base_url="http://api.test"
@@ -1115,8 +1137,9 @@ async def test_canary_session_returns_only_bound_scope_and_is_no_store(
 
 async def test_canary_session_rejects_invalid_capability_without_echoing_it(
     monkeypatch: pytest.MonkeyPatch,
+    *,
+    document_config: DocumentSettings,
 ) -> None:
-    _configure(monkeypatch)
     _oidc(
         monkeypatch,
         {
@@ -1132,7 +1155,7 @@ async def test_canary_session_rejects_invalid_capability_without_echoing_it(
 
     monkeypatch.setattr(qa_router, "authorize_qa_capability", authorize)
     db = _Db()
-    application = _application(db, _user())
+    application = _application(db, _user(), document_config=document_config)
     credential = "z" * 43
     body = _issuer_body() | {"execution_name": "job/executions/one"}
     async with AsyncClient(
@@ -1156,9 +1179,8 @@ async def test_canary_session_rejects_invalid_capability_without_echoing_it(
 
 @pytest.mark.parametrize("credential", ["short-secret", "z" * 257], ids=("short", "oversize"))
 async def test_canary_session_rejects_malformed_secret_without_echo_and_with_no_store(
-    monkeypatch: pytest.MonkeyPatch, credential: str
+    monkeypatch: pytest.MonkeyPatch, credential: str, *, document_config: DocumentSettings
 ) -> None:
-    _configure(monkeypatch)
     _oidc(
         monkeypatch,
         {
@@ -1169,7 +1191,7 @@ async def test_canary_session_rejects_malformed_secret_without_echo_and_with_no_
         },
     )
     db = _Db()
-    application = _application(db, _user())
+    application = _application(db, _user(), document_config=document_config)
     body = _issuer_body() | {"execution_name": "job/executions/one"}
     async with AsyncClient(
         transport=ASGITransport(app=application), base_url="http://api.test"
@@ -1190,11 +1212,11 @@ async def test_canary_session_rejects_malformed_secret_without_echo_and_with_no_
 
 
 async def test_canary_session_authenticates_before_parsing_malformed_json(
-    monkeypatch: pytest.MonkeyPatch,
+    *,
+    document_config: DocumentSettings,
 ) -> None:
-    _configure(monkeypatch)
     db = _Db()
-    application = _application(db, _user())
+    application = _application(db, _user(), document_config=document_config)
     async with AsyncClient(
         transport=ASGITransport(app=application), base_url="http://api.test"
     ) as http:
@@ -1215,8 +1237,9 @@ async def test_canary_session_authenticates_before_parsing_malformed_json(
 
 async def test_canary_session_authenticated_malformed_json_is_no_store(
     monkeypatch: pytest.MonkeyPatch,
+    *,
+    document_config: DocumentSettings,
 ) -> None:
-    _configure(monkeypatch)
     _oidc(
         monkeypatch,
         {
@@ -1227,7 +1250,7 @@ async def test_canary_session_authenticated_malformed_json_is_no_store(
         },
     )
     db = _Db()
-    application = _application(db, _user())
+    application = _application(db, _user(), document_config=document_config)
     async with AsyncClient(
         transport=ASGITransport(app=application), base_url="http://api.test"
     ) as http:
@@ -1248,8 +1271,9 @@ async def test_canary_session_authenticated_malformed_json_is_no_store(
 
 async def test_canary_session_binding_mismatch_is_no_store(
     monkeypatch: pytest.MonkeyPatch,
+    *,
+    document_config: DocumentSettings,
 ) -> None:
-    _configure(monkeypatch)
     _oidc(
         monkeypatch,
         {
@@ -1260,7 +1284,7 @@ async def test_canary_session_binding_mismatch_is_no_store(
         },
     )
     db = _Db()
-    application = _application(db, _user())
+    application = _application(db, _user(), document_config=document_config)
     body = _issuer_body() | {
         "execution_name": "job/executions/one",
         "release_sha": "d" * 40,
@@ -1284,8 +1308,9 @@ async def test_canary_session_binding_mismatch_is_no_store(
 
 async def test_canary_plan_reauthorizes_and_returns_server_selected_copy(
     monkeypatch: pytest.MonkeyPatch,
+    *,
+    document_config: DocumentSettings,
 ) -> None:
-    _configure(monkeypatch)
     _oidc(
         monkeypatch,
         {
@@ -1335,7 +1360,7 @@ async def test_canary_plan_reauthorizes_and_returns_server_selected_copy(
 
     monkeypatch.setattr(qa_router, "authorize_qa_capability", authorize)
     db = _Db()
-    application = _application(db, _user())
+    application = _application(db, _user(), document_config=document_config)
     application.dependency_overrides[qa_router.qa_canary_broker_dep] = Broker
     body = _issuer_body() | {"execution_name": "job/executions/one"}
     async with AsyncClient(
@@ -1371,13 +1396,10 @@ async def test_corpus_plan_is_default_off_and_rejects_nonconfigured_source(
     monkeypatch: pytest.MonkeyPatch,
     configured_source: str | None,
     expected_status: int,
+    *,
+    document_config: DocumentSettings,
 ) -> None:
-    _configure(monkeypatch)
-    monkeypatch.setattr(
-        settings,
-        "DOCUMENT_TRANSFORM_QA_CORPUS_SOURCE_FOLDER_ID",
-        configured_source,
-    )
+    document_config.TRANSFORM_QA_CORPUS_SOURCE_FOLDER_ID = configured_source
     _oidc(
         monkeypatch,
         {
@@ -1409,7 +1431,7 @@ async def test_corpus_plan_is_default_off_and_rejects_nonconfigured_source(
             pytest.fail("Drive must not be read for a disabled or mismatched source")
 
     monkeypatch.setattr(qa_router, "authorize_qa_capability", authorize)
-    application = _application(_Db(), _user())
+    application = _application(_Db(), _user(), document_config=document_config)
     application.dependency_overrides[qa_router.qa_canary_broker_dep] = Broker
     async with AsyncClient(
         transport=ASGITransport(app=application), base_url="http://api.test"
@@ -1429,9 +1451,10 @@ async def test_corpus_plan_is_default_off_and_rejects_nonconfigured_source(
 
 async def test_corpus_plan_uses_capability_bound_configured_security_source(
     monkeypatch: pytest.MonkeyPatch,
+    *,
+    document_config: DocumentSettings,
 ) -> None:
-    _configure(monkeypatch)
-    monkeypatch.setattr(settings, "DOCUMENT_TRANSFORM_QA_CORPUS_SOURCE_FOLDER_ID", "source")
+    document_config.TRANSFORM_QA_CORPUS_SOURCE_FOLDER_ID = "source"
     _oidc(
         monkeypatch,
         {
@@ -1482,7 +1505,7 @@ async def test_corpus_plan_uses_capability_bound_configured_security_source(
             )
 
     monkeypatch.setattr(qa_router, "authorize_qa_capability", authorize)
-    application = _application(_Db(), _user())
+    application = _application(_Db(), _user(), document_config=document_config)
     application.dependency_overrides[qa_router.qa_canary_broker_dep] = Broker
     async with AsyncClient(
         transport=ASGITransport(app=application), base_url="http://api.test"
@@ -1505,9 +1528,10 @@ async def test_corpus_plan_uses_capability_bound_configured_security_source(
 
 async def test_corpus_plan_returns_generic_bounded_conflict_for_provider_failure(
     monkeypatch: pytest.MonkeyPatch,
+    *,
+    document_config: DocumentSettings,
 ) -> None:
-    _configure(monkeypatch)
-    monkeypatch.setattr(settings, "DOCUMENT_TRANSFORM_QA_CORPUS_SOURCE_FOLDER_ID", "source")
+    document_config.TRANSFORM_QA_CORPUS_SOURCE_FOLDER_ID = "source"
     _oidc(
         monkeypatch,
         {
@@ -1526,7 +1550,7 @@ async def test_corpus_plan_returns_generic_bounded_conflict_for_provider_failure
             raise QaGrantError from TimeoutError("private provider and credential detail")
 
     monkeypatch.setattr(qa_router, "authorize_qa_capability", authorize)
-    application = _application(_Db(), _user())
+    application = _application(_Db(), _user(), document_config=document_config)
     application.dependency_overrides[qa_router.qa_canary_broker_dep] = Broker
     async with AsyncClient(
         transport=ASGITransport(app=application), base_url="http://api.test"
@@ -1550,9 +1574,10 @@ async def test_corpus_plan_returns_generic_bounded_conflict_for_provider_failure
 
 async def test_corpus_campaign_create_reauthorizes_after_drive_reads_and_commits(
     monkeypatch: pytest.MonkeyPatch,
+    *,
+    document_config: DocumentSettings,
 ) -> None:
-    _configure(monkeypatch)
-    monkeypatch.setattr(settings, "DOCUMENT_TRANSFORM_QA_CORPUS_SOURCE_FOLDER_ID", "source")
+    document_config.TRANSFORM_QA_CORPUS_SOURCE_FOLDER_ID = "source"
     _oidc(
         monkeypatch,
         {
@@ -1608,7 +1633,7 @@ async def test_corpus_campaign_create_reauthorizes_after_drive_reads_and_commits
     monkeypatch.setattr(qa_router, "load_qa_corpus_campaign_for_authority", load)
     monkeypatch.setattr(qa_router, "create_or_load_qa_corpus_campaign", create)
     db = _Db()
-    application = _application(db, _user())
+    application = _application(db, _user(), document_config=document_config)
     application.dependency_overrides[qa_router.qa_canary_broker_dep] = Broker
     async with AsyncClient(
         transport=ASGITransport(app=application), base_url="http://api.test"
@@ -1636,9 +1661,10 @@ async def test_corpus_campaign_create_reauthorizes_after_drive_reads_and_commits
 
 async def test_corpus_campaign_create_replays_from_database_without_drive_read(
     monkeypatch: pytest.MonkeyPatch,
+    *,
+    document_config: DocumentSettings,
 ) -> None:
-    _configure(monkeypatch)
-    monkeypatch.setattr(settings, "DOCUMENT_TRANSFORM_QA_CORPUS_SOURCE_FOLDER_ID", "source")
+    document_config.TRANSFORM_QA_CORPUS_SOURCE_FOLDER_ID = "source"
     _oidc(
         monkeypatch,
         {
@@ -1668,7 +1694,7 @@ async def test_corpus_campaign_create_replays_from_database_without_drive_read(
     monkeypatch.setattr(qa_router, "authorize_qa_capability", authorize)
     monkeypatch.setattr(qa_router, "load_qa_corpus_campaign_for_authority", load)
     db = _Db()
-    application = _application(db, _user())
+    application = _application(db, _user(), document_config=document_config)
     application.dependency_overrides[qa_router.qa_canary_broker_dep] = Broker
     async with AsyncClient(
         transport=ASGITransport(app=application), base_url="http://api.test"
@@ -1691,9 +1717,10 @@ async def test_corpus_campaign_create_replays_from_database_without_drive_read(
 
 async def test_corpus_campaign_create_stops_when_post_drive_reauthorization_fails(
     monkeypatch: pytest.MonkeyPatch,
+    *,
+    document_config: DocumentSettings,
 ) -> None:
-    _configure(monkeypatch)
-    monkeypatch.setattr(settings, "DOCUMENT_TRANSFORM_QA_CORPUS_SOURCE_FOLDER_ID", "source")
+    document_config.TRANSFORM_QA_CORPUS_SOURCE_FOLDER_ID = "source"
     _oidc(
         monkeypatch,
         {
@@ -1727,7 +1754,7 @@ async def test_corpus_campaign_create_stops_when_post_drive_reauthorization_fail
     monkeypatch.setattr(qa_router, "load_qa_corpus_campaign_for_authority", load)
     monkeypatch.setattr(qa_router, "create_or_load_qa_corpus_campaign", create)
     db = _Db()
-    application = _application(db, _user())
+    application = _application(db, _user(), document_config=document_config)
     application.dependency_overrides[qa_router.qa_canary_broker_dep] = Broker
     async with AsyncClient(
         transport=ASGITransport(app=application), base_url="http://api.test"
@@ -1751,9 +1778,10 @@ async def test_corpus_campaign_create_stops_when_post_drive_reauthorization_fail
 
 async def test_corpus_campaign_create_returns_generic_no_store_service_failure(
     monkeypatch: pytest.MonkeyPatch,
+    *,
+    document_config: DocumentSettings,
 ) -> None:
-    _configure(monkeypatch)
-    monkeypatch.setattr(settings, "DOCUMENT_TRANSFORM_QA_CORPUS_SOURCE_FOLDER_ID", "source")
+    document_config.TRANSFORM_QA_CORPUS_SOURCE_FOLDER_ID = "source"
     _oidc(
         monkeypatch,
         {
@@ -1773,7 +1801,7 @@ async def test_corpus_campaign_create_returns_generic_no_store_service_failure(
     monkeypatch.setattr(qa_router, "authorize_qa_capability", authorize)
     monkeypatch.setattr(qa_router, "_create_or_replay_corpus_campaign", fail)
     db = _Db()
-    application = _application(db, _user())
+    application = _application(db, _user(), document_config=document_config)
     application.dependency_overrides[qa_router.qa_canary_broker_dep] = object
     async with AsyncClient(
         transport=ASGITransport(app=application), base_url="http://api.test"
@@ -1798,9 +1826,10 @@ async def test_corpus_campaign_create_returns_generic_no_store_service_failure(
 
 async def test_corpus_campaign_read_is_owner_and_capability_scope_bound(
     monkeypatch: pytest.MonkeyPatch,
+    *,
+    document_config: DocumentSettings,
 ) -> None:
-    _configure(monkeypatch)
-    monkeypatch.setattr(settings, "DOCUMENT_TRANSFORM_QA_CORPUS_SOURCE_FOLDER_ID", "source")
+    document_config.TRANSFORM_QA_CORPUS_SOURCE_FOLDER_ID = "source"
     _oidc(
         monkeypatch,
         {
@@ -1823,7 +1852,7 @@ async def test_corpus_campaign_read_is_owner_and_capability_scope_bound(
     monkeypatch.setattr(qa_router, "authorize_qa_capability", authorize)
     monkeypatch.setattr(qa_router, "load_qa_corpus_campaign_for_authority", read)
     db = _Db()
-    application = _application(db, _user())
+    application = _application(db, _user(), document_config=document_config)
     async with AsyncClient(
         transport=ASGITransport(app=application), base_url="http://api.test"
     ) as http:
@@ -1862,8 +1891,9 @@ def test_corpus_campaign_response_is_bounded_to_sixty_four_kibibytes() -> None:
 
 async def test_canary_plan_rejects_caller_selected_file_before_authorization(
     monkeypatch: pytest.MonkeyPatch,
+    *,
+    document_config: DocumentSettings,
 ) -> None:
-    _configure(monkeypatch)
     _oidc(
         monkeypatch,
         {
@@ -1883,7 +1913,7 @@ async def test_canary_plan_rejects_caller_selected_file_before_authorization(
 
     monkeypatch.setattr(qa_router, "authorize_qa_capability", authorize)
     db = _Db()
-    application = _application(db, _user())
+    application = _application(db, _user(), document_config=document_config)
     application.dependency_overrides[qa_router.qa_canary_broker_dep] = Broker
     body = _issuer_body() | {
         "execution_name": "job/executions/one",
@@ -1910,8 +1940,9 @@ async def test_canary_plan_rejects_caller_selected_file_before_authorization(
 
 async def test_canary_plan_permission_failure_is_generic_and_no_store(
     monkeypatch: pytest.MonkeyPatch,
+    *,
+    document_config: DocumentSettings,
 ) -> None:
-    _configure(monkeypatch)
     _oidc(
         monkeypatch,
         {
@@ -1945,7 +1976,7 @@ async def test_canary_plan_permission_failure_is_generic_and_no_store(
 
     monkeypatch.setattr(qa_router, "authorize_qa_capability", authorize)
     db = _Db()
-    application = _application(db, _user())
+    application = _application(db, _user(), document_config=document_config)
     application.dependency_overrides[qa_router.qa_canary_broker_dep] = Broker
     body = _issuer_body() | {"execution_name": "job/executions/one"}
     async with AsyncClient(
@@ -1969,8 +2000,9 @@ async def test_canary_plan_permission_failure_is_generic_and_no_store(
 
 async def test_canary_submit_reauthorizes_and_returns_only_bounded_admission(
     monkeypatch: pytest.MonkeyPatch,
+    *,
+    document_config: DocumentSettings,
 ) -> None:
-    _configure(monkeypatch)
     _oidc(
         monkeypatch,
         {
@@ -2038,7 +2070,7 @@ async def test_canary_submit_reauthorizes_and_returns_only_bounded_admission(
     monkeypatch.setattr(qa_router, "authorize_qa_capability", authorize)
     monkeypatch.setattr(qa_router, "bind_qa_canary_submission", bind)
     db = _Db()
-    application = _application(db, _user())
+    application = _application(db, _user(), document_config=document_config)
     application.dependency_overrides[qa_router.qa_canary_broker_dep] = Broker
     application.dependency_overrides[task_service_dep] = object
     application.dependency_overrides[task_enqueuer_dep] = object
@@ -2092,8 +2124,9 @@ async def test_canary_submit_reauthorizes_and_returns_only_bounded_admission(
 
 async def test_canary_submit_rejects_caller_selected_file_before_capability_authorization(
     monkeypatch: pytest.MonkeyPatch,
+    *,
+    document_config: DocumentSettings,
 ) -> None:
-    _configure(monkeypatch)
     _oidc(
         monkeypatch,
         {
@@ -2113,7 +2146,7 @@ async def test_canary_submit_rejects_caller_selected_file_before_capability_auth
 
     monkeypatch.setattr(qa_router, "authorize_qa_capability", authorize)
     db = _Db()
-    application = _application(db, _user())
+    application = _application(db, _user(), document_config=document_config)
     application.dependency_overrides[qa_router.qa_canary_broker_dep] = Broker
     application.dependency_overrides[task_service_dep] = object
     application.dependency_overrides[task_enqueuer_dep] = object
@@ -2254,8 +2287,9 @@ def _result_authority(now: datetime) -> QaAuthority:
 
 async def test_canary_task_result_and_evidence_reauthorize_and_are_bounded_no_store(
     monkeypatch: pytest.MonkeyPatch,
+    *,
+    document_config: DocumentSettings,
 ) -> None:
-    _configure(monkeypatch)
     _oidc(
         monkeypatch,
         {
@@ -2341,7 +2375,7 @@ async def test_canary_task_result_and_evidence_reauthorize_and_are_bounded_no_st
     monkeypatch.setattr(qa_router, "authorize_qa_capability", authorize)
     monkeypatch.setattr(qa_router, "load_qa_canary_submission", load_submission)
     db = _Db()
-    application = _application(db, _user())
+    application = _application(db, _user(), document_config=document_config)
     application.dependency_overrides[qa_router.qa_canary_broker_dep] = Broker
     application.dependency_overrides[task_service_dep] = object
     body = _issuer_body() | {"execution_name": "job/executions/one"}
@@ -2592,8 +2626,9 @@ def test_result_requires_exact_owner_only_permission_evidence_bindings() -> None
 
 async def test_canary_reads_reject_caller_selected_task_and_file_before_authorization(
     monkeypatch: pytest.MonkeyPatch,
+    *,
+    document_config: DocumentSettings,
 ) -> None:
-    _configure(monkeypatch)
     _oidc(
         monkeypatch,
         {
@@ -2609,7 +2644,7 @@ async def test_canary_reads_reject_caller_selected_task_and_file_before_authoriz
 
     monkeypatch.setattr(qa_router, "authorize_qa_capability", authorize)
     db = _Db()
-    application = _application(db, _user())
+    application = _application(db, _user(), document_config=document_config)
     application.dependency_overrides[qa_router.qa_canary_broker_dep] = object
     application.dependency_overrides[task_service_dep] = object
     body = _issuer_body() | {

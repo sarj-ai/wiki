@@ -8,10 +8,10 @@ from fastapi import HTTPException
 from pydantic import BaseModel
 import pytest
 
-from app.config import settings
 from app.document_transform import application
 from app.document_transform.application import (
     SOURCE_CHANGED_ERROR_CODE,
+    TransformSubmission,
     get_current_document_polish,
     retained_transform_output_available,
     submit_document_transform,
@@ -106,6 +106,7 @@ class SubmissionHarness:
                 },
             }
         )
+        self.in_place_enabled = True
         self.request = payload(strategy)
         self.owner = UserId(uuid.uuid7())
         self.key = IdempotencyKey(uuid.uuid7())
@@ -121,6 +122,17 @@ class SubmissionHarness:
         self.current_result: DocumentTransformResult | None = None
         self.current_revision_id = "revision-current"
         self.current_revision_error = False
+
+    async def submit(self) -> TransformSubmission:
+        return await submit_document_transform(
+            payload=self.request,
+            owner_user_id=self.owner,
+            idempotency_key=self.key,
+            tasks=dependency(self),
+            enqueuer=dependency(self),
+            files=self,
+            in_place_enabled=self.in_place_enabled,
+        )
 
     async def get_current_in_place_result(
         self,
@@ -231,16 +243,7 @@ async def test_markdown_admission_keeps_event_loop_responsive(
         assert release.wait(2)
 
     monkeypatch.setattr(application, "validate_markdown_import", slow_validation)
-    submission = asyncio.create_task(
-        submit_document_transform(
-            payload=harness.request,
-            owner_user_id=harness.owner,
-            idempotency_key=harness.key,
-            tasks=dependency(harness),
-            enqueuer=dependency(harness),
-            files=harness,
-        )
-    )
+    submission = asyncio.create_task(harness.submit())
     try:
         assert await asyncio.to_thread(started.wait, 1)
         assert not submission.done()
@@ -256,14 +259,7 @@ async def test_identity_admission_replay_and_active_only_dispatch(
     created: bool, status: str
 ) -> None:
     harness = SubmissionHarness(created=created, status=status)
-    result = await submit_document_transform(
-        payload=harness.request,
-        owner_user_id=harness.owner,
-        idempotency_key=harness.key,
-        tasks=dependency(harness),
-        enqueuer=dependency(harness),
-        files=harness,
-    )
+    result = await harness.submit()
     assert result.task is harness.reservation.task
     assert result.replayed is (not created)
     assert result.retry_after == 1
@@ -281,14 +277,7 @@ async def test_terminal_semantic_replay_is_never_enqueued() -> None:
         status="succeeded",
         reauthorize_replay=True,
     )
-    result = await submit_document_transform(
-        payload=harness.request,
-        owner_user_id=harness.owner,
-        idempotency_key=harness.key,
-        tasks=dependency(harness),
-        enqueuer=dependency(harness),
-        files=harness,
-    )
+    result = await harness.submit()
 
     assert result.replayed
     assert result.task.status == "succeeded"
@@ -304,23 +293,13 @@ async def test_terminal_semantic_replay_provider_failure_is_not_enqueued() -> No
     harness.output_file_error = DriveUpstreamError(503)
 
     with pytest.raises(DriveUpstreamError):
-        await submit_document_transform(
-            payload=harness.request,
-            owner_user_id=harness.owner,
-            idempotency_key=harness.key,
-            tasks=dependency(harness),
-            enqueuer=dependency(harness),
-            files=harness,
-        )
+        await harness.submit()
 
     assert harness.calls == ["reserve", "file", "file"]
 
 
 @pytest.mark.parametrize("status", ["running", "succeeded"])
-async def test_in_place_replay_allows_the_transform_own_modified_time(
-    status: str, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    monkeypatch.setattr(settings, "DOCUMENT_TRANSFORM_IN_PLACE_ENABLED", True)
+async def test_in_place_replay_allows_the_transform_own_modified_time(status: str) -> None:
     harness = SubmissionHarness(
         created=False,
         status=status,
@@ -329,14 +308,7 @@ async def test_in_place_replay_allows_the_transform_own_modified_time(
     )
     harness.source_modified_time = "changed-by-canonical-transform"
 
-    result = await submit_document_transform(
-        payload=harness.request,
-        owner_user_id=harness.owner,
-        idempotency_key=harness.key,
-        tasks=dependency(harness),
-        enqueuer=dependency(harness),
-        files=harness,
-    )
+    result = await harness.submit()
 
     assert result.replayed
     expected_calls = ["reserve", "file"]
@@ -352,14 +324,7 @@ async def test_service_rejections_propagate_without_enqueue(error_type: type[Exc
     harness = SubmissionHarness()
     harness.error = error_type()
     with pytest.raises(error_type) as caught:
-        await submit_document_transform(
-            payload=harness.request,
-            owner_user_id=harness.owner,
-            idempotency_key=harness.key,
-            tasks=dependency(harness),
-            enqueuer=dependency(harness),
-            files=harness,
-        )
+        await harness.submit()
     assert caught.value is harness.error
     assert harness.calls == ["reserve"]
 
@@ -368,32 +333,16 @@ async def test_enqueue_failure_does_not_discard_retained_admission() -> None:
     harness = SubmissionHarness()
     harness.enqueue_error = TaskEnqueueError()
     with pytest.raises(TaskEnqueueError):
-        await submit_document_transform(
-            payload=harness.request,
-            owner_user_id=harness.owner,
-            idempotency_key=harness.key,
-            tasks=dependency(harness),
-            enqueuer=dependency(harness),
-            files=harness,
-        )
+        await harness.submit()
     assert harness.calls == ["reserve", "file", "enqueue"]
 
 
-async def test_disabled_in_place_rejects_before_any_service_call(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    monkeypatch.setattr(settings, "DOCUMENT_TRANSFORM_IN_PLACE_ENABLED", False)
+async def test_disabled_in_place_rejects_before_any_service_call() -> None:
     harness = SubmissionHarness()
     harness.request = payload(OutputStrategy.IN_PLACE)
+    harness.in_place_enabled = False
     with pytest.raises(HTTPException) as caught:
-        await submit_document_transform(
-            payload=harness.request,
-            owner_user_id=harness.owner,
-            idempotency_key=harness.key,
-            tasks=dependency(harness),
-            enqueuer=dependency(harness),
-            files=harness,
-        )
+        await harness.submit()
     assert caught.value.status_code == 503
     assert harness.calls == []
 
@@ -402,14 +351,7 @@ async def test_scope_rejection_prevents_dispatch() -> None:
     harness = SubmissionHarness()
     harness.file_error = FileNotInScopeError("Denied")
     with pytest.raises(FileNotInScopeError):
-        await submit_document_transform(
-            payload=harness.request,
-            owner_user_id=harness.owner,
-            idempotency_key=harness.key,
-            tasks=dependency(harness),
-            enqueuer=dependency(harness),
-            files=harness,
-        )
+        await harness.submit()
     assert harness.calls == ["reserve", "file"]
 
 
@@ -417,14 +359,7 @@ async def test_changed_source_revision_is_rejected_before_dispatch() -> None:
     harness = SubmissionHarness()
     harness.source_modified_time = "changed-time"
     with pytest.raises(HTTPException) as caught:
-        await submit_document_transform(
-            payload=harness.request,
-            owner_user_id=harness.owner,
-            idempotency_key=harness.key,
-            tasks=dependency(harness),
-            enqueuer=dependency(harness),
-            files=harness,
-        )
+        await harness.submit()
     assert caught.value.status_code == 409
     assert caught.value.detail == "The source changed after the transformation was requested"
     assert caught.value.headers == {"X-Wiki-Error-Code": SOURCE_CHANGED_ERROR_CODE}
@@ -542,14 +477,7 @@ async def test_copy_destination_admits_native_doc_and_writable_folder() -> None:
         update={"copy_destination_folder_id": FileId("destination")}
     )
 
-    await submit_document_transform(
-        payload=harness.request,
-        owner_user_id=harness.owner,
-        idempotency_key=harness.key,
-        tasks=dependency(harness),
-        enqueuer=dependency(harness),
-        files=harness,
-    )
+    await harness.submit()
 
     assert harness.calls == ["reserve", "file", "file", "enqueue"]
 
@@ -564,14 +492,7 @@ async def test_copy_destination_rejects_non_native_source_before_destination_loo
     )
 
     with pytest.raises(HTTPException, match="native Google Docs") as caught:
-        await submit_document_transform(
-            payload=harness.request,
-            owner_user_id=harness.owner,
-            idempotency_key=harness.key,
-            tasks=dependency(harness),
-            enqueuer=dependency(harness),
-            files=harness,
-        )
+        await harness.submit()
 
     assert caught.value.status_code == 422
     assert harness.calls == ["reserve", "file"]
@@ -585,13 +506,6 @@ async def test_copy_destination_rejects_unwritable_folder() -> None:
     )
 
     with pytest.raises(FileNotInScopeError, match="Destination"):
-        await submit_document_transform(
-            payload=harness.request,
-            owner_user_id=harness.owner,
-            idempotency_key=harness.key,
-            tasks=dependency(harness),
-            enqueuer=dependency(harness),
-            files=harness,
-        )
+        await harness.submit()
 
     assert harness.calls == ["reserve", "file", "file"]

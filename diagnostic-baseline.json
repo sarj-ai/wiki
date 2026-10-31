@@ -2,7 +2,7 @@
   "schemaVersion": 2,
   "provenance": {
     "bundleVersion": "8.165.8",
-    "consumerBaseSha": "8c0d28f7ab09a924ea2ae6741ebcda4b1b347fc7",
+    "consumerBaseSha": "caf0319546b0bc2cb8ae036bf2ccc58c8e4b7d27",
     "catalogDigest": "faf49ec2679958b911e18dd79ad65cb26a27bf81513586c2fc12ab79cb453c81"
   },
   "diagnostics": [
@@ -2440,7 +2440,7 @@
       "source": "sarj-python-lint",
       "ruleId": "no-any-mapping-types",
       "path": "backend/tests/test_document_transform_qa_router.py",
-      "count": 3
+      "count": 2
     },
     {
       "fingerprint": "172bd093888a55adf3b02535e2e6d0a3c376d83ce9020feb2a04fb60e790d41a",
@@ -3983,14 +3983,14 @@
       "count": 1
     },
     {
-      "fingerprint": "0c35fa0dcdd20d80f24ecfccad809c71e3004668e9c9acc488e76acdb8b5900b",
+      "fingerprint": "7be13762aab9a09062fee332e6ff81087ce5dde8f9b172a4ffa340de7cb3b3ea",
       "source": "sarj-python-lint",
       "ruleId": "no-excessive-cognitive-complexity",
       "path": "backend/app/document_transform/qa_broker.py",
       "count": 1
     },
     {
-      "fingerprint": "4d6fc36d73081fc9c05dd59455d83b51a2144c5adeb544bbdd87ab99e0d6816b",
+      "fingerprint": "a271a3d44a54bfd4a13d098d9bd49140756022d30ae9db223918e3bcb49f28a8",
       "source": "sarj-python-lint",
       "ruleId": "no-excessive-cognitive-complexity",
       "path": "backend/app/document_transform/qa_broker.py",
@@ -4158,7 +4158,7 @@
       "count": 1
     },
     {
-      "fingerprint": "9be7b1f9533923c07c92167802c94a45f2b920a97b042d030fe10689980aff2d",
+      "fingerprint": "2322e300b3efbbb12da677115db67822d6337a8e730b4eb1d78d344b42b15f3f",
       "source": "sarj-python-lint",
       "ruleId": "no-excessive-cognitive-complexity",
       "path": "scripts/github/read-transform-diagnostics.py",
@@ -4263,13 +4263,6 @@
       "count": 1
     },
     {
-      "fingerprint": "d8ab67ccf8a9364a5c53df66b883ac590c7169410360245c759195a236e8debf",
-      "source": "sarj-python-lint",
-      "ruleId": "prefer-grouped-settings",
-      "path": "backend/app/config.py",
-      "count": 1
-    },
-    {
       "fingerprint": "e7fafb44a02c3d2cfe1719676dc455662f6e23e84541a161e5823be0cfafe47e",
       "source": "sarj-python-lint",
       "ruleId": "prefer-grouped-settings",
@@ -4358,7 +4351,7 @@
       "source": "sarj-python-lint",
       "ruleId": "prefer-injected-dependency-over-monkeypatch",
       "path": "backend/tests/test_document_transform_application.py",
-      "count": 3
+      "count": 1
     },
     {
       "fingerprint": "5d94556d8cfef2059f91e67c3aa4f58478cfc649a4b11f5300616f65b7632a72",
@@ -4470,7 +4463,7 @@
       "source": "sarj-python-lint",
       "ruleId": "prefer-injected-dependency-over-monkeypatch",
       "path": "backend/tests/test_document_transform_qa_router.py",
-      "count": 74
+      "count": 48
     },
     {
       "fingerprint": "567e87ab125364960207affdd09bb7bc00f609e7b20878e9e6b0bda460c3e13e",
@@ -4498,7 +4491,7 @@
       "source": "sarj-python-lint",
       "ruleId": "prefer-injected-dependency-over-monkeypatch",
       "path": "backend/tests/test_document_transform_task_executor.py",
-      "count": 10
+      "count": 9
     },
     {
       "fingerprint": "1fcf5c0be3a7ecbe915495b9714e0a8c9f58c8509a1dca1cca8c3703f2041522",
@@ -4779,13 +4772,6 @@
       "ruleId": "prefer-injected-dependency-over-monkeypatch",
       "path": "backend/tests/test_sidebar_cache.py",
       "count": 1
-    },
-    {
-      "fingerprint": "8d70d96c8916c7c3ec2894d770501003c2f5c9a2e25e6bd33448b0d273c24307",
-      "source": "sarj-python-lint",
-      "ruleId": "prefer-injected-dependency-over-monkeypatch",
-      "path": "backend/tests/test_smart_create_router_tasks.py",
-      "count": 2
     },
     {
       "fingerprint": "e64b141e26cbf594debf12a653827b1bd05a861150e8bad1723201903626306c",
@@ -5780,13 +5766,6 @@
       "ruleId": "prefer-precise-object-contract",
       "path": "scripts/github/branch_protection.py",
       "count": 2
-    },
-    {
-      "fingerprint": "0e19a150f3e73ab2caac5c6474c5004659764ade942ed48bfb46b2588ad8f3fa",
-      "source": "sarj-python-lint",
-      "ruleId": "prefer-precise-object-contract",
-      "path": "scripts/github/read-transform-diagnostics.py",
-      "count": 1
     },
     {
       "fingerprint": "67f6d6cfa80e24e7cb74ba924e730ee3aec302f9bd4fa5867a0c0aba8a9769a7",

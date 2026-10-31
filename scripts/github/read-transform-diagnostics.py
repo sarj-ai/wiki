@@ -12,7 +12,7 @@ import re
 import subprocess  # ruff: ignore[suspicious-subprocess-import] -- fixed read-only gcloud CLI without shell
 import sys
 from types import MappingProxyType
-from typing import Annotated
+from typing import Annotated, NamedTuple
 import uuid
 
 import typer
@@ -20,7 +20,10 @@ import typer
 
 MAX_COUNT = 1_000_000
 MAX_ROWS = 200
-MAX_ATTEMPTS = 3
+MAX_CORRELATED_REQUESTS = 3
+MAX_MODEL_ATTEMPTS = 3
+MIN_HTTP_ERROR_STATUS = 100
+MAX_HTTP_ERROR_STATUS = 599
 MAX_BYTES = 4 * 1024 * 1024
 MAX_BULLET_SNAPSHOT_COUNT = 50_000
 MAX_FONT_PROOF_COUNT = 750
@@ -31,11 +34,37 @@ BULLET_SNAPSHOT_FIELDS = frozenset(
     for state in ("true", "false", "missing", "malformed")
 )
 MAX_PROVIDER_ORDINAL = 200
+type DiagnosticScalar = str | int | bool
 CLI = typer.Typer(add_completion=False, add_help_option=False, pretty_exceptions_enable=False)
 PROVIDER_FIELDS = MappingProxyType(
     {
+        "model_operation": frozenset({"unslop", "format", "review"}),
+        "model_error_kind": frozenset({"api_error", "timeout", "invalid_payload"}),
+        "model_error_reason": frozenset(
+            {
+                "unknown",
+                "ACCESS_TOKEN_SCOPE_INSUFFICIENT",
+                "BILLING_DISABLED",
+                "CONSUMER_INVALID",
+                "IAM_PERMISSION_DENIED",
+                "LOCATION_POLICY_VIOLATED",
+                "MODEL_NOT_FOUND",
+                "PERMISSION_DENIED",
+                "RESOURCE_EXHAUSTED",
+                "SECURITY_POLICY_VIOLATED",
+                "SERVICE_DISABLED",
+            }
+        ),
         "header_recovery_reason": frozenset(
-            {"state", "ownership", "invariants", "semantic", "bindings", "inventory", "recovered"}
+            {
+                "state",
+                "ownership",
+                "invariants",
+                "semantic",
+                "bindings",
+                "inventory",
+                "recovered",
+            }
         ),
         "header_recovery_empty_reason": frozenset(
             {
@@ -206,12 +235,23 @@ BOOLEAN_FIELDS = frozenset(
         ],
         *[
             f"header_recovery_paragraph_{field}_{suffix}"
-            for field in ("spaceAbove", "spaceBelow", "indentStart", "indentEnd", "indentFirstLine")
+            for field in (
+                "spaceAbove",
+                "spaceBelow",
+                "indentStart",
+                "indentEnd",
+                "indentFirstLine",
+            )
             for suffix in ("present", "unit_only", "explicit_zero")
         ],
         *[
             f"header_recovery_paragraph_{field}_{suffix}"
-            for field in ("keepWithNext", "keepTogether", "avoidWidowAndOrphan", "pageBreakBefore")
+            for field in (
+                "keepWithNext",
+                "keepTogether",
+                "avoidWidowAndOrphan",
+                "pageBreakBefore",
+            )
             for suffix in ("present", "false")
         ],
         "header_recovery_revision_equal",
@@ -437,6 +477,7 @@ ERROR_CODES = frozenset(
     ]
 )
 MESSAGE_PREFIXES = (
+    "document model attempt failed operation=",
     "document native font proof checks=",
     "document header recovery checks=",
     "document markdown import verification checks=",
@@ -463,11 +504,11 @@ def validate_task_id(value: str) -> str:
 
 def sanitize(
     records: object, task_id: str, request_ids: frozenset[str] = frozenset()
-) -> list[dict[str, object]]:
+) -> list[dict[str, DiagnosticScalar]]:
     validate_task_id(task_id)
     if not isinstance(records, list) or len(records) > MAX_ROWS:
         raise ValueError
-    output: list[dict[str, object]] = []
+    output: list[dict[str, DiagnosticScalar]] = []
     for entry in records:
         if not isinstance(entry, dict):
             raise TypeError
@@ -492,7 +533,10 @@ def sanitize(
         parsed = datetime.fromisoformat(timestamp)
         if parsed.tzinfo is None:
             raise ValueError
-        row: dict[str, object] = {"timestamp": parsed.isoformat(), "task_id": task_id}
+        row: dict[str, DiagnosticScalar] = {
+            "timestamp": parsed.isoformat(),
+            "task_id": task_id,
+        }
         for status in ("started", "succeeded", "interrupted"):
             if message.startswith(f"document transform {status} task_id="):
                 row["status"] = status
@@ -515,6 +559,16 @@ def sanitize(
             for key, value in group.items():
                 if key in PROVIDER_FIELDS:
                     if not isinstance(value, str) or value not in PROVIDER_FIELDS[key]:
+                        raise ValueError
+                    row[key] = value
+                elif key == "model_attempt":
+                    if type(value) is not int or not 1 <= value <= MAX_MODEL_ATTEMPTS:
+                        raise ValueError
+                    row[key] = value
+                elif key == "model_http_status":
+                    if type(value) is not int or not (
+                        value == 0 or MIN_HTTP_ERROR_STATUS <= value <= MAX_HTTP_ERROR_STATUS
+                    ):
                         raise ValueError
                     row[key] = value
                 elif key == "provider_request_ordinal":
@@ -542,11 +596,7 @@ def sanitize(
 
 
 def read_records(clause: str, limit: int) -> object:
-    query = (
-        'resource.type="cloud_run_revision" '
-        'AND resource.labels.service_name="sarj-docs-backend-dammam" '
-        f"AND ({clause})"
-    )
+    query = f'resource.type="cloud_run_revision" AND resource.labels.service_name="sarj-docs-backend-dammam" AND ({clause})'
     result = subprocess.run(  # ruff: ignore[subprocess-without-shell-equals-true] -- fixed logging read with validated IDs, no shell
         [  # ruff: ignore[start-process-with-partial-path] -- setup-gcloud installs the approved CLI on PATH
             "gcloud",
@@ -568,16 +618,35 @@ def read_records(clause: str, limit: int) -> object:
     return json.loads(result.stdout)
 
 
+class _TimedRequest(NamedTuple):
+    timestamp: datetime
+    request_id: str
+
+
+def select_correlated_request_ids(
+    rows: list[dict[str, DiagnosticScalar]],
+) -> frozenset[str]:
+    timeline: list[_TimedRequest] = []
+    for row in rows:
+        match row:
+            case {"timestamp": str(timestamp), "request_id": str(request_id)}:
+                timeline.append(_TimedRequest(datetime.fromisoformat(timestamp), request_id))
+            case _:
+                continue
+    newest = dict.fromkeys(item.request_id for item in sorted(timeline, reverse=True))
+    return frozenset(tuple(newest)[:MAX_CORRELATED_REQUESTS])
+
+
 def run_read(*, validate_only: bool = False) -> int:
     task_id = validate_task_id(os.environ.get("QA_TASK_ID", ""))  # ruff: ignore[banned-api] -- pre-auth validation reads only the task ID, not application settings
     if validate_only:
         return 0
     records = read_records(f'jsonPayload.record.extra.task_id="{task_id}"', MAX_ROWS)
     rows = sanitize(records, task_id)
-    request_ids = frozenset(
-        request_id for row in rows if isinstance(request_id := row.get("request_id"), str)
-    )
-    if len(request_ids) > MAX_ATTEMPTS or not isinstance(records, list):
+    # Task execution permits ten attempts; correlate only the newest three
+    # distinct requests while retaining bounded lifecycle records for this UUID.
+    request_ids = select_correlated_request_ids(rows)
+    if len(request_ids) > MAX_CORRELATED_REQUESTS or not isinstance(records, list):
         raise ValueError
     remaining = MAX_ROWS - len(records)
     if request_ids and remaining > 0:

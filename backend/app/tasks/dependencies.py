@@ -36,8 +36,8 @@ def _cached_task_enqueuer() -> TaskEnqueuer:
         queue=queue,
         target_url=target_url,
         invoker_service_account=invoker,
-        document_transform_queue=settings.DOCUMENT_TRANSFORM_QUEUE,
-        document_transform_target_url=settings.DOCUMENT_TRANSFORM_TARGET_URL,
+        document_transform_queue=settings.DOCUMENT.TRANSFORM_QUEUE,
+        document_transform_target_url=settings.DOCUMENT.TRANSFORM_TARGET_URL,
     )
 
 
