@@ -72,8 +72,8 @@
   "backend/app/document_transform/google_gateway.py": {
     "SARJ430": 1,
     "SARJ442": 4,
-    "SARJ444": 21,
-    "SARJ447": 121,
+    "SARJ444": 20,
+    "SARJ447": 120,
     "SARJ477": 2,
     "SARJ528": 29
   },
@@ -87,7 +87,7 @@
     "SARJ447": 2
   },
   "backend/app/document_transform/ir.py": {
-    "SARJ444": 5,
+    "SARJ444": 4,
     "SARJ447": 8,
     "SARJ528": 2
   },
@@ -151,9 +151,6 @@
   "backend/app/document_transform/native_visual_authority.py": {
     "SARJ444": 1,
     "SARJ447": 5
-  },
-  "backend/app/document_transform/planner.py": {
-    "SARJ444": 1
   },
   "backend/app/document_transform/presentation_gateway.py": {
     "SARJ447": 3

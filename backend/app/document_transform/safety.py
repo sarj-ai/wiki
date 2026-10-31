@@ -50,6 +50,7 @@ def validate_patches(
     patches: list[TextPatch],
     *,
     phase: TransformPhase,
+    aggressive_unslop: bool = False,
 ) -> PatchDecision:
     by_id = {block.id: block for block in document.blocks}
     accepted: dict[str, str] = {}
@@ -57,7 +58,13 @@ def validate_patches(
     seen: set[str] = set()
     for patch in patches:
         block = by_id.get(patch.block_id)
-        code = _rejection_code(block, patch, phase=phase, duplicate=patch.block_id in seen)
+        code = _rejection_code(
+            block,
+            patch,
+            phase=phase,
+            duplicate=patch.block_id in seen,
+            aggressive_unslop=aggressive_unslop,
+        )
         seen.add(patch.block_id)
         if code is not None:
             findings.append(
@@ -79,6 +86,7 @@ def _rejection_code(
     *,
     phase: TransformPhase,
     duplicate: bool,
+    aggressive_unslop: bool = False,
 ) -> str | None:
     if duplicate:
         return "duplicate_patch"
@@ -97,11 +105,18 @@ def _rejection_code(
         return "format_text_changed"
     if not patch.replacement.strip():
         return "empty_replacement"
+    if block.protected_suffix is not None and (
+        not patch.replacement.endswith(block.protected_suffix)
+        or not patch.replacement.removesuffix(block.protected_suffix).strip()
+    ):
+        return "native_citation_changed"
     if _protected_tokens(block.text) != _protected_tokens(patch.replacement):
         return "protected_content_changed"
     if _force_words(block.text) != _force_words(patch.replacement):
         return "force_language_changed"
     if phase is TransformPhase.UNSLOP:
+        if aggressive_unslop:
+            return _aggressive_unslop_code(block, patch.replacement)
         locality_code = _unslop_locality_code(block, patch.replacement)
         if locality_code is not None:
             return locality_code
@@ -109,6 +124,25 @@ def _rejection_code(
     similarity = SequenceMatcher(None, block.text, patch.replacement, autojunk=False).ratio()
     if 1 - similarity > _MAX_CHANGE_RATIO[phase]:
         return "diff_budget_exceeded"
+    return None
+
+
+def _aggressive_unslop_code(block: TextBlock, replacement: str) -> str | None:
+    if _quoted_spans(block.text) != _quoted_spans(replacement):
+        return "quoted_content_changed"
+    if re.findall(r"[\r\n\v\f\u2028\u2029]", block.text) != re.findall(
+        r"[\r\n\v\f\u2028\u2029]", replacement
+    ):
+        return "paragraph_structure_changed"
+    if len(replacement.split()) > len(block.text.split()):
+        return "concision_expanded"
+    words = frozenset(word.casefold() for word in re.findall(r"\b\w+\b", replacement))
+    for match in _PROPER_NOUN.finditer(block.text):
+        prefix = block.text[: match.start()].rstrip()
+        sentence_initial = not prefix or prefix[-1] in ".!?\n"
+        multiple_capitals = sum(character.isupper() for character in match.group()) > 1
+        if (not sentence_initial or multiple_capitals) and match.group().casefold() not in words:
+            return "proper_noun_changed"
     return None
 
 

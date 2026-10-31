@@ -3,7 +3,7 @@ from __future__ import annotations
 import asyncio
 from collections.abc import Iterator
 from copy import deepcopy
-from dataclasses import dataclass, field as dataclass_field, replace
+from dataclasses import asdict, dataclass, field as dataclass_field, replace
 from functools import cache
 import hashlib
 from http import HTTPStatus
@@ -19,6 +19,7 @@ from googleapiclient.errors import HttpError
 from googleapiclient.http import HttpRequest, MediaIoBaseDownload, MediaIoBaseUpload
 import httplib2
 from loguru import logger
+from pydantic import JsonValue
 
 from app.document_transform.brand import (
     SarjBrandProfile,
@@ -87,7 +88,7 @@ from app.document_transform.ir import (
     rewrite_markdown,
     utf16_length,
 )
-from app.document_transform.limits import MAX_MARKDOWN_BYTES
+from app.document_transform.limits import MAX_MARKDOWN_BYTES, MIN_MODEL_PROSE_WORDS
 from app.document_transform.markdown_import import (
     markdown_import_brand_diagnostics,
     verify_markdown_import,
@@ -129,6 +130,7 @@ from app.document_transform.native_paragraph_layout import (
     capture_paragraph_layout,
     paragraph_layout_sha256,
 )
+from app.document_transform.native_prose import linked_prose_tail
 from app.document_transform.native_safety_diagnostics import SafetyStage, native_safety_error
 from app.document_transform.native_table_font import TableFontPlan, project_table_fonts
 from app.document_transform.native_visual_authority import (
@@ -3433,6 +3435,12 @@ def _protected_element_payload(element: dict[str, Any]) -> object:
     return payload
 
 
+@dataclass(slots=True)
+class _ParagraphLinkRun:
+    text: str
+    link: JsonValue
+
+
 def _paragraph_link_inventory(value: object) -> list[object]:
     links: list[object] = []
     match value:
@@ -3446,27 +3454,43 @@ def _paragraph_link_inventory(value: object) -> list[object]:
             return links
     paragraph = value.get("paragraph")
     if isinstance(paragraph, dict):
-        runs: list[dict[str, Any]] = []
-        elements = paragraph.get("elements", [])
-        if not isinstance(elements, list):
-            return links
-        for part in elements:
-            run = part.get("textRun", {}) if isinstance(part, dict) else {}
-            if not isinstance(run, dict):
-                continue
-            style = run.get("textStyle", {})
-            link = style.get("link") if isinstance(style, dict) else None
-            text = run.get("content", "")
-            if runs and runs[-1]["link"] == link:
-                runs[-1]["text"] += text
-            else:
-                runs.append({"text": text, "link": link})
-        if any(run["link"] is not None for run in runs):
-            links.append(runs)
+        start, end = value.get("startIndex"), value.get("endIndex")
+        tail = (
+            linked_prose_tail(paragraph, start=start, end=end)
+            if type(start) is int and type(end) is int
+            else None
+        )
+        if tail is not None:
+            return [
+                {"editableProsePrefix": True, "suffix": tail.text, "linksSha256": tail.links_sha256}
+            ]
+        runs = _paragraph_link_runs(paragraph.get("elements", []))
+        if any(run.link is not None for run in runs):
+            links.append([asdict(run) for run in runs])
     else:
         for child in value.values():
             links.extend(_paragraph_link_inventory(child))
     return links
+
+
+def _paragraph_link_runs(elements: JsonValue) -> list[_ParagraphLinkRun]:
+    if not isinstance(elements, list):
+        return []
+    runs: list[_ParagraphLinkRun] = []
+    for part in elements:
+        run = part.get("textRun", {}) if isinstance(part, dict) else {}
+        if not isinstance(run, dict):
+            continue
+        style = run.get("textStyle", {})
+        link = style.get("link") if isinstance(style, dict) else None
+        text = run.get("content", "")
+        if not isinstance(text, str):
+            raise DocumentGatewayError
+        if runs and runs[-1].link == link:
+            runs[-1].text += text
+        else:
+            runs.append(_ParagraphLinkRun(text=text, link=link))
+    return runs
 
 
 def _bullet_inventory(value: object) -> list[object]:
@@ -3550,6 +3574,9 @@ def _strip_location_fields(value: object) -> object:
 def _typography_content_preserved(
     actual: DocumentIR, expected: DocumentIR, *, verify_brand: bool
 ) -> bool:
+    if len(actual.blocks) != len(expected.blocks):
+        return False
+    actual = _align_shortened_native_prose(actual, expected)
     if verify_brand:
         actual = align_branded_bullet_metadata(actual, expected)
     if actual.semantic_sha256 == expected.semantic_sha256:
@@ -3565,11 +3592,36 @@ def _typography_content_preserved(
         and observed.native_content == planned.native_content
         and observed.native_named_style == planned.native_named_style
         and observed.native_bullet_json == planned.native_bullet_json
+        and observed.protected_suffix == planned.protected_suffix
+        and observed.protected_suffix_links_sha256 == planned.protected_suffix_links_sha256
         and (
             observed.editable == planned.editable
             or (not planned.editable and observed.editable and bool(planned.font_style_ranges))
         )
         for observed, planned in zip(actual.blocks, expected.blocks, strict=True)
+    )
+
+
+def _align_shortened_native_prose(actual: DocumentIR, expected: DocumentIR) -> DocumentIR:
+    # Eligibility belongs to the source. A verified rewrite may fall below the
+    # minimum prose length on readback; exact text and citation hashes still bind it.
+    return replace(
+        actual,
+        blocks=tuple(
+            replace(observed, editable=planned.editable)
+            if (
+                planned.editable
+                and not observed.editable
+                and observed.protected_suffix is not None
+                and observed.protected_suffix == planned.protected_suffix
+                and observed.protected_suffix_links_sha256 == planned.protected_suffix_links_sha256
+                and observed.text == planned.text
+                and len(observed.text.removesuffix(observed.protected_suffix).split())
+                < MIN_MODEL_PROSE_WORDS
+            )
+            else observed
+            for observed, planned in zip(actual.blocks, expected.blocks, strict=True)
+        ),
     )
 
 

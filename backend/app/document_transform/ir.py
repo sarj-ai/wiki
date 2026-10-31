@@ -10,8 +10,11 @@ import re
 from typing import Any
 import unicodedata
 
+from pydantic import JsonValue
+
 from app.document_transform.errors import SourceTooLargeError, UnsupportedSourceError
-from app.document_transform.limits import MAX_MARKDOWN_BYTES
+from app.document_transform.limits import MAX_MARKDOWN_BYTES, MIN_MODEL_PROSE_WORDS
+from app.document_transform.native_prose import linked_prose_tail
 from app.identifiers import DocsSegmentId, DocsTabId
 
 
@@ -81,6 +84,13 @@ class TextBlock:
     preserved_paragraph_style_sha256: str | None = None
     preserved_font_family: bool = False
     preserved_visual_authority: bool = False
+    protected_suffix: str | None = None
+    protected_suffix_links_sha256: str | None = None
+    native_prefix_style_json: str | None = None
+
+    @property
+    def requires_font_only_format(self) -> bool:
+        return not self.editable or self.protected_suffix is not None
 
     @property
     def is_authored_lead_in(self) -> bool:
@@ -178,9 +188,14 @@ _LIST = re.compile(r"^\s*(?:[-*+] |\d+[.)] )(.*)$")
 
 def _native_content_payload(block: TextBlock) -> dict[str, Any]:
     # Keep fingerprints of existing plain-text documents backward compatible.
-    style = {"native_named_style": block.native_named_style} if block.native_named_style else {}
+    style: dict[str, str | None] = (
+        {"native_named_style": block.native_named_style} if block.native_named_style else {}
+    )
     if block.native_bullet_json is not None:
         style["native_bullet_json"] = block.native_bullet_json
+    if block.protected_suffix is not None:
+        style["protected_suffix"] = block.protected_suffix
+        style["protected_suffix_links_sha256"] = block.protected_suffix_links_sha256
     if not block.native_content:
         return style
     return {
@@ -493,6 +508,13 @@ def _tab_id(tab: dict[str, Any]) -> DocsTabId:
     return DocsTabId(tab_id)
 
 
+@dataclass(slots=True)
+class _ParagraphRuns:
+    runs: list[tuple[str, bool]]
+    native_content: list[NativeContent]
+    contains_non_text: bool
+
+
 def _parse_structural_element(
     element: object,
     tab_id: DocsTabId,
@@ -509,15 +531,9 @@ def _parse_structural_element(
     elements = paragraph_data.get("elements", [])
     if not isinstance(elements, list):
         raise UnsupportedSourceError
-    runs: list[tuple[str, bool]] = []
-    native_content: list[NativeContent] = []
-    contains_non_text = False
-    for part in elements:
-        if not isinstance(part, dict) or not isinstance(part.get("textRun"), dict):
-            contains_non_text = True
-        _append_paragraph_run(part, runs, native_content)
-    text = "".join(run[0] for run in runs).removesuffix("\n")
-    if not text and contains_non_text:
+    captured = _paragraph_runs(elements)
+    text = "".join(run[0] for run in captured.runs).removesuffix("\n")
+    if not text and captured.contains_non_text:
         text = "\ufffc"
     if not text:
         return None
@@ -534,10 +550,10 @@ def _parse_structural_element(
         raise UnsupportedSourceError
     if isinstance(bullet, dict) and classification.kind == BlockKind.PARAGRAPH:
         classification = BlockClassification(BlockKind.LIST_ITEM, None)
-    editable = not contains_non_text and _paragraph_is_editable(
-        runs, paragraph_data, start=start, end=end
+    editable = not captured.contains_non_text and _paragraph_is_editable(
+        captured.runs, paragraph_data, start=start, end=end
     )
-    return TextBlock(
+    block = TextBlock(
         id=f"b{ordinal}",
         kind=classification.kind,
         text=text,
@@ -549,7 +565,7 @@ def _parse_structural_element(
         ),
         editable=editable,
         native_bullet_json=json.dumps(bullet, sort_keys=True) if isinstance(bullet, dict) else None,
-        native_content=tuple(native_content),
+        native_content=tuple(captured.native_content),
         authored_emphasis=_uniform_authored_emphasis(elements),
         source_named_style=(
             paragraph_style["namedStyleType"]
@@ -565,6 +581,37 @@ def _parse_structural_element(
         font_style_ranges=_safe_font_ranges(
             elements, paragraph_data, SourceRange(start, end - 1, tab_id)
         ),
+    )
+    return _with_native_prose_tail(block, paragraph_data, start=start, end=end)
+
+
+def _paragraph_runs(elements: list[JsonValue]) -> _ParagraphRuns:
+    runs: list[tuple[str, bool]] = []
+    native_content: list[NativeContent] = []
+    contains_non_text = False
+    for part in elements:
+        match part:
+            case {"textRun": dict()}:
+                pass
+            case _:
+                contains_non_text = True
+        _append_paragraph_run(part, runs, native_content)
+    return _ParagraphRuns(runs, native_content, contains_non_text)
+
+
+def _with_native_prose_tail(
+    block: TextBlock, paragraph: object, *, start: int, end: int
+) -> TextBlock:
+    tail = linked_prose_tail(paragraph, start=start, end=end)
+    if tail is None:
+        return block
+    return replace(
+        block,
+        editable=block.editable
+        or len(block.text.removesuffix(tail.text).split()) >= MIN_MODEL_PROSE_WORDS,
+        protected_suffix=tail.text,
+        protected_suffix_links_sha256=tail.links_sha256,
+        native_prefix_style_json=tail.prefix_style_json,
     )
 
 

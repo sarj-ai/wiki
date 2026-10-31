@@ -129,6 +129,26 @@ def test_linked_emphasized_prose_gets_font_without_rewriting_attributes() -> Non
     assert raw == before
 
 
+def test_rewritable_linked_prose_keeps_authored_emphasis_during_format() -> None:
+    raw = _document(
+        [
+            _run("Read the detailed account of the hidden bird singing from scrub. ", bold=True),
+            _run("Species account\n", link={"url": "https://example.com"}, italic=True),
+        ]
+    )
+    before = deepcopy(raw)
+    parsed = parse_google_document(raw, title="Report")
+    assert parsed.blocks[0].editable
+    assert parsed.blocks[0].protected_suffix == "Species account"
+    requests = _font_requests(raw)
+    assert len(requests) == 2
+    assert all(item["fields"] == "weightedFontFamily.fontFamily" for item in requests)
+    assert all(
+        item["textStyle"] == {"weightedFontFamily": {"fontFamily": "Nunito"}} for item in requests
+    )
+    assert raw == before
+
+
 @pytest.mark.parametrize("font", ["Roboto Mono", "Fira Code", "Cambria Math", "Symbol"])
 def test_code_and_math_fonts_are_preserved(font: str) -> None:
     raw = _document([_run("Prose "), _run("x = 1\n", weightedFontFamily={"fontFamily": font})])

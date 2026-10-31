@@ -73,7 +73,7 @@ import { DocumentPolishRecovery } from "./document-polish-recovery";
 
 const MODES = [
   {
-    description: "Clean the writing, then apply the complete Sarj brand system.",
+    description: "Shorten the writing, then apply Sarj typography and page formatting.",
     icon: Sparkles,
     label: "Both",
     value: "both",
@@ -85,7 +85,8 @@ const MODES = [
     value: "format",
   },
   {
-    description: "Remove obvious AI phrasing while protecting facts, links, citations, and code.",
+    description:
+      "Aggressively cut repetition and filler while preserving facts, links, citations, and code.",
     icon: BrushCleaning,
     label: "Unslop",
     value: "unslop",
