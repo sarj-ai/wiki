@@ -19,7 +19,7 @@ from googleapiclient.errors import HttpError
 from googleapiclient.http import HttpRequest, MediaIoBaseDownload, MediaIoBaseUpload
 import httplib2
 from loguru import logger
-from pydantic import JsonValue
+from pydantic import JsonValue, ValidationError
 
 from app.document_transform.brand import (
     SarjBrandProfile,
@@ -110,16 +110,23 @@ from app.document_transform.native_font_proof import (
     verify_native_font_proof,
     verify_native_unstyled_text,
 )
-from app.document_transform.native_footer import FooterAction, FooterCheckpoint, plan_native_footer
+from app.document_transform.native_footer import (
+    FooterAction,
+    FooterCheckpoint,
+    NativeFooterPlan,
+    plan_native_footer,
+)
 from app.document_transform.native_footer_flow import (
     NativeFooterCheckpoint,
     NativeFooterCoverage,
+    NativeFooterInvariant,
+    NativeFooterLayout,
     NativeFooterSkip,
     NativeFooterStage,
     footer_document_tab,
-    footer_invariant_sha256,
     verified_footer_coverage_projection,
     verified_footer_projection,
+    versioned_footer_invariant_sha256,
 )
 from app.document_transform.native_pagination import (
     apply_native_pagination,
@@ -576,34 +583,15 @@ class GoogleDocumentGateway(DocumentGateway):
         skipped: list[NativeFooterSkip] = []
         for tab_id in topology:
             tab = footer_document_tab(document, tab_id)
-            style = tab.get("documentStyle", {})
-            reason = None
-            if not isinstance(style, dict) or not isinstance(tab.get("footers", {}), dict):
+            try:
+                reason = NativeFooterLayout.model_validate(tab).skip_reason
+            except ValidationError:
                 reason = "unsupported_layout"
-            elif tab.get("footers") or any(
-                style.get(key)
-                for key in ("defaultFooterId", "firstPageFooterId", "evenPageFooterId")
-            ):
-                reason = "custom_footer"
-            elif not isinstance(style.get("documentFormat", {}), dict):
-                reason = "unsupported_layout"
-            elif style.get("documentFormat", {}).get("documentMode") == "PAGELESS":
-                reason = "pageless"
-            elif (
-                (
-                    style.get("documentFormat", {}).get("documentMode") is not None
-                    and style.get("documentFormat", {}).get("documentMode") != "PAGES"
-                )
-                or any(
-                    style.get(key) is not None and style.get(key) is not False
-                    for key in ("useFirstPageHeaderFooter", "useEvenPageHeaderFooter")
-                )
-                or (
-                    plan_native_footer(
-                        tab, tab_id=tab_id, revision_id=draft.revision_id, short_link=url
-                    ).action
-                    is not FooterAction.CREATE
-                )
+            if reason is None and (
+                plan_native_footer(
+                    tab, tab_id=tab_id, revision_id=draft.revision_id, short_link=url
+                ).action
+                is not FooterAction.CREATE
             ):
                 reason = "unsupported_layout"
             if reason is None:
@@ -626,7 +614,10 @@ class GoogleDocumentGateway(DocumentGateway):
             create_marker=f"sarj_footer_create_{suffix}",
             populate_marker=f"sarj_footer_populate_{suffix}",
             marker_range=marker_range,
-            invariant_sha256=footer_invariant_sha256(document),
+            invariant_sha256=versioned_footer_invariant_sha256(
+                document, version=NativeFooterInvariant.STABLE_IMAGES_V2
+            ),
+            invariant_version=NativeFooterInvariant.STABLE_IMAGES_V2,
             coverage=NativeFooterCoverage(
                 topology=topology,
                 pending=tuple(eligible[1:]),
@@ -645,57 +636,11 @@ class GoogleDocumentGateway(DocumentGateway):
             if tuple(tab_id for tab_id, _ in _document_tabs(document)) != coverage.topology:
                 native_safety_error("footer_coverage", "topology")
             if checkpoint.stage is NativeFooterStage.COMPLETE:
-                if not coverage.pending:
-                    verified_footer_coverage_projection(document, checkpoint)
-                    return checkpoint
-                if document.get("revisionId") != checkpoint.revision_id:
-                    native_safety_error("footer_advance", "revision")
-                verified_footer_projection(document, checkpoint, populated=True)
-                next_tab = coverage.pending[0]
-                suffix = f"{checkpoint.create_marker.rsplit('_', 1)[0]}_{coverage.topology.index(next_tab)}"
-                return NativeFooterCheckpoint(
-                    tab_id=next_tab,
-                    url=checkpoint.url,
-                    display_text=checkpoint.display_text,
-                    revision_id=checkpoint.revision_id,
-                    create_marker=suffix,
-                    populate_marker=suffix.replace(
-                        "sarj_footer_create_", "sarj_footer_populate_", 1
-                    ),
-                    marker_range=checkpoint.marker_range,
-                    invariant_sha256=footer_invariant_sha256(document),
-                    coverage=coverage.model_copy(
-                        update={
-                            "pending": coverage.pending[1:],
-                            "completed": (
-                                *coverage.completed,
-                                checkpoint.model_copy(update={"coverage": None}),
-                            ),
-                        }
-                    ),
-                )
+                return _advance_footer_coverage(document, checkpoint, coverage)
         creating = checkpoint.stage is NativeFooterStage.CREATE
-        diagnostic_stage: SafetyStage = "footer_create" if creating else "footer_populate"
         marker = checkpoint.create_marker if creating else checkpoint.populate_marker
         if not _has_exact_named_range(document, marker, checkpoint.marker_range):
-            if document.get("revisionId") != checkpoint.revision_id:
-                native_safety_error(diagnostic_stage, "revision")
-            if creating:
-                if footer_invariant_sha256(document) != checkpoint.invariant_sha256:
-                    native_safety_error(diagnostic_stage, "invariant")
-            else:
-                verified_footer_projection(document, checkpoint, populated=False)
-            plan = plan_native_footer(
-                footer_document_tab(document, checkpoint.tab_id),
-                tab_id=checkpoint.tab_id,
-                revision_id=checkpoint.revision_id,
-                short_link=checkpoint.url,
-                display_text=checkpoint.display_text,
-                checkpoint=FooterCheckpoint(not creating, checkpoint.footer_id),
-            )
-            expected_action = FooterAction.CREATE if creating else FooterAction.POPULATE
-            if plan.action is not expected_action:
-                native_safety_error(diagnostic_stage, "action")
+            plan = _plan_copy_footer_write(document, checkpoint)
             result = await self.apply_in_place_stage(
                 document_id=document_id,
                 required_revision_id=checkpoint.revision_id,
@@ -2011,6 +1956,81 @@ class GoogleDocumentGateway(DocumentGateway):
             if destination.tell() > max_bytes:
                 raise SourceTooLargeError
         return destination.getvalue()
+
+
+def _verify_footer_revision(
+    document: dict[str, JsonValue], checkpoint: NativeFooterCheckpoint, stage: SafetyStage
+) -> None:
+    try:
+        revision = _required_string(document, "revisionId")
+    except UnsupportedSourceError:
+        native_safety_error(stage, "revision")
+    if revision != checkpoint.revision_id:
+        native_safety_error(stage, "revision")
+
+
+def _plan_copy_footer_write(
+    document: dict[str, JsonValue], checkpoint: NativeFooterCheckpoint
+) -> NativeFooterPlan:
+    creating = checkpoint.stage is NativeFooterStage.CREATE
+    stage: SafetyStage = "footer_create" if creating else "footer_populate"
+    _verify_footer_revision(document, checkpoint, stage)
+    if creating:
+        if (
+            versioned_footer_invariant_sha256(document, version=checkpoint.invariant_version)
+            != checkpoint.invariant_sha256
+        ):
+            native_safety_error(stage, "invariant")
+    else:
+        verified_footer_projection(document, checkpoint, populated=False)
+    plan = plan_native_footer(
+        footer_document_tab(document, checkpoint.tab_id),
+        tab_id=checkpoint.tab_id,
+        revision_id=checkpoint.revision_id,
+        short_link=checkpoint.url,
+        display_text=checkpoint.display_text,
+        checkpoint=FooterCheckpoint(not creating, checkpoint.footer_id),
+    )
+    expected_action = FooterAction.CREATE if creating else FooterAction.POPULATE
+    if plan.action is not expected_action:
+        native_safety_error(stage, "action")
+    return plan
+
+
+def _advance_footer_coverage(
+    document: dict[str, JsonValue],
+    checkpoint: NativeFooterCheckpoint,
+    coverage: NativeFooterCoverage,
+) -> NativeFooterCheckpoint:
+    if not coverage.pending:
+        verified_footer_coverage_projection(document, checkpoint)
+        return checkpoint
+    _verify_footer_revision(document, checkpoint, "footer_advance")
+    verified_footer_projection(document, checkpoint, populated=True)
+    next_tab = coverage.pending[0]
+    suffix = f"{checkpoint.create_marker.rsplit('_', 1)[0]}_{coverage.topology.index(next_tab)}"
+    return NativeFooterCheckpoint(
+        tab_id=next_tab,
+        url=checkpoint.url,
+        display_text=checkpoint.display_text,
+        revision_id=checkpoint.revision_id,
+        create_marker=suffix,
+        populate_marker=suffix.replace("sarj_footer_create_", "sarj_footer_populate_", 1),
+        marker_range=checkpoint.marker_range,
+        invariant_sha256=versioned_footer_invariant_sha256(
+            document, version=checkpoint.invariant_version
+        ),
+        invariant_version=checkpoint.invariant_version,
+        coverage=coverage.model_copy(
+            update={
+                "pending": coverage.pending[1:],
+                "completed": (
+                    *coverage.completed,
+                    checkpoint.model_copy(update={"coverage": None}),
+                ),
+            }
+        ),
+    )
 
 
 class GoogleDocumentRevisionReader(GoogleDocumentGateway):

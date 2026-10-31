@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+from collections import Counter
 from dataclasses import dataclass
 from difflib import SequenceMatcher
 import re
 from types import MappingProxyType
+from typing import Literal
 
 from app.document_transform.ir import BlockKind, DocumentIR, TextBlock
 from app.document_transform.schemas import TextPatch, TransformFinding, TransformPhase
@@ -140,10 +142,13 @@ def _rejection_code(
         or not patch.replacement.removesuffix(block.protected_suffix).strip()
     ):
         return "native_citation_changed"
-    if _protected_tokens(block.text) != _protected_tokens(patch.replacement):
-        return "protected_content_changed"
-    if _force_words(block.text) != _force_words(patch.replacement):
-        return "force_language_changed"
+    literal_code = _literal_change_code(
+        before=block.text,
+        after=patch.replacement,
+        allow_reordering=aggressive_unslop and phase is TransformPhase.UNSLOP,
+    )
+    if literal_code is not None:
+        return literal_code
     if phase is TransformPhase.UNSLOP:
         if aggressive_unslop:
             return _aggressive_unslop_code(block, patch.replacement)
@@ -155,6 +160,26 @@ def _rejection_code(
     if 1 - similarity > _MAX_CHANGE_RATIO[phase]:
         return "diff_budget_exceeded"
     return None
+
+
+def _literal_change_code(
+    *, before: str, after: str, allow_reordering: bool
+) -> Literal["protected_content_changed", "force_language_changed"] | None:
+    if not _same_retained_values(
+        _protected_tokens(before), _protected_tokens(after), allow_reordering=allow_reordering
+    ):
+        return "protected_content_changed"
+    if not _same_retained_values(
+        _force_words(before), _force_words(after), allow_reordering=allow_reordering
+    ):
+        return "force_language_changed"
+    return None
+
+
+def _same_retained_values(before: list[str], after: list[str], *, allow_reordering: bool) -> bool:
+    if allow_reordering:
+        return Counter(before) == Counter(after)
+    return before == after
 
 
 def _aggressive_unslop_code(block: TextBlock, replacement: str) -> str | None:

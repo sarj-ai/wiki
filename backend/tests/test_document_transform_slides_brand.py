@@ -105,11 +105,50 @@ def test_both_styles_before_deletion_and_brand_fingerprint_matches_shorter_text(
     assert presentation_fingerprint(branded, "Review").brand_sha256 == plan.expected_brand_sha256
 
 
-def test_unslop_rejects_non_deletion_non_case_rewrite() -> None:
+@pytest.mark.parametrize("mode", [TransformMode.UNSLOP, TransformMode.BOTH])
+def test_semantic_rewrite_preserves_plain_shape_styles_and_protected_structure(
+    mode: TransformMode,
+) -> None:
+    presentation = _presentation()
+    before = deepcopy(presentation)
+    parsed = parse_google_presentation(presentation, title="Review")
+    second = parsed.document.blocks[1]
+    transformed = parsed.document.replace_blocks({second.id: "Results got better"})
+
+    plan = build_slides_mutation_plan(
+        presentation,
+        parsed=parsed,
+        transformed=transformed,
+        mode=mode,
+        logo_uri=CURRENT_BRAND_MANIFEST.assets.logo_uri,
+    )
+
+    assert presentation == before
+    text_requests = [
+        request for request in plan.requests if "insertText" in request or "deleteText" in request
+    ]
+    assert [next(iter(request)) for request in text_requests] == ["insertText", "deleteText"]
+    assert text_requests[0]["insertText"]["objectId"] == "body-1"
+    assert text_requests[1]["deleteText"]["objectId"] == "body-1"
+    _apply_brand_requests(presentation, plan.requests)
+    actual = parse_google_presentation(presentation, title="Review")
+    assert actual.document.semantic_sha256 == transformed.semantic_sha256
+    assert actual.protected_sha256 == parsed.protected_sha256
+    if mode is TransformMode.BOTH:
+        assert (
+            presentation_fingerprint(presentation, "Review").brand_sha256
+            == plan.expected_brand_sha256
+        )
+
+
+@pytest.mark.parametrize("replacement", ["New\nparagraph", "\tIndented", "\ue000Private glyph"])
+def test_semantic_slide_rewrite_rejects_structural_or_unsupported_characters(
+    replacement: str,
+) -> None:
     presentation = _presentation()
     parsed = parse_google_presentation(presentation, title="Review")
     second = parsed.document.blocks[1]
-    transformed = parsed.document.replace_blocks({second.id: "Revenue improved"})
+    transformed = parsed.document.replace_blocks({second.id: replacement})
 
     with pytest.raises(UnsupportedSourceError):
         build_slides_mutation_plan(
@@ -119,6 +158,47 @@ def test_unslop_rejects_non_deletion_non_case_rewrite() -> None:
             mode=TransformMode.UNSLOP,
             logo_uri="",
         )
+
+
+def test_semantic_slide_rewrite_uses_utf16_offsets_for_astral_characters() -> None:
+    presentation = _presentation()
+    source = "🕊 Researchers studied the nightingale's song very carefully."
+    replacement = "🕊 Researchers examined nightingale song."
+    presentation["slides"][0]["pageElements"][1] = _text_shape(
+        "body-1", source, placeholder_type="BODY", left=24, top=140, width=500
+    )
+    parsed = parse_google_presentation(presentation, title="Review")
+    body = parsed.document.blocks[1]
+    transformed = parsed.document.replace_blocks({body.id: replacement})
+
+    plan = build_slides_mutation_plan(
+        presentation,
+        parsed=parsed,
+        transformed=transformed,
+        mode=TransformMode.UNSLOP,
+        logo_uri="",
+    )
+
+    replacement_units = len(replacement.encode("utf-16-le")) // 2
+    source_units = len(source.encode("utf-16-le")) // 2
+    assert plan.requests[1]["deleteText"]["textRange"] == {
+        "type": "FIXED_RANGE",
+        "startIndex": replacement_units,
+        "endIndex": replacement_units + source_units,
+    }
+    encoded = (source + "\n").encode("utf-16-le")
+    inserted = plan.requests[0]["insertText"]["text"].encode("utf-16-le")
+    encoded = inserted + encoded
+    deletion = plan.requests[1]["deleteText"]["textRange"]
+    encoded = encoded[: deletion["startIndex"] * 2] + encoded[deletion["endIndex"] * 2 :]
+    assert encoded.decode("utf-16-le") == replacement + "\n"
+    elements = presentation["slides"][0]["pageElements"][1]["shape"]["text"]["textElements"]
+    elements[0]["endIndex"] = len(encoded) // 2
+    elements[1]["endIndex"] = len(encoded) // 2
+    elements[1]["textRun"]["content"] = encoded.decode("utf-16-le")
+    actual = parse_google_presentation(presentation, title="Review")
+    assert actual.document.semantic_sha256 == transformed.semantic_sha256
+    assert actual.protected_sha256 == parsed.protected_sha256
 
 
 def test_rich_bulleted_text_is_preserved_and_reported_for_review() -> None:
@@ -1313,12 +1393,12 @@ def _text_shape(
             "textElements": [
                 {
                     "startIndex": 0,
-                    "endIndex": len(text) + 1,
+                    "endIndex": len(text.encode("utf-16-le")) // 2 + 1,
                     "paragraphMarker": {"style": {}},
                 },
                 {
                     "startIndex": 0,
-                    "endIndex": len(text) + 1,
+                    "endIndex": len(text.encode("utf-16-le")) // 2 + 1,
                     "textRun": {
                         "content": f"{text}\n",
                         "style": {

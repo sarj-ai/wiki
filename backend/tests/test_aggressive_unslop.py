@@ -35,6 +35,7 @@ class _Editor(PatchGenerator):
         self.approve = approve
         self.phases: list[TransformPhase] = []
         self.reviewed: list[TextPatch] = []
+        self.initial_review_unavailable = False
 
     @property
     @override
@@ -49,6 +50,8 @@ class _Editor(PatchGenerator):
 
     @override
     async def verify(self, document: DocumentIR, patches: list[TextPatch]) -> frozenset[str]:
+        if self.initial_review_unavailable:
+            raise ModelUnavailableError
         assert all(patch.expected_sha256 == document.blocks[0].sha256 for patch in patches)
         self.reviewed.extend(patches)
         return frozenset(patch.block_id for patch in patches) if self.approve else frozenset()
@@ -62,6 +65,13 @@ class _RepairEditor(_Editor):
         self.repair_sha256: str | None = None
         self.repair_calls = 0
         self.unavailable = False
+        self.review_unavailable = False
+
+    @override
+    async def verify(self, document: DocumentIR, patches: list[TextPatch]) -> frozenset[str]:
+        if self.review_unavailable and self.repair_calls:
+            raise ModelUnavailableError
+        return await super().verify(document, patches)
 
     @override
     async def generate(self, document: DocumentIR, *, phase: TransformPhase) -> list[TextPatch]:
@@ -209,6 +219,17 @@ async def test_semantic_review_rejection_keeps_source_and_requires_review(editor
     assert [finding.code for finding in result.findings] == ["semantic_review_rejected"]
 
 
+async def test_initial_meaning_review_outage_fails_closed(editor: _Editor) -> None:
+    document = parse_markdown(SOURCE, title="Bird")
+    editor.initial_review_unavailable = True
+    with pytest.raises(ModelUnavailableError):
+        await TextTransformPlanner(generator=editor, allow_unslop_model=True).transform(
+            document, _request()
+        )
+    assert document.blocks[0].text == SOURCE
+    assert editor.reviewed == []
+
+
 async def test_both_runs_rewriting_without_allowing_a_format_wording_pass(editor: _Editor) -> None:
     result = await TextTransformPlanner(generator=editor, allow_unslop_model=True).transform(
         parse_markdown(SOURCE, title="Nightingale"), _request(TransformMode.BOTH)
@@ -277,6 +298,24 @@ async def test_repair_cannot_overwrite_an_already_accepted_edit(
     assert outcome.model_count == 1
 
 
+@pytest.mark.parametrize("with_approved_block", [False, True])
+async def test_optional_repair_review_outage_retains_verified_edits_and_original_rejected_prose(
+    multi_block_editor: _MultiBlockRepairEditor, *, with_approved_block: bool
+) -> None:
+    text = SOURCE + "\n\n" + SOURCE if with_approved_block else SOURCE
+    document = parse_markdown(text, title="Bird")
+    multi_block_editor.review_unavailable = True
+    outcome = await TextTransformPlanner(
+        generator=multi_block_editor, allow_unslop_model=True
+    ).transform(document, _request())
+    expected = [SOURCE, CONCISE] if with_approved_block else [SOURCE]
+    assert [block.text for block in outcome.document.blocks if block.text.strip()] == expected
+    assert outcome.applied_count == int(with_approved_block)
+    assert multi_block_editor.repair_calls == 1
+    assert len(multi_block_editor.reviewed) == int(with_approved_block)
+    assert [finding.code for finding in outcome.findings] == ["force_language_changed"]
+
+
 @pytest.mark.parametrize("final_approve", [False, True])
 async def test_review_critique_guides_one_repair_and_the_repair_is_reviewed_again(
     semantic_editor_factory: Callable[[], _SemanticRepairEditor], *, final_approve: bool
@@ -329,6 +368,16 @@ async def test_review_critique_guides_one_repair_and_the_repair_is_reviewed_agai
             "force_language_changed",
         ),
         (
+            "This study recorded 19 birds at the first site and 19 birds at the second site.",
+            "This study recorded 19 birds across the first and second sites.",
+            "protected_content_changed",
+        ),
+        (
+            "Researchers recorded 533 songs from each of 19 males during the survey.",
+            "During the survey, researchers recorded 533 songs from 19 males.",
+            "force_language_changed",
+        ),
+        (
             "The team studied birds in Europe.",
             "The team studied birds in Asia.",
             "proper_noun_changed",
@@ -359,3 +408,23 @@ def test_aggressive_rewrites_keep_hard_content_guards(
     )
     assert not decision.accepted
     assert [finding.code for finding in decision.findings] == [code]
+
+
+@pytest.mark.parametrize("aggressive", [False, True])
+def test_only_reviewed_aggressive_rewrites_can_reorder_retained_literals(
+    *, aggressive: bool
+) -> None:
+    source = "During April, the survey can include 19 males and may record 533 songs."
+    replacement = "During April, the survey may record 533 songs and can include 19 males."
+    document = parse_markdown(source, title="Survey")
+    block = document.blocks[0]
+    decision = validate_patches(
+        document,
+        [TextPatch(block_id=block.id, expected_sha256=block.sha256, replacement=replacement)],
+        phase=TransformPhase.UNSLOP,
+        aggressive_unslop=aggressive,
+    )
+    assert decision.accepted == ({block.id: replacement} if aggressive else {})
+    assert [finding.code for finding in decision.findings] == (
+        [] if aggressive else ["protected_content_changed"]
+    )
