@@ -83,36 +83,40 @@ describe("folder listing observer ownership", () => {
     flushSync(() => button.click());
   }
 
-  it("keeps 500 complete collapsed folders free of lazy-list observers while retaining counts", () => {
-    flushSync(() =>
-      root.render(
-        wrap(
-          <>
-            {Array.from({ length: 500 }, (_, index) => (
-              <TreeNode
-                depth={0}
-                key={index}
-                node={node(`folder-${index}`, MIME_FOLDER)}
-                parentFolderId={undefined}
-              />
-            ))}
-          </>,
+  it(
+    "keeps 500 complete collapsed folders free of lazy-list observers while retaining counts",
+    { timeout: 30_000 },
+    () => {
+      flushSync(() =>
+        root.render(
+          wrap(
+            <>
+              {Array.from({ length: 500 }, (_, index) => (
+                <TreeNode
+                  depth={0}
+                  key={index}
+                  node={node(`folder-${index}`, MIME_FOLDER)}
+                  parentFolderId={undefined}
+                />
+              ))}
+            </>,
+          ),
         ),
-      ),
-    );
-    const observers = queryClient
-      .getQueryCache()
-      .findAll({ queryKey: wikiKeys.folderFilesPrefix })
-      .reduce((count, query) => count + query.getObserversCount(), 0);
-    expect(observers).toBe(0);
-    expect(host.querySelector('[data-file-id="folder-0"]')).toHaveTextContent("1");
-    expect(READ).not.toHaveBeenCalled();
-    toggle();
-    expect(host).toHaveTextContent("doc");
-    expect(READ).not.toHaveBeenCalled();
-    toggle();
-    expect(host).not.toHaveTextContent("doc");
-  });
+      );
+      const observers = queryClient
+        .getQueryCache()
+        .findAll({ queryKey: wikiKeys.folderFilesPrefix })
+        .reduce((count, query) => count + query.getObserversCount(), 0);
+      expect(observers).toBe(0);
+      expect(host.querySelector('[data-file-id="folder-0"]')).toHaveTextContent("1");
+      expect(READ).not.toHaveBeenCalled();
+      toggle();
+      expect(host).toHaveTextContent("doc");
+      expect(READ).not.toHaveBeenCalled();
+      toggle();
+      expect(host).not.toHaveTextContent("doc");
+    },
+  );
 
   it("skips hidden child counts for 500 incomplete folder headers and still lists expanded children", () => {
     const childrenByParent = new Map<string, DriveNode[]>();

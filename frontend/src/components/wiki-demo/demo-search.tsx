@@ -14,7 +14,12 @@ import {
 import { DialogClose } from "@/components/ui/dialog";
 import { renderMimeIcon } from "@/lib/file-icons";
 
-import { DEMO_FILES, type DemoFile } from "./demo-data";
+import {
+  DEMO_FILES,
+  DEMO_SEARCH_SUGGESTION,
+  DEMO_WORKSPACE_NAME,
+  type DemoFile,
+} from "./demo-data";
 import { DEMO_SEARCH_TEXT } from "./demo-search-text";
 
 export function DemoSearch({
@@ -37,15 +42,15 @@ export function DemoSearch({
       <div className="pr-11">
         <CommandInput
           aria-label="Search sample files"
-          placeholder="Search files, people, or project details…"
+          placeholder="Search files, facts, or references…"
         />
       </div>
       <CommandList className="max-h-[min(400px,65dvh)]">
         <CommandEmpty>
           <p className="font-medium">No files found</p>
-          <p className="text-muted-foreground mt-1 text-xs">Try “budget”, “launch”, or “Maya”.</p>
+          <p className="text-muted-foreground mt-1 text-xs">{DEMO_SEARCH_SUGGESTION}</p>
         </CommandEmpty>
-        <CommandGroup heading="Northstar · sample workspace">
+        <CommandGroup heading={`${DEMO_WORKSPACE_NAME} · sample workspace`}>
           {DEMO_FILES.map((file) => (
             <CommandItem
               key={file.id}

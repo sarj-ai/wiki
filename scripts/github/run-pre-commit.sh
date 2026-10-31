@@ -2,7 +2,7 @@
 set -euo pipefail
 
 UV_PYTHON_DOWNLOADS_JSON_URL=https://raw.githubusercontent.com/astral-sh/uv/f69fb50c8b28997af9c6b0e5c700a34470d86005/crates/uv-python-managed/download-metadata.json \
-  uv run --no-config --no-project --python 3.15.0 --with code-standards==8.147.0 python -m sarj_standards.libs.adoption.native_bootstrap
+  uv run --no-config --no-project --python 3.15.0 --with code-standards==8.165.8 python -m sarj_standards.libs.adoption.native_bootstrap
 # GitHub applies this path handoff after the step; setup runs in this step.
 while IFS= read -r native_path; do
   export PATH="$native_path:$PATH"
