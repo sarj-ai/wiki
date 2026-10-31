@@ -96,10 +96,10 @@ from app.document_transform.markdown_import import (
 from app.document_transform.naming import suggested_document_title
 from app.document_transform.native_date_flow import (
     NativeDateCheckpoint,
-    date_invariant_sha256,
-    plan_copy_dates,
-    verified_date_projection,
-    verify_dates_unchanged,
+    plan_stable_copy_dates as plan_copy_dates,
+    verified_versioned_date_projection as verified_date_projection,
+    verify_versioned_dates_unchanged as verify_dates_unchanged,
+    versioned_date_invariant_sha256,
 )
 from app.document_transform.native_font_defense import (
     apply_native_font_preservation,
@@ -152,7 +152,10 @@ from app.document_transform.schemas import (
     TabNamingCheckpoint,
 )
 from app.document_transform.source_access import native_source_access
-from app.document_transform.tab_metadata import native_tab_properties, tab_naming_invariant_sha256
+from app.document_transform.tab_metadata import (
+    native_tab_properties,
+    versioned_tab_naming_invariant_sha256,
+)
 from app.document_transform.tab_names import plan_tab_names
 from app.document_transform.tab_structure_execution import StructureProvider
 from app.drive.retry import (
@@ -324,7 +327,8 @@ class GoogleDocumentGateway(DocumentGateway):
             if (
                 checkpoint.complete
                 or document.get("revisionId") != checkpoint.revision_id
-                or date_invariant_sha256(document) != checkpoint.invariant_sha256
+                or versioned_date_invariant_sha256(document, version=checkpoint.invariant_version)
+                != checkpoint.invariant_sha256
             ):
                 native_safety_error("date_pre", "preimage")
             try:
@@ -567,7 +571,10 @@ class GoogleDocumentGateway(DocumentGateway):
             revision_id=DocsRevisionId(_required_string(document, "revisionId")),
             marker_name=f"sarj_tabs_{operation_id.hex}_{digest[:16]}",
             marker_range=marker_range,
-            invariant_sha256=tab_naming_invariant_sha256(document),
+            invariant_sha256=versioned_tab_naming_invariant_sha256(
+                document, version="stable-images-v2"
+            ),
+            invariant_version="stable-images-v2",
         )
 
     @override
@@ -667,7 +674,11 @@ class GoogleDocumentGateway(DocumentGateway):
     ) -> DocsRevisionId:
         document = await asyncio.to_thread(self._get_document_sync, document_id)
         if (
-            tab_naming_invariant_sha256(document, checkpoint.marker_name)
+            versioned_tab_naming_invariant_sha256(
+                document,
+                marker_name=checkpoint.marker_name,
+                version=checkpoint.invariant_version,
+            )
             != checkpoint.invariant_sha256
         ):
             native_safety_error("tab_naming_pre", "invariant")
@@ -688,8 +699,10 @@ class GoogleDocumentGateway(DocumentGateway):
             marker_range=checkpoint.marker_range,
             requests=[dict(rename.request()) for rename in checkpoint.plan.renames],
         )
-        if tab_naming_invariant_sha256(
-            result.document, checkpoint.marker_name
+        if versioned_tab_naming_invariant_sha256(
+            result.document,
+            marker_name=checkpoint.marker_name,
+            version=checkpoint.invariant_version,
         ) != checkpoint.invariant_sha256 or not checkpoint.plan.matches_result(
             native_tab_properties(result.document)
         ):

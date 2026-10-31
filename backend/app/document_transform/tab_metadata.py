@@ -2,10 +2,13 @@ from __future__ import annotations
 
 import hashlib
 import json
-from typing import Any
+from typing import Any, Literal
+
+from pydantic import JsonValue
 
 from app.document_transform.errors import UnsupportedTabMetadataError
 from app.document_transform.naming import supported_tab_icon
+from app.document_transform.native_payload import stable_native_payload
 from app.document_transform.tab_names import NativeTabProperties
 from app.identifiers import DocsTabId
 
@@ -90,3 +93,16 @@ def tab_naming_invariant_sha256(document: dict[str, Any], marker_name: str = "")
 
     encoded = json.dumps(scrub(document), sort_keys=True, separators=(",", ":"))
     return hashlib.sha256(encoded.encode()).hexdigest()
+
+
+def versioned_tab_naming_invariant_sha256(
+    document: JsonValue,
+    *,
+    version: Literal["stable-images-v2"] | None,
+    marker_name: str = "",
+) -> str:
+    payload = stable_native_payload(document) if version == "stable-images-v2" else document
+    if not isinstance(payload, dict):
+        msg = "A tab naming invariant requires a document object"
+        raise TypeError(msg)
+    return tab_naming_invariant_sha256(payload, marker_name)

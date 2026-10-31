@@ -6,11 +6,12 @@ import json
 from typing import Any, Literal, NewType, Self
 import uuid
 
-from pydantic import BaseModel, ConfigDict, model_validator
+from pydantic import BaseModel, ConfigDict, JsonValue, model_validator
 
 from app.document_transform.errors import InPlaceNeedsReviewError
 from app.document_transform.ir import parse_google_document, verify_planned_date_conversions
 from app.document_transform.native_elements import plan_native_elements
+from app.document_transform.native_payload import stable_native_payload
 from app.identifiers import DocsRevisionId, DocsTabId
 
 
@@ -34,6 +35,7 @@ class NativeDateCheckpoint(BaseModel):
     marker_name: str
     marker_range: dict[str, Any]
     invariant_sha256: str
+    invariant_version: Literal["stable-images-v2"] | None = None
     paragraphs: list[NativeDateParagraph]
     requests: list[dict[str, Any]]
     complete: bool = False
@@ -89,6 +91,22 @@ def date_invariant_sha256(document: dict[str, Any]) -> str:
     return hashlib.sha256(
         json.dumps(snapshot, sort_keys=True, separators=(",", ":")).encode()
     ).hexdigest()
+
+
+def versioned_date_invariant_sha256(
+    document: JsonValue, *, version: Literal["stable-images-v2"] | None
+) -> str:
+    return date_invariant_sha256(_date_document_payload(document, version=version))
+
+
+def _date_document_payload(
+    document: JsonValue, *, version: Literal["stable-images-v2"] | None
+) -> dict[str, JsonValue]:
+    payload = stable_native_payload(document) if version == "stable-images-v2" else document
+    if not isinstance(payload, dict):
+        msg = "A date invariant requires a document object"
+        raise TypeError(msg)
+    return payload
 
 
 def plan_copy_dates(
@@ -266,6 +284,31 @@ def verified_date_projection(
     ):
         raise InPlaceNeedsReviewError
     return projected
+
+
+def plan_stable_copy_dates(
+    document: JsonValue, *, operation_id: uuid.UUID
+) -> NativeDateCheckpoint | None:
+    checkpoint = plan_copy_dates(
+        _date_document_payload(document, version="stable-images-v2"), operation_id=operation_id
+    )
+    if checkpoint is None:
+        return None
+    return checkpoint.model_copy(update={"invariant_version": "stable-images-v2"})
+
+
+def verified_versioned_date_projection(
+    document: JsonValue, checkpoint: NativeDateCheckpoint
+) -> dict[str, JsonValue]:
+    return verified_date_projection(
+        _date_document_payload(document, version=checkpoint.invariant_version), checkpoint
+    )
+
+
+def verify_versioned_dates_unchanged(document: JsonValue, checkpoint: NativeDateCheckpoint) -> None:
+    verify_dates_unchanged(
+        _date_document_payload(document, version=checkpoint.invariant_version), checkpoint
+    )
 
 
 def _restore_indices(value: dict[str, Any] | list[Any], shifts: list[tuple[int, int, int]]) -> None:
