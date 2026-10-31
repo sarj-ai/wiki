@@ -927,7 +927,7 @@ class _Gateway(DocumentGateway):
         operation_id: uuid.UUID,
         required_revision_id: DocsRevisionId,
         prefer_document_title: bool = False,
-    ) -> None:
+    ) -> TabNamingCheckpoint | None:
         return None
 
     def __init__(

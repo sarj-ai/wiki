@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
-from typing import Any, Literal
+from typing import TYPE_CHECKING, Any, Literal
 
 from pydantic import JsonValue
 
@@ -11,6 +11,10 @@ from app.document_transform.naming import supported_tab_icon
 from app.document_transform.native_payload import stable_native_payload
 from app.document_transform.tab_names import NativeTabProperties
 from app.identifiers import DocsTabId
+
+
+if TYPE_CHECKING:
+    from app.document_transform.schemas import TabNamingCheckpoint
 
 
 _MAX_TAB_DEPTH = 2
@@ -106,3 +110,19 @@ def versioned_tab_naming_invariant_sha256(
         msg = "A tab naming invariant requires a document object"
         raise TypeError(msg)
     return tab_naming_invariant_sha256(payload, marker_name)
+
+
+def tab_naming_preimage_unchanged(document: JsonValue, checkpoint: TabNamingCheckpoint) -> bool:
+    if not isinstance(document, dict):
+        return False
+    try:
+        return (
+            document.get("revisionId") == checkpoint.revision_id
+            and native_tab_properties(document) == checkpoint.plan.original_tabs
+            and versioned_tab_naming_invariant_sha256(
+                document, version=checkpoint.invariant_version
+            )
+            == checkpoint.invariant_sha256
+        )
+    except UnsupportedTabMetadataError, AttributeError, KeyError, TypeError, ValueError:
+        return False

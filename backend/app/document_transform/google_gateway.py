@@ -63,6 +63,7 @@ from app.document_transform.errors import (
     SourceChangedError,
     SourceTooLargeError,
     UnsupportedSourceError,
+    UnsupportedTabMetadataError,
 )
 from app.document_transform.gateway import (
     DocumentGateway,
@@ -154,6 +155,7 @@ from app.document_transform.schemas import (
 from app.document_transform.source_access import native_source_access
 from app.document_transform.tab_metadata import (
     native_tab_properties,
+    tab_naming_preimage_unchanged,
     versioned_tab_naming_invariant_sha256,
 )
 from app.document_transform.tab_names import plan_tab_names
@@ -692,12 +694,8 @@ class GoogleDocumentGateway(DocumentGateway):
             native_tab_properties(document)
         ):
             native_safety_error("tab_naming_pre", "preimage")
-        result = await self.apply_in_place_stage(
-            document_id=document_id,
-            required_revision_id=checkpoint.revision_id,
-            marker_name=checkpoint.marker_name,
-            marker_range=checkpoint.marker_range,
-            requests=[dict(rename.request()) for rename in checkpoint.plan.renames],
+        result = await self._apply_optional_tab_names(
+            document_id=document_id, checkpoint=checkpoint
         )
         if versioned_tab_naming_invariant_sha256(
             result.document,
@@ -708,6 +706,25 @@ class GoogleDocumentGateway(DocumentGateway):
         ):
             native_safety_error("tab_naming_post", "preimage")
         return result.revision_id
+
+    async def _apply_optional_tab_names(
+        self, *, document_id: FileId, checkpoint: TabNamingCheckpoint
+    ) -> InPlaceStageResult:
+        try:
+            return await self.apply_in_place_stage(
+                document_id=document_id,
+                required_revision_id=checkpoint.revision_id,
+                marker_name=checkpoint.marker_name,
+                marker_range=checkpoint.marker_range,
+                requests=[dict(rename.request()) for rename in checkpoint.plan.renames],
+            )
+        except DocumentGatewayError as error:
+            if error.http_status != HTTPStatus.BAD_REQUEST:
+                raise
+            observed = await asyncio.to_thread(self._get_document_sync, document_id)
+            if not tab_naming_preimage_unchanged(observed, checkpoint):
+                raise
+            raise UnsupportedTabMetadataError from error
 
     @override
     async def apply_in_place_stage(
