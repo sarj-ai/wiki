@@ -164,7 +164,7 @@ def test_full_qualification_has_no_advisory_steps_or_repeated_registry_scan() ->
     commands = wiki.checks(wiki.Check.ALL)
 
     assert all(not command.allow_failure for command in commands)
-    assert wiki.REPOSITORY_STANDARDS_VERSION == "6.14.0"
+    assert wiki.REPOSITORY_STANDARDS_VERSION == "6.14.1"
     distribution = f"repo-standards=={wiki.REPOSITORY_STANDARDS_VERSION}"
     assert sum(distribution in command.arguments for command in commands) == 1
     assert any("--verify-python-baseline" in command.arguments for command in commands)

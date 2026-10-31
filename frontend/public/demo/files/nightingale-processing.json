@@ -1,0 +1,87 @@
+{
+  "title": "Nightingale demo: what actually ran",
+  "authoring": {
+    "contributing_agents": 5,
+    "article_words": 2464,
+    "real_photographs": 3,
+    "source_references": 18,
+    "manufactured_after_text": false
+  },
+  "docs": {
+    "scope": "Actual Wiki native Google Docs Unslop task",
+    "task_reference": "b0e75f80-ac8e-42a1-9ad6-5ba078522557",
+    "mode": "unslop",
+    "pipeline_version": "document-transform-v3",
+    "source_preview": "https://docs.google.com/document/d/1xZIf87OCVJz85nFBn9J5CwAEZJhWeta7WPBVvTbcamo/preview",
+    "result_preview": "https://docs.google.com/document/d/11ZKT_SKqzN17KzjRQ_iyoqgM6HjYEdFvokNOQFpExlk/preview",
+    "text_edits": 0,
+    "llm_invoked": false,
+    "unsupported_rich_text_blocks": 33,
+    "coverage_note": "Unsupported rich-text blocks were preserved without processing; this is not a claim that every paragraph was transformed.",
+    "needs_review": false,
+    "validation": {
+      "source_unchanged": true,
+      "protected_content_preserved": true,
+      "structure_preserved": true,
+      "unsafe_patch_count": 0
+    }
+  },
+  "slides": {
+    "scope": "Actual Wiki native Google Slides Unslop task, following native conversion of the authored PowerPoint",
+    "task_reference": "f4707503-fc1c-45b0-8a03-faddfe6edea3",
+    "mode": "unslop",
+    "pipeline_version": "presentation-transform-v1",
+    "source_preview": "https://docs.google.com/presentation/d/10TEg5hEKaWjeJl8SZ-sFLXGTm68680pld9pj1_JfLGo/preview",
+    "result_preview": "https://docs.google.com/presentation/d/1x6GBd68-hHWiv9VNVM5wGlBJ3fYZbqcLp9TOb1_ETro/preview",
+    "text_edits": 0,
+    "llm_invoked": false,
+    "unsupported_text_targets": 15,
+    "needs_review": true,
+    "coverage_note": "15 unsupported rich-text targets were preserved without processing. The server still marks the result as requiring review.",
+    "validation": {
+      "source_unchanged": true,
+      "protected_content_preserved": true,
+      "structure_preserved": true,
+      "unsafe_patch_count": 0
+    }
+  },
+  "spreadsheets": {
+    "scope": "Separate source-bound shared Unslop engine passes, not a Wiki spreadsheet endpoint or UI feature",
+    "wiki_spreadsheet_handler_exists": false,
+    "narrative_cells_checked": [
+      "'Field notes'!A4",
+      "'Field notes'!A6",
+      "'Field notes'!A8",
+      "'Field notes'!A10",
+      "'Field notes'!A12",
+      "'Field notes'!A14"
+    ],
+    "text_edits": 0,
+    "llm_invoked": false,
+    "source_preview": "https://docs.google.com/spreadsheets/d/1ALMVW5gpAJxeQqJJbbW92odtuS-kLtupD3eMXLO-U38/preview",
+    "result_preview": "https://docs.google.com/spreadsheets/d/11ICUt02qmX-j0Qja2RY_ctzvN2NdIkY_M2uIIVBWNxg/preview",
+    "preserved": {
+      "tabs": 7,
+      "formulas": 18,
+      "numeric_input_cells": 134,
+      "published_song_measurements": 19,
+      "charts": 2,
+      "photographs": 1
+    },
+    "coverage_note": "Only six authored prose cells were eligible; labels, data, formulas, sources and chart structures were excluded. The checked copy retains the original source's label-spacing imperfections."
+  },
+  "powerpoint_source_attempt": {
+    "status": "failed",
+    "task_reference": "987e8f06-3b85-4361-b196-0f91c34ce457",
+    "reason": "The source PowerPoint contains a native chart data workbook under ppt/embeddings/, which the current package guard does not support.",
+    "failure_preserved": true,
+    "successful_followup": "Google's native Slides conversion, then the actual Slides Unslop task above, followed by a real PowerPoint export."
+  },
+  "html_companion": {
+    "scope": "HTML rendering of the actual Docs result, not another Unslop run",
+    "photographs": 1,
+    "html_sha256": "20338d2c6ef5bd124cc7a9f0633d1f2e67ed540eb102f3740b3f9625a6dc4c7e",
+    "preview_transport": "Checksum-verified JSON envelope; the HTML file remains available in Drive."
+  },
+  "read_only": "Demo previews use public read-only provider views. No document processing or private Wiki API calls run when visiting the demo."
+}

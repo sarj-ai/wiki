@@ -1,4 +1,4 @@
-# Managed by code-standards; regenerate with `code-standards show ci --output .github/workflows/standards.yml`.
+# Wiki-owned integration: Backend owns Python types; Frontend owns ESLint.
 name: Standards
 
 on:
@@ -48,7 +48,7 @@ jobs:
       - name: Install the pinned native tool bootstrap
         env:
           UV_PYTHON_DOWNLOADS_JSON_URL: https://raw.githubusercontent.com/astral-sh/uv/4ecd0eff2a81e3ffdcd7cfee10d08936e4747c17/crates/uv-python-managed/download-metadata.json
-        run: uv run --no-config --no-project --python 3.15.0 --with code-standards==8.147.0 python -m sarj_standards.libs.adoption.native_bootstrap
+        run: uv run --no-config --no-project --python 3.15.0 --with code-standards==8.165.8 python -m sarj_standards.libs.adoption.native_bootstrap
       - name: Install and attest applicable native tools
         run: uvx --no-config --isolated --python 3.14 --from sarj-standards-bootstrap code-standards setup --tools-only
       - name: Bootstrap analysis inputs
@@ -71,4 +71,7 @@ jobs:
             github.event.before == '0000000000000000000000000000000000000000') &&
             (github.event.pull_request.base.sha || github.event.merge_group.base_sha ||
             github.event.before) || '' }}
-        run: uvx --no-config --isolated --python 3.14 --from sarj-standards-bootstrap code-standards check --trust-repository-code --format github
+        # Required Backend CI owns the complete Python type check with its 4 GB heap.
+        # Required Frontend CI owns the complete ESLint gate.
+        # Full scope also avoids React Doctor's fractional baseline timeout.
+        run: uvx --no-config --isolated --python 3.14 --from sarj-standards-bootstrap code-standards check --trust-repository-code --skip-python-type-check --skip-eslint --format github .

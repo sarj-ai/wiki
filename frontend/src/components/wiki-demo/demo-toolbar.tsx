@@ -15,9 +15,17 @@ import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { renderMimeIcon } from "@/lib/file-icons";
 
-import { demoAssetUrl, type DemoFile, demoFileFor, demoHref } from "./demo-data";
+import {
+  DEMO_WORKSPACE_NAME,
+  demoAssetUrl,
+  demoComparisonFor,
+  type DemoFile,
+  demoHref,
+} from "./demo-data";
+import { demoDownloadUrl } from "./demo-file-urls";
 
 export function DemoToolbar({ file, onReload }: { file: DemoFile; onReload: () => void }) {
+  const downloadUrl = demoDownloadUrl(file);
   const [copyStatus, setCopyStatus] = useState<"copied" | "failed" | "idle">("idle");
   useEffect(() => {
     if (copyStatus === "idle") return;
@@ -38,13 +46,13 @@ export function DemoToolbar({ file, onReload }: { file: DemoFile; onReload: () =
         <nav
           aria-label="Breadcrumb"
           className="flex min-w-0 flex-1 items-center gap-2 overflow-hidden text-sm"
-          title={`Northstar / ${file.name}`}
+          title={`${DEMO_WORKSPACE_NAME} / ${file.name}`}
         >
           <span aria-hidden className="shrink-0">
             {renderMimeIcon(file.mimeType, "size-4")}
           </span>
           <span className="text-muted-foreground hidden @min-[40rem]/toolbar:inline">
-            Northstar
+            {DEMO_WORKSPACE_NAME}
           </span>
           <ChevronRight
             aria-hidden
@@ -74,16 +82,21 @@ export function DemoToolbar({ file, onReload }: { file: DemoFile; onReload: () =
             <Copy aria-hidden className="size-3.5" />
           )}
         </Button>
-        <Button asChild size="sm" variant="outline">
-          <a
-            aria-label={`Download ${file.name}`}
-            download={file.downloadFilename}
-            href={demoAssetUrl(file.downloadFilename)}
-          >
-            <Download aria-hidden className="size-3.5" />
-            <span className="hidden @min-[30rem]/toolbar:inline">Download</span>
-          </a>
-        </Button>
+        {downloadUrl === null ? null : (
+          <Button asChild size="sm" variant="outline">
+            <a
+              aria-label={`Download ${file.name}`}
+              download={file.downloadFilename}
+              href={downloadUrl}
+              referrerPolicy="no-referrer"
+              rel="noopener noreferrer"
+              target={file.downloadUrl === undefined ? undefined : "_blank"}
+            >
+              <Download aria-hidden className="size-3.5" />
+              <span className="hidden @min-[30rem]/toolbar:inline">Download</span>
+            </a>
+          </Button>
+        )}
         {file.viewUrl ? (
           <Button asChild size="sm" variant="outline">
             <a
@@ -116,44 +129,63 @@ export function DemoToolbar({ file, onReload }: { file: DemoFile; onReload: () =
 }
 
 export function DemoFileContext({ file }: { file: DemoFile }) {
-  const formattingExample = file.folder === "documents";
+  const comparison = demoComparisonFor(file);
+  const comparisonExample = comparison.length > 0;
   return (
     <div className="bg-background flex shrink-0 flex-wrap items-center justify-between gap-2 border-b px-3 py-2.5 sm:px-5">
       <div className="min-w-0 flex-1">
         <p className="flex items-center gap-1.5 text-xs font-medium">
-          {formattingExample ? (
+          {comparisonExample ? (
             <Sparkles aria-hidden className="text-primary size-3.5" />
           ) : (
             <span aria-hidden>{renderMimeIcon(file.mimeType, "size-3.5")}</span>
           )}
-          {formattingExample ? "Formatting example" : file.format}
+          {comparisonExample ? "Document comparison" : file.format}
         </p>
-        <p className="text-muted-foreground mt-0.5 text-xs">
-          {formattingExample ? "Same brief. Clear headings, lists, and tables." : file.description}
-        </p>
+        <p className="text-muted-foreground mt-0.5 text-xs">{file.description}</p>
+        {file.processingDisclosure ? (
+          <p
+            className={
+              file.processingNeedsReview
+                ? "text-foreground mt-1 text-xs font-medium"
+                : "text-muted-foreground mt-1 text-xs"
+            }
+            role={file.processingNeedsReview ? "status" : undefined}
+          >
+            {file.processingNeedsReview ? "Review required. " : null}
+            {file.processingDisclosure}
+          </p>
+        ) : null}
+        {file.processingRecordFilename ? (
+          <a
+            className="text-muted-foreground mt-1 inline-block text-xs underline underline-offset-2"
+            href={demoAssetUrl(file.processingRecordFilename)}
+            rel="noopener noreferrer"
+            target="_blank"
+          >
+            Processing record
+          </a>
+        ) : null}
       </div>
-      {formattingExample ? (
+      {comparisonExample ? (
         <div
-          aria-label="Compare document formatting"
+          aria-label="Compare document versions"
           className="bg-muted flex shrink-0 items-center rounded-md border p-0.5"
           role="group"
         >
-          {[
-            { id: "launch-brief-messy", label: "Before" },
-            { id: "launch-brief-clean", label: "After" },
-          ].map((variant) => (
+          {comparison.map((variant) => (
             <Button
               asChild
-              key={variant.id}
+              key={variant.file.id}
               size="sm"
-              variant={file.id === variant.id ? "outline" : "ghost"}
+              variant={file.id === variant.file.id ? "outline" : "ghost"}
             >
               <Link
-                aria-current={file.id === variant.id ? "page" : undefined}
-                href={demoHref(demoFileFor(variant.id))}
+                aria-current={file.id === variant.file.id ? "page" : undefined}
+                href={demoHref(variant.file)}
                 prefetch={false}
               >
-                {file.id === variant.id && variant.id === "launch-brief-clean" ? (
+                {file.id === variant.file.id && variant.label === "After" ? (
                   <Check aria-hidden className="size-3" />
                 ) : null}
                 {variant.label}

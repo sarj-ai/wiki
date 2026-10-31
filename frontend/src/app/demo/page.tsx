@@ -4,9 +4,9 @@ import { Suspense } from "react";
 import { DemoWorkspace } from "@/components/wiki-demo/demo-workspace";
 import { DocumentLoading } from "@/components/wiki-document/document-loading";
 
-const DEMO_TITLE = "Try Wiki · Public demo";
+const DEMO_TITLE = "Nightingale · Wiki public demo";
 const DEMO_DESCRIPTION =
-  "Explore a read-only Wiki workspace with real document, presentation, spreadsheet, and HTML samples. Compare a messy draft with its cleanly formatted version. No sign-in required.";
+  "Read the nightingale article, compare recorded processing results, and explore native Google Docs, Sheets, Slides and Office downloads in a read-only Wiki workspace.";
 
 export const metadata: Metadata = {
   alternates: { canonical: "https://wiki.sarj.ai/demo" },

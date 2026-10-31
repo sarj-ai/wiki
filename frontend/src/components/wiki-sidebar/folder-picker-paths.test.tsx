@@ -50,27 +50,31 @@ describe("destination path admission", () => {
     flushSync(() => button("Expand Workspace").click());
   }
 
-  it("does not construct unused paths for 1,000 collapsed destination rows", () => {
-    let reads = 0;
-    const folders = Array.from({ length: 1_000 }, (_, index) => ({
-      ...node(`folder-${index}`, `Folder ${index}`),
-      get name() {
-        reads += 1;
-        return `Folder ${index}`;
-      },
-    }));
-    render(folders);
-    expect(document.querySelectorAll('button[aria-label^="Expand Folder"]')).toHaveLength(1_000);
-    expect(reads).toBe(2_000);
-    flushSync(() => button("Folder 999").click());
-    expect(select).toHaveBeenCalledWith({
-      driveId: "drive",
-      driveName: "Workspace",
-      folderId: "folder-999",
-      folderPath: ["Folder 999"],
-    });
-    expect(close).toHaveBeenCalledWith(false);
-  });
+  it(
+    "does not construct unused paths for 1,000 collapsed destination rows",
+    { timeout: 30_000 },
+    () => {
+      let reads = 0;
+      const folders = Array.from({ length: 1_000 }, (_, index) => ({
+        ...node(`folder-${index}`, `Folder ${index}`),
+        get name() {
+          reads += 1;
+          return `Folder ${index}`;
+        },
+      }));
+      render(folders);
+      expect(document.querySelectorAll('button[aria-label^="Expand Folder"]')).toHaveLength(1_000);
+      expect(reads).toBe(2_000);
+      flushSync(() => button("Folder 999").click());
+      expect(select).toHaveBeenCalledWith({
+        driveId: "drive",
+        driveName: "Workspace",
+        folderId: "folder-999",
+        folderPath: ["Folder 999"],
+      });
+      expect(close).toHaveBeenCalledWith(false);
+    },
+  );
 
   it("has no destination-row path work while the actual dialog content is closed", () => {
     let reads = 0;

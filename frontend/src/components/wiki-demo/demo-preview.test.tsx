@@ -1,8 +1,38 @@
 import { fireEvent, render, type RenderResult, screen } from "@testing-library/react";
 import { act } from "react";
 
-import { demoFileFor } from "./demo-data";
+import type * as DemoDataModule from "./demo-data";
 import { DemoPreview } from "./demo-preview";
+
+const LOCAL_FILES = vi.hoisted(() => [
+  {
+    description: "Local public document",
+    downloadFilename: "public-document.docx",
+    folder: "documents" as const,
+    format: "Word document",
+    id: "static-doc",
+    keywords: "document",
+    mimeType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    name: "Public document.docx",
+    previewFilename: "public-document.html",
+  },
+  {
+    description: "Local public workbook",
+    downloadFilename: "public-workbook.xlsx",
+    folder: "project" as const,
+    format: "Excel spreadsheet",
+    id: "static-sheet",
+    keywords: "workbook",
+    mimeType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    name: "Public workbook.xlsx",
+    previewFilename: "public-workbook.html",
+  },
+]);
+
+vi.mock("./demo-data", async () => {
+  const actual = await vi.importActual<typeof DemoDataModule>("./demo-data");
+  return { ...actual, DEMO_FILES: LOCAL_FILES };
+});
 
 const HTTP = vi.fn<typeof fetch>();
 const RELOAD = vi.fn();
@@ -33,10 +63,10 @@ describe("owned public preview lifecycle", () => {
     vi.useRealTimers();
   });
 
-  async function showPreview(id = "launch-brief-clean", attempt = 0) {
-    const preview = (
-      <DemoPreview file={demoFileFor(id)} key={`${id}:${attempt}`} onReload={RELOAD} />
-    );
+  async function showPreview(id = "static-doc", attempt = 0) {
+    const file = LOCAL_FILES.find((candidate) => candidate.id === id);
+    if (!file) throw new Error("Unknown local test fixture");
+    const preview = <DemoPreview file={file} key={`${id}:${attempt}`} onReload={RELOAD} />;
     if (view) view.rerender(preview);
     else view = render(preview);
     await act(async () => {
@@ -55,7 +85,25 @@ describe("owned public preview lifecycle", () => {
       await vi.advanceTimersByTimeAsync(0);
     });
     expect(screen.getByTitle(/read-only preview/)).toHaveAttribute("srcdoc", HTML);
-    expect(screen.getByTitle(/read-only preview/)).toHaveAttribute("sandbox", "");
+    expect(screen.getByTitle(/read-only preview/)).toHaveAttribute(
+      "sandbox",
+      "allow-popups allow-popups-to-escape-sandbox",
+    );
+  });
+
+  it("allows citation popups while blocking privileged HTML preview capabilities", async () => {
+    await showPreview();
+    const permissions = screen
+      .getByTitle(/read-only preview/)
+      .getAttribute("sandbox")
+      ?.split(" ");
+    expect(permissions).toEqual(["allow-popups", "allow-popups-to-escape-sandbox"]);
+    expect(permissions).not.toContain("allow-scripts");
+    expect(permissions).not.toContain("allow-same-origin");
+    expect(permissions).not.toContain("allow-forms");
+    expect(permissions).not.toContain("allow-top-navigation");
+    expect(permissions).not.toContain("allow-top-navigation-by-user-activation");
+    expect(permissions).not.toContain("allow-top-navigation-to-custom-protocols");
   });
 
   it("shows a real missing-file fallback with a download and a working retry", async () => {
@@ -65,14 +113,14 @@ describe("owned public preview lifecycle", () => {
     expect(screen.getByRole("heading", { name: "The preview couldn’t load" })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Download sample" })).toHaveAttribute(
       "href",
-      "/demo/files/northstar-launch-formatted.docx",
+      "/demo/files/public-document.docx",
     );
     fireEvent.click(screen.getByRole("button", { name: "Try again" }));
     await act(async () => {
       await vi.advanceTimersByTimeAsync(0);
     });
     expect(RELOAD).toHaveBeenCalledOnce();
-    await showPreview("launch-brief-clean", 1);
+    await showPreview("static-doc", 1);
     expect(screen.getByTitle(/read-only preview/)).toHaveAttribute("srcdoc", HTML);
     expect(HTTP).toHaveBeenCalledTimes(2);
   });
@@ -108,7 +156,7 @@ describe("owned public preview lifecycle", () => {
     HTTP.mockReturnValueOnce(pending.promise);
     await showPreview();
     const retired = HTTP.mock.calls[0]?.[1]?.signal;
-    await showPreview("budget");
+    await showPreview("static-sheet");
     expect(retired?.aborted).toBe(true);
     pending.resolve(
       new Response("<html>Retired content</html>", { headers: { "content-type": "text/html" } }),
@@ -119,7 +167,7 @@ describe("owned public preview lifecycle", () => {
     expect(screen.getByTitle(/read-only preview/)).toHaveAttribute("srcdoc", HTML);
     expect(screen.getByTitle(/read-only preview/)).toHaveAttribute(
       "title",
-      "Launch budget.xlsx — read-only preview",
+      "Public workbook.xlsx — read-only preview",
     );
     expect(HTTP).toHaveBeenCalledTimes(2);
   });
