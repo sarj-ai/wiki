@@ -266,9 +266,7 @@ class PresentationTransformExecutor(DocumentTransformRunner):
             findings=result_findings,
             validation=ValidationSummary(
                 source_unchanged=True,
-                protected_content_preserved=(
-                    not planned.findings and verification.content_preserved
-                ),
+                protected_content_preserved=verification.content_preserved,
                 structure_preserved=verification.structure_preserved,
                 unsafe_patch_count=len(planned.findings),
             ),

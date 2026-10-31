@@ -34,6 +34,13 @@ _FORCE_WORD = re.compile(
     re.IGNORECASE,
 )
 _QUOTED_SPAN = re.compile(rf'"[^"\n]+"|“[^”\n]+”|{SINGLE_QUOTED_SPAN_PATTERN}')
+_SCOPE_QUALIFIER = re.compile(
+    r"\b(?:generally|usual|usually|typically|often|sometimes|rarely|mostly|mainly|rounded|"
+    r"at least|at most|no more than|up to|same|helps?|appears?|suggests?|interpreted|evidence|"
+    r"national|confidence intervals?|as (?:clearly|often|likely|many|much) as)\b|"
+    r"\b(?:about|around|roughly|approximately|nearly)\b(?=\s+\d)",
+    re.IGNORECASE,
+)
 _PROPER_NOUN = re.compile(r"\b(?:[A-Z][a-z]+|[A-Z]{2,}|[A-Z][A-Za-z0-9]*[A-Z][A-Za-z0-9]*)\b")
 _SENTENCE = re.compile(r".*?(?:[.!?]+(?=\s+|$)|$)", re.DOTALL)
 _MAX_CHANGE_RATIO = MappingProxyType({TransformPhase.UNSLOP: 0.35, TransformPhase.FORMAT: 0.70})
@@ -50,6 +57,7 @@ REPAIRABLE_REWRITE_CODES = frozenset(
         "concision_expanded",
         "empty_replacement",
         "semantic_review_rejected",
+        "scope_qualifier_changed",
     }
 )
 
@@ -66,6 +74,7 @@ class RewriteConstraints:
     force_language: tuple[str, ...]
     quotations: tuple[str, ...]
     protected_names: tuple[str, ...]
+    scope_qualifiers: tuple[str, ...] = ()
 
 
 def rewrite_constraints(text: str) -> RewriteConstraints:
@@ -74,6 +83,7 @@ def rewrite_constraints(text: str) -> RewriteConstraints:
         force_language=tuple(_force_words(text)),
         quotations=_quoted_spans(text),
         protected_names=_protected_rewrite_names(text),
+        scope_qualifiers=tuple(_scope_qualifiers(text)),
     )
 
 
@@ -183,6 +193,8 @@ def _same_retained_values(before: list[str], after: list[str], *, allow_reorderi
 
 
 def _aggressive_unslop_code(block: TextBlock, replacement: str) -> str | None:
+    if Counter(_scope_qualifiers(block.text)) != Counter(_scope_qualifiers(replacement)):
+        return "scope_qualifier_changed"
     if _quoted_spans(block.text) != _quoted_spans(replacement):
         return "quoted_content_changed"
     if re.findall(r"[\r\n\v\f\u2028\u2029]", block.text) != re.findall(
@@ -195,6 +207,10 @@ def _aggressive_unslop_code(block: TextBlock, replacement: str) -> str | None:
     if any(name.casefold() not in words for name in _protected_rewrite_names(block.text)):
         return "proper_noun_changed"
     return None
+
+
+def _scope_qualifiers(text: str) -> list[str]:
+    return [match.group(0).casefold() for match in _SCOPE_QUALIFIER.finditer(text)]
 
 
 def _protected_rewrite_names(text: str) -> tuple[str, ...]:
