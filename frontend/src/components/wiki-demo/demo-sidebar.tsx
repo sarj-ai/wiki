@@ -40,7 +40,14 @@ import { useIsClient } from "@/hooks/use-is-client";
 import { renderMimeIcon } from "@/lib/file-icons";
 import { cn } from "@/lib/utils";
 
-import { DEMO_FILES, type DemoFile, demoHref } from "./demo-data";
+import {
+  DEMO_FILES,
+  DEMO_FOLDERS,
+  DEMO_SAMPLE_DESCRIPTION,
+  DEMO_WORKSPACE_NAME,
+  type DemoFile,
+  demoHref,
+} from "./demo-data";
 
 interface DemoRowStyle extends CSSProperties {
   readonly "--demo-row-indent": string;
@@ -49,11 +56,6 @@ interface DemoRowStyle extends CSSProperties {
 const DEMO_ROW_STYLE: Readonly<DemoRowStyle> = {
   "--demo-row-indent": `${rowIndent(1) - rowIndent(0)}px`,
 };
-
-const FOLDERS = [
-  { id: "documents", label: "Formatting example" },
-  { id: "project", label: "Project files" },
-] as const;
 
 export function DemoSidebar({
   file,
@@ -111,7 +113,7 @@ export function DemoSidebar({
           <SidebarGroup>
             <div className="text-muted-foreground flex h-9 items-center gap-2 px-2 text-xs font-medium">
               <HardDrive aria-hidden className="size-3.5" />
-              <span className="flex-1">Northstar</span>
+              <span className="flex-1">{DEMO_WORKSPACE_NAME}</span>
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                   <Button
@@ -134,7 +136,7 @@ export function DemoSidebar({
             </div>
             <SidebarGroupContent>
               <SidebarMenu>
-                {FOLDERS.map((folder) => {
+                {DEMO_FOLDERS.map((folder) => {
                   const open = !closedFolders.includes(folder.id);
                   return (
                     <SidebarMenuItem key={folder.id}>
@@ -210,7 +212,7 @@ export function DemoSidebar({
               </div>
               <div className="min-w-0 flex-1">
                 <p className="text-xs font-medium">Read-only workspace</p>
-                <p className="text-muted-foreground text-xs">Fictional sample files</p>
+                <p className="text-muted-foreground text-xs">{DEMO_SAMPLE_DESCRIPTION}</p>
               </div>
               <Button
                 aria-label={dark ? "Switch to light theme" : "Switch to dark theme"}

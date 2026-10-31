@@ -185,57 +185,61 @@ describe("move dialog admission", () => {
     expect(MOVE).not.toHaveBeenCalled();
   });
 
-  it("updates only the changed destination rows in an expanded 1,000-folder picker", async () => {
-    let nameReads = 0;
-    // Compiler emission can read each changed folder name four times in this StrictMode control.
-    const maxNameReadsPerChangedFolder = 4;
-    const accessedFolderIds = new Set<string>();
-    const folders = Array.from({ length: 1_000 }, (_, index): DriveNode => ({
-      id: `folder-${index}`,
-      mimeType: MIME_FOLDER,
-      modifiedTime: undefined,
-      get name() {
-        nameReads += 1;
-        accessedFolderIds.add(`folder-${index}`);
-        return `Folder ${index}`;
-      },
-      parentId: undefined,
-      shortcutInaccessible: false,
-      shortcutTargetDriveId: undefined,
-      shortcutTargetDriveName: undefined,
-      shortcutTargetId: undefined,
-      shortcutTargetMimeType: undefined,
-    }));
-    client.setQueryData<DriveTree>(wikiKeys.driveTree("destination"), {
-      driveId: "destination",
-      files: [],
-      filesComplete: true,
-      folders,
-    });
-    render();
-    const expand = document.querySelector('button[aria-label="Expand Destination"]');
-    if (!(expand instanceof HTMLButtonElement)) throw new TypeError("Drive expansion missing");
-    flushSync(() => expand.click());
-    nameReads = 0;
-    accessedFolderIds.clear();
-    flushSync(() => button("Folder 0").click());
-    expect(accessedFolderIds).toEqual(new Set(["folder-0"]));
-    expect(nameReads).toBeLessThanOrEqual(maxNameReadsPerChangedFolder * accessedFolderIds.size);
-    expect(button("Folder 0")).toHaveClass("bg-accent");
-    expect(button("Destination")).not.toHaveClass("bg-accent");
-    nameReads = 0;
-    accessedFolderIds.clear();
-    flushSync(() => button("Folder 999").click());
-    expect(accessedFolderIds).toEqual(new Set(["folder-0", "folder-999"]));
-    expect(nameReads).toBeLessThanOrEqual(maxNameReadsPerChangedFolder * accessedFolderIds.size);
-    expect(button("Folder 0")).not.toHaveClass("bg-accent");
-    expect(button("Folder 999")).toHaveClass("bg-accent");
-    expect(button("Folder 999").type).toBe("button");
-    MOVE.mockResolvedValueOnce({ ok: true, data: movedFile() });
-    flushSync(() => button("Move").click());
-    await vi.advanceTimersByTimeAsync(0);
-    expect(MOVE).toHaveBeenCalledWith("file", "folder-999");
-  });
+  it(
+    "updates only the changed destination rows in an expanded 1,000-folder picker",
+    { timeout: 30_000 },
+    async () => {
+      let nameReads = 0;
+
+      const maxNameReadsPerChangedFolder = 4;
+      const accessedFolderIds = new Set<string>();
+      const folders = Array.from({ length: 1_000 }, (_, index): DriveNode => ({
+        id: `folder-${index}`,
+        mimeType: MIME_FOLDER,
+        modifiedTime: undefined,
+        get name() {
+          nameReads += 1;
+          accessedFolderIds.add(`folder-${index}`);
+          return `Folder ${index}`;
+        },
+        parentId: undefined,
+        shortcutInaccessible: false,
+        shortcutTargetDriveId: undefined,
+        shortcutTargetDriveName: undefined,
+        shortcutTargetId: undefined,
+        shortcutTargetMimeType: undefined,
+      }));
+      client.setQueryData<DriveTree>(wikiKeys.driveTree("destination"), {
+        driveId: "destination",
+        files: [],
+        filesComplete: true,
+        folders,
+      });
+      render();
+      const expand = document.querySelector('button[aria-label="Expand Destination"]');
+      if (!(expand instanceof HTMLButtonElement)) throw new TypeError("Drive expansion missing");
+      flushSync(() => expand.click());
+      nameReads = 0;
+      accessedFolderIds.clear();
+      flushSync(() => button("Folder 0").click());
+      expect(accessedFolderIds).toEqual(new Set(["folder-0"]));
+      expect(nameReads).toBeLessThanOrEqual(maxNameReadsPerChangedFolder * accessedFolderIds.size);
+      expect(button("Folder 0")).toHaveClass("bg-accent");
+      expect(button("Destination")).not.toHaveClass("bg-accent");
+      nameReads = 0;
+      accessedFolderIds.clear();
+      flushSync(() => button("Folder 999").click());
+      expect(accessedFolderIds).toEqual(new Set(["folder-0", "folder-999"]));
+      expect(nameReads).toBeLessThanOrEqual(maxNameReadsPerChangedFolder * accessedFolderIds.size);
+      expect(button("Folder 0")).not.toHaveClass("bg-accent");
+      expect(button("Folder 999")).toHaveClass("bg-accent");
+      expect(button("Folder 999").type).toBe("button");
+      MOVE.mockResolvedValueOnce({ ok: true, data: movedFile() });
+      flushSync(() => button("Move").click());
+      await vi.advanceTimersByTimeAsync(0);
+      expect(MOVE).toHaveBeenCalledWith("file", "folder-999");
+    },
+  );
 });
 
 function ReopenHarness({

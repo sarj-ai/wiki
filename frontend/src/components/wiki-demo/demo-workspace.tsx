@@ -7,7 +7,7 @@ import { useEffect, useState } from "react";
 import { SidebarProvider, useSidebar } from "@/components/ui/sidebar";
 import { WorkspaceFrame } from "@/components/workspace-frame";
 
-import { type DemoFile, demoFileFor, demoHref } from "./demo-data";
+import { DEMO_SAMPLE_DESCRIPTION, type DemoFile, demoFileFor, demoHref } from "./demo-data";
 import { DemoPreview } from "./demo-preview";
 import { DemoSearch } from "./demo-search";
 import { DemoSidebar } from "./demo-sidebar";
@@ -69,7 +69,7 @@ function DemoWorkspaceContent() {
           <div className="bg-background text-muted-foreground flex h-7 shrink-0 items-center gap-1.5 border-t px-3 text-xs">
             <LockKeyhole aria-hidden className="size-3" />
             <span>Public demo · Read only</span>
-            <span className="ml-auto hidden sm:inline">Fictional sample files</span>
+            <span className="ml-auto hidden sm:inline">{DEMO_SAMPLE_DESCRIPTION}</span>
           </div>
         </div>
       </WorkspaceFrame>
