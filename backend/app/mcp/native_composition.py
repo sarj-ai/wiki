@@ -95,8 +95,8 @@ async def native_composition(
             queue=_required(app_settings.CLOUD_TASKS_QUEUE),
             target_url=_required(app_settings.CLOUD_TASKS_TARGET_URL),
             invoker_service_account=_required(app_settings.CLOUD_TASKS_INVOKER_SERVICE_ACCOUNT),
-            document_transform_queue=app_settings.DOCUMENT_TRANSFORM_QUEUE,
-            document_transform_target_url=app_settings.DOCUMENT_TRANSFORM_TARGET_URL,
+            document_transform_queue=app_settings.DOCUMENT.TRANSFORM_QUEUE,
+            document_transform_target_url=app_settings.DOCUMENT.TRANSFORM_TARGET_URL,
             client=client,
         )
         yield NativeComposition(

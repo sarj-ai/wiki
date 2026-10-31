@@ -6,7 +6,6 @@ from typing import Protocol
 
 from fastapi import HTTPException, status
 
-from app.config import settings
 from app.document_transform.docx_renderer import validate_markdown_import
 from app.document_transform.errors import (
     DocumentGatewayError,
@@ -98,11 +97,9 @@ async def submit_document_transform(
     tasks: TaskService,
     enqueuer: TaskEnqueuer,
     files: DestinationFileReader,
+    in_place_enabled: bool,
 ) -> TransformSubmission:
-    if (
-        payload.output_strategy is OutputStrategy.IN_PLACE
-        and not settings.DOCUMENT_TRANSFORM_IN_PLACE_ENABLED
-    ):
+    if payload.output_strategy is OutputStrategy.IN_PLACE and not in_place_enabled:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="In-place document transformation is disabled",

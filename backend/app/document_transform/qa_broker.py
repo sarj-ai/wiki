@@ -17,6 +17,7 @@ from app.auth.google_tokens import (
     GoogleTokenUnavailableError,
 )
 from app.cache.service import CacheService
+from app.config import document_transform_in_place_enabled
 from app.document_transform.application import TransformSubmission, submit_document_transform
 from app.document_transform.qa_contract import (
     QA_MAX_FOLDER_LIST_PAGES,
@@ -423,6 +424,7 @@ async def _submit_qa_canary_plan(
         tasks=tasks,
         enqueuer=enqueuer,
         files=files,
+        in_place_enabled=document_transform_in_place_enabled(),
     )
 
 

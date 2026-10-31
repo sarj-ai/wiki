@@ -97,9 +97,9 @@ async def _run(arguments: _Arguments) -> dict[str, object]:
             policy=GeminiModelPolicy(
                 project=project,
                 location="global",
-                unslop_model=settings.DOCUMENT_TRANSFORM_UNSLOP_MODEL,
-                fallback_model=settings.DOCUMENT_TRANSFORM_FALLBACK_MODEL,
-                restyle_model=settings.DOCUMENT_TRANSFORM_RESTYLE_MODEL,
+                unslop_model=settings.DOCUMENT.TRANSFORM_UNSLOP_MODEL,
+                fallback_model=settings.DOCUMENT.TRANSFORM_FALLBACK_MODEL,
+                restyle_model=settings.DOCUMENT.TRANSFORM_RESTYLE_MODEL,
             )
         )
         logo_path = Path(__file__).parents[2] / "frontend/public/brand/sarj-logo-light.png"

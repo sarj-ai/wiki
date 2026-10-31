@@ -1,5 +1,5 @@
 from collections.abc import Awaitable, Callable
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime
 from typing import override
 import uuid
 
@@ -38,14 +38,12 @@ from app.tasks.queue import TaskEnqueuer
 from app.tasks.schemas import (
     DocumentTransformAdmission,
     PendingTaskRead,
-    SmartCreateTaskRecord,
-    TaskClaim,
     TaskKind,
     TaskRead,
     TaskReservation,
     TaskStatus,
 )
-from app.tasks.service import TaskService
+from tests.task_support import StrictTaskService
 
 
 _SOURCE = FileId("source-folder")
@@ -186,7 +184,7 @@ def _permission_snapshot(
     )
 
 
-class _Tasks(TaskService):
+class _Tasks(StrictTaskService):
     def __init__(self) -> None:
         self.payloads: list[QaDocumentTransformRequest] = []
         self.task_id = TaskId(uuid.UUID("33333333-3333-4333-8333-333333333333"))
@@ -230,42 +228,7 @@ class _Tasks(TaskService):
         )
 
     @override
-    async def claim(self, task_id: TaskId, *, lease_duration: timedelta) -> TaskClaim:
-        raise NotImplementedError
-
-    @override
-    async def defer(self, task_id: TaskId, *, lease_token: uuid.UUID) -> TaskRead:
-        raise NotImplementedError
-
-    @override
-    async def record_resource(
-        self, task_id: TaskId, *, lease_token: uuid.UUID, resource_id: FileId
-    ) -> None:
-        raise NotImplementedError
-
-    @override
-    async def succeed(
-        self, task_id: TaskId, *, lease_token: uuid.UUID, result: BaseModel
-    ) -> TaskRead:
-        raise NotImplementedError
-
-    @override
-    async def fail(
-        self,
-        task_id: TaskId,
-        *,
-        lease_token: uuid.UUID,
-        error_code: str,
-        error_detail: str | None,
-    ) -> TaskRead:
-        raise NotImplementedError
-
-    @override
     async def discard_pending(self, task_id: TaskId, *, owner_user_id: uuid.UUID) -> bool:
-        raise NotImplementedError
-
-    @override
-    async def cancel(self, task_id: TaskId, *, owner_user_id: uuid.UUID) -> TaskRead:
         raise NotImplementedError
 
     @override
@@ -306,10 +269,6 @@ class _Tasks(TaskService):
     ) -> DocumentTransformAdmission:
         self.read_keys.append((owner_user_id, idempotency_key))
         return DocumentTransformAdmission(task_id=self.task_id, status=TaskStatus.PENDING)
-
-    @override
-    async def load_smart_create(self, task_id: TaskId) -> SmartCreateTaskRecord:
-        raise NotImplementedError
 
 
 class _Enqueuer(TaskEnqueuer):
