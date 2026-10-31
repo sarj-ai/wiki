@@ -9,6 +9,7 @@ from typing import Any, NamedTuple, Protocol, override
 import uuid
 
 from loguru import logger
+from pydantic import JsonValue
 
 from app.document_transform.authored_labels import (
     AuthoredLabelRole,
@@ -929,9 +930,7 @@ class DocumentTransformExecutor(DocumentTransformRunner):
                 )
             except UnsupportedTabMetadataError:
                 await self._save_copy_checkpoint(
-                    checkpoint.model_copy(
-                        update={"tab_naming_declined_reason": "unsupported_metadata"}
-                    )
+                    checkpoint.model_copy(update=_tab_naming_decline_update(checkpoint))
                 )
                 return draft
             if tab_naming is None:
@@ -942,10 +941,16 @@ class DocumentTransformExecutor(DocumentTransformRunner):
         naming = checkpoint.tab_naming
         if naming is None:
             raise DocumentGatewayError
-        revision = await self._gateway.apply_tab_naming(
-            document_id=draft.document_id,
-            checkpoint=naming,
-        )
+        try:
+            revision = await self._gateway.apply_tab_naming(
+                document_id=draft.document_id,
+                checkpoint=naming,
+            )
+        except UnsupportedTabMetadataError:
+            await self._save_copy_checkpoint(
+                checkpoint.model_copy(update=_tab_naming_decline_update(checkpoint))
+            )
+            return draft
         return replace(draft, revision_id=revision)
 
     def _copy_checkpoint_or_none(self) -> CopyCheckpoint | None:
@@ -1594,9 +1599,7 @@ class DocumentTransformExecutor(DocumentTransformRunner):
                 )
             except UnsupportedTabMetadataError:
                 return await self._save_checkpoint(
-                    checkpoint.model_copy(
-                        update={"tab_naming_declined_reason": "unsupported_metadata"}
-                    )
+                    checkpoint.model_copy(update=_tab_naming_decline_update(checkpoint))
                 )
             if tab_naming is None:
                 return checkpoint
@@ -1606,10 +1609,15 @@ class DocumentTransformExecutor(DocumentTransformRunner):
         naming = checkpoint.tab_naming
         if naming is None:
             raise DocumentGatewayError
-        revision = await self._gateway.apply_tab_naming(
-            document_id=checkpoint.document_id,
-            checkpoint=naming,
-        )
+        try:
+            revision = await self._gateway.apply_tab_naming(
+                document_id=checkpoint.document_id,
+                checkpoint=naming,
+            )
+        except UnsupportedTabMetadataError:
+            return await self._save_checkpoint(
+                checkpoint.model_copy(update=_tab_naming_decline_update(checkpoint))
+            )
         return checkpoint.model_copy(update={"current_revision_id": revision})
 
     async def _plan_initial_in_place(
@@ -2986,6 +2994,18 @@ def _brand_warning_detail(code: str) -> str:
 
 def _findings_need_review(findings: list[TransformFinding]) -> bool:
     return any(finding.severity is FindingSeverity.REVIEW for finding in findings)
+
+
+def _tab_naming_decline_update(
+    checkpoint: CopyCheckpoint | InPlaceCheckpoint,
+) -> dict[str, JsonValue]:
+    update: dict[str, JsonValue] = {
+        "tab_naming": None,
+        "tab_naming_declined_reason": "unsupported_metadata",
+    }
+    if isinstance(checkpoint, InPlaceCheckpoint):
+        update["changed"] = checkpoint.current_revision_id != checkpoint.source_revision_id
+    return update
 
 
 def _with_tab_naming_decline(
