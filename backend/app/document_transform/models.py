@@ -154,7 +154,7 @@ class VertexGeminiPatchGenerator(PatchGenerator):
                     if phase is TransformPhase.UNSLOP
                     else "Formatting must preserve the author's text exactly.",
                     response_mime_type="application/json",
-                    response_schema=PatchEnvelope,
+                    response_json_schema=PatchEnvelope.model_json_schema(),
                     max_output_tokens=16_384,
                     thinking_config=(
                         None
@@ -235,7 +235,7 @@ class VertexGeminiPatchGenerator(PatchGenerator):
                 config=genai_types.GenerateContentConfig(
                     system_instruction=UNSLOP_REVIEW_INSTRUCTION,
                     response_mime_type="application/json",
-                    response_schema=PatchReviewEnvelope,
+                    response_json_schema=PatchReviewEnvelope.model_json_schema(),
                     max_output_tokens=16_384,
                     thinking_config=None
                     if model == self._policy.fallback_model

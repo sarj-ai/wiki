@@ -82,7 +82,8 @@ async def test_aggressive_generation_uses_structured_output_and_supported_thinki
     harness = _generator(types.GenerateContentResponse(parsed=PatchEnvelope(patches=[patch])))
     assert await harness.generator.generate(document, phase=TransformPhase.UNSLOP) == [patch]
     config = harness.call.configurations[0]
-    assert config.response_schema is PatchEnvelope
+    assert config.response_schema is None
+    assert config.response_json_schema == PatchEnvelope.model_json_schema()
     assert config.thinking_config is not None
     assert config.thinking_config.thinking_level is types.ThinkingLevel.LOW
     assert SOURCE in harness.call.prompts[0]
