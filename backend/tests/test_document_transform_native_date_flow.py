@@ -1,8 +1,9 @@
+from collections.abc import Mapping, Sequence
 from copy import deepcopy
 from typing import Any, override
 import uuid
 
-from pydantic import ValidationError
+from pydantic import JsonValue, ValidationError
 import pytest
 
 from app.document_transform.errors import DocumentGatewayError, InPlaceNeedsReviewError
@@ -10,8 +11,12 @@ from app.document_transform.gateway import InPlaceStageResult, OutputDraft, Sour
 from app.document_transform.google_gateway import GoogleDocumentGateway, stage_request_kinds
 from app.document_transform.native_date_flow import (
     NativeDateCheckpoint,
+    date_invariant_sha256,
     plan_copy_dates,
+    plan_stable_copy_dates,
     verified_date_projection,
+    verify_dates_unchanged,
+    verify_versioned_dates_unchanged,
 )
 from app.document_transform.schemas import DocumentTransformRequest, DriveFileSource, TransformMode
 from app.drive.retry import ProviderDeadlineError
@@ -394,3 +399,122 @@ async def test_executor_persists_decline_and_reports_finding_on_recovery() -> No
     assert repeated.findings == result.findings
     assert gateway.date_writes == 1
     assert gateway.applies == 1
+
+
+@pytest.fixture
+def date_image_properties() -> dict[str, JsonValue]:
+    return {
+        "contentUri": "https://example.com/temporary-v1",
+        "sourceUri": "https://example.com/original-photo.jpg",
+        "cropProperties": {"offsetTop": 0},
+    }
+
+
+@pytest.fixture
+def date_image_objects(date_image_properties: dict[str, JsonValue]) -> dict[str, JsonValue]:
+    return {
+        "image-1": {
+            "inlineObjectProperties": {"embeddedObject": {"imageProperties": date_image_properties}}
+        }
+    }
+
+
+class _ImageDateGateway(GoogleDocumentGateway):
+    def __init__(self, document: dict[str, JsonValue], result: InPlaceStageResult) -> None:
+        self.document = document
+        self.provider = _DateProvider(result.document)
+
+    @override
+    def _get_document_sync(self, file_id: FileId) -> dict[str, JsonValue]:
+        assert file_id == "doc"
+        return self.document
+
+    @override
+    async def apply_in_place_stage(
+        self,
+        *,
+        document_id: FileId,
+        required_revision_id: DocsRevisionId,
+        marker_name: str,
+        marker_range: Mapping[str, JsonValue],
+        requests: Sequence[Mapping[str, JsonValue]],
+    ) -> InPlaceStageResult:
+        return await self.provider.apply(
+            document_id=document_id,
+            required_revision_id=required_revision_id,
+            marker_name=marker_name,
+            marker_range=marker_range,
+            requests=requests,
+        )
+
+
+async def test_date_stage_accepts_rotating_image_urls_and_recovers_without_a_second_write(
+    date_image_properties: dict[str, JsonValue], date_image_objects: dict[str, JsonValue]
+) -> None:
+    original = _document()
+    original["tabs"][0]["documentTab"]["inlineObjects"] = date_image_objects
+    checkpoint = plan_stable_copy_dates(original, operation_id=uuid.uuid7())
+    assert checkpoint is not None
+    checkpoint = NativeDateCheckpoint.model_validate_json(checkpoint.model_dump_json())
+    assert checkpoint.invariant_version == "stable-images-v2"
+    actual = _converted()
+    actual["tabs"][0]["documentTab"]["inlineObjects"] = deepcopy(
+        original["tabs"][0]["documentTab"]["inlineObjects"]
+    )
+    actual["tabs"][0]["documentTab"]["inlineObjects"]["image-1"]["inlineObjectProperties"][
+        "embeddedObject"
+    ]["imageProperties"]["contentUri"] = "https://example.com/temporary-v3"
+    actual["tabs"][0]["documentTab"]["namedRanges"] = {
+        checkpoint.marker_name: {
+            "namedRanges": [{"name": checkpoint.marker_name, "ranges": [checkpoint.marker_range]}]
+        }
+    }
+    date_image_properties["contentUri"] = "https://example.com/temporary-v2"
+    gateway = _ImageDateGateway(original, InPlaceStageResult(DocsRevisionId("r2"), actual))
+    completed = await gateway.apply_copy_dates(document_id=FileId("doc"), checkpoint=checkpoint)
+    assert completed.complete
+    gateway.document = deepcopy(actual)
+    assert (
+        await gateway.apply_copy_dates(document_id=FileId("doc"), checkpoint=checkpoint)
+        == completed
+    )
+    assert gateway.provider.calls == 1
+
+
+def test_legacy_date_checkpoint_keeps_its_raw_image_invariant(
+    date_image_properties: dict[str, JsonValue], date_image_objects: dict[str, JsonValue]
+) -> None:
+    original = _document()
+    original["tabs"][0]["documentTab"]["inlineObjects"] = date_image_objects
+    checkpoint = plan_stable_copy_dates(original, operation_id=uuid.uuid7())
+    assert checkpoint is not None
+    payload = checkpoint.model_dump(mode="json")
+    payload.pop("invariant_version")
+    payload["invariant_sha256"] = date_invariant_sha256(original)
+    legacy = NativeDateCheckpoint.model_validate(payload)
+    assert legacy.invariant_version is None
+    date_image_properties["contentUri"] = "https://example.com/temporary-v2"
+    with pytest.raises(InPlaceNeedsReviewError):
+        verify_dates_unchanged(original, legacy)
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("sourceUri", "https://example.com/replaced-photo.jpg"),
+        ("cropProperties", {"offsetTop": 0.25}),
+    ],
+)
+def test_new_date_checkpoints_still_reject_real_photo_changes(
+    date_image_properties: dict[str, JsonValue],
+    date_image_objects: dict[str, JsonValue],
+    field: str,
+    value: JsonValue,
+) -> None:
+    original = _document()
+    original["tabs"][0]["documentTab"]["inlineObjects"] = date_image_objects
+    checkpoint = plan_stable_copy_dates(original, operation_id=uuid.uuid7())
+    assert checkpoint is not None
+    date_image_properties[field] = value
+    with pytest.raises(InPlaceNeedsReviewError):
+        verify_versioned_dates_unchanged(original, checkpoint)

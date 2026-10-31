@@ -34,9 +34,14 @@ from app.document_transform.unslop import (
 )
 
 
-_MAX_EDITOR_BATCH_CHARACTERS = 24_000
-_MAX_EDITOR_BATCH_BLOCKS = 80
+_MAX_EDITOR_BATCH_CHARACTERS = 8_000
+_MAX_EDITOR_BATCH_BLOCKS = 12
 _MAX_REVIEW_ATTEMPTS = 3
+_MAX_REVIEW_BATCH_CHARACTERS = 8_000
+_MAX_REVIEW_BATCH_PAIRS = 12
+_RESPONSE_TOKEN_LIMIT = 8_192
+_LARGE_RESPONSE_TOKEN_LIMIT = 16_384
+_LARGE_PROMPT_CHARACTERS = 24_000
 
 
 def _response_json_schema(
@@ -176,7 +181,7 @@ class VertexGeminiPatchGenerator(PatchGenerator):
         prompt = _prompt(document, phase=phase, feedback=feedback)
         primary_model = (
             self._policy.unslop_model
-            if phase is TransformPhase.UNSLOP
+            if phase is TransformPhase.UNSLOP and not feedback
             else self._policy.restyle_model
         )
         attempts = tuple(
@@ -195,7 +200,7 @@ class VertexGeminiPatchGenerator(PatchGenerator):
                     model=model,
                     prompt=prompt,
                     phase=phase,
-                    escalated=model != primary_model,
+                    escalated=bool(feedback) or model != primary_model,
                 )
                 if phase is TransformPhase.UNSLOP:
                     _validate_rewrite_coverage(document, patches)
@@ -269,12 +274,14 @@ class VertexGeminiPatchGenerator(PatchGenerator):
                     else "Formatting must preserve the author's text exactly.",
                     response_mime_type="application/json",
                     response_json_schema=_response_json_schema(PatchEnvelope),
-                    max_output_tokens=16_384,
+                    max_output_tokens=_response_token_limit(prompt),
                     thinking_config=(
                         None
                         if model == self._policy.fallback_model
                         else genai_types.ThinkingConfig(
-                            thinking_level=_thinking_level(phase, escalated=escalated)
+                            thinking_level=genai_types.ThinkingLevel.HIGH
+                            if escalated
+                            else genai_types.ThinkingLevel.MEDIUM
                         )
                     ),
                     http_options=genai_types.HttpOptions(timeout=int(timeout_seconds * 1000)),
@@ -303,23 +310,21 @@ class VertexGeminiPatchGenerator(PatchGenerator):
             raise ValueError(msg)
         approved: set[str] = set()
         rejected: dict[str, str] = {}
-        review_document = replace(
-            document, blocks=tuple(block for block in document.blocks if block.id in pending)
-        )
-        for batch in _editor_batches(review_document):
-            pairs = [
-                _ReviewPair(
-                    block_id=block.id,
-                    expected_sha256=block.sha256,
-                    replacement_sha256=hashlib.sha256(
-                        pending[block.id].replacement.encode()
-                    ).hexdigest(),
-                    source=block.text,
-                    proposed=pending[block.id].replacement,
-                )
-                for block in batch.blocks
-            ]
-            decision = await self._review_batch(pairs)
+        pairs = [
+            _ReviewPair(
+                block_id=block.id,
+                expected_sha256=block.sha256,
+                replacement_sha256=hashlib.sha256(
+                    pending[block.id].replacement.encode()
+                ).hexdigest(),
+                source=block.text,
+                proposed=pending[block.id].replacement,
+            )
+            for block in model_editable_blocks(document)
+            if block.id in pending
+        ]
+        for batch in _review_batches(pairs):
+            decision = await self._review_batch(batch)
             approved.update(decision.approved)
             rejected.update(decision.rejected)
         return RewriteReview(approved=frozenset(approved), rejected=rejected)
@@ -341,19 +346,20 @@ class VertexGeminiPatchGenerator(PatchGenerator):
 
     async def _review_once(self, *, model: str, pairs: list[_ReviewPair]) -> PatchReviewEnvelope:
         seconds = self._policy.timeout.total_seconds()
+        prompt = json.dumps(
+            {"document_proposals": [asdict(pair) for pair in pairs]},
+            ensure_ascii=False,
+            separators=(",", ":"),
+        )
         async with asyncio.timeout(seconds):
             response = await self._client.aio.models.generate_content(
                 model=model,
-                contents=json.dumps(
-                    {"document_proposals": [asdict(pair) for pair in pairs]},
-                    ensure_ascii=False,
-                    separators=(",", ":"),
-                ),
+                contents=prompt,
                 config=genai_types.GenerateContentConfig(
                     system_instruction=UNSLOP_REVIEW_INSTRUCTION,
                     response_mime_type="application/json",
                     response_json_schema=_response_json_schema(PatchReviewEnvelope),
-                    max_output_tokens=16_384,
+                    max_output_tokens=_response_token_limit(prompt),
                     thinking_config=None
                     if model == self._policy.fallback_model
                     else genai_types.ThinkingConfig(
@@ -368,6 +374,33 @@ class VertexGeminiPatchGenerator(PatchGenerator):
             return PatchReviewEnvelope.model_validate_json(response.text)
         msg = "Gemini returned no semantic review"
         raise ValueError(msg)
+
+
+def _response_token_limit(prompt: str) -> int:
+    if len(prompt) > _LARGE_PROMPT_CHARACTERS:
+        return _LARGE_RESPONSE_TOKEN_LIMIT
+    return _RESPONSE_TOKEN_LIMIT
+
+
+def _review_batches(pairs: list[_ReviewPair]) -> tuple[list[_ReviewPair], ...]:
+    batches: list[list[_ReviewPair]] = []
+    current: list[_ReviewPair] = []
+    envelope_characters = len('{"document_proposals":[]}')
+    characters = envelope_characters
+    for pair in pairs:
+        size = len(json.dumps(asdict(pair), ensure_ascii=False, separators=(",", ":"))) + 1
+        if current and (
+            characters + size > _MAX_REVIEW_BATCH_CHARACTERS
+            or len(current) >= _MAX_REVIEW_BATCH_PAIRS
+        ):
+            batches.append(current)
+            current = []
+            characters = envelope_characters
+        current.append(pair)
+        characters += size
+    if current:
+        batches.append(current)
+    return tuple(batches)
 
 
 def _validated_reviews(pairs: list[_ReviewPair], reviews: PatchReviewEnvelope) -> RewriteReview:
@@ -393,18 +426,6 @@ def _validated_reviews(pairs: list[_ReviewPair], reviews: PatchReviewEnvelope) -
             review.block_id: review.reason for review in reviews.reviews if not review.equivalent
         },
     )
-
-
-def _thinking_level(
-    phase: TransformPhase,
-    *,
-    escalated: bool,
-) -> genai_types.ThinkingLevel:
-    if escalated:
-        return genai_types.ThinkingLevel.HIGH
-    if phase is TransformPhase.UNSLOP:
-        return genai_types.ThinkingLevel.LOW
-    return genai_types.ThinkingLevel.MEDIUM
 
 
 def _prompt(

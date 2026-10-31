@@ -32,6 +32,12 @@ class TransformOutcome:
     llm_invoked: bool
 
 
+@dataclass(frozen=True, slots=True)
+class _ReviewedRepair:
+    decision: PatchDecision
+    validated_ids: frozenset[str]
+
+
 def _deterministic_unslop_patches(
     document: DocumentIR,
     candidates: tuple[UnslopCandidate, ...],
@@ -138,23 +144,19 @@ class TextTransformPlanner:
         }
         if not repair_ids:
             return decision
-        try:
-            proposals = await self._generator.repair(document, patches, decision.findings)
-        except ModelUnavailableError:
-            return decision
         restricted = replace(
             document, blocks=tuple(block for block in document.blocks if block.id in repair_ids)
         )
-        repaired = validate_patches(
-            restricted, proposals, phase=TransformPhase.UNSLOP, aggressive_unslop=True
+        repair = await self._attempt_repair(
+            document, patches, decision.findings, restricted=restricted
         )
-        safely_repaired = frozenset(repaired.accepted)
-        if repaired.accepted:
-            repaired = await self._review_rewrites(restricted, repaired)
+        if repair is None:
+            return decision
+        repaired = repair.decision
         remaining = tuple(
             finding
             for finding in decision.findings
-            if finding.block_id not in safely_repaired
+            if finding.block_id not in repair.validated_ids
             or finding.code not in REPAIRABLE_REWRITE_CODES
         )
         previous = {(finding.code, finding.block_id) for finding in remaining}
@@ -167,6 +169,26 @@ class TextTransformPlanner:
                 if (finding.code, finding.block_id) not in previous
             ),
         )
+
+    async def _attempt_repair(
+        self,
+        document: DocumentIR,
+        patches: list[TextPatch],
+        findings: tuple[TransformFinding, ...],
+        *,
+        restricted: DocumentIR,
+    ) -> _ReviewedRepair | None:
+        try:
+            proposals = await self._generator.repair(document, patches, findings)
+            repaired = validate_patches(
+                restricted, proposals, phase=TransformPhase.UNSLOP, aggressive_unslop=True
+            )
+            validated_ids = frozenset(repaired.accepted)
+            if repaired.accepted:
+                repaired = await self._review_rewrites(restricted, repaired)
+        except ModelUnavailableError:
+            return None
+        return _ReviewedRepair(decision=repaired, validated_ids=validated_ids)
 
     async def _review_rewrites(
         self, document: DocumentIR, decision: PatchDecision

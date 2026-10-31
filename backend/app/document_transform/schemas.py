@@ -359,6 +359,7 @@ class TabNamingCheckpoint(StrictTransformModel):
     marker_name: str
     marker_range: dict[str, Any]
     invariant_sha256: str
+    invariant_version: Literal["stable-images-v2"] | None = None
 
 
 class InPlaceCheckpointStage(StrEnum):

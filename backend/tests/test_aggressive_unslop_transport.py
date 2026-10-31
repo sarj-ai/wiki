@@ -119,7 +119,9 @@ async def test_real_sdk_serializes_structured_rewrite_and_review_without_samplin
             request.generation_config.response_json_schema
         )
     assert requests[0].generation_config.thinking_config is not None
-    assert requests[0].generation_config.thinking_config.thinking_level == types.ThinkingLevel.LOW
+    assert (
+        requests[0].generation_config.thinking_config.thinking_level == types.ThinkingLevel.MEDIUM
+    )
     assert requests[1].generation_config.thinking_config is not None
     assert (
         requests[1].generation_config.thinking_config.thinking_level == types.ThinkingLevel.MEDIUM

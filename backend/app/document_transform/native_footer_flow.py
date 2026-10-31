@@ -6,10 +6,11 @@ import hashlib
 import json
 from typing import Any, Literal, NamedTuple, Self
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, JsonValue, model_validator
 
 from app.document_transform.brand_manifest import CURRENT_BRAND_MANIFEST
 from app.document_transform.ir import MAX_DOC_TABS
+from app.document_transform.native_payload import stable_native_payload
 from app.document_transform.native_safety_diagnostics import (
     FooterShapeFailure,
     SafetyStage,
@@ -20,11 +21,61 @@ from app.identifiers import DocsRevisionId, DocsSegmentId, DocsTabId
 
 MAX_FOOTER_NAMED_STYLES = 60
 
+type FooterSkipReason = Literal["custom_footer", "pageless", "unsupported_layout"]
+
+
+class _FooterDocumentFormat(BaseModel):
+    model_config = ConfigDict(extra="ignore", strict=True)
+    mode: JsonValue = Field(default=None, alias="documentMode")
+
+
+class _FooterDocumentStyle(BaseModel):
+    model_config = ConfigDict(extra="ignore", strict=True)
+    default_footer_id: JsonValue = Field(default=None, alias="defaultFooterId")
+    first_page_footer_id: JsonValue = Field(default=None, alias="firstPageFooterId")
+    even_page_footer_id: JsonValue = Field(default=None, alias="evenPageFooterId")
+    document_format: _FooterDocumentFormat = Field(
+        default_factory=_FooterDocumentFormat, alias="documentFormat"
+    )
+    use_first_page_header_footer: JsonValue = Field(default=None, alias="useFirstPageHeaderFooter")
+    use_even_page_header_footer: JsonValue = Field(default=None, alias="useEvenPageHeaderFooter")
+
+
+class NativeFooterLayout(BaseModel):
+    model_config = ConfigDict(extra="ignore", strict=True)
+    document_style: _FooterDocumentStyle | None = Field(default=None, alias="documentStyle")
+    footers: dict[str, JsonValue] = Field(default_factory=dict)
+
+    @property
+    def skip_reason(self) -> FooterSkipReason | None:
+        style = self.document_style
+        if style is None:
+            return "unsupported_layout"
+        if self.footers or any(
+            (style.default_footer_id, style.first_page_footer_id, style.even_page_footer_id)
+        ):
+            return "custom_footer"
+        mode = style.document_format.mode
+        if mode == "PAGELESS":
+            return "pageless"
+        if mode is not None and mode != "PAGES":
+            return "unsupported_layout"
+        if any(
+            value is not None and value is not False
+            for value in (style.use_first_page_header_footer, style.use_even_page_header_footer)
+        ):
+            return "unsupported_layout"
+        return None
+
 
 class NativeFooterStage(StrEnum):
     CREATE = "create"
     POPULATE = "populate"
     COMPLETE = "complete"
+
+
+class NativeFooterInvariant(StrEnum):
+    STABLE_IMAGES_V2 = "stable-images-v2"
 
 
 class NativeFooterCheckpoint(BaseModel):
@@ -40,6 +91,7 @@ class NativeFooterCheckpoint(BaseModel):
     populate_marker: str
     marker_range: dict[str, Any]
     invariant_sha256: str
+    invariant_version: NativeFooterInvariant | None = None
     footer_id: DocsSegmentId | None = None
     coverage: NativeFooterCoverage | None = None
 
@@ -81,7 +133,7 @@ class NativeFooterCheckpoint(BaseModel):
 class NativeFooterSkip(BaseModel):
     model_config = ConfigDict(extra="forbid")
     tab_id: DocsTabId
-    reason: Literal["custom_footer", "pageless", "unsupported_layout"]
+    reason: FooterSkipReason
 
 
 class NativeFooterCoverage(BaseModel):
@@ -106,7 +158,10 @@ def verified_footer_coverage_projection(
         native_safety_error("footer_coverage", "action")
     coverage = checkpoint.coverage
     if coverage is not None and not coverage.active:
-        if footer_invariant_sha256(document) != checkpoint.invariant_sha256:
+        if (
+            versioned_footer_invariant_sha256(document, version=checkpoint.invariant_version)
+            != checkpoint.invariant_sha256
+        ):
             native_safety_error("footer_coverage", "invariant")
         return deepcopy(document)
     projected, _ = verified_footer_projection(document, checkpoint, populated=True)
@@ -154,6 +209,20 @@ class VerifiedFooterProjection(NamedTuple):
     footer_id: DocsSegmentId
 
 
+def versioned_footer_invariant_sha256(
+    document: JsonValue, *, version: NativeFooterInvariant | None
+) -> str:
+    payload = (
+        stable_native_payload(document)
+        if version is NativeFooterInvariant.STABLE_IMAGES_V2
+        else document
+    )
+    if not isinstance(payload, dict):
+        msg = "A footer invariant requires a document object"
+        raise TypeError(msg)
+    return footer_invariant_sha256(payload)
+
+
 def verified_footer_projection(
     document: dict[str, Any],
     checkpoint: NativeFooterCheckpoint,
@@ -196,7 +265,10 @@ def verified_footer_projection(
         tab.pop("footers", None)
     del style["defaultFooterId"]
     _remove_footer_markers(snapshot, {checkpoint.create_marker, checkpoint.populate_marker})
-    if footer_invariant_sha256(snapshot) != checkpoint.invariant_sha256:
+    if (
+        versioned_footer_invariant_sha256(snapshot, version=checkpoint.invariant_version)
+        != checkpoint.invariant_sha256
+    ):
         native_safety_error(stage, "invariant")
     return VerifiedFooterProjection(snapshot, DocsSegmentId(footer_id))
 

@@ -61,6 +61,9 @@ _CANVAS_ASPECT_REL_TOLERANCE = 1e-6
 _MIN_NARRATIVE_TEXT_SIZE_PT = 12
 _MIN_NARRATIVE_TEXT_CHARS = 80
 _NARRATIVE_PLACEHOLDER_TYPES = frozenset({"BODY", "OBJECT"})
+_ASCII_CONTROL_LIMIT = 0x20
+_BMP_PRIVATE_USE_START = 0xE000
+_BMP_PRIVATE_USE_END = 0xF8FF
 
 
 @dataclass(frozen=True, slots=True)
@@ -259,7 +262,7 @@ def _text_delta_requests(
             delete_end = source_index + 1 if delete_end is None else delete_end
             source_index -= 1
         if source_index < 0:
-            raise UnsupportedSourceError
+            return _replacement_text_requests(replacement=replacement, locator=locator)
         if delete_end is not None:
             _append_delete_delta(
                 deltas,
@@ -293,6 +296,40 @@ def _text_delta_requests(
         request
         for _, requests in sorted(deltas, key=itemgetter(0), reverse=True)
         for request in requests
+    ]
+
+
+def _replacement_text_requests(
+    *, replacement: str, locator: SlideTextLocator
+) -> list[dict[str, JsonValue]]:
+    if not replacement.strip() or any(
+        character in "\r\n\v\f\u2028\u2029"
+        or ord(character) < _ASCII_CONTROL_LIMIT
+        or _BMP_PRIVATE_USE_START <= ord(character) <= _BMP_PRIVATE_USE_END
+        for character in replacement
+    ):
+        raise UnsupportedSourceError
+    inserted_length = utf16_length(replacement)
+    # Insert into the original uniform run so the new text inherits its style.
+    # Protected-structure and brand readback still verify the resulting copy.
+    return [
+        {
+            "insertText": {
+                "objectId": locator.object_id,
+                "insertionIndex": locator.start_index,
+                "text": replacement,
+            }
+        },
+        {
+            "deleteText": {
+                "objectId": locator.object_id,
+                "textRange": {
+                    "type": "FIXED_RANGE",
+                    "startIndex": locator.start_index + inserted_length,
+                    "endIndex": locator.end_index + inserted_length,
+                },
+            }
+        },
     ]
 
 
