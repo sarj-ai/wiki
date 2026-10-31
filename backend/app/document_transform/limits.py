@@ -1,4 +1,5 @@
 MAX_MARKDOWN_BYTES = 512 * 1024
+MIN_MODEL_PROSE_WORDS = 8
 
 # WordprocessingML expands compact Markdown tokens into comparatively large XML
 # elements.  Keep these limits independent of the source byte limit so a tiny

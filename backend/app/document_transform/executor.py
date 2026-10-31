@@ -291,6 +291,7 @@ class DocumentTransformExecutor(DocumentTransformRunner):
         self._planner = TextTransformPlanner(
             generator=generator,
             allow_format_text_edits=allow_format_text_edits,
+            allow_unslop_model=generator.supports_semantic_rewrite,
         )
         self._brand = brand or SarjBrandProfile()
         self._allow_format_text_edits = allow_format_text_edits

@@ -15,6 +15,7 @@ from app.document_transform.custom_furniture import CustomHeaderTitleTarget
 from app.document_transform.errors import SourceTooLargeError, UnsupportedSourceError
 from app.document_transform.gateway import TabHeader
 from app.document_transform.ir import BlockKind, DocumentIR, SourceRange, TextBlock, utf16_length
+from app.document_transform.native_prose import NATIVE_TEXT_STYLE_FIELDS
 from app.identifiers import DocsTabId
 
 
@@ -175,14 +176,15 @@ def build_copy_text_mutations(
         source_range = block.source_range
         if source_range is None:  # pragma: no cover - filtered above
             continue
-        replacement = transformed_by_id[block.id].text
+        replacement = _copy_prose_replacement(block, transformed_by_id[block.id].text)
+        end_index = source_range.end_index - utf16_length(block.protected_suffix or "")
         location: dict[str, Any] = {
             "index": source_range.start_index,
             "tabId": source_range.tab_id,
         }
         range_value: dict[str, Any] = {
             "startIndex": source_range.start_index,
-            "endIndex": source_range.end_index,
+            "endIndex": end_index,
             "tabId": source_range.tab_id,
         }
         if source_range.segment_id is not None:
@@ -194,7 +196,33 @@ def build_copy_text_mutations(
                 {"insertText": {"location": location, "text": replacement}},
             ]
         )
+        if block.protected_suffix is not None:
+            requests.append(
+                {
+                    "updateTextStyle": {
+                        "range": {
+                            **range_value,
+                            "endIndex": source_range.start_index + utf16_length(replacement),
+                        },
+                        "textStyle": json.loads(block.native_prefix_style_json or "{}"),
+                        "fields": ",".join(sorted(NATIVE_TEXT_STYLE_FIELDS)),
+                    }
+                }
+            )
     return requests
+
+
+def _copy_prose_replacement(block: TextBlock, replacement: str) -> str:
+    if block.protected_suffix is None:
+        return replacement
+    if not replacement.endswith(block.protected_suffix):
+        msg = "Native citation suffix cannot change"
+        raise ValueError(msg)
+    prose = replacement.removesuffix(block.protected_suffix)
+    if not prose.strip():
+        msg = "Native citation prose cannot become empty"
+        raise ValueError(msg)
+    return prose
 
 
 def build_markdown_mutations(
@@ -391,7 +419,7 @@ def _style_requests(
             or block.preserved_visual_authority
         ):
             continue
-        if not block.editable:
+        if block.requires_font_only_format:
             if branded:
                 requests.extend(_font_only_requests(block, profile))
             continue
@@ -779,44 +807,63 @@ def _post_edit_locations(original: DocumentIR, transformed: DocumentIR) -> Docum
         else:
             new_length = utf16_length(target.text)
         located.append(
-            TextBlock(
-                id=target.id,
-                kind=target.kind,
-                text=target.text,
-                level=target.level,
+            replace(
+                target,
                 source_range=SourceRange(
                     start,
                     start + new_length,
                     source_range.tab_id,
                     source_range.segment_id,
                 ),
-                editable=target.editable,
-                native_content=target.native_content,
-                native_named_style=target.native_named_style,
-                source_named_style=target.source_named_style,
-                source_style_text_sha256=target.source_style_text_sha256,
-                native_bullet_json=target.native_bullet_json,
-                authored_emphasis=target.authored_emphasis,
-                pagination_keep_with_next=target.pagination_keep_with_next,
-                suppress_space_above=target.suppress_space_above,
-                suppress_space_below=target.suppress_space_below,
-                preserved_paragraph_style_sha256=target.preserved_paragraph_style_sha256,
-                preserved_font_family=target.preserved_font_family,
-                preserved_visual_authority=target.preserved_visual_authority,
-                font_style_ranges=tuple(
-                    replace(
-                        item,
-                        start_index=item.start_index + delta,
-                        end_index=item.end_index + delta,
-                    )
-                    for item in target.font_style_ranges
-                ),
+                font_style_ranges=_post_edit_font_ranges(block, target, delta=delta),
             )
         )
         deltas[source_range.tab_id] = delta + new_length - old_length
-    return DocumentIR(
-        transformed.title,
-        tuple(located),
-        transformed.source_format,
-        transformed.tab_ids,
-    )
+    return replace(transformed, blocks=tuple(located))
+
+
+def _post_edit_font_ranges(
+    original: TextBlock, target: TextBlock, *, delta: int
+) -> tuple[SourceRange, ...]:
+    source = original.source_range
+    if source is None:
+        return ()
+    if original.protected_suffix is None or original.text == target.text:
+        return tuple(
+            replace(item, start_index=item.start_index + delta, end_index=item.end_index + delta)
+            for item in target.font_style_ranges
+        )
+    old_prefix_end = source.end_index - utf16_length(original.protected_suffix)
+    text_delta = utf16_length(target.text) - utf16_length(original.text)
+    ranges = [
+        replace(
+            item,
+            start_index=max(item.start_index, old_prefix_end) + text_delta + delta,
+            end_index=item.end_index + text_delta + delta,
+        )
+        for item in original.font_style_ranges
+        if item.end_index > old_prefix_end
+    ]
+    if _font_prefix_is_covered(original, end=old_prefix_end):
+        ranges.insert(
+            0,
+            replace(
+                source,
+                start_index=source.start_index + delta,
+                end_index=old_prefix_end + text_delta + delta,
+            ),
+        )
+    return tuple(ranges)
+
+
+def _font_prefix_is_covered(block: TextBlock, *, end: int) -> bool:
+    if block.source_range is None:
+        return False
+    cursor = block.source_range.start_index
+    for source in block.font_style_ranges:
+        if source.start_index > cursor:
+            return False
+        cursor = max(cursor, source.end_index)
+        if cursor >= end:
+            return True
+    return False

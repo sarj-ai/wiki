@@ -1,10 +1,10 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
 from app.document_transform.ir import BlockKind, DocumentIR
 from app.document_transform.models import PatchGenerator
-from app.document_transform.safety import validate_patches
+from app.document_transform.safety import PatchDecision, validate_patches
 from app.document_transform.schemas import (
     DocumentTransformRequest,
     TextPatch,
@@ -16,6 +16,7 @@ from app.document_transform.unslop import (
     MAX_MODEL_EDITABLE_BLOCK_CHARS,
     UnslopCandidate,
     deterministic_unslop_replacement,
+    model_editable_blocks,
     scan_unslop_candidates,
 )
 
@@ -75,71 +76,123 @@ class TextTransformPlanner:
         original: DocumentIR,
         request: DocumentTransformRequest,
     ) -> TransformOutcome:
-        current = original
-        findings: list[TransformFinding] = []
-        applied_count = 0
-        deterministic_count = 0
-        model_count = 0
-        llm_invoked = False
-        findings.extend(_unprocessed_findings(original, request=request))
-        if request.mode is TransformMode.FORMAT:
-            phases: tuple[TransformPhase, ...] = (TransformPhase.FORMAT,)
-        elif request.mode is TransformMode.UNSLOP:
-            phases = (TransformPhase.UNSLOP,)
-        else:
-            phases = (TransformPhase.UNSLOP, TransformPhase.FORMAT)
-        for phase in phases:
-            if phase is TransformPhase.UNSLOP:
-                candidates = scan_unslop_candidates(current)
-                if not candidates:
-                    continue
-                while candidates:
-                    deterministic = _deterministic_unslop_patches(current, candidates)
-                    if not deterministic:
-                        break
-                    decision = validate_patches(current, deterministic, phase=phase)
-                    if not decision.accepted:
-                        findings.extend(decision.findings)
-                        break
-                    current = current.replace_blocks(decision.accepted)
-                    applied_count += len(decision.accepted)
-                    deterministic_count += len(decision.accepted)
-                    findings.extend(decision.findings)
-                    candidates = scan_unslop_candidates(current)
-                    if not candidates:
-                        break
-                if not candidates:
-                    continue
-                if not self._allow_unslop_model:
-                    findings.extend(
-                        TransformFinding(
-                            code="contextual_unslop_review_required",
-                            block_id=candidate.block_id,
-                            detail=(
-                                "A contextual writing pattern was left unchanged because this "
-                                "artifact uses deterministic-only text edits"
-                            ),
-                        )
-                        for candidate in candidates
-                    )
-                    continue
-            if phase is TransformPhase.FORMAT and not self._allow_format_text_edits:
-                continue
-            llm_invoked = True
-            patches = await self._generator.generate(current, phase=phase)
-            decision = validate_patches(current, patches, phase=phase)
-            current = current.replace_blocks(decision.accepted)
-            applied_count += len(decision.accepted)
-            model_count += len(decision.accepted)
-            findings.extend(decision.findings)
-        return TransformOutcome(
-            current,
-            tuple(findings),
-            applied_count,
-            deterministic_count,
-            model_count,
-            llm_invoked,
+        outcome = TransformOutcome(
+            document=original,
+            findings=_unprocessed_findings(original, request=request),
+            applied_count=0,
+            deterministic_count=0,
+            model_count=0,
+            llm_invoked=False,
         )
+        if request.mode is not TransformMode.FORMAT:
+            outcome = _merge_outcomes(outcome, _deterministic_unslop(original))
+            if self._allow_unslop_model:
+                if model_editable_blocks(outcome.document):
+                    outcome = _merge_outcomes(
+                        outcome,
+                        await self._model_phase(outcome.document, phase=TransformPhase.UNSLOP),
+                    )
+            else:
+                outcome = replace(
+                    outcome,
+                    findings=outcome.findings + _contextual_review_findings(outcome.document),
+                )
+        if request.mode is not TransformMode.UNSLOP and self._allow_format_text_edits:
+            outcome = _merge_outcomes(
+                outcome, await self._model_phase(outcome.document, phase=TransformPhase.FORMAT)
+            )
+        return outcome
+
+    async def _model_phase(
+        self, document: DocumentIR, *, phase: TransformPhase
+    ) -> TransformOutcome:
+        patches = await self._generator.generate(document, phase=phase)
+        aggressive = phase is TransformPhase.UNSLOP and self._allow_unslop_model
+        decision = validate_patches(document, patches, phase=phase, aggressive_unslop=aggressive)
+        if aggressive and decision.accepted:
+            decision = await self._review_rewrites(document, decision)
+        count = len(decision.accepted)
+        return TransformOutcome(
+            document=document.replace_blocks(decision.accepted),
+            findings=decision.findings,
+            applied_count=count,
+            deterministic_count=0,
+            model_count=count,
+            llm_invoked=True,
+        )
+
+    async def _review_rewrites(
+        self, document: DocumentIR, decision: PatchDecision
+    ) -> PatchDecision:
+        by_id = {block.id: block for block in document.blocks}
+        proposed = [
+            TextPatch(block_id=block_id, expected_sha256=by_id[block_id].sha256, replacement=text)
+            for block_id, text in decision.accepted.items()
+        ]
+        verified = await self._generator.verify(document, proposed)
+        rejected = tuple(
+            TransformFinding(
+                code="semantic_review_rejected",
+                block_id=block_id,
+                detail="The proposed rewrite did not pass independent fact and meaning preservation review",
+            )
+            for block_id in decision.accepted
+            if block_id not in verified
+        )
+        return PatchDecision(
+            accepted={
+                block_id: text
+                for block_id, text in decision.accepted.items()
+                if block_id in verified
+            },
+            findings=decision.findings + rejected,
+        )
+
+
+def _deterministic_unslop(document: DocumentIR) -> TransformOutcome:
+    current = document
+    count = 0
+    findings: list[TransformFinding] = []
+    while candidates := scan_unslop_candidates(current):
+        patches = _deterministic_unslop_patches(current, candidates)
+        if not patches:
+            break
+        decision = validate_patches(current, patches, phase=TransformPhase.UNSLOP)
+        findings.extend(decision.findings)
+        if not decision.accepted:
+            break
+        current = current.replace_blocks(decision.accepted)
+        count += len(decision.accepted)
+    return TransformOutcome(
+        document=current,
+        findings=tuple(findings),
+        applied_count=count,
+        deterministic_count=count,
+        model_count=0,
+        llm_invoked=False,
+    )
+
+
+def _contextual_review_findings(document: DocumentIR) -> tuple[TransformFinding, ...]:
+    return tuple(
+        TransformFinding(
+            code="contextual_unslop_review_required",
+            block_id=candidate.block_id,
+            detail="A contextual writing pattern was left unchanged because this artifact uses deterministic-only text edits",
+        )
+        for candidate in scan_unslop_candidates(document)
+    )
+
+
+def _merge_outcomes(first: TransformOutcome, following: TransformOutcome) -> TransformOutcome:
+    return TransformOutcome(
+        document=following.document,
+        findings=first.findings + following.findings,
+        applied_count=first.applied_count + following.applied_count,
+        deterministic_count=first.deterministic_count + following.deterministic_count,
+        model_count=first.model_count + following.model_count,
+        llm_invoked=first.llm_invoked or following.llm_invoked,
+    )
 
 
 def _unprocessed_findings(
