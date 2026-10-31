@@ -53,7 +53,10 @@ class DocumentSettings(BaseSettings):
     ) -> tuple[PydanticBaseSettingsSource, ...]:
         # The parent owns environment, dotenv and secrets precedence, including
         # explicit _env_file=None. Do not read ambient sources a second time.
-        return (init_settings,)
+        sources = super().settings_customise_sources(
+            settings_cls, init_settings, env_settings, dotenv_settings, file_secret_settings
+        )
+        return tuple(source for source in sources if source is init_settings)
 
     @model_validator(mode="after")
     def transform_config_is_complete(self) -> Self:

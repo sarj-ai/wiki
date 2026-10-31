@@ -93,7 +93,8 @@ class Settings(DatabaseSettings):
         dotenv_settings: PydanticBaseSettingsSource,
         file_secret_settings: PydanticBaseSettingsSource,
     ) -> tuple[PydanticBaseSettingsSource, ...]:
-        return (
+        return super().settings_customise_sources(
+            settings_cls,
             init_settings,
             env_settings,
             dotenv_settings,
