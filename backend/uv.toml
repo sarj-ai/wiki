@@ -34,6 +34,9 @@ mcp = "2026-10-02T22:06:57Z"
 mypy = "2026-10-01T20:40:40Z"
 pip-audit = "2026-06-10T22:17:02Z"
 py-key-value-aio = "2026-09-18T15:29:53Z"
+# Reviewed pyasn1 0.6.5 security artifacts fix CVE-2026-119194/119195/119196/119197.
+# Remove this release-specific exception after 2026-11-03T06:32:50Z.
+pyasn1 = "2026-10-27T06:32:50Z"
 pydantic = "2026-10-11T18:37:56Z"
 pydantic-core = "2026-10-11T18:35:45Z"
 pydantic-settings = "2026-10-20T11:37:20Z"
