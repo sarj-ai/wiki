@@ -269,7 +269,7 @@ class TextPatchReview(StrictTransformModel):
     expected_sha256: str
     replacement_sha256: str
     equivalent: StrictBool
-    reason: Annotated[str, StringConstraints(max_length=400)] = ""
+    reason: Annotated[str, StringConstraints(strip_whitespace=True, min_length=20, max_length=400)]
 
 
 class PatchReviewEnvelope(StrictTransformModel):

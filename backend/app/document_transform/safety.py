@@ -27,7 +27,8 @@ _PROTECTED_TOKEN = re.compile(
     re.MULTILINE,
 )
 _FORCE_WORD = re.compile(
-    r"\b(?:must|shall|should|may|might|cannot|can't|can|will|won't|not|never|no)\b",
+    r"\b(?:must|shall|should|may|might|could|would|cannot|can't|can|will|won't|not|never|no|"
+    r"each|every|all|only|both|neither|either|per)\b",
     re.IGNORECASE,
 )
 _QUOTED_SPAN = re.compile(rf'"[^"\n]+"|“[^”\n]+”|{SINGLE_QUOTED_SPAN_PATTERN}')
@@ -37,12 +38,41 @@ _MAX_CHANGE_RATIO = MappingProxyType({TransformPhase.UNSLOP: 0.35, TransformPhas
 _CAPITALIZABLE_START_WORDS = frozenset(
     {"a", "an", "he", "it", "our", "she", "that", "the", "they", "this", "we", "you", "your"}
 )
+REPAIRABLE_REWRITE_CODES = frozenset(
+    {
+        "protected_content_changed",
+        "force_language_changed",
+        "proper_noun_changed",
+        "quoted_content_changed",
+        "native_citation_changed",
+        "concision_expanded",
+        "empty_replacement",
+        "semantic_review_rejected",
+    }
+)
 
 
 @dataclass(frozen=True, slots=True)
 class PatchDecision:
     accepted: dict[str, str]
     findings: tuple[TransformFinding, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class RewriteConstraints:
+    protected_tokens: tuple[str, ...]
+    force_language: tuple[str, ...]
+    quotations: tuple[str, ...]
+    protected_names: tuple[str, ...]
+
+
+def rewrite_constraints(text: str) -> RewriteConstraints:
+    return RewriteConstraints(
+        protected_tokens=tuple(_protected_tokens(text)),
+        force_language=tuple(_force_words(text)),
+        quotations=_quoted_spans(text),
+        protected_names=_protected_rewrite_names(text),
+    )
 
 
 def validate_patches(
@@ -137,13 +167,20 @@ def _aggressive_unslop_code(block: TextBlock, replacement: str) -> str | None:
     if len(replacement.split()) > len(block.text.split()):
         return "concision_expanded"
     words = frozenset(word.casefold() for word in re.findall(r"\b\w+\b", replacement))
-    for match in _PROPER_NOUN.finditer(block.text):
-        prefix = block.text[: match.start()].rstrip()
+    if any(name.casefold() not in words for name in _protected_rewrite_names(block.text)):
+        return "proper_noun_changed"
+    return None
+
+
+def _protected_rewrite_names(text: str) -> tuple[str, ...]:
+    names: list[str] = []
+    for match in _PROPER_NOUN.finditer(text):
+        prefix = text[: match.start()].rstrip()
         sentence_initial = not prefix or prefix[-1] in ".!?\n"
         multiple_capitals = sum(character.isupper() for character in match.group()) > 1
-        if (not sentence_initial or multiple_capitals) and match.group().casefold() not in words:
-            return "proper_noun_changed"
-    return None
+        if not sentence_initial or multiple_capitals:
+            names.append(match.group())
+    return tuple(names)
 
 
 def _protected_tokens(value: str) -> list[str]:

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 import hashlib
+import json
 
 from google import genai
 from google.genai import types
@@ -10,6 +11,7 @@ import httpx
 from pydantic import BaseModel, ConfigDict, Field
 import pytest
 
+from app.document_transform.errors import ModelUnavailableError
 from app.document_transform.ir import parse_markdown
 from app.document_transform.models import GeminiModelPolicy, VertexGeminiPatchGenerator
 from app.document_transform.schemas import (
@@ -60,6 +62,7 @@ async def test_real_sdk_serializes_structured_rewrite_and_review_without_samplin
                         expected_sha256=block.sha256,
                         replacement_sha256=hashlib.sha256(replacement.encode()).hexdigest(),
                         equivalent=True,
+                        reason="The bird's hidden singing location and ability are preserved.",
                     )
                 ]
             ).model_dump_json(),
@@ -104,10 +107,102 @@ async def test_real_sdk_serializes_structured_rewrite_and_review_without_samplin
     for request in requests:
         assert "temperature" not in request.generation_config.model_fields_set
         assert request.generation_config.response_mime_type == "application/json"
-        assert request.generation_config.response_schema is not None
+        assert request.generation_config.response_schema is None
+    for request, envelope, field in zip(
+        requests, (PatchEnvelope, PatchReviewEnvelope), ("patches", "reviews"), strict=True
+    ):
+        schema = request.generation_config.response_json_schema
+        expected = envelope.model_json_schema()
+        expected["properties"][field].pop("maxItems")
+        assert schema == expected
+        assert '"additional_properties"' not in json.dumps(
+            request.generation_config.response_json_schema
+        )
     assert requests[0].generation_config.thinking_config is not None
     assert requests[0].generation_config.thinking_config.thinking_level == types.ThinkingLevel.LOW
     assert requests[1].generation_config.thinking_config is not None
     assert (
         requests[1].generation_config.thinking_config.thinking_level == types.ThinkingLevel.MEDIUM
     )
+
+
+@pytest.mark.parametrize(
+    ("review", "oversized", "blank_reason"),
+    [(False, False, False), (False, True, False), (True, False, False), (True, False, True)],
+)
+async def test_json_schema_responses_still_enforce_strict_local_validation(
+    sdk_client_factory: Callable[[httpx.AsyncClient], genai.Client],
+    *,
+    review: bool,
+    oversized: bool,
+    blank_reason: bool,
+) -> None:
+    document = parse_markdown(
+        "The hidden bird can sing from dense scrub beside the path while remaining unseen by observers.",
+        title="Offline SDK fixture",
+    )
+    block = document.blocks[0]
+    patch = TextPatch(
+        block_id=block.id,
+        expected_sha256=block.sha256,
+        replacement="The hidden bird can sing unseen from scrub beside the path.",
+    )
+    payload = (
+        json.dumps(
+            {
+                "reviews": [
+                    {
+                        "block_id": block.id,
+                        "expected_sha256": block.sha256,
+                        "replacement_sha256": hashlib.sha256(
+                            patch.replacement.encode()
+                        ).hexdigest(),
+                        "equivalent": True if blank_reason else "true",
+                        "reason": " "
+                        if blank_reason
+                        else "All source facts are preserved in this fixture.",
+                    }
+                ]
+            }
+        )
+        if review
+        else json.dumps({"patches": [patch.model_dump()] * 101})
+        if oversized
+        else '{"patches":[],"unexpected":"must be rejected"}'
+    )
+
+    def respond(_request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            json={
+                "candidates": [
+                    {
+                        "content": {"role": "model", "parts": [{"text": payload}]},
+                        "finishReason": "STOP",
+                    }
+                ]
+            },
+        )
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(respond)) as http:
+        client = sdk_client_factory(http)
+        generator = VertexGeminiPatchGenerator(
+            policy=GeminiModelPolicy(
+                project="offline-fixture",
+                location="global",
+                unslop_model="gemini-3.5-flash-lite",
+                fallback_model="gemini-3.1-flash-lite",
+                restyle_model="gemini-3.8-flash",
+            ),
+            client=client,
+        )
+        try:
+            operation = (
+                generator.verify(document, [patch])
+                if review
+                else generator.generate(document, phase=TransformPhase.UNSLOP)
+            )
+            with pytest.raises(ModelUnavailableError):
+                await operation
+        finally:
+            await client.aio.aclose()

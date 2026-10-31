@@ -122,7 +122,8 @@ def test_document_environment_retains_unknown_setting_compatibility(
         DOCUMENT_TRANSFORM_FUTURE_SETTING="ignored",
         DOCUMENT_UNRELATED="ignored",
     )
-    assert configured.DOCUMENT.TRANSFORM_UNSLOP_MODEL == "gemini-3.5-flash-lite"
+    assert configured.DOCUMENT.TRANSFORM_UNSLOP_MODEL == "gemini-3.8-flash"
+    assert configured.DOCUMENT.TRANSFORM_RESTYLE_MODEL == "gemini-3.1-pro-preview"
 
 
 def test_document_settings_preserve_parent_source_precedence(
@@ -150,7 +151,7 @@ def test_document_settings_preserve_parent_source_precedence(
         document=document_settings_factory("explicit-model"),
     )
     assert explicit.DOCUMENT.TRANSFORM_UNSLOP_MODEL == "explicit-model"
-    assert document_settings_factory(None).TRANSFORM_UNSLOP_MODEL == "gemini-3.5-flash-lite"
+    assert document_settings_factory(None).TRANSFORM_UNSLOP_MODEL == "gemini-3.8-flash"
 
 
 def test_document_settings_honor_disabled_dotenv_loading(
@@ -161,7 +162,7 @@ def test_document_settings_honor_disabled_dotenv_loading(
     monkeypatch.chdir(tmp_path)
     assert load_environment_settings(Settings).DOCUMENT.TRANSFORM_UNSLOP_MODEL == "dotenv-model"
     disabled = load_environment_settings(Settings, load_dotenv=False)
-    assert disabled.DOCUMENT.TRANSFORM_UNSLOP_MODEL == "gemini-3.5-flash-lite"
+    assert disabled.DOCUMENT.TRANSFORM_UNSLOP_MODEL == "gemini-3.8-flash"
 
 
 def test_secrets_do_not_leak_in_repr(monkeypatch: pytest.MonkeyPatch) -> None:
