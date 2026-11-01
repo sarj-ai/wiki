@@ -4,6 +4,7 @@ from copy import deepcopy
 import math
 from typing import Any, NamedTuple
 
+from pydantic import JsonValue
 import pytest
 
 from app.document_transform.brand_manifest import CURRENT_BRAND_MANIFEST
@@ -936,6 +937,73 @@ def test_visual_underlay_blocks_all_text_recoloring() -> None:
 
     plan = _format_plan(presentation, parsed=parsed)
 
+    assert not any("updateTextStyle" in request for request in plan.requests)
+    assert "slide_text_contrast_unresolved" in {finding.code for finding in plan.findings}
+
+
+def test_disjoint_photo_allows_verifiable_text_formatting() -> None:
+    presentation = _presentation()
+    presentation["slides"][0]["pageElements"].append(
+        {
+            **_box("photo", left=560, top=130, width=120, height=160),
+            "image": {
+                "sourceUrl": "https://example.invalid/photo.png",
+                "imageProperties": {"cropProperties": {"leftOffset": 0.1}},
+            },
+        }
+    )
+    parsed = parse_google_presentation(presentation, title="Review")
+    plan = _format_plan(presentation, parsed=parsed)
+    assert {
+        request["updateTextStyle"]["objectId"]
+        for request in plan.requests
+        if "updateTextStyle" in request
+    } == {"title-1", "body-1"}
+    assert "slide_text_contrast_unresolved" not in {finding.code for finding in plan.findings}
+    branded = deepcopy(presentation)
+    _apply_brand_requests(branded, plan.requests)
+    fingerprints = presentation_fingerprint(branded, "Review")
+    assert fingerprints.brand_sha256 == plan.expected_brand_sha256
+    assert fingerprints.protected_structure_sha256 == parsed.protected_sha256
+
+
+def test_photo_blocks_only_the_text_it_overlaps() -> None:
+    presentation = _presentation()
+    presentation["slides"][0]["pageElements"].append(
+        {
+            **_box("photo", left=400, top=130, width=200, height=160),
+            "image": {"sourceUrl": "https://example.invalid/photo.png"},
+        }
+    )
+    parsed = parse_google_presentation(presentation, title="Review")
+    plan = _format_plan(presentation, parsed=parsed)
+    assert {
+        request["updateTextStyle"]["objectId"]
+        for request in plan.requests
+        if "updateTextStyle" in request
+    } == {"title-1"}
+    assert "slide_text_contrast_unresolved" in {finding.code for finding in plan.findings}
+
+
+@pytest.mark.parametrize("uncertainty", ["shadow", "outline", "bounds", "group", "placeholder"])
+def test_unproven_photo_extents_preserve_text_style(uncertainty: str) -> None:
+    presentation = _presentation()
+    image: dict[str, JsonValue] = {"sourceUrl": "https://example.invalid/photo.png"}
+    photo: dict[str, JsonValue] = {
+        **_box("photo", left=560, top=130, width=120, height=160),
+        "image": image,
+    }
+    if uncertainty in {"shadow", "outline"}:
+        image["imageProperties"] = {uncertainty: {"propertyState": "RENDERED"}}
+    elif uncertainty == "bounds":
+        photo.pop("transform")
+    elif uncertainty == "placeholder":
+        image["placeholder"] = {"parentObjectId": "unknown-parent"}
+    else:
+        photo = {"objectId": "group", "elementGroup": {"children": [photo]}}
+    presentation["slides"][0]["pageElements"].append(photo)
+    parsed = parse_google_presentation(presentation, title="Review")
+    plan = _format_plan(presentation, parsed=parsed)
     assert not any("updateTextStyle" in request for request in plan.requests)
     assert "slide_text_contrast_unresolved" in {finding.code for finding in plan.findings}
 

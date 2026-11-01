@@ -484,12 +484,12 @@ def _style_targets(
     for slide in _slides(presentation):
         theme_colors = _effective_theme_colors(presentation, slide)
         page_background = _effective_page_background(presentation, slide)
-        if _has_visual_underlay(presentation, slide):
-            page_background = None
+        underlays = _visual_underlay_bounds(presentation, slide, object_ids=object_ids)
         for element in _walk_elements(slide.get("pageElements", [])):
+            background = None if _underlays_overlap(element, underlays) else page_background
             target, finding = _style_target(
                 element,
-                page_background=page_background,
+                page_background=background,
                 theme_colors=theme_colors,
                 object_ids=object_ids,
             )
@@ -499,7 +499,7 @@ def _style_targets(
                 findings.append(finding)
             small_text_finding = _small_narrative_text_finding(
                 element,
-                page_background=page_background,
+                page_background=background,
                 theme_colors=theme_colors,
                 object_ids=object_ids,
             )
@@ -1200,40 +1200,81 @@ def _effective_shape_background(
     return page_background
 
 
-def _has_visual_underlay(
+def _visual_underlay_bounds(
     presentation: dict[str, Any],
     slide: dict[str, Any],
-) -> bool:
+    *,
+    object_ids: dict[str, tuple[dict[str, JsonValue], ...]],
+) -> tuple[_Rect | None, ...]:
     try:
         pages = _page_chain(presentation, slide)
     except UnsupportedSourceError:
-        return True
+        return (None,)
     expected_logo_id = sarj_logo_object_id(SlideId(_required_string(slide, "objectId")))
-    object_ids = _object_id_occurrences(presentation)
+    bounds: list[_Rect | None] = []
     for page in pages:
         for element in _walk_elements(page.get("pageElements", [])):
             if element.get("objectId") == expected_logo_id:
                 continue
-            if any(
-                kind in element
-                for kind in (
-                    "image",
-                    "line",
-                    "sheetsChart",
-                    "speakerSpotlight",
-                    "table",
-                    "video",
-                    "wordArt",
-                )
-            ):
-                return True
-            shape = element.get("shape")
-            if not isinstance(shape, dict):
-                continue
-            ancestors = _placeholder_ancestors(shape, object_ids=object_ids)
-            if ancestors is None or _shape_has_rendered_fill(element, ancestors=ancestors):
-                return True
-    return False
+            footprint = _element_underlays(element, object_ids=object_ids)
+            if None in footprint:
+                return (None,)
+            bounds.extend(footprint)
+    return tuple(bounds)
+
+
+def _element_underlays(
+    element: dict[str, JsonValue],
+    *,
+    object_ids: dict[str, tuple[dict[str, JsonValue], ...]],
+) -> tuple[_Rect | None, ...]:
+    if "elementGroup" in element:
+        # Child bounds are local to the group; never mistake them for page bounds.
+        return (None,)
+    if "image" in element:
+        return (_image_underlay_bounds(element),)
+    if any(
+        kind in element
+        for kind in ("line", "sheetsChart", "speakerSpotlight", "table", "video", "wordArt")
+    ):
+        return (None,)
+    shape = element.get("shape")
+    if not isinstance(shape, dict):
+        return ()
+    ancestors = _placeholder_ancestors(shape, object_ids=object_ids)
+    if ancestors is None or _shape_has_rendered_fill(element, ancestors=ancestors):
+        return (None,)
+    return ()
+
+
+def _image_underlay_bounds(element: dict[str, JsonValue]) -> _Rect | None:
+    image = element.get("image")
+    if not isinstance(image, dict) or image.get("placeholder") is not None:
+        return None
+    properties = image.get("imageProperties", {})
+    if not isinstance(properties, dict) or set(properties) - {
+        "brightness",
+        "contrast",
+        "cropProperties",
+        "link",
+        "outline",
+        "recolor",
+        "shadow",
+        "transparency",
+    }:
+        return None
+    if not all(_effect_is_not_rendered(properties.get(key)) for key in ("outline", "shadow")):
+        return None
+    return _element_bounds(element)
+
+
+def _underlays_overlap(element: dict[str, JsonValue], underlays: tuple[_Rect | None, ...]) -> bool:
+    if not underlays:
+        return False
+    bounds = _element_bounds(element)
+    return bounds is None or any(
+        underlay is None or _overlaps(bounds, underlay) for underlay in underlays
+    )
 
 
 def _shape_has_rendered_fill(

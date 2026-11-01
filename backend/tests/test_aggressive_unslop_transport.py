@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from collections.abc import Callable
 import hashlib
 import json
@@ -26,6 +27,123 @@ from app.document_transform.schemas import (
 class _VendorRequest(BaseModel):
     model_config = ConfigDict(extra="ignore")
     generation_config: types.GenerateContentConfig = Field(alias="generationConfig")
+
+
+class _WirePair(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    block_id: str
+    expected_sha256: str
+    replacement_sha256: str
+
+
+class _WireReview(BaseModel):
+    document_proposals: list[_WirePair]
+
+
+class _WireText(BaseModel):
+    text: str
+
+
+class _WireContent(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    parts: list[_WireText]
+
+
+class _WireReviewRequest(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    contents: list[_WireContent]
+
+
+@pytest.mark.parametrize("fail", [False, True])
+async def test_review_batches_limit_concurrency_and_wait_for_cancellation(
+    sdk_client_factory: Callable[[httpx.AsyncClient], genai.Client], *, fail: bool
+) -> None:
+    source = "The hidden bird can sing unseen from dense scrub beside the path."
+    document = parse_markdown("\n\n".join(source for _ in range(25)), title="Concurrent review")
+    patches = [
+        TextPatch(block_id=block.id, expected_sha256=block.sha256, replacement=source)
+        for block in document.blocks
+        if block.text.strip()
+    ]
+    first_id = patches[0].block_id
+    started = asyncio.Event()
+    active = 0
+    peak = 0
+    canceled = 0
+
+    async def respond(request: httpx.Request) -> httpx.Response:
+        nonlocal active, peak, canceled
+        contents = _WireReviewRequest.model_validate_json(request.content).contents
+        pairs = _WireReview.model_validate_json(contents[0].parts[0].text).document_proposals
+        active += 1
+        peak = max(peak, active)
+        if active == 2:
+            started.set()
+        try:
+            await started.wait()
+            if fail:
+                if pairs[0].block_id == first_id:
+                    return httpx.Response(
+                        429, json={"error": {"message": "Offline transient fixture"}}
+                    )
+                await asyncio.Event().wait()
+            envelope = PatchReviewEnvelope(
+                reviews=[
+                    TextPatchReview(
+                        block_id=pair.block_id,
+                        expected_sha256=pair.expected_sha256,
+                        replacement_sha256=pair.replacement_sha256,
+                        equivalent=True,
+                        reason="The bird's hidden singing ability and location are unchanged.",
+                    )
+                    for pair in pairs
+                ]
+            )
+            return httpx.Response(
+                200,
+                json={
+                    "candidates": [
+                        {
+                            "content": {
+                                "role": "model",
+                                "parts": [{"text": envelope.model_dump_json()}],
+                            },
+                            "finishReason": "STOP",
+                        }
+                    ]
+                },
+            )
+        except asyncio.CancelledError:
+            canceled += 1
+            raise
+        finally:
+            active -= 1
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(respond)) as http:
+        client = sdk_client_factory(http)
+        generator = VertexGeminiPatchGenerator(
+            policy=GeminiModelPolicy(
+                project="offline-fixture",
+                location="global",
+                unslop_model="gemini-3.5-flash-lite",
+                fallback_model="gemini-3.1-flash-lite",
+                restyle_model="gemini-3.8-flash",
+            ),
+            client=client,
+        )
+        try:
+            if fail:
+                with pytest.raises(ModelUnavailableError):
+                    await generator.verify(document, patches)
+            else:
+                assert await generator.verify(document, patches) == {
+                    patch.block_id for patch in patches
+                }
+        finally:
+            await client.aio.aclose()
+    assert peak == 2
+    assert active == 0
+    assert canceled >= 1 if fail else canceled == 0
 
 
 @pytest.fixture
@@ -123,9 +241,7 @@ async def test_real_sdk_serializes_structured_rewrite_and_review_without_samplin
         requests[0].generation_config.thinking_config.thinking_level == types.ThinkingLevel.MEDIUM
     )
     assert requests[1].generation_config.thinking_config is not None
-    assert (
-        requests[1].generation_config.thinking_config.thinking_level == types.ThinkingLevel.MEDIUM
-    )
+    assert requests[1].generation_config.thinking_config.thinking_level == types.ThinkingLevel.HIGH
 
 
 @pytest.mark.parametrize(

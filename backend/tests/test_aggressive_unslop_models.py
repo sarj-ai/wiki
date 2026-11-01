@@ -32,6 +32,9 @@ class _ReviewInputPair(BaseModel):
     block_id: str
     expected_sha256: str
     replacement_sha256: str
+    source: str
+    proposed: str
+    source_context: str = ""
 
 
 class _ReviewInput(BaseModel):
@@ -46,6 +49,8 @@ class _ModelResponse:
         self.models: list[str] = []
         self.failures = 0
         self.review_input = False
+        self.rejected_sources: set[str] = set()
+        self.omitted_sources: set[str] = set()
 
     async def generate_content(
         self, *, model: str, contents: str, config: types.GenerateContentConfig
@@ -66,10 +71,11 @@ class _ModelResponse:
                             block_id=pair.block_id,
                             expected_sha256=pair.expected_sha256,
                             replacement_sha256=pair.replacement_sha256,
-                            equivalent=True,
+                            equivalent=pair.source not in self.rejected_sources,
                             reason="The fixture preserves the bird's hidden singing location and ability.",
                         )
                         for pair in payload.document_proposals
+                        if pair.source not in self.omitted_sources
                     ]
                 )
             )
@@ -265,21 +271,14 @@ async def test_sparse_proposals_share_a_review_batch_without_unchanged_prose() -
         TextPatch(block_id=block.id, expected_sha256=block.sha256, replacement=REPLACEMENT)
         for block in selected
     ]
-    reviews = PatchReviewEnvelope(
-        reviews=[
-            TextPatchReview(
-                block_id=patch.block_id,
-                expected_sha256=patch.expected_sha256,
-                replacement_sha256=hashlib.sha256(patch.replacement.encode()).hexdigest(),
-                equivalent=True,
-                reason="Offline batch fixture preserves the bird's hidden singing context.",
-            )
-            for patch in patches
-        ]
-    )
-    harness = _generator(types.GenerateContentResponse(parsed=reviews))
+    harness = _generator(types.GenerateContentResponse())
+    harness.call.review_input = True
     assert await harness.generator.verify(document, patches) == {block.id for block in selected}
     assert len(harness.call.configurations) == 1
+    submitted = _ReviewInput.model_validate_json(harness.call.prompts[0]).document_proposals
+    assert len(submitted) == 6
+    assert all(pair.source_context == paragraph for pair in submitted)
+    assert all(pair.source == SOURCE and pair.proposed == REPLACEMENT for pair in submitted)
 
 
 async def test_review_batches_bound_paired_text_without_losing_or_duplicating_verdicts() -> None:
@@ -302,3 +301,59 @@ async def test_review_batches_bound_paired_text_without_losing_or_duplicating_ve
         patch.block_id for patch in patches
     ]
     assert harness.call.models == ["gemini-3.1-pro-preview"] * len(submitted)
+
+
+@pytest.mark.parametrize("verdict", ["approve", "reject", "omit"])
+async def test_every_source_sentence_must_pass_before_its_paragraph_is_accepted(
+    verdict: str,
+) -> None:
+    provenance = "Its measurements come from particular birds and particular methods."
+    source = (
+        "Its song belongs within a breeding season, a territory and an annual journey. "
+        + provenance
+    )
+    document = parse_markdown(source, title="Provenance")
+    block = document.blocks[0]
+    patch = TextPatch(
+        block_id=block.id,
+        expected_sha256=block.sha256,
+        replacement="A bird's song and measurements reflect its breeding cycle and migration.",
+    )
+    harness = _generator(types.GenerateContentResponse())
+    harness.call.review_input = True
+    if verdict == "reject":
+        harness.call.rejected_sources.add(provenance)
+    if verdict == "omit":
+        harness.call.omitted_sources.add(provenance)
+        with pytest.raises(ModelUnavailableError):
+            await harness.generator.review(document, [patch])
+        return
+    decision = await harness.generator.review(document, [patch])
+    assert decision.approved == (frozenset({block.id}) if verdict == "approve" else frozenset())
+    assert set(decision.rejected) == ({block.id} if verdict == "reject" else set())
+    submitted = _ReviewInput.model_validate_json(harness.call.prompts[0]).document_proposals
+    assert len(submitted) == 2
+    assert {pair.source for pair in submitted} == {
+        "Its song belongs within a breeding season, a territory and an annual journey.",
+        provenance,
+    }
+    assert all(
+        pair.source_context == source and pair.proposed == patch.replacement for pair in submitted
+    )
+    assert len({pair.block_id for pair in submitted}) == 2
+
+
+async def test_sentence_verdict_hashes_bind_context_and_position() -> None:
+    shared = "Its measurements come from particular birds and particular methods."
+    first = parse_markdown(SOURCE + " " + shared, title="First")
+    second = parse_markdown(shared + " " + SOURCE, title="Second")
+    hashes: list[str] = []
+    for document in (first, second):
+        block = document.blocks[0]
+        patch = TextPatch(block_id=block.id, expected_sha256=block.sha256, replacement=REPLACEMENT)
+        harness = _generator(types.GenerateContentResponse())
+        harness.call.review_input = True
+        await harness.generator.review(document, [patch])
+        submitted = _ReviewInput.model_validate_json(harness.call.prompts[0]).document_proposals
+        hashes.append(next(pair.expected_sha256 for pair in submitted if pair.source == shared))
+    assert hashes[0] != hashes[1]
