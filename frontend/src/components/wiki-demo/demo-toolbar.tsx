@@ -23,6 +23,7 @@ import {
   demoHref,
 } from "./demo-data";
 import { demoDownloadUrl } from "./demo-file-urls";
+import { DemoRewriteExample } from "./demo-rewrite-example";
 
 export function DemoToolbar({ file, onReload }: { file: DemoFile; onReload: () => void }) {
   const downloadUrl = demoDownloadUrl(file);
@@ -152,10 +153,15 @@ export function DemoFileContext({ file }: { file: DemoFile }) {
             }
             role={file.processingNeedsReview ? "status" : undefined}
           >
-            {file.processingNeedsReview ? "Review required. " : null}
+            {file.processingNeedsReview
+              ? file.processingReviewed
+                ? "Review note. "
+                : "Review required. "
+              : null}
             {file.processingDisclosure}
           </p>
         ) : null}
+        {file.rewriteComparison ? <DemoRewriteExample comparison={file.rewriteComparison} /> : null}
         {file.processingRecordFilename ? (
           <a
             className="text-muted-foreground mt-1 inline-block text-xs underline underline-offset-2"

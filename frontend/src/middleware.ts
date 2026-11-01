@@ -1,5 +1,7 @@
 import { type NextRequest, NextResponse } from "next/server";
 
+import { demoHrefForDocumentPath } from "@/components/wiki-demo/demo-file-urls";
+
 // Return only static content to spoofable link-preview user agents.
 const UNFURL_CRAWLERS =
   /slackbot|discordbot|twitterbot|facebookexternalhit|telegrambot|whatsapp|linkedinbot|skypeuripreview|google-pagerenderer/i;
@@ -26,6 +28,12 @@ const PREVIEW_HTML = `<!doctype html>
 export default function middleware(request: NextRequest) {
   if (request.cookies.has("access_token") || request.cookies.has("refresh_token")) {
     const response = NextResponse.next();
+    response.headers.set("cache-control", "private, no-store");
+    return response;
+  }
+  const demoHref = demoHrefForDocumentPath(request.nextUrl.pathname);
+  if (demoHref !== null && (request.method === "GET" || request.method === "HEAD")) {
+    const response = NextResponse.redirect(new URL(demoHref, request.url));
     response.headers.set("cache-control", "private, no-store");
     return response;
   }
