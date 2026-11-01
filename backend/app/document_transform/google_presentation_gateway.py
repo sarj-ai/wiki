@@ -22,6 +22,7 @@ from googleapiclient import discovery
 from googleapiclient.discovery_cache import get_static_doc
 from googleapiclient.errors import HttpError
 from googleapiclient.http import HttpRequest, MediaIoBaseUpload
+from loguru import logger
 
 from app.document_transform.errors import (
     DocumentGatewayError,
@@ -725,7 +726,7 @@ class GooglePresentationGateway(PresentationGateway):
         expected_brand_sha256: str | None,
     ) -> PresentationVerification:
         fingerprints = self._fingerprint(presentation, title)
-        return PresentationVerification(
+        verification = PresentationVerification(
             content_preserved=fingerprints.semantic_sha256 == expected_semantic_sha256,
             structure_preserved=(
                 fingerprints.protected_structure_sha256 == expected_protected_structure_sha256
@@ -737,6 +738,19 @@ class GooglePresentationGateway(PresentationGateway):
             protected_structure_sha256=fingerprints.protected_structure_sha256,
             brand_sha256=fingerprints.brand_sha256,
         )
+        if not _verification_passed(verification):
+            logger.bind(
+                content_preserved=verification.content_preserved,
+                structure_preserved=verification.structure_preserved,
+                brand_applied=verification.brand_applied,
+                expected_semantic_sha256=expected_semantic_sha256,
+                observed_semantic_sha256=fingerprints.semantic_sha256,
+                expected_structure_sha256=expected_protected_structure_sha256,
+                observed_structure_sha256=fingerprints.protected_structure_sha256,
+                expected_brand_sha256=expected_brand_sha256,
+                observed_brand_sha256=fingerprints.brand_sha256,
+            ).warning("presentation output verification failed")
+        return verification
 
     def _get_presentation_sync(self, file_id: FileId) -> dict[str, Any]:
         return self._execute_dict(

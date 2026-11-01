@@ -8,6 +8,7 @@ import math
 from operator import itemgetter
 from typing import Any, NamedTuple
 
+from loguru import logger
 from pydantic import JsonValue
 
 from app.document_transform.brand_manifest import CURRENT_BRAND_MANIFEST
@@ -1920,7 +1921,13 @@ def _brand_digest(*, styles: list[dict[str, Any]], logos: list[dict[str, Any]]) 
         separators=(",", ":"),
         sort_keys=True,
     )
-    return hashlib.sha256(payload.encode()).hexdigest()
+    brand_hash = hashlib.sha256(payload.encode()).hexdigest()
+    logger.bind(
+        slide_brand_sha256=brand_hash,
+        slide_brand_styles=styles,
+        slide_brand_logos=logos,
+    ).info("presentation brand projection")
+    return brand_hash
 
 
 def _slides(presentation: dict[str, Any]) -> list[dict[str, Any]]:
