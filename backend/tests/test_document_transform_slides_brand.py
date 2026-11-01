@@ -349,6 +349,39 @@ def test_nonmatching_canvas_aspect_fails_closed_for_logo_only() -> None:
     assert [finding.code for finding in plan.findings] == ["slide_geometry_unsafe"]
 
 
+@pytest.mark.parametrize("width_emu", [12192000, 12191975])
+def test_imported_widescreen_rounding_allows_an_exact_safe_logo(width_emu: int) -> None:
+    presentation = _presentation()
+    presentation["pageSize"] = {
+        "width": {"magnitude": width_emu, "unit": "EMU"},
+        "height": {"magnitude": 6858000, "unit": "EMU"},
+    }
+    parsed = parse_google_presentation(presentation, title="Review")
+
+    plan = _format_plan(presentation, parsed=parsed)
+
+    assert sum("createImage" in request for request in plan.requests) == 1
+    assert plan.findings == ()
+    _apply_brand_requests(presentation, plan.requests)
+    fingerprint = presentation_fingerprint(presentation, "Review")
+    assert fingerprint.brand_sha256 == plan.expected_brand_sha256
+    assert fingerprint.protected_structure_sha256 == parsed.protected_sha256
+
+
+def test_canvas_rounding_tolerance_still_rejects_a_larger_aspect_change() -> None:
+    presentation = _presentation()
+    presentation["pageSize"] = {
+        "width": {"magnitude": 959.98, "unit": "PT"},
+        "height": {"magnitude": 540, "unit": "PT"},
+    }
+    parsed = parse_google_presentation(presentation, title="Review")
+
+    plan = _format_plan(presentation, parsed=parsed)
+
+    assert not any("createImage" in request for request in plan.requests)
+    assert [finding.code for finding in plan.findings] == ["slide_geometry_unsafe"]
+
+
 def test_wrong_existing_logo_source_is_not_accepted_as_brand_success() -> None:
     presentation = _presentation()
     parsed = parse_google_presentation(presentation, title="Review")
@@ -904,6 +937,57 @@ def test_font_family_change_is_preserved_for_review() -> None:
         request.get("updateTextStyle", {}).get("objectId") == "body-1" for request in plan.requests
     )
     assert "slide_text_fit_unresolved" in {finding.code for finding in plan.findings}
+
+
+def test_explicit_transparent_text_highlight_uses_the_known_background() -> None:
+    presentation = _presentation()
+    for element in presentation["slides"][0]["pageElements"]:
+        element["shape"]["text"]["textElements"][1]["textRun"]["style"]["backgroundColor"] = {}
+    parsed = parse_google_presentation(presentation, title="Review")
+
+    plan = _format_plan(presentation, parsed=parsed)
+
+    assert sum("updateTextStyle" in request for request in plan.requests) == 2
+    assert plan.findings == ()
+    _apply_brand_requests(presentation, plan.requests)
+    fingerprint = presentation_fingerprint(presentation, "Review")
+    assert fingerprint.brand_sha256 == plan.expected_brand_sha256
+    assert fingerprint.protected_structure_sha256 == parsed.protected_sha256
+
+
+@pytest.mark.parametrize(
+    "background",
+    [[], False, "transparent", {"opaqueColor": None}, {"opaqueColor": {}}, {"unknown": True}],
+)
+def test_malformed_text_highlights_do_not_claim_transparency(background: JsonValue) -> None:
+    presentation = _presentation()
+    presentation["slides"][0]["pageElements"][0]["shape"]["text"]["textElements"][1]["textRun"][
+        "style"
+    ]["backgroundColor"] = background
+    parsed = parse_google_presentation(presentation, title="Review")
+
+    plan = _format_plan(presentation, parsed=parsed)
+
+    assert not any(
+        request.get("updateTextStyle", {}).get("objectId") == "title-1" for request in plan.requests
+    )
+    assert "slide_text_contrast_unresolved" in {finding.code for finding in plan.findings}
+
+
+def test_transparent_highlight_does_not_resolve_an_unknown_page_background() -> None:
+    presentation = _presentation()
+    presentation["slides"][0]["pageProperties"] = {
+        "pageBackgroundFill": {"stretchedPictureFill": {}}
+    }
+    presentation["slides"][0]["pageElements"][0]["shape"]["text"]["textElements"][1]["textRun"][
+        "style"
+    ]["backgroundColor"] = {}
+    parsed = parse_google_presentation(presentation, title="Review")
+
+    plan = _format_plan(presentation, parsed=parsed)
+
+    assert not any("updateTextStyle" in request for request in plan.requests)
+    assert "slide_text_contrast_unresolved" in {finding.code for finding in plan.findings}
 
 
 def test_text_highlight_contrast_blocks_brand_recoloring() -> None:

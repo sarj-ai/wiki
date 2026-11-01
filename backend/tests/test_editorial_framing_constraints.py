@@ -24,9 +24,23 @@ def _decision(before: str, after: str) -> PatchDecision:
         "An AI draft takes shape. ",
         "BEFORE — deliberately padded AI-draft demonstration. ",
         "Deliberately wordy AI-draft input: ",
+        "Deliberately wordy AI-draft input: In the spirit of a long preamble, ",
         "I hope this helps. ",
         "I dwell on the shape of the introduction. ",
         "I enjoy the pleasure of a measured tone. ",
+        "This feels lovely, at least to my taste. ",
+        "I enjoy an introduction within an introduction. ",
+        "I like the feeling of a rounded paragraph. ",
+        "I anticipate another gentle transition. ",
+        "I enjoy another small rhetorical pause. ",
+        "I welcome another reflective sentence. ",
+        "I add another small flourish. ",
+        "I enjoy another moment of anticipation. ",
+        "I enjoy another moment of appreciation. ",
+        "I enjoy another moment of verbal ceremony. ",
+        "The closing lines offer another opportunity for a farewell. ",
+        "I enjoy a grander transition than I would otherwise choose. ",
+        "I let the close feel grander than my personal taste might otherwise favour. ",
     ],
 )
 def test_editorial_framing_can_be_removed_without_losing_the_qualified_fact(framing: str):
@@ -37,6 +51,7 @@ def test_editorial_framing_can_be_removed_without_losing_the_qualified_fact(fram
     constraints = rewrite_constraints(framing + fact)
     assert constraints.protected_names == ("BTO",)
     assert constraints.scope_qualifiers == ("measured", "about", "helps", "shape")
+    assert constraints.force_language == ()
 
 
 @pytest.mark.parametrize(
@@ -45,6 +60,16 @@ def test_editorial_framing_can_be_removed_without_losing_the_qualified_fact(fram
         (
             "This AI model measured 12 birds.",
             "This model measured 12 birds.",
+            "proper_noun_changed",
+        ),
+        (
+            "Deliberately wordy AI-draft input: Google measured 12 birds.",
+            "The team measured 12 birds.",
+            "proper_noun_changed",
+        ),
+        (
+            "Deliberately wordy AI-draft input: IN measured 12 birds.",
+            "The sensor measured 12 birds.",
             "proper_noun_changed",
         ),
         (
@@ -86,6 +111,36 @@ def test_editorial_framing_can_be_removed_without_losing_the_qualified_fact(fram
             'The source quotes "As an AI language model". BTO measured 12 birds.',
             "BTO measured 12 birds.",
             "quoted_content_changed",
+        ),
+        (
+            "BTO compared the same national population within the reported area.",
+            "BTO compared a national population within the reported area.",
+            "scope_qualifier_changed",
+        ),
+        (
+            "The rounded paragraph box must retain its shape.",
+            "The paragraph box must retain its shape.",
+            "scope_qualifier_changed",
+        ),
+        (
+            "The material undergoes another transition within the measured range.",
+            "The material undergoes a transition within the measured range.",
+            "scope_qualifier_changed",
+        ),
+        (
+            "The operating mode would otherwise change the measured result.",
+            "The operating mode changes the measured result.",
+            "force_language_changed",
+        ),
+        (
+            "The reported sample might otherwise include another population.",
+            "The reported sample includes another population.",
+            "force_language_changed",
+        ),
+        (
+            'The required wording is "my personal taste might otherwise favour".',
+            "The required wording is personal taste.",
+            "force_language_changed",
         ),
     ],
 )

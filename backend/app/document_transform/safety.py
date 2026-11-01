@@ -58,6 +58,9 @@ _MAX_CHANGE_RATIO = MappingProxyType({TransformPhase.UNSLOP: 0.35, TransformPhas
 _CAPITALIZABLE_START_WORDS = frozenset(
     {"a", "an", "he", "it", "our", "she", "that", "the", "they", "this", "we", "you", "your"}
 )
+_EDITORIAL_OPENING_WORDS = _CAPITALIZABLE_START_WORDS | frozenset(
+    {"as", "at", "by", "for", "from", "in", "on", "to", "with"}
+)
 REPAIRABLE_REWRITE_CODES = frozenset(
     {
         "protected_content_changed",
@@ -91,7 +94,7 @@ class RewriteConstraints:
 def rewrite_constraints(text: str) -> RewriteConstraints:
     return RewriteConstraints(
         protected_tokens=tuple(_protected_tokens(text)),
-        force_language=tuple(_force_words(text)),
+        force_language=tuple(_force_words(without_editorial_framing(text))),
         quotations=_quoted_spans(text),
         protected_names=_protected_rewrite_names(text),
         scope_qualifiers=tuple(_scope_qualifiers(text)),
@@ -190,6 +193,9 @@ def _literal_change_code(
         _protected_tokens(before), _protected_tokens(after), allow_reordering=allow_reordering
     ):
         return "protected_content_changed"
+    if allow_reordering:
+        before = without_editorial_framing(before)
+        after = without_editorial_framing(after)
     if not _same_retained_values(
         _force_words(before), _force_words(after), allow_reordering=allow_reordering
     ):
@@ -230,11 +236,17 @@ def _scope_qualifiers(text: str) -> list[str]:
 
 def _protected_rewrite_names(text: str) -> tuple[str, ...]:
     names: list[str] = []
-    for match in _PROPER_NOUN.finditer(without_editorial_framing(text)):
+    projected = without_editorial_framing(text)
+    for match in _PROPER_NOUN.finditer(projected):
         prefix = text[: match.start()].rstrip()
         sentence_initial = not prefix or prefix[-1] in ".!?\n"
         multiple_capitals = sum(character.isupper() for character in match.group()) > 1
-        if not sentence_initial or multiple_capitals:
+        editorial_opening = (
+            match.group().casefold() in _EDITORIAL_OPENING_WORDS
+            and not projected[: match.start()].strip(" ,;:")
+            and not multiple_capitals
+        )
+        if (not sentence_initial or multiple_capitals) and not editorial_opening:
             names.append(match.group())
     return tuple(names)
 
