@@ -56,7 +56,7 @@ _SUPPORTED_PLACEHOLDER_TYPES = frozenset(
 _MIN_TEXT_CONTRAST = 4.5
 _SRGB_LINEAR_THRESHOLD = 0.04045
 _PLACEHOLDER_STYLE_LEVEL_COUNTS = frozenset({8, 9})
-_CANVAS_ASPECT_REL_TOLERANCE = 1e-6
+_CANVAS_ASPECT_REL_TOLERANCE = 1e-5
 # Advisory only: long narrative text below this floor warrants human review, never resizing.
 _MIN_NARRATIVE_TEXT_SIZE_PT = 12
 _MIN_NARRATIVE_TEXT_CHARS = 80
@@ -1020,7 +1020,7 @@ def _text_background(
     theme_colors: dict[str, str] | None,
 ) -> str | None:
     background = style.get("backgroundColor")
-    if background is None:
+    if background is None or background == {}:
         return fallback
     if not isinstance(background, dict):
         return None

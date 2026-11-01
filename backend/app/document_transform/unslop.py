@@ -11,7 +11,7 @@ from app.document_transform.limits import MIN_MODEL_PROSE_WORDS
 
 UNSLOP_UPSTREAM_COMMIT = "d81f5196167ded24f46fced04958c0c12d681798"
 UNSLOP_UPSTREAM_VERSION = "2.3.0"
-UNSLOP_POLICY_VERSION = "sarj-concise-v7"
+UNSLOP_POLICY_VERSION = "sarj-concise-v8"
 UNSLOP_REWRITE_INSTRUCTION = (
     "Act as a ruthless, precise line editor. Rewrite verbose prose into direct, compact language. "
     "Remove throat-clearing, rhetorical questions, repeated explanations, ornamental metaphors, "
@@ -32,7 +32,9 @@ UNSLOP_REWRITE_INSTRUCTION = (
     "scope_qualifiers entry and its count: frequency qualifiers and "
     "inference words such as generally, interpreted, evidence, and helps are factual constraints. "
     "Do not introduce new scope qualifiers: the exact supplied lists and counts must match "
-    "after rewriting. Prefer a smaller valid edit to an unsafe summary. "
+    "after rewriting. Editorial framing excluded from those lists may be deleted; never move "
+    "rhetorical words into factual claims merely to retain them. "
+    "Prefer a smaller valid edit to an unsafe summary. "
     "Keep technical compounds, sampling and method provenance, temporal comparisons, "
     "and concrete objects with their original modifiers. Describing a condition does not "
     "establish that it is necessary: do not introduce need or require. Short vegetation "
@@ -71,6 +73,8 @@ UNSLOP_REVIEW_INSTRUCTION = (
     "generic AI-draft frames and metaphors about the introduction's shape or measured tone "
     "are editorial padding. Their deletion does not remove a named entity or a scientific "
     "measurement. Concrete authorship disclosures, quotations and requirements must survive. "
+    "Personal preferences about a paragraph's rhythm, pauses and transitions are editorial "
+    "commentary, not empirical findings or modal requirements. "
     "preserve reported observations and concrete instructions. "
     "Reject new or stronger claims, changed causality, lost qualifications, changed obligations, "
     "and changed physical objects or modifiers. A description does not establish a requirement; "
@@ -122,7 +126,15 @@ _EDITORIAL_FRAMING_PATTERN = re.compile(
     r"Deliberately wordy AI-draft input:|"
     r"I hope this helps(?=[.!?]|$))|"
     r"\bshape of (?:the|this) (?:introduction|paragraph|essay|draft)\b|"
-    r"\bthe pleasure of a measured tone\b"
+    r"\bthe pleasure of a measured tone\b|"
+    r"\bat least to my taste\b|"
+    r"\ban introduction within an introduction\b|"
+    r"\bfeeling of a rounded paragraph\b|"
+    r"\banother (?:gentle transition|small rhetorical pause|reflective sentence|small flourish|"
+    r"moment of (?:anticipation|appreciation|verbal ceremony))\b|"
+    r"\bclosing lines offer another opportunity\b|"
+    r"\btransition than I would otherwise choose\b|"
+    r"\bmy personal taste might otherwise favou?r\b"
 )
 
 _CANDIDATE_PATTERNS = (
