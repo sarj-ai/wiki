@@ -6,6 +6,7 @@ from dataclasses import asdict, dataclass, replace
 from datetime import timedelta
 import hashlib
 import json
+import re
 from typing import Literal, override
 
 from google import genai
@@ -39,6 +40,8 @@ _MAX_EDITOR_BATCH_BLOCKS = 12
 _MAX_REVIEW_ATTEMPTS = 3
 _MAX_REVIEW_BATCH_CHARACTERS = 8_000
 _MAX_REVIEW_BATCH_PAIRS = 12
+_MAX_CONCURRENT_REVIEW_BATCHES = 2
+_REVIEW_SENTENCE = re.compile(r".+?(?:[.!?]+(?=\s+|$)|$)", re.DOTALL)
 _RESPONSE_TOKEN_LIMIT = 8_192
 _LARGE_RESPONSE_TOKEN_LIMIT = 16_384
 _LARGE_PROMPT_CHARACTERS = 24_000
@@ -70,6 +73,13 @@ class _ReviewPair:
     replacement_sha256: str
     source: str
     proposed: str
+    source_context: str = ""
+
+
+@dataclass(frozen=True, slots=True)
+class _ReviewUnit:
+    parent_block_id: str
+    pair: _ReviewPair
 
 
 @dataclass(frozen=True, slots=True)
@@ -310,24 +320,35 @@ class VertexGeminiPatchGenerator(PatchGenerator):
             raise ValueError(msg)
         approved: set[str] = set()
         rejected: dict[str, str] = {}
-        pairs = [
-            _ReviewPair(
-                block_id=block.id,
-                expected_sha256=block.sha256,
-                replacement_sha256=hashlib.sha256(
-                    pending[block.id].replacement.encode()
-                ).hexdigest(),
-                source=block.text,
-                proposed=pending[block.id].replacement,
-            )
+        units = [
+            unit
             for block in model_editable_blocks(document)
             if block.id in pending
+            for unit in _review_units(block, pending[block.id].replacement)
         ]
-        for batch in _review_batches(pairs):
-            decision = await self._review_batch(batch)
+        decisions = await self._review_all_batches([unit.pair for unit in units])
+        for decision in decisions:
             approved.update(decision.approved)
             rejected.update(decision.rejected)
-        return RewriteReview(approved=frozenset(approved), rejected=rejected)
+        return _aggregate_review_units(units, RewriteReview(frozenset(approved), rejected))
+
+    async def _review_all_batches(self, pairs: list[_ReviewPair]) -> tuple[RewriteReview, ...]:
+        semaphore = asyncio.Semaphore(_MAX_CONCURRENT_REVIEW_BATCHES)
+        try:
+            async with asyncio.TaskGroup() as group:
+                tasks = [
+                    group.create_task(self._bounded_review_batch(batch, semaphore))
+                    for batch in _review_batches(pairs)
+                ]
+        except* ModelUnavailableError as error:
+            raise ModelUnavailableError from error
+        return tuple(task.result() for task in tasks)
+
+    async def _bounded_review_batch(
+        self, pairs: list[_ReviewPair], semaphore: asyncio.Semaphore
+    ) -> RewriteReview:
+        async with semaphore:
+            return await self._review_batch(pairs)
 
     async def _review_batch(self, pairs: list[_ReviewPair]) -> RewriteReview:
         last_error: Exception | None = None
@@ -359,12 +380,10 @@ class VertexGeminiPatchGenerator(PatchGenerator):
                     system_instruction=UNSLOP_REVIEW_INSTRUCTION,
                     response_mime_type="application/json",
                     response_json_schema=_response_json_schema(PatchReviewEnvelope),
-                    max_output_tokens=_response_token_limit(prompt),
+                    max_output_tokens=_LARGE_RESPONSE_TOKEN_LIMIT,
                     thinking_config=None
                     if model == self._policy.fallback_model
-                    else genai_types.ThinkingConfig(
-                        thinking_level=genai_types.ThinkingLevel.MEDIUM
-                    ),
+                    else genai_types.ThinkingConfig(thinking_level=genai_types.ThinkingLevel.HIGH),
                     http_options=genai_types.HttpOptions(timeout=int(seconds * 1000)),
                 ),
             )
@@ -374,6 +393,60 @@ class VertexGeminiPatchGenerator(PatchGenerator):
             return PatchReviewEnvelope.model_validate_json(response.text)
         msg = "Gemini returned no semantic review"
         raise ValueError(msg)
+
+
+def _review_units(block: TextBlock, proposed: str) -> tuple[_ReviewUnit, ...]:
+    sentences = tuple(
+        sentence
+        for match in _REVIEW_SENTENCE.finditer(block.text)
+        if (sentence := match.group(0).strip())
+    )
+    replacement_sha256 = hashlib.sha256(proposed.encode()).hexdigest()
+    if len(sentences) <= 1:
+        return (
+            _ReviewUnit(
+                block.id,
+                _ReviewPair(block.id, block.sha256, replacement_sha256, block.text, proposed),
+            ),
+        )
+    return tuple(
+        _ReviewUnit(
+            block.id,
+            _ReviewPair(
+                block_id=f"{block.id}-sentence-{index}",
+                expected_sha256=hashlib.sha256(
+                    json.dumps([block.sha256, index, sentence], separators=(",", ":")).encode()
+                ).hexdigest(),
+                replacement_sha256=replacement_sha256,
+                source=sentence,
+                proposed=proposed,
+                source_context=block.text,
+            ),
+        )
+        for index, sentence in enumerate(sentences)
+    )
+
+
+def _aggregate_review_units(units: list[_ReviewUnit], decision: RewriteReview) -> RewriteReview:
+    by_parent: dict[str, list[_ReviewUnit]] = {}
+    for unit in units:
+        by_parent.setdefault(unit.parent_block_id, []).append(unit)
+    return RewriteReview(
+        approved=frozenset(
+            parent
+            for parent, children in by_parent.items()
+            if all(child.pair.block_id in decision.approved for child in children)
+        ),
+        rejected={
+            parent: "; ".join(
+                decision.rejected[child.pair.block_id]
+                for child in children
+                if child.pair.block_id in decision.rejected
+            )
+            for parent, children in by_parent.items()
+            if any(child.pair.block_id in decision.rejected for child in children)
+        },
+    )
 
 
 def _response_token_limit(prompt: str) -> int:

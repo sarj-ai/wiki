@@ -35,11 +35,21 @@ _FORCE_WORD = re.compile(
 )
 _QUOTED_SPAN = re.compile(rf'"[^"\n]+"|“[^”\n]+”|{SINGLE_QUOTED_SPAN_PATTERN}')
 _SCOPE_QUALIFIER = re.compile(
+    r"\b(?:longest|shortest|largest|smallest|highest|lowest)\s+"
+    r"(?:(?:[\w-]+(?:ing|ed)|upper|lower)\s+)?[\w-]+\b|"
+    r"\bmore (?:often|likely|specific)\b|"
     r"\b(?:generally|usual|usually|typically|often|sometimes|rarely|mostly|mainly|rounded|"
     r"at least|at most|no more than|up to|same|helps?|appears?|suggests?|interpreted|evidence|"
+    r"particular|specific|within|together|available|still|other|another|different|earlier|later|"
+    r"successive|sample|useful|essential|necessary|shape|maintain|rare|young|older|younger|"
+    r"observed|recorded|studied|measured|estimated|reported|inferred|concluded|proved|"
     r"national|confidence intervals?|as (?:clearly|often|likely|many|much) as)\b|"
-    r"\b(?:about|around|roughly|approximately|nearly)\b(?=\s+\d)",
+    r"\b(?:about|around|roughly|approximately|nearly)\b(?=\s+\d)|"
+    r"\b[^\W\d_]+(?:[-\u2011][^\W\d_]+)+\b",
     re.IGNORECASE,
+)
+_RHETORICAL_COMPOUNDS = frozenset(
+    {"ever-evolving", "fast-paced", "game-changing", "cutting-edge", "state-of-the-art"}
 )
 _PROPER_NOUN = re.compile(r"\b(?:[A-Z][a-z]+|[A-Z]{2,}|[A-Z][A-Za-z0-9]*[A-Z][A-Za-z0-9]*)\b")
 _SENTENCE = re.compile(r".*?(?:[.!?]+(?=\s+|$)|$)", re.DOTALL)
@@ -210,7 +220,11 @@ def _aggressive_unslop_code(block: TextBlock, replacement: str) -> str | None:
 
 
 def _scope_qualifiers(text: str) -> list[str]:
-    return [match.group(0).casefold() for match in _SCOPE_QUALIFIER.finditer(text)]
+    return [
+        match.group(0).casefold()
+        for match in _SCOPE_QUALIFIER.finditer(text)
+        if match.group(0).casefold().replace("\u2011", "-") not in _RHETORICAL_COMPOUNDS
+    ]
 
 
 def _protected_rewrite_names(text: str) -> tuple[str, ...]:
