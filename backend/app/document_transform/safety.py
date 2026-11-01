@@ -17,6 +17,7 @@ from app.document_transform.unslop import (
     UnslopCandidate,
     expanded_deletion_span,
     scan_unslop_candidates,
+    without_editorial_framing,
 )
 
 
@@ -222,14 +223,14 @@ def _aggressive_unslop_code(block: TextBlock, replacement: str) -> str | None:
 def _scope_qualifiers(text: str) -> list[str]:
     return [
         match.group(0).casefold()
-        for match in _SCOPE_QUALIFIER.finditer(text)
+        for match in _SCOPE_QUALIFIER.finditer(without_editorial_framing(text))
         if match.group(0).casefold().replace("\u2011", "-") not in _RHETORICAL_COMPOUNDS
     ]
 
 
 def _protected_rewrite_names(text: str) -> tuple[str, ...]:
     names: list[str] = []
-    for match in _PROPER_NOUN.finditer(text):
+    for match in _PROPER_NOUN.finditer(without_editorial_framing(text)):
         prefix = text[: match.start()].rstrip()
         sentence_initial = not prefix or prefix[-1] in ".!?\n"
         multiple_capitals = sum(character.isupper() for character in match.group()) > 1

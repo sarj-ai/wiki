@@ -11,10 +11,13 @@ from app.document_transform.limits import MIN_MODEL_PROSE_WORDS
 
 UNSLOP_UPSTREAM_COMMIT = "d81f5196167ded24f46fced04958c0c12d681798"
 UNSLOP_UPSTREAM_VERSION = "2.3.0"
-UNSLOP_POLICY_VERSION = "sarj-concise-v6"
+UNSLOP_POLICY_VERSION = "sarj-concise-v7"
 UNSLOP_REWRITE_INSTRUCTION = (
     "Act as a ruthless, precise line editor. Rewrite verbose prose into direct, compact language. "
     "Remove throat-clearing, rhetorical questions, repeated explanations, ornamental metaphors, "
+    "editorial AI self-references and commentary about the shape or tone of the writing. "
+    "Do not preserve or invent frames such as 'an AI draft takes shape' around the facts. "
+    "Retain concrete authorship disclosures, quoted labels and requirements. Remove "
     "hype, empty significance claims, canned transitions, and recap padding. Start with the actual "
     "claim. Prefer short concrete words and active verbs. Aim for 50–70% fewer words in padded "
     "paragraphs when their complete factual content fits; this is a target, never permission to "
@@ -65,6 +68,9 @@ UNSLOP_REVIEW_INSTRUCTION = (
     "or interesting, and invitations to imagine or read carefully, are rhetorical padding unless "
     "they impose a concrete requirement. Concrete functionality and obligations must survive. "
     "Imagined scene staging and generic remarks about the writing itself are removable padding; "
+    "generic AI-draft frames and metaphors about the introduction's shape or measured tone "
+    "are editorial padding. Their deletion does not remove a named entity or a scientific "
+    "measurement. Concrete authorship disclosures, quotations and requirements must survive. "
     "preserve reported observations and concrete instructions. "
     "Reject new or stronger claims, changed causality, lost qualifications, changed obligations, "
     "and changed physical objects or modifiers. A description does not establish a requirement; "
@@ -107,7 +113,20 @@ SINGLE_QUOTED_SPAN_PATTERN = r"(?<!\w)'[^'\n]+'(?!\w)|‘[^’\n]+’"
 CUSTOM_URI_PATTERN = r"[A-Za-z][A-Za-z0-9+.-]*:(?://)?[^\s)>]+"
 HTML_ENTITY_PATTERN = r"&(?:#[0-9]+|#[xX][0-9A-Fa-f]+|[A-Za-z][A-Za-z0-9]+);"
 
+_EDITORIAL_FRAMING_PATTERN = re.compile(
+    r"(?:^|(?<=[.!?\n]))[ \t]*(?:"
+    r"[Aa]s an AI language model(?=[,:])|"
+    r"This deliberately wordy AI draft(?!\s+(?:must|shall|should|requires?|needs?)\b)|"
+    r"[Aa]n AI draft takes shape(?=[.!?]|$)|"
+    r"BEFORE\s*[\u2014\u2013:-]\s*deliberately padded AI-draft demonstration(?=[.!?]|$)|"
+    r"Deliberately wordy AI-draft input:|"
+    r"I hope this helps(?=[.!?]|$))|"
+    r"\bshape of (?:the|this) (?:introduction|paragraph|essay|draft)\b|"
+    r"\bthe pleasure of a measured tone\b"
+)
+
 _CANDIDATE_PATTERNS = (
+    ("editorial_framing", _EDITORIAL_FRAMING_PATTERN),
     (
         "canned_intro",
         re.compile(
@@ -228,6 +247,13 @@ class UnslopCandidate:
 class DeletionSpan:
     start: int
     end: int
+
+
+def without_editorial_framing(text: str) -> str:
+    characters = list(text)
+    for match in _EDITORIAL_FRAMING_PATTERN.finditer(_mask_ignored_spans(text)):
+        characters[match.start() : match.end()] = " " * (match.end() - match.start())
+    return "".join(characters)
 
 
 def model_editable_blocks(document: DocumentIR) -> tuple[TextBlock, ...]:
