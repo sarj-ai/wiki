@@ -337,6 +337,96 @@ def test_logo_geometry_scales_manifest_canvas_and_fits_manifest_box() -> None:
     assert expected.top == pytest.approx(36)
 
 
+@pytest.mark.parametrize("unit", ["PT", "EMU"])
+def test_provider_rebased_logo_keeps_physical_fingerprint_and_idempotency(unit: str) -> None:
+    presentation = _presentation()
+    parsed = parse_google_presentation(presentation, title="Review")
+    first = _format_plan(presentation, parsed=parsed)
+    _apply_brand_requests(presentation, first.requests)
+    logo = presentation["slides"][0]["pageElements"][-1]
+    _rebase_logo_geometry(logo, unit=unit)
+
+    observed = presentation_fingerprint(presentation, "Review")
+    second = _format_plan(
+        presentation, parsed=parse_google_presentation(presentation, title="Review")
+    )
+
+    assert observed.brand_sha256 == first.expected_brand_sha256
+    assert observed.protected_structure_sha256 == parsed.protected_sha256
+    assert second.expected_brand_sha256 == first.expected_brand_sha256
+    assert second.findings == ()
+    assert not any("createImage" in request for request in second.requests)
+
+
+@pytest.mark.parametrize("change", ["moved", "resized", "mirrored", "skewed"])
+def test_rebased_logo_still_rejects_changed_placement_or_orientation(change: str) -> None:
+    presentation = _presentation()
+    parsed = parse_google_presentation(presentation, title="Review")
+    first = _format_plan(presentation, parsed=parsed)
+    _apply_brand_requests(presentation, first.requests)
+    logo = presentation["slides"][0]["pageElements"][-1]
+    _rebase_logo_geometry(logo, unit="PT")
+    transform = logo["transform"]
+    match change:
+        case "moved":
+            transform["translateX"] -= 1
+        case "resized":
+            transform["scaleX"] *= 0.9
+        case "mirrored":
+            transform["translateX"] += logo["size"]["width"]["magnitude"] * transform["scaleX"]
+            transform["scaleX"] *= -1
+        case _:
+            transform["shearX"] = 1
+
+    second = _format_plan(
+        presentation, parsed=parse_google_presentation(presentation, title="Review")
+    )
+
+    assert "slide_logo_id_collision" in {finding.code for finding in second.findings}
+    if change in {"mirrored", "skewed"}:
+        with pytest.raises(UnsupportedSourceError):
+            presentation_fingerprint(presentation, "Review")
+    else:
+        assert (
+            presentation_fingerprint(presentation, "Review").brand_sha256
+            != first.expected_brand_sha256
+        )
+
+
+def _rebase_logo_geometry(logo: dict[str, JsonValue], *, unit: str) -> None:
+    # Model Slides' documented size/transform rebasing with sub-point intrinsic dimensions.
+    # Rounding these dimensions before applying the scale changes the physical footprint.
+    points_per_unit = 1 / 12_700 if unit == "EMU" else 1.0
+    size = logo["size"]
+    transform = logo["transform"]
+    assert isinstance(size, dict)
+    assert isinstance(transform, dict)
+    for axis, scale, intrinsic_emu in (("width", "scaleX", 2222), ("height", "scaleY", 1201)):
+        dimension = size[axis]
+        assert isinstance(dimension, dict)
+        physical_points = dimension["magnitude"]
+        assert isinstance(physical_points, int | float)
+        intrinsic = intrinsic_emu if unit == "EMU" else intrinsic_emu / 12_700
+        size[axis] = {"magnitude": intrinsic, "unit": unit}
+        transform[scale] = physical_points / (intrinsic * points_per_unit)
+
+
+def test_negative_intrinsic_logo_size_cannot_disguise_a_reflection() -> None:
+    presentation = _presentation()
+    parsed = parse_google_presentation(presentation, title="Review")
+    first = _format_plan(presentation, parsed=parsed)
+    _apply_brand_requests(presentation, first.requests)
+    logo = presentation["slides"][0]["pageElements"][-1]
+    logo["transform"]["translateX"] += logo["size"]["width"]["magnitude"]
+    logo["size"]["width"]["magnitude"] *= -1
+
+    second = _format_plan(presentation, parsed=parsed)
+
+    assert "slide_geometry_unsafe" in {finding.code for finding in second.findings}
+    with pytest.raises(UnsupportedSourceError):
+        presentation_fingerprint(presentation, "Review")
+
+
 def test_nonmatching_canvas_aspect_fails_closed_for_logo_only() -> None:
     presentation = _presentation()
     presentation["pageSize"]["height"]["magnitude"] = 540

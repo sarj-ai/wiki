@@ -8,7 +8,6 @@ import math
 from operator import itemgetter
 from typing import Any, NamedTuple
 
-from loguru import logger
 from pydantic import JsonValue
 
 from app.document_transform.brand_manifest import CURRENT_BRAND_MANIFEST
@@ -1669,36 +1668,25 @@ def _existing_logo_is_exact(
         isinstance(image, dict)
         and image.get("sourceUrl") == logo_uri
         and _image_appearance_is_default(image.get("imageProperties"))
-        and _logo_transform_is_exact(element, placement=placement)
+        and _logo_transform_is_axis_aligned(element)
         and bounds is not None
         and _rect_close(bounds, placement)
     )
 
 
-def _logo_transform_is_exact(element: dict[str, Any], *, placement: _Rect) -> bool:
-    size = element.get("size")
+def _logo_transform_is_axis_aligned(element: dict[str, JsonValue]) -> bool:
     transform = element.get("transform")
-    if not isinstance(size, dict) or not isinstance(transform, dict):
+    if not isinstance(transform, dict):
         return False
-    width = _dimension_points(size.get("width"))
-    height = _dimension_points(size.get("height"))
-    unit = transform.get("unit", "EMU")
-    factor = 1 / _EMU_PER_POINT if unit == "EMU" else 1.0 if unit == "PT" else None
     affine = _transform_values(transform)
-    if width is None or height is None or factor is None or affine is None:
+    if affine is None:
         return False
-    unscaled = _Rect(
-        left=affine.translate_x * factor,
-        top=affine.translate_y * factor,
-        width=width,
-        height=height,
-    )
+    # Slides can rebase image size into positive scales without changing its footprint.
     return (
-        math.isclose(affine.scale_x, 1.0, abs_tol=1e-9)
-        and math.isclose(affine.scale_y, 1.0, abs_tol=1e-9)
+        affine.scale_x > 0
+        and affine.scale_y > 0
         and math.isclose(affine.shear_x, 0.0, abs_tol=1e-9)
         and math.isclose(affine.shear_y, 0.0, abs_tol=1e-9)
-        and _rect_close(unscaled, placement)
     )
 
 
@@ -1860,10 +1848,11 @@ def _canonical_style(
     size = style.get("fontSize")
     foreground = style.get("foregroundColor")
     opaque = foreground.get("opaqueColor") if isinstance(foreground, dict) else None
+    font_size = _dimension_points(size)
     result: dict[str, Any] = {
         "fontFamily": family.get("fontFamily") if isinstance(family, dict) else None,
         "fontWeight": family.get("weight", 400) if isinstance(family, dict) else None,
-        "fontSizePt": _dimension_points(size),
+        "fontSizePt": None if font_size is None else round(font_size, 3),
         "color": _hex_from_opaque_color(opaque, theme_colors=theme_colors),
     }
     return result
@@ -1882,7 +1871,6 @@ def _observed_logos(presentation: dict[str, Any]) -> list[dict[str, Any]]:
             if object_id != expected_id:
                 continue
             bounds = _element_bounds(element)
-            image = element.get("image")
             if (
                 bounds is None
                 or not _rect_is_safe(
@@ -1890,9 +1878,11 @@ def _observed_logos(presentation: dict[str, Any]) -> list[dict[str, Any]]:
                     page_width=page_width,
                     page_height=page_height,
                 )
-                or not isinstance(image, dict)
-                or image.get("sourceUrl") != CURRENT_BRAND_MANIFEST.assets.logo_uri
-                or not _image_appearance_is_default(image.get("imageProperties"))
+                or not _existing_logo_is_exact(
+                    element,
+                    logo_uri=CURRENT_BRAND_MANIFEST.assets.logo_uri,
+                    placement=bounds,
+                )
             ):
                 raise UnsupportedSourceError
             logos.append(_canonical_logo(object_id=expected_id, slide_id=slide_id, rect=bounds))
@@ -1921,13 +1911,7 @@ def _brand_digest(*, styles: list[dict[str, Any]], logos: list[dict[str, Any]]) 
         separators=(",", ":"),
         sort_keys=True,
     )
-    brand_hash = hashlib.sha256(payload.encode()).hexdigest()
-    logger.bind(
-        slide_brand_sha256=brand_hash,
-        slide_brand_styles=styles,
-        slide_brand_logos=logos,
-    ).info("presentation brand projection")
-    return brand_hash
+    return hashlib.sha256(payload.encode()).hexdigest()
 
 
 def _slides(presentation: dict[str, Any]) -> list[dict[str, Any]]:
@@ -1979,7 +1963,7 @@ def _element_bounds(element: dict[str, Any]) -> _Rect | None:
     height = _dimension_points(size.get("height"))
     unit = transform.get("unit", "EMU")
     factor = 1 / _EMU_PER_POINT if unit == "EMU" else 1.0 if unit == "PT" else None
-    if width is None or height is None or factor is None:
+    if width is None or height is None or width <= 0 or height <= 0 or factor is None:
         return None
     affine = _transform_values(transform)
     if affine is None:
@@ -2028,9 +2012,10 @@ def _dimension_points(value: object) -> float | None:
     if not isinstance(magnitude, int | float) or not math.isfinite(magnitude):
         return None
     if unit == "PT":
-        return round(float(magnitude), 3)
+        return float(magnitude)
     if unit == "EMU":
-        return round(float(magnitude) / _EMU_PER_POINT, 3)
+        # Round only the final physical bounds: image scales can magnify unit-conversion loss.
+        return float(magnitude) / _EMU_PER_POINT
     return None
 
 
