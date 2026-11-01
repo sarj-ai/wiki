@@ -967,6 +967,109 @@ def test_disjoint_photo_allows_verifiable_text_formatting() -> None:
     assert fingerprints.protected_structure_sha256 == parsed.protected_sha256
 
 
+@pytest.mark.parametrize("alpha", [0, 0.0])
+def test_transparent_text_fills_use_the_known_page_background(alpha: float) -> None:
+    presentation = _presentation()
+    for element in presentation["slides"][0]["pageElements"]:
+        element["shape"]["shapeProperties"]["shapeBackgroundFill"] = {
+            "propertyState": "RENDERED",
+            "solidFill": {"alpha": alpha, "color": {"rgbColor": {}}},
+        }
+    parsed = parse_google_presentation(presentation, title="Review")
+    plan = _format_plan(presentation, parsed=parsed)
+    assert sum("updateTextStyle" in request for request in plan.requests) == 2
+    assert "slide_text_contrast_unresolved" not in {finding.code for finding in plan.findings}
+    branded = deepcopy(presentation)
+    _apply_brand_requests(branded, plan.requests)
+    fingerprints = presentation_fingerprint(branded, "Review")
+    assert fingerprints.brand_sha256 == plan.expected_brand_sha256
+    assert fingerprints.protected_structure_sha256 == parsed.protected_sha256
+
+
+@pytest.mark.parametrize("alpha", [0.5, False])
+def test_translucent_or_malformed_text_fills_do_not_claim_a_page_background(alpha: float) -> None:
+    presentation = _presentation()
+    presentation["slides"][0]["pageElements"][0]["shape"]["shapeProperties"][
+        "shapeBackgroundFill"
+    ] = {
+        "propertyState": "RENDERED",
+        "solidFill": {"alpha": alpha, "color": {"rgbColor": {}}},
+    }
+    parsed = parse_google_presentation(presentation, title="Review")
+    plan = _format_plan(presentation, parsed=parsed)
+    assert not any(
+        request.get("updateTextStyle", {}).get("objectId") == "title-1" for request in plan.requests
+    )
+    assert "slide_text_contrast_unresolved" in {finding.code for finding in plan.findings}
+
+
+def test_nonrendered_image_effect_properties_do_not_extend_a_disjoint_photo() -> None:
+    presentation = _presentation()
+    presentation["slides"][0]["pageElements"].append(
+        {
+            **_box("photo", left=560, top=130, width=120, height=160),
+            "image": {
+                "sourceUrl": "https://example.invalid/photo.png",
+                "imageProperties": {
+                    "shadow": {
+                        "propertyState": "NOT_RENDERED",
+                        "blurRadius": {"magnitude": 100, "unit": "PT"},
+                    },
+                    "outline": {
+                        "propertyState": "NOT_RENDERED",
+                        "weight": {"magnitude": 100, "unit": "PT"},
+                    },
+                },
+            },
+        }
+    )
+    parsed = parse_google_presentation(presentation, title="Review")
+    plan = _format_plan(presentation, parsed=parsed)
+    assert sum("updateTextStyle" in request for request in plan.requests) == 2
+
+
+@pytest.mark.parametrize("explicit_effects", [True, False])
+def test_clear_inherited_shapes_require_explicitly_absent_effects_before_ignoring_unknown_parent(
+    explicit_effects: bool,
+) -> None:
+    presentation = _presentation()
+    unused = _text_shape("unused", "Unused", left=560, top=130, width=120)
+    unused["shape"]["placeholder"] = {"type": "BODY", "parentObjectId": "missing-parent"}
+    if explicit_effects:
+        unused["shape"]["shapeProperties"].update(
+            {
+                "shadow": {"propertyState": "NOT_RENDERED"},
+                "outline": {"propertyState": "NOT_RENDERED"},
+            }
+        )
+    presentation["slides"][0]["pageElements"].append(unused)
+    parsed = parse_google_presentation(presentation, title="Review")
+    plan = _format_plan(presentation, parsed=parsed)
+    styled = {
+        request["updateTextStyle"]["objectId"]
+        for request in plan.requests
+        if "updateTextStyle" in request
+    }
+    assert styled == ({"title-1", "body-1"} if explicit_effects else set())
+
+
+def test_transparent_text_fill_still_requires_a_known_page_background() -> None:
+    presentation = _presentation()
+    presentation["slides"][0]["pageProperties"] = {
+        "pageBackgroundFill": {"stretchedPictureFill": {}}
+    }
+    presentation["slides"][0]["pageElements"][0]["shape"]["shapeProperties"][
+        "shapeBackgroundFill"
+    ] = {
+        "propertyState": "RENDERED",
+        "solidFill": {"alpha": 0, "color": {"rgbColor": {}}},
+    }
+    parsed = parse_google_presentation(presentation, title="Review")
+    plan = _format_plan(presentation, parsed=parsed)
+    assert not any("updateTextStyle" in request for request in plan.requests)
+    assert any("page background" in finding.detail for finding in plan.findings)
+
+
 def test_photo_blocks_only_the_text_it_overlaps() -> None:
     presentation = _presentation()
     presentation["slides"][0]["pageElements"].append(

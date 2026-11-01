@@ -33,11 +33,17 @@ class _ReviewInputPair(BaseModel):
     expected_sha256: str
     replacement_sha256: str
     source: str
+    context_id: str
+
+
+class _ReviewInputContext(BaseModel):
+    context_id: str
+    source: str
     proposed: str
-    source_context: str = ""
 
 
 class _ReviewInput(BaseModel):
+    document_contexts: list[_ReviewInputContext]
     document_proposals: list[_ReviewInputPair]
 
 
@@ -275,10 +281,16 @@ async def test_sparse_proposals_share_a_review_batch_without_unchanged_prose() -
     harness.call.review_input = True
     assert await harness.generator.verify(document, patches) == {block.id for block in selected}
     assert len(harness.call.configurations) == 1
-    submitted = _ReviewInput.model_validate_json(harness.call.prompts[0]).document_proposals
+    payload = _ReviewInput.model_validate_json(harness.call.prompts[0])
+    submitted = payload.document_proposals
     assert len(submitted) == 6
-    assert all(pair.source_context == paragraph for pair in submitted)
-    assert all(pair.source == SOURCE and pair.proposed == REPLACEMENT for pair in submitted)
+    assert len(payload.document_contexts) == 1
+    context = payload.document_contexts[0]
+    assert context.source == paragraph
+    assert context.proposed == REPLACEMENT
+    assert all(
+        pair.source == SOURCE and pair.context_id == context.context_id for pair in submitted
+    )
 
 
 async def test_review_batches_bound_paired_text_without_losing_or_duplicating_verdicts() -> None:
@@ -331,15 +343,18 @@ async def test_every_source_sentence_must_pass_before_its_paragraph_is_accepted(
     decision = await harness.generator.review(document, [patch])
     assert decision.approved == (frozenset({block.id}) if verdict == "approve" else frozenset())
     assert set(decision.rejected) == ({block.id} if verdict == "reject" else set())
-    submitted = _ReviewInput.model_validate_json(harness.call.prompts[0]).document_proposals
+    payload = _ReviewInput.model_validate_json(harness.call.prompts[0])
+    submitted = payload.document_proposals
     assert len(submitted) == 2
     assert {pair.source for pair in submitted} == {
         "Its song belongs within a breeding season, a territory and an annual journey.",
         provenance,
     }
-    assert all(
-        pair.source_context == source and pair.proposed == patch.replacement for pair in submitted
-    )
+    assert len(payload.document_contexts) == 1
+    context = payload.document_contexts[0]
+    assert context.source == source
+    assert context.proposed == patch.replacement
+    assert all(pair.context_id == context.context_id for pair in submitted)
     assert len({pair.block_id for pair in submitted}) == 2
 
 
@@ -357,3 +372,30 @@ async def test_sentence_verdict_hashes_bind_context_and_position() -> None:
         submitted = _ReviewInput.model_validate_json(harness.call.prompts[0]).document_proposals
         hashes.append(next(pair.expected_sha256 for pair in submitted if pair.source == shared))
     assert hashes[0] != hashes[1]
+
+
+async def test_sentence_checks_share_paragraph_context_without_losing_full_coverage() -> None:
+    paragraphs = [f"Case {index}: " + " ".join([SOURCE] * 5) for index in range(12)]
+    document = parse_markdown("\n\n".join(paragraphs), title="Context reuse")
+    patches = [
+        TextPatch(block_id=block.id, expected_sha256=block.sha256, replacement=REPLACEMENT)
+        for block in document.blocks
+        if block.text.strip()
+    ]
+    harness = _generator(types.GenerateContentResponse())
+    harness.call.review_input = True
+    assert await harness.generator.verify(document, patches) == {
+        patch.block_id for patch in patches
+    }
+    payloads = [_ReviewInput.model_validate_json(prompt) for prompt in harness.call.prompts]
+    assert sum(len(payload.document_proposals) for payload in payloads) == 60
+    assert len(payloads) <= 6
+    assert all(len(prompt) <= 8_000 for prompt in harness.call.prompts)
+    for payload in payloads:
+        contexts = {context.context_id: context for context in payload.document_contexts}
+        assert len(contexts) == len(payload.document_contexts)
+        assert len(contexts) < len(payload.document_proposals)
+        assert all(
+            contexts[pair.context_id].source in paragraphs for pair in payload.document_proposals
+        )
+        assert all(context.proposed == REPLACEMENT for context in contexts.values())

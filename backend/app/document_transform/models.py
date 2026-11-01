@@ -7,7 +7,7 @@ from datetime import timedelta
 import hashlib
 import json
 import re
-from typing import Literal, override
+from typing import Literal, NewType, override
 
 from google import genai
 from google.genai import errors as genai_errors, types as genai_types
@@ -45,6 +45,8 @@ _REVIEW_SENTENCE = re.compile(r".+?(?:[.!?]+(?=\s+|$)|$)", re.DOTALL)
 _RESPONSE_TOKEN_LIMIT = 8_192
 _LARGE_RESPONSE_TOKEN_LIMIT = 16_384
 _LARGE_PROMPT_CHARACTERS = 24_000
+_ReviewContextId = NewType("_ReviewContextId", str)
+_ReviewBlockId = NewType("_ReviewBlockId", str)
 
 
 def _response_json_schema(
@@ -80,6 +82,28 @@ class _ReviewPair:
 class _ReviewUnit:
     parent_block_id: str
     pair: _ReviewPair
+
+
+@dataclass(frozen=True, slots=True)
+class _ReviewContext:
+    context_id: _ReviewContextId
+    source: str
+    proposed: str
+
+
+@dataclass(frozen=True, slots=True)
+class _ReviewProposal:
+    block_id: _ReviewBlockId
+    expected_sha256: str
+    replacement_sha256: str
+    source: str
+    context_id: _ReviewContextId
+
+
+@dataclass(frozen=True, slots=True)
+class _ReviewPrompt:
+    document_contexts: tuple[_ReviewContext, ...]
+    document_proposals: tuple[_ReviewProposal, ...]
 
 
 @dataclass(frozen=True, slots=True)
@@ -367,11 +391,7 @@ class VertexGeminiPatchGenerator(PatchGenerator):
 
     async def _review_once(self, *, model: str, pairs: list[_ReviewPair]) -> PatchReviewEnvelope:
         seconds = self._policy.timeout.total_seconds()
-        prompt = json.dumps(
-            {"document_proposals": [asdict(pair) for pair in pairs]},
-            ensure_ascii=False,
-            separators=(",", ":"),
-        )
+        prompt = _review_prompt(pairs)
         async with asyncio.timeout(seconds):
             response = await self._client.aio.models.generate_content(
                 model=model,
@@ -458,22 +478,43 @@ def _response_token_limit(prompt: str) -> int:
 def _review_batches(pairs: list[_ReviewPair]) -> tuple[list[_ReviewPair], ...]:
     batches: list[list[_ReviewPair]] = []
     current: list[_ReviewPair] = []
-    envelope_characters = len('{"document_proposals":[]}')
-    characters = envelope_characters
     for pair in pairs:
-        size = len(json.dumps(asdict(pair), ensure_ascii=False, separators=(",", ":"))) + 1
+        candidate = [*current, pair]
         if current and (
-            characters + size > _MAX_REVIEW_BATCH_CHARACTERS
-            or len(current) >= _MAX_REVIEW_BATCH_PAIRS
+            len(candidate) > _MAX_REVIEW_BATCH_PAIRS
+            or len(_review_prompt(candidate)) > _MAX_REVIEW_BATCH_CHARACTERS
         ):
             batches.append(current)
             current = []
-            characters = envelope_characters
         current.append(pair)
-        characters += size
     if current:
         batches.append(current)
     return tuple(batches)
+
+
+def _review_prompt(pairs: list[_ReviewPair]) -> str:
+    contexts: dict[tuple[str, str], _ReviewContext] = {}
+    proposals: list[_ReviewProposal] = []
+    for pair in pairs:
+        key = (pair.source_context or pair.source, pair.proposed)
+        context = contexts.get(key)
+        if context is None:
+            context = _ReviewContext(_ReviewContextId(f"context-{len(contexts)}"), *key)
+            contexts[key] = context
+        proposals.append(
+            _ReviewProposal(
+                _ReviewBlockId(pair.block_id),
+                pair.expected_sha256,
+                pair.replacement_sha256,
+                pair.source,
+                context.context_id,
+            )
+        )
+    return json.dumps(
+        asdict(_ReviewPrompt(tuple(contexts.values()), tuple(proposals))),
+        ensure_ascii=False,
+        separators=(",", ":"),
+    )
 
 
 def _validated_reviews(pairs: list[_ReviewPair], reviews: PatchReviewEnvelope) -> RewriteReview:
