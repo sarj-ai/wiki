@@ -486,12 +486,15 @@ def _style_targets(
         page_background = _effective_page_background(presentation, slide)
         underlays = _visual_underlay_bounds(presentation, slide, object_ids=object_ids)
         for element in _walk_elements(slide.get("pageElements", [])):
-            background = None if _underlays_overlap(element, underlays) else page_background
+            overlaps = _underlays_overlap(element, underlays)
+            background = None if overlaps else page_background
+            background_reason = _background_failure_reason(page_background, overlaps=overlaps)
             target, finding = _style_target(
                 element,
                 page_background=background,
                 theme_colors=theme_colors,
                 object_ids=object_ids,
+                background_reason=background_reason,
             )
             if target is not None:
                 targets.append(target)
@@ -508,12 +511,21 @@ def _style_targets(
     return _StyleScan(tuple(targets), findings)
 
 
+def _background_failure_reason(page_background: str | None, *, overlaps: bool) -> str | None:
+    if page_background is None:
+        return "the page background is not a resolved opaque color"
+    if overlaps:
+        return "an image or unresolved visual layer may overlap this text"
+    return None
+
+
 def _style_target(
     element: dict[str, Any],
     *,
     page_background: str | None,
     theme_colors: dict[str, str] | None,
     object_ids: dict[str, tuple[dict[str, Any], ...]],
+    background_reason: str | None = None,
 ) -> _StyleDecision:
     object_id = SlideObjectId(_required_string(element, "objectId"))
     shape = element.get("shape")
@@ -541,6 +553,7 @@ def _style_target(
         page_background=page_background,
         theme_colors=theme_colors,
         ancestors=ancestors,
+        background_reason=background_reason,
     )
     if eligibility is None:
         return _StyleDecision(None, finding)
@@ -572,6 +585,7 @@ def _style_eligibility(
     page_background: str | None,
     theme_colors: dict[str, str] | None,
     ancestors: tuple[dict[str, Any], ...],
+    background_reason: str | None = None,
 ) -> _StyleEligibilityDecision:
     placeholder_type = _placeholder_type(shape)
     if placeholder_type not in _SUPPORTED_PLACEHOLDER_TYPES:
@@ -589,9 +603,17 @@ def _style_eligibility(
         theme_colors=theme_colors,
     )
     desired_color = _canonical_style(desired_style)["color"]
+    if background is None:
+        reason = background_reason or (
+            "the page background or a visual underlay is unresolved"
+            if page_background is None
+            else "the text box background is unresolved"
+        )
+        return _StyleEligibilityDecision(
+            None, _contrast_unresolved_finding(object_id, reason=reason)
+        )
     if (
-        background is None
-        or not isinstance(desired_color, str)
+        not isinstance(desired_color, str)
         or _contrast_ratio(desired_color, background) < _MIN_TEXT_CONTRAST
     ):
         return _StyleEligibilityDecision(None, _contrast_unresolved_finding(object_id))
@@ -1060,11 +1082,13 @@ def _fit_unresolved_finding(object_id: SlideObjectId) -> TransformFinding:
     )
 
 
-def _contrast_unresolved_finding(object_id: SlideObjectId) -> TransformFinding:
+def _contrast_unresolved_finding(
+    object_id: SlideObjectId, *, reason: str = "brand-color contrast could not be proven"
+) -> TransformFinding:
     return TransformFinding(
         code="slide_text_contrast_unresolved",
         block_id=object_id,
-        detail="Visible text was preserved because brand-color contrast could not be proven",
+        detail=f"Visible text was preserved because {reason}",
     )
 
 
@@ -1196,6 +1220,8 @@ def _effective_shape_background(
             return page_background
         if state not in {None, "RENDERED"}:
             return None
+        if _fill_is_transparent(fill):
+            return page_background
         return _opaque_solid_color(fill, theme_colors=theme_colors)
     return page_background
 
@@ -1240,6 +1266,8 @@ def _element_underlays(
         return (None,)
     shape = element.get("shape")
     if not isinstance(shape, dict):
+        return ()
+    if _shape_background_is_explicitly_clear(shape):
         return ()
     ancestors = _placeholder_ancestors(shape, object_ids=object_ids)
     if ancestors is None or _shape_has_rendered_fill(element, ancestors=ancestors):
@@ -1295,8 +1323,33 @@ def _shape_has_rendered_fill(
             continue
         if state == "NOT_RENDERED":
             return False
-        return state in {None, "RENDERED"}
+        return state in {None, "RENDERED"} and not _fill_is_transparent(fill)
     return False
+
+
+def _shape_background_is_explicitly_clear(shape: dict[str, JsonValue]) -> bool:
+    properties = shape.get("shapeProperties")
+    if not isinstance(properties, dict):
+        return False
+    fill = properties.get("shapeBackgroundFill")
+    if not isinstance(fill, dict):
+        return False
+    clear_fill = fill.get("propertyState") == "NOT_RENDERED" or (
+        fill.get("propertyState") in {None, "RENDERED"} and _fill_is_transparent(fill)
+    )
+    return clear_fill and all(
+        isinstance(effect, dict) and effect.get("propertyState") == "NOT_RENDERED"
+        for effect in (properties.get("outline"), properties.get("shadow"))
+    )
+
+
+def _fill_is_transparent(fill: object) -> bool:
+    if not isinstance(fill, dict) or set(fill) - {"propertyState", "solidFill"}:
+        return False
+    solid = fill.get("solidFill")
+    return (
+        isinstance(solid, dict) and type(solid.get("alpha")) in {int, float} and solid["alpha"] == 0
+    )
 
 
 def _opaque_solid_color(
@@ -1673,8 +1726,10 @@ def _image_appearance_is_default(raw: object) -> bool:
 def _effect_is_not_rendered(raw: object) -> bool:
     return raw is None or (
         isinstance(raw, dict)
-        and set(raw) <= {"propertyState"}
-        and raw.get("propertyState") in {None, "NOT_RENDERED"}
+        and (
+            raw.get("propertyState") == "NOT_RENDERED"
+            or (set(raw) <= {"propertyState"} and raw.get("propertyState") is None)
+        )
     )
 
 
