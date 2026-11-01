@@ -134,7 +134,7 @@ export function DemoFileContext({ file }: { file: DemoFile }) {
   const comparisonExample = comparison.length > 0;
   return (
     <div className="bg-background flex shrink-0 flex-wrap items-center justify-between gap-2 border-b px-3 py-2.5 sm:px-5">
-      <div className="min-w-0 flex-1">
+      <div className="min-w-0 basis-full sm:flex-1">
         <p className="flex items-center gap-1.5 text-xs font-medium">
           {comparisonExample ? (
             <Sparkles aria-hidden className="text-primary size-3.5" />
