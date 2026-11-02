@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import asyncio
-from collections.abc import Iterator
+from collections.abc import Hashable, Iterator, Mapping
 from copy import deepcopy
 from dataclasses import asdict, dataclass, field as dataclass_field, replace
 from functools import cache
@@ -10,7 +10,7 @@ from http import HTTPStatus
 from io import BytesIO
 import json
 import threading
-from typing import TYPE_CHECKING, Any, Protocol, TypeIs, override, runtime_checkable
+from typing import TYPE_CHECKING, Any, NamedTuple, Protocol, TypeIs, override, runtime_checkable
 import uuid
 
 from googleapiclient import discovery
@@ -22,6 +22,7 @@ from loguru import logger
 from pydantic import JsonValue, ValidationError
 
 from app.document_transform.brand import (
+    DocsRequest,
     SarjBrandProfile,
     paragraph_color,
     paragraph_font_size,
@@ -1459,26 +1460,9 @@ class GoogleDocumentGateway(DocumentGateway):
             document = self._get_document_sync(draft.document_id)
             tabs = tuple(_document_tabs(document))
         log_bullet_stage(document, "post_header")
-        tab_headers: list[TabHeader] = []
-        for tab_id, document_tab in tabs:
-            style = document_tab.get("documentStyle", {})
-            header_id = style.get("defaultHeaderId") if isinstance(style, dict) else None
-            if not isinstance(header_id, str):
-                if f"header_conflict:{tab_id}" in warnings:
-                    continue
-                raise DocumentGatewayError
-            headers = document_tab.get("headers", {})
-            if (
-                draft.applied_mutation_sha256 is None
-                and not pending_write_may_have_committed
-                and _segment_has_content(headers, header_id)
-            ):
-                if f"header_conflict:{tab_id}" not in warnings:
-                    warnings.append(f"header_conflict:{tab_id}")
-                continue
-            tab_headers.append(
-                TabHeader(tab_id=DocsTabId(tab_id), header_id=DocsSegmentId(header_id))
-            )
+        tab_headers = _copy_shell_headers(
+            tabs, draft, warnings, pending_write_may_have_committed=pending_write_may_have_committed
+        )
         revision_id = _required_string(document, "revisionId")
         return OutputDraft(
             output=draft.output,
@@ -1586,28 +1570,14 @@ class GoogleDocumentGateway(DocumentGateway):
                     _PROP_MUTATION_BASE_REVISION_HASH: _revision_sha256(required_revision_id),
                 },
             )
-            try:
-                self._execute_mutation_dict(
-                    _google_http_request(
-                        _member(self._docs().documents(), "batchUpdate"),
-                        documentId=draft.document_id,
-                        body={
-                            "requests": [
-                                {"createNamedRange": {"name": marker_name, "range": marker_range}},
-                                *requests,
-                            ],
-                            "writeControl": {"requiredRevisionId": required_revision_id},
-                        },
-                    )
-                )
-            except (DocumentGatewayError, ProviderDeadlineError) as exc:
-                document = self._get_document_sync(draft.document_id)
-                if _has_exact_named_range(document, marker_name, expected_marker_range):
-                    pass
-                elif document.get("revisionId") == required_revision_id:
-                    raise
-                else:
-                    raise SourceChangedError from exc
+            self._apply_marked_copy_requests_sync(
+                draft=draft,
+                requests=requests,
+                required_revision_id=required_revision_id,
+                marker_name=marker_name,
+                marker_range=marker_range,
+                expected_marker_range=expected_marker_range,
+            )
         self._update_properties_sync(
             draft.document_id,
             {_PROP_MUTATION: mutation_sha256},
@@ -1635,6 +1605,39 @@ class GoogleDocumentGateway(DocumentGateway):
             ),
             brand_warnings=draft.brand_warnings,
         )
+
+    def _apply_marked_copy_requests_sync(
+        self,
+        *,
+        draft: OutputDraft,
+        requests: list[DocsRequest],
+        required_revision_id: DocsRevisionId,
+        marker_name: str,
+        marker_range: dict[str, JsonValue],
+        expected_marker_range: dict[str, JsonValue],
+    ) -> None:
+        try:
+            self._execute_mutation_dict(
+                _google_http_request(
+                    _member(self._docs().documents(), "batchUpdate"),
+                    documentId=draft.document_id,
+                    body={
+                        "requests": [
+                            {"createNamedRange": {"name": marker_name, "range": marker_range}},
+                            *requests,
+                        ],
+                        "writeControl": {"requiredRevisionId": required_revision_id},
+                    },
+                )
+            )
+        except (DocumentGatewayError, ProviderDeadlineError) as exc:
+            document = self._get_document_sync(draft.document_id)
+            if _has_exact_named_range(document, marker_name, expected_marker_range):
+                pass
+            elif document.get("revisionId") == required_revision_id:
+                raise
+            else:
+                raise SourceChangedError from exc
 
     def _verify_output_sync(
         self,
@@ -1686,54 +1689,19 @@ class GoogleDocumentGateway(DocumentGateway):
         )
         parsed = parse_google_document(structure_document, title=expected.title)
         source_document = source.google_document
-        structural_preserved = source_document is None or (
-            _structural_inventory(source_document) == _structural_inventory(output_document)
-        )
-        protected_preserved = source_document is None or (
-            _protected_structure_inventory(source_document)
-            == _protected_structure_inventory(structure_document)
-        )
-        copy_list_identity_equivalent = False
-        if not protected_preserved and source_document is not None:
-            normalized_source = normalize_copy_list_identity(source_document)
-            normalized_output = normalize_copy_list_identity(structure_document)
-            copy_list_identity_equivalent = (
-                normalized_source is not None
-                and normalized_output is not None
-                and _protected_structure_inventory(normalized_source)
-                == _protected_structure_inventory(normalized_output)
-            )
-            protected_preserved = copy_list_identity_equivalent
-            if copy_list_identity_equivalent:
-                parsed = align_verified_copy_list_metadata(parsed, expected)
-        structure_preserved = (
-            structural_preserved
-            and protected_preserved
-            and (
-                source_document is None
-                or _occupied_headers_preserved(source_document, output_document)
-            )
-            and (
-                not verify_brand
-                or verify_copy_visual_authority(source_document, structure_document, expected)
-            )
-            and (
-                not verify_brand
-                or (
-                    verify_copy_fonts(
-                        source_document,
-                        structure_document,
-                        expected,
-                        list_identity_equivalent=copy_list_identity_equivalent,
-                    )
-                    if expected.copy_font_defended
-                    else _copy_font_preserved(
-                        source_document,
-                        structure_document,
-                        list_identity_equivalent=copy_list_identity_equivalent,
-                    )
-                )
-            )
+        (
+            parsed,
+            structural_preserved,
+            protected_preserved,
+            copy_list_identity_equivalent,
+            structure_preserved,
+        ) = _copy_structure_verification(
+            source_document,
+            output_document,
+            structure_document,
+            expected,
+            parsed,
+            verify_brand=verify_brand,
         )
         content_preserved = _typography_content_preserved(
             parsed, expected, verify_brand=verify_brand
@@ -2152,24 +2120,25 @@ def _segment_has_content(segments: object, segment_id: str) -> bool:
     content = segment.get("content", [])
     if not isinstance(content, list):
         return False
-    for item in content:
-        if not isinstance(item, dict):
-            continue
-        typed_item = {str(key): value for key, value in item.items()}
-        if _structural_text(typed_item).strip():
+    return any(_segment_item_has_content(item) for item in content)
+
+
+def _segment_item_has_content(item: object) -> bool:
+    if not isinstance(item, dict):
+        return False
+    typed_item = {str(key): value for key, value in item.items()}
+    if _structural_text(typed_item).strip():
+        return True
+    paragraph = typed_item.get("paragraph")
+    if isinstance(paragraph, dict):
+        elements = paragraph.get("elements", [])
+        if isinstance(elements, list) and any(
+            isinstance(element, dict)
+            and any(key in element for key in ("inlineObjectElement", "person", "richLink"))
+            for element in elements
+        ):
             return True
-        paragraph = typed_item.get("paragraph")
-        if isinstance(paragraph, dict):
-            elements = paragraph.get("elements", [])
-            if isinstance(elements, list) and any(
-                isinstance(element, dict)
-                and any(key in element for key in ("inlineObjectElement", "person", "richLink"))
-                for element in elements
-            ):
-                return True
-        if any(key in typed_item for key in ("table", "sectionBreak", "tableOfContents")):
-            return True
-    return False
+    return any(key in typed_item for key in ("table", "sectionBreak", "tableOfContents"))
 
 
 def _has_active_suggestions(value: object) -> bool:
@@ -2395,45 +2364,55 @@ def _custom_header_title_target(
         return None
     offset = 0
     for element in elements:
-        if not isinstance(element, dict):
-            return None
-        text_run = element.get("textRun")
-        if isinstance(text_run, dict):
-            content_text = text_run.get("content")
-            if not isinstance(content_text, str):
-                return None
-            end_index = offset + utf16_length(content_text)
-            if content_text.endswith("\n"):
-                text_style = text_run.get("textStyle", {})
-                if not isinstance(text_style, dict):
-                    return None
-                return CustomHeaderTitleTarget(
-                    tab_id=tab_id,
-                    header_id=header_id,
-                    terminal_newline_index=end_index - 1,
-                    terminal_newline_text_style_json=json.dumps(
-                        text_style,
-                        ensure_ascii=False,
-                        separators=(",", ":"),
-                        sort_keys=True,
-                    ),
-                )
-        else:
-            start_index = element.get("startIndex")
-            raw_end_index = element.get("endIndex")
-            if (
-                not isinstance(start_index, int) or not isinstance(raw_end_index, int)
-            ) and "inlineObjectElement" in element:
-                return CustomHeaderTitleTarget(tab_id=tab_id, header_id=header_id)
-            if (
-                not isinstance(start_index, int)
-                or not isinstance(raw_end_index, int)
-                or raw_end_index <= start_index
-            ):
-                return None
-            end_index = offset + raw_end_index - start_index
-        offset = end_index
+        extent = _custom_header_element_extent(element, offset, tab_id, header_id)
+        if not isinstance(extent, int):
+            return extent
+        offset = extent
     return CustomHeaderTitleTarget(tab_id=tab_id, header_id=header_id)
+
+
+def _custom_header_element_extent(
+    element: object,
+    offset: int,
+    tab_id: DocsTabId,
+    header_id: DocsSegmentId,
+) -> int | CustomHeaderTitleTarget | None:
+    if not isinstance(element, dict):
+        return None
+    text_run = element.get("textRun")
+    if isinstance(text_run, dict):
+        content_text = text_run.get("content")
+        if not isinstance(content_text, str):
+            return None
+        end_index = offset + utf16_length(content_text)
+        if not content_text.endswith("\n"):
+            return end_index
+        text_style = text_run.get("textStyle", {})
+        if not isinstance(text_style, dict):
+            return None
+        return CustomHeaderTitleTarget(
+            tab_id=tab_id,
+            header_id=header_id,
+            terminal_newline_index=end_index - 1,
+            terminal_newline_text_style_json=json.dumps(
+                text_style,
+                ensure_ascii=False,
+                separators=(",", ":"),
+                sort_keys=True,
+            ),
+        )
+    start_index, raw_end_index = element.get("startIndex"), element.get("endIndex")
+    if (
+        not isinstance(start_index, int) or not isinstance(raw_end_index, int)
+    ) and "inlineObjectElement" in element:
+        return CustomHeaderTitleTarget(tab_id=tab_id, header_id=header_id)
+    if (
+        not isinstance(start_index, int)
+        or not isinstance(raw_end_index, int)
+        or raw_end_index <= start_index
+    ):
+        return None
+    return offset + raw_end_index - start_index
 
 
 def _strip_custom_header_title(
@@ -2527,28 +2506,7 @@ def _custom_furniture_binding(
         return None
     if not furniture_bindings_known(tab):
         return None
-    if header_ids:
-        header_refs = set().union(
-            *(
-                _referenced_ids(tab, key)
-                for key in ("defaultHeaderId", "firstPageHeaderId", "evenPageHeaderId")
-            )
-        )
-        if (
-            len(header_ids) > MAX_DOC_TABS
-            or set(headers) != set(header_ids)
-            or header_refs != set(header_ids)
-        ):
-            return None
-    if len(footers) > MAX_DOC_TABS or any(not isinstance(key, str) for key in footers):
-        return None
-    footer_refs = set().union(
-        *(
-            _referenced_ids(tab, key)
-            for key in ("defaultFooterId", "firstPageFooterId", "evenPageFooterId")
-        )
-    )
-    if footer_refs != set(footers):
+    if not _furniture_references_match(tab, header_ids, headers, footers):
         return None
     selected_headers = {key: headers.get(key) for key in header_ids}
     segments = {"headers": selected_headers, "footers": footers}
@@ -2571,18 +2529,10 @@ def _custom_furniture_binding(
         "namedStyles": [document.get("namedStyles"), tab.get("namedStyles")],
         "sectionStyles": furniture_context_values(tab.get("body", {}), frozenset({"sectionStyle"})),
     }
-    for reference, field in (
-        ("inlineObjectId", "inlineObjects"),
-        ("positionedObjectIds", "positionedObjects"),
-        ("listId", "lists"),
-    ):
-        identifiers = _referenced_ids(segments, reference)
-        definitions = tab.get(field, document.get(field, {}))
-        if not isinstance(definitions, dict) or any(
-            not isinstance(definitions.get(key), dict) for key in identifiers
-        ):
-            return None
-        payload[field] = {key: definitions[key] for key in sorted(identifiers)}
+    definitions = _custom_furniture_definitions(document, tab, segments)
+    if definitions is None:
+        return None
+    payload.update(definitions)
     try:
         normalized = _stable_object_payload(payload)
         size = len(json.dumps(normalized, ensure_ascii=False, allow_nan=False).encode())
@@ -2596,6 +2546,57 @@ def _custom_furniture_binding(
         footer_ids=tuple(DocsSegmentId(identifier) for identifier in sorted(footers)),
         sha256=_inventory_sha256(normalized),
     )
+
+
+def _furniture_references_match(
+    tab: dict[str, JsonValue],
+    header_ids: tuple[str, ...],
+    headers: dict[str, JsonValue],
+    footers: dict[Hashable, JsonValue],
+) -> bool:
+    if header_ids:
+        header_refs = set().union(
+            *(
+                _referenced_ids(tab, key)
+                for key in ("defaultHeaderId", "firstPageHeaderId", "evenPageHeaderId")
+            )
+        )
+        if (
+            len(header_ids) > MAX_DOC_TABS
+            or set(headers) != set(header_ids)
+            or header_refs != set(header_ids)
+        ):
+            return False
+    if len(footers) > MAX_DOC_TABS or any(not isinstance(key, str) for key in footers):
+        return False
+    footer_refs = set().union(
+        *(
+            _referenced_ids(tab, key)
+            for key in ("defaultFooterId", "firstPageFooterId", "evenPageFooterId")
+        )
+    )
+    return footer_refs == set(footers)
+
+
+def _custom_furniture_definitions(
+    document: dict[str, JsonValue],
+    tab: dict[str, JsonValue],
+    segments: Mapping[str, JsonValue],
+) -> dict[str, JsonValue] | None:
+    definitions_payload: dict[str, JsonValue] = {}
+    for reference, field in (
+        ("inlineObjectId", "inlineObjects"),
+        ("positionedObjectIds", "positionedObjects"),
+        ("listId", "lists"),
+    ):
+        identifiers = _referenced_ids(segments, reference)
+        definitions = tab.get(field, document.get(field, {}))
+        if not isinstance(definitions, dict) or any(
+            not isinstance(definitions.get(key), dict) for key in identifiers
+        ):
+            return None
+        definitions_payload[field] = {key: definitions[key] for key in sorted(identifiers)}
+    return definitions_payload
 
 
 def _canonical_custom_header_suffixes(
@@ -2771,12 +2772,12 @@ def _body_sha256(document: dict[str, Any]) -> str:
 
 
 def _header_safe_sha256(document: dict[str, Any]) -> str:
-    def normalize(value: object) -> object:
+    def normalize(value: JsonValue) -> JsonValue:
         if isinstance(value, list):
             return [normalize(child) for child in value]
         if not isinstance(value, dict):
             return value
-        normalized: dict[str, object] = {}
+        normalized: dict[str, JsonValue] = {}
         for raw_key, child in value.items():
             key = str(raw_key)
             if key in {"revisionId", "namedRanges", "headers"}:
@@ -2833,40 +2834,50 @@ def _post_mutation_marker_range(
     for request in requests:
         deletion = request.get("deleteContentRange")
         if isinstance(deletion, dict):
-            range_value = deletion.get("range")
-            if not isinstance(range_value, dict):
+            span = deletion.get("range")
+            if not isinstance(span, dict):
                 continue
-            deletion_start = range_value.get("startIndex")
-            deletion_end = range_value.get("endIndex")
-            if (
-                range_value.get("tabId") == tab_id
-                and range_value.get("segmentId") is None
-                and isinstance(deletion_start, int)
-                and isinstance(deletion_end, int)
-                and deletion_end <= start
-            ):
-                delta = deletion_end - deletion_start
+            delta = _marker_deletion_delta(span, tab_id, start)
+            if delta is not None:
                 start -= delta
                 end -= delta
-        insertion = request.get("insertText")
-        if isinstance(insertion, dict):
-            location = insertion.get("location")
-            text = insertion.get("text")
-            if not isinstance(location, dict) or not isinstance(text, str):
-                continue
-            insertion_index = location.get("index")
-            if (
-                location.get("tabId") == tab_id
-                and location.get("segmentId") is None
-                and isinstance(insertion_index, int)
-                and insertion_index <= start
-            ):
-                delta = len(text.encode("utf-16-le")) // 2
-                start += delta
-                end += delta
+        delta = _marker_insertion_delta(request.get("insertText"), tab_id, start)
+        if delta is not None:
+            start += delta
+            end += delta
     expected["startIndex"] = start
     expected["endIndex"] = end
     return expected
+
+
+def _marker_deletion_delta(span: dict[str, JsonValue], tab_id: str, start: int) -> int | None:
+    first, last = span.get("startIndex"), span.get("endIndex")
+    if (
+        span.get("tabId") == tab_id
+        and span.get("segmentId") is None
+        and isinstance(first, int)
+        and isinstance(last, int)
+        and last <= start
+    ):
+        return last - first
+    return None
+
+
+def _marker_insertion_delta(insertion: object, tab_id: str, start: int) -> int | None:
+    if not isinstance(insertion, dict):
+        return None
+    location, text = insertion.get("location"), insertion.get("text")
+    if not isinstance(location, dict) or not isinstance(text, str):
+        return None
+    index = location.get("index")
+    if (
+        location.get("tabId") == tab_id
+        and location.get("segmentId") is None
+        and isinstance(index, int)
+        and index <= start
+    ):
+        return len(text.encode("utf-16-le")) // 2
+    return None
 
 
 _STAGE_REQUEST_KINDS = frozenset(
@@ -2923,33 +2934,50 @@ def _named_range_diagnostics(
             checks["malformed_definitions"] += 1
             continue
         checks["definition_count"] += len(definitions)
-        for definition in definitions:
-            if not isinstance(definition, dict):
-                checks["malformed_definitions"] += 1
-                continue
-            checks["matching_name_count"] += definition.get("name") == marker_name
-            ranges = definition.get("ranges")
-            if not isinstance(ranges, list):
+        _observe_named_range_definitions(
+            definitions=definitions,
+            checks=checks,
+            marker_name=marker_name,
+            expected_range=expected_range,
+            tab_id=tab_id,
+        )
+    return checks
+
+
+def _observe_named_range_definitions(
+    *,
+    definitions: list[JsonValue],
+    checks: dict[str, int | bool],
+    marker_name: str,
+    expected_range: dict[str, JsonValue],
+    tab_id: str,
+) -> None:
+    for definition in definitions:
+        if not isinstance(definition, dict):
+            checks["malformed_definitions"] += 1
+            continue
+        checks["matching_name_count"] += definition.get("name") == marker_name
+        ranges = definition.get("ranges")
+        if not isinstance(ranges, list):
+            checks["malformed_ranges"] += 1
+            continue
+        checks["range_count"] += len(ranges)
+        for observed in ranges:
+            if not isinstance(observed, dict):
                 checks["malformed_ranges"] += 1
                 continue
-            checks["range_count"] += len(ranges)
-            for observed in ranges:
-                if not isinstance(observed, dict):
-                    checks["malformed_ranges"] += 1
-                    continue
-                checks["matching_tab_count"] += tab_id == expected_range.get("tabId")
-                checks["start_present_count"] += type(observed.get("startIndex")) is int
-                checks["end_present_count"] += type(observed.get("endIndex")) is int
-                checks["matching_start_count"] += observed.get("startIndex") == expected_range.get(
-                    "startIndex"
-                )
-                checks["matching_end_count"] += observed.get("endIndex") == expected_range.get(
-                    "endIndex"
-                )
-                checks["exact_range_count"] += _same_named_range(
-                    observed, expected_range, tab_id=tab_id
-                )
-    return checks
+            checks["matching_tab_count"] += tab_id == expected_range.get("tabId")
+            checks["start_present_count"] += type(observed.get("startIndex")) is int
+            checks["end_present_count"] += type(observed.get("endIndex")) is int
+            checks["matching_start_count"] += observed.get("startIndex") == expected_range.get(
+                "startIndex"
+            )
+            checks["matching_end_count"] += observed.get("endIndex") == expected_range.get(
+                "endIndex"
+            )
+            checks["exact_range_count"] += _same_named_range(
+                observed, expected_range, tab_id=tab_id
+            )
 
 
 def _has_exact_named_range(
@@ -3207,7 +3235,9 @@ def _copy_inventory_diagnostics(
     return checks
 
 
-def _occupied_headers_preserved(original: dict[str, Any], actual: dict[str, Any]) -> bool:
+def _occupied_headers_preserved(
+    original: dict[str, JsonValue], actual: dict[str, JsonValue]
+) -> bool:
     actual_tabs = dict(_document_tabs(actual))
     for tab_id, source_tab in _document_tabs(original):
         source_headers = source_tab.get("headers", {})
@@ -3228,21 +3258,32 @@ def _occupied_headers_preserved(original: dict[str, Any], actual: dict[str, Any]
                 target_headers.get(header_id)
             ):
                 return False
-            for reference, definitions in (
-                ("inlineObjectId", "inlineObjects"),
-                ("positionedObjectIds", "positionedObjects"),
-                ("listId", "lists"),
+            if not _occupied_header_bindings_preserved(source_tab, target_tab, header, header_id):
+                return False
+    return True
+
+
+def _occupied_header_bindings_preserved(
+    source_tab: Mapping[str, dict[str, JsonValue]],
+    target_tab: Mapping[str, dict[str, JsonValue]],
+    header: JsonValue,
+    header_id: str,
+) -> bool:
+    for reference, definitions in (
+        ("inlineObjectId", "inlineObjects"),
+        ("positionedObjectIds", "positionedObjects"),
+        ("listId", "lists"),
+    ):
+        for identifier in _referenced_ids(header, reference):
+            if _stable_object_payload(source_tab.get(definitions, {}).get(identifier)) != (
+                _stable_object_payload(target_tab.get(definitions, {}).get(identifier))
             ):
-                for identifier in _referenced_ids(header, reference):
-                    if _stable_object_payload(source_tab.get(definitions, {}).get(identifier)) != (
-                        _stable_object_payload(target_tab.get(definitions, {}).get(identifier))
-                    ):
-                        return False
-            for binding in ("defaultHeaderId", "firstPageHeaderId", "evenPageHeaderId"):
-                if source_tab.get("documentStyle", {}).get(binding) == header_id and (
-                    target_tab.get("documentStyle", {}).get(binding) != header_id
-                ):
-                    return False
+                return False
+    for binding in ("defaultHeaderId", "firstPageHeaderId", "evenPageHeaderId"):
+        if source_tab.get("documentStyle", {}).get(binding) == header_id and (
+            target_tab.get("documentStyle", {}).get(binding) != header_id
+        ):
+            return False
     return True
 
 
@@ -3308,23 +3349,8 @@ def _copy_supported_brand_applied(
         source_tab = original_tabs.get(raw_tab_id)
         if source_tab is None:
             return False
-        headers = source_tab.get("headers")
-        style = source_tab.get("documentStyle")
-        header_id = style.get("defaultHeaderId") if isinstance(style, dict) else None
-        if (
-            not isinstance(headers, dict)
-            or any(not isinstance(key, str) or not key for key in headers)
-            or not isinstance(header_id, str)
-            or not _segment_has_content(headers, header_id)
-        ):
-            return False
-        binding = _custom_furniture_binding(
-            original,
-            DocsTabId(raw_tab_id),
-            source_tab,
-            tuple(sorted(headers)),
-        )
-        if binding is None or DocsSegmentId(header_id) not in binding.header_ids:
+        binding = _conflicted_header_binding(original, DocsTabId(raw_tab_id), source_tab)
+        if binding is None:
             return False
         bindings.append(binding)
     evidence = tuple(bindings)
@@ -3335,6 +3361,36 @@ def _copy_supported_brand_applied(
         preserved_furniture_tabs=frozenset(binding.tab_id for binding in evidence),
         preserved_header_tabs=frozenset(binding.tab_id for binding in evidence),
     )
+
+
+def _conflicted_header_binding(
+    document: dict[str, JsonValue],
+    tab_id: DocsTabId,
+    source_tab: dict[str, JsonValue],
+) -> CustomFurnitureBinding | None:
+    headers = source_tab.get("headers")
+    style = source_tab.get("documentStyle")
+    header_id = style.get("defaultHeaderId") if isinstance(style, dict) else None
+    if (
+        not isinstance(headers, dict)
+        or any(not _valid_segment_identifier(key) for key in headers)
+        or not isinstance(header_id, str)
+        or not _segment_has_content(headers, header_id)
+    ):
+        return None
+    binding = _custom_furniture_binding(
+        document,
+        tab_id,
+        source_tab,
+        tuple(sorted(headers)),
+    )
+    if binding is None or DocsSegmentId(header_id) not in binding.header_ids:
+        return None
+    return binding
+
+
+def _valid_segment_identifier(value: Hashable) -> bool:
+    return isinstance(value, str) and bool(value)
 
 
 def _expected_copy_header_title(
@@ -3383,8 +3439,8 @@ def _immutable_tab_payload(document_tab: dict[str, Any], content: list[Any]) -> 
     return payload
 
 
-def _native_list_text_style_inventory(value: object) -> list[object]:
-    inventory: list[object] = []
+def _native_list_text_style_inventory(value: JsonValue) -> list[JsonValue]:
+    inventory: list[JsonValue] = []
     match value:
         case list() as items:
             for child in items:
@@ -3396,57 +3452,84 @@ def _native_list_text_style_inventory(value: object) -> list[object]:
             return inventory
     paragraph = mapping.get("paragraph")
     if isinstance(paragraph, dict) and isinstance(paragraph.get("bullet"), dict):
-        elements = paragraph.get("elements")
-        if not isinstance(elements, list):
-            return [{"malformed": True}]
-        visible: list[dict[str, Any]] = []
-        terminal_count = 0
-        for element in elements:
-            run = element.get("textRun") if isinstance(element, dict) else None
-            if not isinstance(run, dict):
-                return [{"malformed": True}]
-            content_value: object = run.get("content")
-            if not isinstance(content_value, str):
-                return [{"malformed": True}]
-            content = content_value
-            style_value: object = run.get("textStyle", {})
-            if not isinstance(style_value, dict) or any(
-                not isinstance(key, str) for key in style_value
-            ):
-                return [{"malformed": True}]
-            style: dict[str, Any] = {str(key): child for key, child in style_value.items()}
-            visible_text = content.removesuffix("\n")
-            if visible_text:
-                if visible and visible[-1]["style"] == style:
-                    visible[-1]["text"] += visible_text
-                else:
-                    visible.append({"style": style, "text": visible_text})
-            if content.endswith("\n"):
-                terminal_count += 1
-        styles = [item["style"] for item in visible]
-        inventory.append(
-            {
-                "visible": (
-                    styles
-                    if len(styles) <= 1
-                    else [
-                        {
-                            "style": item["style"],
-                            "textSha256": hashlib.sha256(item["text"].encode()).hexdigest(),
-                        }
-                        for item in visible
-                    ]
-                ),
-                # Docs may canonicalize this invisible provider-owned newline
-                # when the following paragraph is styled. Preserve its exact
-                # topology, while keeping every visible list style strict.
-                "terminalCount": terminal_count,
-            }
-        )
-        return inventory
+        return _native_list_paragraph_inventory(paragraph)
     for child in mapping.values():
         inventory.extend(_native_list_text_style_inventory(child))
     return inventory
+
+
+@dataclass(frozen=True, slots=True)
+class _NativeListRun:
+    style: dict[str, JsonValue]
+    text: str
+
+
+def _native_list_paragraph_inventory(paragraph: dict[str, JsonValue]) -> list[JsonValue]:
+    elements = paragraph.get("elements")
+    if not isinstance(elements, list):
+        return [{"malformed": True}]
+    collected = _native_list_runs(elements)
+    if collected is None:
+        return [{"malformed": True}]
+    visible, terminal_count = collected
+    styles: list[JsonValue] = [item.style for item in visible]
+    visible_styles: list[JsonValue] = (
+        styles
+        if len(styles) <= 1
+        else [
+            {
+                "style": item.style,
+                "textSha256": hashlib.sha256(item.text.encode()).hexdigest(),
+            }
+            for item in visible
+        ]
+    )
+    payload: JsonValue = {
+        "visible": visible_styles,
+        # Docs may canonicalize this invisible provider-owned newline
+        # when the following paragraph is styled. Preserve its exact
+        # topology, while keeping every visible list style strict.
+        "terminalCount": terminal_count,
+    }
+    return [payload]
+
+
+def _native_list_runs(elements: list[JsonValue]) -> tuple[list[_NativeListRun], int] | None:
+    visible: list[_NativeListRun] = []
+    terminal_count = 0
+    for element in elements:
+        parsed = _native_list_run(element)
+        if parsed is None:
+            return None
+        content, style = parsed
+        visible_text = content.removesuffix("\n")
+        if visible_text:
+            if visible and visible[-1].style == style:
+                visible[-1] = replace(visible[-1], text=visible[-1].text + visible_text)
+            else:
+                visible.append(_NativeListRun(style, visible_text))
+        if content.endswith("\n"):
+            terminal_count += 1
+    return visible, terminal_count
+
+
+def _native_list_run(element: JsonValue) -> tuple[str, dict[str, JsonValue]] | None:
+    run = element.get("textRun") if isinstance(element, dict) else None
+    if not isinstance(run, dict):
+        return None
+    content_value: object = run.get("content")
+    if not isinstance(content_value, str):
+        return None
+    content = content_value
+    style_value: object = run.get("textStyle", {})
+    if not isinstance(style_value, dict) or any(not _is_text_style_key(key) for key in style_value):
+        return None
+    style = {str(key): child for key, child in style_value.items()}
+    return content, style
+
+
+def _is_text_style_key(value: Hashable) -> bool:
+    return isinstance(value, str)
 
 
 def _protected_element_payload(element: dict[str, Any]) -> object:
@@ -3729,30 +3812,34 @@ def _font_only_has_brand(paragraph: dict[str, Any], block: TextBlock) -> bool:
     elements = paragraph.get("elements", [])
     if not isinstance(elements, list):
         return False
-    for source in block.font_style_ranges:
-        cursor = source.start_index
-        for part in elements:
-            if not isinstance(part, dict):
-                continue
-            start, end = part.get("startIndex"), part.get("endIndex")
-            if not isinstance(start, int) or not isinstance(end, int) or end <= cursor:
-                continue
-            if start > cursor:
-                return False
-            run = part.get("textRun", {})
-            style = run.get("textStyle", {}) if isinstance(run, dict) else {}
-            family = style.get("weightedFontFamily", {}) if isinstance(style, dict) else {}
-            if (
-                not isinstance(family, dict)
-                or family.get("fontFamily") != CURRENT_BRAND_MANIFEST.document.font_family
-            ):
-                return False
-            cursor = min(end, source.end_index)
-            if cursor == source.end_index:
-                break
-        if cursor != source.end_index:
+    return all(
+        _font_range_has_brand(elements, source.start_index, source.end_index)
+        for source in block.font_style_ranges
+    )
+
+
+def _font_range_has_brand(elements: list[JsonValue], start_index: int, end_index: int) -> bool:
+    cursor = start_index
+    for part in elements:
+        if not isinstance(part, dict):
+            continue
+        start, end = part.get("startIndex"), part.get("endIndex")
+        if not isinstance(start, int) or not isinstance(end, int) or end <= cursor:
+            continue
+        if start > cursor:
             return False
-    return True
+        run = part.get("textRun", {})
+        style = run.get("textStyle", {}) if isinstance(run, dict) else {}
+        family = style.get("weightedFontFamily", {}) if isinstance(style, dict) else {}
+        if (
+            not isinstance(family, dict)
+            or family.get("fontFamily") != CURRENT_BRAND_MANIFEST.document.font_family
+        ):
+            return False
+        cursor = min(end, end_index)
+        if cursor == end_index:
+            break
+    return cursor == end_index
 
 
 def verify_brand_application(
@@ -3798,31 +3885,12 @@ def verify_brand_application(
     )
     paragraphs = _paragraphs_by_range(tabs)
     if applied:
-        for block in parsed.blocks:
-            source_range = block.source_range
-            if source_range is None or block.kind is BlockKind.BLANK:
-                continue
-            if not block.editable and not block.font_style_ranges:
-                continue
-            paragraph = paragraphs.get(
-                ParagraphRangeKey(
-                    tab_id=source_range.tab_id,
-                    start_index=source_range.start_index,
-                    end_index=source_range.end_index,
-                )
-            )
-            if paragraph is None or not (
-                _paragraph_has_brand(
-                    paragraph,
-                    block,
-                    preserve_text_style=block.id in preserved_native_list_text_style_ids,
-                    allow_preserved_visual_authority=allow_preserved_visual_authority,
-                )
-                if block.editable
-                else _font_only_has_brand(paragraph, block)
-            ):
-                applied = False
-                break
+        applied = _paragraphs_have_brand(
+            parsed,
+            paragraphs,
+            preserved_native_list_text_style_ids=preserved_native_list_text_style_ids,
+            allow_preserved_visual_authority=allow_preserved_visual_authority,
+        )
     if not applied:
         checks = _brand_application_diagnostics(
             document,
@@ -3836,6 +3904,40 @@ def verify_brand_application(
     return applied
 
 
+def _paragraphs_have_brand(
+    parsed: DocumentIR,
+    paragraphs: dict[ParagraphRangeKey, dict[str, JsonValue]],
+    *,
+    preserved_native_list_text_style_ids: frozenset[str],
+    allow_preserved_visual_authority: bool,
+) -> bool:
+    for block in parsed.blocks:
+        source_range = block.source_range
+        if source_range is None or block.kind is BlockKind.BLANK:
+            continue
+        if not block.editable and not block.font_style_ranges:
+            continue
+        paragraph = paragraphs.get(
+            ParagraphRangeKey(
+                tab_id=source_range.tab_id,
+                start_index=source_range.start_index,
+                end_index=source_range.end_index,
+            )
+        )
+        if paragraph is None or not (
+            _paragraph_has_brand(
+                paragraph,
+                block,
+                preserve_text_style=block.id in preserved_native_list_text_style_ids,
+                allow_preserved_visual_authority=allow_preserved_visual_authority,
+            )
+            if block.editable
+            else _font_only_has_brand(paragraph, block)
+        ):
+            return False
+    return True
+
+
 def _brand_application_diagnostics(
     document: dict[str, Any],
     parsed: DocumentIR,
@@ -3846,20 +3948,61 @@ def _brand_application_diagnostics(
     allow_preserved_visual_authority: bool = False,
 ) -> dict[str, bool | int]:
     tabs = tuple(_document_tabs(document))
+    expected_title = parsed.title if expected_header_title is None else expected_header_title
     tab_checks: list[dict[str, bool]] = []
     for _, document_tab in tabs:
         tab_checks.append(
             _tab_brand_diagnostics(
                 document,
                 document_tab,
-                expected_title=parsed.title
-                if expected_header_title is None
-                else expected_header_title,
+                expected_title=expected_title,
                 allow_legacy_inline_objects=len(tabs) == 1,
                 header_separator=header_separator,
             )
         )
     paragraphs = _paragraphs_by_range(tabs)
+    paragraph_range_checks, paragraph_checks, font_only_checks = _paragraph_brand_checks(
+        parsed,
+        paragraphs,
+        preserved_native_list_text_style_ids=preserved_native_list_text_style_ids,
+        allow_preserved_visual_authority=allow_preserved_visual_authority,
+    )
+    checks: dict[str, bool | int] = {
+        "tabs_present": bool(tabs),
+        "tab_count": len(tabs),
+        "margins": bool(tabs) and all(item["margins"] for item in tab_checks),
+        "header_shape": bool(tabs) and all(item["header_shape"] for item in tab_checks),
+        "header_paragraph_style": bool(tabs)
+        and all(item["header_paragraph_style"] for item in tab_checks),
+        "header_title": bool(tabs) and all(item["header_title"] for item in tab_checks),
+        "header_text_style": bool(tabs) and all(item["header_text_style"] for item in tab_checks),
+        "logo_count": bool(tabs) and all(item["logo_count"] for item in tab_checks),
+        "logo_asset": bool(tabs) and all(item["logo_asset"] for item in tab_checks),
+        "paragraph_ranges": all(paragraph_range_checks),
+        "paragraph_named_styles": all(item["named_style"] for item in paragraph_checks),
+        "paragraph_layout": all(item["layout"] for item in paragraph_checks),
+        "paragraph_text_styles": all(item["text_style"] for item in paragraph_checks),
+        "paragraph_count": len(paragraph_checks),
+    }
+    if font_only_checks:
+        checks["paragraph_font_only_styles"] = all(font_only_checks)
+        checks["paragraph_font_only_count"] = len(font_only_checks)
+    return checks
+
+
+class _ParagraphBrandChecks(NamedTuple):
+    ranges: list[bool]
+    paragraphs: list[dict[str, bool]]
+    font_only: list[bool]
+
+
+def _paragraph_brand_checks(
+    parsed: DocumentIR,
+    paragraphs: dict[ParagraphRangeKey, dict[str, JsonValue]],
+    *,
+    preserved_native_list_text_style_ids: frozenset[str],
+    allow_preserved_visual_authority: bool,
+) -> _ParagraphBrandChecks:
     paragraph_range_checks: list[bool] = []
     paragraph_checks: list[dict[str, bool]] = []
     font_only_checks: list[bool] = []
@@ -3892,27 +4035,7 @@ def _brand_application_diagnostics(
             if paragraph is not None
             else {"named_style": False, "layout": False, "text_style": False}
         )
-    checks: dict[str, bool | int] = {
-        "tabs_present": bool(tabs),
-        "tab_count": len(tabs),
-        "margins": bool(tabs) and all(item["margins"] for item in tab_checks),
-        "header_shape": bool(tabs) and all(item["header_shape"] for item in tab_checks),
-        "header_paragraph_style": bool(tabs)
-        and all(item["header_paragraph_style"] for item in tab_checks),
-        "header_title": bool(tabs) and all(item["header_title"] for item in tab_checks),
-        "header_text_style": bool(tabs) and all(item["header_text_style"] for item in tab_checks),
-        "logo_count": bool(tabs) and all(item["logo_count"] for item in tab_checks),
-        "logo_asset": bool(tabs) and all(item["logo_asset"] for item in tab_checks),
-        "paragraph_ranges": all(paragraph_range_checks),
-        "paragraph_named_styles": all(item["named_style"] for item in paragraph_checks),
-        "paragraph_layout": all(item["layout"] for item in paragraph_checks),
-        "paragraph_text_styles": all(item["text_style"] for item in paragraph_checks),
-        "paragraph_count": len(paragraph_checks),
-    }
-    if font_only_checks:
-        checks["paragraph_font_only_styles"] = all(font_only_checks)
-        checks["paragraph_font_only_count"] = len(font_only_checks)
-    return checks
+    return _ParagraphBrandChecks(paragraph_range_checks, paragraph_checks, font_only_checks)
 
 
 def _tab_brand_diagnostics(
@@ -3980,6 +4103,27 @@ def _header_brand_diagnostics(
         and isinstance(paragraph_style, dict)
         and isinstance(elements, list)
     )
+    title = _header_title_diagnostics(elements, expected_title, header_separator)
+    return {
+        "header_shape": shape_ok and title.shape,
+        "header_paragraph_style": _header_paragraph_has_brand(paragraph_style),
+        "header_title": title.title,
+        "header_text_style": title.text_style,
+    }
+
+
+class _HeaderTitleChecks(NamedTuple):
+    shape: bool
+    title: bool
+    text_style: bool
+
+
+def _header_title_diagnostics(
+    elements: JsonValue,
+    expected_title: str,
+    header_separator: str,
+) -> _HeaderTitleChecks:
+    header_tokens = CURRENT_BRAND_MANIFEST.document.header
     typed_elements = elements if isinstance(elements, list) else []
     logo_positions = [
         index
@@ -3988,34 +4132,22 @@ def _header_brand_diagnostics(
     ]
     title_elements = typed_elements[: logo_positions[0]] if len(logo_positions) == 1 else []
     text_runs = [
-        item["textRun"]
+        run
         for item in title_elements
-        if isinstance(item, dict) and isinstance(item.get("textRun"), dict)
+        if isinstance(item, dict) and isinstance(run := item.get("textRun"), dict)
     ]
     normalized_title = (
         normalize_header_title(expected_title, max_chars=header_tokens.max_title_chars)
         if header_tokens is not None
         else ""
     )
-    return {
-        "header_shape": shape_ok and len(logo_positions) == 1 and bool(title_elements),
-        "header_paragraph_style": bool(
-            header_tokens is not None
-            and isinstance(paragraph_style, dict)
-            and paragraph_style.get("namedStyleType") == "NORMAL_TEXT"
-            and paragraph_style.get("alignment") == header_tokens.alignment
-            and paragraph_style.get("lineSpacing") == header_tokens.line_spacing_percent
-            and _dimension_matches(paragraph_style.get("spaceAbove"), header_tokens.space_above_pt)
-            and _dimension_matches(paragraph_style.get("spaceBelow"), header_tokens.space_below_pt)
-            and paragraph_style.get("keepWithNext") is False
-        ),
-        "header_title": bool(text_runs)
+    return _HeaderTitleChecks(
+        shape=len(logo_positions) == 1 and bool(title_elements),
+        title=bool(text_runs)
         and len(text_runs) == len(title_elements)
-        and all(isinstance(run.get("content"), str) for run in text_runs)
-        and "".join(run["content"] for run in text_runs) == normalized_title + header_separator,
-        "header_text_style": bool(text_runs)
-        and all(_header_text_run_has_brand(run) for run in text_runs),
-    }
+        and _header_title_text(text_runs) == normalized_title + header_separator,
+        text_style=bool(text_runs) and all(_header_text_run_has_brand(run) for run in text_runs),
+    )
 
 
 def _paragraph_brand_diagnostics(
@@ -4165,34 +4297,44 @@ def _trusted_header_identity_title(
         raise InPlaceNeedsReviewError
     title: str | None = None
     for binding in evidence.headers:
-        tab = footer_document_tab(document, binding.tab_id)
-        if tab.get("documentStyle", {}).get("defaultHeaderId") != binding.header_id:
-            raise InPlaceNeedsReviewError
-        header = tab.get("headers", {}).get(binding.header_id, {})
-        content = header.get("content", [])
-        if not isinstance(content, list) or len(content) != 1:
-            raise InPlaceNeedsReviewError
-        parts: list[str] = []
-        for element in content[0].get("paragraph", {}).get("elements", []):
-            if "inlineObjectElement" in element:
-                break
-            value = element.get("textRun", {}).get("content")
-            if not isinstance(value, str):
-                raise InPlaceNeedsReviewError
-            parts.append(value)
-        separator = _owned_header_separator(evidence)
-        candidate = "".join(parts).removesuffix(separator)
-        if (
-            _header_identity_title_digest(candidate) != evidence.title_sha256
-            or _managed_header_fingerprint(
-                document, tab, expected_title=candidate, header_separator=separator
-            )
-            != binding.fingerprint_sha256
-            or (title is not None and title != candidate)
-        ):
+        candidate = _trusted_header_binding_title(document, evidence, binding)
+        if title is not None and title != candidate:
             raise InPlaceNeedsReviewError
         title = candidate
     return title
+
+
+def _trusted_header_binding_title(
+    document: dict[str, JsonValue],
+    evidence: HeaderIdentityEvidence,
+    binding: ManagedHeaderIdentity,
+) -> str:
+    tab = footer_document_tab(document, binding.tab_id)
+    if tab.get("documentStyle", {}).get("defaultHeaderId") != binding.header_id:
+        raise InPlaceNeedsReviewError
+    header = tab.get("headers", {}).get(binding.header_id, {})
+    content = header.get("content", [])
+    if not isinstance(content, list) or len(content) != 1:
+        raise InPlaceNeedsReviewError
+    parts: list[str] = []
+    for element in content[0].get("paragraph", {}).get("elements", []):
+        if "inlineObjectElement" in element:
+            break
+        value = element.get("textRun", {}).get("content")
+        if not isinstance(value, str):
+            raise InPlaceNeedsReviewError
+        parts.append(value)
+    separator = _owned_header_separator(evidence)
+    candidate = "".join(parts).removesuffix(separator)
+    if (
+        _header_identity_title_digest(candidate) != evidence.title_sha256
+        or _managed_header_fingerprint(
+            document, tab, expected_title=candidate, header_separator=separator
+        )
+        != binding.fingerprint_sha256
+    ):
+        raise InPlaceNeedsReviewError
+    return candidate
 
 
 def _tab_header_is_branded(
@@ -4279,13 +4421,31 @@ def _header_has_brand(
     elements = paragraph.get("elements")
     if not isinstance(paragraph_style, dict) or not isinstance(elements, list):
         return False
+    text_runs = _header_text_runs(elements)
+    if text_runs is None:
+        return False
+    if not _header_paragraph_has_brand(paragraph_style):
+        return False
+    title_text = _header_title_text(text_runs)
+    if title_text is None:
+        return False
+    normalized_title = normalize_header_title(
+        expected_title,
+        max_chars=header_tokens.max_title_chars,
+    )
+    if title_text != normalized_title + header_separator:
+        return False
+    return bool(text_runs) and all(_header_text_run_has_brand(run) for run in text_runs)
+
+
+def _header_text_runs(elements: list[JsonValue]) -> list[dict[str, JsonValue]] | None:
     logo_positions = [
         index
         for index, element in enumerate(elements)
         if isinstance(element, dict) and isinstance(element.get("inlineObjectElement"), dict)
     ]
     if len(logo_positions) != 1:
-        return False
+        return None
     logo_position = logo_positions[0]
     title_elements = elements[:logo_position]
     trailing_elements = elements[logo_position + 1 :]
@@ -4293,36 +4453,44 @@ def _header_has_brand(
         isinstance(element, dict) and isinstance(element.get("textRun"), dict)
         for element in title_elements
     ):
-        return False
+        return None
     if not all(
         isinstance(element, dict)
-        and isinstance(element.get("textRun"), dict)
-        and isinstance(element["textRun"].get("content"), str)
-        and not element["textRun"]["content"].strip()
+        and isinstance(run := element.get("textRun"), dict)
+        and isinstance(content := run.get("content"), str)
+        and not content.strip()
         for element in trailing_elements
     ):
-        return False
-    if not all(
-        (
-            paragraph_style.get("namedStyleType") == "NORMAL_TEXT",
-            paragraph_style.get("alignment") == header_tokens.alignment,
-            paragraph_style.get("lineSpacing") == header_tokens.line_spacing_percent,
-            _dimension_matches(paragraph_style.get("spaceAbove"), header_tokens.space_above_pt),
-            _dimension_matches(paragraph_style.get("spaceBelow"), header_tokens.space_below_pt),
-            paragraph_style.get("keepWithNext") is False,
-        )
-    ):
-        return False
-    text_runs = [element["textRun"] for element in title_elements]
-    if not all(isinstance(run.get("content"), str) for run in text_runs):
-        return False
-    normalized_title = normalize_header_title(
-        expected_title,
-        max_chars=header_tokens.max_title_chars,
+        return None
+    return [
+        run
+        for element in title_elements
+        if isinstance(element, dict) and isinstance(run := element.get("textRun"), dict)
+    ]
+
+
+def _header_title_text(text_runs: list[dict[str, JsonValue]]) -> str | None:
+    parts: list[str] = []
+    for run in text_runs:
+        content = run.get("content")
+        if not isinstance(content, str):
+            return None
+        parts.append(content)
+    return "".join(parts)
+
+
+def _header_paragraph_has_brand(paragraph_style: JsonValue) -> bool:
+    header_tokens = CURRENT_BRAND_MANIFEST.document.header
+    return bool(
+        header_tokens is not None
+        and isinstance(paragraph_style, dict)
+        and paragraph_style.get("namedStyleType") == "NORMAL_TEXT"
+        and paragraph_style.get("alignment") == header_tokens.alignment
+        and paragraph_style.get("lineSpacing") == header_tokens.line_spacing_percent
+        and _dimension_matches(paragraph_style.get("spaceAbove"), header_tokens.space_above_pt)
+        and _dimension_matches(paragraph_style.get("spaceBelow"), header_tokens.space_below_pt)
+        and paragraph_style.get("keepWithNext") is False
     )
-    if "".join(run["content"] for run in text_runs) != normalized_title + header_separator:
-        return False
-    return bool(text_runs) and all(_header_text_run_has_brand(run) for run in text_runs)
 
 
 def _header_text_run_has_brand(text_run: dict[str, Any]) -> bool:
@@ -4397,18 +4565,28 @@ def _effective_paragraph(paragraph: dict[str, Any], document_tab: dict[str, Any]
     elements = paragraph.get("elements", [])
     if not isinstance(elements, list):
         return paragraph
-    resolved = []
+    resolved = _effective_text_elements(elements, text_style)
+    return {**paragraph, "paragraphStyle": paragraph_style, "elements": resolved}
+
+
+def _effective_text_elements(
+    elements: list[JsonValue], text_style: dict[str, JsonValue]
+) -> list[JsonValue]:
+    resolved: list[JsonValue] = []
     for element in elements:
-        if not isinstance(element, dict) or not isinstance(element.get("textRun"), dict):
+        if not isinstance(element, dict):
             resolved.append(element)
             continue
-        run = element["textRun"]
+        run = element.get("textRun")
+        if not isinstance(run, dict):
+            resolved.append(element)
+            continue
         local_text = run.get("textStyle", {})
         if not isinstance(local_text, dict):
             resolved.append(element)
             continue
         resolved.append({**element, "textRun": {**run, "textStyle": {**text_style, **local_text}}})
-    return {**paragraph, "paragraphStyle": paragraph_style, "elements": resolved}
+    return resolved
 
 
 def _paragraph_style_digest(paragraph: dict[str, Any]) -> str | None:
@@ -4603,3 +4781,105 @@ def _point_magnitude(value: object) -> float | None:
         return None
     magnitude = value.get("magnitude")
     return float(magnitude) if isinstance(magnitude, int | float) else None
+
+
+def _copy_shell_headers(
+    tabs: tuple[tuple[str, dict[str, JsonValue]], ...],
+    draft: OutputDraft,
+    warnings: list[str],
+    *,
+    pending_write_may_have_committed: bool,
+) -> tuple[TabHeader, ...]:
+    tab_headers: list[TabHeader] = []
+    for tab_id, document_tab in tabs:
+        style = document_tab.get("documentStyle", {})
+        header_id = style.get("defaultHeaderId") if isinstance(style, dict) else None
+        if not isinstance(header_id, str):
+            if f"header_conflict:{tab_id}" in warnings:
+                continue
+            raise DocumentGatewayError
+        headers = document_tab.get("headers", {})
+        if (
+            draft.applied_mutation_sha256 is None
+            and not pending_write_may_have_committed
+            and _segment_has_content(headers, header_id)
+        ):
+            if f"header_conflict:{tab_id}" not in warnings:
+                warnings.append(f"header_conflict:{tab_id}")
+            continue
+        tab_headers.append(TabHeader(tab_id=DocsTabId(tab_id), header_id=DocsSegmentId(header_id)))
+    return tuple(tab_headers)
+
+
+class _CopyStructureVerification(NamedTuple):
+    parsed: DocumentIR
+    structural_preserved: bool
+    protected_preserved: bool
+    list_identity_equivalent: bool
+    structure_preserved: bool
+
+
+def _copy_structure_verification(
+    source_document: dict[str, JsonValue] | None,
+    output_document: dict[str, JsonValue],
+    structure_document: dict[str, JsonValue],
+    expected: DocumentIR,
+    parsed: DocumentIR,
+    *,
+    verify_brand: bool,
+) -> _CopyStructureVerification:
+    structural_preserved = source_document is None or (
+        _structural_inventory(source_document) == _structural_inventory(output_document)
+    )
+    protected_preserved = source_document is None or (
+        _protected_structure_inventory(source_document)
+        == _protected_structure_inventory(structure_document)
+    )
+    copy_list_identity_equivalent = False
+    if not protected_preserved and source_document is not None:
+        normalized_source = normalize_copy_list_identity(source_document)
+        normalized_output = normalize_copy_list_identity(structure_document)
+        copy_list_identity_equivalent = (
+            normalized_source is not None
+            and normalized_output is not None
+            and _protected_structure_inventory(normalized_source)
+            == _protected_structure_inventory(normalized_output)
+        )
+        protected_preserved = copy_list_identity_equivalent
+        if copy_list_identity_equivalent:
+            parsed = align_verified_copy_list_metadata(parsed, expected)
+    structure_preserved = (
+        structural_preserved
+        and protected_preserved
+        and (
+            source_document is None or _occupied_headers_preserved(source_document, output_document)
+        )
+        and (
+            not verify_brand
+            or verify_copy_visual_authority(source_document, structure_document, expected)
+        )
+        and (
+            not verify_brand
+            or (
+                verify_copy_fonts(
+                    source_document,
+                    structure_document,
+                    expected,
+                    list_identity_equivalent=copy_list_identity_equivalent,
+                )
+                if expected.copy_font_defended
+                else _copy_font_preserved(
+                    source_document,
+                    structure_document,
+                    list_identity_equivalent=copy_list_identity_equivalent,
+                )
+            )
+        )
+    )
+    return _CopyStructureVerification(
+        parsed,
+        structural_preserved,
+        protected_preserved,
+        copy_list_identity_equivalent,
+        structure_preserved,
+    )
