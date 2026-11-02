@@ -3288,7 +3288,7 @@ def _occupied_header_bindings_preserved(
 
 
 def _copy_brand_verification(
-    original: dict[str, Any] | None,
+    original: dict[str, JsonValue] | None,
     actual: dict[str, JsonValue],
     parsed: DocumentIR,
     *,
