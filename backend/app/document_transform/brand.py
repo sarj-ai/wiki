@@ -5,6 +5,8 @@ import hashlib
 import json
 from typing import Any
 
+from pydantic import JsonValue
+
 from app.document_transform.brand_manifest import (
     CURRENT_BRAND_MANIFEST,
     HEADER_TITLE_SEPARATOR,
@@ -428,92 +430,127 @@ def _style_requests(
             "endIndex": source_range.end_index,
             "tabId": source_range.tab_id,
         }
-        if (
-            block.kind in {BlockKind.LIST_ITEM, BlockKind.CHECKLIST}
-            and block.native_bullet_json is None
-        ):
-            requests.append(
-                {
-                    "createParagraphBullets": {
-                        "range": range_value,
-                        "bulletPreset": (
-                            "BULLET_CHECKBOX"
-                            if block.kind == BlockKind.CHECKLIST
-                            else "BULLET_DISC_CIRCLE_SQUARE"
-                        ),
-                    }
-                }
-            )
+        requests.extend(_bullet_requests(block, range_value))
         preserve_native_style = (
             block.kind in {BlockKind.LIST_ITEM, BlockKind.CHECKLIST}
             and block.native_bullet_json is not None
             and block.source_named_style == _named_style(block)
             and block.source_style_text_sha256 == block.sha256
         )
-        paragraph_request = {
-            "updateParagraphStyle": {
-                "range": range_value,
-                "paragraphStyle": {
-                    "alignment": "START",
-                    "lineSpacing": profile.line_spacing_percent if branded else 100,
-                    "spaceAbove": {
-                        "magnitude": paragraph_spacing(block, profile).above if branded else 0,
-                        "unit": "PT",
-                    },
-                    "spaceBelow": {
-                        "magnitude": paragraph_spacing(block, profile).below if branded else 0,
-                        "unit": "PT",
-                    },
-                    "keepWithNext": paragraph_keep_with_next(block),
-                    **(
-                        {"keepLinesTogether": True}
-                        if block.pagination_keep_with_next is not None
-                        else {}
-                    ),
-                    **({} if preserve_native_style else {"namedStyleType": _named_style(block)}),
-                },
-                "fields": (
-                    "alignment,lineSpacing,spaceAbove,spaceBelow,keepWithNext"
-                    + (",keepLinesTogether" if block.pagination_keep_with_next is not None else "")
-                    + ("" if preserve_native_style else ",namedStyleType")
-                ),
-            }
-        }
+        paragraph_request = _paragraph_style_request(
+            block,
+            range_value,
+            profile=profile,
+            branded=branded,
+            preserve_native_style=preserve_native_style,
+        )
         if block.preserved_paragraph_style_sha256 is None:
             requests.append(paragraph_request)
         # Named styles can affect inherited text appearance. Apply the explicit
         # brand overrides after selecting the paragraph's named style.
         if branded:
-            text_style: dict[str, Any] = {
-                "weightedFontFamily": {"fontFamily": profile.font_family},
-                "fontSize": {"magnitude": _font_size(block, profile), "unit": "PT"},
-                "foregroundColor": {
-                    "color": {"rgbColor": _rgb_color(paragraph_color(block, profile))}
-                },
-            }
-            fields = "weightedFontFamily,fontSize,foregroundColor"
-            if block.kind == BlockKind.HEADING:
-                text_style["bold"] = block.native_named_style != "SUBTITLE"
-                fields += ",bold"
-            elif not preserve_native_style:
-                # Explicitly retain authored body emphasis across named-style
-                # selection. Never synthesize emphasis for ordinary prose.
-                text_style.update(block.authored_emphasis)
-                fields += "".join(f",{key}" for key, _value in block.authored_emphasis)
-            ranges = [range_value]
-            if preserve_native_style and block.id in split_native_ids:
-                ranges = _native_text_style_ranges(block, range_value)
             requests.extend(
-                {
-                    "updateTextStyle": {
-                        "range": text_range,
-                        "textStyle": text_style,
-                        "fields": fields,
-                    }
-                }
-                for text_range in ranges
+                _block_text_style_requests(
+                    block,
+                    range_value,
+                    profile=profile,
+                    preserve_native_style=preserve_native_style,
+                    split_native_ids=split_native_ids,
+                )
             )
     return requests
+
+
+def _bullet_requests(block: TextBlock, range_value: DocsRequest) -> list[DocsRequest]:
+    if (
+        block.kind not in {BlockKind.LIST_ITEM, BlockKind.CHECKLIST}
+        or block.native_bullet_json is not None
+    ):
+        return []
+    return [
+        {
+            "createParagraphBullets": {
+                "range": range_value,
+                "bulletPreset": (
+                    "BULLET_CHECKBOX"
+                    if block.kind == BlockKind.CHECKLIST
+                    else "BULLET_DISC_CIRCLE_SQUARE"
+                ),
+            }
+        }
+    ]
+
+
+def _paragraph_style_request(
+    block: TextBlock,
+    range_value: DocsRequest,
+    *,
+    profile: SarjBrandProfile,
+    branded: bool,
+    preserve_native_style: bool,
+) -> DocsRequest:
+    return {
+        "updateParagraphStyle": {
+            "range": range_value,
+            "paragraphStyle": {
+                "alignment": "START",
+                "lineSpacing": profile.line_spacing_percent if branded else 100,
+                "spaceAbove": {
+                    "magnitude": paragraph_spacing(block, profile).above if branded else 0,
+                    "unit": "PT",
+                },
+                "spaceBelow": {
+                    "magnitude": paragraph_spacing(block, profile).below if branded else 0,
+                    "unit": "PT",
+                },
+                "keepWithNext": paragraph_keep_with_next(block),
+                **({"keepLinesTogether": True} if paragraph_keep_lines_together(block) else {}),
+                **({} if preserve_native_style else {"namedStyleType": _named_style(block)}),
+            },
+            "fields": (
+                "alignment,lineSpacing,spaceAbove,spaceBelow,keepWithNext"
+                + (",keepLinesTogether" if paragraph_keep_lines_together(block) else "")
+                + ("" if preserve_native_style else ",namedStyleType")
+            ),
+        }
+    }
+
+
+def _block_text_style_requests(
+    block: TextBlock,
+    range_value: DocsRequest,
+    *,
+    profile: SarjBrandProfile,
+    preserve_native_style: bool,
+    split_native_ids: frozenset[str],
+) -> list[DocsRequest]:
+    text_style: dict[str, JsonValue] = {
+        "weightedFontFamily": {"fontFamily": profile.font_family},
+        "fontSize": {"magnitude": _font_size(block, profile), "unit": "PT"},
+        "foregroundColor": {"color": {"rgbColor": {**_rgb_color(paragraph_color(block, profile))}}},
+    }
+    fields = "weightedFontFamily,fontSize,foregroundColor"
+    if block.kind == BlockKind.HEADING:
+        text_style["bold"] = block.native_named_style != "SUBTITLE"
+        fields += ",bold"
+    elif not preserve_native_style:
+        # Explicitly retain authored body emphasis across named-style
+        # selection. Never synthesize emphasis for ordinary prose.
+        text_style.update(block.authored_emphasis)
+        fields += "".join(f",{key}" for key, _value in block.authored_emphasis)
+    ranges = [range_value]
+    if preserve_native_style and block.id in split_native_ids:
+        ranges = _native_text_style_ranges(block, range_value)
+    return [
+        {
+            "updateTextStyle": {
+                "range": text_range,
+                "textStyle": text_style,
+                "fields": fields,
+            }
+        }
+        for text_range in ranges
+    ]
 
 
 def _native_text_style_ranges(block: TextBlock, range_value: DocsRequest) -> list[DocsRequest]:
@@ -626,6 +663,10 @@ def paragraph_keep_with_next(block: TextBlock) -> bool:
         if block.pagination_keep_with_next is None
         else block.pagination_keep_with_next
     )
+
+
+def paragraph_keep_lines_together(block: TextBlock) -> bool:
+    return block.kind is BlockKind.HEADING or block.pagination_keep_with_next is not None
 
 
 def paragraph_font_size(block: TextBlock, profile: SarjBrandProfile) -> int:

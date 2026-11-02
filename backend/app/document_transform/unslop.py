@@ -11,7 +11,7 @@ from app.document_transform.limits import MIN_MODEL_PROSE_WORDS
 
 UNSLOP_UPSTREAM_COMMIT = "d81f5196167ded24f46fced04958c0c12d681798"
 UNSLOP_UPSTREAM_VERSION = "2.3.0"
-UNSLOP_POLICY_VERSION = "sarj-concise-v8"
+UNSLOP_POLICY_VERSION = "sarj-concise-v9"
 UNSLOP_REWRITE_INSTRUCTION = (
     "Act as a ruthless, precise line editor. Rewrite verbose prose into direct, compact language. "
     "Remove throat-clearing, rhetorical questions, repeated explanations, ornamental metaphors, "
@@ -19,7 +19,15 @@ UNSLOP_REWRITE_INSTRUCTION = (
     "Do not preserve or invent frames such as 'an AI draft takes shape' around the facts. "
     "Retain concrete authorship disclosures, quoted labels and requirements. Remove "
     "hype, empty significance claims, canned transitions, and recap padding. Start with the actual "
-    "claim. Prefer short concrete words and active verbs. Aim for 50–70% fewer words in padded "
+    "claim. Keep its source-supported subject when cutting an introduction: move existing noun "
+    "phrases before pronouns instead of leaving a deleted antecedent. Do not borrow a subject "
+    "from a separate block. If the source leaves a referent or comparison baseline unspecified, "
+    "retain that reference rather than inventing one. Preserve protected-name counts when moving "
+    "wording. Attach named attribution directly to the reported fact or result. Remove setup "
+    "about a report only when its attribution and factual qualifiers survive in the same block. "
+    "Remove repeated editorial framing; combine related short clauses only when their distinct "
+    "subjects, conditions and relationships remain explicit. Use concrete words and direct verbs "
+    "instead of abstract noun phrases. Aim for 50–70% fewer words in padded "
     "paragraphs when their complete factual content fits; this is a target, never permission to "
     "discard a distinct fact, caveat, attribution, uncertainty, qualification, or requirement. "
     "Review every supplied block, including blocks with no scanner matches. Leave already concise "
@@ -61,7 +69,10 @@ UNSLOP_REVIEW_INSTRUCTION = (
     "Independently check each supplied source sentence against the complete proposed paragraph. "
     "For every document_proposals entry, follow context_id to its document_contexts entry: "
     "source is the complete original paragraph and proposed is the complete rewrite. Use that "
-    "context to resolve subjects, references, and qualifications. Each proposal ID "
+    "context to resolve subjects, references, and qualifications. Reject deletion of the only "
+    "antecedent of a retained pronoun. Inherited ambiguity does not justify inventing a referent "
+    "or comparison baseline. A sentence about a report may be merged into its result only when "
+    "the same attribution and factual qualifiers survive. Each proposal ID "
     "is one mandatory source-sentence check; none may be skipped. Approve only if every distinct "
     "factual claim, relationship, exception, caveat, uncertainty, attribution, requirement, name, "
     "quantity, date, citation and exact quotation survives with the same meaning and scope. "
@@ -275,9 +286,16 @@ def model_editable_blocks(document: DocumentIR) -> tuple[TextBlock, ...]:
         if block.editable
         and block.kind not in {BlockKind.BLANK, BlockKind.CODE, BlockKind.QUOTE, BlockKind.TABLE}
         and len(block.text) <= MAX_MODEL_EDITABLE_BLOCK_CHARS
-        and len(block.text.removesuffix(block.protected_suffix or "").split())
-        >= MIN_MODEL_PROSE_WORDS
+        and _has_model_rewrite_scope(block)
     )
+
+
+def _has_model_rewrite_scope(block: TextBlock) -> bool:
+    prose = block.text.removesuffix(block.protected_suffix or "")
+    if len(prose.split()) >= MIN_MODEL_PROSE_WORDS:
+        return True
+    masked = _mask_ignored_spans(prose)
+    return any(pattern.search(masked) for _, pattern in _CANDIDATE_PATTERNS)
 
 
 def scan_unslop_candidates(document: DocumentIR) -> tuple[UnslopCandidate, ...]:

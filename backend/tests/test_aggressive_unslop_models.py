@@ -18,6 +18,7 @@ from app.document_transform.schemas import (
     TransformFinding,
     TransformPhase,
 )
+from app.document_transform.unslop import UNSLOP_REVIEW_INSTRUCTION, UNSLOP_REWRITE_INSTRUCTION
 from tests.support import dependency
 
 
@@ -143,6 +144,48 @@ async def test_aggressive_generation_uses_structured_output_and_supported_thinki
 
 
 @pytest.mark.parametrize("approve", [True, False])
+async def test_short_flagged_prose_still_requires_bound_semantic_review(*, approve: bool) -> None:
+    source = "At the end of the day, ship."
+    replacement = "Ship."
+    document = parse_markdown(source, title="Shipping")
+    block = document.blocks[0]
+    patch = TextPatch(block_id=block.id, expected_sha256=block.sha256, replacement=replacement)
+    harness = _generator(types.GenerateContentResponse(parsed=PatchEnvelope(patches=[patch])))
+
+    assert await harness.generator.generate(document, phase=TransformPhase.UNSLOP) == [patch]
+    harness.call.response = types.GenerateContentResponse(
+        parsed=PatchReviewEnvelope(
+            reviews=[
+                TextPatchReview(
+                    block_id=block.id,
+                    expected_sha256=block.sha256,
+                    replacement_sha256=hashlib.sha256(replacement.encode()).hexdigest(),
+                    equivalent=approve,
+                    reason=(
+                        "The instruction to ship survives; the editorial transition is removed."
+                        if approve
+                        else "The phrase sets a deadline; deleting it changes the instruction."
+                    ),
+                )
+            ]
+        )
+    )
+
+    assert await harness.generator.verify(document, [patch]) == (
+        frozenset({block.id}) if approve else frozenset()
+    )
+    assert len(harness.call.configurations) == 2
+    assert harness.call.configurations[-1].system_instruction == UNSLOP_REVIEW_INSTRUCTION
+    payload = _ReviewInput.model_validate_json(harness.call.prompts[-1])
+    assert len(payload.document_contexts) == 1
+    context = payload.document_contexts[0]
+    assert context.source == source
+    assert context.proposed == replacement
+    assert all(pair.context_id == context.context_id for pair in payload.document_proposals)
+    assert document.blocks[0].text == source
+
+
+@pytest.mark.parametrize("approve", [True, False])
 async def test_bound_semantic_verdict_is_respected_without_retrying_rejection(
     approve: bool,
 ) -> None:
@@ -239,6 +282,32 @@ async def test_model_repair_does_not_submit_a_stale_source_proposal() -> None:
         == []
     )
     assert not harness.call.configurations
+
+
+async def test_repair_can_keep_an_unspecified_subject_instead_of_inventing_one() -> None:
+    source = "Its song carries through the dense scrub at night."
+    document = parse_markdown(source, title="Unspecified subject")
+    block = document.blocks[0]
+    unsupported = TextPatch(
+        block_id=block.id,
+        expected_sha256=block.sha256,
+        replacement="A nightingale's song carries through dense scrub at night.",
+    )
+    unchanged = unsupported.model_copy(update={"replacement": source})
+    harness = _generator(types.GenerateContentResponse(parsed=PatchEnvelope(patches=[unchanged])))
+    critique = "No antecedent names the singer; preserve the unspecified referent."
+
+    assert await harness.generator.repair(
+        document,
+        [unsupported],
+        (TransformFinding(code="semantic_review_rejected", block_id=block.id, detail=critique),),
+    ) == [unchanged]
+    prompt = harness.call.prompts[0]
+    assert UNSLOP_REWRITE_INSTRUCTION in prompt
+    assert source in prompt
+    assert unsupported.replacement in prompt
+    assert f'"review_feedback":["{critique}"]' in prompt
+    assert document.blocks[0].text == source
 
 
 @pytest.mark.parametrize("failures", [1, 3])

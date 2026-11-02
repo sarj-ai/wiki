@@ -26,6 +26,7 @@ from app.document_transform.brand import (
     SarjBrandProfile,
     paragraph_color,
     paragraph_font_size,
+    paragraph_keep_lines_together,
     paragraph_keep_with_next,
     paragraph_named_style,
     paragraph_spacing,
@@ -4193,7 +4194,7 @@ def _paragraph_brand_diagnostics(
             )
             and paragraph_style.get("keepWithNext") is paragraph_keep_with_next(block)
             and (
-                block.pagination_keep_with_next is None
+                not paragraph_keep_lines_together(block)
                 or paragraph_style.get("keepLinesTogether") is True
             )
         ),
@@ -4633,7 +4634,8 @@ def _paragraph_has_brand(
             spacing.below,
         ),
         paragraph_style.get("keepWithNext") is paragraph_keep_with_next(block),
-        block.pagination_keep_with_next is None or paragraph_style.get("keepLinesTogether") is True,
+        not paragraph_keep_lines_together(block)
+        or paragraph_style.get("keepLinesTogether") is True,
     )
     if not (
         _preserved_layout_matches(paragraph, block)
