@@ -113,7 +113,8 @@
     "scope": "Reviewed factual content and readable actual native formatting. Original heading and credit styles are preserved; complete pinned Sarj brand replacement is not claimed.",
     "source_preview": "https://docs.google.com/document/d/1cnuCOd5dqD_Fka8I967ZFKUCCCLGMn77h4VEwFRMIX8/preview",
     "result_preview": "https://docs.google.com/document/d/1rFT5wWk_mGlttNO5-s1_jd8TWNwxByWIG4oQkCjzJ_I/preview",
-    "human_sample_review_completed": true,
+    "human_sample_review_completed": false,
+    "agent_visual_review_completed": true,
     "full_pinned_brand_verified": false,
     "body_words_before": 1335,
     "body_words_after": 375,
@@ -164,7 +165,8 @@
     "prose_words_before": 1032,
     "prose_words_after": 492,
     "xlsx_sha256": "0fe2e791715637ba372138c9553ec9834098a3f8e7900204cb3645ed091f2974",
-    "human_sample_review_completed": true,
+    "human_sample_review_completed": false,
+    "agent_visual_review_completed": true,
     "all_seven_tabs_reviewed": true,
     "preserved": {
       "tabs": 7,
@@ -271,7 +273,8 @@
     "words_before": 1287,
     "words_after": 327,
     "pptx_sha256": "90bd811ca9a725be3424fcaed99dbba4335e8b3338cf76a1151a25813c5eb894",
-    "human_sample_review_completed": true,
+    "human_sample_review_completed": false,
+    "agent_visual_review_completed": true,
     "all_slides_visually_reviewed": true,
     "review_notes": [
       {
