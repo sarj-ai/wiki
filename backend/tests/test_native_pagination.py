@@ -91,7 +91,7 @@ def test_bounded_groups_preserve_content_and_end_before_the_rest_of_list(listing
     assert native == _document(listing=listing)
 
 
-def test_unplanned_native_formatting_retains_existing_layout_policy() -> None:
+def test_unplanned_native_formatting_keeps_only_heading_lines_together() -> None:
     native = _document(listing=True)
     original = parse_google_document(native, title="Review")
     requests = build_copy_mutations(
@@ -103,7 +103,7 @@ def test_unplanned_native_formatting_retains_existing_layout_policy() -> None:
         if "updateParagraphStyle" in item
     ]
     assert [item["keepWithNext"] for item in styles] == [True, False, False, False]
-    assert all("keepLinesTogether" not in item for item in styles)
+    assert [item.get("keepLinesTogether") for item in styles] == [True, None, None, None]
 
 
 def test_negative_native_ranges_cannot_establish_pagination_provenance() -> None:
