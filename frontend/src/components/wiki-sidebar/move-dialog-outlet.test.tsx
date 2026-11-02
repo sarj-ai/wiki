@@ -214,6 +214,8 @@ describe("admitted Move ownership above the responsive sidebar", () => {
       opener.focus();
       opener.dispatchEvent(new KeyboardEvent("keydown", { bubbles: true, key: "Enter" }));
     });
+
+    await vi.dynamicImportSettled();
     await vi.waitFor(() => expect(document.querySelector('[role="menu"]')).not.toBeNull());
     const action = [...document.querySelectorAll('[role="menuitem"]')].find(
       (element) => element.textContent === "Move to…",

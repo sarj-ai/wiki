@@ -1,5 +1,5 @@
 import { type DemoFile, demoFileFor } from "./demo-data";
-import { demoDownloadUrl, demoPreviewUrl } from "./demo-file-urls";
+import { demoDownloadUrl, demoHrefForDocumentPath, demoPreviewUrl } from "./demo-file-urls";
 
 function sample(overrides: Partial<DemoFile>): DemoFile {
   return { ...demoFileFor(null), ...overrides };
@@ -15,6 +15,8 @@ describe("public Google preview URL boundary", () => {
   it.each([
     "https://docs.google.com/document/d/public-doc/preview",
     "https://docs.google.com/spreadsheets/d/public-sheet/preview",
+    "https://docs.google.com/spreadsheets/d/public-sheet/preview#gid=552737644",
+    "https://docs.google.com/spreadsheets/d/public-sheet/preview#gid=0",
     "https://docs.google.com/presentation/d/public-slides/preview",
     "https://drive.google.com/file/d/public-office-file/preview",
   ])("accepts the native read-only route %s", (previewUrl) => {
@@ -26,6 +28,14 @@ describe("public Google preview URL boundary", () => {
     "https://docs.google.com/document/d/public-doc/view",
     "https://docs.google.com/document/d/public-doc/preview?edit=true",
     "https://docs.google.com/document/d/public-doc/preview#edit",
+    "https://docs.google.com/document/d/public-doc/preview#gid=552737644",
+    "https://docs.google.com/presentation/d/public-slides/preview#gid=552737644",
+    "https://docs.google.com/spreadsheets/d/public-sheet/preview?gid=552737644",
+    "https://docs.google.com/spreadsheets/d/public-sheet/preview#gid=-1",
+    "https://docs.google.com/spreadsheets/d/public-sheet/preview#gid=1.5",
+    "https://docs.google.com/spreadsheets/d/public-sheet/preview#gid=99999999999",
+    "https://docs.google.com/spreadsheets/d/public-sheet/preview#gid=%35",
+    "https://docs.google.com/spreadsheets/d/public-sheet/preview#gid=1&edit=true",
     "https://docs.google.com.evil.example/document/d/public-doc/preview",
     "https://docs.google.com@evil.example/document/d/public-doc/preview",
     insecurePreviewUrl(),
@@ -37,6 +47,24 @@ describe("public Google preview URL boundary", () => {
     "javascript:alert(1)",
   ])("rejects an editor or untrusted source: %s", (previewUrl) => {
     expect(demoPreviewUrl(sample({ previewUrl }))).toBeNull();
+  });
+});
+
+describe("public sample document links", () => {
+  it("opens the known public original in the anonymous demo", () => {
+    expect(demoHrefForDocumentPath("/d/1cnuCOd5dqD_Fka8I967ZFKUCCCLGMn77h4VEwFRMIX8")).toBe(
+      "/demo?file=nightingale-doc-source",
+    );
+  });
+
+  it.each([
+    "/d/private-document",
+    "/d/1cnuCOd5dqD_Fka8I967ZFKUCCCLGMn77h4VEwFRMIX8/edit",
+    "/d/%31cnuCOd5dqD_Fka8I967ZFKUCCCLGMn77h4VEwFRMIX8",
+    "/go/1cnuCOd5dqD_Fka8I967ZFKUCCCLGMn77h4VEwFRMIX8",
+    "/api/wiki/files/1cnuCOd5dqD_Fka8I967ZFKUCCCLGMn77h4VEwFRMIX8",
+  ])("keeps unknown and non-document paths private: %s", (path) => {
+    expect(demoHrefForDocumentPath(path)).toBeNull();
   });
 });
 

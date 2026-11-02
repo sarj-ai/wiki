@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 import middleware from "./middleware";
 
 const PRIVATE_TITLE = "Confidential Acquisition Plan";
+const PUBLIC_DOCUMENT_PATH = "/d/1cnuCOd5dqD_Fka8I967ZFKUCCCLGMn77h4VEwFRMIX8";
 
 function preview(path: string, userAgent = "Slackbot-LinkExpanding 1.0") {
   return middleware(
@@ -14,6 +15,39 @@ function preview(path: string, userAgent = "Slackbot-LinkExpanding 1.0") {
 }
 
 describe("private Wiki link previews", () => {
+  it.each(["GET", "HEAD"])("opens only the static public fixture for anonymous %s", (method) => {
+    const response = middleware(
+      new NextRequest(`https://wiki.sarj.ai${PUBLIC_DOCUMENT_PATH}?redirect=https://example.com`, {
+        method,
+      }),
+    );
+    expect(response.status).toBe(307);
+    expect(response.headers.get("location")).toBe(
+      "https://wiki.sarj.ai/demo?file=nightingale-doc-source",
+    );
+    expect(response.headers.get("cache-control")).toBe("private, no-store");
+  });
+
+  it.each(["access_token", "refresh_token"])(
+    "keeps the real document route for signed-in users with %s",
+    (cookie) => {
+      const request = new NextRequest(`https://wiki.sarj.ai${PUBLIC_DOCUMENT_PATH}`);
+      request.cookies.set(cookie, "authenticated");
+      const response = middleware(request);
+      expect(response.headers.get("x-middleware-next")).toBe("1");
+      expect(response.headers.get("location")).toBeNull();
+      expect(response.headers.get("cache-control")).toBe("private, no-store");
+    },
+  );
+
+  it("keeps unauthenticated writes behind login even for public sample IDs", () => {
+    const response = middleware(
+      new NextRequest(`https://wiki.sarj.ai${PUBLIC_DOCUMENT_PATH}`, { method: "POST" }),
+    );
+    expect(response.status).toBe(307);
+    expect(response.headers.get("location")).toContain("/login?redirect=");
+  });
+
   it("returns the same static, generic card for every document path", async () => {
     const known = preview(`/d/${encodeURIComponent(PRIVATE_TITLE)}`);
     const unknown = preview("/d/unknown-document");
@@ -40,12 +74,12 @@ describe("private Wiki link previews", () => {
   });
 
   it("prevents browser caching of authenticated document and RSC responses", () => {
-    const response = middleware(
-      new NextRequest("https://wiki.sarj.ai/d/private", {
-        headers: { cookie: "access_token=authenticated" },
-      }),
-    );
+    const request = new NextRequest("https://wiki.sarj.ai/d/private");
+    request.cookies.set("access_token", "authenticated");
+    const response = middleware(request);
 
+    expect(response.headers.get("x-middleware-next")).toBe("1");
+    expect(response.headers.get("location")).toBeNull();
     expect(response.headers.get("cache-control")).toBe("private, no-store");
   });
 
