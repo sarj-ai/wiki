@@ -146,6 +146,114 @@ async def test_review_batches_limit_concurrency_and_wait_for_cancellation(
     assert canceled >= 1 if fail else canceled == 0
 
 
+async def test_concurrent_review_calls_share_capacity_and_keep_their_own_results(
+    sdk_client_factory: Callable[[httpx.AsyncClient], genai.Client],
+) -> None:
+    documents = [
+        parse_markdown(
+            "\n\n".join(
+                f"Bird case {index} can sing unseen from dense scrub beside the path."
+                for _ in range(index + 1)
+            ),
+            title=f"Bird {index}",
+        )
+        for index in range(3)
+    ]
+    patches = [
+        [TextPatch(block_id=block.id, expected_sha256=block.sha256, replacement=block.text)]
+        for document in documents
+        for block in document.blocks[-1:]
+    ]
+    indices = {document.blocks[-1].sha256: index for index, document in enumerate(documents)}
+    started = [asyncio.Event() for _ in documents]
+    release = [asyncio.Event() for _ in documents]
+    completed: list[int] = []
+    active = 0
+    peak = 0
+
+    async def respond(request: httpx.Request) -> httpx.Response:
+        nonlocal active, peak
+        contents = _WireReviewRequest.model_validate_json(request.content).contents
+        pairs = _WireReview.model_validate_json(contents[0].parts[0].text).document_proposals
+        pair = pairs[0]
+        index = indices[pair.expected_sha256]
+        active += 1
+        peak = max(peak, active)
+        started[index].set()
+        try:
+            await release[index].wait()
+            envelope = PatchReviewEnvelope(
+                reviews=[
+                    TextPatchReview(
+                        block_id=pair.block_id,
+                        expected_sha256=pair.expected_sha256,
+                        replacement_sha256=pair.replacement_sha256,
+                        equivalent=True,
+                        reason="This bird's hidden singing ability and location are unchanged.",
+                    )
+                ]
+            )
+            completed.append(index)
+            return httpx.Response(
+                200,
+                json={
+                    "candidates": [
+                        {
+                            "content": {
+                                "role": "model",
+                                "parts": [{"text": envelope.model_dump_json()}],
+                            },
+                            "finishReason": "STOP",
+                        }
+                    ]
+                },
+            )
+        finally:
+            active -= 1
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(respond)) as http:
+        client = sdk_client_factory(http)
+        generator = VertexGeminiPatchGenerator(
+            policy=GeminiModelPolicy(
+                project="offline-fixture",
+                location="global",
+                unslop_model="gemini-3.5-flash-lite",
+                fallback_model="gemini-3.1-flash-lite",
+                restyle_model="gemini-3.8-flash",
+            ),
+            client=client,
+        )
+        try:
+            async with asyncio.TaskGroup() as group:
+                tasks = [
+                    group.create_task(generator.review(document, proposals))
+                    for document, proposals in zip(documents, patches, strict=True)
+                ]
+                try:
+                    async with asyncio.timeout(5):
+                        await started[0].wait()
+                        await started[1].wait()
+                        release[1].set()
+                        await started[2].wait()
+                        release[2].set()
+                        await tasks[2]
+                        release[0].set()
+                finally:
+                    for gate in release:
+                        gate.set()
+            decisions = [task.result() for task in tasks]
+        finally:
+            await client.aio.aclose()
+
+    assert peak == 2
+    assert active == 0
+    assert completed == [1, 2, 0]
+    assert [decision.approved for decision in decisions] == [
+        frozenset({document.blocks[-1].id}) for document in documents
+    ]
+    assert all(not decision.rejected for decision in decisions)
+
+
 @pytest.fixture
 def sdk_client_factory() -> Callable[[httpx.AsyncClient], genai.Client]:
     def create(http: httpx.AsyncClient) -> genai.Client:

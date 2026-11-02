@@ -55,6 +55,7 @@ class _ModelResponse:
         self.prompts: list[str] = []
         self.models: list[str] = []
         self.failures = 0
+        self.failure_status = 429
         self.review_input = False
         self.rejected_sources: set[str] = set()
         self.omitted_sources: set[str] = set()
@@ -68,7 +69,9 @@ class _ModelResponse:
         self.models.append(model)
         if self.failures:
             self.failures -= 1
-            raise errors.ClientError(429, {"error": {"message": "Offline transient fixture"}})
+            raise errors.ClientError(
+                self.failure_status, {"error": {"message": "Offline provider fixture"}}
+            )
         if self.review_input:
             payload = _ReviewInput.model_validate_json(contents)
             return types.GenerateContentResponse(
@@ -224,6 +227,7 @@ async def test_semantic_verdict_with_the_wrong_output_hash_fails_closed() -> Non
     )
     with pytest.raises(ModelUnavailableError):
         await harness.generator.verify(document, [patch])
+    assert harness.call.models == ["gemini-3.1-pro-preview"] * 3
 
 
 async def test_missing_rewrite_proposals_retry_instead_of_silently_returning_no_edits() -> None:
@@ -311,7 +315,7 @@ async def test_repair_can_keep_an_unspecified_subject_instead_of_inventing_one()
 
 
 @pytest.mark.parametrize("failures", [1, 3])
-async def test_review_retries_keep_the_pinned_reviewer_instead_of_downgrading(
+async def test_rate_limited_review_uses_the_configured_fallback_within_its_attempt_budget(
     failures: int,
 ) -> None:
     document = parse_markdown(SOURCE, title="Bird")
@@ -333,9 +337,79 @@ async def test_review_retries_keep_the_pinned_reviewer_instead_of_downgrading(
             await harness.generator.verify(document, [patch])
     else:
         assert await harness.generator.verify(document, [patch]) == {block.id}
-    assert harness.call.models == ["gemini-3.1-pro-preview"] * (
-        failures if failures == 3 else failures + 1
+    assert harness.call.models == ["gemini-3.1-pro-preview"] + ["gemini-3.1-flash-lite"] * (
+        2 if failures == 3 else 1
     )
+
+
+@pytest.mark.parametrize("approve", [True, False])
+async def test_rate_limited_review_fallback_respects_the_bound_verdict(*, approve: bool) -> None:
+    document = parse_markdown(SOURCE, title="Bird")
+    block = document.blocks[0]
+    patch = TextPatch(block_id=block.id, expected_sha256=block.sha256, replacement=REPLACEMENT)
+    review = TextPatchReview(
+        block_id=block.id,
+        expected_sha256=block.sha256,
+        replacement_sha256=hashlib.sha256(REPLACEMENT.encode()).hexdigest(),
+        equivalent=approve,
+        reason="The fixture either preserves or rejects the bird's hidden singing condition.",
+    )
+    harness = _generator(
+        types.GenerateContentResponse(parsed=PatchReviewEnvelope(reviews=[review]))
+    )
+    harness.call.failures = 1
+
+    decision = await harness.generator.review(document, [patch])
+
+    assert decision.approved == (frozenset({block.id}) if approve else frozenset())
+    assert set(decision.rejected) == (set() if approve else {block.id})
+    assert harness.call.models == ["gemini-3.1-pro-preview", "gemini-3.1-flash-lite"]
+    assert all(
+        config.system_instruction == UNSLOP_REVIEW_INSTRUCTION
+        for config in harness.call.configurations
+    )
+    assert document.blocks[0].text == SOURCE
+
+
+@pytest.mark.parametrize("forged_field", ["block_id", "expected_sha256", "replacement_sha256"])
+async def test_rate_limited_review_fallback_rejects_forged_bindings(forged_field: str) -> None:
+    document = parse_markdown(SOURCE, title="Bird")
+    block = document.blocks[0]
+    patch = TextPatch(block_id=block.id, expected_sha256=block.sha256, replacement=REPLACEMENT)
+    review = TextPatchReview(
+        block_id=block.id,
+        expected_sha256=block.sha256,
+        replacement_sha256=hashlib.sha256(REPLACEMENT.encode()).hexdigest(),
+        equivalent=True,
+        reason="The fixture claims equivalence with an invalid source or output binding.",
+    ).model_copy(update={forged_field: "wrong-block" if forged_field == "block_id" else "0" * 64})
+    harness = _generator(
+        types.GenerateContentResponse(parsed=PatchReviewEnvelope(reviews=[review]))
+    )
+    harness.call.failures = 1
+
+    with pytest.raises(ModelUnavailableError):
+        await harness.generator.review(document, [patch])
+
+    assert harness.call.models == [
+        "gemini-3.1-pro-preview",
+        "gemini-3.1-flash-lite",
+        "gemini-3.1-flash-lite",
+    ]
+
+
+@pytest.mark.parametrize("status", [403, 500])
+async def test_other_provider_errors_keep_the_configured_reviewer(status: int) -> None:
+    document = parse_markdown(SOURCE, title="Bird")
+    block = document.blocks[0]
+    patch = TextPatch(block_id=block.id, expected_sha256=block.sha256, replacement=REPLACEMENT)
+    harness = _generator(types.GenerateContentResponse())
+    harness.call.review_input = True
+    harness.call.failures = 1
+    harness.call.failure_status = status
+
+    assert (await harness.generator.review(document, [patch])).approved == {block.id}
+    assert harness.call.models == ["gemini-3.1-pro-preview"] * 2
 
 
 async def test_sparse_proposals_share_a_review_batch_without_unchanged_prose() -> None:
