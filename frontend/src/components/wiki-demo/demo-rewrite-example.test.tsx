@@ -11,7 +11,7 @@ const COMPARISON: DemoRewriteComparison = {
   scopeLabel: "Article",
 };
 
-it("opens the recorded passages and returns focus when the comparison closes", async () => {
+it.each(["button", "Escape"])("returns focus when closed with %s", async (method) => {
   const view = render(<DemoRewriteExample comparison={COMPARISON} />);
   const trigger = screen.getByRole("button", { name: /50% fewer words/ });
   trigger.focus();
@@ -20,7 +20,15 @@ it("opens the recorded passages and returns focus when the comparison closes", a
   expect(within(dialog).getByText(COMPARISON.beforeText)).toBeVisible();
   expect(within(dialog).getByText(COMPARISON.afterText)).toBeVisible();
   expect(within(dialog).getByText(/250 → 125 words/)).toBeVisible();
-  fireEvent.click(within(dialog).getByRole("button", { name: "Close comparison" }));
+  expect(within(dialog).getByText("Article totals. Excerpts are verbatim.")).toBeVisible();
+  const original = within(dialog).getByRole("region", { name: "Original passage" });
+  const processed = within(dialog).getByRole("region", { name: "Processed passage" });
+  original.focus();
+  expect(original).toHaveFocus();
+  processed.focus();
+  expect(processed).toHaveFocus();
+  if (method === "Escape") fireEvent.keyDown(processed, { key: "Escape" });
+  else fireEvent.click(within(dialog).getByRole("button", { name: "Close comparison" }));
   await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
   await waitFor(() => expect(trigger).toHaveFocus());
   view.unmount();

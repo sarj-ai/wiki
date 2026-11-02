@@ -32,7 +32,7 @@ export function DemoRewriteExample({ comparison }: { comparison: DemoRewriteComp
     <Dialog>
       <DialogTrigger asChild>
         <Button
-          className="mt-2 h-auto max-w-full flex-wrap justify-start text-left whitespace-normal"
+          className="h-auto max-w-full flex-wrap justify-start text-left whitespace-normal"
           size="sm"
           variant="outline"
         >
@@ -43,16 +43,26 @@ export function DemoRewriteExample({ comparison }: { comparison: DemoRewriteComp
           <span className="text-muted-foreground">See an actual edit</span>
         </Button>
       </DialogTrigger>
-      <DialogContent className="flex max-h-[85svh] flex-col overflow-hidden sm:max-w-4xl">
-        <DialogHeader className="shrink-0">
-          <DialogTitle>{comparison.scopeLabel}: before and after</DialogTitle>
-          <DialogDescription>
-            {WORDS.format(comparison.beforeWords)} → {WORDS.format(comparison.afterWords)} words
-            overall. This passage comes from the actual files.
-          </DialogDescription>
+      <DialogContent className="flex h-[min(85svh,48rem)] flex-col overflow-hidden sm:max-w-4xl">
+        <DialogHeader className="shrink-0 text-left">
+          <div className="space-y-2 pr-6">
+            <DialogTitle>{comparison.scopeLabel}: before and after</DialogTitle>
+            <DialogDescription>
+              <span className="text-foreground block text-lg font-semibold tabular-nums">
+                {WORDS.format(comparison.beforeWords)} → {WORDS.format(comparison.afterWords)} words
+              </span>
+              <span className="mt-1 block text-xs">
+                {comparison.scopeLabel} totals. Excerpts are verbatim.
+              </span>
+            </DialogDescription>
+          </div>
         </DialogHeader>
-        <div className="grid min-h-0 gap-4 overflow-y-auto sm:grid-cols-2">
-          <section aria-label="Original passage" className="min-w-0 rounded-md border p-4">
+        <div className="grid min-h-0 flex-1 grid-rows-2 gap-3 sm:grid-cols-2 sm:grid-rows-1 sm:gap-4">
+          <section
+            aria-label="Original passage"
+            className="focus-visible:ring-ring min-h-0 min-w-0 overflow-y-auto rounded-md border p-3 focus-visible:ring-2 focus-visible:outline-none sm:p-4"
+            tabIndex={0}
+          >
             <h3 className="mb-2 text-xs font-semibold">Before</h3>
             <p className="text-muted-foreground text-sm leading-relaxed wrap-anywhere whitespace-pre-wrap">
               {comparison.beforeText}
@@ -60,7 +70,8 @@ export function DemoRewriteExample({ comparison }: { comparison: DemoRewriteComp
           </section>
           <section
             aria-label="Processed passage"
-            className="border-primary/20 bg-primary/5 min-w-0 rounded-md border p-4"
+            className="border-primary/20 bg-primary/5 focus-visible:ring-ring min-h-0 min-w-0 overflow-y-auto rounded-md border p-3 focus-visible:ring-2 focus-visible:outline-none sm:p-4"
+            tabIndex={0}
           >
             <h3 className="text-primary mb-2 text-xs font-semibold">After</h3>
             <p className="text-sm leading-relaxed wrap-anywhere whitespace-pre-wrap">

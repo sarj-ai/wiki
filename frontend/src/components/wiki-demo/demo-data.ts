@@ -50,11 +50,11 @@ const SLIDES_COMPARISON = {
   beforeId: "nightingale-slides-source",
 } as const;
 const DOC_DISCLOSURE =
-  "Actual Wiki Unslop + Format output: 5 prose edits. Some original heading and credit styles were preserved; the sample has been reviewed.";
+  "Recorded Unslop + Format: 5 edits. Some heading and credit styles preserved.";
 const SHEET_DISCLOSURE =
-  "Six prose cells ran through Wiki’s shared Unslop + Format engine and were returned to Sheets. Workbook fonts and row sizing were applied separately; native Sheets Unslop is not available in Wiki.";
+  "Six prose cells used Wiki’s Docs Unslop + Format, then returned to Sheets. Fonts and row sizes were set separately; no native Sheets transform.";
 const SLIDES_DISCLOSURE =
-  "Actual Wiki Unslop + Format output: 10 prose edits. Original citation and credit styles were preserved.";
+  "Recorded Unslop + Format: 10 edits. Citation and credit styles preserved.";
 const ARTICLE_KEYWORDS =
   "nightingale bird Luscinia megarhynchos article song ecology habitat migration breeding conservation science sources photographs";
 const SHEET_KEYWORDS =
@@ -96,7 +96,7 @@ const SLIDES_REWRITE: DemoRewriteComparison = {
 
 const DEFAULT_DEMO_FILE: DemoFile = {
   comparison: DOC_COMPARISON,
-  description: "The five-author draft after real Unslop + Format: 1,335 → 375 body words.",
+  description: "Article body: 1,335 → 375 words after Unslop + Format.",
   downloadFilename: "nightingale-edited-article.docx",
   downloadUrl:
     "https://docs.google.com/document/d/1rFT5wWk_mGlttNO5-s1_jd8TWNwxByWIG4oQkCjzJ_I/export?format=docx",
@@ -121,8 +121,7 @@ export const DEMO_FILES: readonly DemoFile[] = [
   DEFAULT_DEMO_FILE,
   {
     comparison: DOC_COMPARISON,
-    description:
-      "Five authors deliberately padded this AI draft for the demo, with real photographs and scientific sources.",
+    description: "Deliberately wordy five-author AI draft, with real photos and sources.",
     downloadFilename: "nightingale-article-original.docx",
     downloadUrl:
       "https://docs.google.com/document/d/1cnuCOd5dqD_Fka8I967ZFKUCCCLGMn77h4VEwFRMIX8/export?format=docx",
@@ -135,12 +134,12 @@ export const DEMO_FILES: readonly DemoFile[] = [
     rewriteComparison: DOC_REWRITE,
     previewUrl:
       "https://docs.google.com/document/d/1cnuCOd5dqD_Fka8I967ZFKUCCCLGMn77h4VEwFRMIX8/preview",
-    processingDisclosure: "Deliberately wordy five-author input; this is the actual BEFORE file.",
+    processingDisclosure: "Recorded input, before Unslop + Format.",
     viewUrl:
       "https://docs.google.com/document/d/1cnuCOd5dqD_Fka8I967ZFKUCCCLGMn77h4VEwFRMIX8/preview",
   },
   {
-    description: "The actual Word export of the native Google Docs result.",
+    description: "Word export of the edited article.",
     downloadFilename: "nightingale-edited-article.docx",
     downloadUrl: "https://drive.google.com/uc?export=download&id=135U4JRrheSB2o2IhUdI4gFrV42IwjfU8",
     folder: "documents",
@@ -153,14 +152,13 @@ export const DEMO_FILES: readonly DemoFile[] = [
     processingNeedsReview: true,
     processingReviewed: true,
     previewUrl: "https://drive.google.com/file/d/135U4JRrheSB2o2IhUdI4gFrV42IwjfU8/preview",
-    processingDisclosure: `Word export of the same result. ${DOC_DISCLOSURE}`,
+    processingDisclosure: `Word export. ${DOC_DISCLOSURE}`,
     processingRecordFilename: PROCESSING_RECORD,
     viewUrl: "https://drive.google.com/file/d/135U4JRrheSB2o2IhUdI4gFrV42IwjfU8/preview",
   },
   {
     comparison: SHEET_COMPARISON,
-    description:
-      "The original evidence workbook, with source links, formulas, charts, and a photo.",
+    description: "Original workbook: source links, formulas, charts and a photo.",
     downloadFilename: "nightingale-evidence-original.xlsx",
     downloadUrl:
       "https://docs.google.com/spreadsheets/d/1H1LExrmtelvvC8IXPrBBZ3jD9TxgLe1P5t_Cqvq2NuE/export?format=xlsx",
@@ -174,14 +172,13 @@ export const DEMO_FILES: readonly DemoFile[] = [
     previewUrl:
       "https://docs.google.com/spreadsheets/d/1H1LExrmtelvvC8IXPrBBZ3jD9TxgLe1P5t_Cqvq2NuE/preview#gid=43542055",
     processingDisclosure:
-      "Deliberately wordy BEFORE notes; numeric data, formulas, sources and photo match the edited workbook.",
+      "Deliberately wordy notes. Data, formulas, sources and photo match the edited workbook.",
     viewUrl:
       "https://docs.google.com/spreadsheets/d/1H1LExrmtelvvC8IXPrBBZ3jD9TxgLe1P5t_Cqvq2NuE/preview#gid=43542055",
   },
   {
     comparison: SHEET_COMPARISON,
-    description:
-      "Six field-note paragraphs reduced from 1,032 to 492 words, with formulas and scientific data preserved.",
+    description: "Six prose cells: 1,032 → 492 words. Data and formulas preserved.",
     downloadFilename: "nightingale-evidence.xlsx",
     downloadUrl:
       "https://docs.google.com/spreadsheets/d/1sz-OPiIbSJFn0iA_jSnh8S32Hb4Vy47qWjN6luPdiFM/export?format=xlsx",
@@ -202,7 +199,7 @@ export const DEMO_FILES: readonly DemoFile[] = [
       "https://docs.google.com/spreadsheets/d/1sz-OPiIbSJFn0iA_jSnh8S32Hb4Vy47qWjN6luPdiFM/preview#gid=1278732035",
   },
   {
-    description: "The actual Excel export of the native workbook after its prose review.",
+    description: "Excel export of the edited workbook.",
     downloadFilename: "nightingale-evidence.xlsx",
     downloadUrl: "https://drive.google.com/uc?export=download&id=1T49qlUaL2VAnIWW8u2fwiJG5OU7jupyb",
     folder: "project",
@@ -215,14 +212,13 @@ export const DEMO_FILES: readonly DemoFile[] = [
     processingNeedsReview: true,
     processingReviewed: true,
     previewUrl: "https://drive.google.com/file/d/1T49qlUaL2VAnIWW8u2fwiJG5OU7jupyb/preview",
-    processingDisclosure: `Excel export of the same result. ${SHEET_DISCLOSURE}`,
+    processingDisclosure: `Excel export. ${SHEET_DISCLOSURE}`,
     processingRecordFilename: PROCESSING_RECORD,
     viewUrl: "https://drive.google.com/file/d/1T49qlUaL2VAnIWW8u2fwiJG5OU7jupyb/preview",
   },
   {
     comparison: SLIDES_COMPARISON,
-    description:
-      "The deliberately wordy five-author draft, with photographs and scientific sources.",
+    description: "Deliberately wordy five-author AI draft, with photos and sources.",
     downloadFilename: "nightingale-original.pptx",
     downloadUrl:
       "https://docs.google.com/presentation/d/15f3WRbuw4-lyHLk89uGV_d2B7UrHL1OUSvBX2TJb0aY/export/pptx",
@@ -235,13 +231,13 @@ export const DEMO_FILES: readonly DemoFile[] = [
     rewriteComparison: SLIDES_REWRITE,
     previewUrl:
       "https://docs.google.com/presentation/d/15f3WRbuw4-lyHLk89uGV_d2B7UrHL1OUSvBX2TJb0aY/preview",
-    processingDisclosure: "Deliberately wordy five-author input; this is the actual BEFORE file.",
+    processingDisclosure: "Recorded input, before Unslop + Format.",
     viewUrl:
       "https://docs.google.com/presentation/d/15f3WRbuw4-lyHLk89uGV_d2B7UrHL1OUSvBX2TJb0aY/preview",
   },
   {
     comparison: SLIDES_COMPARISON,
-    description: "The ten-slide draft after real Unslop + Format: 1,287 → 327 visible words.",
+    description: "Ten slides: 1,287 → 327 visible words after Unslop + Format.",
     downloadFilename: "nightingale-concise-presentation.pptx",
     downloadUrl:
       "https://docs.google.com/presentation/d/18pe-JtLai2KxASGq0Vnwo0IfoEtOVaGttDli9XoS4bY/export/pptx",
@@ -262,7 +258,7 @@ export const DEMO_FILES: readonly DemoFile[] = [
       "https://docs.google.com/presentation/d/18pe-JtLai2KxASGq0Vnwo0IfoEtOVaGttDli9XoS4bY/preview",
   },
   {
-    description: "The actual PowerPoint export of the native Google Slides result.",
+    description: "PowerPoint export of the edited slides.",
     downloadFilename: "nightingale-concise-presentation.pptx",
     downloadUrl: "https://drive.google.com/uc?export=download&id=1dHhRwYOp5NugyjH0ah65k7DL80K4-BMA",
     folder: "project",
@@ -273,14 +269,14 @@ export const DEMO_FILES: readonly DemoFile[] = [
     name: "Nightingale presentation.pptx",
     rewriteComparison: SLIDES_REWRITE,
     previewUrl: "https://drive.google.com/file/d/1dHhRwYOp5NugyjH0ah65k7DL80K4-BMA/preview",
-    processingDisclosure: `PowerPoint export of the same result. ${SLIDES_DISCLOSURE}`,
+    processingDisclosure: `PowerPoint export. ${SLIDES_DISCLOSURE}`,
     processingNeedsReview: true,
     processingReviewed: true,
     processingRecordFilename: PROCESSING_RECORD,
     viewUrl: "https://drive.google.com/file/d/1dHhRwYOp5NugyjH0ah65k7DL80K4-BMA/preview",
   },
   {
-    description: "An HTML companion made from the actual Docs result and one of its photographs.",
+    description: "HTML companion from the edited article, with one photo.",
     downloadFilename: "nightingale-field-guide.html",
     downloadUrl: "https://drive.google.com/uc?export=download&id=1RIKlDBF3ZnYiYgdTY8wes2cbF3rLQL7s",
     folder: "project",
@@ -290,7 +286,7 @@ export const DEMO_FILES: readonly DemoFile[] = [
     mimeType: MIME_HTML,
     name: "Nightingale field guide.html",
     previewFilename: "nightingale-field-guide-v8-preview.json",
-    processingDisclosure: "Companion view of the actual Docs result. No separate Unslop run.",
+    processingDisclosure: "From the recorded Docs result; no extra processing run.",
     processingRecordFilename: PROCESSING_RECORD,
     viewUrl: "https://drive.google.com/file/d/1RIKlDBF3ZnYiYgdTY8wes2cbF3rLQL7s/view",
   },
