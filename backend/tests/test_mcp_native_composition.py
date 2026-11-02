@@ -48,8 +48,10 @@ def configured(**updates: object) -> Settings:
         "CLOUD_TASKS_LOCATION": "region",
         "CLOUD_TASKS_TARGET_URL": f"{ISSUER}internal/tasks/smart-create",
         "CLOUD_TASKS_INVOKER_SERVICE_ACCOUNT": "tasks@example.test",
-        "DOCUMENT_TRANSFORM_QUEUE": "transform",
-        "DOCUMENT_TRANSFORM_TARGET_URL": f"{ISSUER}internal/tasks/document-transform",
+        "DOCUMENT": {
+            "TRANSFORM_QUEUE": "transform",
+            "TRANSFORM_TARGET_URL": f"{ISSUER}internal/tasks/document-transform",
+        },
     }
     return Settings.model_validate(values | updates)
 

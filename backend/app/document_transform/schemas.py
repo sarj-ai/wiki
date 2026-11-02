@@ -9,6 +9,7 @@ from pydantic import (
     BaseModel,
     ConfigDict,
     Field,
+    StrictBool,
     StringConstraints,
     field_validator,
     model_validator,
@@ -188,7 +189,7 @@ class DocumentTransformRequest(StrictTransformModel):
         description="Inline Markdown, a signed GCS upload reference, or a Drive file."
     )
     mode: TransformMode = Field(
-        description="format applies document styling; unslop conservatively edits prose; both runs both."
+        description="format applies document styling without changing wording; unslop aggressively shortens prose with fact-preservation review; both runs Unslop and then Format."
     )
     output_name: OutputName | None = Field(
         default=None, description="Optional name for a Drive file copy; Markdown uses source.name."
@@ -261,6 +262,18 @@ class TextPatch(StrictTransformModel):
 
 class PatchEnvelope(StrictTransformModel):
     patches: list[TextPatch] = Field(max_length=100)
+
+
+class TextPatchReview(StrictTransformModel):
+    block_id: str
+    expected_sha256: str
+    replacement_sha256: str
+    equivalent: StrictBool
+    reason: Annotated[str, StringConstraints(strip_whitespace=True, min_length=20, max_length=400)]
+
+
+class PatchReviewEnvelope(StrictTransformModel):
+    reviews: list[TextPatchReview] = Field(max_length=100)
 
 
 class TransformFinding(StrictTransformModel):
@@ -346,6 +359,7 @@ class TabNamingCheckpoint(StrictTransformModel):
     marker_name: str
     marker_range: dict[str, Any]
     invariant_sha256: str
+    invariant_version: Literal["stable-images-v2"] | None = None
 
 
 class InPlaceCheckpointStage(StrEnum):

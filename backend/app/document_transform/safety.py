@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+from collections import Counter
 from dataclasses import dataclass
 from difflib import SequenceMatcher
 import re
 from types import MappingProxyType
+from typing import Literal
 
 from app.document_transform.ir import BlockKind, DocumentIR, TextBlock
 from app.document_transform.schemas import TextPatch, TransformFinding, TransformPhase
@@ -15,6 +17,7 @@ from app.document_transform.unslop import (
     UnslopCandidate,
     expanded_deletion_span,
     scan_unslop_candidates,
+    without_editorial_framing,
 )
 
 
@@ -27,15 +30,49 @@ _PROTECTED_TOKEN = re.compile(
     re.MULTILINE,
 )
 _FORCE_WORD = re.compile(
-    r"\b(?:must|shall|should|may|might|cannot|can't|can|will|won't|not|never|no)\b",
+    r"\b(?:must|shall|should|may|might|could|would|cannot|can't|can|will|won't|not|never|no|"
+    r"each|every|all|only|both|neither|either|per)\b",
     re.IGNORECASE,
 )
 _QUOTED_SPAN = re.compile(rf'"[^"\n]+"|“[^”\n]+”|{SINGLE_QUOTED_SPAN_PATTERN}')
+_SCOPE_QUALIFIER = re.compile(
+    r"\b(?:longest|shortest|largest|smallest|highest|lowest)\s+"
+    r"(?:(?:[\w-]+(?:ing|ed)|upper|lower)\s+)?[\w-]+\b|"
+    r"\bmore (?:often|likely|specific)\b|"
+    r"\b(?:generally|usual|usually|typically|often|sometimes|rarely|mostly|mainly|rounded|"
+    r"at least|at most|no more than|up to|same|helps?|appears?|suggests?|interpreted|evidence|"
+    r"particular|specific|within|together|available|still|other|another|different|earlier|later|"
+    r"successive|sample|useful|essential|necessary|shape|maintain|rare|young|older|younger|"
+    r"observed|recorded|studied|measured|estimated|reported|inferred|concluded|proved|"
+    r"national|confidence intervals?|as (?:clearly|often|likely|many|much) as)\b|"
+    r"\b(?:about|around|roughly|approximately|nearly)\b(?=\s+\d)|"
+    r"\b[^\W\d_]+(?:[-\u2011][^\W\d_]+)+\b",
+    re.IGNORECASE,
+)
+_RHETORICAL_COMPOUNDS = frozenset(
+    {"ever-evolving", "fast-paced", "game-changing", "cutting-edge", "state-of-the-art"}
+)
 _PROPER_NOUN = re.compile(r"\b(?:[A-Z][a-z]+|[A-Z]{2,}|[A-Z][A-Za-z0-9]*[A-Z][A-Za-z0-9]*)\b")
 _SENTENCE = re.compile(r".*?(?:[.!?]+(?=\s+|$)|$)", re.DOTALL)
 _MAX_CHANGE_RATIO = MappingProxyType({TransformPhase.UNSLOP: 0.35, TransformPhase.FORMAT: 0.70})
 _CAPITALIZABLE_START_WORDS = frozenset(
     {"a", "an", "he", "it", "our", "she", "that", "the", "they", "this", "we", "you", "your"}
+)
+_EDITORIAL_OPENING_WORDS = _CAPITALIZABLE_START_WORDS | frozenset(
+    {"as", "at", "by", "for", "from", "in", "on", "to", "with"}
+)
+REPAIRABLE_REWRITE_CODES = frozenset(
+    {
+        "protected_content_changed",
+        "force_language_changed",
+        "proper_noun_changed",
+        "quoted_content_changed",
+        "native_citation_changed",
+        "concision_expanded",
+        "empty_replacement",
+        "semantic_review_rejected",
+        "scope_qualifier_changed",
+    }
 )
 
 
@@ -45,11 +82,31 @@ class PatchDecision:
     findings: tuple[TransformFinding, ...]
 
 
+@dataclass(frozen=True, slots=True)
+class RewriteConstraints:
+    protected_tokens: tuple[str, ...]
+    force_language: tuple[str, ...]
+    quotations: tuple[str, ...]
+    protected_names: tuple[str, ...]
+    scope_qualifiers: tuple[str, ...] = ()
+
+
+def rewrite_constraints(text: str) -> RewriteConstraints:
+    return RewriteConstraints(
+        protected_tokens=tuple(_protected_tokens(text)),
+        force_language=tuple(_force_words(without_editorial_framing(text))),
+        quotations=_quoted_spans(text),
+        protected_names=_protected_rewrite_names(text),
+        scope_qualifiers=tuple(_scope_qualifiers(text)),
+    )
+
+
 def validate_patches(
     document: DocumentIR,
     patches: list[TextPatch],
     *,
     phase: TransformPhase,
+    aggressive_unslop: bool = False,
 ) -> PatchDecision:
     by_id = {block.id: block for block in document.blocks}
     accepted: dict[str, str] = {}
@@ -57,7 +114,13 @@ def validate_patches(
     seen: set[str] = set()
     for patch in patches:
         block = by_id.get(patch.block_id)
-        code = _rejection_code(block, patch, phase=phase, duplicate=patch.block_id in seen)
+        code = _rejection_code(
+            block,
+            patch,
+            phase=phase,
+            duplicate=patch.block_id in seen,
+            aggressive_unslop=aggressive_unslop,
+        )
         seen.add(patch.block_id)
         if code is not None:
             findings.append(
@@ -79,6 +142,7 @@ def _rejection_code(
     *,
     phase: TransformPhase,
     duplicate: bool,
+    aggressive_unslop: bool = False,
 ) -> str | None:
     if duplicate:
         return "duplicate_patch"
@@ -97,11 +161,21 @@ def _rejection_code(
         return "format_text_changed"
     if not patch.replacement.strip():
         return "empty_replacement"
-    if _protected_tokens(block.text) != _protected_tokens(patch.replacement):
-        return "protected_content_changed"
-    if _force_words(block.text) != _force_words(patch.replacement):
-        return "force_language_changed"
+    if block.protected_suffix is not None and (
+        not patch.replacement.endswith(block.protected_suffix)
+        or not patch.replacement.removesuffix(block.protected_suffix).strip()
+    ):
+        return "native_citation_changed"
+    literal_code = _literal_change_code(
+        before=block.text,
+        after=patch.replacement,
+        allow_reordering=aggressive_unslop and phase is TransformPhase.UNSLOP,
+    )
+    if literal_code is not None:
+        return literal_code
     if phase is TransformPhase.UNSLOP:
+        if aggressive_unslop:
+            return _aggressive_unslop_code(block, patch.replacement)
         locality_code = _unslop_locality_code(block, patch.replacement)
         if locality_code is not None:
             return locality_code
@@ -110,6 +184,71 @@ def _rejection_code(
     if 1 - similarity > _MAX_CHANGE_RATIO[phase]:
         return "diff_budget_exceeded"
     return None
+
+
+def _literal_change_code(
+    *, before: str, after: str, allow_reordering: bool
+) -> Literal["protected_content_changed", "force_language_changed"] | None:
+    if not _same_retained_values(
+        _protected_tokens(before), _protected_tokens(after), allow_reordering=allow_reordering
+    ):
+        return "protected_content_changed"
+    if allow_reordering:
+        before = without_editorial_framing(before)
+        after = without_editorial_framing(after)
+    if not _same_retained_values(
+        _force_words(before), _force_words(after), allow_reordering=allow_reordering
+    ):
+        return "force_language_changed"
+    return None
+
+
+def _same_retained_values(before: list[str], after: list[str], *, allow_reordering: bool) -> bool:
+    if allow_reordering:
+        return Counter(before) == Counter(after)
+    return before == after
+
+
+def _aggressive_unslop_code(block: TextBlock, replacement: str) -> str | None:
+    if Counter(_scope_qualifiers(block.text)) != Counter(_scope_qualifiers(replacement)):
+        return "scope_qualifier_changed"
+    if _quoted_spans(block.text) != _quoted_spans(replacement):
+        return "quoted_content_changed"
+    if re.findall(r"[\r\n\v\f\u2028\u2029]", block.text) != re.findall(
+        r"[\r\n\v\f\u2028\u2029]", replacement
+    ):
+        return "paragraph_structure_changed"
+    if len(replacement.split()) > len(block.text.split()):
+        return "concision_expanded"
+    words = frozenset(word.casefold() for word in re.findall(r"\b\w+\b", replacement))
+    if any(name.casefold() not in words for name in _protected_rewrite_names(block.text)):
+        return "proper_noun_changed"
+    return None
+
+
+def _scope_qualifiers(text: str) -> list[str]:
+    return [
+        match.group(0).casefold()
+        for match in _SCOPE_QUALIFIER.finditer(without_editorial_framing(text))
+        if match.group(0).casefold().replace("\u2011", "-") not in _RHETORICAL_COMPOUNDS
+    ]
+
+
+def _protected_rewrite_names(text: str) -> tuple[str, ...]:
+    names: list[str] = []
+    projected = without_editorial_framing(text)
+    for match in _PROPER_NOUN.finditer(projected):
+        prefix = text[: match.start()].rstrip()
+        sentence_initial = not prefix or prefix[-1] in ".!?\n"
+        multiple_capitals = sum(character.isupper() for character in match.group()) > 1
+        editorial_opening = (
+            match.group().casefold() in _EDITORIAL_OPENING_WORDS
+            and not projected[: match.start()].strip(" ,;:")
+            and not multiple_capitals
+        )
+        if (not sentence_initial or multiple_capitals) and not editorial_opening:
+            names.append(match.group())
+    return tuple(names)
 
 
 def _protected_tokens(value: str) -> list[str]:
@@ -197,41 +336,54 @@ def _is_candidate_deletion_only(
     replacement: str,
     candidates: tuple[UnslopCandidate, ...],
 ) -> bool:
+    comparison = _deletion_case_comparison(source, replacement, candidates)
+    if comparison is None:
+        return False
+    return _matches_candidate_deletions(source, comparison, candidates)
+
+
+def _deletion_case_comparison(
+    source: str, replacement: str, candidates: tuple[UnslopCandidate, ...]
+) -> str | None:
     comparison = replacement
     first_source = next((index for index, char in enumerate(source) if char.isalpha()), None)
     first_replacement = next(
         (index for index, char in enumerate(replacement) if char.isalpha()), None
     )
     if (
-        first_source is not None
-        and first_replacement is not None
-        and any(candidate.start <= first_source < candidate.end for candidate in candidates)
+        first_source is None
+        or first_replacement is None
+        or not any(candidate.start <= first_source < candidate.end for candidate in candidates)
     ):
-        source_survivor = next(
-            (
-                index
-                for index in range(first_source, len(source))
-                if source[index].isalpha()
-                and not any(candidate.start <= index < candidate.end for candidate in candidates)
-            ),
-            None,
-        )
-        if (
-            source_survivor is not None
-            and source[source_survivor].casefold() == replacement[first_replacement].casefold()
-            and source[source_survivor] != replacement[first_replacement]
-        ):
-            survivor_word = re.match(r"[A-Za-z]+", source[source_survivor:])
-            if (
-                survivor_word is None
-                or survivor_word.group(0).casefold() not in _CAPITALIZABLE_START_WORDS
-            ):
-                return False
-            comparison = (
-                replacement[:first_replacement]
-                + source[source_survivor]
-                + replacement[first_replacement + 1 :]
-            )
+        return comparison
+    source_survivor = next(
+        (
+            index
+            for index in range(first_source, len(source))
+            if source[index].isalpha()
+            and not any(candidate.start <= index < candidate.end for candidate in candidates)
+        ),
+        None,
+    )
+    if (
+        source_survivor is None
+        or source[source_survivor].casefold() != replacement[first_replacement].casefold()
+        or source[source_survivor] == replacement[first_replacement]
+    ):
+        return comparison
+    survivor_word = re.match(r"[A-Za-z]+", source[source_survivor:])
+    if survivor_word is None or survivor_word.group(0).casefold() not in _CAPITALIZABLE_START_WORDS:
+        return None
+    return (
+        replacement[:first_replacement]
+        + source[source_survivor]
+        + replacement[first_replacement + 1 :]
+    )
+
+
+def _matches_candidate_deletions(
+    source: str, comparison: str, candidates: tuple[UnslopCandidate, ...]
+) -> bool:
 
     allowed_indexes = {
         index

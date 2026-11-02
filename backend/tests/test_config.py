@@ -1,13 +1,17 @@
 from __future__ import annotations
 
+from collections.abc import Callable
 from datetime import timedelta
+from pathlib import Path
 
 from cryptography.fernet import Fernet
 from pydantic import ValidationError
+from pydantic_settings import BaseSettings
 import pytest
 
 from app.config import Settings, load_environment_settings
 from app.database_config import DatabaseSettings
+from app.document_settings import DocumentSettings
 
 
 _BASELINE = {
@@ -55,6 +59,28 @@ def _settings(monkeypatch: pytest.MonkeyPatch, **env: str | None) -> Settings:
     return load_environment_settings(Settings, load_dotenv=False)
 
 
+def _source_settings[SettingsModel: BaseSettings](
+    model: type[SettingsModel],
+    *,
+    env_file: Path | None,
+    secrets_dir: Path | None,
+    document: DocumentSettings | None = None,
+) -> SettingsModel:
+    if document is None:
+        return model(_env_file=env_file, _secrets_dir=secrets_dir)
+    return model(_env_file=env_file, _secrets_dir=secrets_dir, DOCUMENT=document)
+
+
+@pytest.fixture
+def document_settings_factory() -> Callable[[str | None], DocumentSettings]:
+    def build(model: str | None) -> DocumentSettings:
+        if model is None:
+            return DocumentSettings()
+        return DocumentSettings(TRANSFORM_UNSLOP_MODEL=model)
+
+    return build
+
+
 def test_baseline_parses_with_typed_defaults(monkeypatch: pytest.MonkeyPatch) -> None:
     s = _settings(monkeypatch)
     assert str(s.DATABASE_URL) == "postgresql+asyncpg://u:p@localhost:5432/db"
@@ -62,6 +88,81 @@ def test_baseline_parses_with_typed_defaults(monkeypatch: pytest.MonkeyPatch) ->
     assert s.LOG_LEVEL == "INFO"
     assert s.RELEASE_SHA == "dev"
     assert timedelta(minutes=10) == s.SIDEBAR_CACHE_TTL
+
+
+def test_document_models_load_from_existing_environment_names(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    configured = _settings(
+        monkeypatch,
+        DOCUMENT_TRANSFORM_UNSLOP_MODEL="gemini-3.1-flash-lite",
+        DOCUMENT_TRANSFORM_FALLBACK_MODEL="gemini-3.5-flash-lite",
+        DOCUMENT_TRANSFORM_RESTYLE_MODEL="gemini-3.8-flash",
+        DOCUMENT_TRANSFORM_IN_PLACE_ENABLED="true",
+    )
+    assert configured.DOCUMENT.TRANSFORM_UNSLOP_MODEL == "gemini-3.1-flash-lite"
+    assert configured.DOCUMENT.TRANSFORM_FALLBACK_MODEL == "gemini-3.5-flash-lite"
+    assert configured.DOCUMENT.TRANSFORM_RESTYLE_MODEL == "gemini-3.8-flash"
+    assert configured.DOCUMENT.TRANSFORM_IN_PLACE_ENABLED
+
+
+@pytest.mark.parametrize("model", ["latest", "gemini-flash-latest"])
+def test_document_models_reject_floating_environment_pins(
+    monkeypatch: pytest.MonkeyPatch, model: str
+) -> None:
+    with pytest.raises(ValidationError, match="exact Gemini model ID"):
+        _settings(monkeypatch, DOCUMENT_TRANSFORM_UNSLOP_MODEL=model)
+
+
+def test_document_environment_retains_unknown_setting_compatibility(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    configured = _settings(
+        monkeypatch,
+        DOCUMENT_TRANSFORM_FUTURE_SETTING="ignored",
+        DOCUMENT_UNRELATED="ignored",
+    )
+    assert configured.DOCUMENT.TRANSFORM_UNSLOP_MODEL == "gemini-3.7-flash"
+    assert configured.DOCUMENT.TRANSFORM_RESTYLE_MODEL == "gemini-3.7-flash"
+
+
+def test_document_settings_preserve_parent_source_precedence(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    document_settings_factory: Callable[[str | None], DocumentSettings],
+) -> None:
+    _settings(monkeypatch, DOCUMENT_TRANSFORM_UNSLOP_MODEL=None)
+    secret_dir = tmp_path / "secrets"
+    secret_dir.mkdir()
+    (secret_dir / "DOCUMENT_TRANSFORM_UNSLOP_MODEL").write_text("secret-model")
+    dotenv = tmp_path / ".env"
+    dotenv.write_text("DOCUMENT_TRANSFORM_UNSLOP_MODEL=dotenv-model\n")
+    from_secrets = _source_settings(Settings, env_file=None, secrets_dir=secret_dir)
+    assert from_secrets.DOCUMENT.TRANSFORM_UNSLOP_MODEL == "secret-model"
+    from_dotenv = _source_settings(Settings, env_file=dotenv, secrets_dir=secret_dir)
+    assert from_dotenv.DOCUMENT.TRANSFORM_UNSLOP_MODEL == "dotenv-model"
+    monkeypatch.setenv("DOCUMENT_TRANSFORM_UNSLOP_MODEL", "environment-model")
+    from_environment = _source_settings(Settings, env_file=dotenv, secrets_dir=secret_dir)
+    assert from_environment.DOCUMENT.TRANSFORM_UNSLOP_MODEL == "environment-model"
+    explicit = _source_settings(
+        Settings,
+        env_file=dotenv,
+        secrets_dir=secret_dir,
+        document=document_settings_factory("explicit-model"),
+    )
+    assert explicit.DOCUMENT.TRANSFORM_UNSLOP_MODEL == "explicit-model"
+    assert document_settings_factory(None).TRANSFORM_UNSLOP_MODEL == "gemini-3.7-flash"
+
+
+def test_document_settings_honor_disabled_dotenv_loading(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    _settings(monkeypatch, DOCUMENT_TRANSFORM_UNSLOP_MODEL=None)
+    (tmp_path / ".env").write_text("DOCUMENT_TRANSFORM_UNSLOP_MODEL=dotenv-model\n")
+    monkeypatch.chdir(tmp_path)
+    assert load_environment_settings(Settings).DOCUMENT.TRANSFORM_UNSLOP_MODEL == "dotenv-model"
+    disabled = load_environment_settings(Settings, load_dotenv=False)
+    assert disabled.DOCUMENT.TRANSFORM_UNSLOP_MODEL == "gemini-3.7-flash"
 
 
 def test_secrets_do_not_leak_in_repr(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -184,9 +285,9 @@ def test_old_qa_environment_remains_a_valid_legacy_profile(
 
     configured = _settings(monkeypatch, **legacy)
 
-    assert digest == configured.DOCUMENT_TRANSFORM_QA_IMAGE_DIGEST
-    assert configured.DOCUMENT_TRANSFORM_QA_JOB is None
-    assert configured.DOCUMENT_TRANSFORM_QA_OPERATOR_EMAILS == ()
+    assert digest == configured.DOCUMENT.TRANSFORM_QA_IMAGE_DIGEST
+    assert configured.DOCUMENT.TRANSFORM_QA_JOB is None
+    assert configured.DOCUMENT.TRANSFORM_QA_OPERATOR_EMAILS == ()
 
 
 @pytest.mark.parametrize(
@@ -238,8 +339,8 @@ def test_qa_launcher_profile_is_complete_and_digest_consistent(
         "DOCUMENT_TRANSFORM_QA_OPERATOR_EMAILS": '["operator@sarj.ai"]',
     }
     configured = _settings(monkeypatch, **qa)
-    assert digest == configured.DOCUMENT_TRANSFORM_QA_IMAGE_DIGEST
-    assert configured.DOCUMENT_TRANSFORM_QA_OPERATOR_EMAILS == ("operator@sarj.ai",)
+    assert digest == configured.DOCUMENT.TRANSFORM_QA_IMAGE_DIGEST
+    assert configured.DOCUMENT.TRANSFORM_QA_OPERATOR_EMAILS == ("operator@sarj.ai",)
 
     with pytest.raises(ValidationError, match="must identify the same immutable image"):
         _settings(

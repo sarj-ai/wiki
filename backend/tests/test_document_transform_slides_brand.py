@@ -4,6 +4,7 @@ from copy import deepcopy
 import math
 from typing import Any, NamedTuple
 
+from pydantic import JsonValue
 import pytest
 
 from app.document_transform.brand_manifest import CURRENT_BRAND_MANIFEST
@@ -105,11 +106,50 @@ def test_both_styles_before_deletion_and_brand_fingerprint_matches_shorter_text(
     assert presentation_fingerprint(branded, "Review").brand_sha256 == plan.expected_brand_sha256
 
 
-def test_unslop_rejects_non_deletion_non_case_rewrite() -> None:
+@pytest.mark.parametrize("mode", [TransformMode.UNSLOP, TransformMode.BOTH])
+def test_semantic_rewrite_preserves_plain_shape_styles_and_protected_structure(
+    mode: TransformMode,
+) -> None:
+    presentation = _presentation()
+    before = deepcopy(presentation)
+    parsed = parse_google_presentation(presentation, title="Review")
+    second = parsed.document.blocks[1]
+    transformed = parsed.document.replace_blocks({second.id: "Results got better"})
+
+    plan = build_slides_mutation_plan(
+        presentation,
+        parsed=parsed,
+        transformed=transformed,
+        mode=mode,
+        logo_uri=CURRENT_BRAND_MANIFEST.assets.logo_uri,
+    )
+
+    assert presentation == before
+    text_requests = [
+        request for request in plan.requests if "insertText" in request or "deleteText" in request
+    ]
+    assert [next(iter(request)) for request in text_requests] == ["insertText", "deleteText"]
+    assert text_requests[0]["insertText"]["objectId"] == "body-1"
+    assert text_requests[1]["deleteText"]["objectId"] == "body-1"
+    _apply_brand_requests(presentation, plan.requests)
+    actual = parse_google_presentation(presentation, title="Review")
+    assert actual.document.semantic_sha256 == transformed.semantic_sha256
+    assert actual.protected_sha256 == parsed.protected_sha256
+    if mode is TransformMode.BOTH:
+        assert (
+            presentation_fingerprint(presentation, "Review").brand_sha256
+            == plan.expected_brand_sha256
+        )
+
+
+@pytest.mark.parametrize("replacement", ["New\nparagraph", "\tIndented", "\ue000Private glyph"])
+def test_semantic_slide_rewrite_rejects_structural_or_unsupported_characters(
+    replacement: str,
+) -> None:
     presentation = _presentation()
     parsed = parse_google_presentation(presentation, title="Review")
     second = parsed.document.blocks[1]
-    transformed = parsed.document.replace_blocks({second.id: "Revenue improved"})
+    transformed = parsed.document.replace_blocks({second.id: replacement})
 
     with pytest.raises(UnsupportedSourceError):
         build_slides_mutation_plan(
@@ -119,6 +159,47 @@ def test_unslop_rejects_non_deletion_non_case_rewrite() -> None:
             mode=TransformMode.UNSLOP,
             logo_uri="",
         )
+
+
+def test_semantic_slide_rewrite_uses_utf16_offsets_for_astral_characters() -> None:
+    presentation = _presentation()
+    source = "🕊 Researchers studied the nightingale's song very carefully."
+    replacement = "🕊 Researchers examined nightingale song."
+    presentation["slides"][0]["pageElements"][1] = _text_shape(
+        "body-1", source, placeholder_type="BODY", left=24, top=140, width=500
+    )
+    parsed = parse_google_presentation(presentation, title="Review")
+    body = parsed.document.blocks[1]
+    transformed = parsed.document.replace_blocks({body.id: replacement})
+
+    plan = build_slides_mutation_plan(
+        presentation,
+        parsed=parsed,
+        transformed=transformed,
+        mode=TransformMode.UNSLOP,
+        logo_uri="",
+    )
+
+    replacement_units = len(replacement.encode("utf-16-le")) // 2
+    source_units = len(source.encode("utf-16-le")) // 2
+    assert plan.requests[1]["deleteText"]["textRange"] == {
+        "type": "FIXED_RANGE",
+        "startIndex": replacement_units,
+        "endIndex": replacement_units + source_units,
+    }
+    encoded = (source + "\n").encode("utf-16-le")
+    inserted = plan.requests[0]["insertText"]["text"].encode("utf-16-le")
+    encoded = inserted + encoded
+    deletion = plan.requests[1]["deleteText"]["textRange"]
+    encoded = encoded[: deletion["startIndex"] * 2] + encoded[deletion["endIndex"] * 2 :]
+    assert encoded.decode("utf-16-le") == replacement + "\n"
+    elements = presentation["slides"][0]["pageElements"][1]["shape"]["text"]["textElements"]
+    elements[0]["endIndex"] = len(encoded) // 2
+    elements[1]["endIndex"] = len(encoded) // 2
+    elements[1]["textRun"]["content"] = encoded.decode("utf-16-le")
+    actual = parse_google_presentation(presentation, title="Review")
+    assert actual.document.semantic_sha256 == transformed.semantic_sha256
+    assert actual.protected_sha256 == parsed.protected_sha256
 
 
 def test_rich_bulleted_text_is_preserved_and_reported_for_review() -> None:
@@ -256,6 +337,96 @@ def test_logo_geometry_scales_manifest_canvas_and_fits_manifest_box() -> None:
     assert expected.top == pytest.approx(36)
 
 
+@pytest.mark.parametrize("unit", ["PT", "EMU"])
+def test_provider_rebased_logo_keeps_physical_fingerprint_and_idempotency(unit: str) -> None:
+    presentation = _presentation()
+    parsed = parse_google_presentation(presentation, title="Review")
+    first = _format_plan(presentation, parsed=parsed)
+    _apply_brand_requests(presentation, first.requests)
+    logo = presentation["slides"][0]["pageElements"][-1]
+    _rebase_logo_geometry(logo, unit=unit)
+
+    observed = presentation_fingerprint(presentation, "Review")
+    second = _format_plan(
+        presentation, parsed=parse_google_presentation(presentation, title="Review")
+    )
+
+    assert observed.brand_sha256 == first.expected_brand_sha256
+    assert observed.protected_structure_sha256 == parsed.protected_sha256
+    assert second.expected_brand_sha256 == first.expected_brand_sha256
+    assert second.findings == ()
+    assert not any("createImage" in request for request in second.requests)
+
+
+@pytest.mark.parametrize("change", ["moved", "resized", "mirrored", "skewed"])
+def test_rebased_logo_still_rejects_changed_placement_or_orientation(change: str) -> None:
+    presentation = _presentation()
+    parsed = parse_google_presentation(presentation, title="Review")
+    first = _format_plan(presentation, parsed=parsed)
+    _apply_brand_requests(presentation, first.requests)
+    logo = presentation["slides"][0]["pageElements"][-1]
+    _rebase_logo_geometry(logo, unit="PT")
+    transform = logo["transform"]
+    match change:
+        case "moved":
+            transform["translateX"] -= 1
+        case "resized":
+            transform["scaleX"] *= 0.9
+        case "mirrored":
+            transform["translateX"] += logo["size"]["width"]["magnitude"] * transform["scaleX"]
+            transform["scaleX"] *= -1
+        case _:
+            transform["shearX"] = 1
+
+    second = _format_plan(
+        presentation, parsed=parse_google_presentation(presentation, title="Review")
+    )
+
+    assert "slide_logo_id_collision" in {finding.code for finding in second.findings}
+    if change in {"mirrored", "skewed"}:
+        with pytest.raises(UnsupportedSourceError):
+            presentation_fingerprint(presentation, "Review")
+    else:
+        assert (
+            presentation_fingerprint(presentation, "Review").brand_sha256
+            != first.expected_brand_sha256
+        )
+
+
+def _rebase_logo_geometry(logo: dict[str, JsonValue], *, unit: str) -> None:
+    # Model Slides' documented size/transform rebasing with sub-point intrinsic dimensions.
+    # Rounding these dimensions before applying the scale changes the physical footprint.
+    points_per_unit = 1 / 12_700 if unit == "EMU" else 1.0
+    size = logo["size"]
+    transform = logo["transform"]
+    assert isinstance(size, dict)
+    assert isinstance(transform, dict)
+    for axis, scale, intrinsic_emu in (("width", "scaleX", 2222), ("height", "scaleY", 1201)):
+        dimension = size[axis]
+        assert isinstance(dimension, dict)
+        physical_points = dimension["magnitude"]
+        assert isinstance(physical_points, int | float)
+        intrinsic = intrinsic_emu if unit == "EMU" else intrinsic_emu / 12_700
+        size[axis] = {"magnitude": intrinsic, "unit": unit}
+        transform[scale] = physical_points / (intrinsic * points_per_unit)
+
+
+def test_negative_intrinsic_logo_size_cannot_disguise_a_reflection() -> None:
+    presentation = _presentation()
+    parsed = parse_google_presentation(presentation, title="Review")
+    first = _format_plan(presentation, parsed=parsed)
+    _apply_brand_requests(presentation, first.requests)
+    logo = presentation["slides"][0]["pageElements"][-1]
+    logo["transform"]["translateX"] += logo["size"]["width"]["magnitude"]
+    logo["size"]["width"]["magnitude"] *= -1
+
+    second = _format_plan(presentation, parsed=parsed)
+
+    assert "slide_geometry_unsafe" in {finding.code for finding in second.findings}
+    with pytest.raises(UnsupportedSourceError):
+        presentation_fingerprint(presentation, "Review")
+
+
 def test_nonmatching_canvas_aspect_fails_closed_for_logo_only() -> None:
     presentation = _presentation()
     presentation["pageSize"]["height"]["magnitude"] = 540
@@ -265,6 +436,39 @@ def test_nonmatching_canvas_aspect_fails_closed_for_logo_only() -> None:
 
     assert not any("createImage" in request for request in plan.requests)
     assert any("updateTextStyle" in request for request in plan.requests)
+    assert [finding.code for finding in plan.findings] == ["slide_geometry_unsafe"]
+
+
+@pytest.mark.parametrize("width_emu", [12192000, 12191975])
+def test_imported_widescreen_rounding_allows_an_exact_safe_logo(width_emu: int) -> None:
+    presentation = _presentation()
+    presentation["pageSize"] = {
+        "width": {"magnitude": width_emu, "unit": "EMU"},
+        "height": {"magnitude": 6858000, "unit": "EMU"},
+    }
+    parsed = parse_google_presentation(presentation, title="Review")
+
+    plan = _format_plan(presentation, parsed=parsed)
+
+    assert sum("createImage" in request for request in plan.requests) == 1
+    assert plan.findings == ()
+    _apply_brand_requests(presentation, plan.requests)
+    fingerprint = presentation_fingerprint(presentation, "Review")
+    assert fingerprint.brand_sha256 == plan.expected_brand_sha256
+    assert fingerprint.protected_structure_sha256 == parsed.protected_sha256
+
+
+def test_canvas_rounding_tolerance_still_rejects_a_larger_aspect_change() -> None:
+    presentation = _presentation()
+    presentation["pageSize"] = {
+        "width": {"magnitude": 959.98, "unit": "PT"},
+        "height": {"magnitude": 540, "unit": "PT"},
+    }
+    parsed = parse_google_presentation(presentation, title="Review")
+
+    plan = _format_plan(presentation, parsed=parsed)
+
+    assert not any("createImage" in request for request in plan.requests)
     assert [finding.code for finding in plan.findings] == ["slide_geometry_unsafe"]
 
 
@@ -825,6 +1029,57 @@ def test_font_family_change_is_preserved_for_review() -> None:
     assert "slide_text_fit_unresolved" in {finding.code for finding in plan.findings}
 
 
+def test_explicit_transparent_text_highlight_uses_the_known_background() -> None:
+    presentation = _presentation()
+    for element in presentation["slides"][0]["pageElements"]:
+        element["shape"]["text"]["textElements"][1]["textRun"]["style"]["backgroundColor"] = {}
+    parsed = parse_google_presentation(presentation, title="Review")
+
+    plan = _format_plan(presentation, parsed=parsed)
+
+    assert sum("updateTextStyle" in request for request in plan.requests) == 2
+    assert plan.findings == ()
+    _apply_brand_requests(presentation, plan.requests)
+    fingerprint = presentation_fingerprint(presentation, "Review")
+    assert fingerprint.brand_sha256 == plan.expected_brand_sha256
+    assert fingerprint.protected_structure_sha256 == parsed.protected_sha256
+
+
+@pytest.mark.parametrize(
+    "background",
+    [[], False, "transparent", {"opaqueColor": None}, {"opaqueColor": {}}, {"unknown": True}],
+)
+def test_malformed_text_highlights_do_not_claim_transparency(background: JsonValue) -> None:
+    presentation = _presentation()
+    presentation["slides"][0]["pageElements"][0]["shape"]["text"]["textElements"][1]["textRun"][
+        "style"
+    ]["backgroundColor"] = background
+    parsed = parse_google_presentation(presentation, title="Review")
+
+    plan = _format_plan(presentation, parsed=parsed)
+
+    assert not any(
+        request.get("updateTextStyle", {}).get("objectId") == "title-1" for request in plan.requests
+    )
+    assert "slide_text_contrast_unresolved" in {finding.code for finding in plan.findings}
+
+
+def test_transparent_highlight_does_not_resolve_an_unknown_page_background() -> None:
+    presentation = _presentation()
+    presentation["slides"][0]["pageProperties"] = {
+        "pageBackgroundFill": {"stretchedPictureFill": {}}
+    }
+    presentation["slides"][0]["pageElements"][0]["shape"]["text"]["textElements"][1]["textRun"][
+        "style"
+    ]["backgroundColor"] = {}
+    parsed = parse_google_presentation(presentation, title="Review")
+
+    plan = _format_plan(presentation, parsed=parsed)
+
+    assert not any("updateTextStyle" in request for request in plan.requests)
+    assert "slide_text_contrast_unresolved" in {finding.code for finding in plan.findings}
+
+
 def test_text_highlight_contrast_blocks_brand_recoloring() -> None:
     presentation = _presentation()
     title_style = presentation["slides"][0]["pageElements"][0]["shape"]["text"]["textElements"][1][
@@ -856,6 +1111,176 @@ def test_visual_underlay_blocks_all_text_recoloring() -> None:
 
     plan = _format_plan(presentation, parsed=parsed)
 
+    assert not any("updateTextStyle" in request for request in plan.requests)
+    assert "slide_text_contrast_unresolved" in {finding.code for finding in plan.findings}
+
+
+def test_disjoint_photo_allows_verifiable_text_formatting() -> None:
+    presentation = _presentation()
+    presentation["slides"][0]["pageElements"].append(
+        {
+            **_box("photo", left=560, top=130, width=120, height=160),
+            "image": {
+                "sourceUrl": "https://example.invalid/photo.png",
+                "imageProperties": {"cropProperties": {"leftOffset": 0.1}},
+            },
+        }
+    )
+    parsed = parse_google_presentation(presentation, title="Review")
+    plan = _format_plan(presentation, parsed=parsed)
+    assert {
+        request["updateTextStyle"]["objectId"]
+        for request in plan.requests
+        if "updateTextStyle" in request
+    } == {"title-1", "body-1"}
+    assert "slide_text_contrast_unresolved" not in {finding.code for finding in plan.findings}
+    branded = deepcopy(presentation)
+    _apply_brand_requests(branded, plan.requests)
+    fingerprints = presentation_fingerprint(branded, "Review")
+    assert fingerprints.brand_sha256 == plan.expected_brand_sha256
+    assert fingerprints.protected_structure_sha256 == parsed.protected_sha256
+
+
+@pytest.mark.parametrize("alpha", [0, 0.0])
+def test_transparent_text_fills_use_the_known_page_background(alpha: float) -> None:
+    presentation = _presentation()
+    for element in presentation["slides"][0]["pageElements"]:
+        element["shape"]["shapeProperties"]["shapeBackgroundFill"] = {
+            "propertyState": "RENDERED",
+            "solidFill": {"alpha": alpha, "color": {"rgbColor": {}}},
+        }
+    parsed = parse_google_presentation(presentation, title="Review")
+    plan = _format_plan(presentation, parsed=parsed)
+    assert sum("updateTextStyle" in request for request in plan.requests) == 2
+    assert "slide_text_contrast_unresolved" not in {finding.code for finding in plan.findings}
+    branded = deepcopy(presentation)
+    _apply_brand_requests(branded, plan.requests)
+    fingerprints = presentation_fingerprint(branded, "Review")
+    assert fingerprints.brand_sha256 == plan.expected_brand_sha256
+    assert fingerprints.protected_structure_sha256 == parsed.protected_sha256
+
+
+@pytest.mark.parametrize("alpha", [0.5, False])
+def test_translucent_or_malformed_text_fills_do_not_claim_a_page_background(alpha: float) -> None:
+    presentation = _presentation()
+    presentation["slides"][0]["pageElements"][0]["shape"]["shapeProperties"][
+        "shapeBackgroundFill"
+    ] = {
+        "propertyState": "RENDERED",
+        "solidFill": {"alpha": alpha, "color": {"rgbColor": {}}},
+    }
+    parsed = parse_google_presentation(presentation, title="Review")
+    plan = _format_plan(presentation, parsed=parsed)
+    assert not any(
+        request.get("updateTextStyle", {}).get("objectId") == "title-1" for request in plan.requests
+    )
+    assert "slide_text_contrast_unresolved" in {finding.code for finding in plan.findings}
+
+
+def test_nonrendered_image_effect_properties_do_not_extend_a_disjoint_photo() -> None:
+    presentation = _presentation()
+    presentation["slides"][0]["pageElements"].append(
+        {
+            **_box("photo", left=560, top=130, width=120, height=160),
+            "image": {
+                "sourceUrl": "https://example.invalid/photo.png",
+                "imageProperties": {
+                    "shadow": {
+                        "propertyState": "NOT_RENDERED",
+                        "blurRadius": {"magnitude": 100, "unit": "PT"},
+                    },
+                    "outline": {
+                        "propertyState": "NOT_RENDERED",
+                        "weight": {"magnitude": 100, "unit": "PT"},
+                    },
+                },
+            },
+        }
+    )
+    parsed = parse_google_presentation(presentation, title="Review")
+    plan = _format_plan(presentation, parsed=parsed)
+    assert sum("updateTextStyle" in request for request in plan.requests) == 2
+
+
+@pytest.mark.parametrize("explicit_effects", [True, False])
+def test_clear_inherited_shapes_require_explicitly_absent_effects_before_ignoring_unknown_parent(
+    explicit_effects: bool,
+) -> None:
+    presentation = _presentation()
+    unused = _text_shape("unused", "Unused", left=560, top=130, width=120)
+    unused["shape"]["placeholder"] = {"type": "BODY", "parentObjectId": "missing-parent"}
+    if explicit_effects:
+        unused["shape"]["shapeProperties"].update(
+            {
+                "shadow": {"propertyState": "NOT_RENDERED"},
+                "outline": {"propertyState": "NOT_RENDERED"},
+            }
+        )
+    presentation["slides"][0]["pageElements"].append(unused)
+    parsed = parse_google_presentation(presentation, title="Review")
+    plan = _format_plan(presentation, parsed=parsed)
+    styled = {
+        request["updateTextStyle"]["objectId"]
+        for request in plan.requests
+        if "updateTextStyle" in request
+    }
+    assert styled == ({"title-1", "body-1"} if explicit_effects else set())
+
+
+def test_transparent_text_fill_still_requires_a_known_page_background() -> None:
+    presentation = _presentation()
+    presentation["slides"][0]["pageProperties"] = {
+        "pageBackgroundFill": {"stretchedPictureFill": {}}
+    }
+    presentation["slides"][0]["pageElements"][0]["shape"]["shapeProperties"][
+        "shapeBackgroundFill"
+    ] = {
+        "propertyState": "RENDERED",
+        "solidFill": {"alpha": 0, "color": {"rgbColor": {}}},
+    }
+    parsed = parse_google_presentation(presentation, title="Review")
+    plan = _format_plan(presentation, parsed=parsed)
+    assert not any("updateTextStyle" in request for request in plan.requests)
+    assert any("page background" in finding.detail for finding in plan.findings)
+
+
+def test_photo_blocks_only_the_text_it_overlaps() -> None:
+    presentation = _presentation()
+    presentation["slides"][0]["pageElements"].append(
+        {
+            **_box("photo", left=400, top=130, width=200, height=160),
+            "image": {"sourceUrl": "https://example.invalid/photo.png"},
+        }
+    )
+    parsed = parse_google_presentation(presentation, title="Review")
+    plan = _format_plan(presentation, parsed=parsed)
+    assert {
+        request["updateTextStyle"]["objectId"]
+        for request in plan.requests
+        if "updateTextStyle" in request
+    } == {"title-1"}
+    assert "slide_text_contrast_unresolved" in {finding.code for finding in plan.findings}
+
+
+@pytest.mark.parametrize("uncertainty", ["shadow", "outline", "bounds", "group", "placeholder"])
+def test_unproven_photo_extents_preserve_text_style(uncertainty: str) -> None:
+    presentation = _presentation()
+    image: dict[str, JsonValue] = {"sourceUrl": "https://example.invalid/photo.png"}
+    photo: dict[str, JsonValue] = {
+        **_box("photo", left=560, top=130, width=120, height=160),
+        "image": image,
+    }
+    if uncertainty in {"shadow", "outline"}:
+        image["imageProperties"] = {uncertainty: {"propertyState": "RENDERED"}}
+    elif uncertainty == "bounds":
+        photo.pop("transform")
+    elif uncertainty == "placeholder":
+        image["placeholder"] = {"parentObjectId": "unknown-parent"}
+    else:
+        photo = {"objectId": "group", "elementGroup": {"children": [photo]}}
+    presentation["slides"][0]["pageElements"].append(photo)
+    parsed = parse_google_presentation(presentation, title="Review")
+    plan = _format_plan(presentation, parsed=parsed)
     assert not any("updateTextStyle" in request for request in plan.requests)
     assert "slide_text_contrast_unresolved" in {finding.code for finding in plan.findings}
 
@@ -1313,12 +1738,12 @@ def _text_shape(
             "textElements": [
                 {
                     "startIndex": 0,
-                    "endIndex": len(text) + 1,
+                    "endIndex": len(text.encode("utf-16-le")) // 2 + 1,
                     "paragraphMarker": {"style": {}},
                 },
                 {
                     "startIndex": 0,
-                    "endIndex": len(text) + 1,
+                    "endIndex": len(text.encode("utf-16-le")) // 2 + 1,
                     "textRun": {
                         "content": f"{text}\n",
                         "style": {
@@ -1499,16 +1924,15 @@ def _apply_brand_requests(
         for slide in slides.values()
         for element in _walk_elements(slide["pageElements"])
     }
-    for request in requests:
-        if delete_object := request.get("deleteObject"):
-            object_id = delete_object["objectId"]
-            for slide in slides.values():
-                slide["pageElements"] = [
-                    element
-                    for element in slide["pageElements"]
-                    if element.get("objectId") != object_id
-                ]
-            by_id.pop(object_id, None)
+
+    def remove_object(object_id: str) -> None:
+        for slide in slides.values():
+            slide["pageElements"] = [
+                element for element in slide["pageElements"] if element.get("objectId") != object_id
+            ]
+        by_id.pop(object_id, None)
+
+    def apply_text_requests() -> None:
         if update := request.get("updateTextStyle"):
             for text_element in by_id[update["objectId"]]["shape"]["text"]["textElements"]:
                 run = text_element.get("textRun")
@@ -1529,6 +1953,11 @@ def _apply_brand_requests(
             index = insert["insertionIndex"]
             run["content"] = run["content"][:index] + insert["text"] + run["content"][index:]
             run_element["endIndex"] += len(insert["text"])
+
+    for request in requests:
+        if delete_object := request.get("deleteObject"):
+            remove_object(delete_object["objectId"])
+        apply_text_requests()
         if create := request.get("createImage"):
             properties = create["elementProperties"]
             slide = slides[properties["pageObjectId"]]

@@ -112,9 +112,9 @@ async def _run(arguments: _Arguments) -> dict[str, object]:
                 policy=GeminiModelPolicy(
                     project=project,
                     location="global",
-                    unslop_model=settings.DOCUMENT_TRANSFORM_UNSLOP_MODEL,
-                    fallback_model=settings.DOCUMENT_TRANSFORM_FALLBACK_MODEL,
-                    restyle_model=settings.DOCUMENT_TRANSFORM_RESTYLE_MODEL,
+                    unslop_model=settings.DOCUMENT.TRANSFORM_UNSLOP_MODEL,
+                    fallback_model=settings.DOCUMENT.TRANSFORM_FALLBACK_MODEL,
+                    restyle_model=settings.DOCUMENT.TRANSFORM_RESTYLE_MODEL,
                 )
             ),
             logo_bytes=logo_bytes,
@@ -150,7 +150,7 @@ async def _verified_logo_uri(
     mime_type: str,
     mode: str,
 ) -> str:
-    logo_uri = str(settings.DOCUMENT_TRANSFORM_LOGO_URI)
+    logo_uri = str(settings.DOCUMENT.TRANSFORM_LOGO_URI)
     if mime_type != MIME_DOC or mode == TransformMode.UNSLOP:
         return logo_uri
     response = await http.get(logo_uri)

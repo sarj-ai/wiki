@@ -64,6 +64,7 @@ describe("public file actions and processing disclosure", () => {
       processingDisclosure:
         "Wiki Unslop completed with 0 text edits. 15 rich-text areas could not be processed.",
       processingNeedsReview: true,
+      processingReviewed: false,
     };
     view = render(<DemoFileContext file={file} />);
     const warning = screen.getByRole("status");
@@ -75,11 +76,11 @@ describe("public file actions and processing disclosure", () => {
   it("offers the optional processing record as a separate public read", () => {
     const file = {
       ...demoFileFor(null),
-      processingRecordFilename: "nightingale-processing.json",
+      processingRecordFilename: "nightingale-processing-v8.json",
     };
     view = render(<DemoFileContext file={file} />);
     const record = screen.getByRole("link", { name: "Processing record" });
-    expect(record).toHaveAttribute("href", "/demo/files/nightingale-processing.json");
+    expect(record).toHaveAttribute("href", "/demo/files/nightingale-processing-v8.json");
     expect(record).toHaveAttribute("target", "_blank");
     expect(record).toHaveAttribute("rel", "noopener noreferrer");
   });

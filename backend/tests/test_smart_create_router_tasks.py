@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Awaitable, Callable
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime
 from typing import override
 import uuid
 
@@ -9,7 +9,6 @@ from fastapi import HTTPException, Response
 from pydantic import BaseModel
 import pytest
 
-from app.config import settings
 from app.document_transform.router import (
     create_document_transform,
     get_document_transform_capabilities,
@@ -30,17 +29,14 @@ from app.smart_create.router import create_smart_file
 from app.smart_create.schemas import BlankSource, SmartCreateResult, SmartFileCreate
 from app.tasks.queue import TaskEnqueuer
 from app.tasks.schemas import (
-    DocumentTransformTaskRecord,
     PendingTaskRead,
-    SmartCreateTaskRecord,
     SucceededTaskRead,
-    TaskClaim,
     TaskKind,
     TaskRead,
     TaskReservation,
     TaskStatus,
 )
-from app.tasks.service import TaskService
+from tests.task_support import StrictTaskService
 
 
 def _payload() -> SmartFileCreate:
@@ -105,7 +101,7 @@ def _succeeded(task_id: TaskId) -> SucceededTaskRead:
     )
 
 
-class _Tasks(TaskService):
+class _Tasks(StrictTaskService):
     def __init__(self, *, created: bool, terminal: bool = False) -> None:
         self.task_id = TaskId(uuid.uuid7())
         self.created = created
@@ -135,56 +131,13 @@ class _Tasks(TaskService):
         return TaskReservation(task=task, created=self.created)
 
     @override
-    async def claim(self, task_id: TaskId, *, lease_duration: timedelta) -> TaskClaim:
-        raise NotImplementedError
-
-    @override
-    async def defer(self, task_id: TaskId, *, lease_token: uuid.UUID) -> TaskRead:
-        raise NotImplementedError
-
-    @override
-    async def record_resource(
-        self, task_id: TaskId, *, lease_token: uuid.UUID, resource_id: FileId
-    ) -> None:
-        raise NotImplementedError
-
-    @override
-    async def succeed(
-        self, task_id: TaskId, *, lease_token: uuid.UUID, result: BaseModel
-    ) -> TaskRead:
-        raise NotImplementedError
-
-    @override
-    async def fail(
-        self,
-        task_id: TaskId,
-        *,
-        lease_token: uuid.UUID,
-        error_code: str,
-        error_detail: str | None,
-    ) -> TaskRead:
-        raise NotImplementedError
-
-    @override
     async def discard_pending(self, task_id: TaskId, *, owner_user_id: uuid.UUID) -> bool:
         del owner_user_id
         self.discarded.append(task_id)
         return True
 
     @override
-    async def cancel(self, task_id: TaskId, *, owner_user_id: uuid.UUID) -> TaskRead:
-        raise NotImplementedError
-
-    @override
     async def get_for_owner(self, task_id: TaskId, owner_user_id: uuid.UUID) -> TaskRead:
-        raise NotImplementedError
-
-    @override
-    async def load_smart_create(self, task_id: TaskId) -> SmartCreateTaskRecord:
-        raise NotImplementedError
-
-    @override
-    async def load_document_transform(self, task_id: TaskId) -> DocumentTransformTaskRecord:
         raise NotImplementedError
 
 
@@ -249,6 +202,7 @@ async def _create_transform(
     enqueuer: _Enqueuer,
     files: _DestinationFiles | _UnexpectedDestinationRead,
     response: Response | None = None,
+    in_place_enabled: bool = False,
 ) -> TaskRead:
     return await create_document_transform(
         payload=payload,
@@ -258,6 +212,7 @@ async def _create_transform(
         tasks=tasks,
         enqueuer=enqueuer,
         files=files,
+        in_place_enabled=in_place_enabled,
     )
 
 
@@ -458,11 +413,8 @@ async def test_markdown_transform_rejects_unsupported_syntax_before_task_creatio
     assert files.requested == []
 
 
-async def test_document_transform_capability_and_kill_switch(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    monkeypatch.setattr(settings, "DOCUMENT_TRANSFORM_IN_PLACE_ENABLED", False)
-    capability = await get_document_transform_capabilities(_user())
+async def test_document_transform_capability_and_kill_switch() -> None:
+    capability = await get_document_transform_capabilities(_user(), in_place_enabled=False)
     assert capability.in_place is False
     payload = DocumentTransformRequest(
         source=DriveFileSource(
@@ -482,10 +434,7 @@ async def test_document_transform_capability_and_kill_switch(
         )
 
 
-async def test_native_slides_in_place_is_rejected_before_enqueue(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    monkeypatch.setattr(settings, "DOCUMENT_TRANSFORM_IN_PLACE_ENABLED", True)
+async def test_native_slides_in_place_is_rejected_before_enqueue() -> None:
     payload = DocumentTransformRequest(
         source=DriveFileSource(
             kind="drive_file",
@@ -504,6 +453,7 @@ async def test_native_slides_in_place_is_rejected_before_enqueue(
             tasks=tasks,
             enqueuer=enqueuer,
             files=_destination_files(mime_type=MIME_SLIDE),
+            in_place_enabled=True,
         )
 
     assert exc_info.value.status_code == 422

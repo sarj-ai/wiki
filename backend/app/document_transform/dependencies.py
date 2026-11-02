@@ -111,9 +111,9 @@ def document_patch_generator_dep() -> PatchGenerator:
     policy = GeminiModelPolicy(
         project=project,
         location="global",
-        unslop_model=settings.DOCUMENT_TRANSFORM_UNSLOP_MODEL,
-        fallback_model=settings.DOCUMENT_TRANSFORM_FALLBACK_MODEL,
-        restyle_model=settings.DOCUMENT_TRANSFORM_RESTYLE_MODEL,
+        unslop_model=settings.DOCUMENT.TRANSFORM_UNSLOP_MODEL,
+        fallback_model=settings.DOCUMENT.TRANSFORM_FALLBACK_MODEL,
+        restyle_model=settings.DOCUMENT.TRANSFORM_RESTYLE_MODEL,
     )
     return VertexGeminiPatchGenerator(policy=policy)
 
@@ -131,5 +131,6 @@ async def document_transform_task_executor_dep(
         cache=cache_service,
         http=http,
         generator=generator,
-        logo_uri=str(settings.DOCUMENT_TRANSFORM_LOGO_URI),
+        logo_uri=str(settings.DOCUMENT.TRANSFORM_LOGO_URI),
+        in_place_enabled=settings.DOCUMENT.TRANSFORM_IN_PLACE_ENABLED,
     )

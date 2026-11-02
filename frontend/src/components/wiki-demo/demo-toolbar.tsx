@@ -23,6 +23,7 @@ import {
   demoHref,
 } from "./demo-data";
 import { demoDownloadUrl } from "./demo-file-urls";
+import { DemoRewriteExample } from "./demo-rewrite-example";
 
 export function DemoToolbar({ file, onReload }: { file: DemoFile; onReload: () => void }) {
   const downloadUrl = demoDownloadUrl(file);
@@ -133,7 +134,7 @@ export function DemoFileContext({ file }: { file: DemoFile }) {
   const comparisonExample = comparison.length > 0;
   return (
     <div className="bg-background flex shrink-0 flex-wrap items-center justify-between gap-2 border-b px-3 py-2.5 sm:px-5">
-      <div className="min-w-0 flex-1">
+      <div className="min-w-0 basis-full sm:flex-1">
         <p className="flex items-center gap-1.5 text-xs font-medium">
           {comparisonExample ? (
             <Sparkles aria-hidden className="text-primary size-3.5" />
@@ -152,10 +153,15 @@ export function DemoFileContext({ file }: { file: DemoFile }) {
             }
             role={file.processingNeedsReview ? "status" : undefined}
           >
-            {file.processingNeedsReview ? "Review required. " : null}
+            {file.processingNeedsReview
+              ? file.processingReviewed
+                ? "Review note. "
+                : "Review required. "
+              : null}
             {file.processingDisclosure}
           </p>
         ) : null}
+        {file.rewriteComparison ? <DemoRewriteExample comparison={file.rewriteComparison} /> : null}
         {file.processingRecordFilename ? (
           <a
             className="text-muted-foreground mt-1 inline-block text-xs underline underline-offset-2"

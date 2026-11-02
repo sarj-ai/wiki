@@ -79,8 +79,8 @@ def _signing_credentials() -> _SigningCredentials:
 
 
 async def sign_markdown_upload(owner: uuid.UUID) -> MarkdownUpload:
-    bucket = settings.DOCUMENT_TRANSFORM_UPLOAD_BUCKET
-    signer = settings.DOCUMENT_TRANSFORM_UPLOAD_SIGNER
+    bucket = settings.DOCUMENT.TRANSFORM_UPLOAD_BUCKET
+    signer = settings.DOCUMENT.TRANSFORM_UPLOAD_SIGNER
     if not bucket or not signer:
         raise UploadUnavailableError
     upload_id = uuid.UUID(hex=secrets.token_hex(16))
@@ -131,7 +131,7 @@ def _signing_token() -> str:
 
 
 async def load_markdown_upload(owner: uuid.UUID, source: MarkdownSource) -> MarkdownSource:
-    bucket = settings.DOCUMENT_TRANSFORM_UPLOAD_BUCKET
+    bucket = settings.DOCUMENT.TRANSFORM_UPLOAD_BUCKET
     if not bucket:
         raise UploadUnavailableError
     return await asyncio.to_thread(_load, bucket, owner, source)

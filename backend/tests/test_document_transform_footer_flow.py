@@ -4,7 +4,7 @@ from copy import deepcopy
 from typing import Any, NamedTuple
 import uuid
 
-from pydantic import ValidationError
+from pydantic import JsonValue, ValidationError
 import pytest
 
 from app.document_transform.errors import InPlaceNeedsReviewError
@@ -12,10 +12,13 @@ from app.document_transform.gateway import InPlaceStageResult, OutputDraft
 from app.document_transform.google_gateway import GoogleDocumentGateway
 from app.document_transform.native_footer_flow import (
     NativeFooterCheckpoint,
+    NativeFooterInvariant,
     NativeFooterStage,
     footer_coverage_complete,
+    footer_invariant_sha256,
     verified_footer_coverage_projection,
     verified_footer_projection,
+    versioned_footer_invariant_sha256,
 )
 from app.document_transform.schemas import DocumentOutput
 from app.identifiers import DocsRevisionId, DocsTabId, FileId
@@ -194,8 +197,10 @@ async def test_legacy_footer_checkpoint_keeps_raw_url_and_replay_payload(
     legacy_payload = initial.model_dump(mode="json")
     legacy_payload.pop("display_text")
     legacy_payload.pop("coverage")
+    legacy_payload.pop("invariant_version")
     legacy = NativeFooterCheckpoint.model_validate(legacy_payload)
     assert legacy.display_text is None
+    assert legacy.invariant_version is None
     created = await gateway.apply_copy_footer_stage(document_id=FileId("doc"), checkpoint=legacy)
     complete = await gateway.apply_copy_footer_stage(document_id=FileId("doc"), checkpoint=created)
     assert (
@@ -399,3 +404,160 @@ async def test_provider_empty_map_omission_does_not_break_ownership_recovery(
     complete = await gateway.apply_copy_footer_stage(document_id=FileId("doc"), checkpoint=created)
     assert complete.stage is NativeFooterStage.COMPLETE
     assert len(provider.calls) == 2
+
+
+def _inline_image() -> dict[str, JsonValue]:
+    return {
+        "objectId": "image-1",
+        "contentUri": "protected-outside-image-properties",
+        "inlineObjectProperties": {
+            "embeddedObject": {
+                "imageProperties": {
+                    "sourceUri": "https://example.com/nightingale.jpg",
+                    "contentUri": "https://example.com/temporary-image-v1",
+                    "cropProperties": {"offsetTop": 0.1},
+                },
+                "size": {"width": {"magnitude": 100, "unit": "PT"}},
+            }
+        },
+    }
+
+
+@pytest.mark.asyncio
+async def test_footer_accepts_rotating_image_urls_at_each_durable_stage(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    document = _document()
+    tab = document["tabs"][0]["documentTab"]
+    tab["inlineObjects"] = {"image-1": _inline_image()}
+    before = deepcopy(document)
+    gateway, initial, provider = await _plan(monkeypatch, document)
+    assert initial.invariant_version is NativeFooterInvariant.STABLE_IMAGES_V2
+    properties = tab["inlineObjects"]["image-1"]["inlineObjectProperties"]["embeddedObject"][
+        "imageProperties"
+    ]
+    properties["contentUri"] = "https://example.com/temporary-image-v2"
+    created = await gateway.apply_copy_footer_stage(document_id=FileId("doc"), checkpoint=initial)
+    properties["contentUri"] = "https://example.com/temporary-image-v3"
+    complete = await gateway.apply_copy_footer_stage(document_id=FileId("doc"), checkpoint=created)
+    properties["contentUri"] = "https://example.com/temporary-image-v4"
+    assert (
+        await gateway.apply_copy_footer_stage(document_id=FileId("doc"), checkpoint=created)
+        == complete
+    )
+    projected = verified_footer_coverage_projection(document, complete)
+    assert (
+        versioned_footer_invariant_sha256(projected, version=initial.invariant_version)
+        == initial.invariant_sha256
+    )
+    assert footer_invariant_sha256(before) != footer_invariant_sha256(projected)
+    assert len(provider.calls) == 2
+
+
+@pytest.mark.parametrize(
+    ("path", "replacement"),
+    [
+        (
+            (
+                "inlineObjects",
+                "image-1",
+                "inlineObjectProperties",
+                "embeddedObject",
+                "imageProperties",
+                "sourceUri",
+            ),
+            "https://example.com/different-photo.jpg",
+        ),
+        (
+            (
+                "inlineObjects",
+                "image-1",
+                "inlineObjectProperties",
+                "embeddedObject",
+                "imageProperties",
+                "cropProperties",
+                "offsetTop",
+            ),
+            0.2,
+        ),
+        (
+            (
+                "inlineObjects",
+                "image-1",
+                "inlineObjectProperties",
+                "embeddedObject",
+                "size",
+                "width",
+                "magnitude",
+            ),
+            200,
+        ),
+        (("inlineObjects", "image-1", "objectId"), "image-2"),
+        (("inlineObjects", "image-1", "contentUri"), "modified-protected-field"),
+        (("body", "content", 0, "paragraph", "elements", 0, "textRun", "content"), "Changed\n"),
+        (("documentStyle", "documentFormat", "documentMode"), "PAGELESS"),
+        (("headers", "h1", "content", 0, "opaque"), "changed"),
+    ],
+)
+@pytest.mark.asyncio
+async def test_image_url_normalization_keeps_other_footer_invariants_protected(
+    monkeypatch: pytest.MonkeyPatch, path: tuple[str | int, ...], replacement: JsonValue
+) -> None:
+    document = _document()
+    tab = document["tabs"][0]["documentTab"]
+    tab["inlineObjects"] = {"image-1": _inline_image()}
+    gateway, initial, provider = await _plan(monkeypatch, document)
+    target = tab
+    for key in path[:-1]:
+        target = target[key]
+    target[path[-1]] = replacement
+    with pytest.raises(InPlaceNeedsReviewError):
+        await gateway.apply_copy_footer_stage(document_id=FileId("doc"), checkpoint=initial)
+    assert provider.calls == []
+
+
+@pytest.mark.asyncio
+async def test_legacy_footer_hash_keeps_its_exact_image_url_comparison(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    document = _document()
+    tab = document["tabs"][0]["documentTab"]
+    tab["inlineObjects"] = {"image-1": _inline_image()}
+    gateway, initial, provider = await _plan(monkeypatch, document)
+    payload = initial.model_dump(mode="json")
+    payload.pop("invariant_version")
+    payload["invariant_sha256"] = footer_invariant_sha256(document)
+    legacy = NativeFooterCheckpoint.model_validate(payload)
+    assert legacy.invariant_version is None
+    tab["inlineObjects"]["image-1"]["inlineObjectProperties"]["embeddedObject"]["imageProperties"][
+        "contentUri"
+    ] = "https://example.com/rotated-image"
+    with pytest.raises(InPlaceNeedsReviewError):
+        await gateway.apply_copy_footer_stage(document_id=FileId("doc"), checkpoint=legacy)
+    assert provider.calls == []
+
+
+@pytest.mark.asyncio
+async def test_image_invariant_version_survives_footer_tab_advancement(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    document = _document()
+    first = document["tabs"][0]
+    first["documentTab"]["inlineObjects"] = {"image-1": _inline_image()}
+    second = deepcopy(first)
+    second["tabProperties"]["tabId"] = "t2"
+    document["tabs"].append(second)
+    gateway, checkpoint, provider = await _plan(monkeypatch, document)
+    for stage in range(5):
+        for tab in document["tabs"]:
+            tab["documentTab"]["inlineObjects"]["image-1"]["inlineObjectProperties"][
+                "embeddedObject"
+            ]["imageProperties"]["contentUri"] = f"https://example.com/temporary-stage-{stage}"
+        checkpoint = await gateway.apply_copy_footer_stage(
+            document_id=FileId("doc"), checkpoint=checkpoint
+        )
+        checkpoint = NativeFooterCheckpoint.model_validate_json(checkpoint.model_dump_json())
+        assert checkpoint.invariant_version is NativeFooterInvariant.STABLE_IMAGES_V2
+    assert footer_coverage_complete(checkpoint)
+    verified_footer_coverage_projection(document, checkpoint)
+    assert len(provider.calls) == 4

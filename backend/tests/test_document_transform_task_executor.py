@@ -11,7 +11,6 @@ import httpx
 import pytest
 
 from app.aliases.schemas import DocumentAliasRead
-from app.config import settings
 from app.document_transform import task_executor as task_executor_module
 from app.document_transform.brand_manifest import CURRENT_BRAND_MANIFEST
 from app.document_transform.errors import (
@@ -730,9 +729,9 @@ async def test_crashed_worker_retry_cap_precedes_runtime(
 async def test_worker_kill_switch_blocks_claimed_in_place_task_before_runtime(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setattr(settings, "DOCUMENT_TRANSFORM_IN_PLACE_ENABLED", False)
     tasks = _RetryTasks(payload=_in_place_payload())
     executor = object.__new__(DriveDocumentTransformTaskExecutor)
+    executor._in_place_enabled = False
     monkeypatch.setattr(executor, "_tasks", tasks, raising=False)
 
     result = await executor.execute(TaskId(uuid.uuid7()))

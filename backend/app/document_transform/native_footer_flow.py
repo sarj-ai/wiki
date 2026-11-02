@@ -6,10 +6,11 @@ import hashlib
 import json
 from typing import Any, Literal, NamedTuple, Self
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, JsonValue, model_validator
 
 from app.document_transform.brand_manifest import CURRENT_BRAND_MANIFEST
 from app.document_transform.ir import MAX_DOC_TABS
+from app.document_transform.native_payload import stable_native_payload
 from app.document_transform.native_safety_diagnostics import (
     FooterShapeFailure,
     SafetyStage,
@@ -20,11 +21,61 @@ from app.identifiers import DocsRevisionId, DocsSegmentId, DocsTabId
 
 MAX_FOOTER_NAMED_STYLES = 60
 
+type FooterSkipReason = Literal["custom_footer", "pageless", "unsupported_layout"]
+
+
+class _FooterDocumentFormat(BaseModel):
+    model_config = ConfigDict(extra="ignore", strict=True)
+    mode: JsonValue = Field(default=None, alias="documentMode")
+
+
+class _FooterDocumentStyle(BaseModel):
+    model_config = ConfigDict(extra="ignore", strict=True)
+    default_footer_id: JsonValue = Field(default=None, alias="defaultFooterId")
+    first_page_footer_id: JsonValue = Field(default=None, alias="firstPageFooterId")
+    even_page_footer_id: JsonValue = Field(default=None, alias="evenPageFooterId")
+    document_format: _FooterDocumentFormat = Field(
+        default_factory=_FooterDocumentFormat, alias="documentFormat"
+    )
+    use_first_page_header_footer: JsonValue = Field(default=None, alias="useFirstPageHeaderFooter")
+    use_even_page_header_footer: JsonValue = Field(default=None, alias="useEvenPageHeaderFooter")
+
+
+class NativeFooterLayout(BaseModel):
+    model_config = ConfigDict(extra="ignore", strict=True)
+    document_style: _FooterDocumentStyle | None = Field(default=None, alias="documentStyle")
+    footers: dict[str, JsonValue] = Field(default_factory=dict)
+
+    @property
+    def skip_reason(self) -> FooterSkipReason | None:
+        style = self.document_style
+        if style is None:
+            return "unsupported_layout"
+        if self.footers or any(
+            (style.default_footer_id, style.first_page_footer_id, style.even_page_footer_id)
+        ):
+            return "custom_footer"
+        mode = style.document_format.mode
+        if mode == "PAGELESS":
+            return "pageless"
+        if mode is not None and mode != "PAGES":
+            return "unsupported_layout"
+        if any(
+            value is not None and value is not False
+            for value in (style.use_first_page_header_footer, style.use_even_page_header_footer)
+        ):
+            return "unsupported_layout"
+        return None
+
 
 class NativeFooterStage(StrEnum):
     CREATE = "create"
     POPULATE = "populate"
     COMPLETE = "complete"
+
+
+class NativeFooterInvariant(StrEnum):
+    STABLE_IMAGES_V2 = "stable-images-v2"
 
 
 class NativeFooterCheckpoint(BaseModel):
@@ -40,6 +91,7 @@ class NativeFooterCheckpoint(BaseModel):
     populate_marker: str
     marker_range: dict[str, Any]
     invariant_sha256: str
+    invariant_version: NativeFooterInvariant | None = None
     footer_id: DocsSegmentId | None = None
     coverage: NativeFooterCoverage | None = None
 
@@ -81,7 +133,7 @@ class NativeFooterCheckpoint(BaseModel):
 class NativeFooterSkip(BaseModel):
     model_config = ConfigDict(extra="forbid")
     tab_id: DocsTabId
-    reason: Literal["custom_footer", "pageless", "unsupported_layout"]
+    reason: FooterSkipReason
 
 
 class NativeFooterCoverage(BaseModel):
@@ -106,7 +158,10 @@ def verified_footer_coverage_projection(
         native_safety_error("footer_coverage", "action")
     coverage = checkpoint.coverage
     if coverage is not None and not coverage.active:
-        if footer_invariant_sha256(document) != checkpoint.invariant_sha256:
+        if (
+            versioned_footer_invariant_sha256(document, version=checkpoint.invariant_version)
+            != checkpoint.invariant_sha256
+        ):
             native_safety_error("footer_coverage", "invariant")
         return deepcopy(document)
     projected, _ = verified_footer_projection(document, checkpoint, populated=True)
@@ -154,6 +209,20 @@ class VerifiedFooterProjection(NamedTuple):
     footer_id: DocsSegmentId
 
 
+def versioned_footer_invariant_sha256(
+    document: JsonValue, *, version: NativeFooterInvariant | None
+) -> str:
+    payload = (
+        stable_native_payload(document)
+        if version is NativeFooterInvariant.STABLE_IMAGES_V2
+        else document
+    )
+    if not isinstance(payload, dict):
+        msg = "A footer invariant requires a document object"
+        raise TypeError(msg)
+    return footer_invariant_sha256(payload)
+
+
 def verified_footer_projection(
     document: dict[str, Any],
     checkpoint: NativeFooterCheckpoint,
@@ -196,7 +265,10 @@ def verified_footer_projection(
         tab.pop("footers", None)
     del style["defaultFooterId"]
     _remove_footer_markers(snapshot, {checkpoint.create_marker, checkpoint.populate_marker})
-    if footer_invariant_sha256(snapshot) != checkpoint.invariant_sha256:
+    if (
+        versioned_footer_invariant_sha256(snapshot, version=checkpoint.invariant_version)
+        != checkpoint.invariant_sha256
+    ):
         native_safety_error(stage, "invariant")
     return VerifiedFooterProjection(snapshot, DocsSegmentId(footer_id))
 
@@ -241,29 +313,42 @@ def _footer_matches(
     runs = paragraph.get("elements")
     if not isinstance(runs, list) or not runs:
         return False
-    parts: list[str] = []
-    for run in runs:
-        if not isinstance(run, dict) or set(run) - {"startIndex", "endIndex", "textRun"}:
-            return False
-        text_run = run.get("textRun")
-        if not isinstance(text_run, dict) or set(text_run) - {"content", "textStyle"}:
-            return False
-        value = text_run.get("content")
-        if not isinstance(value, str):
-            return False
-        parts.append(value)
-        if (
-            populated
-            and value.rstrip("\n")
-            and not _link_style_matches(text_run.get("textStyle", {}), url, inherited_family)
-        ):
-            return False
+    parts = _footer_parts(runs, url, populated=populated, inherited_family=inherited_family)
+    if parts is None:
+        return False
     if populated:
         style = paragraph.get("paragraphStyle", {})
         if style.get("alignment") != "END" or style.get("namedStyleType") != "NORMAL_TEXT":
             return False
     caption = display_text if display_text is not None else url
     return "".join(parts) == (caption + "\n" if populated else "\n")
+
+
+def _footer_parts(
+    runs: list[JsonValue],
+    url: str,
+    *,
+    populated: bool,
+    inherited_family: str | None,
+) -> list[str] | None:
+    parts: list[str] = []
+    for run in runs:
+        if not isinstance(run, dict) or set(run) - {"startIndex", "endIndex", "textRun"}:
+            return None
+        text_run = run.get("textRun")
+        if not isinstance(text_run, dict) or set(text_run) - {"content", "textStyle"}:
+            return None
+        value = text_run.get("content")
+        if not isinstance(value, str):
+            return None
+        parts.append(value)
+        if (
+            populated
+            and value.rstrip("\n")
+            and not _link_style_matches(text_run.get("textStyle", {}), url, inherited_family)
+        ):
+            return None
+    return parts
 
 
 def _normal_text_family(tab: dict[str, Any]) -> str | None:
@@ -307,7 +392,7 @@ def _link_style_matches(style: object, url: str, inherited_family: str | None = 
 
 
 def _footer_shape_failure(
-    footer: object,
+    footer: JsonValue,
     url: str,
     *,
     populated: bool,
@@ -315,6 +400,62 @@ def _footer_shape_failure(
     inherited_family: str | None = None,
 ) -> FooterShapeFailure | None:
     # Diagnostic mirror only: _footer_matches remains the unchanged authority.
+    paragraph = _footer_paragraph_shape(footer)
+    if isinstance(paragraph, FooterShapeFailure):
+        return paragraph
+    runs = paragraph.get("elements")
+    if not isinstance(runs, list) or not runs:
+        return FooterShapeFailure("runs", "missing" if "elements" not in paragraph else "mismatch")
+    parts = _footer_checked_parts(runs, url, populated=populated, inherited_family=inherited_family)
+    if isinstance(parts, FooterShapeFailure):
+        return parts
+    if populated:
+        failure = _footer_paragraph_style_failure(paragraph.get("paragraphStyle", {}))
+        if failure is not None:
+            return failure
+    caption = display_text if display_text is not None else url
+    if "".join(parts) != (caption + "\n" if populated else "\n"):
+        return FooterShapeFailure("caption", "mismatch")
+    return None
+
+
+def _footer_paragraph_style_failure(style: JsonValue) -> FooterShapeFailure | None:
+    if not isinstance(style, dict):
+        return FooterShapeFailure("paragraph_fields", "mismatch")
+    if style.get("alignment") != "END":
+        return FooterShapeFailure(
+            "alignment", "missing" if "alignment" not in style else "mismatch"
+        )
+    if style.get("namedStyleType") != "NORMAL_TEXT":
+        return FooterShapeFailure(
+            "named_style", "missing" if "namedStyleType" not in style else "mismatch"
+        )
+    return None
+
+
+def _footer_checked_parts(
+    runs: list[JsonValue],
+    url: str,
+    *,
+    populated: bool,
+    inherited_family: str | None,
+) -> list[str] | FooterShapeFailure:
+    parts: list[str] = []
+    for run in runs:
+        failure = _footer_run_failure(
+            run, url, populated=populated, inherited_family=inherited_family
+        )
+        if failure is not None:
+            return failure
+        text_run = run.get("textRun") if isinstance(run, dict) else None
+        value = text_run.get("content") if isinstance(text_run, dict) else None
+        if not isinstance(value, str):
+            return FooterShapeFailure("text_content", "mismatch")
+        parts.append(value)
+    return parts
+
+
+def _footer_paragraph_shape(footer: JsonValue) -> dict[str, JsonValue] | FooterShapeFailure:
     if not isinstance(footer, dict):
         return FooterShapeFailure("footer_container", "missing" if footer is None else "mismatch")
     if set(footer) - {"footerId", "content"}:
@@ -336,37 +477,7 @@ def _footer_shape_failure(
         )
     if set(paragraph) - {"elements", "paragraphStyle"}:
         return FooterShapeFailure("paragraph_fields", "mismatch")
-    runs = paragraph.get("elements")
-    if not isinstance(runs, list) or not runs:
-        return FooterShapeFailure("runs", "missing" if "elements" not in paragraph else "mismatch")
-    parts: list[str] = []
-    for run in runs:
-        failure = _footer_run_failure(
-            run, url, populated=populated, inherited_family=inherited_family
-        )
-        if failure is not None:
-            return failure
-        text_run = run.get("textRun") if isinstance(run, dict) else None
-        value = text_run.get("content") if isinstance(text_run, dict) else None
-        if not isinstance(value, str):
-            return FooterShapeFailure("text_content", "mismatch")
-        parts.append(value)
-    if populated:
-        style = paragraph.get("paragraphStyle", {})
-        if not isinstance(style, dict):
-            return FooterShapeFailure("paragraph_fields", "mismatch")
-        if style.get("alignment") != "END":
-            return FooterShapeFailure(
-                "alignment", "missing" if "alignment" not in style else "mismatch"
-            )
-        if style.get("namedStyleType") != "NORMAL_TEXT":
-            return FooterShapeFailure(
-                "named_style", "missing" if "namedStyleType" not in style else "mismatch"
-            )
-    caption = display_text if display_text is not None else url
-    if "".join(parts) != (caption + "\n" if populated else "\n"):
-        return FooterShapeFailure("caption", "mismatch")
-    return None
+    return paragraph
 
 
 def _footer_run_failure(

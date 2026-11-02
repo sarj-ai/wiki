@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections import deque
+from collections.abc import Mapping
 from dataclasses import dataclass
 import hashlib
 import json
@@ -56,11 +57,14 @@ _SUPPORTED_PLACEHOLDER_TYPES = frozenset(
 _MIN_TEXT_CONTRAST = 4.5
 _SRGB_LINEAR_THRESHOLD = 0.04045
 _PLACEHOLDER_STYLE_LEVEL_COUNTS = frozenset({8, 9})
-_CANVAS_ASPECT_REL_TOLERANCE = 1e-6
+_CANVAS_ASPECT_REL_TOLERANCE = 1e-5
 # Advisory only: long narrative text below this floor warrants human review, never resizing.
 _MIN_NARRATIVE_TEXT_SIZE_PT = 12
 _MIN_NARRATIVE_TEXT_CHARS = 80
 _NARRATIVE_PLACEHOLDER_TYPES = frozenset({"BODY", "OBJECT"})
+_ASCII_CONTROL_LIMIT = 0x20
+_BMP_PRIVATE_USE_START = 0xE000
+_BMP_PRIVATE_USE_END = 0xF8FF
 
 
 @dataclass(frozen=True, slots=True)
@@ -259,7 +263,7 @@ def _text_delta_requests(
             delete_end = source_index + 1 if delete_end is None else delete_end
             source_index -= 1
         if source_index < 0:
-            raise UnsupportedSourceError
+            return _replacement_text_requests(replacement=replacement, locator=locator)
         if delete_end is not None:
             _append_delete_delta(
                 deltas,
@@ -293,6 +297,40 @@ def _text_delta_requests(
         request
         for _, requests in sorted(deltas, key=itemgetter(0), reverse=True)
         for request in requests
+    ]
+
+
+def _replacement_text_requests(
+    *, replacement: str, locator: SlideTextLocator
+) -> list[dict[str, JsonValue]]:
+    if not replacement.strip() or any(
+        character in "\r\n\v\f\u2028\u2029"
+        or ord(character) < _ASCII_CONTROL_LIMIT
+        or _BMP_PRIVATE_USE_START <= ord(character) <= _BMP_PRIVATE_USE_END
+        for character in replacement
+    ):
+        raise UnsupportedSourceError
+    inserted_length = utf16_length(replacement)
+    # Insert into the original uniform run so the new text inherits its style.
+    # Protected-structure and brand readback still verify the resulting copy.
+    return [
+        {
+            "insertText": {
+                "objectId": locator.object_id,
+                "insertionIndex": locator.start_index,
+                "text": replacement,
+            }
+        },
+        {
+            "deleteText": {
+                "objectId": locator.object_id,
+                "textRange": {
+                    "type": "FIXED_RANGE",
+                    "startIndex": locator.start_index + inserted_length,
+                    "endIndex": locator.end_index + inserted_length,
+                },
+            }
+        },
     ]
 
 
@@ -447,14 +485,17 @@ def _style_targets(
     for slide in _slides(presentation):
         theme_colors = _effective_theme_colors(presentation, slide)
         page_background = _effective_page_background(presentation, slide)
-        if _has_visual_underlay(presentation, slide):
-            page_background = None
+        underlays = _visual_underlay_bounds(presentation, slide, object_ids=object_ids)
         for element in _walk_elements(slide.get("pageElements", [])):
+            overlaps = _underlays_overlap(element, underlays)
+            background = None if overlaps else page_background
+            background_reason = _background_failure_reason(page_background, overlaps=overlaps)
             target, finding = _style_target(
                 element,
-                page_background=page_background,
+                page_background=background,
                 theme_colors=theme_colors,
                 object_ids=object_ids,
+                background_reason=background_reason,
             )
             if target is not None:
                 targets.append(target)
@@ -462,7 +503,7 @@ def _style_targets(
                 findings.append(finding)
             small_text_finding = _small_narrative_text_finding(
                 element,
-                page_background=page_background,
+                page_background=background,
                 theme_colors=theme_colors,
                 object_ids=object_ids,
             )
@@ -471,12 +512,21 @@ def _style_targets(
     return _StyleScan(tuple(targets), findings)
 
 
+def _background_failure_reason(page_background: str | None, *, overlaps: bool) -> str | None:
+    if page_background is None:
+        return "the page background is not a resolved opaque color"
+    if overlaps:
+        return "an image or unresolved visual layer may overlap this text"
+    return None
+
+
 def _style_target(
     element: dict[str, Any],
     *,
     page_background: str | None,
     theme_colors: dict[str, str] | None,
     object_ids: dict[str, tuple[dict[str, Any], ...]],
+    background_reason: str | None = None,
 ) -> _StyleDecision:
     object_id = SlideObjectId(_required_string(element, "objectId"))
     shape = element.get("shape")
@@ -504,6 +554,7 @@ def _style_target(
         page_background=page_background,
         theme_colors=theme_colors,
         ancestors=ancestors,
+        background_reason=background_reason,
     )
     if eligibility is None:
         return _StyleDecision(None, finding)
@@ -535,6 +586,7 @@ def _style_eligibility(
     page_background: str | None,
     theme_colors: dict[str, str] | None,
     ancestors: tuple[dict[str, Any], ...],
+    background_reason: str | None = None,
 ) -> _StyleEligibilityDecision:
     placeholder_type = _placeholder_type(shape)
     if placeholder_type not in _SUPPORTED_PLACEHOLDER_TYPES:
@@ -552,9 +604,17 @@ def _style_eligibility(
         theme_colors=theme_colors,
     )
     desired_color = _canonical_style(desired_style)["color"]
+    if background is None:
+        reason = background_reason or (
+            "the page background or a visual underlay is unresolved"
+            if page_background is None
+            else "the text box background is unresolved"
+        )
+        return _StyleEligibilityDecision(
+            None, _contrast_unresolved_finding(object_id, reason=reason)
+        )
     if (
-        background is None
-        or not isinstance(desired_color, str)
+        not isinstance(desired_color, str)
         or _contrast_ratio(desired_color, background) < _MIN_TEXT_CONTRAST
     ):
         return _StyleEligibilityDecision(None, _contrast_unresolved_finding(object_id))
@@ -771,46 +831,55 @@ def _inherited_level_zero_style(value: object) -> dict[str, Any] | None:
     level_count = len(value) // 2
     level_zero_style: dict[str, Any] | None = None
     for level in range(level_count):
-        paragraph_element = value[level * 2]
-        run_element = value[level * 2 + 1]
-        if not isinstance(paragraph_element, dict) or not isinstance(run_element, dict):
-            return None
-        paragraph_element = {str(key): child for key, child in paragraph_element.items()}
-        run_element = {str(key): child for key, child in run_element.items()}
-        paragraph = paragraph_element.get("paragraphMarker")
-        bullet = paragraph.get("bullet") if isinstance(paragraph, dict) else None
-        run = run_element.get("textRun")
-        if (
-            not _has_exact_text_element_kind(paragraph_element, "paragraphMarker")
-            or not _has_exact_text_element_kind(run_element, "textRun")
-            or not isinstance(bullet, dict)
-            or not isinstance(run, dict)
-        ):
-            return None
-        nesting_level = bullet.get("nestingLevel", 0)
-        if (
-            isinstance(nesting_level, bool)
-            or not isinstance(nesting_level, int)
-            or nesting_level != level
-            or run.get("content") != "\n"
-        ):
-            return None
-        style = run.get("style")
-        if (
-            not _style_table_run_bounds_are_valid(
-                paragraph_element,
-                expected_start=level,
-            )
-            or not _style_table_run_bounds_are_valid(
-                run_element,
-                expected_start=level,
-            )
-            or not isinstance(style, dict)
-        ):
+        style = _placeholder_level_style(value[level * 2], value[level * 2 + 1], level)
+        if style is None:
             return None
         if level == 0:
             level_zero_style = {str(key): child for key, child in style.items()}
     return level_zero_style
+
+
+def _placeholder_level_style(
+    paragraph_element: JsonValue,
+    run_element: JsonValue,
+    level: int,
+) -> dict[str, JsonValue] | None:
+    if not isinstance(paragraph_element, dict) or not isinstance(run_element, dict):
+        return None
+    paragraph_element = {str(key): child for key, child in paragraph_element.items()}
+    run_element = {str(key): child for key, child in run_element.items()}
+    paragraph = paragraph_element.get("paragraphMarker")
+    bullet = paragraph.get("bullet") if isinstance(paragraph, dict) else None
+    run = run_element.get("textRun")
+    if (
+        not _has_exact_text_element_kind(paragraph_element, "paragraphMarker")
+        or not _has_exact_text_element_kind(run_element, "textRun")
+        or not isinstance(bullet, dict)
+        or not isinstance(run, dict)
+    ):
+        return None
+    nesting_level = bullet.get("nestingLevel", 0)
+    if (
+        isinstance(nesting_level, bool)
+        or not isinstance(nesting_level, int)
+        or nesting_level != level
+        or run.get("content") != "\n"
+    ):
+        return None
+    style = run.get("style")
+    if (
+        not _style_table_run_bounds_are_valid(
+            paragraph_element,
+            expected_start=level,
+        )
+        or not _style_table_run_bounds_are_valid(
+            run_element,
+            expected_start=level,
+        )
+        or not isinstance(style, dict)
+    ):
+        return None
+    return style
 
 
 def _single_paragraph_inherited_style(value: object) -> dict[str, Any] | None:
@@ -838,6 +907,35 @@ def _single_paragraph_inherited_style(value: object) -> dict[str, Any] | None:
     visible_end = visible_element.get("endIndex")
     if not isinstance(visible_start, int) or not isinstance(visible_end, int):
         return None
+    terminal = _terminal_paragraph_style(
+        visible_content, visible_end, visible_run, terminal_elements
+    )
+    if terminal is None:
+        return None
+    terminal_style, paragraph_end = terminal
+    if (
+        not _text_element_bounds_are_valid(
+            visible_element,
+            expected_start=visible_start,
+            expected_end=visible_end,
+        )
+        or visible_end - visible_start != utf16_length(visible_content)
+        or not _text_element_bounds_are_valid(
+            paragraph_element,
+            expected_start=visible_start,
+            expected_end=paragraph_end,
+        )
+    ):
+        return None
+    return {str(key): child for key, child in terminal_style.items()}
+
+
+def _terminal_paragraph_style(
+    visible_content: str,
+    visible_end: int,
+    visible_run: dict[str, JsonValue],
+    terminal_elements: list[JsonValue],
+) -> tuple[dict[str, JsonValue], int] | None:
     if terminal_elements:
         terminal_element = terminal_elements[0]
         if not isinstance(terminal_element, dict):
@@ -872,30 +970,16 @@ def _single_paragraph_inherited_style(value: object) -> dict[str, Any] | None:
         paragraph_end = visible_end
         if not isinstance(terminal_style, dict):
             return None
-    if (
-        not _text_element_bounds_are_valid(
-            visible_element,
-            expected_start=visible_start,
-            expected_end=visible_end,
-        )
-        or visible_end - visible_start != utf16_length(visible_content)
-        or not _text_element_bounds_are_valid(
-            paragraph_element,
-            expected_start=visible_start,
-            expected_end=paragraph_end,
-        )
-    ):
-        return None
-    return {str(key): child for key, child in terminal_style.items()}
+    return terminal_style, paragraph_end
 
 
-def _has_exact_text_element_kind(value: dict[str, object], expected: str) -> bool:
+def _has_exact_text_element_kind(value: Mapping[str, JsonValue], expected: str) -> bool:
     text_kinds = {"autoText", "paragraphMarker", "textRun"}
     return set(value).intersection(text_kinds) == {expected}
 
 
 def _style_table_run_bounds_are_valid(
-    value: dict[str, object],
+    value: Mapping[str, JsonValue],
     *,
     expected_start: int,
 ) -> bool:
@@ -907,7 +991,7 @@ def _style_table_run_bounds_are_valid(
 
 
 def _text_element_bounds_are_valid(
-    value: dict[str, object],
+    value: Mapping[str, JsonValue],
     *,
     expected_start: int,
     expected_end: int,
@@ -961,7 +1045,7 @@ def _text_background(
     theme_colors: dict[str, str] | None,
 ) -> str | None:
     background = style.get("backgroundColor")
-    if background is None:
+    if background is None or background == {}:
         return fallback
     if not isinstance(background, dict):
         return None
@@ -1023,11 +1107,13 @@ def _fit_unresolved_finding(object_id: SlideObjectId) -> TransformFinding:
     )
 
 
-def _contrast_unresolved_finding(object_id: SlideObjectId) -> TransformFinding:
+def _contrast_unresolved_finding(
+    object_id: SlideObjectId, *, reason: str = "brand-color contrast could not be proven"
+) -> TransformFinding:
     return TransformFinding(
         code="slide_text_contrast_unresolved",
         block_id=object_id,
-        detail="Visible text was preserved because brand-color contrast could not be proven",
+        detail=f"Visible text was preserved because {reason}",
     )
 
 
@@ -1159,44 +1245,89 @@ def _effective_shape_background(
             return page_background
         if state not in {None, "RENDERED"}:
             return None
+        if _fill_is_transparent(fill):
+            return page_background
         return _opaque_solid_color(fill, theme_colors=theme_colors)
     return page_background
 
 
-def _has_visual_underlay(
+def _visual_underlay_bounds(
     presentation: dict[str, Any],
     slide: dict[str, Any],
-) -> bool:
+    *,
+    object_ids: dict[str, tuple[dict[str, JsonValue], ...]],
+) -> tuple[_Rect | None, ...]:
     try:
         pages = _page_chain(presentation, slide)
     except UnsupportedSourceError:
-        return True
+        return (None,)
     expected_logo_id = sarj_logo_object_id(SlideId(_required_string(slide, "objectId")))
-    object_ids = _object_id_occurrences(presentation)
+    bounds: list[_Rect | None] = []
     for page in pages:
         for element in _walk_elements(page.get("pageElements", [])):
             if element.get("objectId") == expected_logo_id:
                 continue
-            if any(
-                kind in element
-                for kind in (
-                    "image",
-                    "line",
-                    "sheetsChart",
-                    "speakerSpotlight",
-                    "table",
-                    "video",
-                    "wordArt",
-                )
-            ):
-                return True
-            shape = element.get("shape")
-            if not isinstance(shape, dict):
-                continue
-            ancestors = _placeholder_ancestors(shape, object_ids=object_ids)
-            if ancestors is None or _shape_has_rendered_fill(element, ancestors=ancestors):
-                return True
-    return False
+            footprint = _element_underlays(element, object_ids=object_ids)
+            if None in footprint:
+                return (None,)
+            bounds.extend(footprint)
+    return tuple(bounds)
+
+
+def _element_underlays(
+    element: dict[str, JsonValue],
+    *,
+    object_ids: dict[str, tuple[dict[str, JsonValue], ...]],
+) -> tuple[_Rect | None, ...]:
+    if "elementGroup" in element:
+        # Child bounds are local to the group; never mistake them for page bounds.
+        return (None,)
+    if "image" in element:
+        return (_image_underlay_bounds(element),)
+    if any(
+        kind in element
+        for kind in ("line", "sheetsChart", "speakerSpotlight", "table", "video", "wordArt")
+    ):
+        return (None,)
+    shape = element.get("shape")
+    if not isinstance(shape, dict):
+        return ()
+    if _shape_background_is_explicitly_clear(shape):
+        return ()
+    ancestors = _placeholder_ancestors(shape, object_ids=object_ids)
+    if ancestors is None or _shape_has_rendered_fill(element, ancestors=ancestors):
+        return (None,)
+    return ()
+
+
+def _image_underlay_bounds(element: dict[str, JsonValue]) -> _Rect | None:
+    image = element.get("image")
+    if not isinstance(image, dict) or image.get("placeholder") is not None:
+        return None
+    properties = image.get("imageProperties", {})
+    if not isinstance(properties, dict) or set(properties) - {
+        "brightness",
+        "contrast",
+        "cropProperties",
+        "link",
+        "outline",
+        "recolor",
+        "shadow",
+        "transparency",
+    }:
+        return None
+    if not all(_effect_is_not_rendered(properties.get(key)) for key in ("outline", "shadow")):
+        return None
+    return _element_bounds(element)
+
+
+def _underlays_overlap(element: dict[str, JsonValue], underlays: tuple[_Rect | None, ...]) -> bool:
+    if not underlays:
+        return False
+    bounds = _element_bounds(element)
+    return bounds is None or any(
+        underlay is None or _overlaps(bounds, underlay) for underlay in underlays
+    )
 
 
 def _shape_has_rendered_fill(
@@ -1217,8 +1348,33 @@ def _shape_has_rendered_fill(
             continue
         if state == "NOT_RENDERED":
             return False
-        return state in {None, "RENDERED"}
+        return state in {None, "RENDERED"} and not _fill_is_transparent(fill)
     return False
+
+
+def _shape_background_is_explicitly_clear(shape: dict[str, JsonValue]) -> bool:
+    properties = shape.get("shapeProperties")
+    if not isinstance(properties, dict):
+        return False
+    fill = properties.get("shapeBackgroundFill")
+    if not isinstance(fill, dict):
+        return False
+    clear_fill = fill.get("propertyState") == "NOT_RENDERED" or (
+        fill.get("propertyState") in {None, "RENDERED"} and _fill_is_transparent(fill)
+    )
+    return clear_fill and all(
+        isinstance(effect, dict) and effect.get("propertyState") == "NOT_RENDERED"
+        for effect in (properties.get("outline"), properties.get("shadow"))
+    )
+
+
+def _fill_is_transparent(fill: object) -> bool:
+    if not isinstance(fill, dict) or set(fill) - {"propertyState", "solidFill"}:
+        return False
+    solid = fill.get("solidFill")
+    return (
+        isinstance(solid, dict) and type(solid.get("alpha")) in {int, float} and solid["alpha"] == 0
+    )
 
 
 def _opaque_solid_color(
@@ -1537,36 +1693,25 @@ def _existing_logo_is_exact(
         isinstance(image, dict)
         and image.get("sourceUrl") == logo_uri
         and _image_appearance_is_default(image.get("imageProperties"))
-        and _logo_transform_is_exact(element, placement=placement)
+        and _logo_transform_is_axis_aligned(element)
         and bounds is not None
         and _rect_close(bounds, placement)
     )
 
 
-def _logo_transform_is_exact(element: dict[str, Any], *, placement: _Rect) -> bool:
-    size = element.get("size")
+def _logo_transform_is_axis_aligned(element: dict[str, JsonValue]) -> bool:
     transform = element.get("transform")
-    if not isinstance(size, dict) or not isinstance(transform, dict):
+    if not isinstance(transform, dict):
         return False
-    width = _dimension_points(size.get("width"))
-    height = _dimension_points(size.get("height"))
-    unit = transform.get("unit", "EMU")
-    factor = 1 / _EMU_PER_POINT if unit == "EMU" else 1.0 if unit == "PT" else None
     affine = _transform_values(transform)
-    if width is None or height is None or factor is None or affine is None:
+    if affine is None:
         return False
-    unscaled = _Rect(
-        left=affine.translate_x * factor,
-        top=affine.translate_y * factor,
-        width=width,
-        height=height,
-    )
+    # Slides can rebase image size into positive scales without changing its footprint.
     return (
-        math.isclose(affine.scale_x, 1.0, abs_tol=1e-9)
-        and math.isclose(affine.scale_y, 1.0, abs_tol=1e-9)
+        affine.scale_x > 0
+        and affine.scale_y > 0
         and math.isclose(affine.shear_x, 0.0, abs_tol=1e-9)
         and math.isclose(affine.shear_y, 0.0, abs_tol=1e-9)
-        and _rect_close(unscaled, placement)
     )
 
 
@@ -1595,8 +1740,10 @@ def _image_appearance_is_default(raw: object) -> bool:
 def _effect_is_not_rendered(raw: object) -> bool:
     return raw is None or (
         isinstance(raw, dict)
-        and set(raw) <= {"propertyState"}
-        and raw.get("propertyState") in {None, "NOT_RENDERED"}
+        and (
+            raw.get("propertyState") == "NOT_RENDERED"
+            or (set(raw) <= {"propertyState"} and raw.get("propertyState") is None)
+        )
     )
 
 
@@ -1726,10 +1873,11 @@ def _canonical_style(
     size = style.get("fontSize")
     foreground = style.get("foregroundColor")
     opaque = foreground.get("opaqueColor") if isinstance(foreground, dict) else None
+    font_size = _dimension_points(size)
     result: dict[str, Any] = {
         "fontFamily": family.get("fontFamily") if isinstance(family, dict) else None,
         "fontWeight": family.get("weight", 400) if isinstance(family, dict) else None,
-        "fontSizePt": _dimension_points(size),
+        "fontSizePt": None if font_size is None else round(font_size, 3),
         "color": _hex_from_opaque_color(opaque, theme_colors=theme_colors),
     }
     return result
@@ -1748,7 +1896,6 @@ def _observed_logos(presentation: dict[str, Any]) -> list[dict[str, Any]]:
             if object_id != expected_id:
                 continue
             bounds = _element_bounds(element)
-            image = element.get("image")
             if (
                 bounds is None
                 or not _rect_is_safe(
@@ -1756,9 +1903,11 @@ def _observed_logos(presentation: dict[str, Any]) -> list[dict[str, Any]]:
                     page_width=page_width,
                     page_height=page_height,
                 )
-                or not isinstance(image, dict)
-                or image.get("sourceUrl") != CURRENT_BRAND_MANIFEST.assets.logo_uri
-                or not _image_appearance_is_default(image.get("imageProperties"))
+                or not _existing_logo_is_exact(
+                    element,
+                    logo_uri=CURRENT_BRAND_MANIFEST.assets.logo_uri,
+                    placement=bounds,
+                )
             ):
                 raise UnsupportedSourceError
             logos.append(_canonical_logo(object_id=expected_id, slide_id=slide_id, rect=bounds))
@@ -1839,7 +1988,7 @@ def _element_bounds(element: dict[str, Any]) -> _Rect | None:
     height = _dimension_points(size.get("height"))
     unit = transform.get("unit", "EMU")
     factor = 1 / _EMU_PER_POINT if unit == "EMU" else 1.0 if unit == "PT" else None
-    if width is None or height is None or factor is None:
+    if width is None or height is None or width <= 0 or height <= 0 or factor is None:
         return None
     affine = _transform_values(transform)
     if affine is None:
@@ -1888,9 +2037,10 @@ def _dimension_points(value: object) -> float | None:
     if not isinstance(magnitude, int | float) or not math.isfinite(magnitude):
         return None
     if unit == "PT":
-        return round(float(magnitude), 3)
+        return float(magnitude)
     if unit == "EMU":
-        return round(float(magnitude) / _EMU_PER_POINT, 3)
+        # Round only the final physical bounds: image scales can magnify unit-conversion loss.
+        return float(magnitude) / _EMU_PER_POINT
     return None
 
 

@@ -480,7 +480,7 @@
           },
           "mode": {
             "$ref": "#/components/schemas/TransformMode",
-            "description": "format applies document styling; unslop conservatively edits prose; both runs both."
+            "description": "format applies document styling without changing wording; unslop aggressively shortens prose with fact-preservation review; both runs Unslop and then Format."
           },
           "output_name": {
             "anyOf": [

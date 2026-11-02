@@ -1,0 +1,315 @@
+{
+  "title": "Nightingale demo: what actually ran",
+  "record_version": 2,
+  "recorded_utc": "2026-11-01T21:48:52.125493+00:00",
+  "authoring": {
+    "contributing_agents": 5,
+    "input_description": "Five authors deliberately padded these AI sample drafts for the demo. This is a constructed demonstration, not a naturally occurring benchmark.",
+    "manufactured_after_text": false,
+    "after_text_source": "Actual successful production Unslop + Format outputs. Comparison excerpts are selected verbatim from the captured artifacts."
+  },
+  "policy_version": "sarj-concise-v8",
+  "docs": {
+    "task_reference": "853fc58d-2a15-4b8b-b114-d86e9d78ffb5",
+    "status": "succeeded",
+    "mode": "both",
+    "pipeline_version": "document-transform-v4",
+    "llm_invoked": true,
+    "text_edits": 5,
+    "model_edits": 5,
+    "deterministic_edits": 0,
+    "validation": {
+      "source_unchanged": true,
+      "protected_content_preserved": true,
+      "structure_preserved": true,
+      "unsafe_patch_count": 0
+    },
+    "engine_needs_review": true,
+    "engine_findings": [
+      {
+        "code": "google_doc_text_target_unsupported",
+        "block_id": "b3",
+        "detail": "Visible native Docs text was preserved but not transformed because its rich structure is unsupported",
+        "severity": "informational"
+      },
+      {
+        "code": "google_doc_text_target_unsupported",
+        "block_id": "b11",
+        "detail": "Visible native Docs text was preserved but not transformed because its rich structure is unsupported",
+        "severity": "informational"
+      },
+      {
+        "code": "google_doc_text_target_unsupported",
+        "block_id": "b15",
+        "detail": "Visible native Docs text was preserved but not transformed because its rich structure is unsupported",
+        "severity": "informational"
+      },
+      {
+        "code": "google_doc_text_target_unsupported",
+        "block_id": "b18",
+        "detail": "Visible native Docs text was preserved but not transformed because its rich structure is unsupported",
+        "severity": "informational"
+      },
+      {
+        "code": "google_doc_text_target_unsupported",
+        "block_id": "b19",
+        "detail": "Visible native Docs text was preserved but not transformed because its rich structure is unsupported",
+        "severity": "informational"
+      },
+      {
+        "code": "google_doc_text_target_unsupported",
+        "block_id": "b20",
+        "detail": "Visible native Docs text was preserved but not transformed because its rich structure is unsupported",
+        "severity": "informational"
+      },
+      {
+        "code": "native_visual_authority_preserved",
+        "block_id": "b4",
+        "detail": "Authored title size, color, alignment, font family, and emphasis were preserved unchanged; wording cleanup was skipped for this paragraph. Full Sarj typography was not applied.",
+        "severity": "informational"
+      },
+      {
+        "code": "native_visual_authority_preserved",
+        "block_id": "b12",
+        "detail": "Authored title size, color, alignment, font family, and emphasis were preserved unchanged; wording cleanup was skipped for this paragraph. Full Sarj typography was not applied.",
+        "severity": "informational"
+      },
+      {
+        "code": "native_visual_authority_preserved",
+        "block_id": "b16",
+        "detail": "Authored title size, color, alignment, font family, and emphasis were preserved unchanged; wording cleanup was skipped for this paragraph. Full Sarj typography was not applied.",
+        "severity": "informational"
+      },
+      {
+        "code": "native_font_family_preserved",
+        "block_id": "b18",
+        "detail": "Authored font family was preserved because its complete bold and weight semantics could not be safely changed.",
+        "severity": "informational"
+      },
+      {
+        "code": "native_font_family_preserved",
+        "block_id": "b19",
+        "detail": "Authored font family was preserved because its complete bold and weight semantics could not be safely changed.",
+        "severity": "informational"
+      },
+      {
+        "code": "native_font_family_preserved",
+        "block_id": "b20",
+        "detail": "Authored font family was preserved because its complete bold and weight semantics could not be safely changed.",
+        "severity": "informational"
+      },
+      {
+        "code": "post_write_brand_mismatch",
+        "block_id": null,
+        "detail": "Output did not contain the complete pinned Sarj brand treatment"
+      }
+    ],
+    "tool_versions": {
+      "unslop_commit": "d81f5196167ded24f46fced04958c0c12d681798",
+      "unslop_version": "2.3.0",
+      "unslop_catalog_sha256": "e184677307910a933f1bb645ae441e3fa45d5df5bf5afb58a05aee6d6ee14b95"
+    },
+    "brand_profile_id": "sarj-2026-v4",
+    "scope": "Reviewed factual content and readable actual native formatting. Original heading and credit styles are preserved; complete pinned Sarj brand replacement is not claimed.",
+    "source_preview": "https://docs.google.com/document/d/1cnuCOd5dqD_Fka8I967ZFKUCCCLGMn77h4VEwFRMIX8/preview",
+    "result_preview": "https://docs.google.com/document/d/1rFT5wWk_mGlttNO5-s1_jd8TWNwxByWIG4oQkCjzJ_I/preview",
+    "human_sample_review_completed": false,
+    "agent_visual_review_completed": true,
+    "full_pinned_brand_verified": false,
+    "body_words_before": 1335,
+    "body_words_after": 375,
+    "docx_sha256": "74abf9fdbd6b4a12b4f8e7553bf32d18177ab53ad33f2a8fa828363bb6ccf4e4"
+  },
+  "spreadsheets": {
+    "task_reference": "3ebd015c-2912-47fd-a722-7894267e0a80",
+    "status": "succeeded",
+    "mode": "both",
+    "pipeline_version": "document-transform-v4",
+    "llm_invoked": true,
+    "text_edits": 6,
+    "model_edits": 6,
+    "deterministic_edits": 0,
+    "validation": {
+      "source_unchanged": true,
+      "protected_content_preserved": true,
+      "structure_preserved": true,
+      "unsafe_patch_count": 0
+    },
+    "engine_needs_review": true,
+    "engine_findings": [
+      {
+        "code": "post_write_brand_mismatch",
+        "block_id": null,
+        "detail": "Output did not contain the complete pinned Sarj brand treatment"
+      }
+    ],
+    "tool_versions": {
+      "unslop_commit": "d81f5196167ded24f46fced04958c0c12d681798",
+      "unslop_version": "2.3.0",
+      "unslop_catalog_sha256": "e184677307910a933f1bb645ae441e3fa45d5df5bf5afb58a05aee6d6ee14b95"
+    },
+    "brand_profile_id": "sarj-2026-v4",
+    "scope": "Six prose cells were processed using a native Google Docs carrier, then copied back verbatim to the workbook. Wiki has no native Sheets transform endpoint.",
+    "wiki_spreadsheet_handler_exists": false,
+    "native_format_scope": "Nunito fonts plus native Google Sheets Fit to data for Field notes rows 4:14, separate from the actual shared document Unslop + Format run on six prose cells.",
+    "source_preview": "https://docs.google.com/spreadsheets/d/1H1LExrmtelvvC8IXPrBBZ3jD9TxgLe1P5t_Cqvq2NuE/preview#gid=43542055",
+    "result_preview": "https://docs.google.com/spreadsheets/d/1sz-OPiIbSJFn0iA_jSnh8S32Hb4Vy47qWjN6luPdiFM/preview#gid=1278732035",
+    "narrative_cells": [
+      "'Field notes'!A4",
+      "'Field notes'!A6",
+      "'Field notes'!A8",
+      "'Field notes'!A10",
+      "'Field notes'!A12",
+      "'Field notes'!A14"
+    ],
+    "prose_words_before": 1032,
+    "prose_words_after": 492,
+    "xlsx_sha256": "0fe2e791715637ba372138c9553ec9834098a3f8e7900204cb3645ed091f2974",
+    "human_sample_review_completed": false,
+    "agent_visual_review_completed": true,
+    "all_seven_tabs_reviewed": true,
+    "preserved": {
+      "tabs": 7,
+      "formulas": 18,
+      "numeric_inputs": 134,
+      "charts": 2,
+      "photos": 1
+    },
+    "all_other_cell_values_and_formulas_preserved": true
+  },
+  "slides": {
+    "task_reference": "d73d563f-a8c4-4cd5-91ea-b5edb251ed71",
+    "status": "succeeded",
+    "mode": "both",
+    "pipeline_version": "presentation-transform-v2",
+    "llm_invoked": true,
+    "text_edits": 10,
+    "model_edits": 10,
+    "deterministic_edits": 0,
+    "validation": {
+      "source_unchanged": true,
+      "protected_content_preserved": true,
+      "structure_preserved": true,
+      "unsafe_patch_count": 0
+    },
+    "engine_needs_review": true,
+    "engine_findings": [
+      {
+        "code": "slide_text_target_unsupported",
+        "block_id": "p1_i4",
+        "detail": "Visible text was preserved but not restyled because its native target is unsupported"
+      },
+      {
+        "code": "slide_text_target_unsupported",
+        "block_id": "p1_i6",
+        "detail": "Visible text was preserved but not restyled because its native target is unsupported"
+      },
+      {
+        "code": "slide_text_target_unsupported",
+        "block_id": "p2_i4",
+        "detail": "Visible text was preserved but not restyled because its native target is unsupported"
+      },
+      {
+        "code": "slide_text_target_unsupported",
+        "block_id": "p2_i6",
+        "detail": "Visible text was preserved but not restyled because its native target is unsupported"
+      },
+      {
+        "code": "slide_text_role_unresolved",
+        "block_id": "p3_i4",
+        "detail": "Visible custom text was preserved because its semantic role could not be proven"
+      },
+      {
+        "code": "slide_text_role_unresolved",
+        "block_id": "p4_i4",
+        "detail": "Visible custom text was preserved because its semantic role could not be proven"
+      },
+      {
+        "code": "slide_text_role_unresolved",
+        "block_id": "p5_i4",
+        "detail": "Visible custom text was preserved because its semantic role could not be proven"
+      },
+      {
+        "code": "slide_text_role_unresolved",
+        "block_id": "p6_i4",
+        "detail": "Visible custom text was preserved because its semantic role could not be proven"
+      },
+      {
+        "code": "slide_text_target_unsupported",
+        "block_id": "p6_i6",
+        "detail": "Visible text was preserved but not restyled because its native target is unsupported"
+      },
+      {
+        "code": "slide_text_role_unresolved",
+        "block_id": "p7_i4",
+        "detail": "Visible custom text was preserved because its semantic role could not be proven"
+      },
+      {
+        "code": "slide_text_role_unresolved",
+        "block_id": "p8_i4",
+        "detail": "Visible custom text was preserved because its semantic role could not be proven"
+      },
+      {
+        "code": "slide_text_role_unresolved",
+        "block_id": "p9_i4",
+        "detail": "Visible custom text was preserved because its semantic role could not be proven"
+      },
+      {
+        "code": "slide_text_role_unresolved",
+        "block_id": "p10_i4",
+        "detail": "Visible custom text was preserved because its semantic role could not be proven"
+      }
+    ],
+    "tool_versions": {
+      "unslop_commit": "d81f5196167ded24f46fced04958c0c12d681798",
+      "unslop_version": "2.3.0",
+      "request_builder": "google-slides-requests-v1",
+      "unslop_catalog_sha256": "e184677307910a933f1bb645ae441e3fa45d5df5bf5afb58a05aee6d6ee14b95"
+    },
+    "brand_profile_id": "sarj-2026-v4",
+    "scope": "Actual production native Google Slides Unslop + Format output and its exact PowerPoint export. Reviewed as a whole Nightingale demo deck; some context-dependent wording is recorded below. Original citation and credit styles were preserved; no AFTER prose was authored.",
+    "source_preview": "https://docs.google.com/presentation/d/15f3WRbuw4-lyHLk89uGV_d2B7UrHL1OUSvBX2TJb0aY/preview",
+    "result_preview": "https://docs.google.com/presentation/d/18pe-JtLai2KxASGq0Vnwo0IfoEtOVaGttDli9XoS4bY/preview",
+    "words_before": 1287,
+    "words_after": 327,
+    "pptx_sha256": "90bd811ca9a725be3424fcaed99dbba4335e8b3338cf76a1151a25813c5eb894",
+    "human_sample_review_completed": false,
+    "agent_visual_review_completed": true,
+    "all_slides_visually_reviewed": true,
+    "review_notes": [
+      {
+        "slide": 1,
+        "severity": "minor",
+        "classification": "new standalone-context loss from padding removal",
+        "before": "the common nightingale feels like a pleasing subject",
+        "after": "Its warm brown back, paler underside and broad tail",
+        "finding": "The opening slide now begins with Its without naming the bird in its title or body. Species is explicit on slide 2 and the surrounding Nightingale demo supplies context; isolated reuse of slide 1 is weaker."
+      },
+      {
+        "slide": 5,
+        "severity": "minor",
+        "classification": "inherited source coherence issue",
+        "before_and_after": "A larger study published in 2025",
+        "finding": "The comparator for larger is absent from this ten-slide selection. This wording already existed in the BEFORE factual sentence."
+      },
+      {
+        "slide": 9,
+        "severity": "minor",
+        "classification": "inherited source coherence issue",
+        "before_and_after": "a more specific account of variation",
+        "finding": "The earlier account being compared is absent from this ten-slide selection. This wording already existed in the BEFORE factual sentence."
+      }
+    ],
+    "format_scope": "Sarj typography on eligible title/body targets and a Sarj logo on each slide; existing citation and credit styles were preserved."
+  },
+  "html_companion": {
+    "scope": "HTML companion from verified native output, with one of the three real photos. No additional Unslop or Format run.",
+    "task_reference": "853fc58d-2a15-4b8b-b114-d86e9d78ffb5",
+    "html_sha256": "b89b7bd4cd6f91bcec8d958b52e72c1fdb77af37b709d29b924a0f004406c51f",
+    "embedded_photographs": 1,
+    "all_selected_words_verbatim": true,
+    "preview_transport": "Checksum-verified static JSON envelope, with no scripts, forms or external assets.",
+    "preview_envelope_sha256": "c548ffcd836a1fe2a58d412e3e0b29065f68716fcf84c5368013671d244ebcff"
+  },
+  "read_only": "Visitors see public read-only previews and downloads. The demo never starts transforms or calls private Wiki APIs."
+}

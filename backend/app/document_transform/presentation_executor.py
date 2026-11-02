@@ -69,7 +69,9 @@ class PresentationTransformExecutor(DocumentTransformRunner):
     ) -> None:
         self._gateway = gateway
         self._generator = generator
-        self._planner = TextTransformPlanner(generator=generator, allow_unslop_model=False)
+        self._planner = TextTransformPlanner(
+            generator=generator, allow_unslop_model=generator.supports_semantic_rewrite
+        )
         self._logo_uri = logo_uri
 
     @override
@@ -264,9 +266,7 @@ class PresentationTransformExecutor(DocumentTransformRunner):
             findings=result_findings,
             validation=ValidationSummary(
                 source_unchanged=True,
-                protected_content_preserved=(
-                    not planned.findings and verification.content_preserved
-                ),
+                protected_content_preserved=verification.content_preserved,
                 structure_preserved=verification.structure_preserved,
                 unsafe_patch_count=len(planned.findings),
             ),

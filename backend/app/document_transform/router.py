@@ -7,7 +7,7 @@ import uuid
 from fastapi import APIRouter, Body, Depends, Header, HTTPException, Path, Query, Response, status
 
 from app.auth.dependencies import get_current_user
-from app.config import settings
+from app.config import document_transform_in_place_enabled
 from app.document_transform.application import (
     DestinationFileReader,
     get_current_document_polish,
@@ -94,8 +94,10 @@ async def get_document_transform_admission(
 )
 async def get_document_transform_capabilities(
     _user: Annotated[User, Depends(get_current_user)],
+    *,
+    in_place_enabled: Annotated[bool, Depends(document_transform_in_place_enabled)],
 ) -> DocumentTransformCapabilities:
-    return DocumentTransformCapabilities(in_place=settings.DOCUMENT_TRANSFORM_IN_PLACE_ENABLED)
+    return DocumentTransformCapabilities(in_place=in_place_enabled)
 
 
 @router.get(
@@ -183,6 +185,7 @@ async def create_document_transform(
     tasks: Annotated[TaskService, Depends(task_service_dep)],
     enqueuer: Annotated[TaskEnqueuer, Depends(task_enqueuer_dep)],
     files: Annotated[DestinationFileReader, Depends(files_service_dep)],
+    in_place_enabled: Annotated[bool, Depends(document_transform_in_place_enabled)],
 ) -> TaskRead:
     started = monotonic()
     submission = await submit_document_transform(
@@ -192,6 +195,7 @@ async def create_document_transform(
         tasks=tasks,
         enqueuer=enqueuer,
         files=files,
+        in_place_enabled=in_place_enabled,
     )
     response.headers["Idempotency-Replayed"] = str(submission.replayed).lower()
     response.headers["Location"] = f"/tasks/{submission.task.id}"

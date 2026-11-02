@@ -536,6 +536,37 @@ def test_unrecognized_messages_are_not_diagnostic_sources() -> None:
     assert MODULE["sanitize"]([record], TASK) == []
 
 
+def test_retry_history_correlates_only_three_newest_distinct_requests() -> None:
+    rows = [
+        {"timestamp": f"2026-10-31T08:00:0{index}+00:00", "request_id": f"{index:012x}"}
+        for index in range(6)
+    ]
+    rows.extend(rows[-2:])
+    assert MODULE["select_correlated_request_ids"](rows) == frozenset(
+        {"000000000003", "000000000004", "000000000005"}
+    )
+
+
+def test_model_failure_diagnostics_omit_upstream_payloads() -> None:
+    record = _record()
+    record["jsonPayload"]["record"]["message"] = "document model attempt failed operation=PRIVATE"
+    record["jsonPayload"]["record"]["extra"].update(
+        {
+            "model_operation": "review",
+            "model_attempt": 2,
+            "model_error_kind": "api_error",
+            "model_http_status": 403,
+            "model_error_reason": "SERVICE_DISABLED",
+            "model_response": "PRIVATE RESPONSE",
+        }
+    )
+    rows = MODULE["sanitize"]([record], TASK)
+    assert rows[0]["model_http_status"] == 403
+    assert rows[0]["model_error_reason"] == "SERVICE_DISABLED"
+    assert "PRIVATE" not in json.dumps(rows)
+    assert "SECRET" not in json.dumps(rows)
+
+
 def test_lifecycle_drives_bounded_correlated_lookup(
     monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:

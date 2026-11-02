@@ -5,7 +5,11 @@ from typing import Any
 from pydantic import RootModel
 import pytest
 
-from app.document_transform.errors import DocumentGatewayError, InPlaceNeedsReviewError
+from app.document_transform.errors import (
+    DocumentGatewayError,
+    InPlaceNeedsReviewError,
+    UnsupportedTabMetadataError,
+)
 from app.document_transform.ir import DocumentIR
 from app.document_transform.naming import supported_tab_icon
 from app.document_transform.tab_metadata import native_tab_properties
@@ -120,14 +124,16 @@ def test_split_preserves_authored_first_icon_and_persists_new_section_icons() ->
     )
 
 
-async def test_provider_rejects_icon_without_silent_success_or_title_fallback(
+async def test_provider_declines_rejected_icon_without_silent_success_or_title_fallback(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     native = _document()
     before = deepcopy(native)
     gateway, checkpoint = await _plan(monkeypatch, native)
+    attempts: list[object] = []
 
     async def reject(**kwargs: Any) -> None:
+        attempts.append(kwargs["requests"])
         assert (
             kwargs["requests"][0]["updateDocumentTabProperties"]["tabProperties"]["iconEmoji"]
             == "📄"
@@ -135,9 +141,12 @@ async def test_provider_rejects_icon_without_silent_success_or_title_fallback(
         raise DocumentGatewayError(http_status=400)
 
     monkeypatch.setattr(gateway, "apply_in_place_stage", reject)
-    with pytest.raises(DocumentGatewayError) as error:
+    with pytest.raises(UnsupportedTabMetadataError) as error:
         await gateway.apply_tab_naming(document_id=FileId("doc"), checkpoint=checkpoint)
-    assert error.value.http_status == 400
+    cause = error.value.__cause__
+    assert isinstance(cause, DocumentGatewayError)
+    assert cause.http_status == 400
+    assert len(attempts) == 1
     assert native == before
 
 

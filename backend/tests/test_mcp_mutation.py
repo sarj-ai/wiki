@@ -7,6 +7,7 @@ import uuid
 
 import pytest
 
+from app.config import document_transform_in_place_enabled
 from app.document_transform.application import TransformSubmission
 from app.identifiers import UserId
 from app.mcp.context import McpAuthorizationError, ValidatedMcpPrincipal
@@ -116,6 +117,7 @@ async def test_polish_preserves_shared_admission_and_authenticated_identity(
             "tasks": current.tasks,
             "enqueuer": enqueuer,
             "files": current.files,
+            "in_place_enabled": document_transform_in_place_enabled(),
         }
     ]
     assert current.tasks.owners == [(task.id, current.principal.user_id)]
