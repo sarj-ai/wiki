@@ -313,29 +313,42 @@ def _footer_matches(
     runs = paragraph.get("elements")
     if not isinstance(runs, list) or not runs:
         return False
-    parts: list[str] = []
-    for run in runs:
-        if not isinstance(run, dict) or set(run) - {"startIndex", "endIndex", "textRun"}:
-            return False
-        text_run = run.get("textRun")
-        if not isinstance(text_run, dict) or set(text_run) - {"content", "textStyle"}:
-            return False
-        value = text_run.get("content")
-        if not isinstance(value, str):
-            return False
-        parts.append(value)
-        if (
-            populated
-            and value.rstrip("\n")
-            and not _link_style_matches(text_run.get("textStyle", {}), url, inherited_family)
-        ):
-            return False
+    parts = _footer_parts(runs, url, populated=populated, inherited_family=inherited_family)
+    if parts is None:
+        return False
     if populated:
         style = paragraph.get("paragraphStyle", {})
         if style.get("alignment") != "END" or style.get("namedStyleType") != "NORMAL_TEXT":
             return False
     caption = display_text if display_text is not None else url
     return "".join(parts) == (caption + "\n" if populated else "\n")
+
+
+def _footer_parts(
+    runs: list[JsonValue],
+    url: str,
+    *,
+    populated: bool,
+    inherited_family: str | None,
+) -> list[str] | None:
+    parts: list[str] = []
+    for run in runs:
+        if not isinstance(run, dict) or set(run) - {"startIndex", "endIndex", "textRun"}:
+            return None
+        text_run = run.get("textRun")
+        if not isinstance(text_run, dict) or set(text_run) - {"content", "textStyle"}:
+            return None
+        value = text_run.get("content")
+        if not isinstance(value, str):
+            return None
+        parts.append(value)
+        if (
+            populated
+            and value.rstrip("\n")
+            and not _link_style_matches(text_run.get("textStyle", {}), url, inherited_family)
+        ):
+            return None
+    return parts
 
 
 def _normal_text_family(tab: dict[str, Any]) -> str | None:
@@ -379,7 +392,7 @@ def _link_style_matches(style: object, url: str, inherited_family: str | None = 
 
 
 def _footer_shape_failure(
-    footer: object,
+    footer: JsonValue,
     url: str,
     *,
     populated: bool,
@@ -387,6 +400,62 @@ def _footer_shape_failure(
     inherited_family: str | None = None,
 ) -> FooterShapeFailure | None:
     # Diagnostic mirror only: _footer_matches remains the unchanged authority.
+    paragraph = _footer_paragraph_shape(footer)
+    if isinstance(paragraph, FooterShapeFailure):
+        return paragraph
+    runs = paragraph.get("elements")
+    if not isinstance(runs, list) or not runs:
+        return FooterShapeFailure("runs", "missing" if "elements" not in paragraph else "mismatch")
+    parts = _footer_checked_parts(runs, url, populated=populated, inherited_family=inherited_family)
+    if isinstance(parts, FooterShapeFailure):
+        return parts
+    if populated:
+        failure = _footer_paragraph_style_failure(paragraph.get("paragraphStyle", {}))
+        if failure is not None:
+            return failure
+    caption = display_text if display_text is not None else url
+    if "".join(parts) != (caption + "\n" if populated else "\n"):
+        return FooterShapeFailure("caption", "mismatch")
+    return None
+
+
+def _footer_paragraph_style_failure(style: JsonValue) -> FooterShapeFailure | None:
+    if not isinstance(style, dict):
+        return FooterShapeFailure("paragraph_fields", "mismatch")
+    if style.get("alignment") != "END":
+        return FooterShapeFailure(
+            "alignment", "missing" if "alignment" not in style else "mismatch"
+        )
+    if style.get("namedStyleType") != "NORMAL_TEXT":
+        return FooterShapeFailure(
+            "named_style", "missing" if "namedStyleType" not in style else "mismatch"
+        )
+    return None
+
+
+def _footer_checked_parts(
+    runs: list[JsonValue],
+    url: str,
+    *,
+    populated: bool,
+    inherited_family: str | None,
+) -> list[str] | FooterShapeFailure:
+    parts: list[str] = []
+    for run in runs:
+        failure = _footer_run_failure(
+            run, url, populated=populated, inherited_family=inherited_family
+        )
+        if failure is not None:
+            return failure
+        text_run = run.get("textRun") if isinstance(run, dict) else None
+        value = text_run.get("content") if isinstance(text_run, dict) else None
+        if not isinstance(value, str):
+            return FooterShapeFailure("text_content", "mismatch")
+        parts.append(value)
+    return parts
+
+
+def _footer_paragraph_shape(footer: JsonValue) -> dict[str, JsonValue] | FooterShapeFailure:
     if not isinstance(footer, dict):
         return FooterShapeFailure("footer_container", "missing" if footer is None else "mismatch")
     if set(footer) - {"footerId", "content"}:
@@ -408,37 +477,7 @@ def _footer_shape_failure(
         )
     if set(paragraph) - {"elements", "paragraphStyle"}:
         return FooterShapeFailure("paragraph_fields", "mismatch")
-    runs = paragraph.get("elements")
-    if not isinstance(runs, list) or not runs:
-        return FooterShapeFailure("runs", "missing" if "elements" not in paragraph else "mismatch")
-    parts: list[str] = []
-    for run in runs:
-        failure = _footer_run_failure(
-            run, url, populated=populated, inherited_family=inherited_family
-        )
-        if failure is not None:
-            return failure
-        text_run = run.get("textRun") if isinstance(run, dict) else None
-        value = text_run.get("content") if isinstance(text_run, dict) else None
-        if not isinstance(value, str):
-            return FooterShapeFailure("text_content", "mismatch")
-        parts.append(value)
-    if populated:
-        style = paragraph.get("paragraphStyle", {})
-        if not isinstance(style, dict):
-            return FooterShapeFailure("paragraph_fields", "mismatch")
-        if style.get("alignment") != "END":
-            return FooterShapeFailure(
-                "alignment", "missing" if "alignment" not in style else "mismatch"
-            )
-        if style.get("namedStyleType") != "NORMAL_TEXT":
-            return FooterShapeFailure(
-                "named_style", "missing" if "namedStyleType" not in style else "mismatch"
-            )
-    caption = display_text if display_text is not None else url
-    if "".join(parts) != (caption + "\n" if populated else "\n"):
-        return FooterShapeFailure("caption", "mismatch")
-    return None
+    return paragraph
 
 
 def _footer_run_failure(

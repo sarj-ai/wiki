@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections import deque
+from collections.abc import Mapping
 from dataclasses import dataclass
 import hashlib
 import json
@@ -830,46 +831,55 @@ def _inherited_level_zero_style(value: object) -> dict[str, Any] | None:
     level_count = len(value) // 2
     level_zero_style: dict[str, Any] | None = None
     for level in range(level_count):
-        paragraph_element = value[level * 2]
-        run_element = value[level * 2 + 1]
-        if not isinstance(paragraph_element, dict) or not isinstance(run_element, dict):
-            return None
-        paragraph_element = {str(key): child for key, child in paragraph_element.items()}
-        run_element = {str(key): child for key, child in run_element.items()}
-        paragraph = paragraph_element.get("paragraphMarker")
-        bullet = paragraph.get("bullet") if isinstance(paragraph, dict) else None
-        run = run_element.get("textRun")
-        if (
-            not _has_exact_text_element_kind(paragraph_element, "paragraphMarker")
-            or not _has_exact_text_element_kind(run_element, "textRun")
-            or not isinstance(bullet, dict)
-            or not isinstance(run, dict)
-        ):
-            return None
-        nesting_level = bullet.get("nestingLevel", 0)
-        if (
-            isinstance(nesting_level, bool)
-            or not isinstance(nesting_level, int)
-            or nesting_level != level
-            or run.get("content") != "\n"
-        ):
-            return None
-        style = run.get("style")
-        if (
-            not _style_table_run_bounds_are_valid(
-                paragraph_element,
-                expected_start=level,
-            )
-            or not _style_table_run_bounds_are_valid(
-                run_element,
-                expected_start=level,
-            )
-            or not isinstance(style, dict)
-        ):
+        style = _placeholder_level_style(value[level * 2], value[level * 2 + 1], level)
+        if style is None:
             return None
         if level == 0:
             level_zero_style = {str(key): child for key, child in style.items()}
     return level_zero_style
+
+
+def _placeholder_level_style(
+    paragraph_element: JsonValue,
+    run_element: JsonValue,
+    level: int,
+) -> dict[str, JsonValue] | None:
+    if not isinstance(paragraph_element, dict) or not isinstance(run_element, dict):
+        return None
+    paragraph_element = {str(key): child for key, child in paragraph_element.items()}
+    run_element = {str(key): child for key, child in run_element.items()}
+    paragraph = paragraph_element.get("paragraphMarker")
+    bullet = paragraph.get("bullet") if isinstance(paragraph, dict) else None
+    run = run_element.get("textRun")
+    if (
+        not _has_exact_text_element_kind(paragraph_element, "paragraphMarker")
+        or not _has_exact_text_element_kind(run_element, "textRun")
+        or not isinstance(bullet, dict)
+        or not isinstance(run, dict)
+    ):
+        return None
+    nesting_level = bullet.get("nestingLevel", 0)
+    if (
+        isinstance(nesting_level, bool)
+        or not isinstance(nesting_level, int)
+        or nesting_level != level
+        or run.get("content") != "\n"
+    ):
+        return None
+    style = run.get("style")
+    if (
+        not _style_table_run_bounds_are_valid(
+            paragraph_element,
+            expected_start=level,
+        )
+        or not _style_table_run_bounds_are_valid(
+            run_element,
+            expected_start=level,
+        )
+        or not isinstance(style, dict)
+    ):
+        return None
+    return style
 
 
 def _single_paragraph_inherited_style(value: object) -> dict[str, Any] | None:
@@ -897,6 +907,35 @@ def _single_paragraph_inherited_style(value: object) -> dict[str, Any] | None:
     visible_end = visible_element.get("endIndex")
     if not isinstance(visible_start, int) or not isinstance(visible_end, int):
         return None
+    terminal = _terminal_paragraph_style(
+        visible_content, visible_end, visible_run, terminal_elements
+    )
+    if terminal is None:
+        return None
+    terminal_style, paragraph_end = terminal
+    if (
+        not _text_element_bounds_are_valid(
+            visible_element,
+            expected_start=visible_start,
+            expected_end=visible_end,
+        )
+        or visible_end - visible_start != utf16_length(visible_content)
+        or not _text_element_bounds_are_valid(
+            paragraph_element,
+            expected_start=visible_start,
+            expected_end=paragraph_end,
+        )
+    ):
+        return None
+    return {str(key): child for key, child in terminal_style.items()}
+
+
+def _terminal_paragraph_style(
+    visible_content: str,
+    visible_end: int,
+    visible_run: dict[str, JsonValue],
+    terminal_elements: list[JsonValue],
+) -> tuple[dict[str, JsonValue], int] | None:
     if terminal_elements:
         terminal_element = terminal_elements[0]
         if not isinstance(terminal_element, dict):
@@ -931,30 +970,16 @@ def _single_paragraph_inherited_style(value: object) -> dict[str, Any] | None:
         paragraph_end = visible_end
         if not isinstance(terminal_style, dict):
             return None
-    if (
-        not _text_element_bounds_are_valid(
-            visible_element,
-            expected_start=visible_start,
-            expected_end=visible_end,
-        )
-        or visible_end - visible_start != utf16_length(visible_content)
-        or not _text_element_bounds_are_valid(
-            paragraph_element,
-            expected_start=visible_start,
-            expected_end=paragraph_end,
-        )
-    ):
-        return None
-    return {str(key): child for key, child in terminal_style.items()}
+    return terminal_style, paragraph_end
 
 
-def _has_exact_text_element_kind(value: dict[str, object], expected: str) -> bool:
+def _has_exact_text_element_kind(value: Mapping[str, JsonValue], expected: str) -> bool:
     text_kinds = {"autoText", "paragraphMarker", "textRun"}
     return set(value).intersection(text_kinds) == {expected}
 
 
 def _style_table_run_bounds_are_valid(
-    value: dict[str, object],
+    value: Mapping[str, JsonValue],
     *,
     expected_start: int,
 ) -> bool:
@@ -966,7 +991,7 @@ def _style_table_run_bounds_are_valid(
 
 
 def _text_element_bounds_are_valid(
-    value: dict[str, object],
+    value: Mapping[str, JsonValue],
     *,
     expected_start: int,
     expected_end: int,

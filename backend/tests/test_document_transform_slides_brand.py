@@ -1924,16 +1924,15 @@ def _apply_brand_requests(
         for slide in slides.values()
         for element in _walk_elements(slide["pageElements"])
     }
-    for request in requests:
-        if delete_object := request.get("deleteObject"):
-            object_id = delete_object["objectId"]
-            for slide in slides.values():
-                slide["pageElements"] = [
-                    element
-                    for element in slide["pageElements"]
-                    if element.get("objectId") != object_id
-                ]
-            by_id.pop(object_id, None)
+
+    def remove_object(object_id: str) -> None:
+        for slide in slides.values():
+            slide["pageElements"] = [
+                element for element in slide["pageElements"] if element.get("objectId") != object_id
+            ]
+        by_id.pop(object_id, None)
+
+    def apply_text_requests() -> None:
         if update := request.get("updateTextStyle"):
             for text_element in by_id[update["objectId"]]["shape"]["text"]["textElements"]:
                 run = text_element.get("textRun")
@@ -1954,6 +1953,11 @@ def _apply_brand_requests(
             index = insert["insertionIndex"]
             run["content"] = run["content"][:index] + insert["text"] + run["content"][index:]
             run_element["endIndex"] += len(insert["text"])
+
+    for request in requests:
+        if delete_object := request.get("deleteObject"):
+            remove_object(delete_object["objectId"])
+        apply_text_requests()
         if create := request.get("createImage"):
             properties = create["elementProperties"]
             slide = slides[properties["pageObjectId"]]

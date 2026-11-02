@@ -336,41 +336,54 @@ def _is_candidate_deletion_only(
     replacement: str,
     candidates: tuple[UnslopCandidate, ...],
 ) -> bool:
+    comparison = _deletion_case_comparison(source, replacement, candidates)
+    if comparison is None:
+        return False
+    return _matches_candidate_deletions(source, comparison, candidates)
+
+
+def _deletion_case_comparison(
+    source: str, replacement: str, candidates: tuple[UnslopCandidate, ...]
+) -> str | None:
     comparison = replacement
     first_source = next((index for index, char in enumerate(source) if char.isalpha()), None)
     first_replacement = next(
         (index for index, char in enumerate(replacement) if char.isalpha()), None
     )
     if (
-        first_source is not None
-        and first_replacement is not None
-        and any(candidate.start <= first_source < candidate.end for candidate in candidates)
+        first_source is None
+        or first_replacement is None
+        or not any(candidate.start <= first_source < candidate.end for candidate in candidates)
     ):
-        source_survivor = next(
-            (
-                index
-                for index in range(first_source, len(source))
-                if source[index].isalpha()
-                and not any(candidate.start <= index < candidate.end for candidate in candidates)
-            ),
-            None,
-        )
-        if (
-            source_survivor is not None
-            and source[source_survivor].casefold() == replacement[first_replacement].casefold()
-            and source[source_survivor] != replacement[first_replacement]
-        ):
-            survivor_word = re.match(r"[A-Za-z]+", source[source_survivor:])
-            if (
-                survivor_word is None
-                or survivor_word.group(0).casefold() not in _CAPITALIZABLE_START_WORDS
-            ):
-                return False
-            comparison = (
-                replacement[:first_replacement]
-                + source[source_survivor]
-                + replacement[first_replacement + 1 :]
-            )
+        return comparison
+    source_survivor = next(
+        (
+            index
+            for index in range(first_source, len(source))
+            if source[index].isalpha()
+            and not any(candidate.start <= index < candidate.end for candidate in candidates)
+        ),
+        None,
+    )
+    if (
+        source_survivor is None
+        or source[source_survivor].casefold() != replacement[first_replacement].casefold()
+        or source[source_survivor] == replacement[first_replacement]
+    ):
+        return comparison
+    survivor_word = re.match(r"[A-Za-z]+", source[source_survivor:])
+    if survivor_word is None or survivor_word.group(0).casefold() not in _CAPITALIZABLE_START_WORDS:
+        return None
+    return (
+        replacement[:first_replacement]
+        + source[source_survivor]
+        + replacement[first_replacement + 1 :]
+    )
+
+
+def _matches_candidate_deletions(
+    source: str, comparison: str, candidates: tuple[UnslopCandidate, ...]
+) -> bool:
 
     allowed_indexes = {
         index
