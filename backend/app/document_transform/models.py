@@ -5,6 +5,7 @@ import asyncio
 from dataclasses import asdict, dataclass, replace
 from datetime import timedelta
 import hashlib
+from http import HTTPStatus
 import json
 import re
 from typing import Literal, NewType, override
@@ -181,6 +182,7 @@ class VertexGeminiPatchGenerator(PatchGenerator):
         client: genai.Client | None = None,
     ) -> None:
         self._policy = policy
+        self._review_semaphore = asyncio.Semaphore(_MAX_CONCURRENT_REVIEW_BATCHES)
         self._client = client or genai.Client(
             vertexai=True,
             project=policy.project,
@@ -357,11 +359,10 @@ class VertexGeminiPatchGenerator(PatchGenerator):
         return _aggregate_review_units(units, RewriteReview(frozenset(approved), rejected))
 
     async def _review_all_batches(self, pairs: list[_ReviewPair]) -> tuple[RewriteReview, ...]:
-        semaphore = asyncio.Semaphore(_MAX_CONCURRENT_REVIEW_BATCHES)
         try:
             async with asyncio.TaskGroup() as group:
                 tasks = [
-                    group.create_task(self._bounded_review_batch(batch, semaphore))
+                    group.create_task(self._bounded_review_batch(batch, self._review_semaphore))
                     for batch in _review_batches(pairs)
                 ]
         except* ModelUnavailableError as error:
@@ -376,13 +377,19 @@ class VertexGeminiPatchGenerator(PatchGenerator):
 
     async def _review_batch(self, pairs: list[_ReviewPair]) -> RewriteReview:
         last_error: Exception | None = None
+        model = self._policy.restyle_model
         for attempt in range(1, _MAX_REVIEW_ATTEMPTS + 1):
             try:
-                reviews = await self._review_once(model=self._policy.restyle_model, pairs=pairs)
+                reviews = await self._review_once(model=model, pairs=pairs)
                 decision = _validated_reviews(pairs, reviews)
             except (TimeoutError, ValueError, genai_errors.APIError) as exc:
                 log_model_failure(operation="review", attempt=attempt, error=exc)
                 last_error = exc
+                if (
+                    isinstance(exc, genai_errors.APIError)
+                    and exc.code == HTTPStatus.TOO_MANY_REQUESTS
+                ):
+                    model = self._policy.fallback_model
                 if attempt < _MAX_REVIEW_ATTEMPTS:
                     await asyncio.sleep(attempt)
             else:
