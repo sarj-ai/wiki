@@ -5,8 +5,9 @@ import sys
 import tomllib
 
 import pytest
-from scripts.github.release_gate import ReleaseBlockedError, command_output
 import yaml
+
+from scripts.github.release_gate import ReleaseBlockedError, command_output
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -188,7 +189,7 @@ def test_pull_request_size_executes_event_refs_report_and_fail_fast(
     ]
     assert all("if" not in step and "continue-on-error" not in step for step in summaries)
     assert measure["env"] == {
-        "REPOSITORY_STANDARDS_VERSION": "6.14.1",
+        "REPOSITORY_STANDARDS_VERSION": "6.15.1",
         "PR_BASE_SHA": "${{ github.event.pull_request.base.sha }}",
         "PR_HEAD_SHA": "${{ github.event.pull_request.head.sha }}",
     }
@@ -230,7 +231,7 @@ else:
     monkeypatch.setenv("PATH", str(tmp_path), prepend=os.pathsep)
     monkeypatch.setenv("RUNNER_TEMP", str(tmp_path))
     monkeypatch.setenv("GITHUB_STEP_SUMMARY", str(summary_path))
-    monkeypatch.setenv("REPOSITORY_STANDARDS_VERSION", "6.14.1")
+    monkeypatch.setenv("REPOSITORY_STANDARDS_VERSION", "6.15.1")
     monkeypatch.setenv("PR_BASE_SHA", "b" * 40)
     monkeypatch.setenv("PR_HEAD_SHA", "c" * 40)
     monkeypatch.setenv("WIKI_PR_SIZE_CALLS", str(calls_path))

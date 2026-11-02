@@ -9,6 +9,8 @@ import { fixupPluginRules } from "@eslint/compat";
 import reactHooks from "eslint-plugin-react-hooks";
 import unicorn from "eslint-plugin-unicorn";
 import regexp from "eslint-plugin-regexp";
+import security from "eslint-plugin-security";
+import noUnsanitized from "eslint-plugin-no-unsanitized";
 import eslintComments from "@eslint-community/eslint-plugin-eslint-comments";
 import node from "eslint-plugin-n";
 import perfectionist from "eslint-plugin-perfectionist";
@@ -246,6 +248,10 @@ const ESLINT_CONCISION_ADVISORY_RULES = {
 };
 const ESLINT_CORRECTNESS_ADVISORY_RULES = {
     "no-constructor-return": "warn",
+    "no-promise-executor-return": "warn",
+    "no-self-compare": "warn",
+    "no-template-curly-in-string": "warn",
+    "no-unmodified-loop-condition": "warn",
     "no-unreachable-loop": "warn",
     "no-return-assign": [
         "warn",
@@ -253,12 +259,14 @@ const ESLINT_CORRECTNESS_ADVISORY_RULES = {
     ]
 };
 const REGEXP_ADVISORY_RULES = {
+    "regexp/no-contradiction-with-assertion": "warn",
     "regexp/no-missing-g-flag": [
         "warn",
         {
             strictTypes: true
         }
-    ]
+    ],
+    "regexp/no-useless-assertions": "warn"
 };
 const UNICORN_CORRECTNESS_RULES = {
     "unicorn/no-conflicting-constraints": "error",
@@ -687,6 +695,8 @@ export function createConfig(options = {}) {
                 "react-hooks": reactHooks,
                 unicorn,
                 regexp,
+                security,
+                "no-unsanitized": noUnsanitized,
                 "@eslint-community/eslint-comments": eslintComments,
                 n: node,
                 perfectionist,
@@ -718,6 +728,37 @@ export function createConfig(options = {}) {
                 }
             },
             rules: {
+                "security/detect-bidi-characters": "error",
+                "security/detect-child-process": "warn",
+                "no-unsanitized/method": [
+                    "warn",
+                    {
+                        escape: {
+                            methods: [
+                                "Sanitizer.unwrapSafeHTML",
+                                "unwrapSafeHTML",
+                                "DOMPurify.sanitize"
+                            ]
+                        }
+                    },
+                    {
+                        import: {
+                            properties: []
+                        }
+                    }
+                ],
+                "no-unsanitized/property": [
+                    "warn",
+                    {
+                        escape: {
+                            methods: [
+                                "Sanitizer.unwrapSafeHTML",
+                                "unwrapSafeHTML",
+                                "DOMPurify.sanitize"
+                            ]
+                        }
+                    }
+                ],
                 "@typescript-eslint/no-explicit-any": "error",
                 "@typescript-eslint/no-non-null-assertion": "error",
                 "@typescript-eslint/no-deprecated": "error",
@@ -1235,6 +1276,10 @@ export function createConfig(options = {}) {
                 "no-restricted-syntax": [
                     "error",
                     {
+                        selector: "ForInStatement",
+                        message: "Do not use for-in enumeration. Use for-of with Object.keys or Object.entries for own properties; an inherited-key protocol requires an exact, explained exception."
+                    },
+                    {
                         selector: ":matches(TSAsExpression, TSTypeAssertion)[typeAnnotation.typeName.name='const'] > ObjectExpression > Property > :matches(TSAsExpression, TSTypeAssertion).value[typeAnnotation.typeName.name='const'], :matches(TSAsExpression, TSTypeAssertion)[typeAnnotation.typeName.name='const'] > ArrayExpression > :matches(TSAsExpression, TSTypeAssertion)[typeAnnotation.typeName.name='const']",
                         message: "This member already inherits the enclosing as const assertion. Remove the member's redundant const assertion."
                     },
@@ -1390,6 +1435,30 @@ export function createConfig(options = {}) {
                             {
                                 "message": "LIB119: TSLint is deprecated; use ESLint with typescript-eslint. Replace with eslint.",
                                 "name": "tslint"
+                            },
+                            {
+                                "message": "LIB120: Keep upload bytes off application servers; issue a short-lived signed URL and accept object metadata. Replace with direct object-storage uploads with signed URLs.",
+                                "name": "multer"
+                            },
+                            {
+                                "message": "LIB120: Keep upload bytes off application servers; issue a short-lived signed URL and accept object metadata. Replace with direct object-storage uploads with signed URLs.",
+                                "name": "formidable"
+                            },
+                            {
+                                "message": "LIB120: Keep upload bytes off application servers; issue a short-lived signed URL and accept object metadata. Replace with direct object-storage uploads with signed URLs.",
+                                "name": "busboy"
+                            },
+                            {
+                                "message": "LIB120: Keep upload bytes off application servers; issue a short-lived signed URL and accept object metadata. Replace with direct object-storage uploads with signed URLs.",
+                                "name": "@fastify/multipart"
+                            },
+                            {
+                                "message": "LIB120: Keep upload bytes off application servers; issue a short-lived signed URL and accept object metadata. Replace with direct object-storage uploads with signed URLs.",
+                                "name": "express-fileupload"
+                            },
+                            {
+                                "message": "LIB120: Keep upload bytes off application servers; issue a short-lived signed URL and accept object metadata. Replace with direct object-storage uploads with signed URLs.",
+                                "name": "multiparty"
                             },
                             {
                                 name: "@clerk/nextjs",
@@ -1614,6 +1683,42 @@ export function createConfig(options = {}) {
                                     "tslint/*"
                                 ],
                                 "message": "LIB119: TSLint is deprecated; use ESLint with typescript-eslint. Replace with eslint."
+                            },
+                            {
+                                "group": [
+                                    "multer/*"
+                                ],
+                                "message": "LIB120: Keep upload bytes off application servers; issue a short-lived signed URL and accept object metadata. Replace with direct object-storage uploads with signed URLs."
+                            },
+                            {
+                                "group": [
+                                    "formidable/*"
+                                ],
+                                "message": "LIB120: Keep upload bytes off application servers; issue a short-lived signed URL and accept object metadata. Replace with direct object-storage uploads with signed URLs."
+                            },
+                            {
+                                "group": [
+                                    "busboy/*"
+                                ],
+                                "message": "LIB120: Keep upload bytes off application servers; issue a short-lived signed URL and accept object metadata. Replace with direct object-storage uploads with signed URLs."
+                            },
+                            {
+                                "group": [
+                                    "@fastify/multipart/*"
+                                ],
+                                "message": "LIB120: Keep upload bytes off application servers; issue a short-lived signed URL and accept object metadata. Replace with direct object-storage uploads with signed URLs."
+                            },
+                            {
+                                "group": [
+                                    "express-fileupload/*"
+                                ],
+                                "message": "LIB120: Keep upload bytes off application servers; issue a short-lived signed URL and accept object metadata. Replace with direct object-storage uploads with signed URLs."
+                            },
+                            {
+                                "group": [
+                                    "multiparty/*"
+                                ],
+                                "message": "LIB120: Keep upload bytes off application servers; issue a short-lived signed URL and accept object metadata. Replace with direct object-storage uploads with signed URLs."
                             }
                         ]
                     }
@@ -1633,6 +1738,23 @@ export function createConfig(options = {}) {
                         allowIndirect: false
                     }
                 ],
+                "no-caller": "off",
+                "no-restricted-properties": [
+                    "error",
+                    {
+                        object: "arguments",
+                        property: "callee",
+                        message: "Use a named function reference instead of legacy arguments introspection."
+                    },
+                    {
+                        object: "arguments",
+                        property: "caller",
+                        message: "Pass context explicitly instead of inspecting the caller."
+                    }
+                ],
+                "no-iterator": "error",
+                "no-proto": "error",
+                "@typescript-eslint/no-for-in-array": "off",
                 "no-prototype-builtins": "error",
                 "no-return-await": "off",
                 eqeqeq: [
@@ -1738,6 +1860,7 @@ export function createConfig(options = {}) {
                 "@sarj/no-redundant-local-alias": "warn",
                 "@sarj/no-return-disposed-resource": "warn",
                 "@sarj/no-test-comments": "warn",
+                "@sarj/no-frontend-comments": "warn",
                 "@sarj/prefer-dependency-interface": "warn",
                 "@sarj/prefer-test-fixture-reuse": "warn",
                 "@sarj/production-derived-test-cases": "warn",
@@ -1798,6 +1921,7 @@ export function createConfig(options = {}) {
                 "@sarj/prefer-immutable-module-constant": "error",
                 "@sarj/require-fetch-timeout": "error",
                 "@sarj/no-silent-promise-catch": "error",
+                "@sarj/no-server-file-uploads": "error",
                 "@sarj/enforce-file-structure": "error",
                 "@sarj/prefer-semantic-colors": [
                     "error",
@@ -2380,6 +2504,42 @@ export function createConfig(options = {}) {
                                 "module": "tslint",
                                 "note": "TSLint is deprecated; use ESLint with typescript-eslint.",
                                 "replacement": "eslint"
+                            },
+                            {
+                                "id": "LIB120",
+                                "module": "multer",
+                                "note": "Keep upload bytes off application servers; issue a short-lived signed URL and accept object metadata.",
+                                "replacement": "direct object-storage uploads with signed URLs"
+                            },
+                            {
+                                "id": "LIB120",
+                                "module": "formidable",
+                                "note": "Keep upload bytes off application servers; issue a short-lived signed URL and accept object metadata.",
+                                "replacement": "direct object-storage uploads with signed URLs"
+                            },
+                            {
+                                "id": "LIB120",
+                                "module": "busboy",
+                                "note": "Keep upload bytes off application servers; issue a short-lived signed URL and accept object metadata.",
+                                "replacement": "direct object-storage uploads with signed URLs"
+                            },
+                            {
+                                "id": "LIB120",
+                                "module": "@fastify/multipart",
+                                "note": "Keep upload bytes off application servers; issue a short-lived signed URL and accept object metadata.",
+                                "replacement": "direct object-storage uploads with signed URLs"
+                            },
+                            {
+                                "id": "LIB120",
+                                "module": "express-fileupload",
+                                "note": "Keep upload bytes off application servers; issue a short-lived signed URL and accept object metadata.",
+                                "replacement": "direct object-storage uploads with signed URLs"
+                            },
+                            {
+                                "id": "LIB120",
+                                "module": "multiparty",
+                                "note": "Keep upload bytes off application servers; issue a short-lived signed URL and accept object metadata.",
+                                "replacement": "direct object-storage uploads with signed URLs"
                             }
                         ]
                     }
