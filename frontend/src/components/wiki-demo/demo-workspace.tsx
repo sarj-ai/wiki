@@ -7,11 +7,11 @@ import { useEffect, useState } from "react";
 import { SidebarProvider, useSidebar } from "@/components/ui/sidebar";
 import { WorkspaceFrame } from "@/components/workspace-frame";
 
-import { DEMO_SAMPLE_DESCRIPTION, type DemoFile, demoFileFor, demoHref } from "./demo-data";
+import { type DemoFile, demoFileFor, demoHref } from "./demo-data";
 import { DemoPreview } from "./demo-preview";
 import { DemoSearch } from "./demo-search";
 import { DemoSidebar } from "./demo-sidebar";
-import { DemoFileContext, DemoToolbar } from "./demo-toolbar";
+import { DemoToolbar } from "./demo-toolbar";
 
 export function DemoWorkspace() {
   return (
@@ -65,12 +65,10 @@ function DemoWorkspaceContent() {
       <WorkspaceFrame>
         <div className="flex size-full min-h-0 flex-col" id="demo-document" tabIndex={-1}>
           <DemoToolbar file={file} key={file.id} onReload={reload} />
-          <DemoFileContext file={file} />
           <DemoPreview file={file} key={`${file.id}:${reloadKey}`} onReload={reload} />
           <div className="bg-background text-muted-foreground flex h-7 shrink-0 items-center gap-1.5 border-t px-3 text-xs">
             <LockKeyhole aria-hidden className="size-3" />
             <span>Public demo · Read only</span>
-            <span className="ml-auto hidden sm:inline">{DEMO_SAMPLE_DESCRIPTION}</span>
           </div>
         </div>
       </WorkspaceFrame>

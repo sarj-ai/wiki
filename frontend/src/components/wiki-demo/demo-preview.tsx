@@ -8,8 +8,6 @@ import { DocumentLoading } from "@/components/wiki-document/document-loading";
 
 import type { DemoFile } from "./demo-data";
 import { demoDownloadUrl, demoPreviewUrl } from "./demo-file-urls";
-import { DEMO_PREVIEW_CLIENT } from "./demo-preview-client";
-import { demoPreviewHtml } from "./demo-preview-html";
 
 interface DemoPreviewProps {
   file: DemoFile;
@@ -17,50 +15,28 @@ interface DemoPreviewProps {
 }
 
 export function DemoPreview({ file, onReload }: DemoPreviewProps) {
-  return (
-    <PreviewFrame
-      file={file}
-      key={`${file.id}:${file.previewUrl ?? file.previewFilename ?? ""}`}
-      onReload={onReload}
-    />
-  );
+  return <PreviewFrame file={file} key={`${file.id}:${file.previewUrl}`} onReload={onReload} />;
 }
 
 function PreviewFrame({ file, onReload }: DemoPreviewProps) {
-  const [html, setHtml] = useState<null | string>(null);
-  const [loadStatus, setLoadStatus] = useState<"failed" | "loading" | "ready" | "slow">("loading");
+  const [loadStatus, setLoadStatus] = useState<"loading" | "ready" | "slow">("loading");
   const timeout = useRef<null | number>(null);
-  const nativePreview = file.previewUrl !== undefined;
   const previewUrl = demoPreviewUrl(file);
-  const invalidPreview = nativePreview && previewUrl === null;
+  const invalidPreview = previewUrl === null;
   const status = invalidPreview ? "failed" : loadStatus;
   useEffect(() => {
     if (invalidPreview) return;
-    const controller = new AbortController();
     const timer = window.setTimeout(() => {
-      controller.abort();
       setLoadStatus("slow");
     }, 10_000);
     timeout.current = timer;
-    if (!nativePreview) {
-      (async () => {
-        const content = await DEMO_PREVIEW_CLIENT.load(file.id, controller.signal);
-        if (!controller.signal.aborted) setHtml(content);
-      })().catch(() => {
-        if (controller.signal.aborted) return;
-        window.clearTimeout(timer);
-        timeout.current = null;
-        setLoadStatus("failed");
-      });
-    }
     return () => {
-      controller.abort();
       window.clearTimeout(timer);
     };
-  }, [file.id, invalidPreview, nativePreview]);
+  }, [invalidPreview]);
 
   const loaded = () => {
-    if (status !== "loading" || (html === null && previewUrl === null)) return;
+    if (status !== "loading" || previewUrl === null) return;
     if (timeout.current !== null) window.clearTimeout(timeout.current);
     timeout.current = null;
     setLoadStatus("ready");
@@ -72,19 +48,14 @@ function PreviewFrame({ file, onReload }: DemoPreviewProps) {
       aria-label={`${file.format} preview`}
       className="bg-muted/30 relative min-h-0 flex-1"
     >
-      {status === "failed" || status === "slow" || (html === null && previewUrl === null) ? null : (
+      {status === "failed" || status === "slow" || previewUrl === null ? null : (
         <iframe
           aria-hidden={status !== "ready"}
           className="html-theme-frame block size-full border-0"
           onLoad={loaded}
           referrerPolicy="no-referrer"
-          sandbox={
-            nativePreview
-              ? "allow-scripts allow-same-origin"
-              : "allow-popups allow-popups-to-escape-sandbox"
-          }
-          src={previewUrl ?? undefined}
-          srcDoc={nativePreview || html === null ? undefined : demoPreviewHtml(html)}
+          sandbox="allow-scripts allow-same-origin"
+          src={previewUrl}
           tabIndex={status === "ready" ? 0 : -1}
           title={`${file.name} — read-only preview`}
         />
@@ -133,7 +104,7 @@ function PreviewFallback({ file, onReload, status }: PreviewFallbackProps) {
               href={downloadUrl}
               referrerPolicy="no-referrer"
               rel="noopener noreferrer"
-              target={file.downloadUrl === undefined ? undefined : "_blank"}
+              target="_blank"
             >
               Download sample
             </a>

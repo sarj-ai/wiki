@@ -1,14 +1,23 @@
-import { render, type RenderResult, screen, within } from "@testing-library/react";
+import { fireEvent, render, type RenderResult, screen } from "@testing-library/react";
+import { act } from "react";
 
-import { DEMO_FILES, demoFileFor, demoHref } from "./demo-data";
-import { DemoFileContext, DemoToolbar } from "./demo-toolbar";
+import { demoFileFor, demoHref } from "./demo-data";
+import { DemoToolbar } from "./demo-toolbar";
 
-describe("public file actions and processing disclosure", () => {
+describe("public file actions", () => {
   let view: RenderResult | undefined;
+
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+  });
 
   afterEach(() => {
     view?.unmount();
     view = undefined;
+    vi.restoreAllMocks();
+    vi.unstubAllGlobals();
+    vi.useRealTimers();
   });
 
   it("uses the configured export without exposing a private mutation", () => {
@@ -21,6 +30,7 @@ describe("public file actions and processing disclosure", () => {
     expect(download).toHaveAttribute("href", file.downloadUrl);
     expect(download).toHaveAttribute("target", "_blank");
     expect(download).toHaveAttribute("rel", "noopener noreferrer");
+    expect(download).toHaveAttribute("referrerpolicy", "no-referrer");
     expect(screen.queryByRole("form")).toBeNull();
     expect(screen.queryByRole("button", { name: /Polish|Delete|Edit/ })).toBeNull();
   });
@@ -31,57 +41,61 @@ describe("public file actions and processing disclosure", () => {
     expect(screen.queryByRole("link", { name: `Download ${file.name}` })).toBeNull();
   });
 
-  it("renders the file's exact processing disclosure and configured comparison pair", () => {
-    const before = demoFileFor(null);
-    const after = DEMO_FILES.find((file) => file.id !== before.id);
-    if (!after) throw new Error("A comparison needs two different public fixtures");
-    const file = {
-      ...after,
-      comparison: { afterId: after.id, beforeId: before.id },
-      processingDisclosure: "Shared spreadsheet Unslop engine; review the recorded changes.",
-    };
-    view = render(<DemoFileContext file={file} />);
-    expect(screen.getByText(file.processingDisclosure)).toBeInTheDocument();
-    expect(screen.getByText(file.description)).toBeInTheDocument();
-    const group = screen.getByRole("group", { name: "Compare versions" });
-    expect(within(group).getByRole("link", { name: "Before" })).toHaveAttribute(
-      "href",
-      demoHref(before),
-    );
-    expect(within(group).getByRole("link", { name: "After" })).toHaveAttribute(
-      "href",
-      demoHref(after),
-    );
-    expect(within(group).getByRole("link", { name: "After" })).toHaveAttribute(
-      "aria-current",
-      "page",
-    );
-  });
-
-  it("keeps a recorded product review warning visible beside the result", () => {
+  it("opens the public Drive file without granting the new tab access to the demo", () => {
     const file = {
       ...demoFileFor(null),
-      processingDisclosure:
-        "Wiki Unslop completed with 0 text edits. 15 rich-text areas could not be processed.",
-      processingNeedsReview: true,
-      processingReviewed: false,
+      viewUrl: "https://drive.google.com/file/d/public-document/view",
     };
-    view = render(<DemoFileContext file={file} />);
-    const warning = screen.getByRole("status");
-    expect(warning).toBeVisible();
-    expect(warning).toHaveTextContent("Review required.");
-    expect(warning).toHaveTextContent(file.processingDisclosure);
+    view = render(<DemoToolbar file={file} onReload={vi.fn()} />);
+    const link = screen.getByRole("link", { name: "Open sample in Google Drive" });
+    expect(link).toHaveAttribute("href", file.viewUrl);
+    expect(link).toHaveAttribute("target", "_blank");
+    expect(link).toHaveAttribute("rel", "noopener noreferrer");
+    expect(link).toHaveAttribute("referrerpolicy", "no-referrer");
   });
 
-  it("offers the optional processing record as a separate public read", () => {
-    const file = {
-      ...demoFileFor(null),
-      processingRecordFilename: "nightingale-processing-v8.json",
-    };
-    view = render(<DemoFileContext file={file} />);
-    const record = screen.getByRole("link", { name: "Processing record" });
-    expect(record).toHaveAttribute("href", "/demo/files/nightingale-processing-v8.json");
-    expect(record).toHaveAttribute("target", "_blank");
-    expect(record).toHaveAttribute("rel", "noopener noreferrer");
+  it("omits an untrusted Open in Drive link", () => {
+    const file = { ...demoFileFor(null), viewUrl: "javascript:alert(1)" };
+    view = render(<DemoToolbar file={file} onReload={vi.fn()} />);
+    expect(screen.queryByRole("link", { name: "Open sample in Google Drive" })).toBeNull();
+  });
+
+  it("reloads the current preview", () => {
+    const reload = vi.fn();
+    view = render(<DemoToolbar file={demoFileFor(null)} onReload={reload} />);
+    fireEvent.click(screen.getByRole("button", { name: "Reload preview" }));
+    expect(reload).toHaveBeenCalledOnce();
+  });
+
+  it("copies a public demo link and clears its success feedback", async () => {
+    const file = demoFileFor(null);
+    const copy = vi.spyOn(navigator.clipboard, "writeText").mockResolvedValue();
+    view = render(<DemoToolbar file={file} onReload={vi.fn()} />);
+    fireEvent.click(screen.getByRole("button", { name: "Copy link" }));
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    expect(copy).toHaveBeenCalledExactlyOnceWith(
+      new URL(demoHref(file), window.location.origin).href,
+    );
+    expect(screen.getByRole("status")).toHaveTextContent("Public demo link copied.");
+    expect(screen.getByRole("button", { name: "Link copied" })).toBeInTheDocument();
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(4_000);
+    });
+    expect(screen.getByRole("button", { name: "Copy link" })).toBeInTheDocument();
+    expect(screen.getByRole("status")).toBeEmptyDOMElement();
+  });
+
+  it("shows a useful fallback when clipboard access fails", async () => {
+    vi.spyOn(navigator.clipboard, "writeText").mockRejectedValue(new Error("Clipboard denied"));
+    view = render(<DemoToolbar file={demoFileFor(null)} onReload={vi.fn()} />);
+    fireEvent.click(screen.getByRole("button", { name: "Copy link" }));
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    expect(screen.getByRole("status")).toBeVisible();
+    expect(screen.getByRole("status")).toHaveTextContent("Couldn’t copy the link.");
+    expect(screen.getByRole("button", { name: "Copy link" })).toBeInTheDocument();
   });
 });
