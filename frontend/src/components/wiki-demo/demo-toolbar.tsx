@@ -1,32 +1,17 @@
 "use client";
 
-import {
-  Check,
-  ChevronRight,
-  Copy,
-  Download,
-  ExternalLink,
-  RefreshCw,
-  Sparkles,
-} from "lucide-react";
-import Link from "next/link";
+import { Check, ChevronRight, Copy, Download, ExternalLink, RefreshCw } from "lucide-react";
 import { useEffect, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { renderMimeIcon } from "@/lib/file-icons";
 
-import {
-  DEMO_WORKSPACE_NAME,
-  demoAssetUrl,
-  demoComparisonFor,
-  type DemoFile,
-  demoHref,
-} from "./demo-data";
-import { demoDownloadUrl } from "./demo-file-urls";
-import { DemoRewriteExample } from "./demo-rewrite-example";
+import { DEMO_WORKSPACE_NAME, type DemoFile, demoHref } from "./demo-data";
+import { demoDownloadUrl, demoViewUrl } from "./demo-file-urls";
 
 export function DemoToolbar({ file, onReload }: { file: DemoFile; onReload: () => void }) {
   const downloadUrl = demoDownloadUrl(file);
+  const viewUrl = demoViewUrl(file);
   const [copyStatus, setCopyStatus] = useState<"copied" | "failed" | "idle">("idle");
   useEffect(() => {
     if (copyStatus === "idle") return;
@@ -91,18 +76,18 @@ export function DemoToolbar({ file, onReload }: { file: DemoFile; onReload: () =
               href={downloadUrl}
               referrerPolicy="no-referrer"
               rel="noopener noreferrer"
-              target={file.downloadUrl === undefined ? undefined : "_blank"}
+              target="_blank"
             >
               <Download aria-hidden className="size-3.5" />
               <span className="hidden @min-[30rem]/toolbar:inline">Download</span>
             </a>
           </Button>
         )}
-        {file.viewUrl ? (
+        {viewUrl === null ? null : (
           <Button asChild size="sm" variant="outline">
             <a
               aria-label="Open sample in Google Drive"
-              href={file.viewUrl}
+              href={viewUrl}
               referrerPolicy="no-referrer"
               rel="noopener noreferrer"
               target="_blank"
@@ -111,7 +96,7 @@ export function DemoToolbar({ file, onReload }: { file: DemoFile; onReload: () =
               <span className="hidden @min-[40rem]/toolbar:inline">Open in Drive</span>
             </a>
           </Button>
-        ) : null}
+        )}
       </header>
       <p
         aria-live="polite"
@@ -126,88 +111,5 @@ export function DemoToolbar({ file, onReload }: { file: DemoFile; onReload: () =
           : null}
       </p>
     </>
-  );
-}
-
-export function DemoFileContext({ file }: { file: DemoFile }) {
-  const comparison = demoComparisonFor(file);
-  const comparisonExample = comparison.length > 0;
-  return (
-    <div className="bg-background shrink-0 space-y-2 border-b px-3 py-2.5 sm:px-5">
-      <div className="flex min-w-0 flex-wrap items-center justify-between gap-2">
-        <p className="flex items-center gap-1.5 text-xs font-medium">
-          {comparisonExample ? (
-            <Sparkles aria-hidden className="text-primary size-3.5" />
-          ) : (
-            <span aria-hidden>{renderMimeIcon(file.mimeType, "size-3.5")}</span>
-          )}
-          {file.format}
-        </p>
-        {comparisonExample ? (
-          <div
-            aria-label="Compare versions"
-            className="bg-muted flex shrink-0 items-center rounded-md border p-0.5"
-            role="group"
-          >
-            {comparison.map((variant) => (
-              <Button
-                asChild
-                key={variant.file.id}
-                size="sm"
-                variant={file.id === variant.file.id ? "outline" : "ghost"}
-              >
-                <Link
-                  aria-current={file.id === variant.file.id ? "page" : undefined}
-                  href={demoHref(variant.file)}
-                  prefetch={false}
-                >
-                  {file.id === variant.file.id ? <Check aria-hidden className="size-3" /> : null}
-                  {variant.label}
-                </Link>
-              </Button>
-            ))}
-          </div>
-        ) : null}
-      </div>
-      <div className="min-w-0">
-        <p className="text-muted-foreground text-xs">{file.description}</p>
-        {file.processingDisclosure ? (
-          <p
-            className={
-              file.processingNeedsReview
-                ? "text-foreground mt-1 text-xs font-medium"
-                : "text-muted-foreground mt-1 text-xs"
-            }
-            role={file.processingNeedsReview ? "status" : undefined}
-          >
-            {file.processingNeedsReview
-              ? file.processingReviewed
-                ? "Review note. "
-                : "Review required. "
-              : null}
-            {file.processingDisclosure}
-          </p>
-        ) : null}
-        {file.rewriteComparison || file.processingRecordFilename ? (
-          <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-2">
-            {file.rewriteComparison ? (
-              <DemoRewriteExample comparison={file.rewriteComparison} />
-            ) : null}
-            {file.processingRecordFilename ? (
-              <a
-                className="text-muted-foreground focus-visible:ring-ring inline-flex min-h-8 items-center gap-1 rounded-sm text-xs underline underline-offset-2 focus-visible:ring-2 focus-visible:outline-none"
-                href={demoAssetUrl(file.processingRecordFilename)}
-                rel="noopener noreferrer"
-                target="_blank"
-                title="Open recorded run details"
-              >
-                Processing record
-                <ExternalLink aria-hidden className="size-3" />
-              </a>
-            ) : null}
-          </div>
-        ) : null}
-      </div>
-    </div>
   );
 }

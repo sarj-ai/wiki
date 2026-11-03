@@ -1,4 +1,4 @@
-import { DEMO_FILES, demoAssetUrl, type DemoFile, demoHref } from "./demo-data";
+import { DEMO_FILES, type DemoFile, demoHref } from "./demo-data";
 
 const GOOGLE_PREVIEW =
   /^https:\/\/(?:docs\.google\.com\/(?:document|spreadsheets|presentation)|drive\.google\.com\/file)\/d\/[A-Za-z0-9_-]{1,128}\/preview$/u;
@@ -8,10 +8,10 @@ const GOOGLE_EXPORT =
   /^https:\/\/docs\.google\.com\/(?:document\/d\/[A-Za-z0-9_-]{1,128}\/export\?format=docx|spreadsheets\/d\/[A-Za-z0-9_-]{1,128}\/export\?format=xlsx|presentation\/d\/[A-Za-z0-9_-]{1,128}\/export\/pptx)$/u;
 const DRIVE_DOWNLOAD =
   /^https:\/\/drive\.google\.com\/uc\?(?:export=download&id=[A-Za-z0-9_-]{1,128}|id=[A-Za-z0-9_-]{1,128}&export=download)$/u;
+const DRIVE_VIEW = /^https:\/\/drive\.google\.com\/file\/d\/[A-Za-z0-9_-]{1,128}\/view$/u;
 
 export function demoPreviewUrl(file: DemoFile): null | string {
-  return file.previewUrl !== undefined &&
-    (GOOGLE_PREVIEW.test(file.previewUrl) || SHEET_TAB_PREVIEW.test(file.previewUrl))
+  return GOOGLE_PREVIEW.test(file.previewUrl) || SHEET_TAB_PREVIEW.test(file.previewUrl)
     ? file.previewUrl
     : null;
 }
@@ -27,8 +27,15 @@ export function demoHrefForDocumentPath(path: string): null | string {
 }
 
 export function demoDownloadUrl(file: DemoFile): null | string {
-  if (file.downloadUrl === undefined) return demoAssetUrl(file.downloadFilename);
   return GOOGLE_EXPORT.test(file.downloadUrl) || DRIVE_DOWNLOAD.test(file.downloadUrl)
     ? file.downloadUrl
+    : null;
+}
+
+export function demoViewUrl(file: DemoFile): null | string {
+  return GOOGLE_PREVIEW.test(file.viewUrl) ||
+    SHEET_TAB_PREVIEW.test(file.viewUrl) ||
+    DRIVE_VIEW.test(file.viewUrl)
+    ? file.viewUrl
     : null;
 }

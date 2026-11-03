@@ -1,5 +1,10 @@
-import { type DemoFile, demoFileFor } from "./demo-data";
-import { demoDownloadUrl, demoHrefForDocumentPath, demoPreviewUrl } from "./demo-file-urls";
+import { DEMO_FILES, type DemoFile, demoFileFor, demoHref } from "./demo-data";
+import {
+  demoDownloadUrl,
+  demoHrefForDocumentPath,
+  demoPreviewUrl,
+  demoViewUrl,
+} from "./demo-file-urls";
 
 function sample(overrides: Partial<DemoFile>): DemoFile {
   return { ...demoFileFor(null), ...overrides };
@@ -51,18 +56,20 @@ describe("public Google preview URL boundary", () => {
 });
 
 describe("public sample document links", () => {
-  it("opens the known public original in the anonymous demo", () => {
-    expect(demoHrefForDocumentPath("/d/1cnuCOd5dqD_Fka8I967ZFKUCCCLGMn77h4VEwFRMIX8")).toBe(
-      "/demo?file=nightingale-doc-source",
-    );
+  it.each(DEMO_FILES)("opens the known public $id in the anonymous demo", (file) => {
+    const preview = demoPreviewUrl(file);
+    if (preview === null) throw new Error("A public demo file needs a verified preview URL");
+    const id = new URL(preview).pathname.split("/", 4)[3];
+    if (id === undefined) throw new Error("A public demo preview must identify its file");
+    expect(demoHrefForDocumentPath(`/d/${id}`)).toBe(demoHref(file));
   });
 
   it.each([
     "/d/private-document",
-    "/d/1cnuCOd5dqD_Fka8I967ZFKUCCCLGMn77h4VEwFRMIX8/edit",
-    "/d/%31cnuCOd5dqD_Fka8I967ZFKUCCCLGMn77h4VEwFRMIX8",
-    "/go/1cnuCOd5dqD_Fka8I967ZFKUCCCLGMn77h4VEwFRMIX8",
-    "/api/wiki/files/1cnuCOd5dqD_Fka8I967ZFKUCCCLGMn77h4VEwFRMIX8",
+    "/d/public-document/edit",
+    "/d/%70ublic-document",
+    "/go/public-document",
+    "/api/wiki/files/public-document",
   ])("keeps unknown and non-document paths private: %s", (path) => {
     expect(demoHrefForDocumentPath(path)).toBeNull();
   });
@@ -90,9 +97,32 @@ describe("public sample download URL boundary", () => {
     expect(demoDownloadUrl(sample({ downloadUrl }))).toBeNull();
   });
 
-  it("keeps the credential-free local asset path when no external export is configured", () => {
-    const file = sample({ downloadFilename: "public-sample.xlsx" });
-    delete file.downloadUrl;
-    expect(demoDownloadUrl(file)).toBe("/demo/files/public-sample.xlsx");
+  it("omits a download until a verified external URL is configured", () => {
+    expect(demoDownloadUrl(sample({ downloadUrl: "" }))).toBeNull();
+  });
+});
+
+describe("public Drive link boundary", () => {
+  it.each([
+    "https://docs.google.com/document/d/public-doc/preview",
+    "https://docs.google.com/spreadsheets/d/public-sheet/preview#gid=0",
+    "https://docs.google.com/presentation/d/public-slides/preview",
+    "https://drive.google.com/file/d/public-office-file/view",
+    "https://drive.google.com/file/d/public-office-file/preview",
+  ])("accepts a read-only Google file link: %s", (viewUrl) => {
+    expect(demoViewUrl(sample({ viewUrl }))).toBe(viewUrl);
+  });
+
+  it.each([
+    "",
+    "https://docs.google.com/document/d/public-doc/edit",
+    "https://drive.google.com/file/d/public-doc/view?redirect=https://evil.example",
+    "https://drive.google.com.evil.example/file/d/public-doc/view",
+    "https://drive.google.com@evil.example/file/d/public-doc/view",
+    "https://evil.example/public.docx",
+    "/api/wiki/files/private-id",
+    "javascript:alert(1)",
+  ])("omits editor, private and untrusted links: %s", (viewUrl) => {
+    expect(demoViewUrl(sample({ viewUrl }))).toBeNull();
   });
 });

@@ -1,10 +1,17 @@
 import { NextRequest } from "next/server";
 import { describe, expect, it } from "vitest";
 
+import { demoFileFor, demoHref } from "./components/wiki-demo/demo-data";
 import middleware from "./middleware";
 
 const PRIVATE_TITLE = "Confidential Acquisition Plan";
-const PUBLIC_DOCUMENT_PATH = "/d/1cnuCOd5dqD_Fka8I967ZFKUCCCLGMn77h4VEwFRMIX8";
+const PUBLIC_DOCUMENT_PATH = publicDocumentPath();
+
+function publicDocumentPath(): string {
+  const id = new URL(demoFileFor(null).previewUrl).pathname.split("/", 4)[3];
+  if (id === undefined) throw new Error("A public demo preview must identify its file");
+  return `/d/${id}`;
+}
 
 function preview(path: string, userAgent = "Slackbot-LinkExpanding 1.0") {
   return middleware(
@@ -23,7 +30,7 @@ describe("private Wiki link previews", () => {
     );
     expect(response.status).toBe(307);
     expect(response.headers.get("location")).toBe(
-      "https://wiki.sarj.ai/demo?file=nightingale-doc-source",
+      `https://wiki.sarj.ai${demoHref(demoFileFor(null))}`,
     );
     expect(response.headers.get("cache-control")).toBe("private, no-store");
   });
