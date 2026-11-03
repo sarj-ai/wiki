@@ -72,38 +72,50 @@ class SarjBrandProfile:
     header_max_title_chars: int = CURRENT_HEADER_TOKENS.max_title_chars
 
     def __post_init__(self) -> None:
-        expected = {
-            "version": CURRENT_BRAND_MANIFEST.profile_id,
-            "sha256": CURRENT_BRAND_MANIFEST.sha256,
-            "primary_color": CURRENT_BRAND_MANIFEST.colors.primary,
-            "ink_color": CURRENT_BRAND_MANIFEST.colors.ink,
-            "muted_color": CURRENT_BRAND_MANIFEST.colors.muted,
-            "border_color": CURRENT_BRAND_MANIFEST.colors.border,
-            "subtle_color": CURRENT_BRAND_MANIFEST.colors.subtle,
-            "font_family": CURRENT_BRAND_MANIFEST.document.font_family,
-            "body_size_pt": CURRENT_BRAND_MANIFEST.document.body_size_pt,
-            "h1_size_pt": CURRENT_BRAND_MANIFEST.document.h1_size_pt,
-            "h2_size_pt": CURRENT_BRAND_MANIFEST.document.h2_size_pt,
-            "h3_size_pt": CURRENT_BRAND_MANIFEST.document.h3_size_pt,
-            "caption_size_pt": CURRENT_BRAND_MANIFEST.document.caption_size_pt,
-            "line_spacing_percent": CURRENT_BRAND_MANIFEST.document.line_spacing_percent,
-            "paragraph_space_above_pt": (CURRENT_BRAND_MANIFEST.document.paragraph_space_above_pt),
-            "paragraph_space_below_pt": (CURRENT_BRAND_MANIFEST.document.paragraph_space_below_pt),
-            "horizontal_margin_pt": CURRENT_BRAND_MANIFEST.document.horizontal_margin_pt,
-            "vertical_margin_pt": CURRENT_BRAND_MANIFEST.document.vertical_margin_pt,
-            "header_font_family": CURRENT_HEADER_TOKENS.font_family,
-            "header_size_pt": CURRENT_HEADER_TOKENS.size_pt,
-            "header_color": CURRENT_HEADER_TOKENS.color,
-            "header_bold": CURRENT_HEADER_TOKENS.bold,
-            "header_alignment": CURRENT_HEADER_TOKENS.alignment,
-            "header_line_spacing_percent": CURRENT_HEADER_TOKENS.line_spacing_percent,
-            "header_space_above_pt": CURRENT_HEADER_TOKENS.space_above_pt,
-            "header_space_below_pt": CURRENT_HEADER_TOKENS.space_below_pt,
-            "header_logo_width_pt": CURRENT_HEADER_TOKENS.logo_width_pt,
-            "header_logo_height_pt": CURRENT_HEADER_TOKENS.logo_height_pt,
-            "header_max_title_chars": CURRENT_HEADER_TOKENS.max_title_chars,
-        }
-        if any(getattr(self, name) != value for name, value in expected.items()):
+        expected = (
+            (lambda: self.version, CURRENT_BRAND_MANIFEST.profile_id),
+            (lambda: self.sha256, CURRENT_BRAND_MANIFEST.sha256),
+            (lambda: self.primary_color, CURRENT_BRAND_MANIFEST.colors.primary),
+            (lambda: self.ink_color, CURRENT_BRAND_MANIFEST.colors.ink),
+            (lambda: self.muted_color, CURRENT_BRAND_MANIFEST.colors.muted),
+            (lambda: self.border_color, CURRENT_BRAND_MANIFEST.colors.border),
+            (lambda: self.subtle_color, CURRENT_BRAND_MANIFEST.colors.subtle),
+            (lambda: self.font_family, CURRENT_BRAND_MANIFEST.document.font_family),
+            (lambda: self.body_size_pt, CURRENT_BRAND_MANIFEST.document.body_size_pt),
+            (lambda: self.h1_size_pt, CURRENT_BRAND_MANIFEST.document.h1_size_pt),
+            (lambda: self.h2_size_pt, CURRENT_BRAND_MANIFEST.document.h2_size_pt),
+            (lambda: self.h3_size_pt, CURRENT_BRAND_MANIFEST.document.h3_size_pt),
+            (lambda: self.caption_size_pt, CURRENT_BRAND_MANIFEST.document.caption_size_pt),
+            (
+                lambda: self.line_spacing_percent,
+                CURRENT_BRAND_MANIFEST.document.line_spacing_percent,
+            ),
+            (
+                lambda: self.paragraph_space_above_pt,
+                CURRENT_BRAND_MANIFEST.document.paragraph_space_above_pt,
+            ),
+            (
+                lambda: self.paragraph_space_below_pt,
+                CURRENT_BRAND_MANIFEST.document.paragraph_space_below_pt,
+            ),
+            (
+                lambda: self.horizontal_margin_pt,
+                CURRENT_BRAND_MANIFEST.document.horizontal_margin_pt,
+            ),
+            (lambda: self.vertical_margin_pt, CURRENT_BRAND_MANIFEST.document.vertical_margin_pt),
+            (lambda: self.header_font_family, CURRENT_HEADER_TOKENS.font_family),
+            (lambda: self.header_size_pt, CURRENT_HEADER_TOKENS.size_pt),
+            (lambda: self.header_color, CURRENT_HEADER_TOKENS.color),
+            (lambda: self.header_bold, CURRENT_HEADER_TOKENS.bold),
+            (lambda: self.header_alignment, CURRENT_HEADER_TOKENS.alignment),
+            (lambda: self.header_line_spacing_percent, CURRENT_HEADER_TOKENS.line_spacing_percent),
+            (lambda: self.header_space_above_pt, CURRENT_HEADER_TOKENS.space_above_pt),
+            (lambda: self.header_space_below_pt, CURRENT_HEADER_TOKENS.space_below_pt),
+            (lambda: self.header_logo_width_pt, CURRENT_HEADER_TOKENS.logo_width_pt),
+            (lambda: self.header_logo_height_pt, CURRENT_HEADER_TOKENS.logo_height_pt),
+            (lambda: self.header_max_title_chars, CURRENT_HEADER_TOKENS.max_title_chars),
+        )
+        if any(read() != value for read, value in expected):
             msg = "Sarj brand tokens must match the pinned manifest"
             raise ValueError(msg)
 

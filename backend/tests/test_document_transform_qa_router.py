@@ -8,6 +8,7 @@ from httpx import ASGITransport, AsyncClient
 from pydantic import JsonValue
 import pytest
 from sqlalchemy.exc import IntegrityError
+from starlette.routing import Route
 
 from app.auth.dependencies import get_current_user
 from app.config import document_settings_dep, settings
@@ -867,9 +868,10 @@ async def test_launcher_mode_exchange_allows_only_strict_submitted_task_renewal(
 
 def test_bootstrap_has_no_production_prepare_or_bind_route() -> None:
     paths = {
-        getattr(route, "path", "")
+        route.path
         for router in (qa_router.issuer_router, qa_router.workload_router)
         for route in router.routes
+        if isinstance(route, Route)
     }
     assert "/document-transforms/qa/runs" not in paths
     assert "/internal/document-transform-qa/bootstrap/bind" not in paths

@@ -283,7 +283,7 @@ async def test_in_place_admission_reserves_target_before_queueing() -> None:
 
     reservation = await _service(session).create_or_replay(
         kind=TaskKind.FILE_DOCUMENT_TRANSFORM,
-        owner_user_id=row.owner_user_id,
+        owner_user_id=UserId(row.owner_user_id),
         idempotency_key=row.idempotency_key,
         payload=_in_place_payload(),
     )
@@ -306,7 +306,7 @@ async def test_admission_finishes_before_dispatch_intent_is_committed() -> None:
 
     await _service(session).create_or_replay(
         kind=TaskKind.FILE_DOCUMENT_TRANSFORM,
-        owner_user_id=row.owner_user_id,
+        owner_user_id=UserId(row.owner_user_id),
         idempotency_key=row.idempotency_key,
         payload=_in_place_payload(),
         admit=admit,
@@ -328,7 +328,7 @@ async def test_failed_admission_never_publishes_or_discards_a_reservation() -> N
     with pytest.raises(PermissionError, match="Admission denied"):
         await _service(session).create_or_replay(
             kind=TaskKind.FILE_DOCUMENT_TRANSFORM,
-            owner_user_id=row.owner_user_id,
+            owner_user_id=UserId(row.owner_user_id),
             idempotency_key=row.idempotency_key,
             payload=_in_place_payload(),
             admit=admit,
@@ -351,7 +351,7 @@ async def test_admitted_replay_does_not_revalidate_changed_provider_state() -> N
 
     result = await _service(session).create_or_replay(
         kind=TaskKind.FILE_DOCUMENT_TRANSFORM,
-        owner_user_id=row.owner_user_id,
+        owner_user_id=UserId(row.owner_user_id),
         idempotency_key=row.idempotency_key,
         payload=payload,
         admit=admit,
@@ -366,7 +366,7 @@ async def test_distinct_active_in_place_task_for_same_target_is_rejected() -> No
     with pytest.raises(TaskTargetBusyError):
         await _service(session).create_or_replay(
             kind=TaskKind.FILE_DOCUMENT_TRANSFORM,
-            owner_user_id=row.owner_user_id,
+            owner_user_id=UserId(row.owner_user_id),
             idempotency_key=row.idempotency_key,
             payload=_in_place_payload(),
         )
@@ -389,7 +389,7 @@ async def test_document_transform_admission_caps_all_active_owner_tasks() -> Non
     with pytest.raises(TaskAdmissionLimitError):
         await _service(session).create_or_replay(
             kind=TaskKind.FILE_DOCUMENT_TRANSFORM,
-            owner_user_id=row.owner_user_id,
+            owner_user_id=UserId(row.owner_user_id),
             idempotency_key=row.idempotency_key,
             payload=payload,
         )
@@ -407,7 +407,7 @@ async def test_invalid_database_counts_fail_closed_before_task_admission(
     with pytest.raises(TypeError, match="Active task count query returned an invalid value"):
         await _service(session).create_or_replay(
             kind=TaskKind.FILE_DOCUMENT_TRANSFORM,
-            owner_user_id=row.owner_user_id,
+            owner_user_id=UserId(row.owner_user_id),
             idempotency_key=row.idempotency_key,
             payload=_in_place_payload(),
         )
@@ -425,7 +425,7 @@ async def test_document_transform_admission_replay_precedes_owner_cap() -> None:
 
     reservation = await _service(session).create_or_replay(
         kind=TaskKind.FILE_DOCUMENT_TRANSFORM,
-        owner_user_id=row.owner_user_id,
+        owner_user_id=UserId(row.owner_user_id),
         idempotency_key=row.idempotency_key,
         payload=payload,
     )
@@ -464,7 +464,7 @@ async def test_different_key_same_source_reuses_active_task(
     new_key = IdempotencyKey(uuid.uuid7())
     reservation = await _service(session).create_or_replay(
         kind=TaskKind.FILE_DOCUMENT_TRANSFORM,
-        owner_user_id=row.owner_user_id,
+        owner_user_id=UserId(row.owner_user_id),
         idempotency_key=new_key,
         payload=payload,
         admit=admit,
@@ -510,7 +510,7 @@ async def test_active_source_different_intent_is_busy(change: str) -> None:
     with pytest.raises(TaskTargetBusyError):
         await _service(session).create_or_replay(
             kind=TaskKind.FILE_DOCUMENT_TRANSFORM,
-            owner_user_id=row.owner_user_id,
+            owner_user_id=UserId(row.owner_user_id),
             idempotency_key=IdempotencyKey(uuid.uuid7()),
             payload=changed,
         )
@@ -532,7 +532,7 @@ async def test_active_source_reuse_rechecks_revoked_access() -> None:
     with pytest.raises(PermissionError, match="revoked"):
         await _service(session).create_or_replay(
             kind=TaskKind.FILE_DOCUMENT_TRANSFORM,
-            owner_user_id=row.owner_user_id,
+            owner_user_id=UserId(row.owner_user_id),
             idempotency_key=IdempotencyKey(uuid.uuid7()),
             payload=payload,
             admit=admit,
@@ -552,7 +552,7 @@ async def test_secondary_key_replay_query_retains_owner_and_terminal_history() -
     session = _Session(True, row)
     reservation = await _service(session).create_or_replay(
         kind=TaskKind.FILE_DOCUMENT_TRANSFORM,
-        owner_user_id=row.owner_user_id,
+        owner_user_id=UserId(row.owner_user_id),
         idempotency_key=IdempotencyKey(uuid.uuid7()),
         payload=payload,
     )
@@ -593,7 +593,7 @@ async def test_retained_verified_terminal_transform_replays_after_fresh_admissio
     fresh_key = IdempotencyKey(uuid.uuid7())
     reservation = await _service(session).create_or_replay(
         kind=TaskKind.FILE_DOCUMENT_TRANSFORM,
-        owner_user_id=row.owner_user_id,
+        owner_user_id=UserId(row.owner_user_id),
         idempotency_key=fresh_key,
         payload=payload,
         admit=admit,
@@ -725,7 +725,7 @@ async def test_terminal_changed_during_output_admission_creates_replacement(
 
     reservation = await _service(session).create_or_replay(
         kind=TaskKind.FILE_DOCUMENT_TRANSFORM,
-        owner_user_id=terminal.owner_user_id,
+        owner_user_id=UserId(terminal.owner_user_id),
         idempotency_key=IdempotencyKey(uuid.uuid7()),
         payload=payload,
         admit_new=admit_new,
@@ -770,7 +770,7 @@ async def test_missing_terminal_output_creates_exactly_one_replacement() -> None
 
     reservation = await _service(session).create_or_replay(
         kind=TaskKind.FILE_DOCUMENT_TRANSFORM,
-        owner_user_id=terminal.owner_user_id,
+        owner_user_id=UserId(terminal.owner_user_id),
         idempotency_key=IdempotencyKey(uuid.uuid7()),
         payload=payload,
         admit_new=admit_new,
@@ -806,7 +806,7 @@ async def test_terminal_output_check_failure_rolls_back_without_binding_or_repla
     with pytest.raises(ConnectionError, match="Provider unavailable"):
         await _service(session).create_or_replay(
             kind=TaskKind.FILE_DOCUMENT_TRANSFORM,
-            owner_user_id=terminal.owner_user_id,
+            owner_user_id=UserId(terminal.owner_user_id),
             idempotency_key=IdempotencyKey(uuid.uuid7()),
             payload=payload,
             admit_terminal_replay=admit_terminal_replay,
@@ -834,7 +834,7 @@ async def test_terminal_replay_without_output_admission_fails_closed() -> None:
     with pytest.raises(RuntimeError, match="requires an admission callback"):
         await _service(session).create_or_replay(
             kind=TaskKind.FILE_DOCUMENT_TRANSFORM,
-            owner_user_id=terminal.owner_user_id,
+            owner_user_id=UserId(terminal.owner_user_id),
             idempotency_key=IdempotencyKey(uuid.uuid7()),
             payload=payload,
         )
@@ -857,7 +857,7 @@ async def test_markdown_task_persists_ciphertext_and_hash_without_plaintext() ->
 
     reservation = await _service(session).create_or_replay(
         kind=TaskKind.FILE_DOCUMENT_TRANSFORM,
-        owner_user_id=row.owner_user_id,
+        owner_user_id=UserId(row.owner_user_id),
         idempotency_key=row.idempotency_key,
         payload=payload,
     )
@@ -930,7 +930,7 @@ async def test_markdown_active_hash_reuse_authorizes_before_recording_new_key(
     async def reserve():
         return await _service(session).create_or_replay(
             kind=TaskKind.FILE_DOCUMENT_TRANSFORM,
-            owner_user_id=row.owner_user_id,
+            owner_user_id=UserId(row.owner_user_id),
             idempotency_key=IdempotencyKey(uuid.uuid7()),
             payload=payload,
             admit=admit,
@@ -980,7 +980,7 @@ async def test_expired_transform_key_retries_identical_insert_once(
     async def reserve():
         return await _service(session).create_or_replay(
             kind=TaskKind.FILE_DOCUMENT_TRANSFORM,
-            owner_user_id=row.owner_user_id,
+            owner_user_id=UserId(row.owner_user_id),
             idempotency_key=row.idempotency_key,
             payload=_markdown_payload(),
             admit=admit,
@@ -1041,7 +1041,7 @@ async def test_create_or_replay_creates_one_canonical_task() -> None:
 
     reservation = await _service(session).create_or_replay(
         kind=TaskKind.FILE_SMART_CREATE,
-        owner_user_id=row.owner_user_id,
+        owner_user_id=UserId(row.owner_user_id),
         idempotency_key=row.idempotency_key,
         payload=_Payload(name="PRD", destination="folder-1"),
     )
@@ -1062,7 +1062,7 @@ async def test_same_key_with_changed_payload_is_rejected() -> None:
     with pytest.raises(TaskIdempotencyConflictError):
         await _service(session).create_or_replay(
             kind=TaskKind.FILE_SMART_CREATE,
-            owner_user_id=row.owner_user_id,
+            owner_user_id=UserId(row.owner_user_id),
             idempotency_key=row.idempotency_key,
             payload=_Payload(name="Different", destination="folder-1"),
         )
@@ -1074,7 +1074,7 @@ async def test_same_key_with_same_payload_replays_without_another_commit() -> No
 
     reservation = await _service(session).create_or_replay(
         kind=TaskKind.FILE_SMART_CREATE,
-        owner_user_id=row.owner_user_id,
+        owner_user_id=UserId(row.owner_user_id),
         idempotency_key=row.idempotency_key,
         payload=_Payload(name="PRD", destination="folder-1"),
     )

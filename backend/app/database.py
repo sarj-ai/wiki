@@ -1,7 +1,7 @@
 import asyncio
 from collections.abc import AsyncGenerator
 import time
-from typing import Any, ClassVar
+from typing import Any, ClassVar, Protocol
 
 from google.cloud.sql.connector import Connector, IPTypes, RefreshStrategy
 from sqlalchemy import Text, event
@@ -85,16 +85,20 @@ engine = build_engine()
 async_session = async_sessionmaker(engine, expire_on_commit=False)
 
 
+class _TimedExecutionContext(Protocol):
+    wiki_query_started_at: float | None
+
+
 @event.listens_for(engine.sync_engine, "before_cursor_execute")
 def _before_cursor_execute(
     _conn: Any,
     _cursor: Any,
     _statement: str,
     _parameters: Any,
-    context: Any,
+    context: _TimedExecutionContext,
     _executemany: Any,
 ) -> None:
-    context.__dict__["_sarj_started_at"] = time.perf_counter()
+    context.wiki_query_started_at = time.perf_counter()
 
 
 @event.listens_for(engine.sync_engine, "after_cursor_execute")
@@ -103,10 +107,13 @@ def _after_cursor_execute(
     _cursor: Any,
     _statement: str,
     _parameters: Any,
-    context: Any,
+    context: _TimedExecutionContext,
     _executemany: Any,
 ) -> None:
-    started_at = getattr(context, "_sarj_started_at", None)
+    try:
+        started_at = context.wiki_query_started_at
+    except AttributeError:
+        started_at = None
     if isinstance(started_at, float):
         add_duration("db", (time.perf_counter() - started_at) * 1000)
     increment("db_query_count")

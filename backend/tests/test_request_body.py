@@ -4,18 +4,21 @@ from collections import deque
 from collections.abc import AsyncIterator
 
 from fastapi import FastAPI, Request
+from fastapi.middleware.cors import CORSMiddleware
 from httpx import ASGITransport, AsyncClient
 import pytest
 from starlette.responses import Response, StreamingResponse
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 from app.config import settings
+from app.csrf import CookieOriginMiddleware
 from app.document_transform.limits import MAX_MARKDOWN_BYTES
 from app.request_body import (
     MAX_MCP_REQUEST_BODY_BYTES,
     MAX_REQUEST_BODY_BYTES,
     RequestBodyLimitMiddleware,
 )
+from app.request_id import RequestIDMiddleware
 
 
 @pytest.fixture
@@ -279,11 +282,21 @@ async def test_cookie_origin_guard_rejects_before_body_limit() -> None:
 def test_application_middleware_order() -> None:
     from app.main import app
 
-    names = [_type_name(middleware.cls) for middleware in app.user_middleware]
-
-    assert names.index("RequestIDMiddleware") < names.index("CookieOriginMiddleware")
-    assert names.index("CookieOriginMiddleware") < names.index("CORSMiddleware")
-    assert names.index("CORSMiddleware") < names.index("RequestBodyLimitMiddleware")
+    required = (
+        RequestIDMiddleware,
+        CookieOriginMiddleware,
+        CORSMiddleware,
+        RequestBodyLimitMiddleware,
+    )
+    positions = [
+        next(
+            index
+            for index, middleware in enumerate(app.user_middleware)
+            if middleware.cls is factory
+        )
+        for factory in required
+    ]
+    assert positions[0] < positions[1] < positions[2] < positions[3]
 
 
 def test_rejects_non_positive_limit() -> None:
@@ -344,12 +357,6 @@ async def _empty_receive() -> Message:
 async def _unused_receive() -> Message:
     msg = "receive must not be called"
     raise AssertionError(msg)
-
-
-def _type_name(value: object) -> str:
-    name = getattr(value, "__name__", None)
-    assert isinstance(name, str)
-    return name
 
 
 async def _unused_send(message: Message) -> None:

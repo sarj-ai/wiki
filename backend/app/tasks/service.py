@@ -121,7 +121,7 @@ class TaskService(ABC):
         raise NotImplementedError
 
     async def get_document_transform_admission(
-        self, owner_user_id: uuid.UUID, idempotency_key: IdempotencyKey
+        self, owner_user_id: UserId, idempotency_key: IdempotencyKey
     ) -> DocumentTransformAdmission:
         raise NotImplementedError
 
@@ -133,7 +133,7 @@ class TaskService(ABC):
         self,
         *,
         kind: TaskKind,
-        owner_user_id: uuid.UUID,
+        owner_user_id: UserId,
         idempotency_key: IdempotencyKey,
         payload: BaseModel,
         admit: Callable[[], Awaitable[None]] | None = None,
@@ -287,7 +287,7 @@ class PostgresTaskService(TaskService):
         self,
         *,
         kind: TaskKind,
-        owner_user_id: uuid.UUID,
+        owner_user_id: UserId,
         idempotency_key: IdempotencyKey,
         payload: BaseModel,
         admit: Callable[[], Awaitable[None]] | None = None,
@@ -1102,7 +1102,7 @@ class PostgresTaskService(TaskService):
 
     @override
     async def get_document_transform_admission(
-        self, owner_user_id: uuid.UUID, idempotency_key: IdempotencyKey
+        self, owner_user_id: UserId, idempotency_key: IdempotencyKey
     ) -> DocumentTransformAdmission:
         # Project only public admission identity in one retained-row read. Never
         # load/decrypt payloads or checkpoints, nor renew retention or dispatch.
@@ -1295,13 +1295,16 @@ def _validate_header_attestation(
 
 def _serialize(model: BaseModel) -> dict[str, JsonValue]:
     serialized = model.model_dump(mode="json")
-    if isinstance(model, DocumentTransformRequest):
-        # Preserve pre-destination idempotency hashes for every legacy request shape.
-        if model.copy_destination_folder_id is None:
-            serialized.pop("copy_destination_folder_id", None)
-        # Preserve the pre-output_strategy payload and idempotency hash for legacy copy calls.
-        if model.output_strategy is OutputStrategy.COPY:
-            serialized.pop("output_strategy", None)
+    match model:
+        case DocumentTransformRequest():
+            # Preserve pre-destination idempotency hashes for every legacy request shape.
+            if model.copy_destination_folder_id is None:
+                serialized.pop("copy_destination_folder_id", None)
+            # Preserve the pre-output_strategy payload and idempotency hash for legacy copy calls.
+            if model.output_strategy is OutputStrategy.COPY:
+                serialized.pop("output_strategy", None)
+        case _:
+            pass
     return _TaskJsonObject.model_validate(serialized).root
 
 

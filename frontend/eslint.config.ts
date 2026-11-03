@@ -243,6 +243,7 @@ export default defineConfig([
     "next-env.d.ts",
     // Canonical generated Standards artifact; drift is checked byte-for-byte.
     "eslint.strict.mjs",
+    "eslint.strict.d.mts",
     // Codegen output (openapi-ts) — regenerated, never hand-edited.
     "src/lib/generated/**",
   ]),

@@ -297,16 +297,17 @@ async def test_checkpoint_storage_restores_sorted_legacy_and_current_envelopes(k
     assert "checkpoint_generation =" in str(statement)
     dumped = checkpoint.model_dump(mode="json")
     legacy: dict[str, object]
-    if isinstance(checkpoint, InPlaceCheckpoint):
-        plan_fields = {"source_title", "requests", "replacements", "findings", "headers"}
-        expected = {key: value for key, value in dumped.items() if key in plan_fields}
-        ciphertext_key = "plan_ciphertext"
-        legacy = {key: value for key, value in dumped.items() if key not in plan_fields}
-    else:
-        assert isinstance(checkpoint, CopyCheckpoint | WordCopyCheckpoint)
-        expected = dumped
-        ciphertext_key = "checkpoint_ciphertext"
-        legacy = {"kind": checkpoint.kind, "version": 1}
+    match checkpoint:
+        case InPlaceCheckpoint():
+            plan_fields = {"source_title", "requests", "replacements", "findings", "headers"}
+            expected = {key: value for key, value in dumped.items() if key in plan_fields}
+            ciphertext_key = "plan_ciphertext"
+            legacy = {key: value for key, value in dumped.items() if key not in plan_fields}
+        case _:
+            assert isinstance(checkpoint, CopyCheckpoint | WordCopyCheckpoint)
+            expected = dumped
+            ciphertext_key = "checkpoint_ciphertext"
+            legacy = {"kind": checkpoint.kind, "version": 1}
     assert json.loads(decrypt_cache(saved[ciphertext_key])) == expected
     assert "Decision 絵" not in json.dumps(saved)
     legacy[ciphertext_key] = encrypt_cache(
