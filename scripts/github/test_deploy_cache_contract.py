@@ -6,12 +6,13 @@ import re
 from typing import Any
 
 import pytest
+import yaml
+
 from scripts.github.release_gate import (
     ReleaseBlockedError,
     command_output,
     require_ci_gates,
 )
-import yaml
 
 
 ROOT = Path(__file__).resolve().parents[2]

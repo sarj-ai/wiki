@@ -7,8 +7,9 @@ import subprocess  # ruff: ignore[suspicious-subprocess-import] -- fixed reposit
 from typing import TYPE_CHECKING
 
 import pytest
-from scripts.backend_release import recovery
 import yaml
+
+from scripts.backend_release import recovery
 
 
 if TYPE_CHECKING:
