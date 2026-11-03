@@ -39,6 +39,16 @@ from app.document_transform.unslop import (
 _MAX_EDITOR_BATCH_CHARACTERS = 8_000
 _MAX_EDITOR_BATCH_BLOCKS = 12
 _MAX_REVIEW_ATTEMPTS = 3
+_REVIEW_FALLBACK_STATUSES = frozenset(
+    {
+        HTTPStatus.REQUEST_TIMEOUT,
+        HTTPStatus.TOO_MANY_REQUESTS,
+        HTTPStatus.INTERNAL_SERVER_ERROR,
+        HTTPStatus.BAD_GATEWAY,
+        HTTPStatus.SERVICE_UNAVAILABLE,
+        HTTPStatus.GATEWAY_TIMEOUT,
+    }
+)
 _MAX_REVIEW_BATCH_CHARACTERS = 8_000
 _MAX_REVIEW_BATCH_PAIRS = 12
 _MAX_CONCURRENT_REVIEW_BATCHES = 2
@@ -385,9 +395,8 @@ class VertexGeminiPatchGenerator(PatchGenerator):
             except (TimeoutError, ValueError, genai_errors.APIError) as exc:
                 log_model_failure(operation="review", attempt=attempt, error=exc)
                 last_error = exc
-                if (
-                    isinstance(exc, genai_errors.APIError)
-                    and exc.code == HTTPStatus.TOO_MANY_REQUESTS
+                if isinstance(exc, TimeoutError) or (
+                    isinstance(exc, genai_errors.APIError) and exc.code in _REVIEW_FALLBACK_STATUSES
                 ):
                     model = self._policy.fallback_model
                 if attempt < _MAX_REVIEW_ATTEMPTS:
