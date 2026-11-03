@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 from collections.abc import Callable
 import hashlib
+from http import HTTPStatus
 import json
 
 from google import genai
@@ -262,10 +263,80 @@ def sdk_client_factory() -> Callable[[httpx.AsyncClient], genai.Client]:
             project="offline-fixture",
             location="global",
             credentials=Credentials(token="offline-fixture-not-a-real-token"),
-            http_options=types.HttpOptions(base_url="http://127.0.0.1:9", httpx_async_client=http),
+            http_options=types.HttpOptions(
+                base_url="http://127.0.0.1:9",
+                httpx_async_client=http,
+                retry_options=types.HttpRetryOptions(attempts=1),
+            ),
         )
 
     return create
+
+
+async def test_real_sdk_review_gateway_timeout_uses_the_configured_fallback(
+    sdk_client_factory: Callable[[httpx.AsyncClient], genai.Client],
+) -> None:
+    document = parse_markdown("The hidden bird can sing unseen beside the path.", title="Bird")
+    block = document.blocks[0]
+    patch = TextPatch(block_id=block.id, expected_sha256=block.sha256, replacement=block.text)
+    models: list[str] = []
+
+    def respond(request: httpx.Request) -> httpx.Response:
+        model = request.url.path.rsplit("/", 1)[-1].removesuffix(":generateContent")
+        models.append(model)
+        if model == "gemini-3.8-flash":
+            return httpx.Response(
+                HTTPStatus.GATEWAY_TIMEOUT,
+                json={"error": {"code": HTTPStatus.GATEWAY_TIMEOUT, "message": "Offline deadline"}},
+            )
+        contents = _WireReviewRequest.model_validate_json(request.content).contents
+        pairs = _WireReview.model_validate_json(contents[0].parts[0].text).document_proposals
+        envelope = PatchReviewEnvelope(
+            reviews=[
+                TextPatchReview(
+                    block_id=pair.block_id,
+                    expected_sha256=pair.expected_sha256,
+                    replacement_sha256=pair.replacement_sha256,
+                    equivalent=True,
+                    reason="The bird's hidden singing ability and location are unchanged.",
+                )
+                for pair in pairs
+            ]
+        )
+        return httpx.Response(
+            HTTPStatus.OK,
+            json={
+                "candidates": [
+                    {
+                        "content": {
+                            "role": "model",
+                            "parts": [{"text": envelope.model_dump_json()}],
+                        },
+                        "finishReason": "STOP",
+                    }
+                ]
+            },
+        )
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(respond)) as http:
+        client = sdk_client_factory(http)
+        generator = VertexGeminiPatchGenerator(
+            policy=GeminiModelPolicy(
+                project="offline-fixture",
+                location="global",
+                unslop_model="gemini-3.5-flash-lite",
+                fallback_model="gemini-3.1-flash-lite",
+                restyle_model="gemini-3.8-flash",
+            ),
+            client=client,
+        )
+        try:
+            decision = await generator.review(document, [patch])
+        finally:
+            await client.aio.aclose()
+    assert decision.approved == {block.id}
+    assert not decision.rejected
+    assert models == ["gemini-3.8-flash", "gemini-3.1-flash-lite"]
 
 
 async def test_real_sdk_serializes_structured_rewrite_and_review_without_sampling(

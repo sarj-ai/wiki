@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 import hashlib
+from http import HTTPStatus
 
 from google.genai import errors, types
 from pydantic import BaseModel, ConfigDict
@@ -56,6 +57,7 @@ class _ModelResponse:
         self.models: list[str] = []
         self.failures = 0
         self.failure_status = 429
+        self.timeout_failures = False
         self.review_input = False
         self.rejected_sources: set[str] = set()
         self.omitted_sources: set[str] = set()
@@ -69,9 +71,14 @@ class _ModelResponse:
         self.models.append(model)
         if self.failures:
             self.failures -= 1
-            raise errors.ClientError(
-                self.failure_status, {"error": {"message": "Offline provider fixture"}}
+            if self.timeout_failures:
+                raise TimeoutError
+            error = (
+                errors.ServerError
+                if self.failure_status >= HTTPStatus.INTERNAL_SERVER_ERROR
+                else errors.ClientError
             )
+            raise error(self.failure_status, {"error": {"message": "Offline provider fixture"}})
         if self.review_input:
             payload = _ReviewInput.model_validate_json(contents)
             return types.GenerateContentResponse(
@@ -315,8 +322,21 @@ async def test_repair_can_keep_an_unspecified_subject_instead_of_inventing_one()
 
 
 @pytest.mark.parametrize("failures", [1, 3])
-async def test_rate_limited_review_uses_the_configured_fallback_within_its_attempt_budget(
+@pytest.mark.parametrize(
+    "status",
+    [
+        HTTPStatus.REQUEST_TIMEOUT,
+        HTTPStatus.TOO_MANY_REQUESTS,
+        HTTPStatus.INTERNAL_SERVER_ERROR,
+        HTTPStatus.BAD_GATEWAY,
+        HTTPStatus.SERVICE_UNAVAILABLE,
+        HTTPStatus.GATEWAY_TIMEOUT,
+        None,
+    ],
+)
+async def test_transient_review_uses_the_configured_fallback_within_its_attempt_budget(
     failures: int,
+    status: HTTPStatus | None,
 ) -> None:
     document = parse_markdown(SOURCE, title="Bird")
     block = document.blocks[0]
@@ -332,6 +352,9 @@ async def test_rate_limited_review_uses_the_configured_fallback_within_its_attem
         types.GenerateContentResponse(parsed=PatchReviewEnvelope(reviews=[review]))
     )
     harness.call.failures = failures
+    harness.call.timeout_failures = status is None
+    if status is not None:
+        harness.call.failure_status = status
     if failures == 3:
         with pytest.raises(ModelUnavailableError):
             await harness.generator.verify(document, [patch])
@@ -343,7 +366,10 @@ async def test_rate_limited_review_uses_the_configured_fallback_within_its_attem
 
 
 @pytest.mark.parametrize("approve", [True, False])
-async def test_rate_limited_review_fallback_respects_the_bound_verdict(*, approve: bool) -> None:
+@pytest.mark.parametrize("status", [HTTPStatus.TOO_MANY_REQUESTS, HTTPStatus.GATEWAY_TIMEOUT])
+async def test_transient_review_fallback_respects_the_bound_verdict(
+    status: HTTPStatus, *, approve: bool
+) -> None:
     document = parse_markdown(SOURCE, title="Bird")
     block = document.blocks[0]
     patch = TextPatch(block_id=block.id, expected_sha256=block.sha256, replacement=REPLACEMENT)
@@ -358,6 +384,7 @@ async def test_rate_limited_review_fallback_respects_the_bound_verdict(*, approv
         types.GenerateContentResponse(parsed=PatchReviewEnvelope(reviews=[review]))
     )
     harness.call.failures = 1
+    harness.call.failure_status = status
 
     decision = await harness.generator.review(document, [patch])
 
@@ -372,7 +399,10 @@ async def test_rate_limited_review_fallback_respects_the_bound_verdict(*, approv
 
 
 @pytest.mark.parametrize("forged_field", ["block_id", "expected_sha256", "replacement_sha256"])
-async def test_rate_limited_review_fallback_rejects_forged_bindings(forged_field: str) -> None:
+@pytest.mark.parametrize("status", [HTTPStatus.TOO_MANY_REQUESTS, HTTPStatus.GATEWAY_TIMEOUT])
+async def test_transient_review_fallback_rejects_forged_bindings(
+    forged_field: str, status: HTTPStatus
+) -> None:
     document = parse_markdown(SOURCE, title="Bird")
     block = document.blocks[0]
     patch = TextPatch(block_id=block.id, expected_sha256=block.sha256, replacement=REPLACEMENT)
@@ -387,6 +417,7 @@ async def test_rate_limited_review_fallback_rejects_forged_bindings(forged_field
         types.GenerateContentResponse(parsed=PatchReviewEnvelope(reviews=[review]))
     )
     harness.call.failures = 1
+    harness.call.failure_status = status
 
     with pytest.raises(ModelUnavailableError):
         await harness.generator.review(document, [patch])
@@ -398,8 +429,18 @@ async def test_rate_limited_review_fallback_rejects_forged_bindings(forged_field
     ]
 
 
-@pytest.mark.parametrize("status", [403, 500])
-async def test_other_provider_errors_keep_the_configured_reviewer(status: int) -> None:
+@pytest.mark.parametrize(
+    "status",
+    [
+        HTTPStatus.BAD_REQUEST,
+        HTTPStatus.UNAUTHORIZED,
+        HTTPStatus.PAYMENT_REQUIRED,
+        HTTPStatus.FORBIDDEN,
+        HTTPStatus.NOT_FOUND,
+        HTTPStatus.UNPROCESSABLE_CONTENT,
+    ],
+)
+async def test_permanent_provider_errors_keep_the_configured_reviewer(status: HTTPStatus) -> None:
     document = parse_markdown(SOURCE, title="Bird")
     block = document.blocks[0]
     patch = TextPatch(block_id=block.id, expected_sha256=block.sha256, replacement=REPLACEMENT)
