@@ -735,11 +735,21 @@ def _append_value_element(parent: BaseOxmlElement, tag: str, value: str) -> None
 
 
 def _xml_member(owner: object, member_name: str) -> BaseOxmlElement:
-    element = getattr(owner, member_name, None)
-    if not isinstance(element, BaseOxmlElement):
-        msg = f"python-docx {type(owner).__name__} has no usable {member_name} XML member"
-        raise TypeError(msg)
-    return element
+    match member_name, owner:
+        case "_p", object(_p=BaseOxmlElement() as element):
+            return element
+        case "_r", object(_r=BaseOxmlElement() as element):
+            return element
+        case "_tr", object(_tr=BaseOxmlElement() as element):
+            return element
+        case "_tbl", object(_tbl=BaseOxmlElement() as element):
+            return element
+        case "_tc", object(_tc=BaseOxmlElement() as element):
+            return element
+        case _:
+            pass
+    msg = f"python-docx {type(owner).__name__} has no usable {member_name} XML member"
+    raise TypeError(msg)
 
 
 def _properties_element(owner: object, member_name: str, tag: str) -> BaseOxmlElement:

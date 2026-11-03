@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from datetime import timedelta
-from typing import TYPE_CHECKING, Any, NamedTuple, override
+from typing import TYPE_CHECKING, Any, NamedTuple, Protocol, override, runtime_checkable
 
 from googleapiclient.errors import HttpError
 import httplib2
@@ -19,6 +19,7 @@ from app.performance import increment, provider_retry_remaining_seconds, timed
 
 if TYPE_CHECKING:
     from googleapiclient.http import BatchHttpRequest, HttpRequest, MediaIoBaseDownload
+    from pydantic import JsonValue
 
 _RETRYABLE_STATUSES = frozenset({429, 500, 502, 503, 504})
 
@@ -36,12 +37,27 @@ class DownloadProgress(NamedTuple):
     done: bool
 
 
+@runtime_checkable
+class _ProviderResponseFailure(Protocol):
+    @property
+    def resp(self) -> httplib2.Response: ...
+
+
 def is_retryable_provider_status(status: int | None) -> bool:
     return status in _RETRYABLE_STATUSES
 
 
+def provider_response_status(exc: BaseException) -> JsonValue:
+    if not isinstance(exc, _ProviderResponseFailure):
+        return None
+    try:
+        return exc.resp.status
+    except AttributeError:
+        return None
+
+
 def provider_http_status(exc: HttpError) -> int | None:
-    status = getattr(exc.resp, "status", None)
+    status = provider_response_status(exc)
     return status if isinstance(status, int) else None
 
 
@@ -65,7 +81,10 @@ def _is_rate_limit_error(exc: BaseException) -> bool:
 def retry_after_seconds(exc: BaseException | None) -> float | None:
     if not isinstance(exc, HttpError):
         return None
-    header_get = getattr(exc.resp, "get", None)
+    try:
+        header_get = exc.resp.get
+    except AttributeError:
+        return None
     raw: object = header_get("retry-after") if callable(header_get) else None
     if not isinstance(raw, str | int | float):
         return None

@@ -132,7 +132,26 @@ class _XmlElement(Protocol):
 
 
 def _member(owner: object, name: str) -> object:
-    member = getattr(owner, name, None)
+    member: object | None
+    match name, owner:
+        case "batchUpdate", object(batchUpdate=member):
+            pass
+        case "copy", object(copy=member):
+            pass
+        case "create", object(create=member):
+            pass
+        case "get", object(get=member):
+            pass
+        case "get_media", object(get_media=member):
+            pass
+        case "list", object(list=member):
+            pass
+        case "update", object(update=member):
+            pass
+        case "build_from_document", object(build_from_document=member):
+            pass
+        case _:
+            member = None
     if member is None:
         message = f"{type(owner).__name__} has no {name} member"
         raise TypeError(message)
@@ -862,10 +881,7 @@ class GooglePresentationGateway(PresentationGateway):
         try:
             raw: object = execute_mutation(request)
         except HttpError as exc:
-            if (
-                _is_terminal_scope_error(exc)
-                or getattr(exc.resp, "status", None) == HTTPStatus.BAD_REQUEST
-            ):
+            if _is_terminal_scope_error(exc) or _response_status(exc) == HTTPStatus.BAD_REQUEST:
                 raise UnsupportedSourceError from exc
             raise DocumentGatewayError from exc
         if not isinstance(raw, dict):
@@ -918,10 +934,18 @@ def _verification_passed(verification: PresentationVerification) -> bool:
 
 
 def _is_terminal_scope_error(exc: HttpError) -> bool:
-    status = getattr(exc.resp, "status", None)
+    status = _response_status(exc)
     return status in {401, 403} and any(
         marker in exc.content.lower() for marker in _TERMINAL_SCOPE_ERROR_MARKERS
     )
+
+
+def _response_status(exc: HttpError) -> int | None:
+    response = exc.resp
+    try:
+        return response.status
+    except AttributeError:
+        return None
 
 
 def _initial_properties(operation_id: uuid.UUID, source_sha256: str) -> dict[str, str]:

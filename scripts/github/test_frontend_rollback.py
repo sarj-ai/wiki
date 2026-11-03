@@ -3,9 +3,10 @@ from pathlib import Path
 import shlex
 
 import pytest
+import yaml
+
 from scripts.frontend_release import rollback
 from scripts.github import release_gate
-import yaml
 
 
 PREVIOUS = "11111111-1111-4111-8111-111111111111"

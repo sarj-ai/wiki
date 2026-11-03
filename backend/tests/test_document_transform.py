@@ -257,8 +257,13 @@ def test_google_gateway_normalizes_transport_timeout(
 
     monkeypatch.setattr(google_gateway_module, boundary_name, timeout)
 
+    execute = {
+        "_execute_dict": GoogleDocumentGateway._execute_dict,
+        "_execute_mutation_dict": GoogleDocumentGateway._execute_mutation_dict,
+        "_execute_bytes": GoogleDocumentGateway._execute_bytes,
+    }[method_name]
     with pytest.raises(DocumentGatewayError) as raised:
-        getattr(GoogleDocumentGateway, method_name)(dependency(object()))
+        execute(dependency(object()))
 
     assert raised.value.retryable
     assert raised.value.http_status is None

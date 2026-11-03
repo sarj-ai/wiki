@@ -14,6 +14,8 @@ import time
 from typing import TYPE_CHECKING, Annotated, NamedTuple
 from uuid import UUID
 
+import typer
+
 from scripts.github.release_gate import (
     MAX_RESPONSE_BYTES,
     JsonValue,
@@ -22,7 +24,6 @@ from scripts.github.release_gate import (
     object_value,
     require,
 )
-import typer
 
 
 WORKER = "sarj-wiki"

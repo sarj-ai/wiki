@@ -98,7 +98,7 @@ class McpReadService(McpReader):
     async def get_admission(self, request: AdmissionInput) -> AdmissionResponse:
         self._require_read()
         admission = await self._context.tasks.get_document_transform_admission(
-            self._context.principal.user_id, request.idempotency_key
+            UserId(self._context.principal.user_id), request.idempotency_key
         )
         return AdmissionResponse(admission=admission)
 
@@ -110,25 +110,32 @@ class McpReadService(McpReader):
         )
         if task.kind is not TaskKind.FILE_DOCUMENT_TRANSFORM:
             raise TaskNotFoundError
-        if isinstance(task.result, DocumentTransformResult):
-            output = task.result.output
-            file = await self._context.files.get(output.file_id)
-            if file.id != output.file_id:
-                raise TaskNotFoundError
-            result = task.result.model_copy(
-                update={"output": output.model_copy(update={"web_url": self._url("d", file.id)})}
-            )
-            task = task.model_copy(update={"result": result, "resource_id": None})
-        elif isinstance(task, FailedTaskRead):
-            task = task.model_copy(
-                update={
-                    "resource_id": None,
-                    "unverified_output": None,
-                    "error_detail": "Document transformation failed; review the task in Wiki.",
-                }
-            )
-        elif isinstance(task, RunningTaskRead):
-            task = task.model_copy(update={"resource_id": None})
+        match task.result:
+            case DocumentTransformResult():
+                output = task.result.output
+                file = await self._context.files.get(output.file_id)
+                if file.id != output.file_id:
+                    raise TaskNotFoundError
+                result = task.result.model_copy(
+                    update={
+                        "output": output.model_copy(update={"web_url": self._url("d", file.id)})
+                    }
+                )
+                task = task.model_copy(update={"result": result, "resource_id": None})
+            case _:
+                match task:
+                    case FailedTaskRead():
+                        task = task.model_copy(
+                            update={
+                                "resource_id": None,
+                                "unverified_output": None,
+                                "error_detail": "Document transformation failed; review the task in Wiki.",
+                            }
+                        )
+                    case RunningTaskRead():
+                        task = task.model_copy(update={"resource_id": None})
+                    case _:
+                        pass
         return TaskResponse(
             task=task,
             retry_after_seconds=1 if isinstance(task, PendingTaskRead | RunningTaskRead) else None,

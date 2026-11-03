@@ -1,4 +1,4 @@
-"""Executable repository consistency checks."""  # ruff: ignore[implicit-namespace-package] -- standalone repository CLI, not an import package.
+"""Executable repository consistency checks."""
 
 from __future__ import annotations
 
@@ -16,12 +16,23 @@ import typer
 if TYPE_CHECKING:
     from collections.abc import Callable
 
-    from pydantic_settings import BaseSettings
-
 
 ROOT = Path(__file__).resolve().parents[1]
 ENV_KEY = re.compile(r"^\s*(?:#\s*)?([A-Z][A-Z0-9_]*)\s*=")
 SETTINGS_FIELD = re.compile(r"^    ([A-Z][A-Z0-9_]*):")
+_SETTINGS_FIELDS_CODE = """from pydantic_settings import BaseSettings
+from app.config import Settings
+
+delimiter = Settings.model_config.get("env_nested_delimiter")
+expected = set()
+for name, field in Settings.model_fields.items():
+    annotation = field.annotation
+    if delimiter and isinstance(annotation, type) and issubclass(annotation, BaseSettings):
+        expected.update(f"{name}{delimiter}{child}" for child in annotation.model_fields)
+    else:
+        expected.add(name)
+print("\\n".join(sorted(expected)))
+"""
 
 
 def check_node() -> None:
@@ -29,13 +40,7 @@ def check_node() -> None:
     if executable is None:
         message = "node >= 26.7.0 required. Run mise install."
         raise RuntimeError(message)
-    result = subprocess.run(  # ruff: ignore[subprocess-without-shell-equals-true] -- resolved active Node executable, no shell
-        [executable, "--version"],
-        check=True,
-        capture_output=True,
-        text=True,
-    )
-    version = result.stdout.strip()
+    version = _command_stdout([executable, "--version"]).strip()
     match = re.fullmatch(r"v(\d+)\.(\d+)\.(\d+)", version)
     if match is None or tuple(map(int, match.groups())) < (26, 7, 0):
         message = (
@@ -109,14 +114,19 @@ def env_command() -> None:
 
 
 def _tracked_markdown() -> list[str]:
-    result = subprocess.run(  # ruff: ignore[subprocess-without-shell-equals-true] -- fixed git executable, no shell
-        [_git_executable(), "ls-files", "--", "*.md"],
-        cwd=ROOT,
+    output = _command_stdout([_git_executable(), "ls-files", "--", "*.md"], cwd=ROOT)
+    return sorted(line for line in output.splitlines() if line and (ROOT / line).is_file())
+
+
+def _command_stdout(arguments: list[str], *, cwd: Path | None = None) -> str:
+    result = subprocess.run(  # ruff: ignore[subprocess-without-shell-equals-true] -- resolved native executables and fixed internal argv, no shell
+        arguments,
+        cwd=cwd,
         check=True,
         capture_output=True,
         text=True,
     )
-    return sorted(line for line in result.stdout.splitlines() if line and (ROOT / line).is_file())
+    return result.stdout
 
 
 def _git_executable() -> str:
@@ -128,8 +138,6 @@ def _git_executable() -> str:
 
 
 def _settings_fields() -> set[str]:
-    backend = str(ROOT / "backend")
-    sys.path.insert(0, backend)
     config_paths = (
         ROOT / "backend/app/config.py",
         ROOT / "backend/app/database_config.py",
@@ -154,27 +162,8 @@ def _settings_fields() -> set[str]:
             "FERNET_KEY": "MDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDA=",
         }
     )
-    from app.config import (  # ruff: ignore[import-outside-top-level] -- after hermetic environment setup
-        Settings,
-    )
-
-    return _settings_environment_names(Settings)
-
-
-def _settings_environment_names(model: type[BaseSettings]) -> set[str]:
-    from pydantic_settings import (  # ruff: ignore[import-outside-top-level] -- keep Node and help checks independent of backend dependencies
-        BaseSettings,
-    )
-
-    delimiter = model.model_config.get("env_nested_delimiter")
-    expected: set[str] = set()
-    for name, field in model.model_fields.items():
-        annotation = field.annotation
-        if delimiter and isinstance(annotation, type) and issubclass(annotation, BaseSettings):
-            expected.update(f"{name}{delimiter}{child}" for child in annotation.model_fields)
-        else:
-            expected.add(name)
-    return expected
+    output = _command_stdout([sys.executable, "-c", _SETTINGS_FIELDS_CODE], cwd=ROOT / "backend")
+    return set(output.splitlines())
 
 
 if __name__ == "__main__":

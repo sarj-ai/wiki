@@ -4,6 +4,7 @@ from datetime import datetime, timedelta
 import hashlib
 import hmac
 import secrets
+from typing import Protocol, runtime_checkable
 import uuid
 
 from sqlalchemy import and_, delete, func, or_, select
@@ -35,6 +36,12 @@ _IMAGE_DIGEST_LENGTH = 71
 _MIN_DERIVATION_KEY_BYTES = 32
 _MAX_CLEANUP_BATCH = 100
 _QA_LAUNCH_ADVISORY_LOCK = 0x51414C41554E4348
+
+
+@runtime_checkable
+class _AffectedRows(Protocol):
+    @property
+    def rowcount(self) -> int | None: ...
 
 
 class QaGrantError(Exception):
@@ -967,7 +974,11 @@ async def delete_expired_qa_grants(db: AsyncSession, *, limit: int = _MAX_CLEANU
             DocumentTransformQaGrant.id.in_(select(expired.c.id))
         )
     )
-    return int(getattr(result, "rowcount", 0) or 0)
+    try:
+        rowcount = result.rowcount if isinstance(result, _AffectedRows) else 0
+    except AttributeError:
+        rowcount = 0
+    return int(rowcount or 0)
 
 
 def _replay_bootstrap(

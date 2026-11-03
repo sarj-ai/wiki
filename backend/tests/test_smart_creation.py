@@ -245,8 +245,11 @@ class _Tasks(TaskService):
         self, task_id: TaskId, *, lease_token: uuid.UUID, result: BaseModel
     ) -> TaskRead:
         self.result = result
-        if isinstance(result, SmartCreateResult):
-            self.result_file = result.file.id
+        match result:
+            case SmartCreateResult():
+                self.result_file = result.file.id
+            case _:
+                pass
         raise _SucceededError
 
     @override

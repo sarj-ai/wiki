@@ -2374,11 +2374,14 @@ class DocumentTransformExecutor(DocumentTransformRunner):
 
     async def _load_source(self, request: DocumentTransformRequest) -> SourceSnapshot:
         source = request.source
-        if isinstance(source, DriveFileSource):
-            snapshot = await self._gateway.load_drive_source(source)
-            if snapshot.modified_time != source.expected_modified_time:
-                raise SourceChangedError
-            return snapshot
+        match source:
+            case DriveFileSource():
+                snapshot = await self._gateway.load_drive_source(source)
+                if snapshot.modified_time != source.expected_modified_time:
+                    raise SourceChangedError
+                return snapshot
+            case _:
+                pass
         return SourceSnapshot(
             title=source.name,
             parent_folder_id=source.destination_folder_id,
@@ -3180,8 +3183,11 @@ def _tab_naming_decline_update(
         "tab_naming": None,
         "tab_naming_declined_reason": "unsupported_metadata",
     }
-    if isinstance(checkpoint, InPlaceCheckpoint):
-        update["changed"] = checkpoint.current_revision_id != checkpoint.source_revision_id
+    match checkpoint:
+        case InPlaceCheckpoint():
+            update["changed"] = checkpoint.current_revision_id != checkpoint.source_revision_id
+        case _:
+            pass
     return update
 
 

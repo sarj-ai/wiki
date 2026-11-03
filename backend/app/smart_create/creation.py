@@ -95,8 +95,11 @@ class DriveSmartFileCreationService(SmartFileCreationService):
         source: BlankSource | TemplateSource,
         destination: FileResponse,
     ) -> TemplateRead | None:
-        if isinstance(source, BlankSource):
-            return None
+        match source:
+            case BlankSource():
+                return None
+            case _:
+                pass
         template = await self._templates.resolve_template(
             source.template_file_id, source.template_drive_id
         )

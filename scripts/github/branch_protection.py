@@ -1,4 +1,4 @@
-"""Check or safely strengthen branch protection; destructive rollback is disabled."""  # ruff: ignore[implicit-namespace-package] -- standalone repository CLI, not an import package.
+"""Check or safely strengthen branch protection; destructive rollback is disabled."""
 
 from __future__ import annotations
 

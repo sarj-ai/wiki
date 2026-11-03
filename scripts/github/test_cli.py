@@ -3,12 +3,12 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 import pytest
-from scripts.backend_release import recovery
-from scripts.frontend_release import rollback
-from scripts.github import branch_protection, release_gate
 from typer.testing import CliRunner
 
 from scripts import repository_checks
+from scripts.backend_release import recovery
+from scripts.frontend_release import rollback
+from scripts.github import branch_protection, release_gate
 
 
 if TYPE_CHECKING:

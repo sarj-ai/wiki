@@ -60,12 +60,4 @@ async def test_enables_hsts_only_for_https_deployments() -> None:
 def test_security_headers_are_outermost_application_middleware() -> None:
     from app.main import app
 
-    names = [_type_name(middleware.cls) for middleware in app.user_middleware]
-
-    assert names[0] == "SecurityHeadersMiddleware"
-
-
-def _type_name(value: object) -> str:
-    name = getattr(value, "__name__", None)
-    assert isinstance(name, str)
-    return name
+    assert app.user_middleware[0].cls is SecurityHeadersMiddleware

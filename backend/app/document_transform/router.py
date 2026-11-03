@@ -23,7 +23,7 @@ from app.document_transform.schemas import (
     TransformMode,
 )
 from app.files.dependencies import files_service_dep
-from app.identifiers import FileId, IdempotencyKey
+from app.identifiers import FileId, IdempotencyKey, UserId
 from app.models.user import User
 from app.openapi import authentication_responses
 from app.tasks.dependencies import task_enqueuer_dep, task_service_dep
@@ -84,7 +84,9 @@ async def get_document_transform_admission(
     tasks: Annotated[TaskService, Depends(task_service_dep)],
 ) -> DocumentTransformAdmission:
     response.headers["Cache-Control"] = "no-store"
-    return await tasks.get_document_transform_admission(user.id, IdempotencyKey(idempotency_key))
+    return await tasks.get_document_transform_admission(
+        UserId(user.id), IdempotencyKey(idempotency_key)
+    )
 
 
 @router.get(

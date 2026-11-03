@@ -12,7 +12,7 @@ const PUBLIC_FETCH = vi.fn<typeof fetch>();
 const PREVIEW_HTML = "<!doctype html><html><body>Public sample</body></html>";
 const HTML_SHA256 = "1b47b4fc9abe3730ae8b985a77767ae39f684f593bb8a8b64920c48b78b06695";
 const DEFAULT_PREVIEW =
-  "https://docs.google.com/document/d/1rFT5wWk_mGlttNO5-s1_jd8TWNwxByWIG4oQkCjzJ_I/preview";
+  "https://docs.google.com/document/d/1wroTuWbI9mVByQvZhZjM2i2FtZx-IzxYxfcRIG547XE/preview";
 const PREVIEW_PATHS = new Set(
   DEMO_FILES.flatMap((file) =>
     file.previewUrl === undefined && file.previewFilename ? demoAssetUrl(file.previewFilename) : [],
@@ -192,7 +192,7 @@ describe("public read-only Wiki demo", () => {
     expect(frame).toHaveAttribute("srcdoc", PREVIEW_HTML);
     expect(frame).not.toHaveAttribute("src");
     expect(PUBLIC_FETCH).toHaveBeenCalledExactlyOnceWith(
-      "/demo/files/nightingale-field-guide-v8-preview.json",
+      "/demo/files/nightingale-field-guide-v9-preview.json",
       expect.objectContaining({ credentials: "omit", headers: { Accept: "application/json" } }),
     );
     expect(onlyPublicRequests()).toBe(true);

@@ -80,8 +80,10 @@ from app.tasks.schemas import (
 
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable, Iterable
+    from enum import Enum
 
     from googleapiclient._apis.drive.v3.resources import DriveResource
+    from pydantic import JsonValue
     from sqlalchemy.ext.asyncio import AsyncSession
 
     from app.cache.service import CacheService
@@ -673,17 +675,12 @@ def _validate_arguments(arguments: _Arguments) -> None:
     if arguments.count != required_count:
         _fail(f"--count must equal {required_count} for {cohort} QA")
     if arguments.execute:
-        required_confirmation = _CANARY_CONFIRMATION if arguments.canary else _CONFIRMATION
-        if arguments.confirm_live_copy != required_confirmation:
-            _fail(f"--confirm-live-copy must equal {required_confirmation}")
-        if arguments.mode != TransformMode.BOTH:
-            _fail("--execute requires --mode both")
-        if artifacts_dir is None:
-            _fail("--execute requires --artifacts-dir")
-        if not pdftoppm_version:
-            _fail("--execute requires --pdftoppm-version")
-        if not judge_model:
-            _fail("--execute requires --judge-model")
+        _validate_live_execution(
+            arguments,
+            artifacts_dir=artifacts_dir,
+            pdftoppm_version=pdftoppm_version,
+            judge_model=judge_model,
+        )
     if not arguments.execute and arguments.confirm_live_copy is not None:
         _fail("--confirm-live-copy is only valid with --execute")
     canary_paths = (canary_manifest, canary_ledger, canary_artifacts_dir)
@@ -701,6 +698,26 @@ def _validate_arguments(arguments: _Arguments) -> None:
         or len(arguments.expected_release_sha) != _COMMIT_SHA_LENGTH
     ):
         _fail("--expected-release-sha must be a full 40-character commit SHA")
+
+
+def _validate_live_execution(
+    arguments: _Arguments,
+    *,
+    artifacts_dir: Path | None,
+    pdftoppm_version: str | None,
+    judge_model: str | None,
+) -> None:
+    required_confirmation = _CANARY_CONFIRMATION if arguments.canary else _CONFIRMATION
+    if arguments.confirm_live_copy != required_confirmation:
+        _fail(f"--confirm-live-copy must equal {required_confirmation}")
+    if arguments.mode != TransformMode.BOTH:
+        _fail("--execute requires --mode both")
+    if artifacts_dir is None:
+        _fail("--execute requires --artifacts-dir")
+    if not pdftoppm_version:
+        _fail("--execute requires --pdftoppm-version")
+    if not judge_model:
+        _fail("--execute requires --judge-model")
 
 
 def _require_durable_cloud_run_paths(
@@ -1316,35 +1333,33 @@ def _permission_inventory(
         for item in page_permissions:
             if not isinstance(item, dict):
                 _fail("Drive returned invalid permission entry")
-            permissions.append(
-                PermissionEntry(
-                    id=str(item.get("id", "")),
-                    principal_type=str(item.get("type", "")),
-                    role=str(item.get("role", "")),
-                    email_address=(
-                        item.get("emailAddress")
-                        if isinstance(item.get("emailAddress"), str)
-                        else None
-                    ),
-                    domain=item.get("domain") if isinstance(item.get("domain"), str) else None,
-                    allow_file_discovery=(
-                        item.get("allowFileDiscovery")
-                        if isinstance(item.get("allowFileDiscovery"), bool)
-                        else None
-                    ),
-                    expiration_time=(
-                        item.get("expirationTime")
-                        if isinstance(item.get("expirationTime"), str)
-                        else None
-                    ),
-                    deleted=item.get("deleted") is True,
-                    pending_owner=item.get("pendingOwner") is True,
-                )
-            )
+            permissions.append(_permission_entry(item))
         page_token = raw.get("nextPageToken")
         if not page_token:
             return tuple(sorted(permissions, key=lambda item: item.id))
     _fail("permission inventory exceeded the bounded page limit")
+
+
+def _permission_entry(item: dict[str, JsonValue]) -> PermissionEntry:
+    return PermissionEntry.model_validate(
+        {
+            "id": str(item.get("id", "")),
+            "principal_type": str(item.get("type", "")),
+            "role": str(item.get("role", "")),
+            "email_address": item.get("emailAddress")
+            if isinstance(item.get("emailAddress"), str)
+            else None,
+            "domain": item.get("domain") if isinstance(item.get("domain"), str) else None,
+            "allow_file_discovery": item.get("allowFileDiscovery")
+            if isinstance(item.get("allowFileDiscovery"), bool)
+            else None,
+            "expiration_time": item.get("expirationTime")
+            if isinstance(item.get("expirationTime"), str)
+            else None,
+            "deleted": item.get("deleted") is True,
+            "pending_owner": item.get("pendingOwner") is True,
+        }
+    )
 
 
 def permission_inventory_sha256(permissions: tuple[PermissionEntry, ...]) -> str:
@@ -2210,11 +2225,15 @@ async def _judge_visual_evidence(
     )
 
 
-def _parse_judge_response(parsed: object, text: str | None) -> JudgeResponse:
+def _parse_judge_response(
+    parsed: BaseModel | dict[str, JsonValue] | Enum | None, text: str | None
+) -> JudgeResponse:
     try:
-        if isinstance(parsed, JudgeResponse):
-            return parsed
-        return JudgeResponse.model_validate_json(text or "")
+        match parsed:
+            case JudgeResponse():
+                return parsed
+            case _:
+                return JudgeResponse.model_validate_json(text or "")
     except TypeError, ValueError:
         message = "visual judge response failed strict validation"
         raise QaError(message) from None

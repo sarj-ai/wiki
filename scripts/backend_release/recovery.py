@@ -7,6 +7,8 @@ import re
 import sys
 from typing import TYPE_CHECKING, Annotated, NewType
 
+import typer
+
 from scripts.github.release_gate import (
     API_PREFIX,
     MAIN_RELEASE_PATH,
@@ -21,7 +23,6 @@ from scripts.github.release_gate import (
     require_current_main,
     validate_repository,
 )
-import typer
 
 
 if TYPE_CHECKING:
