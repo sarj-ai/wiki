@@ -20,7 +20,6 @@ import {
   DEMO_WORKSPACE_NAME,
   type DemoFile,
 } from "./demo-data";
-import { DEMO_SEARCH_TEXT } from "./demo-search-text";
 
 export function DemoSearch({
   onOpenChange,
@@ -33,33 +32,25 @@ export function DemoSearch({
 }) {
   return (
     <CommandDialog
-      description="Search file names and sample content. Use the arrow keys to select a result, then Enter to open it."
+      description="Search files in this demo Drive. Use the arrow keys to select a result, then Enter to open it."
       onOpenChange={onOpenChange}
       open={open}
       showCloseButton={false}
-      title="Search sample files"
+      title="Search Drive"
     >
       <div className="pr-11">
-        <CommandInput
-          aria-label="Search sample files"
-          placeholder="Search files, facts, or references…"
-        />
+        <CommandInput aria-label="Search Drive" placeholder="Search files…" />
       </div>
       <CommandList className="max-h-[min(400px,65dvh)]">
         <CommandEmpty>
           <p className="font-medium">No files found</p>
           <p className="text-muted-foreground mt-1 text-xs">{DEMO_SEARCH_SUGGESTION}</p>
         </CommandEmpty>
-        <CommandGroup heading={`${DEMO_WORKSPACE_NAME} · sample workspace`}>
+        <CommandGroup heading={DEMO_WORKSPACE_NAME}>
           {DEMO_FILES.map((file) => (
             <CommandItem
               key={file.id}
-              keywords={[
-                file.name,
-                file.description,
-                file.keywords,
-                DEMO_SEARCH_TEXT[file.id] ?? "",
-              ]}
+              keywords={[file.name, file.description, file.keywords]}
               onSelect={() => onSelect(file)}
               value={file.id}
             >
