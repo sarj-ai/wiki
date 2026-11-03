@@ -37,4 +37,4 @@ async def test_html_response_is_doubly_sandboxed_and_never_cached() -> None:
 
 def test_html_service_contract_stays_on_files_service() -> None:
     assert "get_html_content" in FilesService.__abstractmethods__
-    assert callable(getattr(_HtmlFiles(), "get_html_content", None))
+    assert callable(_HtmlFiles().get_html_content)

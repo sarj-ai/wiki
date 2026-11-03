@@ -11,7 +11,7 @@ from sqlalchemy import Column, DateTime, MetaData, String, Table, Uuid, create_e
 
 from app.auth.dependencies import get_current_user
 from app.files.dependencies import files_service_dep
-from app.identifiers import IdempotencyKey
+from app.identifiers import IdempotencyKey, UserId
 from app.main import app
 from app.tasks.dependencies import task_enqueuer_dep, task_service_dep
 from app.tasks.errors import TaskNotFoundError
@@ -128,11 +128,11 @@ async def test_lookup_is_owner_kind_key_retention_scoped_and_read_only(
     if case in {"deleted", "alias_deleted"}:
         database.connection.execute(delete(tasks).where(tasks.c.id == task_id))
     if case in {"direct", "alias"}:
-        result = await service.get_document_transform_admission(owner, key)
+        result = await service.get_document_transform_admission(UserId(owner), key)
         assert result.model_dump(mode="json") == {"task_id": str(task_id), "status": "pending"}
     else:
         with pytest.raises(TaskNotFoundError):
-            await service.get_document_transform_admission(owner, key)
+            await service.get_document_transform_admission(UserId(owner), key)
     assert len(database.statements) == 1
     assert list(database.statements[0].selected_columns.keys()) == ["id", "status"]
     assert database.statements[0].is_select

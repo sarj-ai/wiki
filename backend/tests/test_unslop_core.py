@@ -7,8 +7,29 @@ import pytest
 from app.document_transform.ir import parse_markdown
 from app.document_transform.unslop import (
     deterministic_unslop_replacement,
+    model_editable_blocks,
     scan_unslop_candidates,
 )
+
+
+@pytest.mark.parametrize(
+    ("source", "eligible"),
+    [
+        ("At the end of the day, ship.", True),
+        ("Why should you care? Birds sing.", True),
+        ("The bird sings at dawn.", False),
+        ("Each of 19 males may sing.", False),
+        ('"At the end of the day, ship."', False),
+        ("`At the end of the day, ship.`", False),
+    ],
+)
+def test_short_prose_needs_an_unprotected_scanner_match_for_model_review(
+    source: str, *, eligible: bool
+) -> None:
+    document = parse_markdown(source, title="Short prose")
+
+    assert len(source.split()) < 8
+    assert model_editable_blocks(document) == (document.blocks if eligible else ())
 
 
 @pytest.mark.parametrize(

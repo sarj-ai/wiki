@@ -98,8 +98,11 @@ class PresentationTransformExecutor(DocumentTransformRunner):
             snapshot=snapshot,
             source_sha256=source_sha256,
         )
-        if isinstance(recovered, DocumentTransformResult):
-            return recovered
+        match recovered:
+            case DocumentTransformResult():
+                return recovered
+            case _:
+                pass
 
         planned = await self._plan_native_source(snapshot, source_parsed, request)
         if not await self._gateway.source_is_unchanged(snapshot):

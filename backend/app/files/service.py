@@ -14,7 +14,12 @@ from pydantic import BaseModel, Field, ValidationError
 
 from app.auth.google_tokens import provider_refresh_scope
 from app.drive.google_schemas import GoogleFile, GoogleFileAccessLocation
-from app.drive.retry import execute_batch_with_retry, execute_mutation, execute_with_retry
+from app.drive.retry import (
+    execute_batch_with_retry,
+    execute_mutation,
+    execute_with_retry,
+    provider_response_status,
+)
 from app.drive.schemas import MIME_FOLDER, MIME_HTML, NAVIGATOR_SUPPORTED_MIME_TYPES
 from app.drive.service import (
     DriveService,
@@ -536,7 +541,7 @@ class GoogleFilesService(FilesService):
 
         def collect(request_id: str, response: Any, exception: BaseException | None) -> None:
             if exception is not None:
-                status = getattr(getattr(exception, "resp", None), "status", None)
+                status = provider_response_status(exception)
                 if status not in {403, 404} and not failures:
                     failures.append(exception)
                 return

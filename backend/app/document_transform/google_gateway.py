@@ -26,6 +26,7 @@ from app.document_transform.brand import (
     SarjBrandProfile,
     paragraph_color,
     paragraph_font_size,
+    paragraph_keep_lines_together,
     paragraph_keep_with_next,
     paragraph_named_style,
     paragraph_spacing,
@@ -283,7 +284,24 @@ class _BoundaryCallable(Protocol):
 
 
 def _member(owner: object, name: str) -> object:
-    member = getattr(owner, name, None)
+    member: object | None
+    match name, owner:
+        case "batchUpdate", object(batchUpdate=member):
+            pass
+        case "comments", object(comments=member):
+            pass
+        case "copy", object(copy=member):
+            pass
+        case "create", object(create=member):
+            pass
+        case "get", object(get=member):
+            pass
+        case "list", object(list=member):
+            pass
+        case "build_from_document", object(build_from_document=member):
+            pass
+        case _:
+            member = None
     if member is None:
         msg = f"{type(owner).__name__} has no {name} member"
         raise TypeError(msg)
@@ -308,6 +326,8 @@ def _google_http_request(candidate: object, **kwargs: object) -> HttpRequest:
 class GoogleDocumentGateway(DocumentGateway):
     supports_native_footer = True
     supports_native_dates = True
+    _header_identity_proof: HeaderIdentityProof | None = None
+    _header_identity: HeaderIdentityEvidence | None = None
 
     @override
     async def plan_copy_dates(
@@ -435,7 +455,7 @@ class GoogleDocumentGateway(DocumentGateway):
                 asyncio.to_thread(self._get_document_sync, source.file_id),
                 asyncio.to_thread(self._files_get_sync, source.file_id),
             )
-            proof = getattr(self, "_header_identity_proof", None)
+            proof = self._header_identity_proof
             if proof is not None:
                 properties = metadata.get("appProperties", {})
                 if not isinstance(properties, dict):
@@ -805,9 +825,9 @@ class GoogleDocumentGateway(DocumentGateway):
                 document,
                 _typography_verification_ir(parsed, expected),
                 expected_header_title=_trusted_header_identity_title(
-                    document, getattr(self, "_header_identity", None)
+                    document, self._header_identity
                 ),
-                header_separator=_owned_header_separator(getattr(self, "_header_identity", None)),
+                header_separator=_owned_header_separator(self._header_identity),
                 preserved_native_list_text_style_ids=preserved_native_list_text_style_ids,
             )
         )
@@ -821,11 +841,9 @@ class GoogleDocumentGateway(DocumentGateway):
                     document,
                     _typography_verification_ir(parsed, expected),
                     expected_header_title=_trusted_header_identity_title(
-                        document, getattr(self, "_header_identity", None)
+                        document, self._header_identity
                     ),
-                    header_separator=_owned_header_separator(
-                        getattr(self, "_header_identity", None)
-                    ),
+                    header_separator=_owned_header_separator(self._header_identity),
                     preserved_furniture_tabs=frozenset(
                         binding.tab_id for binding in custom_furniture
                     ),
@@ -1106,14 +1124,11 @@ class GoogleDocumentGateway(DocumentGateway):
                 checks={"in_place_active_suggestions": True},
             )
             raise ActiveSuggestionsNeedsReviewError
-        header_title = (
-            _trusted_header_identity_title(document, getattr(self, "_header_identity", None))
-            or title
-        )
+        header_title = _trusted_header_identity_title(document, self._header_identity) or title
         header_state = _classify_in_place_headers(
             document,
             header_title,
-            getattr(self, "_header_identity", None),
+            self._header_identity,
         )
         parsed = parse_google_document(document, title=title)
         existing_layout = apply_native_pagination(
@@ -1162,7 +1177,7 @@ class GoogleDocumentGateway(DocumentGateway):
                 document,
                 existing_layout,
                 expected_header_title=header_title,
-                header_separator=_owned_header_separator(getattr(self, "_header_identity", None)),
+                header_separator=_owned_header_separator(self._header_identity),
                 preserved_furniture_tabs=frozenset(
                     binding.tab_id for binding in header_state.custom_furniture
                 ),
@@ -1181,7 +1196,7 @@ class GoogleDocumentGateway(DocumentGateway):
             ),
             headers=header_state.headers,
             preserved_headers=header_state.preserved_headers,
-            header_identity=getattr(self, "_header_identity", None),
+            header_identity=self._header_identity,
             fully_branded=not any(
                 block.preserved_paragraph_style_sha256
                 or block.preserved_font_family
@@ -1194,7 +1209,7 @@ class GoogleDocumentGateway(DocumentGateway):
                 document,
                 existing_layout,
                 expected_header_title=header_title,
-                header_separator=_owned_header_separator(getattr(self, "_header_identity", None)),
+                header_separator=_owned_header_separator(self._header_identity),
             ),
             missing_header_tab_ids=header_state.missing,
             unknown_header_tab_ids=header_state.unknown,
@@ -2056,7 +2071,7 @@ def _gateway_error(exc: HttpError) -> DocumentGatewayError:
 
 @cache
 def docs_discovery_document() -> str:
-    provider: object = get_static_doc
+    provider = get_static_doc
     content = _call_boundary(provider, "docs", "v1")
     if not isinstance(content, str):
         msg = "Bundled Google Docs v1 discovery document not found"
@@ -4193,7 +4208,7 @@ def _paragraph_brand_diagnostics(
             )
             and paragraph_style.get("keepWithNext") is paragraph_keep_with_next(block)
             and (
-                block.pagination_keep_with_next is None
+                not paragraph_keep_lines_together(block)
                 or paragraph_style.get("keepLinesTogether") is True
             )
         ),
@@ -4633,7 +4648,8 @@ def _paragraph_has_brand(
             spacing.below,
         ),
         paragraph_style.get("keepWithNext") is paragraph_keep_with_next(block),
-        block.pagination_keep_with_next is None or paragraph_style.get("keepLinesTogether") is True,
+        not paragraph_keep_lines_together(block)
+        or paragraph_style.get("keepLinesTogether") is True,
     )
     if not (
         _preserved_layout_matches(paragraph, block)

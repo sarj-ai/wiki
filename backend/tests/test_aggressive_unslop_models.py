@@ -18,6 +18,7 @@ from app.document_transform.schemas import (
     TransformFinding,
     TransformPhase,
 )
+from app.document_transform.unslop import UNSLOP_REVIEW_INSTRUCTION, UNSLOP_REWRITE_INSTRUCTION
 from tests.support import dependency
 
 
@@ -54,6 +55,7 @@ class _ModelResponse:
         self.prompts: list[str] = []
         self.models: list[str] = []
         self.failures = 0
+        self.failure_status = 429
         self.review_input = False
         self.rejected_sources: set[str] = set()
         self.omitted_sources: set[str] = set()
@@ -67,7 +69,9 @@ class _ModelResponse:
         self.models.append(model)
         if self.failures:
             self.failures -= 1
-            raise errors.ClientError(429, {"error": {"message": "Offline transient fixture"}})
+            raise errors.ClientError(
+                self.failure_status, {"error": {"message": "Offline provider fixture"}}
+            )
         if self.review_input:
             payload = _ReviewInput.model_validate_json(contents)
             return types.GenerateContentResponse(
@@ -143,6 +147,48 @@ async def test_aggressive_generation_uses_structured_output_and_supported_thinki
 
 
 @pytest.mark.parametrize("approve", [True, False])
+async def test_short_flagged_prose_still_requires_bound_semantic_review(*, approve: bool) -> None:
+    source = "At the end of the day, ship."
+    replacement = "Ship."
+    document = parse_markdown(source, title="Shipping")
+    block = document.blocks[0]
+    patch = TextPatch(block_id=block.id, expected_sha256=block.sha256, replacement=replacement)
+    harness = _generator(types.GenerateContentResponse(parsed=PatchEnvelope(patches=[patch])))
+
+    assert await harness.generator.generate(document, phase=TransformPhase.UNSLOP) == [patch]
+    harness.call.response = types.GenerateContentResponse(
+        parsed=PatchReviewEnvelope(
+            reviews=[
+                TextPatchReview(
+                    block_id=block.id,
+                    expected_sha256=block.sha256,
+                    replacement_sha256=hashlib.sha256(replacement.encode()).hexdigest(),
+                    equivalent=approve,
+                    reason=(
+                        "The instruction to ship survives; the editorial transition is removed."
+                        if approve
+                        else "The phrase sets a deadline; deleting it changes the instruction."
+                    ),
+                )
+            ]
+        )
+    )
+
+    assert await harness.generator.verify(document, [patch]) == (
+        frozenset({block.id}) if approve else frozenset()
+    )
+    assert len(harness.call.configurations) == 2
+    assert harness.call.configurations[-1].system_instruction == UNSLOP_REVIEW_INSTRUCTION
+    payload = _ReviewInput.model_validate_json(harness.call.prompts[-1])
+    assert len(payload.document_contexts) == 1
+    context = payload.document_contexts[0]
+    assert context.source == source
+    assert context.proposed == replacement
+    assert all(pair.context_id == context.context_id for pair in payload.document_proposals)
+    assert document.blocks[0].text == source
+
+
+@pytest.mark.parametrize("approve", [True, False])
 async def test_bound_semantic_verdict_is_respected_without_retrying_rejection(
     approve: bool,
 ) -> None:
@@ -181,6 +227,7 @@ async def test_semantic_verdict_with_the_wrong_output_hash_fails_closed() -> Non
     )
     with pytest.raises(ModelUnavailableError):
         await harness.generator.verify(document, [patch])
+    assert harness.call.models == ["gemini-3.1-pro-preview"] * 3
 
 
 async def test_missing_rewrite_proposals_retry_instead_of_silently_returning_no_edits() -> None:
@@ -241,8 +288,34 @@ async def test_model_repair_does_not_submit_a_stale_source_proposal() -> None:
     assert not harness.call.configurations
 
 
+async def test_repair_can_keep_an_unspecified_subject_instead_of_inventing_one() -> None:
+    source = "Its song carries through the dense scrub at night."
+    document = parse_markdown(source, title="Unspecified subject")
+    block = document.blocks[0]
+    unsupported = TextPatch(
+        block_id=block.id,
+        expected_sha256=block.sha256,
+        replacement="A nightingale's song carries through dense scrub at night.",
+    )
+    unchanged = unsupported.model_copy(update={"replacement": source})
+    harness = _generator(types.GenerateContentResponse(parsed=PatchEnvelope(patches=[unchanged])))
+    critique = "No antecedent names the singer; preserve the unspecified referent."
+
+    assert await harness.generator.repair(
+        document,
+        [unsupported],
+        (TransformFinding(code="semantic_review_rejected", block_id=block.id, detail=critique),),
+    ) == [unchanged]
+    prompt = harness.call.prompts[0]
+    assert UNSLOP_REWRITE_INSTRUCTION in prompt
+    assert source in prompt
+    assert unsupported.replacement in prompt
+    assert f'"review_feedback":["{critique}"]' in prompt
+    assert document.blocks[0].text == source
+
+
 @pytest.mark.parametrize("failures", [1, 3])
-async def test_review_retries_keep_the_pinned_reviewer_instead_of_downgrading(
+async def test_rate_limited_review_uses_the_configured_fallback_within_its_attempt_budget(
     failures: int,
 ) -> None:
     document = parse_markdown(SOURCE, title="Bird")
@@ -264,9 +337,79 @@ async def test_review_retries_keep_the_pinned_reviewer_instead_of_downgrading(
             await harness.generator.verify(document, [patch])
     else:
         assert await harness.generator.verify(document, [patch]) == {block.id}
-    assert harness.call.models == ["gemini-3.1-pro-preview"] * (
-        failures if failures == 3 else failures + 1
+    assert harness.call.models == ["gemini-3.1-pro-preview"] + ["gemini-3.1-flash-lite"] * (
+        2 if failures == 3 else 1
     )
+
+
+@pytest.mark.parametrize("approve", [True, False])
+async def test_rate_limited_review_fallback_respects_the_bound_verdict(*, approve: bool) -> None:
+    document = parse_markdown(SOURCE, title="Bird")
+    block = document.blocks[0]
+    patch = TextPatch(block_id=block.id, expected_sha256=block.sha256, replacement=REPLACEMENT)
+    review = TextPatchReview(
+        block_id=block.id,
+        expected_sha256=block.sha256,
+        replacement_sha256=hashlib.sha256(REPLACEMENT.encode()).hexdigest(),
+        equivalent=approve,
+        reason="The fixture either preserves or rejects the bird's hidden singing condition.",
+    )
+    harness = _generator(
+        types.GenerateContentResponse(parsed=PatchReviewEnvelope(reviews=[review]))
+    )
+    harness.call.failures = 1
+
+    decision = await harness.generator.review(document, [patch])
+
+    assert decision.approved == (frozenset({block.id}) if approve else frozenset())
+    assert set(decision.rejected) == (set() if approve else {block.id})
+    assert harness.call.models == ["gemini-3.1-pro-preview", "gemini-3.1-flash-lite"]
+    assert all(
+        config.system_instruction == UNSLOP_REVIEW_INSTRUCTION
+        for config in harness.call.configurations
+    )
+    assert document.blocks[0].text == SOURCE
+
+
+@pytest.mark.parametrize("forged_field", ["block_id", "expected_sha256", "replacement_sha256"])
+async def test_rate_limited_review_fallback_rejects_forged_bindings(forged_field: str) -> None:
+    document = parse_markdown(SOURCE, title="Bird")
+    block = document.blocks[0]
+    patch = TextPatch(block_id=block.id, expected_sha256=block.sha256, replacement=REPLACEMENT)
+    review = TextPatchReview(
+        block_id=block.id,
+        expected_sha256=block.sha256,
+        replacement_sha256=hashlib.sha256(REPLACEMENT.encode()).hexdigest(),
+        equivalent=True,
+        reason="The fixture claims equivalence with an invalid source or output binding.",
+    ).model_copy(update={forged_field: "wrong-block" if forged_field == "block_id" else "0" * 64})
+    harness = _generator(
+        types.GenerateContentResponse(parsed=PatchReviewEnvelope(reviews=[review]))
+    )
+    harness.call.failures = 1
+
+    with pytest.raises(ModelUnavailableError):
+        await harness.generator.review(document, [patch])
+
+    assert harness.call.models == [
+        "gemini-3.1-pro-preview",
+        "gemini-3.1-flash-lite",
+        "gemini-3.1-flash-lite",
+    ]
+
+
+@pytest.mark.parametrize("status", [403, 500])
+async def test_other_provider_errors_keep_the_configured_reviewer(status: int) -> None:
+    document = parse_markdown(SOURCE, title="Bird")
+    block = document.blocks[0]
+    patch = TextPatch(block_id=block.id, expected_sha256=block.sha256, replacement=REPLACEMENT)
+    harness = _generator(types.GenerateContentResponse())
+    harness.call.review_input = True
+    harness.call.failures = 1
+    harness.call.failure_status = status
+
+    assert (await harness.generator.review(document, [patch])).approved == {block.id}
+    assert harness.call.models == ["gemini-3.1-pro-preview"] * 2
 
 
 async def test_sparse_proposals_share_a_review_batch_without_unchanged_prose() -> None:

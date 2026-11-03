@@ -8,7 +8,7 @@ from fastapi import APIRouter, Body, Depends, Header, Path, Response, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.dependencies import get_current_user
-from app.identifiers import FileId, IdempotencyKey
+from app.identifiers import FileId, IdempotencyKey, UserId
 from app.models.user import User
 from app.openapi import authentication_responses
 from app.sidebar.cache import SidebarCacheService
@@ -100,7 +100,7 @@ async def create_smart_file(
     started = monotonic()
     reservation = await tasks.create_or_replay(
         kind=TaskKind.FILE_SMART_CREATE,
-        owner_user_id=user.id,
+        owner_user_id=UserId(user.id),
         idempotency_key=IdempotencyKey(idempotency_key),
         payload=payload,
     )

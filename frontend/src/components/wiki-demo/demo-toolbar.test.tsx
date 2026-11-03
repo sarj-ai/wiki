@@ -43,7 +43,7 @@ describe("public file actions and processing disclosure", () => {
     view = render(<DemoFileContext file={file} />);
     expect(screen.getByText(file.processingDisclosure)).toBeInTheDocument();
     expect(screen.getByText(file.description)).toBeInTheDocument();
-    const group = screen.getByRole("group", { name: "Compare document versions" });
+    const group = screen.getByRole("group", { name: "Compare versions" });
     expect(within(group).getByRole("link", { name: "Before" })).toHaveAttribute(
       "href",
       demoHref(before),

@@ -161,7 +161,7 @@ class _TableFontScope(NamedTuple):
 
 
 PIPELINE_VERSION = DOCUMENT_PIPELINE_VERSION
-REQUEST_BUILDER_VERSION = "google-docs-requests-v26"
+REQUEST_BUILDER_VERSION = "google-docs-requests-v27"
 IN_PLACE_REQUEST_BUILDER_VERSION = f"{REQUEST_BUILDER_VERSION}-header-title-v1"
 _COPY_REQUEST_BUILDER_VERSION = f"{REQUEST_BUILDER_VERSION}-visual-v1"
 _MAX_OUTPUT_NAME_LENGTH = 255
@@ -2374,11 +2374,14 @@ class DocumentTransformExecutor(DocumentTransformRunner):
 
     async def _load_source(self, request: DocumentTransformRequest) -> SourceSnapshot:
         source = request.source
-        if isinstance(source, DriveFileSource):
-            snapshot = await self._gateway.load_drive_source(source)
-            if snapshot.modified_time != source.expected_modified_time:
-                raise SourceChangedError
-            return snapshot
+        match source:
+            case DriveFileSource():
+                snapshot = await self._gateway.load_drive_source(source)
+                if snapshot.modified_time != source.expected_modified_time:
+                    raise SourceChangedError
+                return snapshot
+            case _:
+                pass
         return SourceSnapshot(
             title=source.name,
             parent_folder_id=source.destination_folder_id,
@@ -3180,8 +3183,11 @@ def _tab_naming_decline_update(
         "tab_naming": None,
         "tab_naming_declined_reason": "unsupported_metadata",
     }
-    if isinstance(checkpoint, InPlaceCheckpoint):
-        update["changed"] = checkpoint.current_revision_id != checkpoint.source_revision_id
+    match checkpoint:
+        case InPlaceCheckpoint():
+            update["changed"] = checkpoint.current_revision_id != checkpoint.source_revision_id
+        case _:
+            pass
     return update
 
 

@@ -42,7 +42,12 @@ from app.drive.google_schemas import (
     GoogleFileProbe,
     GooglePermission,
 )
-from app.drive.retry import execute_batch_with_retry, execute_with_retry, provider_http_status
+from app.drive.retry import (
+    execute_batch_with_retry,
+    execute_with_retry,
+    provider_http_status,
+    provider_response_status,
+)
 from app.drive.schemas import (
     MIME_DOC,
     MIME_FOLDER,
@@ -945,7 +950,7 @@ class GoogleDriveService(DriveService):
     @staticmethod
     def _classify_probe(response: Any, exception: BaseException | None) -> ShortcutProbe | None:
         if exception is not None:
-            status = getattr(getattr(exception, "resp", None), "status", None)
+            status = provider_response_status(exception)
             if status == 404:
                 return None
             if status == 403:
@@ -1331,7 +1336,7 @@ class GoogleDriveService(DriveService):
         try:
             raw = execute_with_retry(self._client().permissions().list(**params))
         except HttpError as exc:
-            status = getattr(exc.resp, "status", None)
+            status = provider_response_status(exc)
             if status == 403:
                 raise DrivePermissionsForbiddenError from None
             if status == 404:
@@ -1495,7 +1500,7 @@ def build_google_credentials(
 
 
 def _log_provider_failure(operation: str, exc: BaseException) -> None:
-    status = getattr(getattr(exc, "resp", None), "status", None)
+    status = provider_response_status(exc)
     logger.warning(
         "Google Drive request failed operation={operation} status={status}",
         operation=operation,
@@ -1504,7 +1509,7 @@ def _log_provider_failure(operation: str, exc: BaseException) -> None:
 
 
 def _file_permission_error(exc: HttpError) -> DrivePermissionsError:
-    status = getattr(exc.resp, "status", None)
+    status = provider_response_status(exc)
     if status == 403:
         return DrivePermissionsForbiddenError()
     if status == 404:

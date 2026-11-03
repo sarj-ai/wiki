@@ -12,7 +12,7 @@ const PUBLIC_FETCH = vi.fn<typeof fetch>();
 const PREVIEW_HTML = "<!doctype html><html><body>Public sample</body></html>";
 const HTML_SHA256 = "1b47b4fc9abe3730ae8b985a77767ae39f684f593bb8a8b64920c48b78b06695";
 const DEFAULT_PREVIEW =
-  "https://docs.google.com/document/d/1rFT5wWk_mGlttNO5-s1_jd8TWNwxByWIG4oQkCjzJ_I/preview";
+  "https://docs.google.com/document/d/1wroTuWbI9mVByQvZhZjM2i2FtZx-IzxYxfcRIG547XE/preview";
 const PREVIEW_PATHS = new Set(
   DEMO_FILES.flatMap((file) =>
     file.previewUrl === undefined && file.previewFilename ? demoAssetUrl(file.previewFilename) : [],
@@ -192,7 +192,7 @@ describe("public read-only Wiki demo", () => {
     expect(frame).toHaveAttribute("srcdoc", PREVIEW_HTML);
     expect(frame).not.toHaveAttribute("src");
     expect(PUBLIC_FETCH).toHaveBeenCalledExactlyOnceWith(
-      "/demo/files/nightingale-field-guide-v8-preview.json",
+      "/demo/files/nightingale-field-guide-v9-preview.json",
       expect.objectContaining({ credentials: "omit", headers: { Accept: "application/json" } }),
     );
     expect(onlyPublicRequests()).toBe(true);
@@ -231,7 +231,7 @@ describe("public read-only Wiki demo", () => {
     await mount();
     const file = demoFileFor(null);
     if (!file.comparison) throw new Error("Default recorded result has no comparison");
-    const comparison = screen.getByRole("group", { name: "Compare document versions" });
+    const comparison = screen.getByRole("group", { name: "Compare versions" });
     expect(within(comparison).getByRole("link", { name: "After" })).toHaveAttribute(
       "aria-current",
       "page",
@@ -262,6 +262,32 @@ describe("public read-only Wiki demo", () => {
     expect(ROUTING.push).toHaveBeenCalledExactlyOnceWith(
       `/demo?file=${encodeURIComponent(target.id)}`,
     );
+    expect(onlyPublicRequests()).toBe(true);
+  });
+
+  it.each([
+    { handled: false, label: "held", repeat: true },
+    { handled: true, label: "already handled", repeat: false },
+  ])("keeps search open for $label shortcuts", async ({ handled, repeat }) => {
+    await mount();
+    fireEvent.keyDown(window, { ctrlKey: true, key: "k" });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    const dialog = screen.getByRole("dialog", { name: "Search sample files" });
+    const event = new KeyboardEvent("keydown", {
+      cancelable: true,
+      ctrlKey: true,
+      key: "k",
+      repeat,
+    });
+    if (handled) event.preventDefault();
+    fireEvent(window, event);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    expect(screen.getByRole("dialog", { name: "Search sample files" })).toBe(dialog);
+    expect(ROUTING.push).not.toHaveBeenCalled();
     expect(onlyPublicRequests()).toBe(true);
   });
 });
