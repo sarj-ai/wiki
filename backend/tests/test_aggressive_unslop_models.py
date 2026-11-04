@@ -5,12 +5,13 @@ import hashlib
 from http import HTTPStatus
 
 from google.genai import errors, types
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, RootModel
 import pytest
 
 from app.document_transform.errors import ModelUnavailableError
 from app.document_transform.ir import parse_markdown
 from app.document_transform.models import GeminiModelPolicy, VertexGeminiPatchGenerator
+from app.document_transform.safety import RewriteConstraints, validate_patches
 from app.document_transform.schemas import (
     PatchEnvelope,
     PatchReviewEnvelope,
@@ -30,23 +31,48 @@ REPLACEMENT = "The hidden bird can sing unseen from scrub beside the path."
 
 
 class _ReviewInputPair(BaseModel):
-    model_config = ConfigDict(extra="ignore")
+    model_config = ConfigDict(extra="forbid")
     block_id: str
     expected_sha256: str
     replacement_sha256: str
-    source: str
+    source_sentence: str
     context_id: str
 
 
 class _ReviewInputContext(BaseModel):
+    model_config = ConfigDict(extra="forbid")
     context_id: str
-    source: str
-    proposed: str
+    source_block: str
+    proposed_block: str
 
 
 class _ReviewInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
     document_contexts: list[_ReviewInputContext]
-    document_proposals: list[_ReviewInputPair]
+    sentence_audits: list[_ReviewInputPair]
+
+
+class _RewriteInput(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    block_id: str
+    sha256: str
+    text: str
+    rewrite_constraints: RewriteConstraints
+
+
+class _RejectedInput(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    block_id: str
+    proposed: str
+    rejected_constraints: RewriteConstraints
+
+
+class _RewriteInputs(RootModel[list[_RewriteInput]]):
+    """Source blocks and their authoritative rewrite constraints."""
+
+
+class _RejectedInputs(RootModel[list[_RejectedInput]]):
+    """Earlier unsafe proposals and their observed constraints."""
 
 
 class _ModelResponse:
@@ -88,11 +114,11 @@ class _ModelResponse:
                             block_id=pair.block_id,
                             expected_sha256=pair.expected_sha256,
                             replacement_sha256=pair.replacement_sha256,
-                            equivalent=pair.source not in self.rejected_sources,
+                            equivalent=pair.source_sentence not in self.rejected_sources,
                             reason="The fixture preserves the bird's hidden singing location and ability.",
                         )
-                        for pair in payload.document_proposals
-                        if pair.source not in self.omitted_sources
+                        for pair in payload.sentence_audits
+                        if pair.source_sentence not in self.omitted_sources
                     ]
                 )
             )
@@ -189,9 +215,9 @@ async def test_short_flagged_prose_still_requires_bound_semantic_review(*, appro
     payload = _ReviewInput.model_validate_json(harness.call.prompts[-1])
     assert len(payload.document_contexts) == 1
     context = payload.document_contexts[0]
-    assert context.source == source
-    assert context.proposed == replacement
-    assert all(pair.context_id == context.context_id for pair in payload.document_proposals)
+    assert context.source_block == source
+    assert context.proposed_block == replacement
+    assert all(pair.context_id == context.context_id for pair in payload.sentence_audits)
     assert document.blocks[0].text == source
 
 
@@ -277,6 +303,41 @@ async def test_model_repair_receives_the_exact_failure_and_original_source_const
     assert '"force_language":["will"]' in prompt
     if code == "semantic_review_rejected":
         assert '"review_feedback":["The draft loses the hidden observer condition."]' in prompt
+
+
+async def test_repair_keeps_original_force_and_scope_distinct_from_the_rejected_attempt() -> None:
+    source = (
+        "Each report can generally remain within the selected folder, "
+        "and this discussion takes a circuitous route."
+    )
+    replacement = "Each report can generally remain within the selected folder."
+    document = parse_markdown(source, title="Reports")
+    block = document.blocks[0]
+    good = TextPatch(block_id=block.id, expected_sha256=block.sha256, replacement=replacement)
+    bad = good.model_copy(update={"replacement": "Every report will remain in the folder."})
+    unsafe = validate_patches(document, [bad], phase=TransformPhase.UNSLOP, aggressive_unslop=True)
+    assert {finding.code for finding in unsafe.findings} == {"force_language_changed"}
+    harness = _generator(types.GenerateContentResponse(parsed=PatchEnvelope(patches=[good])))
+
+    repaired = await harness.generator.repair(document, [bad], unsafe.findings)
+
+    assert repaired == [good]
+    arrays = [line for line in harness.call.prompts[0].splitlines() if line.startswith("[")]
+    assert len(arrays) == 2
+    original = _RewriteInputs.model_validate_json(arrays[0]).root[0]
+    rejected = _RejectedInputs.model_validate_json(arrays[1]).root[0]
+    assert original.block_id == rejected.block_id == block.id
+    assert original.sha256 == block.sha256
+    assert original.text == source
+    assert original.rewrite_constraints.force_language == ("each", "can")
+    assert original.rewrite_constraints.scope_qualifiers == ("generally", "within")
+    assert rejected.proposed == bad.replacement
+    assert rejected.rejected_constraints.force_language == ("every", "will")
+    assert rejected.rejected_constraints.scope_qualifiers == ()
+    safe = validate_patches(document, repaired, phase=TransformPhase.UNSLOP, aggressive_unslop=True)
+    assert safe.accepted == {block.id: replacement}
+    assert not safe.findings
+    assert document.blocks[0].text == source
 
 
 async def test_model_repair_does_not_submit_a_stale_source_proposal() -> None:
@@ -466,14 +527,15 @@ async def test_sparse_proposals_share_a_review_batch_without_unchanged_prose() -
     assert await harness.generator.verify(document, patches) == {block.id for block in selected}
     assert len(harness.call.configurations) == 1
     payload = _ReviewInput.model_validate_json(harness.call.prompts[0])
-    submitted = payload.document_proposals
+    submitted = payload.sentence_audits
     assert len(submitted) == 6
     assert len(payload.document_contexts) == 1
     context = payload.document_contexts[0]
-    assert context.source == paragraph
-    assert context.proposed == REPLACEMENT
+    assert context.source_block == paragraph
+    assert context.proposed_block == REPLACEMENT
     assert all(
-        pair.source == SOURCE and pair.context_id == context.context_id for pair in submitted
+        pair.source_sentence == SOURCE and pair.context_id == context.context_id
+        for pair in submitted
     )
 
 
@@ -491,9 +553,9 @@ async def test_review_batches_bound_paired_text_without_losing_or_duplicating_ve
     }
     submitted = [_ReviewInput.model_validate_json(prompt) for prompt in harness.call.prompts]
     assert len(submitted) > 1
-    assert all(len(batch.document_proposals) <= 12 for batch in submitted)
+    assert all(len(batch.sentence_audits) <= 12 for batch in submitted)
     assert all(len(prompt) <= 8_000 for prompt in harness.call.prompts)
-    assert [pair.block_id for batch in submitted for pair in batch.document_proposals] == [
+    assert [pair.block_id for batch in submitted for pair in batch.sentence_audits] == [
         patch.block_id for patch in patches
     ]
     assert harness.call.models == ["gemini-3.1-pro-preview"] * len(submitted)
@@ -528,16 +590,16 @@ async def test_every_source_sentence_must_pass_before_its_paragraph_is_accepted(
     assert decision.approved == (frozenset({block.id}) if verdict == "approve" else frozenset())
     assert set(decision.rejected) == ({block.id} if verdict == "reject" else set())
     payload = _ReviewInput.model_validate_json(harness.call.prompts[0])
-    submitted = payload.document_proposals
+    submitted = payload.sentence_audits
     assert len(submitted) == 2
-    assert {pair.source for pair in submitted} == {
+    assert {pair.source_sentence for pair in submitted} == {
         "Its song belongs within a breeding season, a territory and an annual journey.",
         provenance,
     }
     assert len(payload.document_contexts) == 1
     context = payload.document_contexts[0]
-    assert context.source == source
-    assert context.proposed == patch.replacement
+    assert context.source_block == source
+    assert context.proposed_block == patch.replacement
     assert all(pair.context_id == context.context_id for pair in submitted)
     assert len({pair.block_id for pair in submitted}) == 2
 
@@ -553,8 +615,10 @@ async def test_sentence_verdict_hashes_bind_context_and_position() -> None:
         harness = _generator(types.GenerateContentResponse())
         harness.call.review_input = True
         await harness.generator.review(document, [patch])
-        submitted = _ReviewInput.model_validate_json(harness.call.prompts[0]).document_proposals
-        hashes.append(next(pair.expected_sha256 for pair in submitted if pair.source == shared))
+        submitted = _ReviewInput.model_validate_json(harness.call.prompts[0]).sentence_audits
+        hashes.append(
+            next(pair.expected_sha256 for pair in submitted if pair.source_sentence == shared)
+        )
     assert hashes[0] != hashes[1]
 
 
@@ -572,14 +636,14 @@ async def test_sentence_checks_share_paragraph_context_without_losing_full_cover
         patch.block_id for patch in patches
     }
     payloads = [_ReviewInput.model_validate_json(prompt) for prompt in harness.call.prompts]
-    assert sum(len(payload.document_proposals) for payload in payloads) == 60
+    assert sum(len(payload.sentence_audits) for payload in payloads) == 60
     assert len(payloads) <= 6
     assert all(len(prompt) <= 8_000 for prompt in harness.call.prompts)
     for payload in payloads:
         contexts = {context.context_id: context for context in payload.document_contexts}
         assert len(contexts) == len(payload.document_contexts)
-        assert len(contexts) < len(payload.document_proposals)
+        assert len(contexts) < len(payload.sentence_audits)
         assert all(
-            contexts[pair.context_id].source in paragraphs for pair in payload.document_proposals
+            contexts[pair.context_id].source_block in paragraphs for pair in payload.sentence_audits
         )
-        assert all(context.proposed == REPLACEMENT for context in contexts.values())
+        assert all(context.proposed_block == REPLACEMENT for context in contexts.values())
