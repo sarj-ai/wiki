@@ -5,6 +5,8 @@ from collections.abc import Callable
 import hashlib
 from http import HTTPStatus
 import json
+import re
+from typing import Literal
 
 from google import genai
 from google.genai import types
@@ -38,6 +40,9 @@ class _WirePair(BaseModel):
     replacement_sha256: str
     source_sentence: str
     context_id: str
+    source_kind: Literal["sentence", "clause", "dependent_clause"]
+    source_span: tuple[int, int] | None
+    parent_sentence: str | None
 
 
 class _WireContext(BaseModel):
@@ -65,6 +70,341 @@ class _WireContent(BaseModel):
 class _WireReviewRequest(BaseModel):
     model_config = ConfigDict(extra="ignore")
     contents: list[_WireContent]
+
+
+_FEATURE_RELATION = re.compile(
+    r"\b(Atlas|Prism|Cleaner|Formatter)\s+(?:(is intended to|to)\s+)?"
+    r"(condenses?|refines?|tightens?|improves?)\s+(prose|layouts|presentation)\b"
+)
+_TEMPORAL_PREDICATE = r"(?:Recorder collects data from sensors|Pump (?:runs|may not run))"
+_TEMPORAL_POSTFIX = re.compile(
+    rf"(?P<main>{_TEMPORAL_PREDICATE})\s+while\s+(?P<condition>{_TEMPORAL_PREDICATE})",
+    re.IGNORECASE,
+)
+_TEMPORAL_PREFIX = re.compile(
+    rf"\bwhile\s+(?P<condition>{_TEMPORAL_PREDICATE}),\s+(?P<main>{_TEMPORAL_PREDICATE})",
+    re.IGNORECASE,
+)
+
+
+def _feature_relations(text: str) -> frozenset[tuple[str, str, str, str]]:
+    return frozenset(
+        (
+            match.group(1),
+            "intended" if match.group(2) == "is intended to" else "function",
+            match.group(3).removesuffix("s"),
+            match.group(4),
+        )
+        for match in _FEATURE_RELATION.finditer(text)
+    )
+
+
+def _temporal_relations(text: str) -> frozenset[tuple[str, str]]:
+    return frozenset(
+        (match.group("main").casefold(), match.group("condition").casefold())
+        for pattern in (_TEMPORAL_POSTFIX, _TEMPORAL_PREFIX)
+        for match in pattern.finditer(text)
+    )
+
+
+def _functional_audit_envelope(payload: _WireReview) -> PatchReviewEnvelope:
+    contexts = {context.context_id: context for context in payload.document_contexts}
+    reviews: list[TextPatchReview] = []
+    for audit in payload.sentence_audits:
+        context = contexts[audit.context_id]
+        required = _feature_relations(audit.source_sentence)
+        original = _feature_relations(context.source_block)
+        proposed = _feature_relations(context.proposed_block)
+        equivalent = required <= proposed <= original and _temporal_relations(
+            context.source_block
+        ) == _temporal_relations(context.proposed_block)
+        reviews.append(
+            TextPatchReview(
+                block_id=audit.block_id,
+                expected_sha256=audit.expected_sha256,
+                replacement_sha256=audit.replacement_sha256,
+                equivalent=equivalent,
+                reason="Each source subject retains its own function and object."
+                if equivalent
+                else "A source subject loses its function, object, or governing condition.",
+            )
+        )
+    return PatchReviewEnvelope(reviews=reviews)
+
+
+def _review_response(envelope: PatchReviewEnvelope) -> httpx.Response:
+    return httpx.Response(
+        HTTPStatus.OK,
+        json={
+            "candidates": [
+                {
+                    "content": {
+                        "role": "model",
+                        "parts": [{"text": envelope.model_dump_json()}],
+                    },
+                    "finishReason": "STOP",
+                }
+            ]
+        },
+    )
+
+
+def _functional_generator(client: genai.Client) -> VertexGeminiPatchGenerator:
+    return VertexGeminiPatchGenerator(
+        policy=GeminiModelPolicy(
+            project="offline-fixture",
+            location="global",
+            unslop_model="gemini-3.5-flash-lite",
+            fallback_model="gemini-3.1-flash-lite",
+            restyle_model="gemini-3.8-flash",
+        ),
+        client=client,
+    )
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        "Atlas condenses prose; Prism refines layouts for readers.",
+        "Atlas condenses prose, whereas Prism refines layouts for readers.",
+        "The suite includes Atlas to condense prose and Prism to refine layouts for readers.",
+    ],
+)
+@pytest.mark.parametrize(
+    ("proposed", "approved"),
+    [
+        ("Prism refines layouts and Atlas condenses prose.", True),
+        ("Atlas condenses prose while Prism can work together.", False),
+        ("Atlas refines layouts and Prism condenses prose.", False),
+        ("Atlas condenses prose and Prism improves readability.", False),
+    ],
+)
+async def test_sdk_reviews_each_feature_function_in_full_reordered_context(
+    sdk_client_factory: Callable[[httpx.AsyncClient], genai.Client],
+    source: str,
+    proposed: str,
+    *,
+    approved: bool,
+) -> None:
+    document = parse_markdown(source, title="Feature purposes")
+    block = document.blocks[0]
+    patch = TextPatch(block_id=block.id, expected_sha256=block.sha256, replacement=proposed)
+    received: list[_WireReview] = []
+
+    def respond(request: httpx.Request) -> httpx.Response:
+        contents = _WireReviewRequest.model_validate_json(request.content).contents
+        payload = _WireReview.model_validate_json(contents[0].parts[0].text)
+        received.append(payload)
+        return _review_response(_functional_audit_envelope(payload))
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(respond)) as http:
+        client = sdk_client_factory(http)
+        try:
+            decision = await _functional_generator(client).review(document, [patch])
+        finally:
+            await client.aio.aclose()
+    assert decision.approved == (frozenset({block.id}) if approved else frozenset())
+    assert set(decision.rejected) == (set() if approved else {block.id})
+    assert len(received) == 1
+    payload = received[0]
+    assert len(payload.sentence_audits) == 3
+    assert [audit.source_kind for audit in payload.sentence_audits] == [
+        "sentence",
+        "clause",
+        "clause",
+    ]
+    assert payload.sentence_audits[0].source_sentence == source
+    assert all(
+        audit.replacement_sha256 == hashlib.sha256(proposed.encode()).hexdigest()
+        for audit in payload.sentence_audits
+    )
+    assert payload.document_contexts[0].source_block == source
+    assert payload.document_contexts[0].proposed_block == proposed
+
+
+@pytest.mark.parametrize(
+    ("source", "proposed", "approved"),
+    [
+        (
+            "Cleaner is intended to tighten prose, while Formatter improves presentation.",
+            "While Formatter improves presentation, Cleaner is intended to tighten prose.",
+            True,
+        ),
+        (
+            "Cleaner is intended to tighten prose, while Formatter improves presentation.",
+            "Cleaner is intended to tighten prose while Formatter can work together.",
+            False,
+        ),
+        (
+            "Cleaner is intended to tighten prose, while Formatter improves presentation.",
+            "Formatter is intended to tighten prose while Cleaner improves presentation.",
+            False,
+        ),
+        (
+            "Cleaner is intended to tighten prose, while Formatter improves presentation.",
+            "Cleaner tightens prose while Formatter improves presentation.",
+            False,
+        ),
+        (
+            "Recorder collects data from sensors while Pump runs.",
+            "While Pump runs, Recorder collects data from sensors.",
+            True,
+        ),
+        (
+            "Recorder collects data from sensors while Pump runs.",
+            "Recorder collects data from sensors.",
+            False,
+        ),
+        (
+            "Recorder collects data from sensors while Pump runs.",
+            "Recorder collects data from sensors; Pump runs.",
+            False,
+        ),
+        (
+            "Recorder collects data from sensors while Pump may not run.",
+            "Recorder collects data from sensors while Pump runs.",
+            False,
+        ),
+    ],
+)
+async def test_sdk_while_focus_reviews_its_function_or_condition_in_parent_context(
+    sdk_client_factory: Callable[[httpx.AsyncClient], genai.Client],
+    source: str,
+    proposed: str,
+    *,
+    approved: bool,
+) -> None:
+    document = parse_markdown(source, title="Contextual dependent audit")
+    block = document.blocks[0]
+    patch = TextPatch(block_id=block.id, expected_sha256=block.sha256, replacement=proposed)
+    received: list[_WireReview] = []
+
+    def respond(request: httpx.Request) -> httpx.Response:
+        contents = _WireReviewRequest.model_validate_json(request.content).contents
+        payload = _WireReview.model_validate_json(contents[0].parts[0].text)
+        received.append(payload)
+        return _review_response(_functional_audit_envelope(payload))
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(respond)) as http:
+        client = sdk_client_factory(http)
+        try:
+            decision = await _functional_generator(client).review(document, [patch])
+        finally:
+            await client.aio.aclose()
+    assert decision.approved == (frozenset({block.id}) if approved else frozenset())
+    assert set(decision.rejected) == (set() if approved else {block.id})
+    assert len(received) == 1
+    original, focus = received[0].sentence_audits
+    assert original.source_kind == "sentence"
+    assert original.source_sentence == source
+    assert focus.source_kind == "dependent_clause"
+    assert focus.source_sentence.startswith("while ")
+    assert focus.parent_sentence == source
+    assert focus.source_span is not None
+    start, end = focus.source_span
+    assert source[start:end] == focus.source_sentence
+    assert received[0].document_contexts[0].source_block == source
+    assert received[0].document_contexts[0].proposed_block == proposed
+
+
+def _corrupt_clause_verdict(
+    payload: _WireReview, envelope: PatchReviewEnvelope, fault: str
+) -> PatchReviewEnvelope:
+    index = next(
+        index
+        for index, audit in enumerate(payload.sentence_audits)
+        if audit.source_kind != "sentence"
+    )
+    reviews = list(envelope.reviews)
+    if fault == "missing":
+        reviews.pop(index)
+    elif fault == "duplicate":
+        reviews.append(reviews[index])
+    elif fault in {"parent_binding", "span_binding"}:
+        reviews[index] = reviews[index].model_copy(
+            update={
+                "expected_sha256": _altered_focus_hash(
+                    payload, payload.sentence_audits[index], fault
+                )
+            }
+        )
+    else:
+        updates = {
+            "unknown_id": {"block_id": reviews[index].block_id + "-unknown"},
+            "source_hash": {"expected_sha256": "0" * 64},
+            "replacement_hash": {"replacement_sha256": "0" * 64},
+        }
+        reviews[index] = reviews[index].model_copy(update=updates[fault])
+    return PatchReviewEnvelope(reviews=reviews)
+
+
+def _altered_focus_hash(payload: _WireReview, audit: _WirePair, fault: str) -> str:
+    assert audit.source_span is not None
+    assert audit.parent_sentence is not None
+    context = next(
+        item for item in payload.document_contexts if item.context_id == audit.context_id
+    )
+    start, end = audit.source_span
+    parent = audit.parent_sentence
+    if fault == "span_binding":
+        start += 1
+    if fault == "parent_binding":
+        parent += " A different condition applies."
+    identity = [
+        hashlib.sha256(context.source_block.encode()).hexdigest(),
+        0,
+        audit.source_kind,
+        parent,
+        start,
+        end,
+        audit.source_sentence,
+    ]
+    return hashlib.sha256(json.dumps(identity, separators=(",", ":")).encode()).hexdigest()
+
+
+@pytest.mark.parametrize(
+    "fault",
+    [
+        "missing",
+        "duplicate",
+        "unknown_id",
+        "source_hash",
+        "replacement_hash",
+        "parent_binding",
+        "span_binding",
+    ],
+)
+@pytest.mark.parametrize(
+    "source",
+    [
+        "Atlas condenses prose; Prism refines layouts for readers.",
+        "Recorder collects data from sensors while Pump runs.",
+    ],
+)
+async def test_sdk_clause_verdict_coverage_and_proposal_bindings_fail_closed(
+    sdk_client_factory: Callable[[httpx.AsyncClient], genai.Client], fault: str, source: str
+) -> None:
+    document = parse_markdown(source, title="Bound feature purposes")
+    block = document.blocks[0]
+    patch = TextPatch(block_id=block.id, expected_sha256=block.sha256, replacement=source)
+    received: list[_WireReview] = []
+
+    def respond(request: httpx.Request) -> httpx.Response:
+        contents = _WireReviewRequest.model_validate_json(request.content).contents
+        payload = _WireReview.model_validate_json(contents[0].parts[0].text)
+        received.append(payload)
+        envelope = _corrupt_clause_verdict(payload, _functional_audit_envelope(payload), fault)
+        return _review_response(envelope)
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(respond)) as http:
+        client = sdk_client_factory(http)
+        try:
+            with pytest.raises(ModelUnavailableError):
+                await _functional_generator(client).review(document, [patch])
+        finally:
+            await client.aio.aclose()
+    assert len(received) == 3
+    assert all(len(payload.sentence_audits) >= 2 for payload in received)
 
 
 def _fact_audit_envelope(

@@ -11,7 +11,7 @@ from app.document_transform.limits import MIN_MODEL_PROSE_WORDS
 
 UNSLOP_UPSTREAM_COMMIT = "d81f5196167ded24f46fced04958c0c12d681798"
 UNSLOP_UPSTREAM_VERSION = "2.3.0"
-UNSLOP_POLICY_VERSION = "sarj-concise-v11"
+UNSLOP_POLICY_VERSION = "sarj-concise-v12"
 UNSLOP_REWRITE_INSTRUCTION = (
     "Act as a ruthless, precise line editor. Rewrite verbose prose into direct, compact language. "
     "Remove throat-clearing, rhetorical questions, repeated explanations, ornamental metaphors, "
@@ -26,7 +26,10 @@ UNSLOP_REWRITE_INSTRUCTION = (
     "wording. Attach named attribution directly to the reported fact or result. Remove setup "
     "about a report only when its attribution and factual qualifiers survive in the same block. "
     "Remove repeated editorial framing; combine related short clauses only when their distinct "
-    "subjects, conditions and relationships remain explicit. Use concrete words and direct verbs "
+    "subjects, conditions and relationships remain explicit. Preserve each subject's own action, "
+    "object and purpose. Mentioning both subjects or their shared benefit does not preserve two "
+    "different functions. Keep coordination grammatical: a subject must retain its own predicate "
+    "rather than inheriting an unrelated action from another subject. Use concrete words and direct verbs "
     "instead of abstract noun phrases. Aim for 50–70% fewer words in padded "
     "paragraphs when their complete factual content fits; this is a target, never permission to "
     "discard a distinct fact, caveat, attribution, uncertainty, qualification, or requirement. "
@@ -72,7 +75,15 @@ UNSLOP_REWRITE_INSTRUCTION = (
 UNSLOP_REVIEW_INSTRUCTION = (
     "Perform factual audits, not edits or sentence replacements. For each sentence_audits entry, "
     "follow context_id to its document_contexts entry. source_sentence is the source unit being "
-    "audited; source_block and proposed_block are the complete original and rewritten text block "
+    "audited. source_kind distinguishes an original sentence, an additional clause audit and "
+    "a dependent_clause focus. source_span on a focus gives its exact character range in "
+    "source_block; parent_sentence is its complete original governing sentence. For a "
+    "dependent_clause, audit the leading while and entire predicate IN CONTEXT: preserve its "
+    "temporal condition or contrast without assuming which relationship the conjunction means. "
+    "Never turn that dependent predicate into an unconditional assertion. Mentioning both "
+    "subjects separately does not preserve their relationship or condition. Every original "
+    "sentence and every supplied focus require separate bound verdicts. source_block and "
+    "proposed_block are the complete original and rewritten text block "
     "(a paragraph, slide text, list item, or other supplied prose). Check whether this source unit's "
     "factual assertions survive anywhere in that complete proposed_block. The same complete "
     "proposed_block intentionally serves multiple source-sentence audits; it is not a requested "
@@ -85,7 +96,7 @@ UNSLOP_REVIEW_INSTRUCTION = (
     "antecedent of a retained pronoun. Inherited ambiguity does not justify inventing a referent "
     "or comparison baseline. A sentence about a report may be merged into its result only when "
     "the same attribution and factual qualifiers survive. Each audit ID "
-    "is one mandatory source-sentence check; none may be skipped. Approve only if every distinct "
+    "is one mandatory source-unit check; none may be skipped. Approve only if every distinct "
     "factual claim, relationship, exception, caveat, uncertainty, attribution, requirement, complete "
     "list and list member, name, quantity, date, citation and exact quotation survives with the same "
     "meaning, scope, negation and modal force. "
@@ -110,6 +121,10 @@ UNSLOP_REVIEW_INSTRUCTION = (
     "beneficial maintenance. Verify classification criteria, nested categories, purposes, "
     "sampling and method provenance, and ongoing uncertainty explicitly. Distinct subjects "
     "with different predicates cannot be merged under one shared predicate. A general statement "
+    "about two features must preserve each feature's own action, object and purpose. Merely "
+    "retaining both names or a common benefit is not evidence of either functional relationship. "
+    "Reject malformed coordination that leaves a subject without its source-supported predicate. "
+    "A general statement "
     "about measurements coming from particular samples and methods remains a provenance claim. "
     "Preserving a topic elsewhere does not preserve its relationship or qualification here. "
     "Reject a summary that substitutes an abstract topic for these concrete details. "
@@ -143,6 +158,10 @@ HTML_ENTITY_PATTERN = r"&(?:#[0-9]+|#[xX][0-9A-Fa-f]+|[A-Za-z][A-Za-z0-9]+);"
 
 _EDITORIAL_FRAMING_PATTERN = re.compile(
     r"(?:^|(?<=[.!?\n]))[ \t]*(?:"
+    r"(?:[Tt]o put it|[Pp]ut(?: it)?) another way[,:][ \t]*"
+    r"(?:and to explain the same (?:idea|point) from another angle[,:][ \t]*)?|"
+    r"[Ii]n other words[,:][ \t]*|"
+    r"[Tt]he same point bears repeating(?: in simpler language)?[,:][ \t]*|"
     r"[Aa]s an AI language model(?=[,:])|"
     r"This deliberately wordy AI draft(?!\s+(?:must|shall|should|requires?|needs?)\b)|"
     r"[Aa]n AI draft takes shape(?=[.!?]|$)|"
@@ -235,6 +254,7 @@ _RECAP_PROTECTED_SPAN = re.compile(
     r"(?:[\w.-]+)?"
 )
 _RECAP_PROTECTED_LEADING = frozenset("@/#_`'\"‘“[")
+_FRAMING_REFERENCE_SPAN = re.compile(rf"{CUSTOM_URI_PATTERN}|\[[^\]\n]*\]")
 
 UNSLOP_CATALOG_SHA256 = hashlib.sha256(
     json.dumps(
@@ -248,6 +268,10 @@ UNSLOP_CATALOG_SHA256 = hashlib.sha256(
                 (code, pattern.pattern, pattern.flags) for code, pattern in _CANDIDATE_PATTERNS
             ],
             "ignored_span": (_IGNORED_SPAN.pattern, _IGNORED_SPAN.flags),
+            "framing_reference_span": (
+                _FRAMING_REFERENCE_SPAN.pattern,
+                _FRAMING_REFERENCE_SPAN.flags,
+            ),
             "recap_protected_leading": sorted(_RECAP_PROTECTED_LEADING),
             "recap_protected_span": (
                 _RECAP_PROTECTED_SPAN.pattern,
@@ -287,7 +311,10 @@ class DeletionSpan:
 
 def without_editorial_framing(text: str) -> str:
     characters = list(text)
-    for match in _EDITORIAL_FRAMING_PATTERN.finditer(_mask_ignored_spans(text)):
+    masked = _FRAMING_REFERENCE_SPAN.sub(
+        lambda match: " " * len(match.group(0)), _mask_ignored_spans(text)
+    )
+    for match in _EDITORIAL_FRAMING_PATTERN.finditer(masked):
         characters[match.start() : match.end()] = " " * (match.end() - match.start())
     return "".join(characters)
 

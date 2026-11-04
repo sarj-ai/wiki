@@ -6,6 +6,7 @@ from dataclasses import asdict, dataclass, replace
 from datetime import timedelta
 import hashlib
 from http import HTTPStatus
+from itertools import pairwise
 import json
 import re
 from typing import Literal, NewType, override
@@ -30,6 +31,10 @@ from app.document_transform.schemas import (
     TransformPhase,
 )
 from app.document_transform.unslop import (
+    CUSTOM_URI_PATTERN,
+    HTML_ENTITY_PATTERN,
+    RFCISH_EMAIL_PATTERN,
+    SINGLE_QUOTED_SPAN_PATTERN,
     UNSLOP_REVIEW_INSTRUCTION,
     UNSLOP_REWRITE_INSTRUCTION,
     model_editable_blocks,
@@ -52,7 +57,38 @@ _REVIEW_FALLBACK_STATUSES = frozenset(
 _MAX_REVIEW_BATCH_CHARACTERS = 8_000
 _MAX_REVIEW_BATCH_PAIRS = 12
 _MAX_CONCURRENT_REVIEW_BATCHES = 2
+_MAX_BLOCK_CLAUSE_AUDITS = 4
+_MAX_DOCUMENT_CLAUSE_AUDITS = 32
+_PARALLEL_PURPOSE_COUNT = 2
 _REVIEW_SENTENCE = re.compile(r".+?(?:[.!?]+(?=\s+|$)|$)", re.DOTALL)
+_REVIEW_PROTECTED_SPAN = re.compile(
+    r"```[\s\S]*?```|~~~[\s\S]*?~~~|`[^`\n]+`|\"[^\"]*\"|“[^”]*”|"
+    rf"{SINGLE_QUOTED_SPAN_PATTERN}|{RFCISH_EMAIL_PATTERN}|{CUSTOM_URI_PATTERN}|"
+    rf"{HTML_ENTITY_PATTERN}|\[[^\]\n]*\]|\([^()\n]*\)"
+)
+_NAMED_SUBJECT_PATTERN = r"[A-Z][A-Za-z0-9_-]*(?:[ \t]+[A-Z][A-Za-z0-9_-]*){0,3}"
+_FINITE_ACTION_PATTERN = (
+    r"(?:is|are|was|were|has|have|had|can|could|may|might|must|shall|should|will|would|"
+    r"cannot|can['’]t|won['’]t|isn['’]t|aren['’]t|doesn['’]t|don['’]t|didn['’]t|"
+    r"do|does|did|[a-z]+s|[a-z]+ed)\b"
+)
+_SUBJECT_PREDICATE = re.compile(
+    rf"(?:{_NAMED_SUBJECT_PATTERN}|"
+    r"(?:[Tt]he|[Ee]ach|[Ee]very|[Aa]ll|[Ss]ome|[Nn]o|[Oo]ur|[Tt]heir)"
+    r"[ \t]+(?:[a-z][a-z'-]*[ \t]+){0,3}[a-z][a-z'-]*|"
+    r"[Ii]t|[Tt]hey|[Ww]e|[Yy]ou|[Hh]e|[Ss]he)"
+    rf"[ \t]+(?:{_FINITE_ACTION_PATTERN}[ \t]+\S|"
+    r"(?:runs|operates|works|stops|starts|waits|exists|fails|succeeds|continues|pauses)[.!?]*[ \t]*$)"
+)
+_DEPENDENT_CLAUSE_START = re.compile(
+    r"(?:if|when|whenever|unless|until|before|after|while|since|although|provided)\b",
+    re.IGNORECASE,
+)
+_COMPOUND_SEPARATOR = re.compile(r";|\bwhereas\b", re.IGNORECASE)
+_NAMED_PURPOSE = re.compile(
+    rf"\b{_NAMED_SUBJECT_PATTERN}[ \t]+"
+    r"(?:(?:is|was)[ \t]+(?:intended|designed)[ \t]+)?to[ \t]+[a-z][a-z'-]*\b"
+)
 _RESPONSE_TOKEN_LIMIT = 8_192
 _LARGE_RESPONSE_TOKEN_LIMIT = 16_384
 _LARGE_PROMPT_CHARACTERS = 24_000
@@ -87,12 +123,33 @@ class _ReviewPair:
     source: str
     proposed: str
     source_context: str = ""
+    source_kind: Literal["sentence", "clause", "dependent_clause"] = "sentence"
+    source_span: tuple[int, int] | None = None
+    parent_sentence: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
 class _ReviewUnit:
     parent_block_id: str
     pair: _ReviewPair
+
+
+@dataclass(frozen=True, slots=True)
+class _ReviewPlan:
+    units: tuple[_ReviewUnit, ...]
+    rejected: dict[str, str]
+
+
+@dataclass(frozen=True, slots=True)
+class _ClauseSpan:
+    start: int
+    end: int
+
+
+@dataclass(frozen=True, slots=True)
+class _ReviewFocus:
+    kind: Literal["clause", "dependent_clause"]
+    span: tuple[int, int]
 
 
 @dataclass(frozen=True, slots=True)
@@ -109,6 +166,9 @@ class _SentenceAudit:
     replacement_sha256: str
     source_sentence: str
     context_id: _ReviewContextId
+    source_kind: Literal["sentence", "clause", "dependent_clause"]
+    source_span: tuple[int, int] | None
+    parent_sentence: str | None
 
 
 @dataclass(frozen=True, slots=True)
@@ -356,17 +416,17 @@ class VertexGeminiPatchGenerator(PatchGenerator):
             raise ValueError(msg)
         approved: set[str] = set()
         rejected: dict[str, str] = {}
-        units = [
-            unit
-            for block in model_editable_blocks(document)
-            if block.id in pending
-            for unit in _review_units(block, pending[block.id].replacement)
-        ]
+        plan = _review_plan(document, pending)
+        units = list(plan.units)
         decisions = await self._review_all_batches([unit.pair for unit in units])
         for decision in decisions:
             approved.update(decision.approved)
             rejected.update(decision.rejected)
-        return _aggregate_review_units(units, RewriteReview(frozenset(approved), rejected))
+        decision = _aggregate_review_units(units, RewriteReview(frozenset(approved), rejected))
+        return RewriteReview(
+            approved=decision.approved.difference(plan.rejected),
+            rejected={**decision.rejected, **plan.rejected},
+        )
 
     async def _review_all_batches(self, pairs: list[_ReviewPair]) -> tuple[RewriteReview, ...]:
         try:
@@ -431,6 +491,31 @@ class VertexGeminiPatchGenerator(PatchGenerator):
         raise ValueError(msg)
 
 
+def _review_plan(document: DocumentIR, patches: dict[str, TextPatch]) -> _ReviewPlan:
+    units: list[_ReviewUnit] = []
+    rejected: dict[str, str] = {}
+    clause_count = 0
+    for block in model_editable_blocks(document):
+        if block.id not in patches:
+            continue
+        proposed = patches[block.id].replacement
+        # Original sentence units and their hashes remain mandatory even on overflow.
+        units.extend(_review_units(block, proposed))
+        clauses = _clause_review_units(block, proposed)
+        if (
+            len(clauses) > _MAX_BLOCK_CLAUSE_AUDITS
+            or clause_count + len(clauses) > _MAX_DOCUMENT_CLAUSE_AUDITS
+        ):
+            rejected[block.id] = (
+                "Source clause audit coverage exceeds the bounded review budget; "
+                "retain the original block rather than approve partially audited changes."
+            )
+            continue
+        units.extend(clauses)
+        clause_count += len(clauses)
+    return _ReviewPlan(tuple(units), rejected)
+
+
 def _review_units(block: TextBlock, proposed: str) -> tuple[_ReviewUnit, ...]:
     sentences = tuple(
         sentence
@@ -460,6 +545,154 @@ def _review_units(block: TextBlock, proposed: str) -> tuple[_ReviewUnit, ...]:
             ),
         )
         for index, sentence in enumerate(sentences)
+    )
+
+
+def _clause_review_units(block: TextBlock, proposed: str) -> tuple[_ReviewUnit, ...]:
+    units: list[_ReviewUnit] = []
+    seen: set[tuple[str, int, int]] = set()
+    replacement_sha256 = hashlib.sha256(proposed.encode()).hexdigest()
+    protected = tuple(_REVIEW_PROTECTED_SPAN.finditer(block.text))
+    masked = _REVIEW_PROTECTED_SPAN.sub(lambda match: " " * len(match.group(0)), block.text)
+    for index, match in enumerate(_REVIEW_SENTENCE.finditer(block.text)):
+        sentence_mask = masked[match.start() : match.end()]
+        if _protected_sentence_boundary(match, protected) or any(
+            delimiter in sentence_mask for delimiter in "()[]"
+        ):
+            continue
+        for focus in _review_focuses(match.group(0), sentence_mask):
+            start, end = focus.span
+            span = (match.start() + start, match.start() + end)
+            identity = (focus.kind, *span)
+            if identity in seen:
+                continue
+            seen.add(identity)
+            units.append(
+                _clause_review_unit(
+                    block,
+                    proposed,
+                    replacement_sha256,
+                    index,
+                    parent_sentence=match.group(0).strip(),
+                    focus=_ReviewFocus(focus.kind, span),
+                )
+            )
+            # One excess unit is an explicit overflow signal; no partial set is approved.
+            if len(units) > _MAX_BLOCK_CLAUSE_AUDITS:
+                return tuple(units)
+    return tuple(units)
+
+
+def _protected_sentence_boundary(
+    sentence: re.Match[str], protected: tuple[re.Match[str], ...]
+) -> bool:
+    return any(
+        span.start() < sentence.start() < span.end() or span.start() < sentence.end() < span.end()
+        for span in protected
+    )
+
+
+def _clause_review_unit(
+    block: TextBlock,
+    proposed: str,
+    replacement_sha256: str,
+    sentence_index: int,
+    *,
+    parent_sentence: str,
+    focus: _ReviewFocus,
+) -> _ReviewUnit:
+    span = focus.span
+    source = block.text[span[0] : span[1]]
+    identity = [block.sha256, sentence_index, focus.kind, parent_sentence, *span, source]
+    source_sha256 = hashlib.sha256(json.dumps(identity, separators=(",", ":")).encode()).hexdigest()
+    return _ReviewUnit(
+        block.id,
+        _ReviewPair(
+            block_id=f"{block.id}-sentence-{sentence_index}-{focus.kind}-{span[0]}-{span[1]}",
+            expected_sha256=source_sha256,
+            replacement_sha256=replacement_sha256,
+            source=source,
+            proposed=proposed,
+            source_context=block.text,
+            source_kind=focus.kind,
+            source_span=span,
+            parent_sentence=parent_sentence,
+        ),
+    )
+
+
+def _review_focuses(text: str, masked: str) -> tuple[_ReviewFocus, ...]:
+    focuses = [
+        _ReviewFocus("clause", (span.start, span.end))
+        for span in _independent_clause_spans(text, masked)
+    ]
+    focuses.extend(
+        _ReviewFocus("dependent_clause", (span.start, span.end))
+        for span in _dependent_clause_spans(text, masked)
+    )
+    return tuple(focuses)
+
+
+def _dependent_clause_spans(text: str, masked: str) -> tuple[_ClauseSpan, ...]:
+    spans: list[_ClauseSpan] = []
+    for match in re.finditer(r"\bwhile\b", masked, re.IGNORECASE):
+        if re.search(r"\b(?:a|the)[ \t]+$", masked[: match.start()], re.IGNORECASE):
+            continue
+        span = _while_focus_span(text, masked, match)
+        if span is not None:
+            spans.append(span)
+    return tuple(spans)
+
+
+def _while_focus_span(text: str, masked: str, match: re.Match[str]) -> _ClauseSpan | None:
+    end = len(text)
+    if not masked[: match.start()].strip():
+        end = masked.find(",", match.end())
+        if end < 0 or not _has_explicit_subject_predicate(masked[end + 1 :].lstrip()):
+            return None
+    if _has_explicit_subject_predicate(masked[match.end() : end].strip()):
+        return _trim_clause_span(text, match.start(), end)
+    return None
+
+
+def _independent_clause_spans(text: str, masked: str) -> tuple[_ClauseSpan, ...]:
+    separators = tuple(_COMPOUND_SEPARATOR.finditer(masked))
+    if separators:
+        bounds = [(0, separators[0].start())]
+        bounds.extend((left.end(), right.start()) for left, right in pairwise(separators))
+        bounds.append((separators[-1].end(), len(text)))
+        spans = tuple(_trim_clause_span(text, start, end) for start, end in bounds)
+        if all(_has_explicit_subject_predicate(masked[span.start : span.end]) for span in spans):
+            return spans
+    return _named_purpose_spans(text, masked)
+
+
+def _trim_clause_span(text: str, start: int, end: int) -> _ClauseSpan:
+    while start < end and text[start] in " \t\r\n,":
+        start += 1
+    while start < end and text[end - 1] in " \t\r\n,":
+        end -= 1
+    return _ClauseSpan(start, end)
+
+
+def _has_explicit_subject_predicate(text: str) -> bool:
+    return (
+        _DEPENDENT_CLAUSE_START.match(text) is None and _SUBJECT_PREDICATE.match(text) is not None
+    )
+
+
+def _named_purpose_spans(text: str, masked: str) -> tuple[_ClauseSpan, ...]:
+    named = tuple(_NAMED_PURPOSE.finditer(masked))
+    if len(named) != _PARALLEL_PURPOSE_COUNT or _DEPENDENT_CLAUSE_START.match(masked.lstrip()):
+        return ()
+    first, second = named
+    bridge = re.search(r"[ \t]+and[ \t]+$", masked[first.end() : second.start()])
+    if bridge is None:
+        return ()
+    split = first.end() + bridge.start()
+    return (
+        _trim_clause_span(text, first.start(), split),
+        _trim_clause_span(text, second.start(), len(text)),
     )
 
 
@@ -524,6 +757,9 @@ def _review_prompt(pairs: list[_ReviewPair]) -> str:
                 pair.replacement_sha256,
                 pair.source,
                 context.context_id,
+                pair.source_kind,
+                pair.source_span,
+                pair.parent_sentence,
             )
         )
     return json.dumps(
