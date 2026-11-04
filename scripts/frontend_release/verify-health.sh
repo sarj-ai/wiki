@@ -1,6 +1,28 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+if ! [[ ${CLOUDFLARE_ACCOUNT_ID:-} =~ ^[a-f0-9]{32}$ ]] ||
+  ! [[ ${CLOUDFLARE_API_TOKEN:-} =~ ^[A-Za-z0-9._-]+$ ]]; then
+  echo "Frontend security verification requires Cloudflare authentication." >&2
+  exit 1
+fi
+for endpoint in script-settings subdomain; do
+  if ! settings="$(printf 'header = "Authorization: Bearer %s"\n' "$CLOUDFLARE_API_TOKEN" |
+    curl --fail --silent --show-error --connect-timeout 5 --max-time 15 --config - \
+      "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/workers/scripts/sarj-wiki/$endpoint")"; then
+    echo "Frontend Worker security metadata could not be read." >&2
+    exit 1
+  fi
+  case "$endpoint" in
+    script-settings) condition='.success == true and .result.observability.redact_query_string == true' ;;
+    subdomain) condition='.success == true and .result.previews_enabled == false' ;;
+  esac
+  if ! jq --exit-status "$condition" <<<"$settings" >/dev/null; then
+    echo "Frontend Worker security settings failed verification." >&2
+    exit 1
+  fi
+done
+
 body_file="$RUNNER_TEMP/frontend-health-body.json"
 headers_file="$RUNNER_TEMP/frontend-health-headers.txt"
 proxy_body_file="$RUNNER_TEMP/frontend-proxy-body.json"

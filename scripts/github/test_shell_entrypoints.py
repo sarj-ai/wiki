@@ -203,6 +203,12 @@ def test_pre_commit_failure_is_not_swallowed(
         "proxy-body",
         "proxy-transport",
         "drives-http",
+        "security-redaction-missing",
+        "security-redaction-disabled",
+        "security-previews-missing",
+        "security-previews-enabled",
+        "security-api",
+        "security-transport",
     ],
 )
 def test_health_requires_all_release_receipts(
@@ -215,6 +221,30 @@ sleep() { test "$1" = 10; }
 curl() {
   printf '%s\\n' call >> "$RUNNER_TEMP/calls"
   case "$*" in
+    *'api.cloudflare.com/'*)
+      IFS= read -r authorization
+      test "$authorization" = 'header = "Authorization: Bearer fixture-security-token"' || return 95
+      case "$*" in *fixture-security-token*) return 96 ;; esac
+      test "$FAULT" != security-transport || return 1
+      case "$FAULT" in
+        security-api) printf '{"success":false,"errors":[{"message":"private-response"}]}'; return ;;
+      esac
+      case "$*" in
+        *'/script-settings')
+          case "$FAULT" in
+            security-redaction-missing) printf '{"success":true,"result":{}}' ;;
+            security-redaction-disabled) printf '{"success":true,"result":{"observability":{"redact_query_string":false}}}' ;;
+            *) printf '{"success":true,"result":{"observability":{"redact_query_string":true}}}' ;;
+          esac ;;
+        *'/subdomain')
+          case "$FAULT" in
+            security-previews-missing) printf '{"success":true,"result":{}}' ;;
+            security-previews-enabled) printf '{"success":true,"result":{"previews_enabled":true}}' ;;
+            *) printf '{"success":true,"result":{"previews_enabled":false}}' ;;
+          esac ;;
+        *) return 97 ;;
+      esac
+      return ;;
     *'/api/wiki/'*)
       printf '{"detail":"Your session has expired"}' > "$RUNNER_TEMP/frontend-proxy-body.json"
       case "$*" in
@@ -233,6 +263,7 @@ curl() {
 }
 jq() {
   case "$*" in
+    *redact_query_string*|*previews_enabled*) command jq "$@" ;;
     *'frontend-proxy-body.json') test "$FAULT" != proxy-body ;;
     *) test "$FAULT" != body ;;
   esac
@@ -243,6 +274,8 @@ jq() {
     monkeypatch.setenv("RUNNER_TEMP", str(tmp_path))
     monkeypatch.setenv("GITHUB_SHA", "sha")
     monkeypatch.setenv("FAULT", fault)
+    monkeypatch.setenv("CLOUDFLARE_ACCOUNT_ID", "b" * 32)
+    monkeypatch.setenv("CLOUDFLARE_API_TOKEN", "fixture-security-token")
     monkeypatch.setenv("HTTP_STATUS", "500" if fault == "http" else "200")
     monkeypatch.setenv("RESPONSE_ID", "foreign" if fault == "request-id" else "canary")
     monkeypatch.setenv("CACHE_CONTROL", "public" if fault == "cache" else "private, no-store")
@@ -255,6 +288,9 @@ jq() {
     expected_calls = 3 if fault == "none" else 18 if fault == "drives-http" else 6
     if fault.startswith("proxy-"):
         expected_calls = 12
+    expected_calls += 2
+    if fault.startswith("security-"):
+        expected_calls = 2 if fault.startswith("security-previews-") else 1
     assert (tmp_path / "calls").read_text().splitlines() == ["call"] * expected_calls
     assert not (tmp_path / "frontend-health-body.json").exists()
     assert not (tmp_path / "frontend-health-headers.txt").exists()
