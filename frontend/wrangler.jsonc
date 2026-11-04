@@ -1,6 +1,8 @@
 {
   "$schema": "./node_modules/wrangler/config-schema.json",
   "name": "sarj-wiki",
+  "workers_dev": false,
+  "preview_urls": false,
   "main": ".open-next/worker.js",
   "compatibility_date": "2026-08-22",
   "compatibility_flags": ["nodejs_compat"],
@@ -19,6 +21,7 @@
     },
   ],
   "observability": {
+    "redact_query_string": true,
     "enabled": true,
     "head_sampling_rate": 1,
     "logs": {
