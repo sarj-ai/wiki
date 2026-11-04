@@ -3,6 +3,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 import hashlib
 from http import HTTPStatus
+import json
+from typing import Literal
 
 from google.genai import errors, types
 from pydantic import BaseModel, ConfigDict, RootModel
@@ -11,7 +13,7 @@ import pytest
 from app.document_transform.errors import ModelUnavailableError
 from app.document_transform.ir import parse_markdown
 from app.document_transform.models import GeminiModelPolicy, VertexGeminiPatchGenerator
-from app.document_transform.safety import RewriteConstraints, validate_patches
+from app.document_transform.safety import RewriteConstraints, rewrite_constraints, validate_patches
 from app.document_transform.schemas import (
     PatchEnvelope,
     PatchReviewEnvelope,
@@ -20,7 +22,12 @@ from app.document_transform.schemas import (
     TransformFinding,
     TransformPhase,
 )
-from app.document_transform.unslop import UNSLOP_REVIEW_INSTRUCTION, UNSLOP_REWRITE_INSTRUCTION
+from app.document_transform.unslop import (
+    UNSLOP_POLICY_VERSION,
+    UNSLOP_REVIEW_INSTRUCTION,
+    UNSLOP_REWRITE_INSTRUCTION,
+    without_editorial_framing,
+)
 from tests.support import dependency
 
 
@@ -37,6 +44,9 @@ class _ReviewInputPair(BaseModel):
     replacement_sha256: str
     source_sentence: str
     context_id: str
+    source_kind: Literal["sentence", "clause", "dependent_clause"]
+    source_span: tuple[int, int] | None
+    parent_sentence: str | None
 
 
 class _ReviewInputContext(BaseModel):
@@ -647,3 +657,339 @@ async def test_sentence_checks_share_paragraph_context_without_losing_full_cover
             contexts[pair.context_id].source_block in paragraphs for pair in payload.sentence_audits
         )
         assert all(context.proposed_block == REPLACEMENT for context in contexts.values())
+
+
+@pytest.mark.parametrize(
+    "prefix",
+    [
+        "Put another way, ",
+        "To put it another way: ",
+        "In other words, ",
+        "Put another way, and to explain the same idea from another angle, ",
+        "The same point bears repeating in simpler language: ",
+    ],
+)
+def test_conventional_framing_can_go_without_relaxing_the_following_obligation(prefix: str) -> None:
+    fact = "every reviewer must inspect the same region as every other reviewer."
+    proposed = "Every reviewer must inspect the same region as every other reviewer."
+    source = prefix + fact
+    masked = without_editorial_framing(source)
+    assert len(masked) == len(source)
+    assert not masked[: len(prefix)].strip()
+    assert masked[len(prefix) :] == fact
+    constraints = rewrite_constraints(source)
+    assert constraints.force_language == ("every", "must", "every")
+    assert constraints.scope_qualifiers == ("same", "other")
+    document = parse_markdown(source, title="Reviews")
+    block = document.blocks[0]
+    patch = TextPatch(block_id=block.id, expected_sha256=block.sha256, replacement=proposed)
+    decision = validate_patches(
+        document, [patch], phase=TransformPhase.UNSLOP, aggressive_unslop=True
+    )
+    assert decision.accepted == {block.id: proposed}
+    assert not decision.findings
+    assert UNSLOP_POLICY_VERSION == "sarj-concise-v12"
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        "Write it in other words; every reviewer must preserve the same requirement.",
+        "To explain the same idea from another angle, writers must preserve every qualification.",
+        "In other words writers must preserve every qualification.",
+        'The rule is "In other words, every reviewer must inspect another region."',
+        "The rule is `Put another way, every sample is from another region.`",
+        "[1. In other words, every reviewer must inspect another region.]",
+        "Read https://example.com/another?other=same before choosing another region.",
+        "Taken together, these observations may support another explanation.",
+        "There is no mystery about why another option may work.",
+        "The same point bears repeating material loads.",
+        "Put another way writers must preserve every qualification.",
+    ],
+)
+def test_factual_normative_and_protected_uses_are_not_editorial_masks(source: str) -> None:
+    assert without_editorial_framing(source) == source
+
+
+def test_framing_removal_cannot_drop_factual_quantifiers_negation_or_comparisons() -> None:
+    source = "In other words, every sample must use the same region and no other region."
+    document = parse_markdown(source, title="Sampling")
+    block = document.blocks[0]
+    patch = TextPatch(
+        block_id=block.id,
+        expected_sha256=block.sha256,
+        replacement="Every sample must use the same region.",
+    )
+    decision = validate_patches(
+        document, [patch], phase=TransformPhase.UNSLOP, aggressive_unslop=True
+    )
+    assert not decision.accepted
+    assert {finding.code for finding in decision.findings} == {"force_language_changed"}
+    assert rewrite_constraints(source).force_language == ("every", "must", "no")
+
+
+@pytest.mark.parametrize(
+    ("source", "clauses"),
+    [
+        (
+            "Atlas condenses prose; Prism refines layouts for readers.",
+            ("Atlas condenses prose", "Prism refines layouts for readers."),
+        ),
+        (
+            "Atlas condenses prose, whereas Prism refines layouts for readers.",
+            ("Atlas condenses prose", "Prism refines layouts for readers."),
+        ),
+        (
+            "The suite includes Atlas to condense prose and Prism to refine layouts for readers.",
+            ("Atlas to condense prose", "Prism to refine layouts for readers."),
+        ),
+        (
+            "Each sensor must record every reading; the pump can run only after approval.",
+            (
+                "Each sensor must record every reading",
+                "the pump can run only after approval.",
+            ),
+        ),
+        (
+            "Atlas condenses prose [12]; Prism refines layouts for readers [13].",
+            ("Atlas condenses prose [12]", "Prism refines layouts for readers [13]."),
+        ),
+    ],
+)
+async def test_independent_clause_audits_add_exact_spans_without_replacing_the_sentence(
+    source: str, clauses: tuple[str, str]
+) -> None:
+    document = parse_markdown(source, title="Features")
+    block = document.blocks[0]
+    proposed = source
+    patch = TextPatch(block_id=block.id, expected_sha256=block.sha256, replacement=proposed)
+    harness = _generator(types.GenerateContentResponse())
+    harness.call.review_input = True
+    assert await harness.generator.verify(document, [patch]) == frozenset({block.id})
+    payload = _ReviewInput.model_validate_json(harness.call.prompts[0])
+    original, *children = payload.sentence_audits
+    assert original.source_kind == "sentence"
+    assert original.source_span is None
+    assert original.parent_sentence is None
+    assert original.block_id == block.id
+    assert original.expected_sha256 == block.sha256
+    assert original.source_sentence == source
+    assert tuple(child.source_sentence for child in children) == clauses
+    for child in children:
+        assert child.source_kind == "clause"
+        assert child.source_span is not None
+        start, end = child.source_span
+        assert source[start:end] == child.source_sentence
+        assert child.parent_sentence == source
+        identity = [block.sha256, 0, "clause", source, start, end, child.source_sentence]
+        assert (
+            child.expected_sha256
+            == hashlib.sha256(json.dumps(identity, separators=(",", ":")).encode()).hexdigest()
+        )
+        assert child.replacement_sha256 == hashlib.sha256(proposed.encode()).hexdigest()
+        assert child.context_id == original.context_id
+    assert payload.document_contexts[0].source_block == source
+    assert payload.document_contexts[0].proposed_block == proposed
+
+
+@pytest.mark.parametrize("verdict", ["reject", "omit"])
+@pytest.mark.parametrize(
+    ("source", "missing_function"),
+    [
+        (
+            "Atlas condenses prose; Prism refines layouts for readers.",
+            "Prism refines layouts for readers.",
+        ),
+        (
+            "Atlas condenses prose while Prism refines layouts for readers.",
+            "while Prism refines layouts for readers.",
+        ),
+    ],
+)
+async def test_a_child_clause_cannot_be_overruled_by_a_whole_sentence_approval(
+    verdict: str, source: str, missing_function: str
+) -> None:
+    document = parse_markdown(source, title="Features")
+    block = document.blocks[0]
+    patch = TextPatch(block_id=block.id, expected_sha256=block.sha256, replacement=source)
+    harness = _generator(types.GenerateContentResponse())
+    harness.call.review_input = True
+    if verdict == "omit":
+        harness.call.omitted_sources.add(missing_function)
+        with pytest.raises(ModelUnavailableError):
+            await harness.generator.review(document, [patch])
+        return
+    harness.call.rejected_sources.add(missing_function)
+    decision = await harness.generator.review(document, [patch])
+    assert not decision.approved
+    assert set(decision.rejected) == {block.id}
+
+
+@pytest.mark.parametrize(
+    ("source", "focus"),
+    [
+        (
+            "Cleaner is intended to tighten prose, while Formatter improves presentation.",
+            "while Formatter improves presentation.",
+        ),
+        (
+            "Recorder collects data from sensors while Pump runs.",
+            "while Pump runs.",
+        ),
+        (
+            "Recorder collects data from sensors while Pump may not run.",
+            "while Pump may not run.",
+        ),
+        (
+            "While Pump runs, Recorder collects data from sensors.",
+            "While Pump runs",
+        ),
+    ],
+)
+async def test_while_focus_retains_its_conjunction_predicate_and_exact_parent_context(
+    source: str, focus: str
+) -> None:
+    document = parse_markdown(source, title="Contextual relationships")
+    block = document.blocks[0]
+    patch = TextPatch(block_id=block.id, expected_sha256=block.sha256, replacement=source)
+    harness = _generator(types.GenerateContentResponse())
+    harness.call.review_input = True
+    assert await harness.generator.verify(document, [patch]) == frozenset({block.id})
+    payload = _ReviewInput.model_validate_json(harness.call.prompts[0])
+    original, child = payload.sentence_audits
+    assert original.block_id == block.id
+    assert original.expected_sha256 == block.sha256
+    assert original.source_kind == "sentence"
+    assert child.source_kind == "dependent_clause"
+    assert child.source_sentence == focus
+    assert child.source_span is not None
+    start, end = child.source_span
+    assert source[start:end] == focus
+    assert child.parent_sentence == source
+    identity = [block.sha256, 0, "dependent_clause", source, start, end, focus]
+    assert (
+        child.expected_sha256
+        == hashlib.sha256(json.dumps(identity, separators=(",", ":")).encode()).hexdigest()
+    )
+    assert child.replacement_sha256 == hashlib.sha256(source.encode()).hexdigest()
+    assert child.context_id == original.context_id
+    assert payload.document_contexts[0].source_block == source
+
+
+async def test_dependent_focus_binds_its_exact_parent_among_other_original_sentences() -> None:
+    parent = "Recorder collects data from sensors while Pump runs."
+    source = "Atlas condenses prose. " + parent
+    document = parse_markdown(source, title="Parent binding")
+    block = document.blocks[0]
+    patch = TextPatch(block_id=block.id, expected_sha256=block.sha256, replacement=source)
+    harness = _generator(types.GenerateContentResponse())
+    harness.call.review_input = True
+    assert await harness.generator.verify(document, [patch]) == frozenset({block.id})
+    payload = _ReviewInput.model_validate_json(harness.call.prompts[0])
+    sentences = [audit for audit in payload.sentence_audits if audit.source_kind == "sentence"]
+    assert [audit.source_sentence for audit in sentences] == ["Atlas condenses prose.", parent]
+    focus = next(
+        audit for audit in payload.sentence_audits if audit.source_kind == "dependent_clause"
+    )
+    assert focus.parent_sentence == parent
+    assert focus.source_span is not None
+    start, end = focus.source_span
+    assert source[start:end] == "while Pump runs."
+    identity = [block.sha256, 1, "dependent_clause", parent, start, end, focus.source_sentence]
+    assert (
+        focus.expected_sha256
+        == hashlib.sha256(json.dumps(identity, separators=(",", ":")).encode()).hexdigest()
+    )
+    assert payload.document_contexts[0].source_block == source
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        "If Atlas condenses prose, Prism refines layouts; Sensor records measurements.",
+        "The suite previews documents, spreadsheets, presentations and PDF files.",
+        "Atlas condenses prose and Prism refines layouts for readers.",
+        'The manual says "Atlas condenses prose; Prism refines layouts" as an example.',
+        "The manual prints `Atlas condenses prose; Prism refines layouts` as an example.",
+        "Read https://example.com/Atlas;Prism/refines before carefully reviewing the full source example.",
+        "The citation [Atlas condenses prose; Prism refines layouts] describes both features.",
+        'The quote reads "A feature exists. Atlas condenses prose; Prism refines layouts."',
+        "For a while Atlas condenses prose and Prism refines layouts for readers.",
+        'The quote reads "Atlas condenses prose while Prism refines layouts for readers."',
+        'Recorder collects data while Pump displays "A. B" on the screen.',
+        "Atlas condenses prose (using context (from records); Prism refines layouts).",
+        "Atlas condenses prose [using context; Prism refines layouts for readers.",
+    ],
+)
+async def test_ambiguous_coordination_lists_and_protected_delimiters_keep_whole_audits(
+    source: str,
+) -> None:
+    document = parse_markdown(source, title="Boundaries")
+    block = document.blocks[0]
+    patch = TextPatch(block_id=block.id, expected_sha256=block.sha256, replacement=source)
+    harness = _generator(types.GenerateContentResponse())
+    harness.call.review_input = True
+    assert await harness.generator.verify(document, [patch]) == frozenset({block.id})
+    submitted = [
+        pair
+        for prompt in harness.call.prompts
+        for pair in _ReviewInput.model_validate_json(prompt).sentence_audits
+    ]
+    assert submitted
+    assert all(pair.source_kind == "sentence" and pair.source_span is None for pair in submitted)
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        (
+            "Atlas condenses prose; Prism refines layouts; Sensor records measurements; "
+            "Pump controls flow; Valve regulates pressure."
+        ),
+        (
+            "Recorder collects data from sensors while Pump runs while Sensor records data "
+            "while Valve controls flow while Motor operates while Timer records intervals."
+        ),
+    ],
+)
+async def test_clause_budget_overflow_withholds_the_block_and_retains_original_sentence_audits(
+    source: str,
+) -> None:
+    document = parse_markdown(source, title="Coverage")
+    block = document.blocks[0]
+    patch = TextPatch(block_id=block.id, expected_sha256=block.sha256, replacement=source)
+    harness = _generator(types.GenerateContentResponse())
+    harness.call.review_input = True
+    decision = await harness.generator.review(document, [patch])
+    assert not decision.approved
+    assert "bounded review budget" in decision.rejected[block.id]
+    submitted = _ReviewInput.model_validate_json(harness.call.prompts[0]).sentence_audits
+    assert [(pair.block_id, pair.source_kind, pair.source_sentence) for pair in submitted] == [
+        (block.id, "sentence", source)
+    ]
+
+
+async def test_document_clause_budget_overflow_does_not_silently_approve_a_later_block() -> None:
+    source = "Atlas condenses prose; Prism refines layouts for readers."
+    document = parse_markdown("\n\n".join([source] * 17), title="Coverage")
+    patches = [
+        TextPatch(block_id=block.id, expected_sha256=block.sha256, replacement=source)
+        for block in document.blocks
+        if block.text.strip()
+    ]
+    harness = _generator(types.GenerateContentResponse())
+    harness.call.review_input = True
+    decision = await harness.generator.review(document, patches)
+    last = patches[-1].block_id
+    assert decision.approved == frozenset(patch.block_id for patch in patches[:-1])
+    assert set(decision.rejected) == {last}
+    assert "bounded review budget" in decision.rejected[last]
+    submitted = [
+        pair
+        for prompt in harness.call.prompts
+        for pair in _ReviewInput.model_validate_json(prompt).sentence_audits
+    ]
+    assert {pair.block_id for pair in submitted if pair.source_kind == "sentence"} == {
+        patch.block_id for patch in patches
+    }
+    assert sum(pair.source_kind == "clause" for pair in submitted) == 32

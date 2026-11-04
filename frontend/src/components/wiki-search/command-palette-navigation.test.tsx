@@ -141,8 +141,7 @@ describe("document selection from a mobile sidebar search opening", () => {
     expect(control.onDocumentNavigate).toBeTypeOf("function");
     typeQuery("selected");
     await vi.advanceTimersByTimeAsync(250);
-    await vi.advanceTimersByTimeAsync(0);
-    expect(document.body).toHaveTextContent(RESULT.name);
+    await vi.waitFor(() => expect(document.body).toHaveTextContent(RESULT.name));
   }
 
   it("captures the current mobile owner through the real sibling global Mod+K hook and waits for commit", async () => {
@@ -424,6 +423,5 @@ async function openHotkeySearch() {
   expect(control.onDocumentNavigate).toBeTypeOf("function");
   typeQuery("selected");
   await vi.advanceTimersByTimeAsync(250);
-  await vi.advanceTimersByTimeAsync(0);
-  expect(document.body).toHaveTextContent(RESULT.name);
+  await vi.waitFor(() => expect(document.body).toHaveTextContent(RESULT.name));
 }
