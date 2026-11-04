@@ -11,7 +11,7 @@ from app.document_transform.limits import MIN_MODEL_PROSE_WORDS
 
 UNSLOP_UPSTREAM_COMMIT = "d81f5196167ded24f46fced04958c0c12d681798"
 UNSLOP_UPSTREAM_VERSION = "2.3.0"
-UNSLOP_POLICY_VERSION = "sarj-concise-v10"
+UNSLOP_POLICY_VERSION = "sarj-concise-v11"
 UNSLOP_REWRITE_INSTRUCTION = (
     "Act as a ruthless, precise line editor. Rewrite verbose prose into direct, compact language. "
     "Remove throat-clearing, rhetorical questions, repeated explanations, ornamental metaphors, "
