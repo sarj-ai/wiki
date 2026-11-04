@@ -11,7 +11,10 @@ from app.document_transform.limits import MIN_MODEL_PROSE_WORDS
 
 UNSLOP_UPSTREAM_COMMIT = "d81f5196167ded24f46fced04958c0c12d681798"
 UNSLOP_UPSTREAM_VERSION = "2.3.0"
-UNSLOP_POLICY_VERSION = "sarj-concise-v13"
+UNSLOP_POLICY_VERSION = "sarj-concise-v14"
+MIN_CONCISION_PROSE_WORDS = 40
+CONCISION_WORD_NUMERATOR = 2
+CONCISION_WORD_DENOMINATOR = 5
 UNSLOP_REWRITE_INSTRUCTION = (
     "Act as a ruthless, precise line editor. Rewrite verbose prose into direct, compact language. "
     "Remove throat-clearing, rhetorical questions, repeated explanations, ornamental metaphors, "
@@ -34,11 +37,16 @@ UNSLOP_REWRITE_INSTRUCTION = (
     "object modified by each qualifier or negation. Preserve that inventory, not merely its topics. "
     "Keep coordination grammatical: a subject must retain its own predicate "
     "rather than inheriting an unrelated action from another subject. Use concrete words and direct verbs "
-    "instead of abstract noun phrases. Aim for 50–70% fewer words in padded "
-    "paragraphs when their complete factual content fits; this is a target, never permission to "
+    "instead of abstract noun phrases. Each supplied concision_target enforces a maximum word "
+    "count for the editable prose prefix, excluding protected_suffix. It targets 60% fewer words "
+    "in longer paragraphs. This budget is never permission to "
     "discard a distinct fact, caveat, attribution, uncertainty, qualification, or requirement. "
+    "Preserve whether a statement is intended to do something, aims to do it, can do it, or may "
+    "do it; never strengthen an intention or possibility into an unconditional capability. "
     "Review every supplied block, including blocks with no scanner matches. Leave already concise "
-    "blocks unchanged. Preserve names, numbers, dates, citations, URLs, exact quotations, negation "
+    "blocks unchanged. If no faithful rewrite fits the word budget, return the original; the "
+    "application will report the unmet target rather than truncate or accept a verbose rewrite. "
+    "Preserve names, numbers, dates, citations, URLs, exact quotations, negation "
     "and modal language. Preserve the supplied protected_suffix exactly at the end, with a nonempty "
     "prose prefix. Each block supplies rewrite_constraints from the application's exact safety "
     "rules: preserve every protected_tokens entry verbatim with its original count, including "
@@ -112,6 +120,8 @@ UNSLOP_REVIEW_INSTRUCTION = (
     "factual claim, relationship, exception, caveat, uncertainty, attribution, requirement, complete "
     "list and list member, name, quantity, date, citation and exact quotation survives with the same "
     "meaning, scope, negation and modal force. "
+    "An intention or aim is not an established capability: retain intended to, aims to, can, "
+    "and may with their original predicate and force. A word target never overrides this audit. "
     "Deletion of purely rhetorical or repetitive wording is desirable. A shorter summary that "
     "drops a distinct fact is not equivalent. General claims that the writing is useful, important, "
     "or interesting, and invitations to imagine or read carefully, are rhetorical padding unless "
@@ -278,6 +288,11 @@ UNSLOP_CATALOG_SHA256 = hashlib.sha256(
             "editorial_policy": UNSLOP_POLICY_VERSION,
             "rewrite_instruction": UNSLOP_REWRITE_INSTRUCTION,
             "review_instruction": UNSLOP_REVIEW_INSTRUCTION,
+            "concision_target": {
+                "minimum_source_words": MIN_CONCISION_PROSE_WORDS,
+                "maximum_word_numerator": CONCISION_WORD_NUMERATOR,
+                "maximum_word_denominator": CONCISION_WORD_DENOMINATOR,
+            },
             "auto_delete_codes": sorted(_AUTO_DELETE_CODES),
             "capitalizable_start_words": sorted(_CAPITALIZABLE_START_WORDS),
             "candidate_patterns": [
@@ -325,6 +340,12 @@ class DeletionSpan:
     end: int
 
 
+@dataclass(frozen=True, slots=True)
+class ConcisionTarget:
+    source_words: int
+    max_words: int
+
+
 def without_editorial_framing(text: str) -> str:
     characters = list(text)
     masked = _FRAMING_REFERENCE_SPAN.sub(
@@ -336,14 +357,32 @@ def without_editorial_framing(text: str) -> str:
 
 
 def model_editable_blocks(document: DocumentIR) -> tuple[TextBlock, ...]:
-    return tuple(
-        block
-        for block in document.blocks
-        if block.editable
+    return tuple(block for block in document.blocks if _is_model_editable(block))
+
+
+def _is_model_editable(block: TextBlock) -> bool:
+    return (
+        block.editable
         and block.kind not in {BlockKind.BLANK, BlockKind.CODE, BlockKind.QUOTE, BlockKind.TABLE}
         and len(block.text) <= MAX_MODEL_EDITABLE_BLOCK_CHARS
         and _has_model_rewrite_scope(block)
     )
+
+
+def prose_word_count(block: TextBlock, text: str) -> int:
+    return len(text.removesuffix(block.protected_suffix or "").split())
+
+
+def concision_target(block: TextBlock) -> ConcisionTarget | None:
+    if block.kind is BlockKind.HEADING or not _is_model_editable(block):
+        return None
+    words = prose_word_count(block, block.text)
+    if words < MIN_CONCISION_PROSE_WORDS:
+        return None
+    maximum = (
+        words * CONCISION_WORD_NUMERATOR + CONCISION_WORD_DENOMINATOR - 1
+    ) // CONCISION_WORD_DENOMINATOR
+    return ConcisionTarget(source_words=words, max_words=maximum)
 
 
 def _has_model_rewrite_scope(block: TextBlock) -> bool:
