@@ -15,7 +15,9 @@ from app.document_transform.unslop import (
     RFCISH_EMAIL_PATTERN,
     SINGLE_QUOTED_SPAN_PATTERN,
     UnslopCandidate,
+    concision_target,
     expanded_deletion_span,
+    prose_word_count,
     scan_unslop_candidates,
     without_editorial_framing,
 )
@@ -69,6 +71,7 @@ REPAIRABLE_REWRITE_CODES = frozenset(
         "quoted_content_changed",
         "native_citation_changed",
         "concision_expanded",
+        "concision_target_unmet",
         "empty_replacement",
         "semantic_review_rejected",
         "scope_qualifier_changed",
@@ -127,13 +130,26 @@ def validate_patches(
                 TransformFinding(
                     code=code,
                     block_id=patch.block_id,
-                    detail="The proposed edit was skipped by a deterministic safety gate",
+                    detail=_rejection_detail(block, patch, code),
                 )
             )
             continue
         if block is not None and patch.replacement != block.text:
             accepted[block.id] = patch.replacement
     return PatchDecision(accepted=accepted, findings=tuple(findings))
+
+
+def _rejection_detail(block: TextBlock | None, patch: TextPatch, code: str) -> str:
+    if code == "concision_target_unmet" and block is not None:
+        target = concision_target(block)
+        if target is not None:
+            return (
+                f"Concision target unmet: source {target.source_words} words; "
+                f"proposal {prose_word_count(block, patch.replacement)} words; "
+                f"maximum {target.max_words} editable prose words. Preserve all facts and "
+                "qualifications; keep the original if no faithful rewrite fits."
+            )
+    return "The proposed edit was skipped by a deterministic safety gate"
 
 
 def _rejection_code(
@@ -223,6 +239,9 @@ def _aggressive_unslop_code(block: TextBlock, replacement: str) -> str | None:
     words = frozenset(word.casefold() for word in re.findall(r"\b\w+\b", replacement))
     if any(name.casefold() not in words for name in _protected_rewrite_names(block.text)):
         return "proper_noun_changed"
+    target = concision_target(block)
+    if target is not None and prose_word_count(block, replacement) > target.max_words:
+        return "concision_target_unmet"
     return None
 
 

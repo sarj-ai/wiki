@@ -1,12 +1,13 @@
 from __future__ import annotations
 
 from collections.abc import Callable
+from dataclasses import replace
 from typing import override
 
 import pytest
 
 from app.document_transform.errors import ModelUnavailableError
-from app.document_transform.ir import DocumentIR, parse_markdown
+from app.document_transform.ir import BlockKind, DocumentIR, parse_markdown
 from app.document_transform.models import PatchGenerator, RewriteReview
 from app.document_transform.planner import TextTransformPlanner
 from app.document_transform.safety import validate_patches
@@ -28,6 +29,9 @@ SOURCE = (
     "when thinking about its habitat."
 )
 CONCISE = "The common nightingale can sing unseen from dense scrub."
+CONCISION_FACT = "The sensor may record temperature at night."
+CONCISION_PADDING = " The explanation describes the discussion in expanded wording before returning to the description."
+CONCISION_SOURCE = CONCISION_FACT + CONCISION_PADDING * 4
 
 
 class _Editor(PatchGenerator):
@@ -164,10 +168,45 @@ class _SemanticRepairEditor(_Editor):
         return [TextPatch(block_id=block.id, expected_sha256=block.sha256, replacement=CONCISE)]
 
 
-def _request(mode: TransformMode = TransformMode.UNSLOP) -> DocumentTransformRequest:
+class _ConcisionEditor(_RepairEditor):
+    def __init__(self, initial: str, replacement: str = CONCISION_FACT) -> None:
+        super().__init__(replacement=replacement)
+        self.initial = initial
+        self.feedback: tuple[TransformFinding, ...] = ()
+
+    @override
+    async def generate(self, document: DocumentIR, *, phase: TransformPhase) -> list[TextPatch]:
+        self.phases.append(phase)
+        block = document.blocks[0]
+        return [
+            TextPatch(block_id=block.id, expected_sha256=block.sha256, replacement=self.initial)
+        ]
+
+    @override
+    async def repair(
+        self, document: DocumentIR, patches: list[TextPatch], findings: tuple[TransformFinding, ...]
+    ) -> list[TextPatch]:
+        self.repair_calls += 1
+        self.feedback = findings
+        if self.unavailable:
+            raise ModelUnavailableError
+        block = document.blocks[0]
+        assert patches[0].expected_sha256 == block.sha256
+        return [
+            TextPatch(
+                block_id=self.repair_block_id or block.id,
+                expected_sha256=self.repair_sha256 or block.sha256,
+                replacement=self.replacement,
+            )
+        ]
+
+
+def _request(
+    mode: TransformMode = TransformMode.UNSLOP, *, content: str = SOURCE
+) -> DocumentTransformRequest:
     return DocumentTransformRequest(
         source=MarkdownSource(
-            kind="markdown", content=SOURCE, name="Article", destination_folder_id=FileId("folder")
+            kind="markdown", content=content, name="Article", destination_folder_id=FileId("folder")
         ),
         mode=mode,
     )
@@ -181,6 +220,11 @@ def editor() -> _Editor:
 @pytest.fixture
 def repair_editor_factory() -> Callable[[], _RepairEditor]:
     return _RepairEditor
+
+
+@pytest.fixture
+def concision_editor_factory() -> Callable[[str, str], _ConcisionEditor]:
+    return _ConcisionEditor
 
 
 @pytest.fixture
@@ -428,3 +472,191 @@ def test_only_reviewed_aggressive_rewrites_can_reorder_retained_literals(
     assert [finding.code for finding in decision.findings] == (
         [] if aggressive else ["protected_content_changed"]
     )
+
+
+@pytest.mark.parametrize("unchanged", [False, True])
+async def test_verbose_or_unchanged_prose_enters_one_quality_repair(
+    concision_editor_factory: Callable[[str, str], _ConcisionEditor], *, unchanged: bool
+) -> None:
+    initial = CONCISION_SOURCE if unchanged else CONCISION_SOURCE.replace(" expanded", "", 1)
+    editor = concision_editor_factory(initial, CONCISION_FACT)
+    document = parse_markdown(CONCISION_SOURCE, title="Sensor")
+
+    result = await TextTransformPlanner(generator=editor, allow_unslop_model=True).transform(
+        document, _request(content=CONCISION_SOURCE)
+    )
+
+    assert editor.repair_calls == 1
+    assert [finding.code for finding in editor.feedback] == ["concision_target_unmet"]
+    assert "source 59 words" in editor.feedback[0].detail
+    assert "maximum 24" in editor.feedback[0].detail
+    assert [patch.replacement for patch in editor.reviewed] == [CONCISION_FACT]
+    assert result.document.blocks[0].text == CONCISION_FACT
+    assert result.applied_count == result.model_count == 1
+    assert not result.findings
+    assert document.blocks[0].text == CONCISION_SOURCE
+
+
+@pytest.mark.parametrize(
+    "failure", ["unchanged", "verbose", "unavailable", "stale", "unknown", "semantic"]
+)
+async def test_failed_quality_repair_is_bounded_and_preserves_original(
+    failure: str, concision_editor_factory: Callable[[str, str], _ConcisionEditor]
+) -> None:
+    replacement = {
+        "unchanged": CONCISION_SOURCE,
+        "verbose": CONCISION_SOURCE.replace(" expanded", "", 1),
+        "semantic": CONCISION_FACT.replace("temperature", "pressure"),
+    }.get(failure, CONCISION_FACT)
+    editor = concision_editor_factory(CONCISION_SOURCE, replacement)
+    editor.unavailable = failure == "unavailable"
+    editor.approve = failure != "semantic"
+    editor.repair_sha256 = "0" * 64 if failure == "stale" else None
+    editor.repair_block_id = "outside-current-source" if failure == "unknown" else None
+    document = parse_markdown(CONCISION_SOURCE, title="Sensor")
+
+    result = await TextTransformPlanner(generator=editor, allow_unslop_model=True).transform(
+        document, _request(content=CONCISION_SOURCE)
+    )
+
+    assert editor.repair_calls == 1
+    assert result.document == document
+    assert result.applied_count == result.model_count == 0
+    assert result.llm_invoked
+    assert result.findings
+    assert (
+        "concision_target_unmet" in {finding.code for finding in result.findings}
+        or failure == "semantic"
+    )
+
+
+@pytest.mark.parametrize(
+    ("source_words", "proposed_words", "unmet"),
+    [(39, 39, False), (40, 16, False), (40, 17, True), (41, 17, False), (41, 18, True)],
+)
+def test_quality_word_boundary_is_enforced_without_truncation(
+    source_words: int, proposed_words: int, *, unmet: bool
+) -> None:
+    source = " ".join(["material"] * source_words)
+    replacement = " ".join(["material"] * proposed_words)
+    document = parse_markdown(source, title="Boundary")
+    block = document.blocks[0]
+
+    decision = validate_patches(
+        document,
+        [TextPatch(block_id=block.id, expected_sha256=block.sha256, replacement=replacement)],
+        phase=TransformPhase.UNSLOP,
+        aggressive_unslop=True,
+    )
+
+    assert [finding.code for finding in decision.findings] == (
+        ["concision_target_unmet"] if unmet else []
+    )
+    assert decision.accepted == ({} if unmet or replacement == source else {block.id: replacement})
+    assert block.text == source
+
+
+def test_quality_budget_excludes_the_exact_protected_suffix() -> None:
+    suffix = " [41]"
+    original = parse_markdown(" ".join(["material"] * 40) + suffix, title="Citation")
+    block = replace(original.blocks[0], protected_suffix=suffix)
+    document = replace(original, blocks=(block,))
+    replacement = " ".join(["material"] * 16) + suffix
+
+    decision = validate_patches(
+        document,
+        [TextPatch(block_id=block.id, expected_sha256=block.sha256, replacement=replacement)],
+        phase=TransformPhase.UNSLOP,
+        aggressive_unslop=True,
+    )
+
+    assert decision.accepted == {block.id: replacement}
+    assert not decision.findings
+
+
+@pytest.mark.parametrize(
+    ("replacement", "code"),
+    [
+        (
+            'The sensor must record 15 samples and retain "calibration" notes.',
+            "force_language_changed",
+        ),
+        (
+            'The sensor may record 14 samples and retain "calibration" notes.',
+            "protected_content_changed",
+        ),
+        (
+            'The sensor may record 15 samples and retain "adjustment" notes.',
+            "quoted_content_changed",
+        ),
+    ],
+)
+def test_short_word_target_never_overrides_hard_guards(replacement: str, code: str) -> None:
+    source = (
+        'The sensor may record 15 samples and retain "calibration" notes.' + CONCISION_PADDING * 4
+    )
+    document = parse_markdown(source, title="Calibration")
+    block = document.blocks[0]
+
+    decision = validate_patches(
+        document,
+        [TextPatch(block_id=block.id, expected_sha256=block.sha256, replacement=replacement)],
+        phase=TransformPhase.UNSLOP,
+        aggressive_unslop=True,
+    )
+
+    assert not decision.accepted
+    assert [finding.code for finding in decision.findings] == [code]
+
+
+async def test_dense_protected_facts_remain_when_the_target_cannot_be_met_safely(
+    concision_editor_factory: Callable[[str, str], _ConcisionEditor],
+) -> None:
+    source = (
+        "The record may retain these measurements: " + ", ".join(map(str, range(101, 141))) + "."
+    )
+    document = parse_markdown(source, title="Measurements")
+    editor = concision_editor_factory(source, source)
+
+    result = await TextTransformPlanner(generator=editor, allow_unslop_model=True).transform(
+        document, _request(content=source)
+    )
+
+    assert editor.repair_calls == 1
+    assert result.document == document
+    assert not result.applied_count
+    assert [finding.code for finding in result.findings] == ["concision_target_unmet"]
+
+
+@pytest.mark.parametrize(
+    "kind", [BlockKind.HEADING, BlockKind.QUOTE, BlockKind.CODE, BlockKind.TABLE]
+)
+def test_nonprose_blocks_keep_their_existing_safety_boundary(kind: BlockKind) -> None:
+    original = parse_markdown(CONCISION_SOURCE, title="Scope")
+    block = replace(original.blocks[0], kind=kind)
+    document = replace(original, blocks=(block,))
+
+    decision = validate_patches(
+        document,
+        [TextPatch(block_id=block.id, expected_sha256=block.sha256, replacement=block.text)],
+        phase=TransformPhase.UNSLOP,
+        aggressive_unslop=True,
+    )
+
+    expected = [] if kind is BlockKind.HEADING else ["protected_block"]
+    assert [finding.code for finding in decision.findings] == expected
+
+
+def test_formatting_has_no_concision_target_for_an_unchanged_long_block() -> None:
+    document = parse_markdown(CONCISION_SOURCE, title="Format")
+    block = document.blocks[0]
+
+    decision = validate_patches(
+        document,
+        [TextPatch(block_id=block.id, expected_sha256=block.sha256, replacement=block.text)],
+        phase=TransformPhase.FORMAT,
+        aggressive_unslop=True,
+    )
+
+    assert not decision.accepted
+    assert not decision.findings

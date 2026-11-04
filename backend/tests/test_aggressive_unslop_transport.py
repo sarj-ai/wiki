@@ -73,15 +73,33 @@ class _WireReviewRequest(BaseModel):
     contents: list[_WireContent]
 
 
+class _WireConcisionTarget(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    source_words: int
+    max_words: int
+
+
 class _WireRewriteBlock(BaseModel):
     model_config = ConfigDict(extra="ignore")
     block_id: str
     sha256: str
     text: str
+    concision_target: _WireConcisionTarget | None
 
 
 class _WireRewriteBlocks(RootModel[list[_WireRewriteBlock]]):
     """Actual submitted source blocks from the offline writer request."""
+
+
+class _WireRepairProposal(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    proposed: str
+    rejected_by: list[str]
+    review_feedback: list[str]
+
+
+class _WireRepairProposals(RootModel[list[_WireRepairProposal]]):
+    """Actual repair critique accompanying the unchanged source payload."""
 
 
 _FEATURE_RELATION = re.compile(
@@ -1265,3 +1283,106 @@ async def _writer_batch_patches(
     if fail:
         patches = []
     return patches
+
+
+async def test_sdk_concision_repair_keeps_numeric_budget_and_full_source_audits(
+    sdk_client_factory: Callable[[httpx.AsyncClient], genai.Client],
+) -> None:
+    fact = "The sensor may record temperature at night."
+    source = (
+        fact
+        + (
+            " The explanation describes the discussion in expanded wording before returning to the description."
+        )
+        * 4
+    )
+    document = parse_markdown(source, title="Sensor")
+    block = document.blocks[0]
+    rewrites: list[_WireRewriteBlock] = []
+    reviews: list[_WireReview] = []
+
+    def respond(request: httpx.Request) -> httpx.Response:
+        prompt = _WireReviewRequest.model_validate_json(request.content).contents[0].parts[0].text
+        if prompt.startswith("{"):
+            payload = _WireReview.model_validate_json(prompt)
+            reviews.append(payload)
+            return _review_response(
+                PatchReviewEnvelope(
+                    reviews=[
+                        TextPatchReview(
+                            block_id=audit.block_id,
+                            expected_sha256=audit.expected_sha256,
+                            replacement_sha256=audit.replacement_sha256,
+                            equivalent=True,
+                            reason="The controlled verdict retains the sensor's qualified measurement claim.",
+                        )
+                        for audit in payload.sentence_audits
+                    ]
+                )
+            )
+        arrays = [line for line in prompt.splitlines() if line.startswith("[")]
+        current = _WireRewriteBlocks.model_validate_json(arrays[0]).root[0]
+        _assert_concision_wire_source(current, block.sha256, source)
+        if rewrites:
+            feedback = _WireRepairProposals.model_validate_json(arrays[1]).root[0]
+            assert feedback.proposed == source
+            assert feedback.rejected_by == ["concision_target_unmet"]
+            assert "proposal 59 words; maximum 24" in feedback.review_feedback[0]
+        rewrites.append(current)
+        patch = TextPatch(
+            block_id=block.id,
+            expected_sha256=block.sha256,
+            replacement=source if len(rewrites) == 1 else fact,
+        )
+        return httpx.Response(
+            HTTPStatus.OK,
+            json={
+                "candidates": [
+                    {
+                        "content": {
+                            "role": "model",
+                            "parts": [{"text": PatchEnvelope(patches=[patch]).model_dump_json()}],
+                        },
+                        "finishReason": "STOP",
+                    }
+                ]
+            },
+        )
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(respond)) as http:
+        client = sdk_client_factory(http)
+        try:
+            generator = _functional_generator(client)
+            initial = await generator.generate(document, phase=TransformPhase.UNSLOP)
+            decision = validate_patches(
+                document, initial, phase=TransformPhase.UNSLOP, aggressive_unslop=True
+            )
+            repaired = await generator.repair(document, initial, decision.findings)
+            repaired_safety = validate_patches(
+                document, repaired, phase=TransformPhase.UNSLOP, aggressive_unslop=True
+            )
+            approved = await generator.review(document, repaired)
+        finally:
+            await client.aio.aclose()
+    assert len(rewrites) == 2
+    assert rewrites[0] == rewrites[1]
+    assert [finding.code for finding in decision.findings] == ["concision_target_unmet"]
+    assert repaired_safety.accepted == {block.id: fact}
+    assert not repaired_safety.findings
+    assert approved.approved == {block.id}
+    assert all(
+        context.source_block == source and context.proposed_block == fact
+        for payload in reviews
+        for context in payload.document_contexts
+    )
+    assert reviews
+
+
+def _assert_concision_wire_source(
+    block: _WireRewriteBlock, expected_sha256: str, source: str
+) -> None:
+    assert block.sha256 == expected_sha256
+    assert block.text == source
+    assert block.concision_target is not None
+    assert block.concision_target.source_words == 59
+    assert block.concision_target.max_words == 24
