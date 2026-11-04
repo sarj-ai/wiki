@@ -16,6 +16,7 @@ import pytest
 from app.document_transform.errors import ModelUnavailableError
 from app.document_transform.ir import parse_markdown
 from app.document_transform.models import GeminiModelPolicy, VertexGeminiPatchGenerator
+from app.document_transform.safety import validate_patches
 from app.document_transform.schemas import (
     PatchEnvelope,
     PatchReviewEnvelope,
@@ -31,14 +32,25 @@ class _VendorRequest(BaseModel):
 
 
 class _WirePair(BaseModel):
-    model_config = ConfigDict(extra="ignore")
+    model_config = ConfigDict(extra="forbid")
     block_id: str
     expected_sha256: str
     replacement_sha256: str
+    source_sentence: str
+    context_id: str
+
+
+class _WireContext(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    context_id: str
+    source_block: str
+    proposed_block: str
 
 
 class _WireReview(BaseModel):
-    document_proposals: list[_WirePair]
+    model_config = ConfigDict(extra="forbid")
+    document_contexts: list[_WireContext]
+    sentence_audits: list[_WirePair]
 
 
 class _WireText(BaseModel):
@@ -53,6 +65,159 @@ class _WireContent(BaseModel):
 class _WireReviewRequest(BaseModel):
     model_config = ConfigDict(extra="ignore")
     contents: list[_WireContent]
+
+
+def _fact_audit_envelope(
+    payload: _WireReview, facts: dict[str, tuple[str, ...]], case: str
+) -> PatchReviewEnvelope:
+    contexts = {context.context_id: context for context in payload.document_contexts}
+    reviews: list[TextPatchReview] = []
+    for audit in payload.sentence_audits:
+        required = facts[audit.source_sentence]
+        if case == "omit_editorial" and not required:
+            continue
+        proposed = contexts[audit.context_id].proposed_block
+        equivalent = (
+            all(fact in proposed for fact in required) and "previews work offline" not in proposed
+        )
+        reviews.append(
+            TextPatchReview(
+                block_id=audit.block_id,
+                expected_sha256=audit.expected_sha256,
+                replacement_sha256="0" * 64
+                if case == "forged_output" and audit == payload.sentence_audits[0]
+                else audit.replacement_sha256,
+                equivalent=equivalent,
+                reason=(
+                    "The source facts survive in the complete block; "
+                    "fact-free framing may be omitted."
+                )
+                if equivalent
+                else (
+                    "A capability, restriction or folder condition is lost, "
+                    "or an unsupported claim is added."
+                ),
+            )
+        )
+    return PatchReviewEnvelope(reviews=reviews)
+
+
+def _assert_source_audits(
+    payload: _WireReview, source: str, proposed: str, sentences: set[str]
+) -> None:
+    assert {audit.source_sentence for audit in payload.sentence_audits} == sentences
+    assert len(payload.sentence_audits) == len(sentences)
+    assert len(payload.document_contexts) == 1
+    context = payload.document_contexts[0]
+    assert context.source_block == source
+    assert context.proposed_block == proposed
+    assert all(audit.context_id == context.context_id for audit in payload.sentence_audits)
+    assert len({audit.expected_sha256 for audit in payload.sentence_audits}) == len(sentences)
+    assert all(
+        audit.replacement_sha256 == hashlib.sha256(proposed.encode()).hexdigest()
+        for audit in payload.sentence_audits
+    )
+
+
+@pytest.mark.parametrize(
+    "case",
+    [
+        "complete",
+        "missing_list_member",
+        "changed_force",
+        "lost_scope",
+        "unsupported",
+        "omit_editorial",
+        "forged_output",
+    ],
+)
+async def test_sdk_audits_each_source_sentence_against_the_complete_reordered_block(
+    sdk_client_factory: Callable[[httpx.AsyncClient], genai.Client], case: str
+) -> None:
+    facts: dict[str, tuple[str, ...]] = {
+        "readers can preview text documents, spreadsheets, presentations and HTML.": (
+            "text documents",
+            "spreadsheets",
+            "presentations",
+            "HTML",
+        ),
+        "they cannot edit the source.": ("cannot edit the source",),
+        "previews stay within the selected folder.": ("previews stay within the selected folder",),
+        "let us take a thoughtful look.": (),
+    }
+    source = " ".join(facts)
+    compact = (
+        "previews stay within the selected folder; readers can preview text documents, "
+        "spreadsheets, presentations and HTML but cannot edit the source."
+    )
+    replacement = {
+        "missing_list_member": compact.replace(", spreadsheets", ""),
+        "changed_force": compact.replace("cannot", "can"),
+        "lost_scope": compact.replace("within", "outside"),
+        "unsupported": compact + " previews work offline.",
+    }.get(case, compact)
+    document = parse_markdown(source, title="Viewer")
+    block = document.blocks[0]
+    patch = TextPatch(block_id=block.id, expected_sha256=block.sha256, replacement=replacement)
+    received: list[_WireReview] = []
+
+    def respond(request: httpx.Request) -> httpx.Response:
+        contents = _WireReviewRequest.model_validate_json(request.content).contents
+        payload = _WireReview.model_validate_json(contents[0].parts[0].text)
+        received.append(payload)
+        envelope = _fact_audit_envelope(payload, facts, case)
+        return httpx.Response(
+            HTTPStatus.OK,
+            json={
+                "candidates": [
+                    {
+                        "content": {
+                            "role": "model",
+                            "parts": [{"text": envelope.model_dump_json()}],
+                        },
+                        "finishReason": "STOP",
+                    }
+                ]
+            },
+        )
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(respond)) as http:
+        client = sdk_client_factory(http)
+        generator = VertexGeminiPatchGenerator(
+            policy=GeminiModelPolicy(
+                project="offline-fixture",
+                location="global",
+                unslop_model="gemini-3.5-flash-lite",
+                fallback_model="gemini-3.1-flash-lite",
+                restyle_model="gemini-3.8-flash",
+            ),
+            client=client,
+        )
+        try:
+            if case in {"omit_editorial", "forged_output"}:
+                with pytest.raises(ModelUnavailableError):
+                    await generator.review(document, [patch])
+            else:
+                decision = await generator.review(document, [patch])
+                assert decision.approved == (
+                    frozenset({block.id}) if case == "complete" else frozenset()
+                )
+                assert set(decision.rejected) == (set() if case == "complete" else {block.id})
+        finally:
+            await client.aio.aclose()
+    assert len(received) == (3 if case in {"omit_editorial", "forged_output"} else 1)
+    for payload in received:
+        _assert_source_audits(payload, source, replacement, set(facts))
+    safety = validate_patches(
+        document, [patch], phase=TransformPhase.UNSLOP, aggressive_unslop=True
+    )
+    expected = {"changed_force": "force_language_changed", "lost_scope": "scope_qualifier_changed"}
+    if case in expected:
+        assert not safety.accepted
+        assert {finding.code for finding in safety.findings} == {expected[case]}
+    else:
+        assert safety.accepted == {block.id: replacement}
+        assert not safety.findings
 
 
 @pytest.mark.parametrize("fail", [False, True])
@@ -75,7 +240,7 @@ async def test_review_batches_limit_concurrency_and_wait_for_cancellation(
     async def respond(request: httpx.Request) -> httpx.Response:
         nonlocal active, peak, canceled
         contents = _WireReviewRequest.model_validate_json(request.content).contents
-        pairs = _WireReview.model_validate_json(contents[0].parts[0].text).document_proposals
+        pairs = _WireReview.model_validate_json(contents[0].parts[0].text).sentence_audits
         active += 1
         peak = max(peak, active)
         if active == 2:
@@ -175,7 +340,7 @@ async def test_concurrent_review_calls_share_capacity_and_keep_their_own_results
     async def respond(request: httpx.Request) -> httpx.Response:
         nonlocal active, peak
         contents = _WireReviewRequest.model_validate_json(request.content).contents
-        pairs = _WireReview.model_validate_json(contents[0].parts[0].text).document_proposals
+        pairs = _WireReview.model_validate_json(contents[0].parts[0].text).sentence_audits
         pair = pairs[0]
         index = indices[pair.expected_sha256]
         active += 1
@@ -290,7 +455,7 @@ async def test_real_sdk_review_gateway_timeout_uses_the_configured_fallback(
                 json={"error": {"code": HTTPStatus.GATEWAY_TIMEOUT, "message": "Offline deadline"}},
             )
         contents = _WireReviewRequest.model_validate_json(request.content).contents
-        pairs = _WireReview.model_validate_json(contents[0].parts[0].text).document_proposals
+        pairs = _WireReview.model_validate_json(contents[0].parts[0].text).sentence_audits
         envelope = PatchReviewEnvelope(
             reviews=[
                 TextPatchReview(
