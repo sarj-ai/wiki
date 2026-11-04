@@ -17,6 +17,7 @@ from sqlalchemy.dialects.postgresql import JSONB, insert as pg_insert
 from sqlalchemy.engine import Row
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import load_only
+from sqlalchemy.sql.elements import ColumnElement
 from sqlalchemy.sql.selectable import CompoundSelect
 
 from app.auth.encryption import decrypt_cache, encrypt_cache
@@ -38,6 +39,7 @@ from app.document_transform.schemas import (
     TransformMode,
     WordCopyCheckpoint,
 )
+from app.document_transform.unslop import UNSLOP_CATALOG_SHA256
 from app.document_transform.versions import CURRENT_PIPELINE_VERSIONS, DOCUMENT_PIPELINE_VERSION
 from app.identifiers import DocsRevisionId, FileId, IdempotencyKey, TaskId, UserId
 from app.models.task import Task
@@ -1043,6 +1045,7 @@ class PostgresTaskService(TaskService):
                     Task.expires_at > func.now(),
                     Task.result["pipeline_version"].astext.in_(CURRENT_PIPELINE_VERSIONS),
                     Task.result["brand_profile_sha256"].astext == CURRENT_BRAND_MANIFEST.sha256,
+                    _terminal_catalog_matches(),
                 )
                 .order_by(Task.finished_at.desc(), Task.id.desc())
                 .limit(1)
@@ -1084,6 +1087,7 @@ class PostgresTaskService(TaskService):
                     Task.expires_at > func.clock_timestamp(),
                     Task.result["pipeline_version"].astext.in_(CURRENT_PIPELINE_VERSIONS),
                     Task.result["brand_profile_sha256"].astext == CURRENT_BRAND_MANIFEST.sha256,
+                    _terminal_catalog_matches(),
                 )
                 .with_for_update()
             )
@@ -1246,6 +1250,16 @@ def _validated_active_count(value: object) -> int:
         msg = "Active task count query returned an invalid value"
         raise TypeError(msg)
     return value
+
+
+def _terminal_catalog_matches() -> ColumnElement[bool]:
+    return or_(
+        Task.result["mode"].astext == TransformMode.FORMAT.value,
+        and_(
+            Task.result["mode"].astext.in_((TransformMode.UNSLOP.value, TransformMode.BOTH.value)),
+            Task.result["tool_versions"]["unslop_catalog_sha256"].astext == UNSLOP_CATALOG_SHA256,
+        ),
+    )
 
 
 def _task_ids_for_key(

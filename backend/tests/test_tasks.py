@@ -26,6 +26,7 @@ from app.document_transform.schemas import (
     TransformMode,
     ValidationSummary,
 )
+from app.document_transform.unslop import UNSLOP_CATALOG_SHA256
 from app.document_transform.versions import DOCUMENT_PIPELINE_VERSION
 from app.files.schemas import FileResponse
 from app.identifiers import DocsRevisionId, FileId, IdempotencyKey, TaskId, UserId
@@ -270,7 +271,11 @@ def _transform_success_result(task_id: TaskId, mode: TransformMode) -> DocumentT
             unsafe_patch_count=0,
         ),
         model_ids=[],
-        tool_versions={},
+        tool_versions=(
+            {"unslop_catalog_sha256": UNSLOP_CATALOG_SHA256}
+            if mode in {TransformMode.UNSLOP, TransformMode.BOTH}
+            else {}
+        ),
         pipeline_version=DOCUMENT_PIPELINE_VERSION,
         needs_review=False,
     )

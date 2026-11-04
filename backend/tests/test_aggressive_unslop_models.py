@@ -63,6 +63,12 @@ class _ReviewInput(BaseModel):
     sentence_audits: list[_ReviewInputPair]
 
 
+class _ConcisionInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    source_words: int
+    max_words: int
+
+
 class _RewriteInput(BaseModel):
     model_config = ConfigDict(extra="ignore")
     block_id: str
@@ -70,6 +76,7 @@ class _RewriteInput(BaseModel):
     text: str
     kind: BlockKind
     rewrite_constraints: RewriteConstraints
+    concision_target: _ConcisionInput | None
 
 
 class _RejectedInput(BaseModel):
@@ -77,6 +84,7 @@ class _RejectedInput(BaseModel):
     block_id: str
     proposed: str
     rejected_constraints: RewriteConstraints
+    review_feedback: list[str]
 
 
 class _RewriteInputs(RootModel[list[_RewriteInput]]):
@@ -205,7 +213,7 @@ async def test_aggressive_generation_uses_structured_output_and_supported_thinki
     assert config.thinking_config.thinking_level is types.ThinkingLevel.MEDIUM
     assert SOURCE in harness.call.prompts[0]
     assert isinstance(config.system_instruction, str)
-    assert "50–70% fewer words" in config.system_instruction
+    assert "60% fewer words" in config.system_instruction
     assert (
         config.system_instruction.count(UNSLOP_REWRITE_INSTRUCTION)
         + harness.call.prompts[0].count(UNSLOP_REWRITE_INSTRUCTION)
@@ -716,7 +724,7 @@ def test_conventional_framing_can_go_without_relaxing_the_following_obligation(p
     )
     assert decision.accepted == {block.id: proposed}
     assert not decision.findings
-    assert UNSLOP_POLICY_VERSION == "sarj-concise-v13"
+    assert UNSLOP_POLICY_VERSION == "sarj-concise-v14"
 
 
 @pytest.mark.parametrize(
@@ -1264,3 +1272,40 @@ async def test_parallel_repair_keeps_feedback_bound_to_each_current_batch() -> N
 
 def _rewrite_payload_lines(prompt: str) -> list[str]:
     return [line for line in prompt.splitlines() if line.startswith("[")]
+
+
+async def test_numeric_concision_target_and_failure_feedback_remain_source_bound() -> None:
+    source = (
+        "The sensor may record temperature at night."
+        + (
+            " The explanation describes the discussion in expanded wording before returning to the description."
+        )
+        * 4
+    )
+    document = parse_markdown(source, title="Sensor")
+    block = document.blocks[0]
+    patch = TextPatch(block_id=block.id, expected_sha256=block.sha256, replacement=source)
+    harness = _generator(types.GenerateContentResponse(parsed=PatchEnvelope(patches=[patch])))
+
+    assert await harness.generator.generate(document, phase=TransformPhase.UNSLOP) == [patch]
+    initial = _RewriteInputs.model_validate_json(
+        _rewrite_payload_lines(harness.call.prompts[0])[0]
+    ).root[0]
+    assert initial.concision_target is not None
+    assert initial.concision_target.source_words == 59
+    assert initial.concision_target.max_words == 24
+    assert initial.sha256 == block.sha256
+    decision = validate_patches(
+        document, [patch], phase=TransformPhase.UNSLOP, aggressive_unslop=True
+    )
+    assert [finding.code for finding in decision.findings] == ["concision_target_unmet"]
+
+    assert await harness.generator.repair(document, [patch], decision.findings) == [patch]
+    arrays = _rewrite_payload_lines(harness.call.prompts[-1])
+    current = _RewriteInputs.model_validate_json(arrays[0]).root[0]
+    rejected = _RejectedInputs.model_validate_json(arrays[1]).root[0]
+    assert current == initial
+    assert rejected.proposed == source
+    assert rejected.review_feedback == [decision.findings[0].detail]
+    assert "proposal 59 words" in rejected.review_feedback[0]
+    assert "maximum 24" in rejected.review_feedback[0]

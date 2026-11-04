@@ -8,7 +8,12 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 import pytest
 from sqlalchemy import func, null, select, update
 from sqlalchemy.engine import make_url
-from sqlalchemy.ext.asyncio import AsyncEngine, async_sessionmaker, create_async_engine
+from sqlalchemy.ext.asyncio import (
+    AsyncEngine,
+    AsyncSession,
+    async_sessionmaker,
+    create_async_engine,
+)
 
 from app.document_transform.schemas import (
     DocumentOutput,
@@ -19,8 +24,9 @@ from app.document_transform.schemas import (
     TransformMode,
     ValidationSummary,
 )
+from app.document_transform.unslop import UNSLOP_CATALOG_SHA256
 from app.document_transform.versions import DOCUMENT_PIPELINE_VERSION
-from app.identifiers import FileId, GoogleUserId, IdempotencyKey, UserId
+from app.identifiers import FileId, GoogleUserId, IdempotencyKey, TaskId, UserId
 from app.models.task import Task
 from app.models.task_replay_key import TaskReplayKey
 from app.models.user import User
@@ -29,7 +35,7 @@ from app.tasks.errors import (
     TaskNotClaimableError,
     TaskTargetBusyError,
 )
-from app.tasks.schemas import TaskKind, TaskStatus
+from app.tasks.schemas import SucceededTaskRead, TaskKind, TaskRead, TaskStatus
 from app.tasks.service import PostgresTaskService
 
 
@@ -839,3 +845,189 @@ async def test_real_postgres_expired_source_recovery_respects_execution_lease(
             assert claimed.task.id == replacement.task.id
     finally:
         await engine.dispose()
+
+
+@pytest.mark.parametrize(
+    ("mode", "catalog_sha256", "expect_replay"),
+    [
+        (TransformMode.UNSLOP, UNSLOP_CATALOG_SHA256, True),
+        (TransformMode.UNSLOP, "0" * 64, False),
+        (TransformMode.UNSLOP, None, False),
+        (TransformMode.BOTH, UNSLOP_CATALOG_SHA256, True),
+        (TransformMode.BOTH, "0" * 64, False),
+        (TransformMode.BOTH, None, False),
+        (TransformMode.FORMAT, UNSLOP_CATALOG_SHA256, True),
+        (TransformMode.FORMAT, "0" * 64, True),
+        (TransformMode.FORMAT, None, True),
+    ],
+)
+async def test_real_postgres_terminal_replay_requires_current_editor_catalog(
+    mode: TransformMode, catalog_sha256: str | None, *, expect_replay: bool
+) -> None:
+    engine = _qa_engine()
+    sessions = async_sessionmaker(engine, expire_on_commit=False)
+    owner = UserId(uuid.uuid7())
+    original_key = IdempotencyKey(uuid.uuid7())
+    fresh_key = IdempotencyKey(uuid.uuid7())
+    payload = _catalog_payload(mode)
+    checked_outputs: list[TaskId] = []
+
+    async def admit_terminal(task: TaskRead) -> bool:
+        checked_outputs.append(task.id)
+        return True
+
+    try:
+        canonical = await _seed_catalog_terminal(
+            sessions=sessions,
+            owner=owner,
+            payload=payload,
+            key=original_key,
+            catalog_sha256=catalog_sha256,
+        )
+        async with sessions() as session:
+            service = PostgresTaskService(db=session)
+            retried = await service.create_or_replay(
+                kind=TaskKind.FILE_DOCUMENT_TRANSFORM,
+                owner_user_id=owner,
+                idempotency_key=original_key,
+                payload=payload,
+            )
+            assert retried.task.id == canonical
+            assert not retried.created
+            assert isinstance(retried.task, SucceededTaskRead)
+            assert isinstance(retried.task.result, DocumentTransformResult)
+            assert retried.task.result.tool_versions.get("unslop_catalog_sha256") == catalog_sha256
+
+            fresh = await service.create_or_replay(
+                kind=TaskKind.FILE_DOCUMENT_TRANSFORM,
+                owner_user_id=owner,
+                idempotency_key=fresh_key,
+                payload=payload,
+                admit_terminal_replay=admit_terminal,
+            )
+            assert fresh.created is not expect_replay
+            assert (fresh.task.id == canonical) is expect_replay
+            assert checked_outputs == ([canonical] if expect_replay else [])
+            alias = await session.scalar(
+                select(TaskReplayKey.task_id).where(
+                    TaskReplayKey.owner_user_id == owner,
+                    TaskReplayKey.idempotency_key == fresh_key,
+                )
+            )
+            assert alias == (canonical if expect_replay else None)
+    finally:
+        await engine.dispose()
+
+
+@pytest.mark.parametrize(
+    ("mode", "expect_replay"),
+    [(TransformMode.UNSLOP, False), (TransformMode.BOTH, False), (TransformMode.FORMAT, True)],
+)
+@pytest.mark.parametrize("changed_catalog", ["0" * 64, None])
+async def test_real_postgres_terminal_catalog_is_rechecked_after_output_admission(
+    mode: TransformMode, changed_catalog: str | None, *, expect_replay: bool
+) -> None:
+    engine = _qa_engine()
+    sessions = async_sessionmaker(engine, expire_on_commit=False)
+    owner = UserId(uuid.uuid7())
+    payload = _catalog_payload(mode)
+    fresh_key = IdempotencyKey(uuid.uuid7())
+    checked_outputs: list[TaskId] = []
+    try:
+        canonical = await _seed_catalog_terminal(
+            sessions=sessions,
+            owner=owner,
+            payload=payload,
+            key=IdempotencyKey(uuid.uuid7()),
+            catalog_sha256=UNSLOP_CATALOG_SHA256,
+        )
+
+        async def change_catalog(task: TaskRead) -> bool:
+            checked_outputs.append(task.id)
+            async with sessions() as session:
+                await _store_catalog_terminal(
+                    session=session,
+                    task_id=canonical,
+                    mode=mode,
+                    catalog_sha256=changed_catalog,
+                )
+            return True
+
+        async with sessions() as session:
+            fresh = await PostgresTaskService(db=session).create_or_replay(
+                kind=TaskKind.FILE_DOCUMENT_TRANSFORM,
+                owner_user_id=owner,
+                idempotency_key=fresh_key,
+                payload=payload,
+                admit_terminal_replay=change_catalog,
+            )
+            assert checked_outputs == [canonical]
+            assert fresh.created is not expect_replay
+            assert (fresh.task.id == canonical) is expect_replay
+            alias = await session.scalar(
+                select(TaskReplayKey.task_id).where(
+                    TaskReplayKey.owner_user_id == owner,
+                    TaskReplayKey.idempotency_key == fresh_key,
+                )
+            )
+            assert alias == (canonical if expect_replay else None)
+    finally:
+        await engine.dispose()
+
+
+def _catalog_payload(mode: TransformMode) -> DocumentTransformRequest:
+    return DocumentTransformRequest(
+        source=DriveFileSource(
+            kind="drive_file",
+            file_id=FileId(f"qa-catalog-{uuid.uuid7()}"),
+            expected_modified_time="2026-09-07T00:00:00Z",
+        ),
+        mode=mode,
+        output_name="Review",
+    )
+
+
+async def _seed_catalog_terminal(
+    *,
+    sessions: async_sessionmaker[AsyncSession],
+    owner: UserId,
+    payload: DocumentTransformRequest,
+    key: IdempotencyKey,
+    catalog_sha256: str | None,
+) -> TaskId:
+    async with sessions() as session:
+        session.add(User(id=owner, email=f"qa-{owner}@sarj.ai", google_id=GoogleUserId(str(owner))))
+        await session.commit()
+        original = await PostgresTaskService(db=session).create_or_replay(
+            kind=TaskKind.FILE_DOCUMENT_TRANSFORM,
+            owner_user_id=owner,
+            idempotency_key=key,
+            payload=payload,
+        )
+        await _store_catalog_terminal(
+            session=session,
+            task_id=original.task.id,
+            mode=payload.mode,
+            catalog_sha256=catalog_sha256,
+        )
+    return original.task.id
+
+
+async def _store_catalog_terminal(
+    *, session: AsyncSession, task_id: TaskId, mode: TransformMode, catalog_sha256: str | None
+) -> None:
+    result = _completed_result(task_id, mode)
+    if catalog_sha256 is not None:
+        result.tool_versions["unslop_catalog_sha256"] = catalog_sha256
+    await session.execute(
+        update(Task)
+        .where(Task.id == task_id)
+        .values(
+            status=TaskStatus.SUCCEEDED,
+            started_at=func.now(),
+            finished_at=func.now(),
+            attempt_count=1,
+            result=result.model_dump(mode="json"),
+        )
+    )
+    await session.commit()

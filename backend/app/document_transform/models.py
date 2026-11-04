@@ -37,6 +37,7 @@ from app.document_transform.unslop import (
     SINGLE_QUOTED_SPAN_PATTERN,
     UNSLOP_REVIEW_INSTRUCTION,
     UNSLOP_REWRITE_INSTRUCTION,
+    concision_target,
     model_editable_blocks,
 )
 
@@ -359,7 +360,7 @@ class VertexGeminiPatchGenerator(PatchGenerator):
                 and finding.code in REPAIRABLE_REWRITE_CODES
             ):
                 codes.setdefault(finding.block_id, set()).add(finding.code)
-                if finding.code == "semantic_review_rejected":
+                if finding.code in {"semantic_review_rejected", "concision_target_unmet"}:
                     notes.setdefault(finding.block_id, []).append(finding.detail)
         proposals = {
             patch.block_id: _RepairProposal(
@@ -830,12 +831,17 @@ def _prompt(
             "text": block.text,
             "protected_suffix": block.protected_suffix,
             "rewrite_constraints": asdict(rewrite_constraints(block.text)),
+            "concision_target": (
+                _concision_metadata(block) if phase is TransformPhase.UNSLOP else None
+            ),
         }
         for block in selected
         if block.editable
     ]
     instruction = (
-        "Apply the trusted system editing policy to every supplied block."
+        "Apply the trusted system editing policy to every supplied block. "
+        "Meet each supplied concision_target.max_words for the editable prose prefix without "
+        "losing any fact or qualification; protected_suffix is excluded from the word count."
         if phase is TransformPhase.UNSLOP
         else "Formatting preserves every character of the author's text, including whitespace "
         'and punctuation. Do not propose text replacements. Return {"patches":[]}; '
@@ -864,8 +870,8 @@ def _prompt(
             ),
             json.dumps(editable, ensure_ascii=False, separators=(",", ":")),
             (
-                "The following earlier proposals failed exact safety checks. This is one repair "
-                "attempt. Their rejected_constraints describe unsafe edits, not requirements to copy. "
+                "The following earlier proposals failed safety or concision checks. This is one repair "
+                "attempt. Their rejected_constraints describe those proposals, not requirements to copy. "
                 "The original block's rewrite_constraints above are authoritative: restore missing "
                 "entries, remove introduced entries, and match every original count. Correct every "
                 "reported failure and retain the original source hashes. "
@@ -880,6 +886,13 @@ def _prompt(
             ),
         )
     )
+
+
+def _concision_metadata(block: TextBlock) -> dict[str, int] | None:
+    target = concision_target(block)
+    if target is None:
+        return None
+    return {"source_words": target.source_words, "max_words": target.max_words}
 
 
 def _editor_batches(document: DocumentIR) -> tuple[DocumentIR, ...]:
