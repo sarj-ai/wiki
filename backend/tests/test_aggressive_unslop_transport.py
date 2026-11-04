@@ -12,11 +12,11 @@ from google import genai
 from google.genai import types
 from google.oauth2.credentials import Credentials
 import httpx
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, RootModel
 import pytest
 
 from app.document_transform.errors import ModelUnavailableError
-from app.document_transform.ir import parse_markdown
+from app.document_transform.ir import BlockKind, TextBlock, parse_markdown
 from app.document_transform.models import GeminiModelPolicy, VertexGeminiPatchGenerator
 from app.document_transform.safety import validate_patches
 from app.document_transform.schemas import (
@@ -50,6 +50,7 @@ class _WireContext(BaseModel):
     context_id: str
     source_block: str
     proposed_block: str
+    block_kind: BlockKind
 
 
 class _WireReview(BaseModel):
@@ -70,6 +71,17 @@ class _WireContent(BaseModel):
 class _WireReviewRequest(BaseModel):
     model_config = ConfigDict(extra="ignore")
     contents: list[_WireContent]
+
+
+class _WireRewriteBlock(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    block_id: str
+    sha256: str
+    text: str
+
+
+class _WireRewriteBlocks(RootModel[list[_WireRewriteBlock]]):
+    """Actual submitted source blocks from the offline writer request."""
 
 
 _FEATURE_RELATION = re.compile(
@@ -304,6 +316,7 @@ async def test_sdk_while_focus_reviews_its_function_or_condition_in_parent_conte
     start, end = focus.source_span
     assert source[start:end] == focus.source_sentence
     assert received[0].document_contexts[0].source_block == source
+    assert received[0].document_contexts[0].block_kind is BlockKind.PARAGRAPH
     assert received[0].document_contexts[0].proposed_block == proposed
 
 
@@ -1008,3 +1021,247 @@ async def test_json_schema_responses_still_enforce_strict_local_validation(
                 await operation
         finally:
             await client.aio.aclose()
+
+
+@pytest.mark.parametrize("fault", ["none", "missing", "replacement_hash"])
+async def test_sdk_keeps_heading_and_body_contexts_distinct_and_all_verdicts_bound(
+    sdk_client_factory: Callable[[httpx.AsyncClient], genai.Client], fault: str
+) -> None:
+    source = "Atlas condenses prose; Prism refines layouts for readers."
+    document = parse_markdown("## " + source + "\n\n" + source, title="Feature roles")
+    blocks = [block for block in document.blocks if block.text]
+    proposed = "Prism refines layouts and Atlas condenses prose."
+    patches = [
+        TextPatch(block_id=block.id, expected_sha256=block.sha256, replacement=proposed)
+        for block in blocks
+    ]
+    received: list[_WireReview] = []
+
+    def respond(request: httpx.Request) -> httpx.Response:
+        contents = _WireReviewRequest.model_validate_json(request.content).contents
+        payload = _WireReview.model_validate_json(contents[0].parts[0].text)
+        received.append(payload)
+        response = _functional_audit_envelope(payload)
+        if fault == "missing":
+            response = PatchReviewEnvelope(reviews=response.reviews[1:])
+        elif fault == "replacement_hash":
+            response = PatchReviewEnvelope(
+                reviews=[
+                    response.reviews[0].model_copy(update={"replacement_sha256": "0" * 64}),
+                    *response.reviews[1:],
+                ]
+            )
+        return _review_response(response)
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(respond)) as http:
+        client = sdk_client_factory(http)
+        try:
+            generator = _functional_generator(client)
+            if fault == "none":
+                assert (await generator.review(document, patches)).approved == {
+                    block.id for block in blocks
+                }
+            else:
+                with pytest.raises(ModelUnavailableError):
+                    await generator.review(document, patches)
+        finally:
+            await client.aio.aclose()
+    for payload in received:
+        _assert_context_and_hash_audits(payload, blocks, proposed)
+
+
+def _assert_context_and_hash_audits(
+    payload: _WireReview, blocks: list[TextBlock], proposed: str
+) -> None:
+    assert [context.block_kind for context in payload.document_contexts] == [
+        BlockKind.HEADING,
+        BlockKind.PARAGRAPH,
+    ]
+    contexts = {context.context_id: context for context in payload.document_contexts}
+    for block in blocks:
+        audits = [
+            audit
+            for audit in payload.sentence_audits
+            if audit.block_id == block.id or audit.block_id.startswith(block.id + "-")
+        ]
+        assert {audit.source_kind for audit in audits} == {"sentence", "clause"}
+        assert all(contexts[audit.context_id].block_kind is block.kind for audit in audits)
+        assert all(
+            audit.replacement_sha256 == hashlib.sha256(proposed.encode()).hexdigest()
+            for audit in audits
+        )
+
+
+@pytest.mark.parametrize(
+    ("source", "unsafe", "required", "unsupported"),
+    [
+        (
+            "Wiki supports finding files by name or content, and its search shortcut is Ctrl+K.",
+            "With the Ctrl+K search shortcut, users can either navigate structure or search content.",
+            ("name", "content", "Ctrl+K"),
+            "",
+        ),
+        (
+            "Unslop is intended to tighten the writing and remove filler, while Format improves the document’s presentation.",
+            "Wiki includes Unslop to tighten text, while Format and Format settings refine presentation.",
+            ("Unslop", "tighten", "filler", "Format", "presentation"),
+            "Format settings",
+        ),
+        (
+            "The latency figures are historical reference estimates, rather than promises about current hardware performance.",
+            "The latency figures are reference estimates.",
+            ("historical", "current hardware performance"),
+            "",
+        ),
+    ],
+)
+@pytest.mark.parametrize("preserve", [False, True])
+async def test_sdk_honors_controlled_fact_verdicts_without_asserting_model_quality(
+    sdk_client_factory: Callable[[httpx.AsyncClient], genai.Client],
+    source: str,
+    unsafe: str,
+    required: tuple[str, ...],
+    unsupported: str,
+    *,
+    preserve: bool,
+) -> None:
+    document = parse_markdown(source, title="Source facts")
+    block = document.blocks[0]
+    proposed = source if preserve else unsafe
+    patch = TextPatch(block_id=block.id, expected_sha256=block.sha256, replacement=proposed)
+
+    def respond(request: httpx.Request) -> httpx.Response:
+        contents = _WireReviewRequest.model_validate_json(request.content).contents
+        payload = _WireReview.model_validate_json(contents[0].parts[0].text)
+        contexts = {context.context_id: context for context in payload.document_contexts}
+        reviews = []
+        for audit in payload.sentence_audits:
+            context = contexts[audit.context_id]
+            assert context.source_block == source
+            assert context.proposed_block == proposed
+            equivalent = all(term in context.proposed_block for term in required) and not (
+                unsupported and unsupported in context.proposed_block
+            )
+            reviews.append(
+                TextPatchReview(
+                    block_id=audit.block_id,
+                    expected_sha256=audit.expected_sha256,
+                    replacement_sha256=audit.replacement_sha256,
+                    equivalent=equivalent,
+                    reason="The explicit source fact set is preserved."
+                    if equivalent
+                    else "A concrete search mode, feature purpose or historical caveat is missing or invented.",
+                )
+            )
+        return _review_response(PatchReviewEnvelope(reviews=reviews))
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(respond)) as http:
+        client = sdk_client_factory(http)
+        try:
+            decision = await _functional_generator(client).review(document, [patch])
+        finally:
+            await client.aio.aclose()
+    assert decision.approved == (frozenset({block.id}) if preserve else frozenset())
+    assert set(decision.rejected) == (set() if preserve else {block.id})
+
+
+@pytest.mark.parametrize("fail", [False, True])
+async def test_sdk_writer_batches_share_cap_preserve_order_and_reap_cancellation(
+    sdk_client_factory: Callable[[httpx.AsyncClient], genai.Client], *, fail: bool
+) -> None:
+    source = "The hidden bird can sing unseen from dense scrub beside the path."
+    document = parse_markdown("\n\n".join(source for _ in range(13)), title="Writer concurrency")
+    blocks = [block for block in document.blocks if block.text]
+    first_id = blocks[0].id
+    started = asyncio.Event()
+    active = 0
+    peak = 0
+    canceled = 0
+    completed: list[str] = []
+
+    async def respond(request: httpx.Request) -> httpx.Response:
+        nonlocal active, peak, canceled
+        assert request.headers.get("X-Server-Timeout") == "90"
+        assert (
+            _VendorRequest.model_validate_json(request.content).generation_config.max_output_tokens
+            == 16_384
+        )
+        contents = _WireReviewRequest.model_validate_json(request.content).contents[0].parts[0].text
+        batch = _WireRewriteBlocks.model_validate_json(
+            next(line for line in contents.splitlines() if line.startswith("["))
+        ).root
+        active += 1
+        peak = max(peak, active)
+        if active == 2:
+            started.set()
+        try:
+            patches = await _writer_batch_patches(batch, first_id, started, fail=fail)
+            completed.append(batch[0].block_id)
+            return httpx.Response(
+                HTTPStatus.OK,
+                json={
+                    "candidates": [
+                        {
+                            "content": {
+                                "role": "model",
+                                "parts": [
+                                    {"text": PatchEnvelope(patches=patches).model_dump_json()}
+                                ],
+                            },
+                            "finishReason": "STOP",
+                        }
+                    ]
+                },
+            )
+        except asyncio.CancelledError:
+            canceled += 1
+            raise
+        finally:
+            active -= 1
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(respond)) as http:
+        client = sdk_client_factory(http)
+        try:
+            generator = _functional_generator(client)
+            async with asyncio.timeout(5):
+                if fail:
+                    with pytest.raises(ModelUnavailableError):
+                        await generator.generate(document, phase=TransformPhase.UNSLOP)
+                else:
+                    results = await asyncio.gather(
+                        generator.generate(document, phase=TransformPhase.UNSLOP),
+                        generator.generate(document, phase=TransformPhase.UNSLOP),
+                    )
+                    assert all(
+                        [
+                            (patch.block_id, patch.expected_sha256, patch.replacement)
+                            for patch in result
+                        ]
+                        == [(block.id, block.sha256, block.text) for block in blocks]
+                        for result in results
+                    )
+        finally:
+            await client.aio.aclose()
+    assert peak == 2
+    assert active == 0
+    if fail:
+        assert canceled >= 1
+    else:
+        assert not canceled
+        assert completed[0] != first_id
+
+
+async def _writer_batch_patches(
+    batch: list[_WireRewriteBlock], first_id: str, started: asyncio.Event, *, fail: bool
+) -> list[TextPatch]:
+    await started.wait()
+    if fail and batch[0].block_id != first_id:
+        await asyncio.Event().wait()
+    await asyncio.sleep(0.03 if batch[0].block_id == first_id else 0)
+    patches = [
+        TextPatch(block_id=block.block_id, expected_sha256=block.sha256, replacement=block.text)
+        for block in batch
+    ]
+    if fail:
+        patches = []
+    return patches

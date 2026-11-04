@@ -11,7 +11,7 @@ from pydantic import BaseModel, ConfigDict, RootModel
 import pytest
 
 from app.document_transform.errors import ModelUnavailableError
-from app.document_transform.ir import parse_markdown
+from app.document_transform.ir import BlockKind, parse_google_document, parse_markdown
 from app.document_transform.models import GeminiModelPolicy, VertexGeminiPatchGenerator
 from app.document_transform.safety import RewriteConstraints, rewrite_constraints, validate_patches
 from app.document_transform.schemas import (
@@ -54,6 +54,7 @@ class _ReviewInputContext(BaseModel):
     context_id: str
     source_block: str
     proposed_block: str
+    block_kind: BlockKind
 
 
 class _ReviewInput(BaseModel):
@@ -67,6 +68,7 @@ class _RewriteInput(BaseModel):
     block_id: str
     sha256: str
     text: str
+    kind: BlockKind
     rewrite_constraints: RewriteConstraints
 
 
@@ -95,6 +97,7 @@ class _ModelResponse:
         self.failure_status = 429
         self.timeout_failures = False
         self.review_input = False
+        self.rewrite_input = False
         self.rejected_sources: set[str] = set()
         self.omitted_sources: set[str] = set()
 
@@ -115,6 +118,22 @@ class _ModelResponse:
                 else errors.ClientError
             )
             raise error(self.failure_status, {"error": {"message": "Offline provider fixture"}})
+        if self.rewrite_input:
+            blocks = _RewriteInputs.model_validate_json(
+                next(line for line in contents.splitlines() if line.startswith("["))
+            ).root
+            return types.GenerateContentResponse(
+                parsed=PatchEnvelope(
+                    patches=[
+                        TextPatch(
+                            block_id=block.block_id,
+                            expected_sha256=block.sha256,
+                            replacement=block.text,
+                        )
+                        for block in blocks
+                    ]
+                )
+            )
         if self.review_input:
             payload = _ReviewInput.model_validate_json(contents)
             return types.GenerateContentResponse(
@@ -179,12 +198,19 @@ async def test_aggressive_generation_uses_structured_output_and_supported_thinki
     config = harness.call.configurations[0]
     assert config.response_schema is None
     assert config.response_json_schema is not None
+    assert config.max_output_tokens == 16_384
     assert config.response_json_schema["additionalProperties"] is False
     assert "patches" in config.response_json_schema["properties"]
     assert config.thinking_config is not None
     assert config.thinking_config.thinking_level is types.ThinkingLevel.MEDIUM
     assert SOURCE in harness.call.prompts[0]
-    assert "50–70% fewer words" in harness.call.prompts[0]
+    assert isinstance(config.system_instruction, str)
+    assert "50–70% fewer words" in config.system_instruction
+    assert (
+        config.system_instruction.count(UNSLOP_REWRITE_INSTRUCTION)
+        + harness.call.prompts[0].count(UNSLOP_REWRITE_INSTRUCTION)
+        == 1
+    )
     assert "protected_suffix" in harness.call.prompts[0]
     assert '"force_language":["can"]' in harness.call.prompts[0]
 
@@ -385,7 +411,8 @@ async def test_repair_can_keep_an_unspecified_subject_instead_of_inventing_one()
         (TransformFinding(code="semantic_review_rejected", block_id=block.id, detail=critique),),
     ) == [unchanged]
     prompt = harness.call.prompts[0]
-    assert UNSLOP_REWRITE_INSTRUCTION in prompt
+    assert harness.call.configurations[0].system_instruction == UNSLOP_REWRITE_INSTRUCTION
+    assert UNSLOP_REWRITE_INSTRUCTION not in prompt
     assert source in prompt
     assert unsupported.replacement in prompt
     assert f'"review_feedback":["{critique}"]' in prompt
@@ -648,6 +675,7 @@ async def test_sentence_checks_share_paragraph_context_without_losing_full_cover
     payloads = [_ReviewInput.model_validate_json(prompt) for prompt in harness.call.prompts]
     assert sum(len(payload.sentence_audits) for payload in payloads) == 60
     assert len(payloads) <= 6
+    assert all(0 < len(payload.sentence_audits) <= 12 for payload in payloads)
     assert all(len(prompt) <= 8_000 for prompt in harness.call.prompts)
     for payload in payloads:
         contexts = {context.context_id: context for context in payload.document_contexts}
@@ -688,7 +716,7 @@ def test_conventional_framing_can_go_without_relaxing_the_following_obligation(p
     )
     assert decision.accepted == {block.id: proposed}
     assert not decision.findings
-    assert UNSLOP_POLICY_VERSION == "sarj-concise-v12"
+    assert UNSLOP_POLICY_VERSION == "sarj-concise-v13"
 
 
 @pytest.mark.parametrize(
@@ -993,3 +1021,246 @@ async def test_document_clause_budget_overflow_does_not_silently_approve_a_later
         patch.block_id for patch in patches
     }
     assert sum(pair.source_kind == "clause" for pair in submitted) == 32
+
+
+@pytest.mark.parametrize("native", [False, True])
+@pytest.mark.parametrize(
+    ("heading", "replacement"),
+    [
+        ("Storage overview", "Storage"),
+        ("A few thoughts about the storage interface", "Storage interface"),
+    ],
+)
+async def test_short_heading_uses_trusted_role_and_bound_safety_path(
+    heading: str, replacement: str, *, native: bool
+) -> None:
+    document = (
+        parse_google_document(
+            {
+                "revisionId": "fixture-revision",
+                "tabs": [
+                    {
+                        "tabProperties": {"tabId": "tab-one"},
+                        "documentTab": {
+                            "body": {
+                                "content": [
+                                    {
+                                        "startIndex": 1,
+                                        "endIndex": len(heading) + 2,
+                                        "paragraph": {
+                                            "paragraphStyle": {"namedStyleType": "HEADING_2"},
+                                            "elements": [{"textRun": {"content": heading + "\n"}}],
+                                        },
+                                    }
+                                ]
+                            }
+                        },
+                    }
+                ],
+            },
+            title="Storage",
+        )
+        if native
+        else parse_markdown("## " + heading, title="Storage")
+    )
+    block = document.blocks[0]
+    assert block.kind is BlockKind.HEADING
+    assert block.editable
+    patch = TextPatch(block_id=block.id, expected_sha256=block.sha256, replacement=replacement)
+    harness = _generator(types.GenerateContentResponse(parsed=PatchEnvelope(patches=[patch])))
+    assert await harness.generator.generate(document, phase=TransformPhase.UNSLOP) == [patch]
+    supplied = _RewriteInputs.model_validate_json(
+        next(line for line in harness.call.prompts[0].splitlines() if line.startswith("["))
+    ).root
+    assert len(supplied) == 1
+    assert supplied[0].kind is BlockKind.HEADING
+    assert supplied[0].sha256 == block.sha256
+    harness.call.response = types.GenerateContentResponse(
+        parsed=PatchReviewEnvelope(
+            reviews=[
+                TextPatchReview(
+                    block_id=block.id,
+                    expected_sha256=block.sha256,
+                    replacement_sha256=hashlib.sha256(replacement.encode()).hexdigest(),
+                    equivalent=True,
+                    reason="The fixture retains the storage topic and removes only heading padding.",
+                )
+            ]
+        )
+    )
+    assert (await harness.generator.review(document, [patch])).approved == {block.id}
+    context = _ReviewInput.model_validate_json(harness.call.prompts[-1]).document_contexts[0]
+    assert context.block_kind is BlockKind.HEADING
+    assert (context.source_block, context.proposed_block) == (heading, replacement)
+    decision = validate_patches(
+        document, [patch], phase=TransformPhase.UNSLOP, aggressive_unslop=True
+    )
+    assert decision.accepted == {block.id: replacement}
+    assert not decision.findings
+
+
+async def test_concise_heading_stays_unchanged_and_short_body_stays_out_of_scope() -> None:
+    heading = parse_markdown("## Storage", title="Storage")
+    block = heading.blocks[0]
+    unchanged = TextPatch(block_id=block.id, expected_sha256=block.sha256, replacement=block.text)
+    harness = _generator(types.GenerateContentResponse(parsed=PatchEnvelope(patches=[unchanged])))
+    assert await harness.generator.generate(heading, phase=TransformPhase.UNSLOP) == [unchanged]
+    body = parse_markdown("Storage overview", title="Storage")
+    before = len(harness.call.prompts)
+    assert await harness.generator.generate(body, phase=TransformPhase.UNSLOP) == []
+    assert len(harness.call.prompts) == before
+
+
+@pytest.mark.parametrize(
+    ("heading", "replacement", "code"),
+    [
+        ("About Atlas", "About Prism", "proper_noun_changed"),
+        ("Version 3 summary", "Version 4 summary", "protected_content_changed"),
+        ('Read "source values"', 'Read "values"', "quoted_content_changed"),
+        ("Service may start", "Service will start", "force_language_changed"),
+    ],
+)
+def test_heading_scope_preserves_existing_fact_and_literal_guards(
+    heading: str, replacement: str, code: str
+) -> None:
+    document = parse_markdown("## " + heading, title="Source")
+    block = document.blocks[0]
+    decision = validate_patches(
+        document,
+        [TextPatch(block_id=block.id, expected_sha256=block.sha256, replacement=replacement)],
+        phase=TransformPhase.UNSLOP,
+        aggressive_unslop=True,
+    )
+    assert not decision.accepted
+    assert {finding.code for finding in decision.findings} == {code}
+
+
+async def test_short_native_linked_heading_keeps_existing_noneditable_boundary() -> None:
+    heading = "Storage overview"
+    document = parse_google_document(
+        {
+            "revisionId": "fixture-revision",
+            "tabs": [
+                {
+                    "tabProperties": {"tabId": "tab-one"},
+                    "documentTab": {
+                        "body": {
+                            "content": [
+                                {
+                                    "startIndex": 1,
+                                    "endIndex": len(heading) + 2,
+                                    "paragraph": {
+                                        "paragraphStyle": {"namedStyleType": "HEADING_2"},
+                                        "elements": [
+                                            {
+                                                "textRun": {
+                                                    "content": heading + "\n",
+                                                    "textStyle": {
+                                                        "link": {
+                                                            "url": "https://example.com/storage"
+                                                        }
+                                                    },
+                                                }
+                                            }
+                                        ],
+                                    },
+                                }
+                            ]
+                        }
+                    },
+                }
+            ],
+        },
+        title="Storage",
+    )
+    assert document.blocks[0].kind is BlockKind.HEADING
+    assert document.blocks[0].editable is False
+    harness = _generator(types.GenerateContentResponse(parsed=PatchEnvelope(patches=[])))
+    assert await harness.generator.generate(document, phase=TransformPhase.UNSLOP) == []
+    assert not harness.call.prompts
+
+
+@pytest.mark.parametrize("repetitions", [1, 25])
+async def test_smaller_editor_requests_preserve_all_blocks_hashes_and_order(
+    repetitions: int,
+) -> None:
+    source = " ".join([SOURCE] * repetitions)
+    document = parse_markdown("\n\n".join(source for _ in range(13)), title="Editor batches")
+    blocks = [block for block in document.blocks if block.text]
+    harness = _generator(types.GenerateContentResponse())
+    harness.call.rewrite_input = True
+    patches = await harness.generator.generate(document, phase=TransformPhase.UNSLOP)
+    submitted = [
+        _RewriteInputs.model_validate_json(_rewrite_payload_lines(prompt)[0]).root
+        for prompt in harness.call.prompts
+    ]
+    assert all(0 < len(batch) <= 6 for batch in submitted)
+    assert all(sum(len(block.text) for block in batch) <= 4_000 for batch in submitted)
+    assert [block.block_id for batch in submitted for block in batch] == [
+        block.id for block in blocks
+    ]
+    assert [(patch.block_id, patch.expected_sha256, patch.replacement) for patch in patches] == [
+        (block.id, block.sha256, block.text) for block in blocks
+    ]
+    assert [len(batch) for batch in submitted] == (
+        [6, 6, 1] if repetitions == 1 else [1] * len(blocks)
+    )
+
+
+async def test_single_oversized_block_and_audit_are_preserved_whole() -> None:
+    source = "The specification describes " + "storage " * 600 + "behavior."
+    document = parse_markdown(source, title="Large source block")
+    block = document.blocks[0]
+    patch = TextPatch(block_id=block.id, expected_sha256=block.sha256, replacement=source)
+    harness = _generator(types.GenerateContentResponse(parsed=PatchEnvelope(patches=[patch])))
+    assert await harness.generator.generate(document, phase=TransformPhase.UNSLOP) == [patch]
+    supplied = _RewriteInputs.model_validate_json(
+        next(line for line in harness.call.prompts[0].splitlines() if line.startswith("["))
+    ).root
+    assert len(supplied) == 1
+    assert supplied[0].text == source
+    assert len(source) > 4_000
+    harness.call.review_input = True
+    assert (await harness.generator.review(document, [patch])).approved == {block.id}
+    payload = _ReviewInput.model_validate_json(harness.call.prompts[-1])
+    assert len(harness.call.prompts) == 2
+    assert len(payload.sentence_audits) == 1
+    assert (
+        payload.document_contexts[0].source_block
+        == payload.document_contexts[0].proposed_block
+        == source
+    )
+    assert payload.sentence_audits[0].expected_sha256 == block.sha256
+    assert len(harness.call.prompts[-1]) > 8_000
+
+
+async def test_parallel_repair_keeps_feedback_bound_to_each_current_batch() -> None:
+    document = parse_markdown("\n\n".join(SOURCE for _ in range(13)), title="Repair batches")
+    blocks = [block for block in document.blocks if block.text]
+    patches = [
+        TextPatch(block_id=block.id, expected_sha256=block.sha256, replacement=REPLACEMENT)
+        for block in blocks
+    ]
+    findings = tuple(
+        TransformFinding(
+            code="semantic_review_rejected", block_id=block.id, detail="Review " + block.id
+        )
+        for block in blocks
+    )
+    harness = _generator(types.GenerateContentResponse())
+    harness.call.rewrite_input = True
+    repaired = await harness.generator.repair(document, patches, findings)
+    assert [(patch.block_id, patch.expected_sha256, patch.replacement) for patch in repaired] == [
+        (block.id, block.sha256, block.text) for block in blocks
+    ]
+    for prompt in harness.call.prompts:
+        arrays = _rewrite_payload_lines(prompt)
+        current = _RewriteInputs.model_validate_json(arrays[0]).root
+        rejected = _RejectedInputs.model_validate_json(arrays[1]).root
+        assert [block.block_id for block in current] == [block.block_id for block in rejected]
+        assert all(item.proposed == REPLACEMENT for item in rejected)
+        assert all(f'"review_feedback":["Review {block.block_id}"]' in prompt for block in current)
+
+
+def _rewrite_payload_lines(prompt: str) -> list[str]:
+    return [line for line in prompt.splitlines() if line.startswith("[")]
