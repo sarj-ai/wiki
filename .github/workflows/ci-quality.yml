@@ -53,8 +53,31 @@ defaults:
     shell: bash
 
 jobs:
+  route-quality:
+    name: Select standalone quality
+    # Reusable calls have a boolean input even when false. JSON preserves that
+    # distinction from a plain push's absent input (Actions equates false and '').
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main' && (toJSON(inputs.force_full) == 'null' || toJSON(inputs.force_full) == '""')
+    runs-on: ${{ vars.CI_RUNNER || 'ubuntu-24.04' }}
+    timeout-minutes: 2
+    outputs:
+      run_quality: ${{ steps.route.outputs.run_quality }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Retain quality unless Release Main is selected
+        id: route
+        env:
+          BASE_SHA: ${{ github.event.before }}
+          HEAD_SHA: ${{ github.sha }}
+        run: bash scripts/github/quality-ci-policy.sh --diff "$BASE_SHA" "$HEAD_SHA" >>"$GITHUB_OUTPUT"
+
   repository-quality:
     name: pre-commit (actionlint, hygiene, sarj rules)
+    needs: route-quality
+    if: ${{ !cancelled() && (needs.route-quality.result != 'success' || needs.route-quality.outputs.run_quality != 'false') }}
     runs-on: ${{ vars.CI_RUNNER || 'ubuntu-24.04' }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -125,6 +148,8 @@ jobs:
 
   api-contract:
     name: OpenAPI spec in sync
+    needs: route-quality
+    if: ${{ !cancelled() && (needs.route-quality.result != 'success' || needs.route-quality.outputs.run_quality != 'false') }}
     runs-on: ${{ vars.CI_RUNNER || 'ubuntu-24.04' }}
     permissions:
       contents: read
@@ -146,6 +171,8 @@ jobs:
 
   secret-scan:
     name: gitleaks (full history)
+    needs: route-quality
+    if: ${{ !cancelled() && (needs.route-quality.result != 'success' || needs.route-quality.outputs.run_quality != 'false') }}
     runs-on: ${{ vars.CI_RUNNER || 'ubuntu-24.04' }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
