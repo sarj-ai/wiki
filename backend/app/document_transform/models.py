@@ -16,7 +16,7 @@ from google.genai import errors as genai_errors, types as genai_types
 from pydantic import JsonValue
 
 from app.document_transform.errors import ModelUnavailableError
-from app.document_transform.ir import DocumentIR, TextBlock
+from app.document_transform.ir import BlockKind, DocumentIR, TextBlock
 from app.document_transform.model_diagnostics import log_model_failure
 from app.document_transform.safety import (
     REPAIRABLE_REWRITE_CODES,
@@ -41,8 +41,8 @@ from app.document_transform.unslop import (
 )
 
 
-_MAX_EDITOR_BATCH_CHARACTERS = 8_000
-_MAX_EDITOR_BATCH_BLOCKS = 12
+_MAX_EDITOR_BATCH_CHARACTERS = 4_000
+_MAX_EDITOR_BATCH_BLOCKS = 6
 _MAX_REVIEW_ATTEMPTS = 3
 _REVIEW_FALLBACK_STATUSES = frozenset(
     {
@@ -56,7 +56,7 @@ _REVIEW_FALLBACK_STATUSES = frozenset(
 )
 _MAX_REVIEW_BATCH_CHARACTERS = 8_000
 _MAX_REVIEW_BATCH_PAIRS = 12
-_MAX_CONCURRENT_REVIEW_BATCHES = 2
+_MAX_CONCURRENT_MODEL_BATCHES = 2
 _MAX_BLOCK_CLAUSE_AUDITS = 4
 _MAX_DOCUMENT_CLAUSE_AUDITS = 32
 _PARALLEL_PURPOSE_COUNT = 2
@@ -89,9 +89,7 @@ _NAMED_PURPOSE = re.compile(
     rf"\b{_NAMED_SUBJECT_PATTERN}[ \t]+"
     r"(?:(?:is|was)[ \t]+(?:intended|designed)[ \t]+)?to[ \t]+[a-z][a-z'-]*\b"
 )
-_RESPONSE_TOKEN_LIMIT = 8_192
-_LARGE_RESPONSE_TOKEN_LIMIT = 16_384
-_LARGE_PROMPT_CHARACTERS = 24_000
+_STRUCTURED_RESPONSE_TOKEN_LIMIT = 16_384
 _ReviewContextId = NewType("_ReviewContextId", str)
 _ReviewBlockId = NewType("_ReviewBlockId", str)
 
@@ -122,6 +120,7 @@ class _ReviewPair:
     replacement_sha256: str
     source: str
     proposed: str
+    block_kind: BlockKind
     source_context: str = ""
     source_kind: Literal["sentence", "clause", "dependent_clause"] = "sentence"
     source_span: tuple[int, int] | None = None
@@ -157,6 +156,7 @@ class _ReviewContext:
     context_id: _ReviewContextId
     source_block: str
     proposed_block: str
+    block_kind: BlockKind
 
 
 @dataclass(frozen=True, slots=True)
@@ -199,7 +199,7 @@ class GeminiModelPolicy:
     unslop_model: str
     fallback_model: str
     restyle_model: str
-    timeout: timedelta = timedelta(seconds=45)
+    timeout: timedelta = timedelta(seconds=90)
 
     def __post_init__(self) -> None:
         for model in (self.unslop_model, self.fallback_model, self.restyle_model):
@@ -252,7 +252,7 @@ class VertexGeminiPatchGenerator(PatchGenerator):
         client: genai.Client | None = None,
     ) -> None:
         self._policy = policy
-        self._review_semaphore = asyncio.Semaphore(_MAX_CONCURRENT_REVIEW_BATCHES)
+        self._model_semaphore = asyncio.Semaphore(_MAX_CONCURRENT_MODEL_BATCHES)
         self._client = client or genai.Client(
             vertexai=True,
             project=policy.project,
@@ -271,11 +271,36 @@ class VertexGeminiPatchGenerator(PatchGenerator):
     @override
     async def generate(self, document: DocumentIR, *, phase: TransformPhase) -> list[TextPatch]:
         if phase is TransformPhase.UNSLOP:
-            patches: list[TextPatch] = []
-            for batch in _editor_batches(document):
-                patches.extend(await self._generate_batch(batch, phase=phase))
-            return patches
+            return await self._generate_batches(document, feedback={})
         return await self._generate_batch(document, phase=phase)
+
+    async def _generate_batches(
+        self, document: DocumentIR, *, feedback: dict[str, _RepairProposal]
+    ) -> list[TextPatch]:
+        try:
+            async with asyncio.TaskGroup() as group:
+                tasks = [
+                    group.create_task(
+                        self._bounded_generate_batch(
+                            batch,
+                            feedback=tuple(
+                                feedback[block.id] for block in batch.blocks if block.id in feedback
+                            ),
+                        )
+                    )
+                    for batch in _editor_batches(document)
+                ]
+        except* ModelUnavailableError as error:
+            raise ModelUnavailableError from error
+        return [patch for task in tasks for patch in task.result()]
+
+    async def _bounded_generate_batch(
+        self, document: DocumentIR, *, feedback: tuple[_RepairProposal, ...]
+    ) -> list[TextPatch]:
+        async with self._model_semaphore:
+            return await self._generate_batch(
+                document, phase=TransformPhase.UNSLOP, feedback=feedback
+            )
 
     async def _generate_batch(
         self,
@@ -350,16 +375,7 @@ class VertexGeminiPatchGenerator(PatchGenerator):
         rejected = replace(
             document, blocks=tuple(block for block in document.blocks if block.id in proposals)
         )
-        repaired: list[TextPatch] = []
-        for batch in _editor_batches(rejected):
-            repaired.extend(
-                await self._generate_batch(
-                    batch,
-                    phase=TransformPhase.UNSLOP,
-                    feedback=tuple(proposals[block.id] for block in batch.blocks),
-                )
-            )
-        return repaired
+        return await self._generate_batches(rejected, feedback=proposals)
 
     async def _generate_once(
         self,
@@ -380,7 +396,7 @@ class VertexGeminiPatchGenerator(PatchGenerator):
                     else "Formatting must preserve the author's text exactly.",
                     response_mime_type="application/json",
                     response_json_schema=_response_json_schema(PatchEnvelope),
-                    max_output_tokens=_response_token_limit(prompt),
+                    max_output_tokens=_STRUCTURED_RESPONSE_TOKEN_LIMIT,
                     thinking_config=(
                         None
                         if model == self._policy.fallback_model
@@ -432,7 +448,7 @@ class VertexGeminiPatchGenerator(PatchGenerator):
         try:
             async with asyncio.TaskGroup() as group:
                 tasks = [
-                    group.create_task(self._bounded_review_batch(batch, self._review_semaphore))
+                    group.create_task(self._bounded_review_batch(batch, self._model_semaphore))
                     for batch in _review_batches(pairs)
                 ]
         except* ModelUnavailableError as error:
@@ -476,7 +492,7 @@ class VertexGeminiPatchGenerator(PatchGenerator):
                     system_instruction=UNSLOP_REVIEW_INSTRUCTION,
                     response_mime_type="application/json",
                     response_json_schema=_response_json_schema(PatchReviewEnvelope),
-                    max_output_tokens=_LARGE_RESPONSE_TOKEN_LIMIT,
+                    max_output_tokens=_STRUCTURED_RESPONSE_TOKEN_LIMIT,
                     thinking_config=None
                     if model == self._policy.fallback_model
                     else genai_types.ThinkingConfig(thinking_level=genai_types.ThinkingLevel.HIGH),
@@ -527,7 +543,14 @@ def _review_units(block: TextBlock, proposed: str) -> tuple[_ReviewUnit, ...]:
         return (
             _ReviewUnit(
                 block.id,
-                _ReviewPair(block.id, block.sha256, replacement_sha256, block.text, proposed),
+                _ReviewPair(
+                    block.id,
+                    block.sha256,
+                    replacement_sha256,
+                    block.text,
+                    proposed,
+                    block_kind=block.kind,
+                ),
             ),
         )
     return tuple(
@@ -542,6 +565,7 @@ def _review_units(block: TextBlock, proposed: str) -> tuple[_ReviewUnit, ...]:
                 source=sentence,
                 proposed=proposed,
                 source_context=block.text,
+                block_kind=block.kind,
             ),
         )
         for index, sentence in enumerate(sentences)
@@ -617,6 +641,7 @@ def _clause_review_unit(
             source_kind=focus.kind,
             source_span=span,
             parent_sentence=parent_sentence,
+            block_kind=block.kind,
         ),
     )
 
@@ -718,12 +743,6 @@ def _aggregate_review_units(units: list[_ReviewUnit], decision: RewriteReview) -
     )
 
 
-def _response_token_limit(prompt: str) -> int:
-    if len(prompt) > _LARGE_PROMPT_CHARACTERS:
-        return _LARGE_RESPONSE_TOKEN_LIMIT
-    return _RESPONSE_TOKEN_LIMIT
-
-
 def _review_batches(pairs: list[_ReviewPair]) -> tuple[list[_ReviewPair], ...]:
     batches: list[list[_ReviewPair]] = []
     current: list[_ReviewPair] = []
@@ -742,10 +761,10 @@ def _review_batches(pairs: list[_ReviewPair]) -> tuple[list[_ReviewPair], ...]:
 
 
 def _review_prompt(pairs: list[_ReviewPair]) -> str:
-    contexts: dict[tuple[str, str], _ReviewContext] = {}
+    contexts: dict[tuple[str, str, BlockKind], _ReviewContext] = {}
     audits: list[_SentenceAudit] = []
     for pair in pairs:
-        key = (pair.source_context or pair.source, pair.proposed)
+        key = (pair.source_context or pair.source, pair.proposed, pair.block_kind)
         context = contexts.get(key)
         if context is None:
             context = _ReviewContext(_ReviewContextId(f"context-{len(contexts)}"), *key)
@@ -816,7 +835,7 @@ def _prompt(
         if block.editable
     ]
     instruction = (
-        UNSLOP_REWRITE_INSTRUCTION
+        "Apply the trusted system editing policy to every supplied block."
         if phase is TransformPhase.UNSLOP
         else "Formatting preserves every character of the author's text, including whitespace "
         'and punctuation. Do not propose text replacements. Return {"patches":[]}; '

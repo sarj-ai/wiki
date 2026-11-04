@@ -88,6 +88,9 @@ def test_baseline_parses_with_typed_defaults(monkeypatch: pytest.MonkeyPatch) ->
     assert s.LOG_LEVEL == "INFO"
     assert s.RELEASE_SHA == "dev"
     assert timedelta(minutes=10) == s.SIDEBAR_CACHE_TTL
+    assert s.DOCUMENT.TRANSFORM_UNSLOP_MODEL == "gemini-3.8-flash"
+    assert s.DOCUMENT.TRANSFORM_RESTYLE_MODEL == "gemini-3.1-pro-preview"
+    assert s.DOCUMENT.TRANSFORM_FALLBACK_MODEL == "gemini-3.1-pro-preview"
 
 
 def test_document_models_load_from_existing_environment_names(
@@ -122,8 +125,8 @@ def test_document_environment_retains_unknown_setting_compatibility(
         DOCUMENT_TRANSFORM_FUTURE_SETTING="ignored",
         DOCUMENT_UNRELATED="ignored",
     )
-    assert configured.DOCUMENT.TRANSFORM_UNSLOP_MODEL == "gemini-3.7-flash"
-    assert configured.DOCUMENT.TRANSFORM_RESTYLE_MODEL == "gemini-3.7-flash"
+    assert configured.DOCUMENT.TRANSFORM_UNSLOP_MODEL == "gemini-3.8-flash"
+    assert configured.DOCUMENT.TRANSFORM_RESTYLE_MODEL == "gemini-3.1-pro-preview"
 
 
 def test_document_settings_preserve_parent_source_precedence(
@@ -151,7 +154,7 @@ def test_document_settings_preserve_parent_source_precedence(
         document=document_settings_factory("explicit-model"),
     )
     assert explicit.DOCUMENT.TRANSFORM_UNSLOP_MODEL == "explicit-model"
-    assert document_settings_factory(None).TRANSFORM_UNSLOP_MODEL == "gemini-3.7-flash"
+    assert document_settings_factory(None).TRANSFORM_UNSLOP_MODEL == "gemini-3.8-flash"
 
 
 def test_document_settings_honor_disabled_dotenv_loading(
@@ -162,7 +165,7 @@ def test_document_settings_honor_disabled_dotenv_loading(
     monkeypatch.chdir(tmp_path)
     assert load_environment_settings(Settings).DOCUMENT.TRANSFORM_UNSLOP_MODEL == "dotenv-model"
     disabled = load_environment_settings(Settings, load_dotenv=False)
-    assert disabled.DOCUMENT.TRANSFORM_UNSLOP_MODEL == "gemini-3.7-flash"
+    assert disabled.DOCUMENT.TRANSFORM_UNSLOP_MODEL == "gemini-3.8-flash"
 
 
 def test_secrets_do_not_leak_in_repr(monkeypatch: pytest.MonkeyPatch) -> None:
