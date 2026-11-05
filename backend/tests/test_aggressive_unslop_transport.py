@@ -1525,7 +1525,7 @@ async def test_sdk_initial_fallback_and_flash_repair_keep_independent_review_hig
     assert levels == [
         types.ThinkingLevel.LOW,
         types.ThinkingLevel.MEDIUM if fallback == "gemini-3.1-pro-preview" else None,
-        types.ThinkingLevel.MEDIUM,
+        types.ThinkingLevel.LOW,
         *(
             [types.ThinkingLevel.HIGH if fallback == "gemini-3.1-pro-preview" else None]
             if repair_fault
@@ -2313,7 +2313,7 @@ async def test_cancelled_writer_wait_releases_admission_lock_and_rpc_capacity(
         pytest.param(
             ModelId("gemini-3.8-flash"),
             types.ThinkingLevel.LOW,
-            types.ThinkingLevel.MEDIUM,
+            types.ThinkingLevel.LOW,
             id="default-flash-editor",
         ),
         pytest.param(

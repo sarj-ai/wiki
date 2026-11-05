@@ -346,7 +346,7 @@ async def test_model_repair_receives_the_exact_failure_and_original_source_const
     assert harness.call.models == ["gemini-3.8-flash"]
     config = harness.call.configurations[0]
     assert config.thinking_config is not None
-    assert config.thinking_config.thinking_level is types.ThinkingLevel.MEDIUM
+    assert config.thinking_config.thinking_level is types.ThinkingLevel.LOW
     prompt = harness.call.prompts[0]
     assert SOURCE in prompt
     assert bad.replacement in prompt
@@ -743,7 +743,7 @@ def test_conventional_framing_can_go_without_relaxing_the_following_obligation(p
     )
     assert decision.accepted == {block.id: proposed}
     assert not decision.findings
-    assert UNSLOP_POLICY_VERSION == "sarj-concise-v16"
+    assert UNSLOP_POLICY_VERSION == "sarj-concise-v17"
 
 
 @pytest.mark.parametrize(
@@ -1390,3 +1390,112 @@ async def test_writer_draft_margin_stays_below_the_unchanged_suffix_excluded_cap
         document, [patch], phase=TransformPhase.UNSLOP, aggressive_unslop=True
     )
     assert [finding.code for finding in decision.findings] == ["concision_target_unmet"]
+
+
+@pytest.mark.parametrize(
+    ("source", "achieved", "qualifier"),
+    [
+        pytest.param(
+            "The team identified an opportunity to reduce waste.",
+            "The team reduced waste.",
+            "opportunity to",
+            id="identified-opportunity-is-not-achievement",
+        ),
+        pytest.param(
+            "The audit identified opportunities to reduce inspection delays.",
+            "The audit reduced inspection delays.",
+            "opportunities to",
+            id="plural-opportunities-are-not-achievement",
+        ),
+    ],
+)
+def test_opportunity_goal_cannot_be_promoted_to_an_achieved_result(
+    source: str, achieved: str, qualifier: str
+) -> None:
+    document = parse_markdown(source, title="Goal qualification")
+    block = document.blocks[0]
+    patch = TextPatch(block_id=block.id, expected_sha256=block.sha256, replacement=achieved)
+
+    decision = validate_patches(
+        document, [patch], phase=TransformPhase.UNSLOP, aggressive_unslop=True
+    )
+
+    assert rewrite_constraints(source).force_language == (qualifier,)
+    assert [finding.code for finding in decision.findings] == ["force_language_changed"]
+    assert not decision.accepted
+
+
+def test_goal_preserving_rewrite_normalizes_opportunity_phrase_spacing() -> None:
+    source = "The team identified an opportunity   to reduce waste."
+    replacement = "The team found an opportunity to reduce waste."
+    document = parse_markdown(source, title="Goal spacing")
+    block = document.blocks[0]
+    patch = TextPatch(block_id=block.id, expected_sha256=block.sha256, replacement=replacement)
+
+    decision = validate_patches(
+        document, [patch], phase=TransformPhase.UNSLOP, aggressive_unslop=True
+    )
+
+    assert rewrite_constraints(source).force_language == ("opportunity to",)
+    assert rewrite_constraints(replacement).force_language == ("opportunity to",)
+    assert decision.accepted == {block.id: replacement}
+    assert not decision.findings
+
+
+@pytest.mark.parametrize(
+    "fact",
+    [
+        pytest.param("The audit records opportunity cost.", id="opportunity-cost-is-not-a-goal"),
+        pytest.param(
+            "The sensor measures potential energy.", id="physical-potential-is-not-a-goal"
+        ),
+    ],
+)
+def test_non_goal_nouns_allow_removing_fact_free_repetition(fact: str) -> None:
+    source = fact + " This explanation repeats the point at length without adding information."
+    document = parse_markdown(source, title="Noun distinctions")
+    block = document.blocks[0]
+    patch = TextPatch(block_id=block.id, expected_sha256=block.sha256, replacement=fact)
+
+    decision = validate_patches(
+        document, [patch], phase=TransformPhase.UNSLOP, aggressive_unslop=True
+    )
+
+    assert rewrite_constraints(source).force_language == ()
+    assert decision.accepted == {block.id: fact}
+    assert not decision.findings
+
+
+async def test_opportunity_loss_repair_receives_original_goal_counter_at_low_effort() -> None:
+    source = "The audit identified an opportunity to reduce errors in the process."
+    replacement = "The audit found an opportunity to reduce errors in the process."
+    document = parse_markdown(source, title="Goal repair")
+    block = document.blocks[0]
+    bad = TextPatch(
+        block_id=block.id,
+        expected_sha256=block.sha256,
+        replacement="The audit reduced errors in the process.",
+    )
+    good = bad.model_copy(update={"replacement": replacement})
+    decision = validate_patches(
+        document, [bad], phase=TransformPhase.UNSLOP, aggressive_unslop=True
+    )
+    harness = _generator(types.GenerateContentResponse(parsed=PatchEnvelope(patches=[good])))
+
+    assert await harness.generator.repair(document, [bad], decision.findings) == [good]
+
+    original_payload, rejected_payload = _rewrite_payload_lines(harness.call.prompts[0])
+    original = _RewriteInputs.model_validate_json(original_payload).root[0]
+    rejected = _RejectedInputs.model_validate_json(rejected_payload).root[0]
+    assert original.sha256 == block.sha256
+    assert original.rewrite_constraints.force_language == ("opportunity to",)
+    assert rejected.rejected_constraints.force_language == ()
+    assert rejected.review_feedback == [
+        (
+            "Exact original constraint counts for force_language: "
+            '{"expected":{"opportunity to":1},"proposed":{}}'
+        )
+    ]
+    config = harness.call.configurations[0]
+    assert config.thinking_config is not None
+    assert config.thinking_config.thinking_level is types.ThinkingLevel.LOW

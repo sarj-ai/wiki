@@ -440,11 +440,7 @@ class VertexGeminiPatchGenerator(PatchGenerator):
         repair: bool,
     ) -> genai_types.ThinkingConfig | None:
         if phase is TransformPhase.UNSLOP and model == primary_model == "gemini-3.8-flash":
-            return genai_types.ThinkingConfig(
-                thinking_level=genai_types.ThinkingLevel.MEDIUM
-                if repair
-                else genai_types.ThinkingLevel.LOW
-            )
+            return genai_types.ThinkingConfig(thinking_level=genai_types.ThinkingLevel.LOW)
         if model == self._policy.fallback_model:
             if model != _PRO_THINKING_MODEL:
                 return None
