@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import asyncio
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 import hashlib
 from http import HTTPStatus
 import json
@@ -68,6 +68,7 @@ class _ConcisionInput(BaseModel):
     model_config = ConfigDict(extra="forbid")
     source_words: int
     max_words: int
+    draft_target_words: int
 
 
 class _RewriteInput(BaseModel):
@@ -342,10 +343,10 @@ async def test_model_repair_receives_the_exact_failure_and_original_source_const
             ),
         ),
     ) == [good]
-    assert harness.call.models == ["gemini-3.1-pro-preview"]
+    assert harness.call.models == ["gemini-3.8-flash"]
     config = harness.call.configurations[0]
     assert config.thinking_config is not None
-    assert config.thinking_config.thinking_level is types.ThinkingLevel.HIGH
+    assert config.thinking_config.thinking_level is types.ThinkingLevel.MEDIUM
     prompt = harness.call.prompts[0]
     assert SOURCE in prompt
     assert bad.replacement in prompt
@@ -353,7 +354,8 @@ async def test_model_repair_receives_the_exact_failure_and_original_source_const
     assert '"force_language":["can"]' in prompt
     assert '"force_language":["will"]' in prompt
     if code == "semantic_review_rejected":
-        assert '"review_feedback":["The draft loses the hidden observer condition."]' in prompt
+        rejected = _RejectedInputs.model_validate_json(_rewrite_payload_lines(prompt)[1]).root[0]
+        assert "The draft loses the hidden observer condition." in rejected.review_feedback
 
 
 async def test_repair_keeps_original_force_and_scope_distinct_from_the_rejected_attempt() -> None:
@@ -385,6 +387,16 @@ async def test_repair_keeps_original_force_and_scope_distinct_from_the_rejected_
     assert rejected.proposed == bad.replacement
     assert rejected.rejected_constraints.force_language == ("every", "will")
     assert rejected.rejected_constraints.scope_qualifiers == ()
+    feedback = {
+        note.removeprefix("Exact original constraint counts for ").split(": ", 1)[0]: json.loads(
+            note.split(": ", 1)[1]
+        )
+        for note in rejected.review_feedback
+    }
+    assert feedback == {
+        "force_language": {"expected": {"can": 1, "each": 1}, "proposed": {"every": 1, "will": 1}},
+        "scope_qualifiers": {"expected": {"generally": 1, "within": 1}, "proposed": {}},
+    }
     safe = validate_patches(document, repaired, phase=TransformPhase.UNSLOP, aggressive_unslop=True)
     assert safe.accepted == {block.id: replacement}
     assert not safe.findings
@@ -731,7 +743,7 @@ def test_conventional_framing_can_go_without_relaxing_the_following_obligation(p
     )
     assert decision.accepted == {block.id: proposed}
     assert not decision.findings
-    assert UNSLOP_POLICY_VERSION == "sarj-concise-v15"
+    assert UNSLOP_POLICY_VERSION == "sarj-concise-v16"
 
 
 @pytest.mark.parametrize(
@@ -1301,6 +1313,7 @@ async def test_numeric_concision_target_and_failure_feedback_remain_source_bound
     assert initial.concision_target is not None
     assert initial.concision_target.source_words == 59
     assert initial.concision_target.max_words == 24
+    assert initial.concision_target.draft_target_words == 19
     assert initial.sha256 == block.sha256
     decision = validate_patches(
         document, [patch], phase=TransformPhase.UNSLOP, aggressive_unslop=True
@@ -1316,3 +1329,64 @@ async def test_numeric_concision_target_and_failure_feedback_remain_source_bound
     assert rejected.review_feedback == [decision.findings[0].detail]
     assert "proposal 59 words" in rejected.review_feedback[0]
     assert "maximum 24" in rejected.review_feedback[0]
+
+
+async def test_repair_feedback_preserves_an_empty_original_force_counter() -> None:
+    source = "The sensor records readings from the control unit at night."
+    document = parse_markdown(source, title="Sensor readings")
+    block = document.blocks[0]
+    good = TextPatch(block_id=block.id, expected_sha256=block.sha256, replacement=source)
+    bad = good.model_copy(update={"replacement": source.replace("records", "can record")})
+    decision = validate_patches(
+        document, [bad], phase=TransformPhase.UNSLOP, aggressive_unslop=True
+    )
+    assert [finding.code for finding in decision.findings] == ["force_language_changed"]
+    harness = _generator(types.GenerateContentResponse(parsed=PatchEnvelope(patches=[good])))
+
+    assert await harness.generator.repair(document, [bad], decision.findings) == [good]
+
+    arrays = _rewrite_payload_lines(harness.call.prompts[0])
+    original = _RewriteInputs.model_validate_json(arrays[0]).root[0]
+    rejected = _RejectedInputs.model_validate_json(arrays[1]).root[0]
+    assert original.sha256 == good.expected_sha256 == block.sha256
+    assert original.rewrite_constraints.force_language == ()
+    assert rejected.rejected_constraints.force_language == ("can",)
+    assert rejected.review_feedback == [
+        'Exact original constraint counts for force_language: {"expected":{},"proposed":{"can":1}}'
+    ]
+    assert original.text == source
+
+
+@pytest.mark.parametrize(
+    ("source_words", "maximum", "draft"),
+    [
+        pytest.param(94, 38, 30, id="near-cap-purpose"),
+        pytest.param(103, 42, 33, id="near-cap-alternatives"),
+    ],
+)
+@pytest.mark.parametrize("suffix", ["", " [7]"], ids=["plain", "native-citation"])
+async def test_writer_draft_margin_stays_below_the_unchanged_suffix_excluded_cap(
+    source_words: int, maximum: int, draft: int, suffix: str
+) -> None:
+    source = " ".join("reading" for _ in range(source_words))
+    document = parse_markdown(source, title="Draft margin")
+    block = replace(document.blocks[0], text=source + suffix, protected_suffix=suffix or None)
+    document = replace(document, blocks=(block,))
+    patch = TextPatch(block_id=block.id, expected_sha256=block.sha256, replacement=block.text)
+    harness = _generator(types.GenerateContentResponse(parsed=PatchEnvelope(patches=[patch])))
+
+    assert await harness.generator.generate(document, phase=TransformPhase.UNSLOP) == [patch]
+
+    submitted = _RewriteInputs.model_validate_json(
+        _rewrite_payload_lines(harness.call.prompts[0])[0]
+    ).root[0]
+    assert submitted.text == block.text
+    assert submitted.sha256 == block.sha256
+    assert submitted.concision_target == _ConcisionInput(
+        source_words=source_words, max_words=maximum, draft_target_words=draft
+    )
+    assert draft < maximum < source_words
+    decision = validate_patches(
+        document, [patch], phase=TransformPhase.UNSLOP, aggressive_unslop=True
+    )
+    assert [finding.code for finding in decision.findings] == ["concision_target_unmet"]
