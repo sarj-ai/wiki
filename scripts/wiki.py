@@ -21,7 +21,7 @@ import typer
 
 ROOT = Path(__file__).resolve().parents[1]
 # Audit the latest repository engine independently of the immutable Standards bundle.
-REPOSITORY_STANDARDS_VERSION = "6.15.1"
+REPOSITORY_STANDARDS_VERSION = "6.18.0"
 REPOSITORY_TESTS = (
     "test_release_gate.py",
     "test_wiki_cli.py",
@@ -154,6 +154,7 @@ def checks(scope: Check) -> tuple[Command, ...]:
                 "format:check",
                 "typecheck",
                 "lint:baseline-check",
+                "check:dependencies",
                 "knip",
                 "type-coverage",
             )

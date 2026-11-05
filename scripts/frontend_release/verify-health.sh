@@ -15,7 +15,7 @@ for endpoint in script-settings subdomain; do
   fi
   case "$endpoint" in
     script-settings) condition='.success == true and .result.observability.redact_query_string == true' ;;
-    subdomain) condition='.success == true and .result.previews_enabled == false' ;;
+    subdomain) condition='.success == true and .result.enabled == false and .result.previews_enabled == false' ;;
   esac
   if ! jq --exit-status "$condition" <<<"$settings" >/dev/null; then
     echo "Frontend Worker security settings failed verification." >&2

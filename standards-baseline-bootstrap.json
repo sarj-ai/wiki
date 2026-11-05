@@ -1,357 +1,757 @@
 {
   "schema_version": 1,
-  "merge_base": "d1f5913d57f992cbb33dba24f00ec5cd5a2e46cd",
-  "from_bundle": "8.43.2",
-  "to_bundle": "8.55.2",
-  "reason": "Exact unchanged-source findings exposed by the tested Standards upgrade; the baseline remains shrink-only after this migration.",
+  "merge_base": "82a9a18f750a1d296d981ebd01897dbfa6e7deda",
+  "from_bundle": "8.182.51",
+  "to_bundle": "8.194.2",
+  "reason": "Adopt Code Standards 8.194.2 findings on exactly unchanged frontend source. Existing allowances remain shrink-only; frontend cleanup follows this migration.",
   "allowances": {
     "frontend/eslint-suppressions.json": {
+      "next.config.ts": {
+        "@sarj/no-frontend-comments": {
+          "before": 0,
+          "after": 10
+        }
+      },
+      "scripts/benchmark-bundle.ts": {
+        "@sarj/no-frontend-comments": {
+          "before": 0,
+          "after": 1
+        },
+        "@sarj/no-runtime-typeof": {
+          "before": 0,
+          "after": 1
+        }
+      },
+      "scripts/eslint-owned.test.ts": {
+        "@sarj/no-runtime-typeof": {
+          "before": 0,
+          "after": 2
+        },
+        "@sarj/no-test-comments": {
+          "before": 0,
+          "after": 3
+        }
+      },
+      "scripts/eslint-owned/rules/no-all-duplicated-branches.ts": {
+        "@sarj/no-frontend-comments": {
+          "before": 0,
+          "after": 2
+        }
+      },
+      "scripts/eslint-owned/rules/no-element-overwrite.ts": {
+        "@sarj/no-frontend-comments": {
+          "before": 0,
+          "after": 11
+        },
+        "@sarj/no-runtime-typeof": {
+          "before": 0,
+          "after": 3
+        }
+      },
+      "scripts/eslint-owned/rules/no-identical-expressions.ts": {
+        "@sarj/no-frontend-comments": {
+          "before": 0,
+          "after": 2
+        }
+      },
+      "scripts/eslint-owned/rules/prefer-immediate-return.ts": {
+        "@sarj/no-frontend-comments": {
+          "before": 0,
+          "after": 3
+        }
+      },
+      "scripts/eslint-owned/shared/ast.ts": {
+        "@sarj/no-frontend-comments": {
+          "before": 0,
+          "after": 1
+        },
+        "@sarj/no-runtime-typeof": {
+          "before": 0,
+          "after": 4
+        }
+      },
+      "scripts/eslint-owned/shared/bindings.ts": {
+        "@sarj/no-frontend-comments": {
+          "before": 0,
+          "after": 6
+        }
+      },
+      "scripts/eslint-owned/shared/completion.ts": {
+        "@sarj/no-frontend-comments": {
+          "before": 0,
+          "after": 1
+        }
+      },
+      "scripts/eslint-owned/shared/equivalent.ts": {
+        "@sarj/no-frontend-comments": {
+          "before": 0,
+          "after": 3
+        },
+        "@sarj/no-runtime-typeof": {
+          "before": 0,
+          "after": 2
+        }
+      },
+      "src/app/(app)/d/[driveId]/page.tsx": {
+        "@sarj/no-frontend-comments": {
+          "before": 0,
+          "after": 3
+        },
+        "@sarj/no-runtime-typeof": {
+          "before": 0,
+          "after": 1
+        }
+      },
+      "src/app/(app)/layout.tsx": {
+        "@sarj/no-frontend-comments": {
+          "before": 0,
+          "after": 2
+        }
+      },
       "src/app/actions/wiki-actions.ts": {
-        "@sarj/prefer-nominal-id-types": {
+        "@sarj/no-frontend-comments": {
           "before": 0,
           "after": 1
         }
       },
       "src/app/api/document-transforms/[[...path]]/route.test.ts": {
-        "@sarj/require-camelcase-properties": {
+        "@sarj/no-test-comments": {
           "before": 0,
           "after": 1
         }
       },
-      "src/app/go/[alias]/route.test.ts": {
-        "@sarj/require-camelcase-properties": {
+      "src/app/api/document-transforms/[[...path]]/route.ts": {
+        "@sarj/no-frontend-comments": {
+          "before": 0,
+          "after": 2
+        }
+      },
+      "src/app/api/files/[fileId]/content/route.test.ts": {
+        "@sarj/no-test-comments": {
+          "before": 0,
+          "after": 1
+        }
+      },
+      "src/app/api/perf/route.test.ts": {
+        "@sarj/no-test-comments": {
+          "before": 0,
+          "after": 1
+        }
+      },
+      "src/app/api/wiki/[...path]/route.test.ts": {
+        "@sarj/no-test-comments": {
+          "before": 0,
+          "after": 2
+        }
+      },
+      "src/app/api/wiki/[...path]/route.ts": {
+        "@sarj/no-frontend-comments": {
+          "before": 0,
+          "after": 1
+        }
+      },
+      "src/app/layout.tsx": {
+        "@sarj/no-frontend-comments": {
           "before": 0,
           "after": 1
         }
       },
       "src/app/login/page.tsx": {
-        "@sarj/require-camelcase-properties": {
+        "@sarj/no-runtime-typeof": {
+          "before": 0,
+          "after": 1
+        }
+      },
+      "src/app/mcp/consent/page.tsx": {
+        "@sarj/no-runtime-typeof": {
+          "before": 0,
+          "after": 1
+        }
+      },
+      "src/components/browser-session-boundary.test.tsx": {
+        "@sarj/no-test-comments": {
+          "before": 0,
+          "after": 1
+        }
+      },
+      "src/components/browser-session-boundary.tsx": {
+        "@sarj/no-frontend-comments": {
           "before": 0,
           "after": 3
         }
       },
-      "src/components/mcp/mcp-connections.test.tsx": {
-        "@sarj/require-camelcase-properties": {
-          "before": 0,
-          "after": 8
-        }
-      },
-      "src/components/mcp/mcp-connections.tsx": {
-        "@sarj/require-camelcase-properties": {
-          "before": 0,
-          "after": 5
-        }
-      },
-      "src/components/mcp/mcp-consent-loader.test.tsx": {
-        "@sarj/require-camelcase-properties": {
-          "before": 0,
-          "after": 3
-        }
-      },
-      "src/components/mcp/mcp-consent-loader.tsx": {
-        "@sarj/require-camelcase-properties": {
-          "before": 0,
-          "after": 2
-        }
-      },
-      "src/components/mcp/mcp-consent.tsx": {
-        "unicorn/prefer-default-parameters": {
+      "src/components/error-boundary.tsx": {
+        "@sarj/no-frontend-comments": {
           "before": 0,
           "after": 1
         }
       },
-      "src/components/mcp/mcp-pages.test.tsx": {
-        "@sarj/require-camelcase-properties": {
-          "before": 0,
-          "after": 3
-        }
-      },
-      "src/components/query-provider-session-ownership.test.tsx": {
-        "unicorn/prefer-type-error": {
-          "before": 0,
-          "after": 1
-        }
-      },
-      "src/components/quick-links/quick-links-loader.tsx": {
-        "unicorn/no-unnecessary-array-flat-map": {
-          "before": 0,
-          "after": 1
-        }
-      },
-      "src/components/ui/focus-return.test.tsx": {
-        "unicorn/prefer-type-error": {
-          "before": 0,
-          "after": 2
-        }
-      },
-      "src/components/wiki-document/doc-viewer-host.tsx": {
-        "unicorn/prefer-default-parameters": {
-          "before": 0,
-          "after": 1
-        }
-      },
-      "src/components/wiki-document/doc-viewer-store.test.ts": {
-        "unicorn/no-unnecessary-parameters": {
-          "before": 0,
-          "after": 1
-        }
-      },
-      "src/components/wiki-document/doc-warmup-lifecycle.test.tsx": {
-        "unicorn/no-unnecessary-default-arguments": {
-          "before": 0,
-          "after": 1
-        }
-      },
-      "src/components/wiki-document/document-polish-dialog.test.tsx": {
-        "unicorn/no-unnecessary-default-arguments": {
+      "src/components/query-provider.tsx": {
+        "@sarj/no-frontend-comments": {
           "before": 0,
           "after": 4
         }
       },
+      "src/components/quick-links/quick-links-loader.tsx": {
+        "@sarj/no-frontend-comments": {
+          "before": 0,
+          "after": 2
+        }
+      },
+      "src/components/quick-links/quick-links.test.tsx": {
+        "@sarj/no-test-comments": {
+          "before": 0,
+          "after": 1
+        }
+      },
+      "src/components/recent-pages/recent-pages-loader.test.tsx": {
+        "@sarj/no-test-comments": {
+          "before": 0,
+          "after": 2
+        }
+      },
+      "src/components/recent-pages/recent-pages-session.tsx": {
+        "@sarj/no-frontend-comments": {
+          "before": 0,
+          "after": 1
+        }
+      },
+      "src/components/sarj-logo.test.tsx": {
+        "@sarj/no-test-comments": {
+          "before": 0,
+          "after": 1
+        }
+      },
+      "src/components/session-refresh.tsx": {
+        "@sarj/no-frontend-comments": {
+          "before": 0,
+          "after": 7
+        }
+      },
+      "src/components/ui/focus-return.tsx": {
+        "@sarj/no-frontend-comments": {
+          "before": 0,
+          "after": 7
+        }
+      },
+      "src/components/ui/sidebar.tsx": {
+        "@sarj/no-runtime-typeof": {
+          "before": 0,
+          "after": 6
+        }
+      },
+      "src/components/wiki-document/doc-viewer-host.test.tsx": {
+        "@sarj/no-test-comments": {
+          "before": 0,
+          "after": 1
+        }
+      },
+      "src/components/wiki-document/doc-viewer-host.tsx": {
+        "@sarj/no-frontend-comments": {
+          "before": 0,
+          "after": 1
+        }
+      },
+      "src/components/wiki-document/doc-viewer-store.ts": {
+        "@sarj/no-frontend-comments": {
+          "before": 0,
+          "after": 2
+        }
+      },
+      "src/components/wiki-document/doc-warmup.tsx": {
+        "@sarj/no-frontend-comments": {
+          "before": 0,
+          "after": 4
+        }
+      },
+      "src/components/wiki-document/document-polish-dialog.test.tsx": {
+        "@sarj/no-test-comments": {
+          "before": 0,
+          "after": 2
+        }
+      },
+      "src/components/wiki-document/document-polish-dialog.tsx": {
+        "@sarj/no-frontend-comments": {
+          "before": 0,
+          "after": 9
+        }
+      },
       "src/components/wiki-document/document-polish-recovery.test.tsx": {
-        "@sarj/require-camelcase-properties": {
+        "@sarj/no-test-comments": {
           "before": 0,
           "after": 1
         }
       },
-      "src/components/wiki-document/document-polish-recovery.tsx": {
-        "@sarj/require-camelcase-properties": {
+      "src/components/wiki-document/short-link-dialog.test.tsx": {
+        "@sarj/no-test-comments": {
           "before": 0,
           "after": 1
         }
       },
-      "src/components/wiki-search/command-palette-lifecycle.test.tsx": {
-        "unicorn/prefer-type-error": {
+      "src/components/wiki-document/wiki-toolbar.test.tsx": {
+        "@sarj/no-test-comments": {
           "before": 0,
           "after": 4
         }
       },
       "src/components/wiki-search/command-palette-navigation.test.tsx": {
-        "unicorn/no-unnecessary-parameters": {
+        "@sarj/no-test-comments": {
           "before": 0,
           "after": 1
-        },
-        "unicorn/prefer-type-error": {
+        }
+      },
+      "src/components/wiki-search/command-palette.test.tsx": {
+        "@sarj/no-test-comments": {
+          "before": 0,
+          "after": 1
+        }
+      },
+      "src/components/wiki-sidebar/item-menu-actions.tsx": {
+        "@sarj/no-frontend-comments": {
           "before": 0,
           "after": 2
-        }
-      },
-      "src/components/wiki-search/command-palette.tsx": {
-        "@sarj/prefer-nominal-id-types": {
-          "before": 0,
-          "after": 1
-        }
-      },
-      "src/components/wiki-sidebar/drive-access-sheet-state.test.tsx": {
-        "@sarj/require-camelcase-properties": {
-          "before": 0,
-          "after": 9
-        },
-        "unicorn/no-unnecessary-parameters": {
-          "before": 0,
-          "after": 1
-        }
-      },
-      "src/components/wiki-sidebar/drive-access-sheet.test.ts": {
-        "@sarj/require-camelcase-properties": {
-          "before": 0,
-          "after": 9
-        }
-      },
-      "src/components/wiki-sidebar/folder-picker-focus.test.tsx": {
-        "unicorn/prefer-type-error": {
-          "before": 0,
-          "after": 1
-        }
-      },
-      "src/components/wiki-sidebar/item-menu-lifecycle.test.tsx": {
-        "unicorn/prefer-type-error": {
-          "before": 0,
-          "after": 7
-        }
-      },
-      "src/components/wiki-sidebar/item-menu.test.tsx": {
-        "unicorn/prefer-type-error": {
-          "before": 0,
-          "after": 1
-        }
-      },
-      "src/components/wiki-sidebar/move-dialog-outlet.test.tsx": {
-        "unicorn/no-unnecessary-default-arguments": {
-          "before": 0,
-          "after": 1
-        },
-        "unicorn/prefer-type-error": {
-          "before": 0,
-          "after": 5
         }
       },
       "src/components/wiki-sidebar/move-dialog-outlet.tsx": {
-        "@sarj/prefer-nominal-id-types": {
+        "@sarj/no-frontend-comments": {
+          "before": 0,
+          "after": 2
+        }
+      },
+      "src/components/wiki-sidebar/name-prompt-dialog.tsx": {
+        "@sarj/no-frontend-comments": {
           "before": 0,
           "after": 1
         }
       },
-      "src/components/wiki-sidebar/tree-node-observers.test.tsx": {
-        "unicorn/no-unnecessary-parameters": {
+      "src/components/wiki-sidebar/preferences-dialog-outlet.tsx": {
+        "@sarj/no-frontend-comments": {
+          "before": 0,
+          "after": 2
+        }
+      },
+      "src/components/wiki-sidebar/sidebar-resize-handle.test.tsx": {
+        "@sarj/no-test-comments": {
+          "before": 0,
+          "after": 2
+        }
+      },
+      "src/components/wiki-sidebar/sidebar-resize-handle.tsx": {
+        "@sarj/no-frontend-comments": {
           "before": 0,
           "after": 1
         }
       },
-      "src/components/wiki-sidebar/use-document-intent-authorization.test.tsx": {
-        "unicorn/prefer-type-error": {
+      "src/components/wiki-sidebar/smart-create-dialog.test.tsx": {
+        "@sarj/no-test-comments": {
           "before": 0,
           "after": 1
         }
       },
-      "src/components/wiki-sidebar/use-drive-tree-index.test.tsx": {
-        "unicorn/no-unnecessary-parameters": {
+      "src/components/wiki-sidebar/smart-create-dialog.tsx": {
+        "@sarj/no-frontend-comments": {
+          "before": 0,
+          "after": 3
+        }
+      },
+      "src/components/wiki-sidebar/use-drive-predictive-loading.test.tsx": {
+        "@sarj/no-test-comments": {
           "before": 0,
           "after": 1
+        }
+      },
+      "src/components/wiki-sidebar/use-in-flight-moves.ts": {
+        "@sarj/no-frontend-comments": {
+          "before": 0,
+          "after": 2
         }
       },
       "src/components/wiki-sidebar/use-sidebar-navigation.test.tsx": {
-        "unicorn/prefer-type-error": {
+        "@sarj/no-test-comments": {
           "before": 0,
           "after": 2
         }
       },
-      "src/components/wiki-sidebar/use-wiki-reorder.ts": {
-        "@sarj/prefer-nominal-id-types": {
+      "src/components/wiki-sidebar/use-sidebar-navigation.tsx": {
+        "@sarj/no-frontend-comments": {
           "before": 0,
-          "after": 3
+          "after": 1
         }
       },
-      "src/components/wiki-sidebar/wiki-footer.test.tsx": {
-        "unicorn/prefer-type-error": {
+      "src/components/wiki-sidebar/use-wiki-reorder-session.test.tsx": {
+        "@sarj/no-runtime-typeof": {
           "before": 0,
           "after": 2
         }
       },
-      "src/hooks/use-expanded-folders.ts": {
-        "@sarj/prefer-nominal-id-types": {
+      "src/hooks/use-deferred-dialog.ts": {
+        "@sarj/no-frontend-comments": {
           "before": 0,
-          "after": 3
+          "after": 1
         }
       },
-      "src/lib/alias-client.test.ts": {
-        "@sarj/require-camelcase-properties": {
+      "src/hooks/use-document-alias.ts": {
+        "@sarj/no-frontend-comments": {
           "before": 0,
-          "after": 4
+          "after": 1
         }
       },
-      "src/lib/alias-client.ts": {
-        "@sarj/require-camelcase-properties": {
+      "src/hooks/use-document-title.test.ts": {
+        "@sarj/no-test-comments": {
           "before": 0,
-          "after": 4
+          "after": 1
+        }
+      },
+      "src/hooks/use-expanded-drives.test.ts": {
+        "@sarj/no-test-comments": {
+          "before": 0,
+          "after": 1
+        }
+      },
+      "src/hooks/use-expanded-folders.test.ts": {
+        "@sarj/no-test-comments": {
+          "before": 0,
+          "after": 1
+        }
+      },
+      "src/hooks/use-session-mutation.ts": {
+        "@sarj/no-frontend-comments": {
+          "before": 0,
+          "after": 2
+        }
+      },
+      "src/hooks/use-wiki-mutations.ts": {
+        "@sarj/no-frontend-comments": {
+          "before": 0,
+          "after": 2
+        }
+      },
+      "src/lib/abortable-delay.ts": {
+        "@sarj/no-frontend-comments": {
+          "before": 0,
+          "after": 1
+        }
+      },
+      "src/lib/action-client.test.ts": {
+        "@sarj/no-test-comments": {
+          "before": 0,
+          "after": 1
         }
       },
       "src/lib/api-client.test.ts": {
-        "@sarj/require-camelcase-properties": {
+        "@sarj/no-runtime-typeof": {
           "before": 0,
-          "after": 15
+          "after": 1
+        }
+      },
+      "src/lib/api-client.ts": {
+        "@sarj/no-frontend-comments": {
+          "before": 0,
+          "after": 4
         },
-        "unicorn/prefer-type-error": {
+        "@sarj/no-runtime-typeof": {
+          "before": 0,
+          "after": 4
+        }
+      },
+      "src/lib/auth.ts": {
+        "@sarj/no-frontend-comments": {
+          "before": 0,
+          "after": 1
+        }
+      },
+      "src/lib/bounded-error-text.ts": {
+        "@sarj/no-frontend-comments": {
+          "before": 0,
+          "after": 1
+        }
+      },
+      "src/lib/bounded-text.test.ts": {
+        "@sarj/no-test-comments": {
+          "before": 0,
+          "after": 1
+        }
+      },
+      "src/lib/bounded-text.ts": {
+        "@sarj/no-frontend-comments": {
+          "before": 0,
+          "after": 1
+        }
+      },
+      "src/lib/bounded-transform-text.test.ts": {
+        "@sarj/no-test-comments": {
+          "before": 0,
+          "after": 1
+        }
+      },
+      "src/lib/browser-session.ts": {
+        "@sarj/no-frontend-comments": {
+          "before": 0,
+          "after": 2
+        }
+      },
+      "src/lib/browser-storage.test.ts": {
+        "@sarj/no-test-comments": {
+          "before": 0,
+          "after": 1
+        }
+      },
+      "src/lib/browser-storage.ts": {
+        "@sarj/no-frontend-comments": {
           "before": 0,
           "after": 5
         }
       },
-      "src/lib/browser-transport-boundary.test.ts": {
-        "unicorn/no-unnecessary-array-flat-map": {
+      "src/lib/clients/fetch-backend.test.ts": {
+        "@sarj/no-test-comments": {
+          "before": 0,
+          "after": 1
+        }
+      },
+      "src/lib/clients/fetch-backend.ts": {
+        "@sarj/no-frontend-comments": {
           "before": 0,
           "after": 2
         }
       },
-      "src/lib/build-destination-sort-orders.test.ts": {
-        "@sarj/prefer-nominal-id-types": {
+      "src/lib/clients/transform-http.test.ts": {
+        "@sarj/no-test-comments": {
+          "before": 0,
+          "after": 1
+        }
+      },
+      "src/lib/clients/transform-http.ts": {
+        "@sarj/no-frontend-comments": {
+          "before": 0,
+          "after": 3
+        }
+      },
+      "src/lib/clients/wiki-read-http.test.ts": {
+        "@sarj/no-runtime-typeof": {
+          "before": 0,
+          "after": 1
+        }
+      },
+      "src/lib/clients/wiki-read-http.ts": {
+        "@sarj/no-frontend-comments": {
+          "before": 0,
+          "after": 1
+        }
+      },
+      "src/lib/clients/wiki-read-response.ts": {
+        "@sarj/no-frontend-comments": {
+          "before": 0,
+          "after": 1
+        }
+      },
+      "src/lib/discard-stream.ts": {
+        "@sarj/no-frontend-comments": {
           "before": 0,
           "after": 1
         }
       },
       "src/lib/document-transform-api.test.ts": {
-        "@sarj/require-camelcase-properties": {
+        "@sarj/no-test-comments": {
           "before": 0,
-          "after": 117
+          "after": 1
         }
       },
       "src/lib/document-transform-api.ts": {
-        "@sarj/require-camelcase-properties": {
+        "@sarj/no-frontend-comments": {
           "before": 0,
-          "after": 95
+          "after": 3
         }
       },
-      "src/lib/mcp-consent-client.test.ts": {
-        "@sarj/require-camelcase-properties": {
+      "src/lib/document-transform-recovery.ts": {
+        "@sarj/no-frontend-comments": {
           "before": 0,
-          "after": 8
+          "after": 2
+        }
+      },
+      "src/lib/fetch-authorized-file.ts": {
+        "@sarj/no-frontend-comments": {
+          "before": 0,
+          "after": 2
+        }
+      },
+      "src/lib/file-icons.tsx": {
+        "@sarj/no-frontend-comments": {
+          "before": 0,
+          "after": 1
+        }
+      },
+      "src/lib/last-doc.test.ts": {
+        "@sarj/no-test-comments": {
+          "before": 0,
+          "after": 1
+        }
+      },
+      "src/lib/last-doc.ts": {
+        "@sarj/no-frontend-comments": {
+          "before": 0,
+          "after": 1
+        }
+      },
+      "src/lib/load-session-bootstrap.ts": {
+        "@sarj/no-frontend-comments": {
+          "before": 0,
+          "after": 3
+        }
+      },
+      "src/lib/markdown-transform-recovery.ts": {
+        "@sarj/no-frontend-comments": {
+          "before": 0,
+          "after": 1
         }
       },
       "src/lib/mcp-consent-client.ts": {
-        "@sarj/require-camelcase-properties": {
+        "@sarj/no-frontend-comments": {
           "before": 0,
-          "after": 11
+          "after": 4
         }
       },
-      "src/lib/reorganize-client.test.ts": {
-        "@sarj/require-camelcase-properties": {
+      "src/lib/mutation-toast.ts": {
+        "@sarj/no-runtime-typeof": {
           "before": 0,
-          "after": 10
+          "after": 1
         }
       },
-      "src/lib/reorganize-client.ts": {
-        "@sarj/require-camelcase-properties": {
+      "src/lib/optimistic-cache.ts": {
+        "@sarj/no-frontend-comments": {
           "before": 0,
-          "after": 13
+          "after": 7
         }
       },
-      "src/lib/server-api.test.ts": {
-        "@sarj/require-camelcase-properties": {
+      "src/lib/perf-marks.ts": {
+        "@sarj/no-frontend-comments": {
           "before": 0,
           "after": 1
         },
-        "unicorn/no-unnecessary-parameters": {
+        "@sarj/no-runtime-typeof": {
+          "before": 0,
+          "after": 2
+        }
+      },
+      "src/lib/private-api-headers.test.ts": {
+        "@sarj/no-test-comments": {
+          "before": 0,
+          "after": 1
+        }
+      },
+      "src/lib/recent-aliases.test.ts": {
+        "@sarj/no-test-comments": {
+          "before": 0,
+          "after": 1
+        }
+      },
+      "src/lib/recent-aliases.ts": {
+        "@sarj/no-frontend-comments": {
+          "before": 0,
+          "after": 2
+        }
+      },
+      "src/lib/recent-pages-query.ts": {
+        "@sarj/no-frontend-comments": {
+          "before": 0,
+          "after": 1
+        },
+        "@sarj/no-runtime-typeof": {
+          "before": 0,
+          "after": 1
+        }
+      },
+      "src/lib/session-client.test.ts": {
+        "@sarj/no-test-comments": {
+          "before": 0,
+          "after": 2
+        }
+      },
+      "src/lib/session-client.ts": {
+        "@sarj/no-frontend-comments": {
+          "before": 0,
+          "after": 2
+        }
+      },
+      "src/lib/session-isolation.test.ts": {
+        "@sarj/no-test-comments": {
           "before": 0,
           "after": 1
         }
       },
       "src/lib/smart-create-client.test.ts": {
-        "@sarj/require-camelcase-properties": {
+        "@sarj/no-runtime-typeof": {
           "before": 0,
-          "after": 34
+          "after": 1
         }
       },
       "src/lib/smart-create-client.ts": {
-        "@sarj/require-camelcase-properties": {
+        "@sarj/no-frontend-comments": {
           "before": 0,
-          "after": 33
+          "after": 2
         }
       },
-      "src/lib/wiki-api.ts": {
-        "@sarj/prefer-nominal-id-types": {
+      "src/lib/smart-create-server-client.test.ts": {
+        "@sarj/no-test-comments": {
           "before": 0,
           "after": 1
-        },
-        "@sarj/require-camelcase-properties": {
+        }
+      },
+      "src/lib/smart-create-types.test.ts": {
+        "@sarj/no-test-comments": {
           "before": 0,
-          "after": 28
+          "after": 2
+        }
+      },
+      "src/lib/speculation-policy.ts": {
+        "@sarj/no-runtime-typeof": {
+          "before": 0,
+          "after": 6
         }
       },
       "src/lib/wiki-cache.ts": {
-        "@sarj/prefer-nominal-id-types": {
+        "@sarj/no-frontend-comments": {
+          "before": 0,
+          "after": 5
+        },
+        "@sarj/no-runtime-typeof": {
           "before": 0,
           "after": 1
         }
       },
-      "src/lib/wiki-read-client.test.ts": {
-        "@sarj/require-camelcase-properties": {
+      "src/lib/wiki-indexes.ts": {
+        "@sarj/no-frontend-comments": {
           "before": 0,
-          "after": 9
+          "after": 2
         }
       },
-      "src/lib/wiki-tree.test.ts": {
-        "unicorn/no-unnecessary-parameters": {
+      "src/lib/wiki-keys.ts": {
+        "@sarj/no-frontend-comments": {
+          "before": 0,
+          "after": 5
+        }
+      },
+      "src/lib/wiki-read-api.ts": {
+        "@sarj/no-frontend-comments": {
           "before": 0,
           "after": 1
+        }
+      },
+      "src/lib/wiki-schemas.ts": {
+        "@sarj/no-frontend-comments": {
+          "before": 0,
+          "after": 1
+        }
+      },
+      "src/middleware.ts": {
+        "@sarj/no-frontend-comments": {
+          "before": 0,
+          "after": 1
+        }
+      },
+      "vitest.config.ts": {
+        "@sarj/no-frontend-comments": {
+          "before": 0,
+          "after": 2
         }
       }
     }

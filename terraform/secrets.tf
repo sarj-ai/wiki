@@ -1,7 +1,3 @@
-# Secret Manager — all sensitive configuration consumed by the
-# Sarj Wiki backend at runtime. Non-sensitive config (allowed domain,
-# frontend URL, OAuth redirect URI) stays as plaintext env vars in
-# cloudrun.tf.
 
 resource "random_password" "secret_key" {
   length  = 64
@@ -9,9 +5,6 @@ resource "random_password" "secret_key" {
 }
 
 locals {
-  # No DATABASE_URL secret: the backend authenticates to Cloud SQL as
-  # its service account (IAM database auth via the Cloud SQL
-  # connector), so no DSN or password exists to protect.
   secrets = {
     "secret-key"           = random_password.secret_key.result
     "fernet-key"           = var.fernet_key
@@ -108,7 +101,6 @@ resource "google_secret_manager_secret_version" "mcp_native_lock_key" {
   deletion_policy        = "DISABLE"
 }
 
-# Grant Cloud Run SA access to read secrets
 resource "google_secret_manager_secret_iam_member" "backend_access" {
   for_each  = local.secrets
   secret_id = google_secret_manager_secret.secrets[each.key].secret_id

@@ -222,6 +222,10 @@ variable "document_transform_qa_release_sha" {
   }
 }
 
+locals {
+  document_transform_qa_job_disabled = !var.enable_document_transform_qa_job
+}
+
 variable "document_transform_qa_operator_emails" {
   description = "Exact lowercase sarj.ai operators allowed to request a backend-owned QA launch"
   type        = list(string)
@@ -229,11 +233,30 @@ variable "document_transform_qa_operator_emails" {
 
   validation {
     condition = (
-      !var.enable_document_transform_qa_job ||
-      (length(var.document_transform_qa_operator_emails) > 0 && alltrue([
+      local.document_transform_qa_job_disabled ||
+      length(var.document_transform_qa_operator_emails) > 0
+    )
+    error_message = "Enabled document-transform QA requires at least one exact lowercase sarj.ai operator."
+  }
+
+  validation {
+    condition = (
+      local.document_transform_qa_job_disabled ||
+      alltrue([
         for email in var.document_transform_qa_operator_emails :
-        can(regex("^[a-z0-9.!#$%&'*+/=?^_`{|}~-]+@sarj[.]ai$", email)) && email == lower(email)
-      ]))
+        can(regex("^[a-z0-9.!#$%&'*+/=?^_`{|}~-]+@sarj[.]ai$", email))
+      ])
+    )
+    error_message = "Enabled document-transform QA requires at least one exact lowercase sarj.ai operator."
+  }
+
+  validation {
+    condition = (
+      local.document_transform_qa_job_disabled ||
+      alltrue([
+        for email in var.document_transform_qa_operator_emails :
+        email == lower(email)
+      ])
     )
     error_message = "Enabled document-transform QA requires at least one exact lowercase sarj.ai operator."
   }
@@ -249,6 +272,3 @@ variable "document_transform_qa_corpus_source_folder_id" {
     error_message = "document_transform_qa_corpus_source_folder_id must be null or non-empty."
   }
 }
-
-# Cloudflare WAF rules and DNS are managed manually in the Cloudflare
-# dashboard — no Terraform resources or API token required.

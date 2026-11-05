@@ -20,7 +20,6 @@ resource "google_iam_workload_identity_pool_provider" "github" {
     "attribute.repository_owner_id" = "assertion.repository_owner_id"
   }
 
-  # Numeric identities survive renames and prevent a new repository inheriting trust.
   attribute_condition = join(" && ", [
     "assertion.repository_id == '${var.github_repository_id}'",
     "assertion.repository_owner_id == '${var.github_repository_owner_id}'",
@@ -51,15 +50,12 @@ resource "google_project_iam_member" "github_actions_run_developer" {
   member  = "serviceAccount:${google_service_account.github_actions.email}"
 }
 
-# Post-deployment verification reads only bounded Cloud Run log windows.
 resource "google_project_iam_member" "github_actions_logging_viewer" {
   project = var.project_id
   role    = "roles/logging.viewer"
   member  = "serviceAccount:${google_service_account.github_actions.email}"
 }
 
-# Deployment verifies that asynchronous infrastructure exists before switching
-# traffic to a revision that enqueues Smart Create work.
 resource "google_service_account_iam_member" "github_actions_act_as_backend" {
   service_account_id = google_service_account.backend.name
   role               = "roles/iam.serviceAccountUser"

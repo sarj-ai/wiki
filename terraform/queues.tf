@@ -31,8 +31,6 @@ resource "google_cloud_tasks_queue" "document_transform_dammam" {
   }
 
   retry_config {
-    # Dispatches rejected while a prior worker lease is still active do not count
-    # toward the application's separate ten claimed-execution safety cap.
     max_attempts  = 100
     min_backoff   = "5s"
     max_backoff   = "300s"

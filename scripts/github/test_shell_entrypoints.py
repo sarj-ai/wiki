@@ -207,6 +207,8 @@ def test_pre_commit_failure_is_not_swallowed(
         "security-redaction-disabled",
         "security-previews-missing",
         "security-previews-enabled",
+        "security-workers-dev-missing",
+        "security-workers-dev-enabled",
         "security-api",
         "security-transport",
     ],
@@ -238,9 +240,11 @@ curl() {
           esac ;;
         *'/subdomain')
           case "$FAULT" in
-            security-previews-missing) printf '{"success":true,"result":{}}' ;;
-            security-previews-enabled) printf '{"success":true,"result":{"previews_enabled":true}}' ;;
-            *) printf '{"success":true,"result":{"previews_enabled":false}}' ;;
+            security-previews-missing) printf '{"success":true,"result":{"enabled":false}}' ;;
+            security-previews-enabled) printf '{"success":true,"result":{"enabled":false,"previews_enabled":true}}' ;;
+            security-workers-dev-missing) printf '{"success":true,"result":{"previews_enabled":false}}' ;;
+            security-workers-dev-enabled) printf '{"success":true,"result":{"enabled":true,"previews_enabled":false}}' ;;
+            *) printf '{"success":true,"result":{"enabled":false,"previews_enabled":false}}' ;;
           esac ;;
         *) return 97 ;;
       esac
@@ -290,7 +294,9 @@ jq() {
         expected_calls = 12
     expected_calls += 2
     if fault.startswith("security-"):
-        expected_calls = 2 if fault.startswith("security-previews-") else 1
+        expected_calls = (
+            2 if fault.startswith(("security-previews-", "security-workers-dev-")) else 1
+        )
     assert (tmp_path / "calls").read_text().splitlines() == ["call"] * expected_calls
     assert not (tmp_path / "frontend-health-body.json").exists()
     assert not (tmp_path / "frontend-health-headers.txt").exists()

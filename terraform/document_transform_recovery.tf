@@ -1,6 +1,3 @@
-# Deploy migration 0010_transform_dispatch and the authenticated reconcile route
-# before applying this job. This dispatches validated pending intents only; it
-# never resumes paused queues or grants access to documents.
 resource "google_cloud_scheduler_job" "document_transform_reconcile_dammam" {
   count            = var.enable_dammam_stack ? 1 : 0
   name             = "document-transform-reconcile-dammam"
@@ -12,8 +9,6 @@ resource "google_cloud_scheduler_job" "document_transform_reconcile_dammam" {
   attempt_deadline = "120s"
   paused           = var.maintenance_mode
 
-  # The next scheduled run is the retry. Avoid multiplying partial-batch calls;
-  # deterministic Cloud Task names make a later run safe after a lost response.
   retry_config {
     retry_count          = 0
     max_retry_duration   = "0s"
@@ -32,9 +27,7 @@ resource "google_cloud_scheduler_job" "document_transform_reconcile_dammam" {
 
     oidc_token {
       service_account_email = google_service_account.cloud_tasks_invoker.email
-      # The shared auth dependency expects DOCUMENT_TRANSFORM_TARGET_URL,
-      # intentionally NOT this job's /reconcile URL or the Cloud Run origin.
-      audience = "https://${var.backend_domain}/internal/tasks/document-transform"
+      audience              = "https://${var.backend_domain}/internal/tasks/document-transform"
     }
   }
 
