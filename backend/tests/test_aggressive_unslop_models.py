@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from dataclasses import dataclass
 import hashlib
 from http import HTTPStatus
@@ -191,10 +192,16 @@ def _generator(
     )
     return _GenerationHarness(
         generator=VertexGeminiPatchGenerator(
-            policy=policy, client=dependency(_Client(_AsyncClient(call)))
+            policy=policy,
+            client=dependency(_Client(_AsyncClient(call))),
+            writer_sleep=_yield_writer_sleep,
         ),
         call=call,
     )
+
+
+async def _yield_writer_sleep(_delay: float) -> None:
+    await asyncio.sleep(0)
 
 
 async def test_aggressive_generation_uses_structured_output_and_supported_thinking() -> None:
@@ -210,7 +217,7 @@ async def test_aggressive_generation_uses_structured_output_and_supported_thinki
     assert config.response_json_schema["additionalProperties"] is False
     assert "patches" in config.response_json_schema["properties"]
     assert config.thinking_config is not None
-    assert config.thinking_config.thinking_level is types.ThinkingLevel.MEDIUM
+    assert config.thinking_config.thinking_level is types.ThinkingLevel.LOW
     assert SOURCE in harness.call.prompts[0]
     assert isinstance(config.system_instruction, str)
     assert "60% fewer words" in config.system_instruction
@@ -724,7 +731,7 @@ def test_conventional_framing_can_go_without_relaxing_the_following_obligation(p
     )
     assert decision.accepted == {block.id: proposed}
     assert not decision.findings
-    assert UNSLOP_POLICY_VERSION == "sarj-concise-v14"
+    assert UNSLOP_POLICY_VERSION == "sarj-concise-v15"
 
 
 @pytest.mark.parametrize(

@@ -30,6 +30,7 @@ from app.document_transform.schemas import (
     TransformFinding,
     TransformPhase,
 )
+from app.document_transform.unslop import model_editable_blocks
 from app.drive.retry import execute_with_retry
 from app.performance import (
     begin_request_metrics,
@@ -41,7 +42,7 @@ from app.performance import (
 
 
 if TYPE_CHECKING:
-    from collections.abc import AsyncGenerator, Callable, Coroutine
+    from collections.abc import AsyncGenerator, Awaitable, Callable, Coroutine
     from pathlib import Path
 
     from httplib2 import Response
@@ -198,7 +199,15 @@ def _review_response(envelope: PatchReviewEnvelope) -> httpx.Response:
     )
 
 
-def _functional_generator(client: genai.Client) -> VertexGeminiPatchGenerator:
+async def _yield_writer_sleep(_delay: float) -> None:
+    await asyncio.sleep(0)
+
+
+def _functional_generator(
+    client: genai.Client,
+    *,
+    writer_sleep: Callable[[float], Awaitable[None]] | None = _yield_writer_sleep,
+) -> VertexGeminiPatchGenerator:
     return VertexGeminiPatchGenerator(
         policy=GeminiModelPolicy(
             project="offline-fixture",
@@ -208,6 +217,7 @@ def _functional_generator(client: genai.Client) -> VertexGeminiPatchGenerator:
             restyle_model="gemini-3.8-flash",
         ),
         client=client,
+        writer_sleep=writer_sleep,
     )
 
 
@@ -1505,7 +1515,7 @@ async def test_sdk_initial_pro_fallback_is_medium_and_repair_review_remain_high(
         for _model, config in received
     ]
     assert levels == [
-        types.ThinkingLevel.MEDIUM,
+        types.ThinkingLevel.LOW,
         types.ThinkingLevel.MEDIUM if fallback == "gemini-3.1-pro-preview" else None,
         types.ThinkingLevel.HIGH,
         types.ThinkingLevel.HIGH,
@@ -1603,12 +1613,14 @@ async def _deadline_generator(
         Callable[[httpx.Request], httpx.Response]
         | Callable[[httpx.Request], Coroutine[None, None, httpx.Response]]
     ),
+    *,
+    writer_sleep: Callable[[float], Awaitable[None]] | None = _yield_writer_sleep,
 ) -> AsyncGenerator[VertexGeminiPatchGenerator]:
     async with httpx.AsyncClient(transport=httpx.MockTransport(respond)) as http:
         client = factory(http)
         try:
             async with asyncio.timeout(5):
-                yield _functional_generator(client)
+                yield _functional_generator(client, writer_sleep=writer_sleep)
         finally:
             await client.aio.aclose()
 
@@ -1892,7 +1904,7 @@ async def test_model_deadline_or_cancellation_reaps_active_and_queued_sdk_batche
     async with _deadline_generator(sdk_client_factory, respond) as generator:
         operation = asyncio.create_task(
             _generate_with_operation_budget(
-                generator, document, 31.05, clock=model_budget_clock.read
+                generator, document, 32.5, clock=model_budget_clock.read
             )
         )
         try:
@@ -1902,7 +1914,6 @@ async def test_model_deadline_or_cancellation_reaps_active_and_queued_sdk_batche
                 with pytest.raises(asyncio.CancelledError):
                     await operation
             else:
-                # Keep the provider clock consistent with the pending real asyncio expiry.
                 model_budget_clock.advance(2)
                 with pytest.raises(ModelUnavailableError):
                     await operation
@@ -1954,6 +1965,7 @@ async def test_parallel_operations_keep_separate_deadlines_on_cached_generator(
             )
         )
         try:
+            await short_started.wait()
             result = await _generate_with_operation_budget(
                 generator, other, 100, clock=model_budget_clock.read
             )
@@ -2066,3 +2078,217 @@ def test_shared_provider_clock_follows_request_metrics_and_reset(
         assert current_request_metrics() is previous_metrics
         assert provider_retry_remaining_seconds() == 92
     assert provider_retry_remaining_seconds() is None
+
+
+@dataclass(slots=True)
+class _WriterAdmissionWait:
+    entered: asyncio.Queue[float]
+    release: asyncio.Event
+    delays: list[float]
+
+    async def __call__(self, delay: float) -> None:
+        self.delays.append(delay)
+        await self.entered.put(delay)
+        await self.release.wait()
+
+
+@pytest.fixture
+def writer_admission_wait() -> _WriterAdmissionWait:
+    return _WriterAdmissionWait(asyncio.Queue(), asyncio.Event(), [])
+
+
+async def test_paced_writer_starts_keep_two_real_sdk_requests_active_and_ordered(
+    sdk_client_factory: Callable[[httpx.AsyncClient], genai.Client],
+    deadline_document: _DeadlineDocument,
+    writer_admission_wait: _WriterAdmissionWait,
+) -> None:
+    document = parse_markdown(
+        "\n\n".join(deadline_document.patch.replacement for _ in range(13)),
+        title="Paced writer admission",
+    )
+    first = asyncio.Event()
+    two = asyncio.Event()
+    finish = asyncio.Event()
+    requests: list[httpx.Request] = []
+    active = 0
+    peak = 0
+
+    async def respond(request: httpx.Request) -> httpx.Response:
+        nonlocal active, peak
+        requests.append(request)
+        active += 1
+        peak = max(peak, active)
+        first.set()
+        if active == 2:
+            two.set()
+        try:
+            await finish.wait()
+            return _deadline_response(request)
+        finally:
+            active -= 1
+
+    async with _deadline_generator(
+        sdk_client_factory, respond, writer_sleep=writer_admission_wait
+    ) as generator:
+        async with asyncio.TaskGroup() as group:
+            operation = group.create_task(generator.generate(document, phase=TransformPhase.UNSLOP))
+            await first.wait()
+            assert len(requests) == active == 1
+            try:
+                delay = await writer_admission_wait.entered.get()
+                assert 0 < delay <= 1.25
+                writer_admission_wait.release.set()
+                await two.wait()
+                assert len(requests) == active == peak == 2
+            finally:
+                writer_admission_wait.release.set()
+                finish.set()
+        assert [patch.block_id for patch in operation.result()] == [
+            block.id for block in model_editable_blocks(document)
+        ]
+    assert len(requests) == 3
+    assert active == 0
+    assert peak == 2
+
+
+def _empty_writer_response() -> httpx.Response:
+    return httpx.Response(
+        HTTPStatus.OK,
+        json={
+            "candidates": [
+                {
+                    "content": {
+                        "role": "model",
+                        "parts": [{"text": PatchEnvelope(patches=[]).model_dump_json()}],
+                    },
+                    "finishReason": "STOP",
+                }
+            ]
+        },
+    )
+
+
+@pytest.mark.parametrize(
+    "status",
+    [HTTPStatus.TOO_MANY_REQUESTS, HTTPStatus.GATEWAY_TIMEOUT, HTTPStatus.BAD_REQUEST, None],
+)
+async def test_writer_backoff_only_follows_transient_errors_without_extra_attempts(
+    sdk_client_factory: Callable[[httpx.AsyncClient], genai.Client],
+    deadline_document: _DeadlineDocument,
+    writer_admission_wait: _WriterAdmissionWait,
+    status: HTTPStatus | None,
+) -> None:
+    requests: list[httpx.Request] = []
+    transient = status in {HTTPStatus.TOO_MANY_REQUESTS, HTTPStatus.GATEWAY_TIMEOUT}
+
+    async def respond(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        if len(requests) == 1:
+            await asyncio.sleep(1.3)
+            return (
+                _empty_writer_response()
+                if status is None
+                else httpx.Response(status, json={"error": {"code": status}})
+            )
+        return _deadline_response(request)
+
+    if not transient:
+        writer_admission_wait.release.set()
+    async with _deadline_generator(
+        sdk_client_factory, respond, writer_sleep=writer_admission_wait
+    ) as generator:
+        async with asyncio.TaskGroup() as group:
+            operation = group.create_task(
+                generator.generate(deadline_document.document, phase=TransformPhase.UNSLOP)
+            )
+            try:
+                if transient:
+                    delay = await writer_admission_wait.entered.get()
+                    assert 1 <= delay <= 1.25
+                    assert len(requests) == 1
+            finally:
+                writer_admission_wait.release.set()
+        assert operation.result() == [deadline_document.patch]
+    models = [request.url.path.rsplit("/", 1)[-1].split(":", 1)[0] for request in requests]
+    assert models == ["gemini-3.5-flash-lite", "gemini-3.1-flash-lite"]
+    assert bool(writer_admission_wait.delays) is transient
+
+
+async def test_writer_wait_rechecks_shared_budget_before_submitting_another_request(
+    sdk_client_factory: Callable[[httpx.AsyncClient], genai.Client],
+    deadline_document: _DeadlineDocument,
+    model_budget_clock: _ModelBudgetClock,
+    writer_admission_wait: _WriterAdmissionWait,
+) -> None:
+    requests: list[httpx.Request] = []
+
+    def respond(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        return _deadline_response(request)
+
+    async with _deadline_generator(
+        sdk_client_factory, respond, writer_sleep=writer_admission_wait
+    ) as generator:
+        assert await generator.generate(
+            deadline_document.document, phase=TransformPhase.UNSLOP
+        ) == [deadline_document.patch]
+        operation = asyncio.create_task(
+            _generate_with_operation_budget(
+                generator, deadline_document.document, 35, clock=model_budget_clock.read
+            )
+        )
+        try:
+            await writer_admission_wait.entered.get()
+            model_budget_clock.advance(6)
+            writer_admission_wait.release.set()
+            with pytest.raises(ModelUnavailableError):
+                await operation
+        finally:
+            writer_admission_wait.release.set()
+            if not operation.done():
+                operation.cancel()
+                await asyncio.gather(operation, return_exceptions=True)
+    assert len(requests) == 1
+    assert model_budget_clock.now == 6
+    assert provider_retry_remaining_seconds() is None
+
+
+async def test_cancelled_writer_wait_releases_admission_lock_and_rpc_capacity(
+    sdk_client_factory: Callable[[httpx.AsyncClient], genai.Client],
+    deadline_document: _DeadlineDocument,
+    writer_admission_wait: _WriterAdmissionWait,
+) -> None:
+    requests: list[httpx.Request] = []
+
+    def respond(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        return _deadline_response(request)
+
+    async with _deadline_generator(
+        sdk_client_factory, respond, writer_sleep=writer_admission_wait
+    ) as generator:
+        assert await generator.generate(
+            deadline_document.document, phase=TransformPhase.UNSLOP
+        ) == [deadline_document.patch]
+        async with asyncio.TaskGroup() as group:
+            owner = group.create_task(
+                generator.generate(deadline_document.document, phase=TransformPhase.UNSLOP)
+            )
+            await writer_admission_wait.entered.get()
+            queued = group.create_task(
+                generator.generate(deadline_document.document, phase=TransformPhase.UNSLOP)
+            )
+            await asyncio.sleep(0)
+            await asyncio.sleep(0)
+            assert len(writer_admission_wait.delays) == 1
+            owner.cancel()
+            with pytest.raises(asyncio.CancelledError):
+                await owner
+            await writer_admission_wait.entered.get()
+            assert len(requests) == 1
+            writer_admission_wait.release.set()
+        assert queued.result() == [deadline_document.patch]
+        assert await generator.generate(
+            deadline_document.document, phase=TransformPhase.UNSLOP
+        ) == [deadline_document.patch]
+    assert len(requests) == 3

@@ -89,8 +89,7 @@ export default createRule({
     ): boolean {
       const initial = checker.getTypeAtLocation(services.esTreeNodeToTSNodeMap.get(initialNode));
       const local = checker.getTypeAtLocation(services.esTreeNodeToTSNodeMap.get(localNode));
-      // Named evaluation can assign the binding's name to a function/class.
-      // Keep all callable/constructable temporaries rather than erase it.
+
       if (hasCallableShape(initial) || hasCallableShape(local)) return false;
       const unknown =
         ts.TypeFlags.Any | ts.TypeFlags.Unknown | ts.TypeFlags.Never | ts.TypeFlags.TypeParameter;
@@ -131,7 +130,7 @@ function owner(node: TSESTree.Node): FunctionNode | null {
   let current = node.parent;
   while (current !== undefined && !isFunction(current)) {
     if (current.type === AST_NODE_TYPES.Program) return null;
-    // Removing a lexical owner across finally can change observability.
+
     if (current.type === AST_NODE_TYPES.TryStatement && current.finalizer !== null) return null;
     current = current.parent;
   }

@@ -14,8 +14,12 @@ import { after, describe, it } from "node:test";
 
 import { RuleTester } from "@typescript-eslint/rule-tester";
 import tseslint from "typescript-eslint";
+import { z } from "zod";
 
 import compatiblePlugin, { rawPlugin as plugin } from "./eslint-owned/index.ts";
+import { isNode, readField } from "./eslint-owned/shared/ast.ts";
+
+const RuleCreateSchema = z.function();
 
 function reportRegistrationError(error: unknown): never {
   throw new Error("Node test registration failed", { cause: error });
@@ -44,9 +48,6 @@ interface Requirement {
   readonly typed: boolean;
 }
 
-// The first32 code strings are the original independently authored challenge
-// sources. Prefixes provide real, explicit type context; none is an observed
-// result of a third-party algorithm.
 const REQUIREMENTS: readonly Requirement[] = [
   {
     id: "no-all-duplicated-branches/complete-if",
@@ -1432,8 +1433,65 @@ it("adapts every typed rule without changing its metadata", () => {
     assert.equal(adapted.meta, rule.meta);
     const adaptedCreate: unknown = Object.getOwnPropertyDescriptor(adapted, "create")?.value;
     const originalCreate: unknown = Object.getOwnPropertyDescriptor(rule, "create")?.value;
-    assert.equal(typeof adaptedCreate, "function");
-    assert.equal(typeof originalCreate, "function");
+    assert.equal(RuleCreateSchema.safeParse(adaptedCreate).success, true);
+    assert.equal(RuleCreateSchema.safeParse(originalCreate).success, true);
     assert.notEqual(adaptedCreate, originalCreate);
   }
+});
+
+it("preserves raw node references and does not traverse cyclic parents or range entries", () => {
+  const range: unknown[] = [];
+  Object.defineProperty(range, "0", {
+    get() {
+      throw new Error("The raw range guard must not read entries");
+    },
+  });
+  const node: { type: string; range: unknown[]; parent?: unknown } = {
+    type: "Identifier",
+    range,
+  };
+  node.parent = node;
+  assert.ok(isNode(node));
+  assert.equal(readField(node, "parent"), node);
+  assert.equal(readField(node, "range"), range);
+  const values: unknown[] = [];
+  const arrayNode = Object.assign(values, { type: "Identifier", range: [] });
+  assert.ok(isNode(arrayNode));
+  const nullPrototype: unknown = Object.create(null, {
+    type: { value: "Identifier" },
+    range: { value: [] },
+  });
+  assert.ok(isNode(nullPrototype));
+  let calls = 0;
+  const callable = () => {
+    calls += 1;
+  };
+  Object.defineProperty(callable, "marker", { value: node });
+  assert.equal(readField(callable, "marker"), node);
+  assert.equal(calls, 0);
+});
+
+it("keeps raw node field validation short-circuited before unused getters", () => {
+  let rangeReads = 0;
+  const invalid = {
+    type: 1,
+    get range() {
+      rangeReads += 1;
+      throw new Error("Invalid node types must not read the range");
+    },
+  };
+  assert.equal(isNode(invalid), false);
+  assert.equal(rangeReads, 0);
+  const absent = new Proxy(
+    {},
+    {
+      has() {
+        return false;
+      },
+      get() {
+        throw new Error("Missing node fields must not be read");
+      },
+    },
+  );
+  assert.equal(isNode(absent), false);
 });

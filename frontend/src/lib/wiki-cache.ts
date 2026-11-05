@@ -11,9 +11,6 @@ export interface CachedNodeMeta {
   name: string;
 }
 
-// Pending document renders can request the same hint repeatedly. Keep only the
-// last lookup per immutable query array, so misses are cheap without indexing
-// every node or retaining query data after eviction.
 const NODE_META_CACHE = new WeakMap<
   readonly DriveNode[],
   { fileId: string; meta: CachedNodeMeta | null }
@@ -193,9 +190,8 @@ function patchMoveCache(
   moved: DriveNode | undefined,
   patches: MoveCachePatch[],
 ): void {
-  // Reads are cancellable independently of an already admitted move action.
   void qc.cancelQueries({ exact: true, queryKey }).catch((error: unknown) => {
-    console.warn("Cache read cancellation failed", error instanceof Error ? "Error" : typeof error);
+    console.warn("Cache read cancellation failed", error instanceof Error ? "Error" : "Non-error");
   });
   const query = qc.getQueryCache().find({ exact: true, queryKey });
   const previous = qc.getQueryData<DriveNode[] | DriveTree>(queryKey);
@@ -319,7 +315,7 @@ function upsertConfirmedNode(nodes: DriveNode[], node: DriveNode): DriveNode[] {
   const existing = nodes[index];
   if (!existing) return nodes;
   const duplicate = nodes.some((item, itemIndex) => itemIndex > index && item.id === node.id);
-  // FileResponse confirms these fields only; it carries no shortcut metadata.
+
   if (
     !duplicate &&
     existing.name === node.name &&

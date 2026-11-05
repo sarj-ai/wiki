@@ -67,8 +67,6 @@ async function loadRecentForUser(userId: string): Promise<QuickLinkItem[]> {
       .map((visit) => [visit.alias, visit.visitedAt]),
   );
   if (deniedVisits.size > 0) {
-    // Authorization applies to the visit snapshot. A navigation or another tab
-    // may have added a visit while the request was pending.
     const currentVisits = readRecentAliases(userId);
     const nextVisits = currentVisits.filter(
       (visit) => deniedVisits.get(visit.alias) !== visit.visitedAt,

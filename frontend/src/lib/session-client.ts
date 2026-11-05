@@ -21,8 +21,7 @@ export async function deduplicatedRefresh(
     });
     REFRESHES.set(session, pendingRefresh);
   }
-  // A discarded read can stop waiting without cancelling the shared refresh
-  // still needed by this session's other reads and background session timer.
+
   const result =
     signal === undefined || signal === session
       ? await pendingRefresh

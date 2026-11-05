@@ -112,8 +112,6 @@ function PreferencesDialogOwner({
               )
                 return;
               contentRef.current = null;
-              // Keep the dialog's mutation observer and focus owner alive
-              // after dismissal, including a close/reopen during a save.
             }}
             onOpenAutoFocus={(event) => {
               contentRef.current = {

@@ -17,7 +17,7 @@ const READ_PATHS = [
   /^tasks\/[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/iu,
   /^templates$/u,
 ] as const;
-// IDs use the ASCII classes above. The longest path is sidebar/drives/<128>/permissions.
+
 const MAX_READ_PATH_LENGTH = 155;
 const RESPONSE_HEADERS = {
   "cache-control": "private, no-store",

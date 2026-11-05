@@ -57,8 +57,6 @@ export const useDocViewerStore = create<DocViewerState>((set) => ({
   },
   setPrewarm: (prewarm) => {
     set((state) => {
-      // A shared authorization may finish after navigation already consumed
-      // this target. Keep any different pending target rather than reviving it.
       if (prewarm !== null && state.active?.fileId === prewarm.fileId) return state;
       return state.prewarm?.fileId === prewarm?.fileId ? state : { ...state, prewarm };
     });

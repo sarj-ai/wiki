@@ -1,9 +1,18 @@
 /**
  * Typed AST primitives. The erased-wrapper and checked visitor-key patterns are
  * adapted from the MIT Code Standards b4e7f901 helpers identified in the root
- * README.md#mit-helper-provenance.
+ * THIRD_PARTY_NOTICES.txt.
  */
 import { AST_NODE_TYPES, type TSESLint, type TSESTree } from "@typescript-eslint/utils";
+import { z } from "zod";
+
+const ObjectReferenceSchema = z.union([z.object({}), z.custom<readonly unknown[]>(Array.isArray)]);
+const FunctionReferenceSchema = z.function();
+const NodeTypeSchema = z.string();
+
+export function isObjectReference(value: unknown): value is object {
+  return ObjectReferenceSchema.safeParse(value).success;
+}
 
 export function unwrap(node: TSESTree.Node): TSESTree.Node {
   let current = node;
@@ -20,10 +29,9 @@ export function unwrap(node: TSESTree.Node): TSESTree.Node {
 
 export function isNode(value: unknown): value is TSESTree.Node {
   return (
-    typeof value === "object" &&
-    value !== null &&
+    isObjectReference(value) &&
     "type" in value &&
-    typeof value.type === "string" &&
+    NodeTypeSchema.safeParse(value.type).success &&
     "range" in value &&
     Array.isArray(value.range)
   );
@@ -52,7 +60,7 @@ export function readField(value: object, key: string): unknown {
 }
 
 function isRecord(value: unknown): value is Readonly<Record<string, unknown>> {
-  return value !== null && (typeof value === "object" || typeof value === "function");
+  return isObjectReference(value) || FunctionReferenceSchema.safeParse(value).success;
 }
 
 export type FunctionNode =

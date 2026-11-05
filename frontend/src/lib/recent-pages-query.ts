@@ -1,7 +1,10 @@
 import { type QueryClient, queryOptions } from "@tanstack/react-query";
+import { z } from "zod";
 
 import { captureMutationSession } from "@/lib/mutation-session";
 import { WIKI_READ_API } from "@/lib/wiki-read-api";
+
+const MetadataRecordSchema = z.union([z.object({}), z.custom<readonly unknown[]>(Array.isArray)]);
 
 const RECENT_PAGES_STALE_MS = 30_000;
 const RECENT_PAGES_GC_MS = 5 * 60_000;
@@ -76,7 +79,7 @@ export function createRecentPagesScope({
 export function recentPagesQueryOptions(scope: RecentPagesScope, fileIds: readonly string[]) {
   const ids = [...fileIds];
   const authority = scope.capture();
-  // A new authority key cannot reuse an initial read that started before a denial.
+
   const queryKey = [...scope.queryKey, authority.generation, ...ids];
   const failed = scope.queryClient.getQueryState(queryKey)?.status === "error";
   return queryOptions({
@@ -158,7 +161,7 @@ function hasMatchingRecentFile(data: unknown, file: unknown, fileId: unknown): b
 }
 
 function isMetadataRecord(value: unknown): value is Record<string, unknown> {
-  return value !== null && typeof value === "object";
+  return MetadataRecordSchema.safeParse(value).success;
 }
 
 function pruneRecentPages(scope: RecentPagesScope, currentHash: string): void {

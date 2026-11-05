@@ -89,7 +89,7 @@ describe("sidebar resize ownership", () => {
 
   afterEach(() => {
     flushSync(() => root.unmount());
-    // Keep a broken baseline test from leaking its global handlers into later tests.
+
     for (const [type, listener, options] of add.mock.calls) {
       if (type.startsWith("pointer")) window.removeEventListener(type, listener, options);
     }

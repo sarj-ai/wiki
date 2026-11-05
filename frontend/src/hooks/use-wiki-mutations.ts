@@ -278,8 +278,7 @@ function unrelatedFolderIds(
     unrelated.add(tree.driveId);
     for (const folder of tree.folders) unrelated.add(folder.id);
   }
-  // Unknown listings still invalidate. Protect both old and new membership,
-  // including shortcut targets shared with another cached Drive.
+
   unrelated.delete(refreshed.driveId);
   for (const tree of [previous, refreshed]) {
     if (!tree) continue;

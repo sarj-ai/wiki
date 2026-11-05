@@ -36,7 +36,6 @@ const QUERY_FIELDS = {
   pageToken: "page_token",
 } as const;
 
-/** Concurrent reads through a restricted, authenticated same-origin route. */
 export const WIKI_READ_API = Object.freeze({
   driveSearch: async (query: string, limitPerDrive?: number, signal?: AbortSignal) =>
     await wikiReadHttp(

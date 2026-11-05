@@ -49,8 +49,6 @@ export default createRule({
     const checker = services?.program.getTypeChecker();
 
     function check(node: TSESTree.BinaryExpression | TSESTree.LogicalExpression): void {
-      // Self-inequality is a documented NaN idiom. Shifts, addition,
-      // multiplication and exponentiation have useful equal-operand meanings.
       if (node.type === AST_NODE_TYPES.BinaryExpression && !BINARY.has(node.operator)) return;
       if (pure(node.left) && pure(node.right) && equivalent(node.left, node.right, source)) {
         context.report({ node, messageId: "identical" });

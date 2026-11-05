@@ -15,7 +15,7 @@ function request(path: string, headers: Record<string, string> = {}): Request {
   const value = new Request(`https://wiki.sarj.ai/api/wiki/${path}`, {
     headers: { "x-wiki-read": "1", "sec-fetch-site": "same-origin", ...headers },
   });
-  // happy-dom's Request constructor drops browser-controlled Sec-Fetch fields.
+
   for (const [key, header] of Object.entries(headers)) value.headers.set(key, header);
   return value;
 }

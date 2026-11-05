@@ -1,13 +1,11 @@
 import type { NextConfig } from "next";
 
-// Permit the Google-owned frames required by the embedded sharing dialog.
 const GOOGLE_FRAME_SRC = [
   "https://*.google.com",
   "https://*.gstatic.com",
   "https://*.googleusercontent.com",
 ].join(" ");
 
-// Permit the Google API connections required by the embedded sharing dialog.
 const GOOGLE_CONNECT_SRC = [
   "https://*.google.com",
   "https://*.googleapis.com",
@@ -15,18 +13,15 @@ const GOOGLE_CONNECT_SRC = [
   "https://*.gstatic.com",
 ].join(" ");
 
-// Include the separately hosted FastAPI backend in CSP connections.
 const BACKEND_API_ORIGIN = (() => {
   const raw = process.env["NEXT_PUBLIC_API_URL"] ?? "http://localhost:8000";
   try {
     return new URL(raw).origin;
   } catch {
-    // Keep local startup available while CI reports the invalid configuration.
     return "http://localhost:8000";
   }
 })();
 
-// Allow eval only for development tooling while production retains a strict script policy.
 const IS_DEV = process.env.NODE_ENV !== "production";
 const SCRIPT_SRC = IS_DEV
   ? "script-src 'self' 'unsafe-inline' 'unsafe-eval'"
@@ -34,7 +29,7 @@ const SCRIPT_SRC = IS_DEV
 const CSP_DIRECTIVES = [
   "default-src 'self'",
   SCRIPT_SRC,
-  // Tailwind's injected styles require 'unsafe-inline' on style-src.
+
   "style-src 'self' 'unsafe-inline'",
   "img-src 'self' data: blob: https://*.google.com https://*.gstatic.com https://*.googleusercontent.com",
   "font-src 'self' data: https://*.gstatic.com",
@@ -78,7 +73,7 @@ const NEXT_CONFIG: NextConfig = {
           { key: "Cache-Control", value: "public, max-age=86400, stale-while-revalidate=604800" },
           ...SECURITY_HEADERS,
         ],
-        // Static brand assets are immutable in practice; cache them instead of revalidating.
+
         source: "/brand/:path*",
       },
       ...["/brand/sarj-loader-12132f41.svg", "/brand/sarj-loader-still-12132f41.svg"].map(
@@ -95,7 +90,7 @@ const NEXT_CONFIG: NextConfig = {
           { key: "Cache-Control", value: "no-cache, must-revalidate" },
           ...SECURITY_HEADERS,
         ],
-        // HTML pages: always revalidate (browser checks for new version).
+
         source: "/((?!_next/static|_next/image|brand/).*)",
       },
       {
@@ -103,8 +98,6 @@ const NEXT_CONFIG: NextConfig = {
         source: "/health",
       },
       {
-        // Keep private API reads and expired-session errors out of all caches.
-        // Cloudflare applies configured headers after route response headers.
         headers: [{ key: "Cache-Control", value: "private, no-store" }],
         source: "/api/:path*",
       },

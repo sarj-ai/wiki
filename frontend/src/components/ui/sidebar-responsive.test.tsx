@@ -1,4 +1,5 @@
 import Link from "next/link";
+import type { RefCallback } from "react";
 import { flushSync } from "react-dom";
 import { createRoot, type Root } from "react-dom/client";
 
@@ -49,6 +50,26 @@ describe("responsive sidebar ownership", () => {
     if (!element) throw new Error("Sidebar trigger missing");
     return element;
   }
+
+  it.each([false, true])("preserves callback ref teardown with cleanup %s", (returnsCleanup) => {
+    const cleanup = vi.fn<() => void>();
+    const ref = vi
+      .fn<RefCallback<HTMLButtonElement>>()
+      .mockImplementation((element) => (element !== null && returnsCleanup ? cleanup : undefined));
+    flushSync(() =>
+      root.render(
+        <SidebarProvider>
+          <SidebarTrigger ref={ref} />
+        </SidebarProvider>,
+      ),
+    );
+    const element = trigger();
+    expect(ref).toHaveBeenCalledExactlyOnceWith(element);
+    expect(cleanup).not.toHaveBeenCalled();
+    flushSync(() => root.render(null));
+    expect(cleanup).toHaveBeenCalledTimes(returnsCleanup ? 1 : 0);
+    expect(ref.mock.calls).toEqual(returnsCleanup ? [[element]] : [[element], [null]]);
+  });
 
   it("provides a close button and restores the mobile trigger after dismissal", async () => {
     mount();

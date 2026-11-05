@@ -10,6 +10,7 @@ from http import HTTPStatus
 from itertools import pairwise
 import json
 import re
+import secrets
 from typing import TYPE_CHECKING, Literal, NewType, override
 
 from google import genai
@@ -49,7 +50,7 @@ from app.performance import provider_retry_remaining_seconds
 
 
 if TYPE_CHECKING:
-    from collections.abc import AsyncGenerator
+    from collections.abc import AsyncGenerator, Awaitable, Callable
 
     from pydantic import JsonValue
 
@@ -74,6 +75,8 @@ _REVIEW_FALLBACK_STATUSES = frozenset(
 _MAX_REVIEW_BATCH_CHARACTERS = 8_000
 _MAX_REVIEW_BATCH_PAIRS = 12
 _MAX_CONCURRENT_MODEL_BATCHES = 2
+_INITIAL_WRITER_START_INTERVAL = timedelta(seconds=1)
+_WRITER_JITTER_MILLISECONDS = 250
 _MAX_BLOCK_CLAUSE_AUDITS = 4
 _MAX_DOCUMENT_CLAUSE_AUDITS = 32
 _PARALLEL_PURPOSE_COUNT = 2
@@ -267,9 +270,13 @@ class VertexGeminiPatchGenerator(PatchGenerator):
         *,
         policy: GeminiModelPolicy,
         client: genai.Client | None = None,
+        writer_sleep: Callable[[float], Awaitable[None]] | None = None,
     ) -> None:
         self._policy = policy
         self._model_semaphore = asyncio.Semaphore(_MAX_CONCURRENT_MODEL_BATCHES)
+        self._writer_start_lock = asyncio.Lock()
+        self._writer_sleep = writer_sleep
+        self._writer_next_start = 0.0
         self._client = client or genai.Client(
             vertexai=True,
             project=policy.project,
@@ -344,6 +351,8 @@ class VertexGeminiPatchGenerator(PatchGenerator):
         last_error: Exception | None = None
         for attempt, model in enumerate(attempts, start=1):
             try:
+                if phase is TransformPhase.UNSLOP and not feedback:
+                    await self._admit_initial_writer(attempt=attempt, last_error=last_error)
                 patches = await self._generate_once(
                     model=model,
                     prompt=prompt,
@@ -363,6 +372,25 @@ class VertexGeminiPatchGenerator(PatchGenerator):
             else:
                 return patches
         raise ModelUnavailableError from last_error
+
+    async def _admit_initial_writer(self, *, attempt: int, last_error: Exception | None) -> None:
+        loop = asyncio.get_running_loop()
+        async with self._writer_start_lock:
+            delay = max(self._writer_next_start - loop.time(), 0.0)
+            if isinstance(last_error, TimeoutError) or (
+                isinstance(last_error, genai_errors.APIError)
+                and last_error.code in _REVIEW_FALLBACK_STATUSES
+            ):
+                backoff = _INITIAL_WRITER_START_INTERVAL.total_seconds() * 2 ** (attempt - 2)
+                delay = max(delay, backoff + _writer_jitter_seconds())
+            if delay:
+                await _model_retry_delay(delay, sleep=self._writer_sleep)
+            _model_remaining_seconds()
+            self._writer_next_start = (
+                loop.time()
+                + _INITIAL_WRITER_START_INTERVAL.total_seconds()
+                + _writer_jitter_seconds()
+            )
 
     @override
     async def repair(
@@ -407,6 +435,12 @@ class VertexGeminiPatchGenerator(PatchGenerator):
         phase: TransformPhase,
         repair: bool,
     ) -> genai_types.ThinkingConfig | None:
+        if (
+            phase is TransformPhase.UNSLOP
+            and not repair
+            and model == primary_model == "gemini-3.8-flash"
+        ):
+            return genai_types.ThinkingConfig(thinking_level=genai_types.ThinkingLevel.LOW)
         if model == self._policy.fallback_model:
             if model != _PRO_THINKING_MODEL:
                 return None
@@ -557,11 +591,18 @@ def _model_request_timeout_seconds(timeout: timedelta) -> float:
     return seconds if remaining is None else min(seconds, remaining)
 
 
-async def _model_retry_delay(delay: float) -> None:
+def _writer_jitter_seconds() -> float:
+    return timedelta(milliseconds=secrets.randbelow(_WRITER_JITTER_MILLISECONDS)).total_seconds()
+
+
+async def _model_retry_delay(
+    delay: float, *, sleep: Callable[[float], Awaitable[None]] | None = None
+) -> None:
     remaining = _model_remaining_seconds()
     if remaining is not None and remaining < delay + _MIN_MODEL_ATTEMPT_BUDGET.total_seconds():
         raise ModelUnavailableError
-    await asyncio.sleep(delay)
+    sleeper = asyncio.sleep if sleep is None else sleep
+    await sleeper(delay)
 
 
 def _model_remaining_seconds() -> float | None:

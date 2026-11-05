@@ -1,10 +1,13 @@
 import { AlertCircle, ServerCrash, ShieldX } from "lucide-react";
+import { z } from "zod";
 
 import { SarjLogo } from "@/components/sarj-logo";
 import { StashRedirect } from "@/components/stash-redirect";
 import { Button } from "@/components/ui/button";
 import { getLoginUrl } from "@/lib/auth";
 import { AuthErrorParamSchema } from "@/lib/storage-schemas";
+
+const RedirectParamSchema = z.string();
 
 const ERROR_CONFIG: Record<
   string,
@@ -40,7 +43,7 @@ export default async function LoginPage({
 }) {
   const params = await searchParams;
   const errorType = AuthErrorParamSchema.safeParse(params["error"]).data;
-  const redirect = typeof params["redirect"] === "string" ? params["redirect"] : undefined;
+  const redirect = isRedirectParam(params["redirect"]) ? params["redirect"] : undefined;
   const errorConfig = errorType ? ERROR_CONFIG[errorType] : undefined;
 
   return (
@@ -96,4 +99,8 @@ export default async function LoginPage({
       </div>
     </main>
   );
+}
+
+function isRedirectParam(value: string | string[] | undefined): value is string {
+  return RedirectParamSchema.safeParse(value).success;
 }

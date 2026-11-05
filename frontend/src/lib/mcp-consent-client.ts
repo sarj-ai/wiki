@@ -20,8 +20,7 @@ const ViewSchema = z.object({
 const RecoverySchema = z.object({ restart_required: z.boolean(), status: StatusSchema });
 const DecisionSchema = z.object({ redirect_uri: z.url() });
 const GrantIdSchema = z.uuid();
-// 100 connections with 255-character client IDs, including six-byte JSON escapes,
-// fit below this bound. Consent views and the bounded callback are much smaller.
+
 const MAX_RESPONSE_BYTES = 256 * 1024;
 const ConnectionsSchema = z.object({
   connections: z
@@ -55,8 +54,6 @@ function endpoint(intent: string): string {
 }
 
 async function request(url: string, options?: RequestInit, signal?: AbortSignal): Promise<unknown> {
-  // Browser-only: the API's host-only nonce must never be forwarded through a server action.
-  // Do not automatically retry decisions after a transport or authentication failure.
   const deadline = AbortSignal.timeout(15_000);
   const requestSignal = signal === undefined ? deadline : AbortSignal.any([deadline, signal]);
   requestSignal.throwIfAborted();

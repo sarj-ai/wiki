@@ -5,7 +5,6 @@ import zlib from "node:zlib";
 
 import { z } from "zod";
 
-// This is a runtime boundary: Next emits JavaScript, and its shape may change.
 const ManifestSchema = z.record(
   z.string(),
   z.object({
@@ -19,6 +18,8 @@ const ManifestSchema = z.record(
   }),
 );
 
+const JavaScriptChunkSchema = z.string().endsWith(".js");
+
 const BUILD_ROOT = path.resolve(process.argv[2] ?? path.resolve(import.meta.dirname, "../.next"));
 const APP_ROUTE = process.argv[3] ?? "(app)/page";
 const CONTEXT: Record<string, unknown> = {};
@@ -29,9 +30,10 @@ const CHUNKS: ReadonlySet<string> = new Set(
     Object.values(entry.clientModules)
       .filter((module) => !module.async)
       .flatMap((module) =>
-        module.chunks.filter(
-          (chunk): chunk is string => typeof chunk === "string" && chunk.endsWith(".js"),
-        ),
+        module.chunks.flatMap((chunk) => {
+          const parsed = JavaScriptChunkSchema.safeParse(chunk);
+          return parsed.success ? parsed.data : [];
+        }),
       ),
   ),
 );

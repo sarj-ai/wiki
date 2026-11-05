@@ -5,6 +5,12 @@ import { claimBrowserSession, retireBrowserSession } from "@/lib/browser-session
 import { wikiReadHttp } from "@/lib/clients/wiki-read-http";
 import { TERMINAL_UNAUTHORIZED_EVENT } from "@/lib/session-events";
 
+const RequestTextSchema = z.string();
+
+function isRequestText(input: Parameters<typeof fetch>[0]): input is string {
+  return RequestTextSchema.safeParse(input).success;
+}
+
 const PayloadSchema = z.object({ value: z.string() });
 const fetchMock = vi.fn<typeof fetch>();
 
@@ -297,6 +303,6 @@ describe("authenticated wiki read recovery", () => {
 });
 
 function requestUrl(input: Parameters<typeof fetch>[0]): string {
-  if (typeof input === "string") return input;
+  if (isRequestText(input)) return input;
   return "href" in input ? input.href : input.url;
 }
