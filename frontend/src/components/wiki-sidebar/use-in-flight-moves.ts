@@ -40,8 +40,7 @@ export const useInFlightMovesStore = create<InFlightMovesState>((set) => ({
   start: (fileId, session) => {
     if (session.aborted) return null;
     const previous = MOVES.get(fileId);
-    // An admitted move owns this file until it settles. Keep later gestures
-    // from overlapping writes with a rollback based on an obsolete location.
+
     if (previous?.session === session) return null;
     const owner = Symbol(fileId);
     if (previous) releaseMove(fileId, previous.session);

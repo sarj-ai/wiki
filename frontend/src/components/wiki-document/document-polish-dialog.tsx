@@ -443,7 +443,6 @@ export function DocumentPolishDialog({
     const startedAt = Date.now();
     let transformSource = unresolved?.source ?? inputSource();
     if (!transformSource && unresolved?.taskId) {
-      // A known task needs no source content; this placeholder is never submitted.
       transformSource = { kind: "markdown", content: "", name: "", destinationFolderId: "" };
     }
     if ((!transformSource && !unresolved?.taskId) || submitLatch.current) return;
@@ -468,7 +467,6 @@ export function DocumentPolishDialog({
     abortRef.current?.abort();
     abortRef.current = controller;
     if (unresolved) {
-      // Replay the exact admitted payload, never refreshed metadata under the same key.
     } else if (transformSource.kind === "drive_file" && refreshedDriveSource.current) {
       transformSource = refreshedDriveSource.current;
     } else if (transformSource.kind === "drive_file" && source.kind === "drive_file") {
@@ -534,9 +532,6 @@ export function DocumentPolishDialog({
           ...(operation.outputName ? [operation.outputName] : []),
         );
       } catch (error: unknown) {
-        // Only a fresh, definitively rejected submission can release its claim.
-        // An adopted/replayed operation may already have been admitted by an
-        // earlier request, even if today's validation rejects its payload.
         if (
           error instanceof ApiError &&
           ((error.status === 409 && error.code === "document_transform_source_changed") ||
@@ -567,9 +562,7 @@ export function DocumentPolishDialog({
       controller.signal.throwIfAborted();
       if (!isCurrent()) return;
       setStage("transforming");
-      // POST replay can return a terminal task without its permission-checked
-      // incomplete-copy descriptor. Persist the task ID before this extra read
-      // so a failed read remains safely resumable without another submission.
+
       const currentTask =
         !operation.taskId && task.status === "failed"
           ? await DOCUMENT_TRANSFORM_API.getTask(task.id, controller.signal)
@@ -1354,7 +1347,6 @@ function assertRecoveryReplaySafe(
   recovering: boolean,
   markdown: string,
 ): void {
-  // Backend replay retention is seven days; leave a one-day safety margin.
   if (!operation.taskId && Date.now() - operation.createdAt >= 6 * 24 * 60 * 60 * 1000) {
     throw new Error(
       "This submission is too old to replay safely. Ask an administrator to check its task status before starting another polish.",

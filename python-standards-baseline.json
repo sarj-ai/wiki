@@ -917,7 +917,7 @@
   },
   "backend/tests/test_transform_diagnostics_workflow.py": {
     "SARJ445": 1,
-    "SARJ528": 7
+    "SARJ528": 6
   },
   "backend/tests/test_word_package.py": {
     "SARJ445": 2
@@ -934,9 +934,6 @@
   "scripts/github/branch_protection.py": {
     "SARJ477": 1,
     "SARJ528": 2
-  },
-  "scripts/github/read-transform-diagnostics.py": {
-    "SARJ444": 1
   },
   "scripts/github/release_gate.py": {
     "SARJ528": 1

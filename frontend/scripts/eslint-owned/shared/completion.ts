@@ -47,7 +47,6 @@ export function insideSwitch(node: TSESTree.Node): boolean {
   return false;
 }
 
-// Follow only proven ordinary tail completion, never a loop iteration or an overriding finalizer.
 export function tailReaches(node: TSESTree.Node, destination: TSESTree.Node): boolean {
   let current = node;
   while (current !== destination) {

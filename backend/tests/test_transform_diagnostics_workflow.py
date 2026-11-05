@@ -1,14 +1,24 @@
 from copy import deepcopy
+from dataclasses import asdict
 import json
 from pathlib import Path
 import runpy
+import shlex
 import subprocess
 import sys
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
+from pydantic import ValidationError
 import pytest
 import yaml
 
+from app.document_transform.model_diagnostics import model_failure_details
+from app.document_transform.schemas import PatchEnvelope
+from app.identifiers import ModelId
+
+
+if TYPE_CHECKING:
+    from pydantic import JsonValue
 
 ROOT = Path(__file__).parents[2]
 MODULE = runpy.run_path(str(ROOT / "scripts/github/read-transform-diagnostics.py"))
@@ -578,7 +588,7 @@ def test_lifecycle_drives_bounded_correlated_lookup(
     diagnostic["jsonPayload"]["record"]["extra"].pop("task_id")
     calls = []
 
-    def read(clause: str, limit: int) -> object:
+    def read(clause: str, limit: int) -> list[dict[str, JsonValue]]:
         calls.append((clause, limit))
         return [lifecycle] if len(calls) == 1 else [diagnostic]
 
@@ -692,3 +702,304 @@ def test_workflow_uses_main_only_existing_wif_and_no_input_shell_interpolation()
         "service_account": "${{ secrets.WIF_SERVICE_ACCOUNT }}",
     }
     assert all("${{" not in step.get("run", "") for step in steps)
+
+
+@pytest.mark.parametrize(
+    "model_id",
+    [
+        ModelId("gemini-3.8-flash"),
+        ModelId("gemini-3.7-flash"),
+        ModelId("gemini-3.1-pro-preview"),
+        ModelId("gemini-3.1-flash-lite"),
+    ],
+    ids=["flash-38", "flash-37", "pro-31-preview", "lite-31"],
+)
+@pytest.mark.parametrize("category", ["none", "unknown", "empty", "coverage", "binding", "schema"])
+def test_model_identity_and_payload_category_keep_known_values(
+    model_id: ModelId, category: str
+) -> None:
+    record = _record()
+    record["jsonPayload"]["record"]["message"] = "document model attempt failed operation=PRIVATE"
+    record["jsonPayload"]["record"]["extra"].update(
+        {"model_id": model_id, "model_payload_category": category, "model_response": "PRIVATE"}
+    )
+    row = MODULE["sanitize"]([record], TASK)[0]
+    assert row["model_id"] == model_id
+    assert row["model_payload_category"] == category
+    assert "PRIVATE" not in json.dumps(row)
+    assert "SECRET" not in json.dumps(row)
+
+
+@pytest.mark.parametrize(
+    "model_id",
+    [
+        ModelId("PRIVATE"),
+        ModelId("https://example.invalid/SECRET"),
+        ModelId(""),
+        ModelId("gemini-PRIVATE"),
+    ],
+    ids=["private-string", "url-string", "empty-string", "unknown-model-name"],
+)
+def test_unknown_model_ids_are_redacted_without_breaking_overrides(model_id: ModelId) -> None:
+    record = _record()
+    record["jsonPayload"]["record"]["extra"]["model_id"] = model_id
+    row = MODULE["sanitize"]([record], TASK)[0]
+    assert row["model_id"] == "unknown"
+    assert "PRIVATE" not in json.dumps(row)
+    assert "SECRET" not in json.dumps(row)
+
+
+@pytest.mark.parametrize(
+    "model_id",
+    [
+        pytest.param(None, id="null-identity"),
+        pytest.param(True, id="boolean-identity"),
+        pytest.param(1, id="integer-identity"),
+        pytest.param([], id="array-identity"),
+        pytest.param({}, id="object-identity"),
+    ],
+)
+def test_model_identity_rejects_nonstring_values(model_id: JsonValue) -> None:
+    record = _record()
+    record["jsonPayload"]["record"]["extra"]["model_id"] = model_id
+    with pytest.raises(TypeError, match=r"^$"):
+        MODULE["sanitize"]([record], TASK)
+
+
+@pytest.mark.parametrize(
+    "category",
+    [
+        pytest.param("PRIVATE", id="unknown-category"),
+        pytest.param(None, id="null-category"),
+        pytest.param(True, id="boolean-category"),
+        pytest.param(1, id="integer-category"),
+        pytest.param({}, id="object-category"),
+    ],
+)
+def test_payload_category_rejects_values_outside_the_producer_enum(category: JsonValue) -> None:
+    record = _record()
+    record["jsonPayload"]["record"]["extra"]["model_payload_category"] = category
+    with pytest.raises(ValueError, match=r"^$"):
+        MODULE["sanitize"]([record], TASK)
+
+
+def test_model_validation_issues_accept_exact_count_location_and_index_boundaries() -> None:
+    record = _record()
+    issues = [
+        {"error_type": "string_type", "location": ["patches", index, "replacement", "unknown"]}
+        for index in (0, 1, 2, 3, 1_000_000)
+    ]
+    record["jsonPayload"]["record"]["extra"]["model_validation_issues"] = issues
+    row = MODULE["sanitize"]([record], TASK)[0]
+    assert row["model_validation_issues"] == issues
+    assert len(row["model_validation_issues"]) == 5
+    assert "SECRET" not in json.dumps(row)
+
+
+def test_unknown_validation_error_and_location_names_are_redacted() -> None:
+    record = _record()
+    record["jsonPayload"]["record"]["extra"]["model_validation_issues"] = [
+        {"error_type": "PRIVATE ERROR", "location": ["patches", 0, "PRIVATE FIELD"]}
+    ]
+    row = MODULE["sanitize"]([record], TASK)[0]
+    assert row["model_validation_issues"] == [
+        {"error_type": "unknown", "location": ["patches", 0, "unknown"]}
+    ]
+    assert "PRIVATE" not in json.dumps(row)
+    assert "SECRET" not in json.dumps(row)
+
+
+@pytest.mark.parametrize(
+    "issues",
+    [
+        pytest.param(None, id="null-issues"),
+        pytest.param({}, id="object-issues"),
+        pytest.param([None], id="null-issue"),
+        pytest.param([{"error_type": "missing"}], id="missing-location"),
+        pytest.param(
+            [{"error_type": "missing", "location": [], "input": "PRIVATE"}], id="raw-input-key"
+        ),
+        pytest.param([{"error_type": True, "location": []}], id="boolean-error-type"),
+        pytest.param([{"error_type": "missing", "location": "PRIVATE"}], id="string-location"),
+        pytest.param([{"error_type": "missing", "location": [True]}], id="boolean-index"),
+        pytest.param([{"error_type": "missing", "location": [-1]}], id="negative-index"),
+        pytest.param([{"error_type": "missing", "location": [1_000_001]}], id="oversized-index"),
+        pytest.param([{"error_type": "missing", "location": [1.0]}], id="float-index"),
+        pytest.param([{"error_type": "missing", "location": [None]}], id="null-location-part"),
+        pytest.param([{"error_type": "missing", "location": [{}]}], id="object-location-part"),
+        pytest.param(
+            [{"error_type": "missing", "location": ["patches"] * 5}],
+            id="too-many-location-parts",
+        ),
+        pytest.param([{"error_type": "missing", "location": []}] * 6, id="too-many-issues"),
+    ],
+)
+def test_model_validation_issues_reject_malformed_or_oversized_shapes(issues: JsonValue) -> None:
+    record = _record()
+    record["jsonPayload"]["record"]["extra"]["model_validation_issues"] = issues
+    with pytest.raises(ValueError, match=r"^$"):
+        MODULE["sanitize"]([record], TASK)
+
+
+def test_actual_producer_schema_issues_survive_reader_without_private_input() -> None:
+    with pytest.raises(ValidationError) as raised:
+        PatchEnvelope.model_validate(
+            {
+                "patches": [
+                    {
+                        "block_id": "PRIVATE BLOCK",
+                        "expected_sha256": ["PRIVATE INPUT"],
+                        "replacement": "PRIVATE REPLACEMENT",
+                    }
+                ],
+                "PRIVATE FIELD": "PRIVATE INPUT",
+            }
+        )
+    failure = model_failure_details(raised.value)
+    record = _record()
+    record["jsonPayload"]["record"]["message"] = "document model attempt failed operation=PRIVATE"
+    record["jsonPayload"]["record"]["extra"].update(
+        json.loads(
+            json.dumps(
+                {
+                    "model_payload_category": failure.payload_category,
+                    "model_validation_issues": [
+                        asdict(issue) for issue in failure.validation_issues
+                    ],
+                }
+            )
+        )
+    )
+    row = MODULE["sanitize"]([record], TASK)[0]
+    assert row["model_payload_category"] == "schema"
+    assert row["model_validation_issues"] == [
+        {"error_type": "string_type", "location": ["patches", 0, "expected_sha256"]},
+        {"error_type": "extra_forbidden", "location": ["unknown"]},
+    ]
+    assert "PRIVATE" not in json.dumps(row)
+    assert "SECRET" not in json.dumps(row)
+
+
+def test_new_model_fields_still_require_exact_derived_request_correlation() -> None:
+    record = _record()
+    extra = record["jsonPayload"]["record"]["extra"]
+    extra.pop("task_id")
+    extra.update({"model_id": "gemini-3.8-flash", "model_validation_issues": []})
+    with pytest.raises(ValueError, match=r"^$"):
+        MODULE["sanitize"]([record], TASK)
+    with pytest.raises(ValueError, match=r"^$"):
+        MODULE["sanitize"]([record], TASK, frozenset({"000000000001"}))
+    row = MODULE["sanitize"]([record], TASK, frozenset({REQUEST}))[0]
+    assert row["task_id"] == TASK
+    assert row["model_id"] == "gemini-3.8-flash"
+    assert row["model_validation_issues"] == []
+
+
+def test_cli_exports_only_bounded_model_fields_from_correlated_logs(diagnostics_cli: Path) -> None:
+    lifecycle = _record()
+    lifecycle["jsonPayload"]["record"]["message"] = (
+        f"document transform started task_id={TASK} attempt=1"
+    )
+    diagnostic = _record()
+    diagnostic["jsonPayload"]["record"]["extra"].pop("task_id")
+    diagnostic["jsonPayload"]["record"]["message"] = (
+        "document model attempt failed operation=PRIVATE"
+    )
+    diagnostic["jsonPayload"]["record"]["extra"].update(
+        {
+            "model_id": "gemini-3.8-flash",
+            "model_payload_category": "schema",
+            "model_validation_issues": [
+                {"error_type": "PRIVATE", "location": ["patches", 0, "PRIVATE"]}
+            ],
+            "model_response": "PRIVATE RESPONSE",
+        }
+    )
+    gcloud = diagnostics_cli.parent / "gcloud"
+    gcloud.write_text(
+        "#!/bin/sh\n"
+        'printf "%s\\n" "$*" >> "$0.calls"\n'
+        'case "$3" in\n'
+        "  *request_id*) printf '%s\\n' " + shlex.quote(json.dumps([diagnostic])) + ";;\n"
+        "  *) printf '%s\\n' " + shlex.quote(json.dumps([lifecycle])) + ";;\n"
+        "esac\n"
+    )
+    result = subprocess.run(
+        [sys.executable, str(diagnostics_cli)],
+        env={"QA_TASK_ID": TASK, "PATH": str(diagnostics_cli.parent)},
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert result.returncode == 0
+    assert not result.stderr
+    rows = json.loads(result.stdout)["records"]
+    assert len(rows) == 2
+    assert rows[1]["model_id"] == "gemini-3.8-flash"
+    assert rows[1]["model_payload_category"] == "schema"
+    assert rows[1]["model_validation_issues"] == [
+        {"error_type": "unknown", "location": ["patches", 0, "unknown"]}
+    ]
+    calls = (diagnostics_cli.parent / "gcloud.calls").read_text().splitlines()
+    assert len(calls) == 2
+    assert "--limit=200" in calls[0]
+    assert "--limit=199" in calls[1]
+    assert "PRIVATE" not in result.stdout
+    assert "SECRET" not in result.stdout
+
+
+@pytest.mark.parametrize(
+    ("field", "error"),
+    [
+        pytest.param("brand_applied", ValueError, id="absent-versus-null-boolean"),
+        pytest.param("word_count", ValueError, id="absent-versus-null-count"),
+        pytest.param("model_id", TypeError, id="absent-versus-null-model-identity"),
+        pytest.param("model_validation_issues", ValueError, id="absent-versus-null-issues"),
+    ],
+)
+def test_absent_fields_are_omitted_but_present_null_fields_are_rejected(
+    field: str, error: type[Exception]
+) -> None:
+    record = _record()
+    row = MODULE["sanitize"]([record], TASK)[0]
+    assert field not in row
+    record["jsonPayload"]["record"]["extra"][field] = None
+    with pytest.raises(error, match=r"^$"):
+        MODULE["sanitize"]([record], TASK)
+
+
+def test_group_precedence_keeps_false_zero_empty_issues_and_protected_identity() -> None:
+    record = _record()
+    extra = record["jsonPayload"]["record"]["extra"]
+    extra.update(
+        {
+            "word_count": 3,
+            "brand_applied": True,
+            "model_validation_issues": [{"error_type": "missing", "location": []}],
+            "error_code": "model_unavailable",
+        }
+    )
+    extra["checks"]["word_count"] = 2
+    extra["diagnostics"]["word_count"] = 1
+    extra["marker_checks"] = {
+        "word_count": 0,
+        "brand_applied": False,
+        "model_validation_issues": [],
+        "task_id": "PRIVATE",
+        "request_id": "PRIVATE",
+        "timestamp": "PRIVATE",
+        "error_code": "PRIVATE",
+        "untrusted_field": "SECRET",
+    }
+
+    row = MODULE["sanitize"]([record], TASK)[0]
+
+    assert row["word_count"] == 0
+    assert row["brand_applied"] is False
+    assert row["model_validation_issues"] == []
+    assert row["task_id"] == TASK
+    assert row["request_id"] == REQUEST
+    assert row["timestamp"] == "2026-09-05T00:12:10.927000+00:00"
+    assert row["error_code"] == "model_unavailable"
+    assert "PRIVATE" not in json.dumps(row)
+    assert "SECRET" not in json.dumps(row)

@@ -2,7 +2,6 @@
 
 import { useState } from "react";
 
-// Keep a dialog's async work and recovery state alive after its first use.
 export function useDeferredDialog() {
   const [state, setState] = useState({ mounted: false, open: false });
   const onOpenChange = (open: boolean) => {

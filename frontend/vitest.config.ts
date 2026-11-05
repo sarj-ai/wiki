@@ -6,7 +6,7 @@ export default defineConfig({
   resolve: {
     alias: {
       "@": path.resolve(import.meta.dirname, "./src"),
-      // server-only throws outside an RSC render.
+
       "server-only": path.resolve(import.meta.dirname, "./src/test-stubs/empty.ts"),
     },
   },
@@ -21,7 +21,7 @@ export default defineConfig({
     environment: "happy-dom",
     globals: true,
     include: ["src/**/*.test.{ts,tsx}"],
-    // Bound Happy DOM setup and large-picker work during the complete local CI mirror.
+
     maxWorkers: 2,
     setupFiles: ["./vitest.setup.ts"],
   },

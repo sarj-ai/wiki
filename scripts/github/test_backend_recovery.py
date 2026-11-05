@@ -10,10 +10,11 @@ import pytest
 import yaml
 
 from scripts.backend_release import recovery
+from scripts.github.release_gate import JsonObject
 
 
 if TYPE_CHECKING:
-    from scripts.github.release_gate import JsonObject
+    from scripts.github.release_gate import JsonValue
 
 SOURCE_SHA = "3c5937f7a559fc23ec655dd845efbdbac300943d"
 VERIFIER_SHA = "d" * 40
@@ -817,3 +818,188 @@ def test_mcp_mode_resolver_rejects_wrong_service_or_unready_revision(
     unready["status"]["conditions"][0]["status"] = "False"
     result = _run_mcp_mode_resolver(tmp_path / "ready", unready)
     assert result.returncode != 0
+
+
+_RUNTIME_CHILDREN = (
+    "ci-backend / changes",
+    "ci-backend / Backend / Lint + typecheck",
+    "ci-backend / Backend / Unit tests",
+    "ci-backend / Backend / PostgreSQL concurrency",
+    "ci-backend / Backend / Image build + Trivy scan",
+    "ci-frontend / changes",
+    "ci-frontend / Frontend / Lint + typecheck + format",
+    "ci-frontend / Frontend / Unit tests",
+    "ci-frontend / Frontend / Next.js build",
+)
+
+
+@dataclass(frozen=True, slots=True)
+class _SkippedRuntimeSource:
+    data: dict[str, JsonObject]
+    page: JsonObject
+    jobs: list[JsonObject]
+
+
+def skipped_runtime_source() -> _SkippedRuntimeSource:
+    data = receipts()
+    page: JsonObject = data[recovery.source_jobs_endpoint(RUN_ID, RUN_ATTEMPT)]
+    jobs: list[JsonObject] = data[recovery.source_jobs_endpoint(RUN_ID, RUN_ATTEMPT)]["jobs"]
+    for name in ("ci-backend / Backend / required", "ci-frontend / Frontend / required"):
+        job = next(candidate for candidate in jobs if candidate["name"] == name)
+        job["conclusion"] = "skipped"
+    jobs.extend(
+        {
+            "name": name,
+            "run_id": RUN_ID,
+            "run_attempt": RUN_ATTEMPT,
+            "head_sha": SOURCE_SHA,
+            "status": "completed",
+            "conclusion": "skipped" if name.endswith(" / changes") else "success",
+            "steps": [],
+        }
+        for name in _RUNTIME_CHILDREN
+    )
+    page["total_count"] = len(jobs)
+    return _SkippedRuntimeSource(data, page, jobs)
+
+
+@pytest.mark.parametrize("shared", [False, True])
+@pytest.mark.parametrize("successful_component", [None, "backend", "frontend"])
+def test_valid_skipped_runtime_headers_preserve_standalone_and_main_receipts(
+    *, shared: bool, successful_component: str | None
+) -> None:
+    source = skipped_runtime_source()
+    if successful_component is not None:
+        name = f"ci-{successful_component} / {successful_component.title()} / required"
+        job = next(candidate for candidate in source.jobs if candidate["name"] == name)
+        job["conclusion"] = "success"
+    if shared:
+        run = source.data[recovery.source_attempt_endpoint(RUN_ID, RUN_ATTEMPT)]
+        run.update(workflow_id=303, path=recovery.MAIN_RELEASE_PATH)
+        source.data[recovery.MAIN_RELEASE_WORKFLOW] = {
+            "id": 303,
+            "path": recovery.MAIN_RELEASE_PATH,
+            "state": "active",
+        }
+        source.jobs[0]["name"] = "backend-deploy / deploy"
+    assert recovery.verify_source(source.data.__getitem__, RUN_ID, RUN_ATTEMPT) == SOURCE_SHA
+
+
+@pytest.mark.parametrize(
+    "job_name", [name for name in _RUNTIME_CHILDREN if not name.endswith(" / changes")]
+)
+@pytest.mark.parametrize("conclusion", ["failure", "cancelled", "skipped", None])
+def test_skipped_aggregate_never_hides_unsuccessful_native_child(
+    job_name: str, conclusion: str | None
+) -> None:
+    source = skipped_runtime_source()
+    job = next(candidate for candidate in source.jobs if candidate["name"] == job_name)
+    job["conclusion"] = conclusion
+    with pytest.raises(recovery.ReleaseBlockedError):
+        recovery.verify_source(source.data.__getitem__, RUN_ID, RUN_ATTEMPT)
+
+
+@pytest.mark.parametrize("component", ["backend", "frontend"])
+@pytest.mark.parametrize("conclusion", ["success", "failure", "cancelled", None])
+def test_skipped_aggregate_requires_actual_skipped_full_native_routing(
+    component: str, conclusion: str | None
+) -> None:
+    source = skipped_runtime_source()
+    job = next(
+        candidate for candidate in source.jobs if candidate["name"] == f"ci-{component} / changes"
+    )
+    job["conclusion"] = conclusion
+    with pytest.raises(recovery.ReleaseBlockedError):
+        recovery.verify_source(source.data.__getitem__, RUN_ID, RUN_ATTEMPT)
+
+
+@pytest.mark.parametrize(
+    "job_name",
+    ["ci-backend / Backend / Unit tests", "ci-frontend / Frontend / Next.js build"],
+)
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("run_id", RUN_ID + 1),
+        ("run_attempt", RUN_ATTEMPT + 1),
+        ("run_attempt", True),
+        ("head_sha", "b" * 40),
+        ("status", "in_progress"),
+    ],
+)
+def test_skipped_header_cannot_borrow_unfinished_or_foreign_child_receipts(
+    job_name: str, field: str, value: JsonValue
+) -> None:
+    source = skipped_runtime_source()
+    job = next(candidate for candidate in source.jobs if candidate["name"] == job_name)
+    job[field] = value
+    with pytest.raises(recovery.ReleaseBlockedError):
+        recovery.verify_source(source.data.__getitem__, RUN_ID, RUN_ATTEMPT)
+
+
+@pytest.mark.parametrize("job_name", _RUNTIME_CHILDREN)
+@pytest.mark.parametrize("fault", ["missing", "duplicate"])
+def test_skipped_header_rejects_missing_or_ambiguous_native_children(
+    job_name: str, fault: str
+) -> None:
+    source = skipped_runtime_source()
+    job = next(candidate for candidate in source.jobs if candidate["name"] == job_name)
+    if fault == "missing":
+        source.jobs.remove(job)
+    else:
+        source.jobs.append(deepcopy(job))
+    source.page["total_count"] = len(source.jobs)
+    with pytest.raises(recovery.ReleaseBlockedError):
+        recovery.verify_source(source.data.__getitem__, RUN_ID, RUN_ATTEMPT)
+
+
+@pytest.mark.parametrize(
+    "job_name",
+    [
+        "standards-receipt",
+        "ci-iac / IaC / required",
+        "ci-quality / pre-commit (actionlint, hygiene, sarj rules)",
+        "ci-quality / OpenAPI spec in sync",
+        "ci-quality / gitleaks (full history)",
+    ],
+)
+def test_only_runtime_aggregates_can_use_the_skipped_native_shape(job_name: str) -> None:
+    source = skipped_runtime_source()
+    job = next(candidate for candidate in source.jobs if candidate["name"] == job_name)
+    job["conclusion"] = "skipped"
+    with pytest.raises(recovery.ReleaseBlockedError):
+        recovery.verify_source(source.data.__getitem__, RUN_ID, RUN_ATTEMPT)
+
+
+@pytest.mark.parametrize("step_name", recovery.REQUIRED_STEPS)
+def test_valid_skipped_runtime_shape_still_requires_every_completed_mutation(
+    step_name: str,
+) -> None:
+    source = skipped_runtime_source()
+    steps = source.jobs[0]["steps"]
+    assert isinstance(steps, list)
+    for step in steps:
+        assert isinstance(step, dict)
+        if step["name"] == step_name:
+            step["conclusion"] = "failure"
+    with pytest.raises(recovery.ReleaseBlockedError):
+        recovery.verify_source(source.data.__getitem__, RUN_ID, RUN_ATTEMPT)
+
+
+def test_skipped_runtime_child_receipts_are_rechecked_after_authorization() -> None:
+    source = skipped_runtime_source()
+    endpoint = recovery.source_jobs_endpoint(RUN_ID, RUN_ATTEMPT)
+    reads = 0
+
+    def fetch(path: str) -> JsonObject:
+        nonlocal reads
+        result = deepcopy(source.data[path])
+        if path == endpoint:
+            reads += 1
+            if reads == SOURCE_RUN_READ_COUNT:
+                result["total_count"] = 0
+        return result
+
+    with pytest.raises(recovery.ReleaseBlockedError, match="jobs changed"):
+        recovery.verify_source(fetch, RUN_ID, RUN_ATTEMPT)
+    assert reads == SOURCE_RUN_READ_COUNT

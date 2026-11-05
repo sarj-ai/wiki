@@ -242,8 +242,7 @@ describe("RecentPagesLoader", () => {
     flushSync(() => button.click());
     expect(host.querySelector("section")).toBe(section);
     expect(host).toHaveTextContent("Loading recent pages");
-    // The first request has already failed. Native queries cancel the live
-    // retry when its final observer leaves, without reviving retained errors.
+
     expect(firstSignal).toBeDefined();
     expect(host.querySelector("button")).toBeNull();
     expect(getRecentFiles).toHaveBeenCalledTimes(2);

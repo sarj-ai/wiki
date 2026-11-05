@@ -4,6 +4,7 @@ import { cva, type VariantProps } from "class-variance-authority";
 import { PanelLeftIcon, XIcon } from "lucide-react";
 import { Slot } from "radix-ui";
 import * as React from "react";
+import { z } from "zod";
 
 import { Button } from "@/components/ui/button";
 import { FocusReturnProvider } from "@/components/ui/focus-return";
@@ -28,6 +29,25 @@ const SIDEBAR_WIDTH = "18rem";
 const SIDEBAR_WIDTH_MOBILE = "18rem";
 const SIDEBAR_WIDTH_ICON = "3rem";
 const SIDEBAR_KEYBOARD_SHORTCUT = "b";
+
+const SidebarCallbackSchema = z.function();
+const SidebarTextSchema = z.string();
+
+function isOpenUpdater(value: React.SetStateAction<boolean>): value is (value: boolean) => boolean {
+  return SidebarCallbackSchema.safeParse(value).success;
+}
+
+function isSidebarRefCallback(
+  value: React.ComponentProps<typeof Button>["ref"],
+): value is React.RefCallback<HTMLButtonElement> {
+  return SidebarCallbackSchema.safeParse(value).success;
+}
+
+function isSidebarRefCleanup(
+  value: ReturnType<React.RefCallback<HTMLButtonElement>>,
+): value is Exclude<ReturnType<React.RefCallback<HTMLButtonElement>>, void> {
+  return SidebarCallbackSchema.safeParse(value).success;
+}
 
 interface SidebarContextProps {
   isMobile: boolean;
@@ -86,7 +106,7 @@ function SidebarProvider({
   const open = openProp ?? _open;
   const setOpen = React.useCallback(
     (value: ((value: boolean) => boolean) | boolean) => {
-      const openState = typeof value === "function" ? value(open) : value;
+      const openState = isOpenUpdater(value) ? value(open) : value;
       if (setOpenProp) {
         setOpenProp(openState);
       } else {
@@ -301,12 +321,12 @@ function SidebarTrigger({
       }}
       ref={(element) => {
         mobileTriggerRef.current = element;
-        const cleanup = typeof ref === "function" ? ref(element) : undefined;
-        if (ref && typeof ref !== "function") ref.current = element;
+        const cleanup = isSidebarRefCallback(ref) ? ref(element) : undefined;
+        if (ref && !isSidebarRefCallback(ref)) ref.current = element;
         return () => {
           if (mobileTriggerRef.current === element) mobileTriggerRef.current = null;
-          if (typeof cleanup === "function") cleanup();
-          else if (typeof ref === "function") ref(null);
+          if (isSidebarRefCleanup(cleanup)) cleanup();
+          else if (isSidebarRefCallback(ref)) ref(null);
           else if (ref?.current === element) ref.current = null;
         };
       }}
@@ -559,7 +579,7 @@ function SidebarMenuButton({
     return button;
   }
 
-  const tooltipProps = typeof tooltip === "string" ? { children: tooltip } : tooltip;
+  const tooltipProps = isTooltipText(tooltip) ? { children: tooltip } : tooltip;
 
   return (
     <Tooltip>
@@ -572,6 +592,12 @@ function SidebarMenuButton({
       />
     </Tooltip>
   );
+}
+
+function isTooltipText(
+  value: React.ComponentProps<typeof TooltipContent> | string,
+): value is string {
+  return SidebarTextSchema.safeParse(value).success;
 }
 
 function SidebarMenuAction({

@@ -7,8 +7,6 @@ export const EMPTY_DOC_ICONS: readonly DocIcon[] = [];
 export const EMPTY_FOLDER_ICONS: readonly FolderIcon[] = [];
 export const EMPTY_SORT_ORDERS: readonly SortOrder[] = [];
 
-// Query data is immutable. Weak keys let every Drive share the same index while
-// session/query eviction releases the arrays and their indexes together.
 function memoizeIndex<T, V>(build: (items: readonly T[]) => V): (items: readonly T[]) => V {
   const cache = new WeakMap<readonly T[], V>();
   return (items) => {

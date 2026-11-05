@@ -4,8 +4,6 @@ import { fileQueryOptions } from "@/hooks/use-wiki-tree";
 import { isAbortError } from "@/lib/mutation-toast";
 import type { FileDetail } from "@/types/wiki";
 
-// Successful fresh reads remain reusable. A failed read can retain a recent
-// successful timestamp, but that data must not authorize another iframe.
 export function fetchAuthorizedFile(
   queryClient: QueryClient,
   fileId: string,

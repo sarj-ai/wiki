@@ -1,9 +1,16 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { ZodError } from "zod";
+import { z, ZodError } from "zod";
 
+import { makeCall } from "@/lib/api-client";
 import { claimBrowserSession, retireBrowserSession } from "@/lib/browser-session";
 import { TERMINAL_UNAUTHORIZED_EVENT } from "@/lib/session-events";
 import { ApiError, makeWikiApi } from "@/lib/wiki-api";
+
+const RequestTextSchema = z.string();
+
+function isRequestText(input: Parameters<typeof fetch>[0]): input is string {
+  return RequestTextSchema.safeParse(input).success;
+}
 
 const wikiApi = makeWikiApi();
 
@@ -320,7 +327,7 @@ describe("401 refresh-and-replay", () => {
     const cancel = vi.fn();
     const expired = new Response(new ReadableStream({ cancel }), { status: 401 });
     const fetchMock = vi.fn<typeof fetch>().mockImplementation(async (input) => {
-      const url = typeof input === "string" ? input : "href" in input ? input.href : input.url;
+      const url = isRequestText(input) ? input : "href" in input ? input.href : input.url;
       return url.endsWith("/auth/refresh") ? await refresh.promise : expired;
     });
     vi.stubGlobal("fetch", fetchMock);
@@ -455,5 +462,47 @@ describe("401 refresh-and-replay", () => {
     expect(fetchMock).toHaveBeenCalledTimes(2);
     expect(listener).not.toHaveBeenCalled();
     window.removeEventListener(TERMINAL_UNAUTHORIZED_EVENT, listener);
+  });
+});
+
+describe("opaque SDK metadata", () => {
+  it("preserves symbol values and copies only enumerable fields without wrapping metadata", async () => {
+    const owner = {};
+    claimBrowserSession(owner);
+    const marker = Symbol("opaque-sdk-value");
+    const sentinel = {};
+    let reads = 0;
+    const metadata = Object.defineProperties([], {
+      [marker]: { enumerable: true, value: sentinel },
+      field: {
+        enumerable: true,
+        get() {
+          reads += 1;
+          return sentinel;
+        },
+      },
+      unused: {
+        get() {
+          throw new Error("Non-enumerable metadata must not be read");
+        },
+      },
+    });
+    const operation = vi
+      .fn<(options: { meta: object }) => Promise<void>>()
+      .mockResolvedValue(undefined);
+    try {
+      await makeCall()(operation, { meta: metadata });
+      const observed = operation.mock.calls.map(([options]) => options.meta);
+      expect(reads).toBe(1);
+      expect(observed).toHaveLength(1);
+      const [copy] = observed;
+      if (copy === undefined) throw new Error("Expected SDK metadata");
+      expect(copy).not.toBe(metadata);
+      expect(Reflect.get(copy, marker)).toBe(sentinel);
+      expect(Reflect.get(copy, "field")).toBe(sentinel);
+      expect(Object.hasOwn(copy, "unused")).toBe(false);
+    } finally {
+      retireBrowserSession(owner);
+    }
   });
 });

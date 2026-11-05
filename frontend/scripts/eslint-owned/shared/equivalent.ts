@@ -1,7 +1,6 @@
-/** Independent structural comparison; never imports the test-body comparator. */
 import { AST_NODE_TYPES, TSESLint, type TSESTree } from "@typescript-eslint/utils";
 
-import { children, isNode, readField, unwrap } from "./ast.ts";
+import { children, isNode, isObjectReference, readField, unwrap } from "./ast.ts";
 import { definedWithin, type Variable, variable } from "./bindings.ts";
 
 const POSITION_FIELDS: ReadonlySet<string> = new Set([
@@ -45,8 +44,7 @@ export function equivalent(
 
   function compareNodes(a: unknown, b: unknown): boolean {
     if (!isNode(a) || !isNode(b)) return false;
-    // Cross-scope implementation comparison retains authored type contracts.
-    // The pure-operand comparison may erase wrappers for runtime identity.
+
     const aa = roots === undefined ? unwrap(a) : a;
     const bb = roots === undefined ? unwrap(b) : b;
     if (aa.type !== bb.type || !pairScope(aa, bb)) return false;
@@ -87,8 +85,7 @@ export function equivalent(
   }
 
   function compareProperties(a: unknown, b: unknown): boolean {
-    if (a === null || b === null || typeof a !== "object" || typeof b !== "object")
-      return Object.is(a, b);
+    if (!isObjectReference(a) || !isObjectReference(b)) return Object.is(a, b);
     const keysA = Object.keys(a)
       .filter((key) => !omitField(key, a))
       .toSorted();

@@ -15,7 +15,6 @@ const EDITOR_CHUNK = vi.hoisted(() => ({
   started: false,
 }));
 
-// The App Router bundles this implementation; Node otherwise resolves the Pages Router version.
 vi.mock("next/dynamic", async () => ({
   default: await vi.importActual("next/dist/shared/lib/app-dynamic"),
 }));

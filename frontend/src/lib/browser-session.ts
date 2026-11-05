@@ -1,8 +1,6 @@
 let currentSession = new AbortController();
 let currentOwner: null | object = null;
 
-// Capture before asynchronous work, including work started by child effects
-// before the provider's own effect claims this session.
 export function captureBrowserSession(): AbortSignal {
   return currentSession.signal;
 }

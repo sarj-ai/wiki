@@ -58,9 +58,7 @@ export async function wikiReadHttp<S extends z.ZodType>(
     let payload: unknown = null;
     try {
       payload = JSON.parse(await boundedErrorText(response.body, requestSignal));
-    } catch {
-      // Error bodies are optional; malformed, oversized and stalled bodies stay redacted.
-    }
+    } catch {}
     requestSignal.throwIfAborted();
     const error = ErrorSchema.safeParse(payload);
     throw new ApiError(

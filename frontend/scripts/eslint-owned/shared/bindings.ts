@@ -4,7 +4,6 @@ import { children, contains, isFunction, unwrap } from "./ast.ts";
 
 const DYNAMIC_ENVIRONMENTS = new WeakMap<TSESLint.SourceCode, boolean>();
 
-// Direct eval and with can read/write bindings without static references.
 export function hasDynamicEnvironment(source: TSESLint.SourceCode): boolean {
   const cached = DYNAMIC_ENVIRONMENTS.get(source);
   if (cached !== undefined) return cached;
@@ -28,7 +27,6 @@ export function hasDynamicEnvironment(source: TSESLint.SourceCode): boolean {
 
 export type Variable = TSESLint.Scope.Variable;
 
-// A type-only ambient or foreign binding can be backed by a runtime getter.
 export function lexicalValueBinding(binding: Variable): boolean {
   if (binding.defs.length !== 1) return false;
   const definition = binding.defs[0];
@@ -45,7 +43,6 @@ export function lexicalValueBinding(binding: Variable): boolean {
   );
 }
 
-// Source order alone cannot initialize a captured binding before a hoisted call.
 export function initializedLexicalRead(node: TSESTree.Identifier, binding: Variable): boolean {
   if (!lexicalValueBinding(binding) || !noLaterVariableWrites(binding)) return false;
   const definition = binding.defs[0];
@@ -68,9 +65,7 @@ export function initializedLexicalRead(node: TSESTree.Identifier, binding: Varia
     return false;
   let container = definition.parent.parent;
   if (container.type === AST_NODE_TYPES.ExportNamedDeclaration) container = container.parent;
-  // Source order within a function is insufficient across switch cases or
-  // conditional declarations. A preceding declaration in an enclosing ordinary
-  // statement list must execute before this same-owner read can be reached.
+
   return (
     (container.type === AST_NODE_TYPES.Program ||
       container.type === AST_NODE_TYPES.BlockStatement) &&

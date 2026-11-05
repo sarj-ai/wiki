@@ -181,7 +181,7 @@ export const userProfile = zUserProfile.transform(toUserProfile);
 export const bootstrapRead = zBootstrapRead.transform((b) => ({
   docIcons: b["doc_icons"].map(toDocIcon),
   drives: b.drives.map(toDriveSummary),
-  // zBootstrapRead already validated the nested tree. Only map its keys here.
+
   firstDriveTree: b["first_drive_tree"] ? toDriveTree(b["first_drive_tree"]) : undefined,
   folderIcons: b["folder_icons"].map(toFolderIcon),
   me: toUserProfile(b.me),

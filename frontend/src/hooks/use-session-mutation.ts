@@ -54,8 +54,6 @@ export function useSessionMutation<TData, TVariables = void, TContext = unknown>
   return {
     ...mutation,
     mutate: (input: TVariables, callbacks?: MutateOptions<TData, Error, TVariables, TContext>) => {
-      // TanStack can await MutationCache.onMutate before calling this hook's
-      // callbacks or mutationFn. Bind ownership before it queues that work.
       const session = captureMutationSession(queryClient);
       mutation.mutate({ input, session }, ownedCallbacks(callbacks));
     },

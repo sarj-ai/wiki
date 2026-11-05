@@ -60,7 +60,7 @@ function Controls({
           <DriveSearchBox />
         </SidebarNavigationProvider>
       ) : null}
-      {/* The retained palette lives outside the responsive sidebar's navigation context. */}
+      {}
       <CommandPalette />
     </>
   );

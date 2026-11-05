@@ -61,8 +61,7 @@ async function AuthenticatedLayout({ children }: { children: React.ReactNode }) 
     queryClient.setQueryData(wikiKeys.drives, bootstrap.drives);
     queryClient.setQueryData(wikiKeys.preferences, bootstrap.preferences);
     queryClient.setQueryData(wikiKeys.folderIcons, bootstrap.folderIcons);
-    // An empty list means the render-blocking bootstrap intentionally deferred
-    // provider-authorized icon metadata to the dedicated client query.
+
     if (bootstrap.docIcons.length > 0) {
       queryClient.setQueryData(wikiKeys.docIcons, bootstrap.docIcons);
     }

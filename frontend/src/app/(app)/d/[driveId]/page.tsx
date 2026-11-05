@@ -18,10 +18,11 @@ export default async function FilePage({
 }) {
   const { driveId } = await params;
   const { go } = await searchParams;
-  const parsed = zDocumentAliasWrite.safeParse({ alias: typeof go === "string" ? go : "" });
+  const parsed = zDocumentAliasWrite.safeParse({ alias: go });
   const queryClient = new QueryClient();
   const requestHeaders = await headers();
   const isClientNavigation = requestHeaders.get("rsc") === "1";
+
   // Deep links avoid a browser metadata waterfall. Client navigations already
   // prefetch into the shared QueryClient and must not be gated by a duplicate
   // server/provider request.

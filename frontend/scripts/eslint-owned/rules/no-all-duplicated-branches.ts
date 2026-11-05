@@ -52,8 +52,7 @@ export default createRule({
       },
       "SwitchStatement:exit"(node) {
         const complete = node.cases.some((branch) => branch.test === null);
-        // Empty labels may share the next implementation; an empty final case
-        // is a genuine empty alternative and must never disappear from the proof.
+
         if (!complete || node.cases.at(-1)?.consequent.length === 0) return;
         const branches = node.cases.filter((branch) => branch.consequent.length > 0);
         if (

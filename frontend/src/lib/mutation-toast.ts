@@ -1,4 +1,7 @@
 import { toast } from "sonner";
+import { z } from "zod";
+
+const ErrorFallbackSchema = z.function();
 
 export async function runWithErrorToast(
   fn: () => Promise<void>,
@@ -8,8 +11,14 @@ export async function runWithErrorToast(
     await fn();
   } catch (err) {
     if (isAbortError(err)) return;
-    toast.error(typeof fallback === "function" ? fallback(err) : toErrorMessage(err, fallback));
+    toast.error(isErrorFallback(fallback) ? fallback(err) : toErrorMessage(err, fallback));
   }
+}
+
+function isErrorFallback(
+  value: ((err: unknown) => string) | string,
+): value is (err: unknown) => string {
+  return ErrorFallbackSchema.safeParse(value).success;
 }
 
 export function isAbortError(err: unknown): boolean {

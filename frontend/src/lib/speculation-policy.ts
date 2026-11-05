@@ -1,3 +1,11 @@
+import { z } from "zod";
+
+const ConnectionValueSchema = z.union([z.object({}), z.custom<readonly unknown[]>(Array.isArray)]);
+
+const DeviceMemorySchema = z.union([z.number(), z.nan(), z.literal([Infinity, -Infinity])]);
+const EffectiveTypeSchema = z.string();
+const SaveDataSchema = z.boolean();
+
 interface NetworkHints {
   effectiveType?: string;
   saveData?: boolean;
@@ -13,12 +21,15 @@ export function readNavigatorHints(value: Navigator): NavigatorHints {
   const deviceMemory: unknown = Reflect.get(value, "deviceMemory");
   const effectiveType: unknown = readObjectValue(connection, "effectiveType");
   const saveData: unknown = readObjectValue(connection, "saveData");
+  const parsedMemory = DeviceMemorySchema.safeParse(deviceMemory);
+  const parsedType = EffectiveTypeSchema.safeParse(effectiveType);
+  const parsedSaveData = SaveDataSchema.safeParse(saveData);
   return {
-    ...(typeof deviceMemory === "number" && { deviceMemory }),
-    ...((typeof effectiveType === "string" || typeof saveData === "boolean") && {
+    ...(parsedMemory.success && { deviceMemory: parsedMemory.data }),
+    ...((parsedType.success || parsedSaveData.success) && {
       connection: {
-        ...(typeof effectiveType === "string" && { effectiveType }),
-        ...(typeof saveData === "boolean" && { saveData }),
+        ...(parsedType.success && { effectiveType: parsedType.data }),
+        ...(parsedSaveData.success && { saveData: parsedSaveData.data }),
       },
     }),
   };
@@ -40,5 +51,9 @@ export function allowsIframeSpeculation(hints: NavigatorHints): boolean {
 }
 
 function readObjectValue(value: unknown, key: string): unknown {
-  return typeof value === "object" && value !== null ? Reflect.get(value, key) : undefined;
+  return isBrowserConnectionValue(value) ? Reflect.get(value, key) : undefined;
+}
+
+function isBrowserConnectionValue(value: unknown): value is object {
+  return ConnectionValueSchema.safeParse(value).success;
 }
