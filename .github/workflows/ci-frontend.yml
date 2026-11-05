@@ -68,6 +68,9 @@ jobs:
       - name: ESLint with exact baseline
         run: npm run lint:baseline-check
 
+      - name: Syncpack dependency consistency
+        run: npm run check:dependencies
+
       - name: Knip
         run: npm run knip
 

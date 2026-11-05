@@ -63,9 +63,6 @@ output "document_transform_qa_artifact_bucket" {
   value       = local.document_transform_qa_enabled ? google_storage_bucket.document_transform_qa[0].name : null
 }
 
-# CNAME challenge record for DNS-01 cert validation. Add this once to
-# Cloudflare DNS (DNS-only, grey cloud) — Google checks it on every renewal,
-# so it must stay in place permanently.
 output "cert_dns_authorization_record" {
   description = "CNAME record to add to Cloudflare for DNS-01 cert validation"
   value       = google_certificate_manager_dns_authorization.backend.dns_resource_record

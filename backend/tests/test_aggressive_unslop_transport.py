@@ -1,22 +1,25 @@
 from __future__ import annotations
 
 import asyncio
-from collections.abc import Callable
+from contextlib import asynccontextmanager
+from dataclasses import dataclass
+from datetime import timedelta
 import hashlib
 from http import HTTPStatus
 import json
 import re
-from typing import Literal
+from typing import TYPE_CHECKING, Literal
 
 from google import genai
 from google.genai import types
 from google.oauth2.credentials import Credentials
+from googleapiclient.http import HttpMock, HttpRequest
 import httpx
 from pydantic import BaseModel, ConfigDict, Field, RootModel
 import pytest
 
 from app.document_transform.errors import ModelUnavailableError
-from app.document_transform.ir import BlockKind, TextBlock, parse_markdown
+from app.document_transform.ir import BlockKind, DocumentIR, TextBlock, parse_markdown
 from app.document_transform.models import GeminiModelPolicy, VertexGeminiPatchGenerator
 from app.document_transform.safety import validate_patches
 from app.document_transform.schemas import (
@@ -24,8 +27,24 @@ from app.document_transform.schemas import (
     PatchReviewEnvelope,
     TextPatch,
     TextPatchReview,
+    TransformFinding,
     TransformPhase,
 )
+from app.drive.retry import execute_with_retry
+from app.performance import (
+    begin_request_metrics,
+    current_request_metrics,
+    provider_retry_budget,
+    provider_retry_remaining_seconds,
+    reset_request_metrics,
+)
+
+
+if TYPE_CHECKING:
+    from collections.abc import AsyncGenerator, Callable, Coroutine
+    from pathlib import Path
+
+    from httplib2 import Response
 
 
 class _VendorRequest(BaseModel):
@@ -347,25 +366,26 @@ def _corrupt_clause_verdict(
         if audit.source_kind != "sentence"
     )
     reviews = list(envelope.reviews)
-    if fault == "missing":
-        reviews.pop(index)
-    elif fault == "duplicate":
-        reviews.append(reviews[index])
-    elif fault in {"parent_binding", "span_binding"}:
-        reviews[index] = reviews[index].model_copy(
-            update={
-                "expected_sha256": _altered_focus_hash(
-                    payload, payload.sentence_audits[index], fault
-                )
+    match fault:
+        case "missing":
+            reviews.pop(index)
+        case "duplicate":
+            reviews.append(reviews[index])
+        case "parent_binding" | "span_binding":
+            reviews[index] = reviews[index].model_copy(
+                update={
+                    "expected_sha256": _altered_focus_hash(
+                        payload, payload.sentence_audits[index], fault
+                    )
+                }
+            )
+        case _:
+            updates = {
+                "unknown_id": {"block_id": reviews[index].block_id + "-unknown"},
+                "source_hash": {"expected_sha256": "0" * 64},
+                "replacement_hash": {"replacement_sha256": "0" * 64},
             }
-        )
-    else:
-        updates = {
-            "unknown_id": {"block_id": reviews[index].block_id + "-unknown"},
-            "source_hash": {"expected_sha256": "0" * 64},
-            "replacement_hash": {"replacement_sha256": "0" * 64},
-        }
-        reviews[index] = reviews[index].model_copy(update=updates[fault])
+            reviews[index] = reviews[index].model_copy(update=updates[fault])
     return PatchReviewEnvelope(reviews=reviews)
 
 
@@ -1386,3 +1406,663 @@ def _assert_concision_wire_source(
     assert block.concision_target is not None
     assert block.concision_target.source_words == 59
     assert block.concision_target.max_words == 24
+
+
+@pytest.mark.parametrize("fallback", ["gemini-3.1-pro-preview", "gemini-3.1-flash-lite"])
+async def test_sdk_initial_pro_fallback_is_medium_and_repair_review_remain_high(
+    sdk_client_factory: Callable[[httpx.AsyncClient], genai.Client], fallback: str
+) -> None:
+    source = "The hidden bird can sing unseen from dense scrub beside the path."
+    document = parse_markdown(source, title="Thinking roles")
+    block = document.blocks[0]
+    patch = TextPatch(block_id=block.id, expected_sha256=block.sha256, replacement=source)
+    received: list[tuple[str, types.GenerateContentConfig]] = []
+
+    def respond(request: httpx.Request) -> httpx.Response:
+        model = request.url.path.rsplit("/", 1)[-1].removesuffix(":generateContent")
+        config = _VendorRequest.model_validate_json(request.content).generation_config
+        received.append((model, config))
+        assert request.headers.get("X-Server-Timeout") == "90"
+        assert config.max_output_tokens == 16_384
+        if len(received) == 1:
+            return httpx.Response(HTTPStatus.GATEWAY_TIMEOUT, json={"error": {"code": 504}})
+        prompt = _WireReviewRequest.model_validate_json(request.content).contents[0].parts[0].text
+        if prompt.startswith("{"):
+            payload = _WireReview.model_validate_json(prompt)
+            return _review_response(
+                PatchReviewEnvelope(
+                    reviews=[
+                        TextPatchReview(
+                            block_id=audit.block_id,
+                            expected_sha256=audit.expected_sha256,
+                            replacement_sha256=audit.replacement_sha256,
+                            equivalent=True,
+                            reason="The offline source facts are unchanged.",
+                        )
+                        for audit in payload.sentence_audits
+                    ]
+                )
+            )
+        batch = _WireRewriteBlocks.model_validate_json(
+            next(line for line in prompt.splitlines() if line.startswith("["))
+        ).root
+        assert [(item.block_id, item.sha256, item.text) for item in batch] == [
+            (block.id, block.sha256, source)
+        ]
+        return httpx.Response(
+            HTTPStatus.OK,
+            json={
+                "candidates": [
+                    {
+                        "content": {
+                            "role": "model",
+                            "parts": [{"text": PatchEnvelope(patches=[patch]).model_dump_json()}],
+                        },
+                        "finishReason": "STOP",
+                    }
+                ]
+            },
+        )
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(respond)) as http:
+        client = sdk_client_factory(http)
+        generator = VertexGeminiPatchGenerator(
+            policy=GeminiModelPolicy(
+                project="offline-fixture",
+                location="global",
+                unslop_model="gemini-3.8-flash",
+                fallback_model=fallback,
+                restyle_model="gemini-3.1-pro-preview",
+            ),
+            client=client,
+        )
+        try:
+            assert await generator.generate(document, phase=TransformPhase.UNSLOP) == [patch]
+            assert await generator.repair(
+                document,
+                [patch],
+                (
+                    TransformFinding(
+                        code="semantic_review_rejected",
+                        block_id=block.id,
+                        detail="Check each unchanged source fact.",
+                    ),
+                ),
+            ) == [patch]
+            decision = await generator.review(document, [patch])
+            assert decision.approved == {block.id}
+            assert not decision.rejected
+        finally:
+            await client.aio.aclose()
+    assert [model for model, _config in received] == [
+        "gemini-3.8-flash",
+        fallback,
+        "gemini-3.1-pro-preview",
+        "gemini-3.1-pro-preview",
+    ]
+    levels = [
+        config.thinking_config.thinking_level if config.thinking_config else None
+        for _model, config in received
+    ]
+    assert levels == [
+        types.ThinkingLevel.MEDIUM,
+        types.ThinkingLevel.MEDIUM if fallback == "gemini-3.1-pro-preview" else None,
+        types.ThinkingLevel.HIGH,
+        types.ThinkingLevel.HIGH,
+    ]
+
+
+async def test_sdk_pro_primary_override_and_format_keep_high_thinking(
+    sdk_client_factory: Callable[[httpx.AsyncClient], genai.Client],
+) -> None:
+    source = "The hidden bird can sing unseen from dense scrub beside the path."
+    document = parse_markdown(source, title="Pro compatibility")
+    block = document.blocks[0]
+    patch = TextPatch(block_id=block.id, expected_sha256=block.sha256, replacement=source)
+    received: list[types.GenerateContentConfig] = []
+
+    def respond(request: httpx.Request) -> httpx.Response:
+        received.append(_VendorRequest.model_validate_json(request.content).generation_config)
+        envelope = PatchEnvelope(patches=[patch] if len(received) == 1 else [])
+        return httpx.Response(
+            HTTPStatus.OK,
+            json={
+                "candidates": [
+                    {
+                        "content": {
+                            "role": "model",
+                            "parts": [{"text": envelope.model_dump_json()}],
+                        },
+                        "finishReason": "STOP",
+                    }
+                ]
+            },
+        )
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(respond)) as http:
+        client = sdk_client_factory(http)
+        generator = VertexGeminiPatchGenerator(
+            policy=GeminiModelPolicy(
+                project="offline-fixture",
+                location="global",
+                unslop_model="gemini-3.1-pro-preview",
+                fallback_model="gemini-3.1-pro-preview",
+                restyle_model="gemini-3.1-pro-preview",
+            ),
+            client=client,
+        )
+        try:
+            assert await generator.generate(document, phase=TransformPhase.UNSLOP) == [patch]
+            assert await generator.generate(document, phase=TransformPhase.FORMAT) == []
+        finally:
+            await client.aio.aclose()
+    assert len(received) == 2
+    assert all(config.thinking_config is not None for config in received)
+    assert [
+        config.thinking_config.thinking_level for config in received if config.thinking_config
+    ] == [types.ThinkingLevel.HIGH, types.ThinkingLevel.HIGH]
+
+
+@dataclass(slots=True)
+class _ModelBudgetClock:
+    now: float = 0.0
+
+    def read(self) -> float:
+        return self.now
+
+    def advance(self, seconds: float) -> None:
+        self.now += seconds
+
+
+@dataclass(frozen=True, slots=True)
+class _DeadlineDocument:
+    document: DocumentIR
+    patch: TextPatch
+
+
+@pytest.fixture
+def model_budget_clock() -> _ModelBudgetClock:
+    return _ModelBudgetClock()
+
+
+@pytest.fixture
+def deadline_document() -> _DeadlineDocument:
+    source = "The hidden bird can sing unseen from dense scrub beside the path."
+    document = parse_markdown(source, title="Deadline protocol")
+    block = document.blocks[0]
+    return _DeadlineDocument(
+        document,
+        TextPatch(block_id=block.id, expected_sha256=block.sha256, replacement=source),
+    )
+
+
+@asynccontextmanager
+async def _deadline_generator(
+    factory: Callable[[httpx.AsyncClient], genai.Client],
+    respond: (
+        Callable[[httpx.Request], httpx.Response]
+        | Callable[[httpx.Request], Coroutine[None, None, httpx.Response]]
+    ),
+) -> AsyncGenerator[VertexGeminiPatchGenerator]:
+    async with httpx.AsyncClient(transport=httpx.MockTransport(respond)) as http:
+        client = factory(http)
+        try:
+            async with asyncio.timeout(5):
+                yield _functional_generator(client)
+        finally:
+            await client.aio.aclose()
+
+
+def _deadline_response(request: httpx.Request) -> httpx.Response:
+    prompt = _WireReviewRequest.model_validate_json(request.content).contents[0].parts[0].text
+    if prompt.startswith("{"):
+        audits = _WireReview.model_validate_json(prompt).sentence_audits
+        return _review_response(
+            PatchReviewEnvelope(
+                reviews=[
+                    TextPatchReview(
+                        block_id=audit.block_id,
+                        expected_sha256=audit.expected_sha256,
+                        replacement_sha256=audit.replacement_sha256,
+                        equivalent=True,
+                        reason="The exact offline source facts and relationships are unchanged.",
+                    )
+                    for audit in audits
+                ]
+            )
+        )
+    batch = _WireRewriteBlocks.model_validate_json(
+        next(line for line in prompt.splitlines() if line.startswith("["))
+    ).root
+    patches = [
+        TextPatch(
+            block_id=block.block_id,
+            expected_sha256=block.sha256,
+            replacement=block.text,
+        )
+        for block in batch
+    ]
+    if "Return an empty patches array." in prompt:
+        patches = []
+    return httpx.Response(
+        HTTPStatus.OK,
+        json={
+            "candidates": [
+                {
+                    "content": {
+                        "role": "model",
+                        "parts": [{"text": PatchEnvelope(patches=patches).model_dump_json()}],
+                    },
+                    "finishReason": "STOP",
+                }
+            ]
+        },
+    )
+
+
+async def _generate_with_operation_budget(
+    generator: VertexGeminiPatchGenerator,
+    document: DocumentIR,
+    seconds: float,
+    *,
+    clock: Callable[[], float],
+) -> list[TextPatch]:
+    with provider_retry_budget(timedelta(seconds=seconds), clock=clock):
+        return await generator.generate(document, phase=TransformPhase.UNSLOP)
+
+
+async def _call_model_operation(
+    generator: VertexGeminiPatchGenerator,
+    deadline_document: _DeadlineDocument,
+    *,
+    review: bool,
+) -> None:
+    if review:
+        await generator.review(deadline_document.document, [deadline_document.patch])
+    else:
+        await generator.generate(deadline_document.document, phase=TransformPhase.UNSLOP)
+
+
+@pytest.mark.parametrize("review", [False, True])
+async def test_model_deadline_expired_before_call_never_submits_to_sdk(
+    sdk_client_factory: Callable[[httpx.AsyncClient], genai.Client],
+    deadline_document: _DeadlineDocument,
+    model_budget_clock: _ModelBudgetClock,
+    *,
+    review: bool,
+) -> None:
+    requests: list[httpx.Request] = []
+
+    def respond(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        return _deadline_response(request)
+
+    async with _deadline_generator(sdk_client_factory, respond) as generator:
+        with (
+            provider_retry_budget(timedelta(seconds=30), clock=model_budget_clock.read),
+            pytest.raises(ModelUnavailableError),
+        ):
+            await _call_model_operation(generator, deadline_document, review=review)
+    assert not requests
+    assert model_budget_clock.now == 0
+
+
+@pytest.mark.parametrize("external_cancel", [False, True])
+async def test_model_deadline_bounds_contended_slots_without_releasing_others(
+    sdk_client_factory: Callable[[httpx.AsyncClient], genai.Client],
+    deadline_document: _DeadlineDocument,
+    model_budget_clock: _ModelBudgetClock,
+    *,
+    external_cancel: bool,
+) -> None:
+    owners_started = asyncio.Event()
+    release_owners = asyncio.Event()
+    submitted = 0
+    active = 0
+
+    async def respond(request: httpx.Request) -> httpx.Response:
+        nonlocal submitted, active
+        submitted += 1
+        active += 1
+        if active == 2:
+            owners_started.set()
+        try:
+            await release_owners.wait()
+            return _deadline_response(request)
+        finally:
+            active -= 1
+
+    async with _deadline_generator(sdk_client_factory, respond) as generator:
+        async with asyncio.TaskGroup() as group:
+            owners = [
+                group.create_task(
+                    generator.generate(deadline_document.document, phase=TransformPhase.UNSLOP)
+                )
+                for _ in range(2)
+            ]
+            try:
+                await owners_started.wait()
+                queued = asyncio.create_task(
+                    _generate_with_operation_budget(
+                        generator, deadline_document.document, 31.05, clock=model_budget_clock.read
+                    )
+                )
+                if external_cancel:
+                    await asyncio.sleep(0)
+                    await asyncio.sleep(0)
+                    queued.cancel()
+                    with pytest.raises(asyncio.CancelledError):
+                        await queued
+                else:
+                    with pytest.raises(ModelUnavailableError):
+                        await queued
+                assert submitted == 2
+                assert active == 2
+            finally:
+                release_owners.set()
+        assert all(owner.result() == [deadline_document.patch] for owner in owners)
+        assert await generator.generate(
+            deadline_document.document, phase=TransformPhase.UNSLOP
+        ) == [deadline_document.patch]
+    assert submitted == 3
+    assert active == 0
+    assert model_budget_clock.now == 0
+
+
+async def test_model_timeout_is_recomputed_after_waiting_for_shared_slot(
+    sdk_client_factory: Callable[[httpx.AsyncClient], genai.Client],
+    deadline_document: _DeadlineDocument,
+    model_budget_clock: _ModelBudgetClock,
+) -> None:
+    owners_started = asyncio.Event()
+    release = asyncio.Event()
+    timeouts: list[str | None] = []
+
+    async def respond(request: httpx.Request) -> httpx.Response:
+        timeouts.append(request.headers.get("X-Server-Timeout"))
+        if len(timeouts) == 2:
+            owners_started.set()
+        await release.wait()
+        return _deadline_response(request)
+
+    async with _deadline_generator(sdk_client_factory, respond) as generator:
+        async with asyncio.TaskGroup() as group:
+            for _ in range(2):
+                group.create_task(
+                    generator.generate(deadline_document.document, phase=TransformPhase.UNSLOP)
+                )
+            try:
+                await owners_started.wait()
+                queued = group.create_task(
+                    _generate_with_operation_budget(
+                        generator, deadline_document.document, 70, clock=model_budget_clock.read
+                    )
+                )
+                await asyncio.sleep(0)
+                await asyncio.sleep(0)
+                model_budget_clock.advance(35)
+            finally:
+                release.set()
+        assert queued.result() == [deadline_document.patch]
+    assert timeouts == ["90", "90", "5"]
+
+
+async def test_review_retry_is_not_admitted_when_backoff_spends_completion_slice(
+    sdk_client_factory: Callable[[httpx.AsyncClient], genai.Client],
+    deadline_document: _DeadlineDocument,
+    model_budget_clock: _ModelBudgetClock,
+) -> None:
+    timeouts: list[str | None] = []
+
+    def respond(request: httpx.Request) -> httpx.Response:
+        timeouts.append(request.headers.get("X-Server-Timeout"))
+        assert request.extensions["timeout"] == {
+            "connect": 1.5,
+            "read": 1.5,
+            "write": 1.5,
+            "pool": 1.5,
+        }
+        return httpx.Response(HTTPStatus.GATEWAY_TIMEOUT, json={"error": {"code": 504}})
+
+    async with _deadline_generator(sdk_client_factory, respond) as generator:
+        with (
+            provider_retry_budget(timedelta(seconds=31.5), clock=model_budget_clock.read),
+            pytest.raises(ModelUnavailableError),
+        ):
+            await _call_model_operation(generator, deadline_document, review=True)
+    assert timeouts == ["2"]
+    assert model_budget_clock.now == 0
+
+
+async def test_review_retry_recomputes_timeout_after_admitted_backoff(
+    sdk_client_factory: Callable[[httpx.AsyncClient], genai.Client],
+    deadline_document: _DeadlineDocument,
+    model_budget_clock: _ModelBudgetClock,
+) -> None:
+    timeouts: list[str | None] = []
+
+    def respond(request: httpx.Request) -> httpx.Response:
+        timeouts.append(request.headers.get("X-Server-Timeout"))
+        if len(timeouts) == 1:
+            model_budget_clock.advance(10)
+            return httpx.Response(HTTPStatus.GATEWAY_TIMEOUT, json={"error": {"code": 504}})
+        return _deadline_response(request)
+
+    async with _deadline_generator(sdk_client_factory, respond) as generator:
+        with provider_retry_budget(timedelta(seconds=100), clock=model_budget_clock.read):
+            result = await generator.review(deadline_document.document, [deadline_document.patch])
+    assert result.approved == {deadline_document.patch.block_id}
+    assert not result.rejected
+    assert timeouts == ["70", "60"]
+
+
+@pytest.mark.parametrize("external_cancel", [False, True])
+async def test_model_deadline_or_cancellation_reaps_active_and_queued_sdk_batches(
+    sdk_client_factory: Callable[[httpx.AsyncClient], genai.Client],
+    deadline_document: _DeadlineDocument,
+    model_budget_clock: _ModelBudgetClock,
+    *,
+    external_cancel: bool,
+) -> None:
+    document = parse_markdown(
+        "\n\n".join(deadline_document.patch.replacement for _ in range(13)),
+        title="Deadline cancellation",
+    )
+    started = asyncio.Event()
+    release = asyncio.Event()
+    submitted = 0
+    active = 0
+    canceled = 0
+
+    async def respond(request: httpx.Request) -> httpx.Response:
+        nonlocal submitted, active, canceled
+        submitted += 1
+        active += 1
+        if active == 2:
+            started.set()
+        try:
+            await release.wait()
+            return _deadline_response(request)
+        except asyncio.CancelledError:
+            canceled += 1
+            raise
+        finally:
+            active -= 1
+
+    async with _deadline_generator(sdk_client_factory, respond) as generator:
+        operation = asyncio.create_task(
+            _generate_with_operation_budget(
+                generator, document, 31.05, clock=model_budget_clock.read
+            )
+        )
+        try:
+            await started.wait()
+            if external_cancel:
+                operation.cancel()
+                with pytest.raises(asyncio.CancelledError):
+                    await operation
+            else:
+                # Keep the provider clock consistent with the pending real asyncio expiry.
+                model_budget_clock.advance(2)
+                with pytest.raises(ModelUnavailableError):
+                    await operation
+        finally:
+            release.set()
+            if not operation.done():
+                operation.cancel()
+                await asyncio.gather(operation, return_exceptions=True)
+        assert submitted == 2
+        assert active == 0
+        assert canceled == 2
+        assert await generator.generate(
+            deadline_document.document, phase=TransformPhase.UNSLOP
+        ) == [deadline_document.patch]
+    assert submitted == 3
+    assert model_budget_clock.now == (0 if external_cancel else 2)
+
+
+async def test_parallel_operations_keep_separate_deadlines_on_cached_generator(
+    sdk_client_factory: Callable[[httpx.AsyncClient], genai.Client],
+    deadline_document: _DeadlineDocument,
+    model_budget_clock: _ModelBudgetClock,
+) -> None:
+    short_started = asyncio.Event()
+    long_finished = asyncio.Event()
+    other_source = "The quiet bird can rest unseen within dense scrub beside the path."
+    other = parse_markdown(other_source, title="Other operation")
+    canceled = 0
+
+    async def respond(request: httpx.Request) -> httpx.Response:
+        nonlocal canceled
+        prompt = _WireReviewRequest.model_validate_json(request.content).contents[0].parts[0].text
+        if other_source in prompt:
+            await short_started.wait()
+            long_finished.set()
+            return _deadline_response(request)
+        short_started.set()
+        try:
+            await asyncio.Event().wait()
+            pytest.fail("the short request must be canceled by its own deadline")
+        except asyncio.CancelledError:
+            canceled += 1
+            raise
+
+    async with _deadline_generator(sdk_client_factory, respond) as generator:
+        short = asyncio.create_task(
+            _generate_with_operation_budget(
+                generator, deadline_document.document, 31.05, clock=model_budget_clock.read
+            )
+        )
+        try:
+            result = await _generate_with_operation_budget(
+                generator, other, 100, clock=model_budget_clock.read
+            )
+            assert long_finished.is_set()
+            assert [patch.replacement for patch in result] == [other_source]
+            with pytest.raises(ModelUnavailableError):
+                await short
+        finally:
+            if not short.done():
+                short.cancel()
+                await asyncio.gather(short, return_exceptions=True)
+    assert canceled == 1
+    assert provider_retry_remaining_seconds() is None
+    assert model_budget_clock.now == 0
+
+
+def _drive_response_content(_response: Response, content: bytes) -> bytes:
+    return content
+
+
+async def test_model_completion_preserves_drive_budget_and_restores_parent_context(
+    sdk_client_factory: Callable[[httpx.AsyncClient], genai.Client],
+    deadline_document: _DeadlineDocument,
+    model_budget_clock: _ModelBudgetClock,
+    tmp_path: Path,
+) -> None:
+    timeouts: list[str | None] = []
+    response_path = tmp_path / "drive-response.txt"
+    response_path.write_bytes(b"drive-ready")
+    request = HttpRequest(
+        HttpMock(str(response_path), {"status": "200"}),
+        postproc=_drive_response_content,
+        uri="https://offline.invalid/drive-response",
+    )
+
+    def respond(request: httpx.Request) -> httpx.Response:
+        timeouts.append(request.headers.get("X-Server-Timeout"))
+        model_budget_clock.advance(20)
+        return _deadline_response(request)
+
+    async with _deadline_generator(sdk_client_factory, respond) as generator:
+        with provider_retry_budget(timedelta(seconds=60), clock=model_budget_clock.read):
+            assert await generator.generate(
+                deadline_document.document, phase=TransformPhase.UNSLOP
+            ) == [deadline_document.patch]
+            assert provider_retry_remaining_seconds() == 40
+            assert execute_with_retry(request) == b"drive-ready"
+    assert timeouts == ["30"]
+    assert provider_retry_remaining_seconds() is None
+
+
+async def test_no_operation_deadline_keeps_native_timeout_and_format_protocol(
+    sdk_client_factory: Callable[[httpx.AsyncClient], genai.Client],
+    deadline_document: _DeadlineDocument,
+) -> None:
+    timeouts: list[str | None] = []
+
+    def respond(request: httpx.Request) -> httpx.Response:
+        timeouts.append(request.headers.get("X-Server-Timeout"))
+        config = _VendorRequest.model_validate_json(request.content).generation_config
+        assert config.max_output_tokens == 16_384
+        return _deadline_response(request)
+
+    async with _deadline_generator(sdk_client_factory, respond) as generator:
+        assert await generator.generate(
+            deadline_document.document, phase=TransformPhase.UNSLOP
+        ) == [deadline_document.patch]
+        assert (
+            await generator.generate(deadline_document.document, phase=TransformPhase.FORMAT) == []
+        )
+        result = await generator.review(deadline_document.document, [deadline_document.patch])
+    assert result.approved == {deadline_document.patch.block_id}
+    assert not result.rejected
+    assert timeouts == ["90", "90", "90"]
+
+
+async def test_shared_provider_clock_follows_nested_budgets_and_threads(
+    model_budget_clock: _ModelBudgetClock,
+) -> None:
+    other_clock = _ModelBudgetClock(now=1000)
+    with provider_retry_budget(timedelta(seconds=100), clock=model_budget_clock.read):
+        model_budget_clock.advance(5)
+        assert provider_retry_remaining_seconds() == 95
+        with provider_retry_budget(timedelta(seconds=20)):
+            model_budget_clock.advance(3)
+            assert await asyncio.to_thread(provider_retry_remaining_seconds) == 17
+        assert provider_retry_remaining_seconds() == 92
+        with provider_retry_budget(timedelta(seconds=40), clock=other_clock.read):
+            other_clock.advance(7)
+            assert await asyncio.to_thread(provider_retry_remaining_seconds) == 33
+        assert provider_retry_remaining_seconds() == 92
+    assert provider_retry_remaining_seconds() is None
+
+
+def test_shared_provider_clock_follows_request_metrics_and_reset(
+    model_budget_clock: _ModelBudgetClock,
+) -> None:
+    previous_metrics = current_request_metrics()
+    with provider_retry_budget(timedelta(seconds=100), clock=model_budget_clock.read):
+        model_budget_clock.advance(5)
+        assert provider_retry_remaining_seconds() == 95
+        tokens = begin_request_metrics()
+        try:
+            assert current_request_metrics() is not previous_metrics
+            assert provider_retry_remaining_seconds() == 20
+            model_budget_clock.advance(3)
+            assert provider_retry_remaining_seconds() == 17
+        finally:
+            reset_request_metrics(tokens)
+        assert current_request_metrics() is previous_metrics
+        assert provider_retry_remaining_seconds() == 92
+    assert provider_retry_remaining_seconds() is None

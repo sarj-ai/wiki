@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 import asyncio
+from contextlib import asynccontextmanager
 from dataclasses import asdict, dataclass, replace
 from datetime import timedelta
 import hashlib
@@ -9,15 +10,19 @@ from http import HTTPStatus
 from itertools import pairwise
 import json
 import re
-from typing import Literal, NewType, override
+from typing import TYPE_CHECKING, Literal, NewType, override
 
 from google import genai
 from google.genai import errors as genai_errors, types as genai_types
-from pydantic import JsonValue
 
 from app.document_transform.errors import ModelUnavailableError
 from app.document_transform.ir import BlockKind, DocumentIR, TextBlock
-from app.document_transform.model_diagnostics import log_model_failure
+from app.document_transform.model_diagnostics import (
+    ModelBindingError,
+    ModelCoverageError,
+    ModelEmptyResponseError,
+    log_model_failure,
+)
 from app.document_transform.safety import (
     REPAIRABLE_REWRITE_CODES,
     RewriteConstraints,
@@ -40,8 +45,19 @@ from app.document_transform.unslop import (
     concision_target,
     model_editable_blocks,
 )
+from app.performance import provider_retry_remaining_seconds
 
 
+if TYPE_CHECKING:
+    from collections.abc import AsyncGenerator
+
+    from pydantic import JsonValue
+
+
+# Reserve a scheduling slice for Drive writes and final verification.
+_MODEL_COMPLETION_RESERVE = timedelta(seconds=30)
+_MIN_MODEL_ATTEMPT_BUDGET = timedelta(seconds=1)
+_PRO_THINKING_MODEL = "gemini-3.1-pro-preview"
 _MAX_EDITOR_BATCH_CHARACTERS = 4_000
 _MAX_EDITOR_BATCH_BLOCKS = 6
 _MAX_REVIEW_ATTEMPTS = 3
@@ -111,7 +127,7 @@ def _validate_rewrite_coverage(document: DocumentIR, patches: list[TextPatch]) -
     expected = {block.id for block in model_editable_blocks(document)}
     if len(patches) != len(expected) or {patch.block_id for patch in patches} != expected:
         msg = "Rewrite proposals must cover every supplied block exactly once"
-        raise ValueError(msg)
+        raise ModelCoverageError(msg)
 
 
 @dataclass(frozen=True, slots=True)
@@ -298,7 +314,7 @@ class VertexGeminiPatchGenerator(PatchGenerator):
     async def _bounded_generate_batch(
         self, document: DocumentIR, *, feedback: tuple[_RepairProposal, ...]
     ) -> list[TextPatch]:
-        async with self._model_semaphore:
+        async with _model_batch_slot(self._model_semaphore):
             return await self._generate_batch(
                 document, phase=TransformPhase.UNSLOP, feedback=feedback
             )
@@ -332,12 +348,17 @@ class VertexGeminiPatchGenerator(PatchGenerator):
                     model=model,
                     prompt=prompt,
                     phase=phase,
-                    escalated=bool(feedback) or model != primary_model,
+                    thinking_config=self._generation_thinking_config(
+                        model=model,
+                        primary_model=primary_model,
+                        phase=phase,
+                        repair=bool(feedback),
+                    ),
                 )
                 if phase is TransformPhase.UNSLOP:
                     _validate_rewrite_coverage(document, patches)
             except (TimeoutError, ValueError, genai_errors.APIError) as exc:
-                log_model_failure(operation=phase, attempt=attempt, error=exc)
+                log_model_failure(operation=phase, attempt=attempt, model=model, error=exc)
                 last_error = exc
             else:
                 return patches
@@ -378,15 +399,35 @@ class VertexGeminiPatchGenerator(PatchGenerator):
         )
         return await self._generate_batches(rejected, feedback=proposals)
 
+    def _generation_thinking_config(
+        self,
+        *,
+        model: str,
+        primary_model: str,
+        phase: TransformPhase,
+        repair: bool,
+    ) -> genai_types.ThinkingConfig | None:
+        if model == self._policy.fallback_model:
+            if model != _PRO_THINKING_MODEL:
+                return None
+            if phase is TransformPhase.UNSLOP and not repair and model != primary_model:
+                return genai_types.ThinkingConfig(thinking_level=genai_types.ThinkingLevel.MEDIUM)
+            return genai_types.ThinkingConfig(thinking_level=genai_types.ThinkingLevel.HIGH)
+        return genai_types.ThinkingConfig(
+            thinking_level=genai_types.ThinkingLevel.HIGH
+            if repair or model != primary_model
+            else genai_types.ThinkingLevel.MEDIUM
+        )
+
     async def _generate_once(
         self,
         *,
         model: str,
         prompt: str,
         phase: TransformPhase,
-        escalated: bool,
+        thinking_config: genai_types.ThinkingConfig | None,
     ) -> list[TextPatch]:
-        timeout_seconds = self._policy.timeout.total_seconds()
+        timeout_seconds = _model_request_timeout_seconds(self._policy.timeout)
         async with asyncio.timeout(timeout_seconds):
             response = await self._client.aio.models.generate_content(
                 model=model,
@@ -398,15 +439,7 @@ class VertexGeminiPatchGenerator(PatchGenerator):
                     response_mime_type="application/json",
                     response_json_schema=_response_json_schema(PatchEnvelope),
                     max_output_tokens=_STRUCTURED_RESPONSE_TOKEN_LIMIT,
-                    thinking_config=(
-                        None
-                        if model == self._policy.fallback_model
-                        else genai_types.ThinkingConfig(
-                            thinking_level=genai_types.ThinkingLevel.HIGH
-                            if escalated
-                            else genai_types.ThinkingLevel.MEDIUM
-                        )
-                    ),
+                    thinking_config=thinking_config,
                     http_options=genai_types.HttpOptions(timeout=int(timeout_seconds * 1000)),
                 ),
             )
@@ -415,7 +448,7 @@ class VertexGeminiPatchGenerator(PatchGenerator):
         if response.text:
             return PatchEnvelope.model_validate_json(response.text).patches
         msg = "Gemini returned no patch proposal"
-        raise ValueError(msg)
+        raise ModelEmptyResponseError(msg)
 
     @override
     async def verify(self, document: DocumentIR, patches: list[TextPatch]) -> frozenset[str]:
@@ -459,7 +492,7 @@ class VertexGeminiPatchGenerator(PatchGenerator):
     async def _bounded_review_batch(
         self, pairs: list[_ReviewPair], semaphore: asyncio.Semaphore
     ) -> RewriteReview:
-        async with semaphore:
+        async with _model_batch_slot(semaphore):
             return await self._review_batch(pairs)
 
     async def _review_batch(self, pairs: list[_ReviewPair]) -> RewriteReview:
@@ -470,20 +503,20 @@ class VertexGeminiPatchGenerator(PatchGenerator):
                 reviews = await self._review_once(model=model, pairs=pairs)
                 decision = _validated_reviews(pairs, reviews)
             except (TimeoutError, ValueError, genai_errors.APIError) as exc:
-                log_model_failure(operation="review", attempt=attempt, error=exc)
+                log_model_failure(operation="review", attempt=attempt, model=model, error=exc)
                 last_error = exc
                 if isinstance(exc, TimeoutError) or (
                     isinstance(exc, genai_errors.APIError) and exc.code in _REVIEW_FALLBACK_STATUSES
                 ):
                     model = self._policy.fallback_model
                 if attempt < _MAX_REVIEW_ATTEMPTS:
-                    await asyncio.sleep(attempt)
+                    await _model_retry_delay(attempt)
             else:
                 return decision
         raise ModelUnavailableError from last_error
 
     async def _review_once(self, *, model: str, pairs: list[_ReviewPair]) -> PatchReviewEnvelope:
-        seconds = self._policy.timeout.total_seconds()
+        seconds = _model_request_timeout_seconds(self._policy.timeout)
         prompt = _review_prompt(pairs)
         async with asyncio.timeout(seconds):
             response = await self._client.aio.models.generate_content(
@@ -495,7 +528,7 @@ class VertexGeminiPatchGenerator(PatchGenerator):
                     response_json_schema=_response_json_schema(PatchReviewEnvelope),
                     max_output_tokens=_STRUCTURED_RESPONSE_TOKEN_LIMIT,
                     thinking_config=None
-                    if model == self._policy.fallback_model
+                    if model == self._policy.fallback_model and model != _PRO_THINKING_MODEL
                     else genai_types.ThinkingConfig(thinking_level=genai_types.ThinkingLevel.HIGH),
                     http_options=genai_types.HttpOptions(timeout=int(seconds * 1000)),
                 ),
@@ -505,7 +538,40 @@ class VertexGeminiPatchGenerator(PatchGenerator):
         if response.text:
             return PatchReviewEnvelope.model_validate_json(response.text)
         msg = "Gemini returned no semantic review"
-        raise ValueError(msg)
+        raise ModelEmptyResponseError(msg)
+
+
+@asynccontextmanager
+async def _model_batch_slot(semaphore: asyncio.Semaphore) -> AsyncGenerator[None]:
+    try:
+        async with asyncio.timeout(_model_remaining_seconds()):
+            async with semaphore:
+                yield
+    except TimeoutError as exc:
+        raise ModelUnavailableError from exc
+
+
+def _model_request_timeout_seconds(timeout: timedelta) -> float:
+    seconds = timeout.total_seconds()
+    remaining = _model_remaining_seconds()
+    return seconds if remaining is None else min(seconds, remaining)
+
+
+async def _model_retry_delay(delay: float) -> None:
+    remaining = _model_remaining_seconds()
+    if remaining is not None and remaining < delay + _MIN_MODEL_ATTEMPT_BUDGET.total_seconds():
+        raise ModelUnavailableError
+    await asyncio.sleep(delay)
+
+
+def _model_remaining_seconds() -> float | None:
+    remaining = provider_retry_remaining_seconds()
+    if remaining is None:
+        return None
+    remaining -= _MODEL_COMPLETION_RESERVE.total_seconds()
+    if remaining < _MIN_MODEL_ATTEMPT_BUDGET.total_seconds():
+        raise ModelUnavailableError
+    return remaining
 
 
 def _review_plan(document: DocumentIR, patches: dict[str, TextPatch]) -> _ReviewPlan:
@@ -801,11 +867,11 @@ def _validated_reviews(pairs: list[_ReviewPair], reviews: PatchReviewEnvelope) -
             or review.replacement_sha256 != pair.replacement_sha256
         ):
             msg = "Semantic verdict is not bound to its exact proposal"
-            raise ValueError(msg)
+            raise ModelBindingError(msg)
         seen.add(review.block_id)
     if seen != expected.keys():
         msg = "Semantic verdicts are incomplete"
-        raise ValueError(msg)
+        raise ModelCoverageError(msg)
     return RewriteReview(
         approved=frozenset(review.block_id for review in reviews.reviews if review.equivalent),
         rejected={
