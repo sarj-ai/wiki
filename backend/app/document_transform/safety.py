@@ -32,7 +32,8 @@ _PROTECTED_TOKEN = re.compile(
     re.MULTILINE,
 )
 _FORCE_WORD = re.compile(
-    r"\b(?:must|shall|should|may|might|could|would|cannot|can't|can|will|won't|not|never|no|"
+    r"\b(?:opportunit(?:y|ies)\s+to|"
+    r"must|shall|should|may|might|could|would|cannot|can't|can|will|won't|not|never|no|"
     r"each|every|all|only|both|neither|either|per)\b",
     re.IGNORECASE,
 )
@@ -275,7 +276,7 @@ def _protected_tokens(value: str) -> list[str]:
 
 
 def _force_words(value: str) -> list[str]:
-    return [match.group(0).casefold() for match in _FORCE_WORD.finditer(value)]
+    return [" ".join(match.group(0).casefold().split()) for match in _FORCE_WORD.finditer(value)]
 
 
 def _unslop_locality_code(block: TextBlock, replacement: str) -> str | None:

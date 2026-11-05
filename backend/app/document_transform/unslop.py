@@ -11,7 +11,7 @@ from app.document_transform.limits import MIN_MODEL_PROSE_WORDS
 
 UNSLOP_UPSTREAM_COMMIT = "d81f5196167ded24f46fced04958c0c12d681798"
 UNSLOP_UPSTREAM_VERSION = "2.3.0"
-UNSLOP_POLICY_VERSION = "sarj-concise-v16"
+UNSLOP_POLICY_VERSION = "sarj-concise-v17"
 MIN_CONCISION_PROSE_WORDS = 40
 CONCISION_WORD_NUMERATOR = 2
 CONCISION_WORD_DENOMINATOR = 5
@@ -81,6 +81,7 @@ UNSLOP_REVIEW_INSTRUCTION = (
     "factual claim, relationship, exception, caveat, uncertainty, attribution, requirement, complete "
     "list and list member, name, quantity, date, citation and exact quotation survives with the same "
     "meaning, scope, negation and modal force. "
+    "An opportunity or potential to act is not evidence that the action has been achieved. "
     "An intention or aim is not an established capability: retain intended to, aims to, can, "
     "and may with their original predicate and force. A word target never overrides this audit. "
     "Deletion of purely rhetorical or repetitive wording is desirable. A shorter summary that "
