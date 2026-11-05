@@ -32,6 +32,7 @@ from app.document_transform.schemas import (
 )
 from app.document_transform.unslop import model_editable_blocks
 from app.drive.retry import execute_with_retry
+from app.identifiers import ModelId
 from app.performance import (
     begin_request_metrics,
     current_request_metrics,
@@ -97,6 +98,7 @@ class _WireConcisionTarget(BaseModel):
     model_config = ConfigDict(extra="forbid")
     source_words: int
     max_words: int
+    draft_target_words: int
 
 
 class _WireRewriteBlock(BaseModel):
@@ -1416,11 +1418,16 @@ def _assert_concision_wire_source(
     assert block.concision_target is not None
     assert block.concision_target.source_words == 59
     assert block.concision_target.max_words == 24
+    assert block.concision_target.draft_target_words == 19
 
 
+@pytest.mark.parametrize("repair_fault", [False, True], ids=["repair-success", "repair-504"])
 @pytest.mark.parametrize("fallback", ["gemini-3.1-pro-preview", "gemini-3.1-flash-lite"])
-async def test_sdk_initial_pro_fallback_is_medium_and_repair_review_remain_high(
-    sdk_client_factory: Callable[[httpx.AsyncClient], genai.Client], fallback: str
+async def test_sdk_initial_fallback_and_flash_repair_keep_independent_review_high(
+    sdk_client_factory: Callable[[httpx.AsyncClient], genai.Client],
+    fallback: str,
+    *,
+    repair_fault: bool,
 ) -> None:
     source = "The hidden bird can sing unseen from dense scrub beside the path."
     document = parse_markdown(source, title="Thinking roles")
@@ -1434,7 +1441,7 @@ async def test_sdk_initial_pro_fallback_is_medium_and_repair_review_remain_high(
         received.append((model, config))
         assert request.headers.get("X-Server-Timeout") == "90"
         assert config.max_output_tokens == 16_384
-        if len(received) == 1:
+        if len(received) == 1 or (repair_fault and len(received) == 3):
             return httpx.Response(HTTPStatus.GATEWAY_TIMEOUT, json={"error": {"code": 504}})
         prompt = _WireReviewRequest.model_validate_json(request.content).contents[0].parts[0].text
         if prompt.startswith("{"):
@@ -1507,7 +1514,8 @@ async def test_sdk_initial_pro_fallback_is_medium_and_repair_review_remain_high(
     assert [model for model, _config in received] == [
         "gemini-3.8-flash",
         fallback,
-        "gemini-3.1-pro-preview",
+        "gemini-3.8-flash",
+        *([fallback] if repair_fault else []),
         "gemini-3.1-pro-preview",
     ]
     levels = [
@@ -1517,7 +1525,12 @@ async def test_sdk_initial_pro_fallback_is_medium_and_repair_review_remain_high(
     assert levels == [
         types.ThinkingLevel.LOW,
         types.ThinkingLevel.MEDIUM if fallback == "gemini-3.1-pro-preview" else None,
-        types.ThinkingLevel.HIGH,
+        types.ThinkingLevel.MEDIUM,
+        *(
+            [types.ThinkingLevel.HIGH if fallback == "gemini-3.1-pro-preview" else None]
+            if repair_fault
+            else []
+        ),
         types.ThinkingLevel.HIGH,
     ]
 
@@ -2292,3 +2305,92 @@ async def test_cancelled_writer_wait_releases_admission_lock_and_rpc_capacity(
             deadline_document.document, phase=TransformPhase.UNSLOP
         ) == [deadline_document.patch]
     assert len(requests) == 3
+
+
+@pytest.mark.parametrize(
+    ("primary", "initial_level", "repair_level"),
+    [
+        pytest.param(
+            ModelId("gemini-3.8-flash"),
+            types.ThinkingLevel.LOW,
+            types.ThinkingLevel.MEDIUM,
+            id="default-flash-editor",
+        ),
+        pytest.param(
+            ModelId("gemini-3.1-pro-preview"),
+            types.ThinkingLevel.HIGH,
+            types.ThinkingLevel.HIGH,
+            id="explicit-pro-editor",
+        ),
+        pytest.param(
+            ModelId("gemini-3.5-flash-lite"),
+            types.ThinkingLevel.MEDIUM,
+            types.ThinkingLevel.HIGH,
+            id="legacy-explicit-editor",
+        ),
+    ],
+)
+async def test_sdk_repair_uses_the_configured_editor_while_format_and_review_use_restyle(
+    sdk_client_factory: Callable[[httpx.AsyncClient], genai.Client],
+    primary: ModelId,
+    initial_level: types.ThinkingLevel,
+    repair_level: types.ThinkingLevel,
+) -> None:
+    source = "The hidden bird can sing unseen from dense scrub beside the path."
+    document = parse_markdown(source, title="Editorial roles")
+    block = document.blocks[0]
+    patch = TextPatch(block_id=block.id, expected_sha256=block.sha256, replacement=source)
+    received: list[tuple[str, types.GenerateContentConfig]] = []
+
+    def respond(request: httpx.Request) -> httpx.Response:
+        received.append(
+            (
+                request.url.path.rsplit("/", 1)[-1].removesuffix(":generateContent"),
+                _VendorRequest.model_validate_json(request.content).generation_config,
+            )
+        )
+        return _deadline_response(request)
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(respond)) as http:
+        client = sdk_client_factory(http)
+        generator = VertexGeminiPatchGenerator(
+            policy=GeminiModelPolicy(
+                project="offline-fixture",
+                location="global",
+                unslop_model=primary,
+                fallback_model="gemini-3.1-pro-preview",
+                restyle_model="gemini-3.1-pro-preview",
+            ),
+            client=client,
+            writer_sleep=_yield_writer_sleep,
+        )
+        try:
+            assert await generator.generate(document, phase=TransformPhase.UNSLOP) == [patch]
+            assert await generator.repair(
+                document,
+                [patch],
+                (
+                    TransformFinding(
+                        code="semantic_review_rejected",
+                        block_id=block.id,
+                        detail="Retain the exact source action and condition.",
+                    ),
+                ),
+            ) == [patch]
+            decision = await generator.review(document, [patch])
+            assert decision.approved == {block.id}
+            assert not decision.rejected
+            assert await generator.generate(document, phase=TransformPhase.FORMAT) == []
+        finally:
+            await client.aio.aclose()
+    assert [model for model, _config in received] == [
+        primary,
+        primary,
+        "gemini-3.1-pro-preview",
+        "gemini-3.1-pro-preview",
+    ]
+    assert [
+        config.thinking_config.thinking_level if config.thinking_config else None
+        for _model, config in received
+    ] == [initial_level, repair_level, types.ThinkingLevel.HIGH, types.ThinkingLevel.HIGH]
+    assert all(config.max_output_tokens == 16_384 for _model, config in received)

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 import asyncio
+from collections import Counter
 from contextlib import asynccontextmanager
 from dataclasses import asdict, dataclass, replace
 from datetime import timedelta
@@ -110,6 +111,8 @@ _NAMED_PURPOSE = re.compile(
     r"(?:(?:is|was)[ \t]+(?:intended|designed)[ \t]+)?to[ \t]+[a-z][a-z'-]*\b"
 )
 _STRUCTURED_RESPONSE_TOKEN_LIMIT = 16_384
+_DRAFT_WORD_NUMERATOR = 4
+_DRAFT_WORD_DENOMINATOR = 5
 _ReviewContextId = NewType("_ReviewContextId", str)
 _ReviewBlockId = NewType("_ReviewBlockId", str)
 
@@ -336,7 +339,7 @@ class VertexGeminiPatchGenerator(PatchGenerator):
         prompt = _prompt(document, phase=phase, feedback=feedback)
         primary_model = (
             self._policy.unslop_model
-            if phase is TransformPhase.UNSLOP and not feedback
+            if phase is TransformPhase.UNSLOP
             else self._policy.restyle_model
         )
         attempts = tuple(
@@ -417,7 +420,8 @@ class VertexGeminiPatchGenerator(PatchGenerator):
                 proposed=patch.replacement,
                 rejected_by=tuple(sorted(codes[patch.block_id])),
                 rejected_constraints=rewrite_constraints(patch.replacement),
-                review_feedback=tuple(notes.get(patch.block_id, ())),
+                review_feedback=tuple(notes.get(patch.block_id, ()))
+                + _constraint_repair_feedback(current[patch.block_id], patch),
             )
             for patch in patches
             if patch.block_id in codes and patch.expected_sha256 == current[patch.block_id].sha256
@@ -435,12 +439,12 @@ class VertexGeminiPatchGenerator(PatchGenerator):
         phase: TransformPhase,
         repair: bool,
     ) -> genai_types.ThinkingConfig | None:
-        if (
-            phase is TransformPhase.UNSLOP
-            and not repair
-            and model == primary_model == "gemini-3.8-flash"
-        ):
-            return genai_types.ThinkingConfig(thinking_level=genai_types.ThinkingLevel.LOW)
+        if phase is TransformPhase.UNSLOP and model == primary_model == "gemini-3.8-flash":
+            return genai_types.ThinkingConfig(
+                thinking_level=genai_types.ThinkingLevel.MEDIUM
+                if repair
+                else genai_types.ThinkingLevel.LOW
+            )
         if model == self._policy.fallback_model:
             if model != _PRO_THINKING_MODEL:
                 return None
@@ -573,6 +577,31 @@ class VertexGeminiPatchGenerator(PatchGenerator):
             return PatchReviewEnvelope.model_validate_json(response.text)
         msg = "Gemini returned no semantic review"
         raise ModelEmptyResponseError(msg)
+
+
+def _constraint_repair_feedback(block: TextBlock, patch: TextPatch) -> tuple[str, ...]:
+    original, proposed = rewrite_constraints(block.text), rewrite_constraints(patch.replacement)
+    expected = {
+        "force_language": Counter(original.force_language),
+        "scope_qualifiers": Counter(original.scope_qualifiers),
+    }
+    observed = {
+        "force_language": Counter(proposed.force_language),
+        "scope_qualifiers": Counter(proposed.scope_qualifiers),
+    }
+    return tuple(
+        "Exact original constraint counts for "
+        + name
+        + ": "
+        + json.dumps(
+            {"expected": dict(counts), "proposed": dict(observed[name])},
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",", ":"),
+        )
+        for name, counts in expected.items()
+        if counts != observed[name]
+    )
 
 
 @asynccontextmanager
@@ -947,8 +976,9 @@ def _prompt(
     ]
     instruction = (
         "Apply the trusted system editing policy to every supplied block. "
-        "Meet each supplied concision_target.max_words for the editable prose prefix without "
-        "losing any fact or qualification; protected_suffix is excluded from the word count."
+        "Aim at each supplied concision_target.draft_target_words before checking its hard "
+        "max_words; preserve every fact, qualification and original constraint count. "
+        "protected_suffix is excluded from the word count."
         if phase is TransformPhase.UNSLOP
         else "Formatting preserves every character of the author's text, including whitespace "
         'and punctuation. Do not propose text replacements. Return {"patches":[]}; '
@@ -999,7 +1029,13 @@ def _concision_metadata(block: TextBlock) -> dict[str, int] | None:
     target = concision_target(block)
     if target is None:
         return None
-    return {"source_words": target.source_words, "max_words": target.max_words}
+    return {
+        "source_words": target.source_words,
+        "max_words": target.max_words,
+        "draft_target_words": max(
+            1, target.max_words * _DRAFT_WORD_NUMERATOR // _DRAFT_WORD_DENOMINATOR
+        ),
+    }
 
 
 def _editor_batches(document: DocumentIR) -> tuple[DocumentIR, ...]:
