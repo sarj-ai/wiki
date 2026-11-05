@@ -23,6 +23,7 @@
   },
   "include": [
     "next-env.d.ts",
+    ".syncpackrc.ts",
     "**/*.ts",
     "**/*.tsx",
     ".next/types/**/*.ts",

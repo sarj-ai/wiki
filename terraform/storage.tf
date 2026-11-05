@@ -26,9 +26,6 @@ resource "google_storage_bucket_iam_member" "terraform_state_dammam_ci" {
   member = "serviceAccount:${google_service_account.github_actions.email}"
 }
 
-# Independent logical database exports complement Cloud SQL PITR and on-demand
-# backups. The bucket stays in Saudi Arabia and is protected from accidental
-# deletion and overwrites.
 resource "google_storage_bucket" "db_exports_dammam" {
   count                       = var.enable_dammam_stack ? 1 : 0
   name                        = "sarj-docs-db-exports-dammam"

@@ -21,6 +21,7 @@
     "generate:api": "openapi-ts && node scripts/patch-generated.ts && prettier --write src/lib/generated",
     "typecheck": "next typegen && tsc --noEmit",
     "typegen": "next typegen",
+    "check:dependencies": "syncpack lint",
     "knip": "knip",
     "type-coverage": "type-coverage --strict --at-least 99 --ignore-files \"src/components/ui/**\"",
     "hooks:install": "cd .. && sh scripts/github/install-hooks.sh",
@@ -62,7 +63,7 @@
     "@eslint/js": "10.0.1",
     "@hey-api/openapi-ts": "^0.99.0",
     "@opennextjs/cloudflare": "1.20.13",
-    "@sarj/eslint-plugin": "17.1.1",
+    "@sarj/eslint-plugin": "18.0.2",
     "@sarj/tsconfig": "0.2.3",
     "@shadcn/lint": "0.2.3",
     "@tailwindcss/postcss": "^4.3.3",
@@ -122,13 +123,13 @@
     "wrangler": "4.152.0",
     "@types/eslint-plugin-no-unsanitized": "4.1.0",
     "eslint-plugin-security": "4.2.0",
-    "eslint-plugin-no-unsanitized": "4.1.5"
+    "eslint-plugin-no-unsanitized": "4.1.5",
+    "syncpack": "15.3.3"
   },
   "overrides": {
     "@node-minify/core": {
       "glob": "10.5.0"
     },
-    "eslint-plugin-jest": "$eslint-plugin-jest",
     "@emoji-mart/react": {
       "react": "$react"
     },

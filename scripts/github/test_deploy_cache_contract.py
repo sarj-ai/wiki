@@ -260,6 +260,8 @@ def _quality_history(
 ) -> _QualityHistory:
     repository = tmp_path / "repository"
     repository.mkdir()
+    for name in command_output(["git", "rev-parse", "--local-env-vars"]).splitlines():
+        monkeypatch.delenv(name, raising=False)
     monkeypatch.chdir(repository)
     monkeypatch.setenv("RUNNER_TEMP", str(tmp_path))
     command_output(["git", "init", "--quiet"])

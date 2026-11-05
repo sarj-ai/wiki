@@ -644,6 +644,7 @@ const BUILD_OUTPUT_IGNORES = [
     "**/eslint.config.ts",
     "**/eslint.strict.mjs",
     "**/eslint.strict.ts",
+    "**/syncpack.strict.mts",
     "**/*.min.js",
     "**/*.min.mjs",
     "**/*.min.cjs"
@@ -1040,11 +1041,7 @@ export function createConfig(options = {}) {
                 "@typescript-eslint/prefer-nullish-coalescing": [
                     "error",
                     {
-                        ignorePrimitives: {
-                            number: true,
-                            string: true,
-                            boolean: true
-                        }
+                        ignoreBooleanCoercion: true
                     }
                 ],
                 "@typescript-eslint/prefer-optional-chain": "error",
@@ -1859,8 +1856,12 @@ export function createConfig(options = {}) {
                 "@sarj/no-negative-only-http-status-assertion": "warn",
                 "@sarj/no-redundant-local-alias": "warn",
                 "@sarj/no-return-disposed-resource": "warn",
-                "@sarj/no-test-comments": "warn",
-                "@sarj/no-frontend-comments": "warn",
+                "@sarj/no-test-comments": "error",
+                "@sarj/no-logical-or-fallback": "warn",
+                "@sarj/no-zod-parse-typed-object": "warn",
+                "@sarj/no-frontend-comments": "error",
+                "@sarj/no-readonly-prop-state": "warn",
+                "@sarj/prefer-server-data-preparation": "warn",
                 "@sarj/prefer-dependency-interface": "warn",
                 "@sarj/prefer-test-fixture-reuse": "warn",
                 "@sarj/production-derived-test-cases": "warn",
@@ -1869,6 +1870,7 @@ export function createConfig(options = {}) {
                 "@sarj/no-hand-rolled-sleep": "error",
                 "@sarj/no-hand-rolled-spinner": "error",
                 "@sarj/no-known-value-widening": "error",
+                "@sarj/no-runtime-typeof": "error",
                 "@sarj/no-excess-jsx-props": "warn",
                 "@sarj/no-redundant-consumer-union": "warn",
                 "@sarj/prefer-minimal-parameter-contract": "warn",

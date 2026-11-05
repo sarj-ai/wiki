@@ -1,4 +1,3 @@
-# VPC for private connectivity between Cloud Run and Cloud SQL
 
 resource "google_compute_network" "vpc" {
   name                    = "sarj-docs-vpc"
@@ -7,7 +6,6 @@ resource "google_compute_network" "vpc" {
   depends_on = [google_project_service.apis["compute.googleapis.com"]]
 }
 
-# Private services access for Cloud SQL
 resource "google_compute_global_address" "private_ip_range" {
   name          = "sarj-docs-private-ip"
   purpose       = "VPC_PEERING"

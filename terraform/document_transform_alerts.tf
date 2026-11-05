@@ -1,5 +1,3 @@
-# Log-based alert policies report events, not continuous queue state.
-# https://docs.cloud.google.com/logging/docs/alerting/log-based-alerts
 resource "google_monitoring_alert_policy" "document_transform_queue_paused" {
   count        = var.enable_dammam_stack ? 1 : 0
   display_name = "Wiki document transformation queue paused"

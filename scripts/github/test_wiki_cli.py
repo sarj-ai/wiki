@@ -99,7 +99,7 @@ def test_command_environment_does_not_leak_to_the_next_tool(
 
 @pytest.mark.parametrize(
     ("scopes", "expected_count"),
-    [(["backend", "frontend"], 17), (["backend", "backend"], 9)],
+    [(["backend", "frontend"], 18), (["backend", "backend"], 9)],
     ids=["ordered-subsystems", "duplicate-subsystem-runs-once"],
 )
 def test_multiple_scopes_preserve_order_without_repeating_native_commands(
@@ -152,6 +152,7 @@ def test_frontend_contract_checks_generated_api_and_types_before_the_production_
         "format:check",
         "typecheck",
         "lint:baseline-check",
+        "check:dependencies",
         "knip",
         "type-coverage",
         "test",
@@ -164,7 +165,7 @@ def test_full_qualification_has_no_advisory_steps_or_repeated_registry_scan() ->
     commands = wiki.checks(wiki.Check.ALL)
 
     assert all(not command.allow_failure for command in commands)
-    assert wiki.REPOSITORY_STANDARDS_VERSION == "6.15.1"
+    assert wiki.REPOSITORY_STANDARDS_VERSION == "6.18.0"
     distribution = f"repo-standards=={wiki.REPOSITORY_STANDARDS_VERSION}"
     assert sum(distribution in command.arguments for command in commands) == 1
     assert any("--verify-python-baseline" in command.arguments for command in commands)
