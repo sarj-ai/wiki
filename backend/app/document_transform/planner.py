@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, replace
 
-from app.document_transform.errors import ModelUnavailableError
+from app.document_transform.errors import ConcisionTargetUnmetError, ModelUnavailableError
 from app.document_transform.ir import BlockKind, DocumentIR
 from app.document_transform.models import PatchGenerator
 from app.document_transform.safety import REPAIRABLE_REWRITE_CODES, PatchDecision, validate_patches
@@ -14,10 +14,15 @@ from app.document_transform.schemas import (
     TransformPhase,
 )
 from app.document_transform.unslop import (
+    CONCISION_WORD_DENOMINATOR,
+    CONCISION_WORD_NUMERATOR,
     MAX_MODEL_EDITABLE_BLOCK_CHARS,
+    ConcisionTarget,
     UnslopCandidate,
+    concision_target,
     deterministic_unslop_replacement,
     model_editable_blocks,
+    prose_word_count,
     scan_unslop_candidates,
 )
 
@@ -83,6 +88,10 @@ class TextTransformPlanner:
         original: DocumentIR,
         request: DocumentTransformRequest,
     ) -> TransformOutcome:
+        concision_source = replace(
+            original,
+            blocks=tuple(block for block in original.blocks if concision_target(block) is not None),
+        )
         outcome = TransformOutcome(
             document=original,
             findings=_unprocessed_findings(original, request=request),
@@ -97,13 +106,21 @@ class TextTransformPlanner:
                 if model_editable_blocks(outcome.document):
                     outcome = _merge_outcomes(
                         outcome,
-                        await self._model_phase(outcome.document, phase=TransformPhase.UNSLOP),
+                        await self._model_phase(
+                            outcome.document,
+                            phase=TransformPhase.UNSLOP,
+                            concision_source=concision_source,
+                        ),
                     )
             else:
                 outcome = replace(
                     outcome,
                     findings=outcome.findings + _contextual_review_findings(outcome.document),
                 )
+            if self._allow_unslop_model and _document_concision_findings(
+                concision_source, outcome.document
+            ):
+                raise ConcisionTargetUnmetError
         if request.mode is not TransformMode.UNSLOP and self._allow_format_text_edits:
             outcome = _merge_outcomes(
                 outcome, await self._model_phase(outcome.document, phase=TransformPhase.FORMAT)
@@ -111,15 +128,24 @@ class TextTransformPlanner:
         return outcome
 
     async def _model_phase(
-        self, document: DocumentIR, *, phase: TransformPhase
+        self,
+        document: DocumentIR,
+        *,
+        phase: TransformPhase,
+        concision_source: DocumentIR | None = None,
     ) -> TransformOutcome:
         patches = await self._generator.generate(document, phase=phase)
         aggressive = phase is TransformPhase.UNSLOP and self._allow_unslop_model
         decision = validate_patches(document, patches, phase=phase, aggressive_unslop=aggressive)
         if aggressive and decision.accepted:
             decision = await self._review_rewrites(document, decision)
-        if aggressive and decision.findings:
-            decision = await self._repair_rewrites(document, patches, decision)
+        feedback = decision.findings
+        if aggressive and concision_source is not None:
+            feedback += _document_concision_findings(
+                concision_source, document.replace_blocks(decision.accepted)
+            )
+        if aggressive and feedback:
+            decision = await self._repair_rewrites(document, patches, decision, feedback=feedback)
         count = len(decision.accepted)
         return TransformOutcome(
             document=document.replace_blocks(decision.accepted),
@@ -131,26 +157,26 @@ class TextTransformPlanner:
         )
 
     async def _repair_rewrites(
-        self, document: DocumentIR, patches: list[TextPatch], decision: PatchDecision
+        self,
+        document: DocumentIR,
+        patches: list[TextPatch],
+        decision: PatchDecision,
+        *,
+        feedback: tuple[TransformFinding, ...],
     ) -> PatchDecision:
         repair_ids = {
-            finding.block_id
-            for finding in decision.findings
-            if finding.code in REPAIRABLE_REWRITE_CODES
+            finding.block_id for finding in feedback if finding.code in REPAIRABLE_REWRITE_CODES
         } - {
-            finding.block_id
-            for finding in decision.findings
-            if finding.code not in REPAIRABLE_REWRITE_CODES
+            finding.block_id for finding in feedback if finding.code not in REPAIRABLE_REWRITE_CODES
         }
         if not repair_ids:
             return decision
         restricted = replace(
             document, blocks=tuple(block for block in document.blocks if block.id in repair_ids)
         )
-        repair = await self._attempt_repair(
-            document, patches, decision.findings, restricted=restricted
-        )
-        if repair is None:
+        if (
+            repair := await self._attempt_repair(document, patches, feedback, restricted=restricted)
+        ) is None:
             return decision
         repaired = repair.decision
         remaining = tuple(
@@ -216,6 +242,34 @@ class TextTransformPlanner:
             },
             findings=decision.findings + rejected,
         )
+
+
+def _document_concision_findings(
+    source: DocumentIR, candidate: DocumentIR
+) -> tuple[TransformFinding, ...]:
+    if not source.blocks:
+        return ()
+    source_words = sum(prose_word_count(block, block.text) for block in source.blocks)
+    target = ConcisionTarget(
+        source_words=source_words,
+        max_words=source_words * CONCISION_WORD_NUMERATOR // CONCISION_WORD_DENOMINATOR,
+    )
+    by_id = {block.id: block for block in candidate.blocks}
+    proposed_words = sum(
+        prose_word_count(block, by_id.get(block.id, block).text) for block in source.blocks
+    )
+    if proposed_words <= target.max_words:
+        return ()
+    detail = (
+        f"Document concision target unmet: source {target.source_words} words; "
+        f"proposal {proposed_words} words; maximum {target.max_words} eligible prose words "
+        "across the complete document. Unchanged and rejected blocks count at their retained "
+        "length. Local block targets are advisory; preserve every fact and qualification."
+    )
+    return tuple(
+        TransformFinding(code="concision_target_unmet", block_id=block.id, detail=detail)
+        for block in source.blocks
+    )
 
 
 def _deterministic_unslop(document: DocumentIR) -> TransformOutcome:

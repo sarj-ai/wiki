@@ -11,24 +11,30 @@ from google.genai import errors, types
 from pydantic import BaseModel, ConfigDict, RootModel
 import pytest
 
-from app.document_transform.errors import ModelUnavailableError
+from app.document_transform.errors import ConcisionTargetUnmetError, ModelUnavailableError
 from app.document_transform.ir import BlockKind, parse_google_document, parse_markdown
 from app.document_transform.models import GeminiModelPolicy, VertexGeminiPatchGenerator
+from app.document_transform.planner import TextTransformPlanner
 from app.document_transform.safety import RewriteConstraints, rewrite_constraints, validate_patches
 from app.document_transform.schemas import (
+    DocumentTransformRequest,
+    MarkdownSource,
     PatchEnvelope,
     PatchReviewEnvelope,
     TextPatch,
     TextPatchReview,
     TransformFinding,
+    TransformMode,
     TransformPhase,
 )
 from app.document_transform.unslop import (
     UNSLOP_POLICY_VERSION,
     UNSLOP_REVIEW_INSTRUCTION,
     UNSLOP_REWRITE_INSTRUCTION,
+    concision_target,
     without_editorial_framing,
 )
+from app.identifiers import FileId
 from tests.support import dependency
 
 
@@ -218,7 +224,7 @@ async def test_aggressive_generation_uses_structured_output_and_supported_thinki
     assert config.response_json_schema["additionalProperties"] is False
     assert "patches" in config.response_json_schema["properties"]
     assert config.thinking_config is not None
-    assert config.thinking_config.thinking_level is types.ThinkingLevel.LOW
+    assert config.thinking_config.thinking_level is types.ThinkingLevel.MEDIUM
     assert SOURCE in harness.call.prompts[0]
     assert isinstance(config.system_instruction, str)
     assert "60% fewer words" in config.system_instruction
@@ -346,7 +352,7 @@ async def test_model_repair_receives_the_exact_failure_and_original_source_const
     assert harness.call.models == ["gemini-3.8-flash"]
     config = harness.call.configurations[0]
     assert config.thinking_config is not None
-    assert config.thinking_config.thinking_level is types.ThinkingLevel.LOW
+    assert config.thinking_config.thinking_level is types.ThinkingLevel.HIGH
     prompt = harness.call.prompts[0]
     assert SOURCE in prompt
     assert bad.replacement in prompt
@@ -743,7 +749,7 @@ def test_conventional_framing_can_go_without_relaxing_the_following_obligation(p
     )
     assert decision.accepted == {block.id: proposed}
     assert not decision.findings
-    assert UNSLOP_POLICY_VERSION == "sarj-concise-v17"
+    assert UNSLOP_POLICY_VERSION == "sarj-concise-v18"
 
 
 @pytest.mark.parametrize(
@@ -1318,17 +1324,31 @@ async def test_numeric_concision_target_and_failure_feedback_remain_source_bound
     decision = validate_patches(
         document, [patch], phase=TransformPhase.UNSLOP, aggressive_unslop=True
     )
-    assert [finding.code for finding in decision.findings] == ["concision_target_unmet"]
+    assert not decision.accepted
+    assert not decision.findings
 
-    assert await harness.generator.repair(document, [patch], decision.findings) == [patch]
+    with pytest.raises(ConcisionTargetUnmetError):
+        await TextTransformPlanner(generator=harness.generator, allow_unslop_model=True).transform(
+            document,
+            DocumentTransformRequest(
+                source=MarkdownSource(
+                    kind="markdown",
+                    content=source,
+                    name="Sensor",
+                    destination_folder_id=FileId("folder"),
+                ),
+                mode=TransformMode.UNSLOP,
+            ),
+        )
     arrays = _rewrite_payload_lines(harness.call.prompts[-1])
     current = _RewriteInputs.model_validate_json(arrays[0]).root[0]
     rejected = _RejectedInputs.model_validate_json(arrays[1]).root[0]
     assert current == initial
     assert rejected.proposed == source
-    assert rejected.review_feedback == [decision.findings[0].detail]
+    assert len(rejected.review_feedback) == 1
     assert "proposal 59 words" in rejected.review_feedback[0]
-    assert "maximum 24" in rejected.review_feedback[0]
+    assert "maximum 23" in rejected.review_feedback[0]
+    assert "Local block targets are advisory" in rejected.review_feedback[0]
 
 
 async def test_repair_feedback_preserves_an_empty_original_force_counter() -> None:
@@ -1389,7 +1409,7 @@ async def test_writer_draft_margin_stays_below_the_unchanged_suffix_excluded_cap
     decision = validate_patches(
         document, [patch], phase=TransformPhase.UNSLOP, aggressive_unslop=True
     )
-    assert [finding.code for finding in decision.findings] == ["concision_target_unmet"]
+    assert not decision.findings
 
 
 @pytest.mark.parametrize(
@@ -1466,7 +1486,7 @@ def test_non_goal_nouns_allow_removing_fact_free_repetition(fact: str) -> None:
     assert not decision.findings
 
 
-async def test_opportunity_loss_repair_receives_original_goal_counter_at_low_effort() -> None:
+async def test_opportunity_loss_repair_receives_original_goal_counter_at_high_effort() -> None:
     source = "The audit identified an opportunity to reduce errors in the process."
     replacement = "The audit found an opportunity to reduce errors in the process."
     document = parse_markdown(source, title="Goal repair")
@@ -1498,4 +1518,105 @@ async def test_opportunity_loss_repair_receives_original_goal_counter_at_low_eff
     ]
     config = harness.call.configurations[0]
     assert config.thinking_config is not None
-    assert config.thinking_config.thinking_level is types.ThinkingLevel.LOW
+    assert config.thinking_config.thinking_level is types.ThinkingLevel.HIGH
+
+
+@pytest.mark.parametrize(
+    "prefix",
+    [
+        "In today’s increasingly fast-moving and ever-evolving world of ",
+        "In today's fast-moving and ever-evolving world of ",
+    ],
+    ids=["smart-quote-long-form", "ascii-quote-short-form"],
+)
+def test_stock_world_opening_does_not_bind_its_rhetorical_compound(prefix: str) -> None:
+    topic = "fieldwork, "
+    fact = "each sensor may record the available day-to-day measurements."
+    source = prefix + topic + fact
+
+    projected = without_editorial_framing(source)
+    constraints = rewrite_constraints(source)
+
+    assert len(projected) == len(source)
+    assert not projected[: len(prefix)].strip()
+    assert projected[len(prefix) :] == topic + fact
+    assert constraints.force_language == ("each", "may")
+    assert constraints.scope_qualifiers == ("available", "day-to-day")
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        "Fast-moving water carries sediment past the sensor.",
+        "In today’s increasingly fast-moving water, each sensor may record a measurement.",
+        "In today’s fast-moving and ever-evolving world of fieldwork each sensor may record.",
+        '"In today’s fast-moving and ever-evolving world of fieldwork," is the exact quote.',
+        "`In today’s fast-moving and ever-evolving world of fieldwork,` is the exact code.",
+    ],
+    ids=["empirical-water", "empirical-condition", "no-comma-boundary", "quotation", "code"],
+)
+def test_empirical_incomplete_and_protected_fast_moving_phrases_stay_unmasked(
+    source: str,
+) -> None:
+    assert without_editorial_framing(source) == source
+    assert "fast-moving" in rewrite_constraints(source).scope_qualifiers
+
+
+@pytest.mark.parametrize(
+    ("source_words", "proposed_words", "maximum"),
+    [
+        pytest.param(111, 47, 45, id="actual-v17-near-cap-goal"),
+        pytest.param(103, 49, 42, id="actual-v17-near-cap-alternatives"),
+    ],
+)
+def test_reported_near_cap_proposals_reach_review_with_advisory_block_allocations(
+    source_words: int, proposed_words: int, maximum: int
+) -> None:
+    document = parse_markdown(" ".join(["reading"] * source_words), title="Hard cap")
+    block = document.blocks[0]
+    patch = TextPatch(
+        block_id=block.id,
+        expected_sha256=block.sha256,
+        replacement=" ".join(["reading"] * proposed_words),
+    )
+
+    decision = validate_patches(
+        document, [patch], phase=TransformPhase.UNSLOP, aggressive_unslop=True
+    )
+
+    target = concision_target(block)
+    assert target is not None
+    assert target.source_words == source_words
+    assert target.max_words == maximum < proposed_words
+    assert decision.accepted == {block.id: patch.replacement}
+    assert not decision.findings
+
+
+def test_stock_opening_preserves_the_topic_clause_force_and_scope() -> None:
+    prefix = "In today’s fast-moving and ever-evolving world of "
+    topic = "medicine where each nurse must record every dose from the same population, "
+    fact = "a sensor may record measurements."
+    source = prefix + topic + fact
+
+    projected = without_editorial_framing(source)
+    constraints = rewrite_constraints(source)
+
+    assert not projected[: len(prefix)].strip()
+    assert projected[len(prefix) :] == topic + fact
+    assert constraints.force_language == ("each", "must", "every", "may")
+    assert constraints.scope_qualifiers == ("same",)
+
+
+def test_stock_opening_preserves_a_concrete_fast_moving_topic() -> None:
+    prefix = "In today’s fast-moving and ever-evolving world of "
+    topic = "fast-moving water, "
+    fact = "each sensor may record measurements."
+    source = prefix + topic + fact
+
+    projected = without_editorial_framing(source)
+    constraints = rewrite_constraints(source)
+
+    assert not projected[: len(prefix)].strip()
+    assert projected[len(prefix) :] == topic + fact
+    assert constraints.force_language == ("each", "may")
+    assert constraints.scope_qualifiers == ("fast-moving",)

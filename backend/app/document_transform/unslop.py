@@ -11,7 +11,7 @@ from app.document_transform.limits import MIN_MODEL_PROSE_WORDS
 
 UNSLOP_UPSTREAM_COMMIT = "d81f5196167ded24f46fced04958c0c12d681798"
 UNSLOP_UPSTREAM_VERSION = "2.3.0"
-UNSLOP_POLICY_VERSION = "sarj-concise-v17"
+UNSLOP_POLICY_VERSION = "sarj-concise-v18"
 MIN_CONCISION_PROSE_WORDS = 40
 CONCISION_WORD_NUMERATOR = 2
 CONCISION_WORD_DENOMINATOR = 5
@@ -38,11 +38,14 @@ UNSLOP_REWRITE_INSTRUCTION = (
     "repeated explanations. Merge repeated wording only when every distinct fact and "
     "relationship survives. Keep source-supported subjects and antecedents explicit; never "
     "borrow one from another block. For prose with a concision_target, aim at or below "
-    "draft_target_words, comfortably below max_words. The hard maximum targets 60% fewer "
-    "words; protected_suffix is excluded. Draft around required facts and constraints "
-    "first, then count and trim redundant wording. Never drop a fact or qualification to "
-    "meet either target. Return the original only when no faithful rewrite fits the hard "
-    "maximum. For headings, target 2–5 concrete words when their complete meaning and "
+    "draft_target_words. Both draft_target_words and max_words are advisory block "
+    "allocations: a fact-dense block may exceed its allocation when another block can "
+    "be shortened further. The complete document has a strict maximum of 40% of its "
+    "originally eligible prose words, or 60% fewer words overall; unchanged eligible "
+    "blocks still count. protected_suffix is excluded. Draft around required facts and "
+    "constraints first, then count and trim redundant wording. Never drop a fact or "
+    "qualification to meet any target. Return the original when no shorter faithful "
+    "rewrite is possible. For headings, target 2–5 concrete words when their complete meaning and "
     "restrictions fit; a clear topic phrase is valid. Leave already concise blocks "
     "unchanged. Before returning, verify both directions: every source fact survives and "
     "every proposed claim has source support. Recheck all constraint counts, grammar, "
@@ -146,6 +149,8 @@ HTML_ENTITY_PATTERN = r"&(?:#[0-9]+|#[xX][0-9A-Fa-f]+|[A-Za-z][A-Za-z0-9]+);"
 
 _EDITORIAL_FRAMING_PATTERN = re.compile(
     r"(?:^|(?<=[.!?\n]))[ \t]*(?:"
+    r"[Ii]n today['’]s (?:increasingly )?fast[-\u2011 ]moving and ever[-\u2011 ]evolving "
+    r"world of (?=[^,;:.!?\n]+,[ \t]*)|"
     r"(?:[Tt]o put it|[Pp]ut(?: it)?) another way[,:][ \t]*"
     r"(?:and to explain the same (?:idea|point) from another angle[,:][ \t]*)?|"
     r"[Ii]n other words[,:][ \t]*|"

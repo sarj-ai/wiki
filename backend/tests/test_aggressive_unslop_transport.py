@@ -21,18 +21,22 @@ import pytest
 from app.document_transform.errors import ModelUnavailableError
 from app.document_transform.ir import BlockKind, DocumentIR, TextBlock, parse_markdown
 from app.document_transform.models import GeminiModelPolicy, VertexGeminiPatchGenerator
+from app.document_transform.planner import TextTransformPlanner
 from app.document_transform.safety import validate_patches
 from app.document_transform.schemas import (
+    DocumentTransformRequest,
+    MarkdownSource,
     PatchEnvelope,
     PatchReviewEnvelope,
     TextPatch,
     TextPatchReview,
     TransformFinding,
+    TransformMode,
     TransformPhase,
 )
 from app.document_transform.unslop import model_editable_blocks
 from app.drive.retry import execute_with_retry
-from app.identifiers import ModelId
+from app.identifiers import FileId, ModelId
 from app.performance import (
     begin_request_metrics,
     current_request_metrics,
@@ -184,7 +188,7 @@ def _functional_audit_envelope(payload: _WireReview) -> PatchReviewEnvelope:
     return PatchReviewEnvelope(reviews=reviews)
 
 
-def _review_response(envelope: PatchReviewEnvelope) -> httpx.Response:
+def _review_response(envelope: PatchReviewEnvelope | PatchEnvelope) -> httpx.Response:
     return httpx.Response(
         HTTPStatus.OK,
         json={
@@ -1332,6 +1336,7 @@ async def test_sdk_concision_repair_keeps_numeric_budget_and_full_source_audits(
     block = document.blocks[0]
     rewrites: list[_WireRewriteBlock] = []
     reviews: list[_WireReview] = []
+    critiques: list[_WireRepairProposal] = []
 
     def respond(request: httpx.Request) -> httpx.Response:
         prompt = _WireReviewRequest.model_validate_json(request.content).contents[0].parts[0].text
@@ -1357,9 +1362,10 @@ async def test_sdk_concision_repair_keeps_numeric_budget_and_full_source_audits(
         _assert_concision_wire_source(current, block.sha256, source)
         if rewrites:
             feedback = _WireRepairProposals.model_validate_json(arrays[1]).root[0]
+            critiques.append(feedback)
             assert feedback.proposed == source
             assert feedback.rejected_by == ["concision_target_unmet"]
-            assert "proposal 59 words; maximum 24" in feedback.review_feedback[0]
+            assert "proposal 59 words; maximum 23" in feedback.review_feedback[0]
         rewrites.append(current)
         patch = TextPatch(
             block_id=block.id,
@@ -1385,29 +1391,189 @@ async def test_sdk_concision_repair_keeps_numeric_budget_and_full_source_audits(
         client = sdk_client_factory(http)
         try:
             generator = _functional_generator(client)
-            initial = await generator.generate(document, phase=TransformPhase.UNSLOP)
-            decision = validate_patches(
-                document, initial, phase=TransformPhase.UNSLOP, aggressive_unslop=True
-            )
-            repaired = await generator.repair(document, initial, decision.findings)
-            repaired_safety = validate_patches(
-                document, repaired, phase=TransformPhase.UNSLOP, aggressive_unslop=True
-            )
-            approved = await generator.review(document, repaired)
+            result = await TextTransformPlanner(
+                generator=generator, allow_unslop_model=True
+            ).transform(document, _document_budget_request(source))
         finally:
             await client.aio.aclose()
     assert len(rewrites) == 2
     assert rewrites[0] == rewrites[1]
-    assert [finding.code for finding in decision.findings] == ["concision_target_unmet"]
-    assert repaired_safety.accepted == {block.id: fact}
-    assert not repaired_safety.findings
-    assert approved.approved == {block.id}
+    assert [critique.rejected_by for critique in critiques] == [["concision_target_unmet"]]
+    assert result.document.blocks[0].text == fact
+    assert result.model_count == 1
+    assert not result.findings
     assert all(
         context.source_block == source and context.proposed_block == fact
         for payload in reviews
         for context in payload.document_contexts
     )
     assert reviews
+
+
+def _document_budget_request(source: str) -> DocumentTransformRequest:
+    return DocumentTransformRequest(
+        source=MarkdownSource(
+            kind="markdown",
+            content=source,
+            name="Concision",
+            destination_folder_id=FileId("folder"),
+        ),
+        mode=TransformMode.UNSLOP,
+    )
+
+
+async def test_sdk_document_budget_is_shared_across_separate_editor_batches(
+    sdk_client_factory: Callable[[httpx.AsyncClient], genai.Client],
+) -> None:
+    fact = (
+        "The logger records temperature at night, stores the readings in its archive, "
+        "and sends the complete log to the laboratory."
+    )
+    padding = " The account restates this description in extended and repetitive wording."
+    source = "\n\n".join(fact + padding * 8 for _ in range(7))
+    document = parse_markdown(source, title="Batch allocation")
+    blocks = model_editable_blocks(document)
+    replacements = {
+        block.id: fact + padding * extra
+        for block, extra in zip(blocks, (4, 2, 2, 2, 2, 2, 0), strict=True)
+    }
+    writer_batches: list[list[_WireRewriteBlock]] = []
+    reviews: list[_WireReview] = []
+
+    def respond(request: httpx.Request) -> httpx.Response:
+        prompt = _WireReviewRequest.model_validate_json(request.content).contents[0].parts[0].text
+        if prompt.startswith("{"):
+            payload = _WireReview.model_validate_json(prompt)
+            reviews.append(payload)
+            assert all(
+                context.source_block == fact + padding * 8 for context in payload.document_contexts
+            )
+            assert all(
+                context.proposed_block.startswith(fact) for context in payload.document_contexts
+            )
+            return _review_response(
+                PatchReviewEnvelope(
+                    reviews=[
+                        TextPatchReview(
+                            block_id=audit.block_id,
+                            expected_sha256=audit.expected_sha256,
+                            replacement_sha256=audit.replacement_sha256,
+                            equivalent=True,
+                            reason=(
+                                "The exact temperature, archive and laboratory facts remain; "
+                                "only repeated editorial wording is deleted."
+                            ),
+                        )
+                        for audit in payload.sentence_audits
+                    ]
+                )
+            )
+        arrays = [line for line in prompt.splitlines() if line.startswith("[")]
+        assert len(arrays) == 1
+        batch = _WireRewriteBlocks.model_validate_json(arrays[0]).root
+        writer_batches.append(batch)
+        return _review_response(
+            PatchEnvelope(
+                patches=[
+                    TextPatch(
+                        block_id=block.block_id,
+                        expected_sha256=block.sha256,
+                        replacement=replacements[block.block_id],
+                    )
+                    for block in batch
+                ]
+            )
+        )
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(respond)) as http:
+        client = sdk_client_factory(http)
+        try:
+            result = await TextTransformPlanner(
+                generator=_functional_generator(client), allow_unslop_model=True
+            ).transform(document, _document_budget_request(source))
+        finally:
+            await client.aio.aclose()
+
+    assert len(blocks) == 7
+    assert len(writer_batches) > 1
+    assert {block.block_id for batch in writer_batches for block in batch} == replacements.keys()
+    assert any(
+        sum(len(replacements[block.block_id].split()) for block in batch)
+        > sum(len(block.text.split()) for block in batch) * 2 // 5
+        for batch in writer_batches
+    )
+    assert sum(len(block.text.split()) for block in blocks) == 700
+    assert sum(len(block.text.split()) for block in result.document.blocks) == 280
+    assert result.document == document.replace_blocks(replacements)
+    assert result.model_count == 7
+    assert not result.findings
+    assert reviews
+    _assert_document_budget_audits(reviews, blocks, replacements, (fact, *([padding.strip()] * 8)))
+
+
+def _assert_document_budget_audits(
+    reviews: list[_WireReview],
+    blocks: tuple[TextBlock, ...],
+    replacements: dict[str, str],
+    source_sentences: tuple[str, ...],
+) -> None:
+    audited_blocks: set[str] = set()
+    for review in reviews:
+        contexts = {context.context_id: context for context in review.document_contexts}
+        for audit in review.sentence_audits:
+            family = [
+                block
+                for block in blocks
+                if audit.block_id == block.id or audit.block_id.startswith(block.id + "-")
+            ]
+            assert len(family) == 1
+            block = family[0]
+            context = contexts[audit.context_id]
+            assert context.source_block == block.text
+            assert context.proposed_block == replacements[block.id]
+            _assert_document_budget_source_hash(block, audit, source_sentences)
+            assert (
+                audit.replacement_sha256
+                == hashlib.sha256(replacements[block.id].encode()).hexdigest()
+            )
+            audited_blocks.add(block.id)
+    assert audited_blocks == replacements.keys()
+
+
+def _assert_document_budget_source_hash(
+    block: TextBlock, audit: _WirePair, sentences: tuple[str, ...]
+) -> None:
+    prefix = block.id + "-sentence-"
+    assert audit.block_id.startswith(prefix)
+    index = int(audit.block_id.removeprefix(prefix).split("-", 1)[0])
+    assert 0 <= index < len(sentences)
+    identity: list[str | int]
+    if audit.source_kind == "sentence":
+        assert audit.block_id == prefix + str(index)
+        assert audit.source_sentence == sentences[index]
+        assert audit.parent_sentence is audit.source_span is None
+        identity = [block.sha256, index, sentences[index]]
+    else:
+        assert audit.parent_sentence is not None
+        assert audit.parent_sentence == sentences[index]
+        assert audit.source_span is not None
+        start, end = audit.source_span
+        assert 0 <= start < end <= len(block.text)
+        assert audit.source_sentence == block.text[start:end]
+        assert audit.block_id == f"{prefix}{index}-{audit.source_kind}-{start}-{end}"
+        identity = [
+            block.sha256,
+            index,
+            audit.source_kind,
+            audit.parent_sentence,
+            start,
+            end,
+            audit.source_sentence,
+        ]
+    assert (
+        audit.expected_sha256
+        == hashlib.sha256(json.dumps(identity, separators=(",", ":")).encode()).hexdigest()
+    )
 
 
 def _assert_concision_wire_source(
@@ -1523,9 +1689,9 @@ async def test_sdk_initial_fallback_and_flash_repair_keep_independent_review_hig
         for _model, config in received
     ]
     assert levels == [
-        types.ThinkingLevel.LOW,
+        types.ThinkingLevel.MEDIUM,
         types.ThinkingLevel.MEDIUM if fallback == "gemini-3.1-pro-preview" else None,
-        types.ThinkingLevel.LOW,
+        types.ThinkingLevel.HIGH,
         *(
             [types.ThinkingLevel.HIGH if fallback == "gemini-3.1-pro-preview" else None]
             if repair_fault
@@ -2312,8 +2478,8 @@ async def test_cancelled_writer_wait_releases_admission_lock_and_rpc_capacity(
     [
         pytest.param(
             ModelId("gemini-3.8-flash"),
-            types.ThinkingLevel.LOW,
-            types.ThinkingLevel.LOW,
+            types.ThinkingLevel.MEDIUM,
+            types.ThinkingLevel.HIGH,
             id="default-flash-editor",
         ),
         pytest.param(
@@ -2343,6 +2509,7 @@ async def test_sdk_repair_uses_the_configured_editor_while_format_and_review_use
     received: list[tuple[str, types.GenerateContentConfig]] = []
 
     def respond(request: httpx.Request) -> httpx.Response:
+        assert request.headers.get("X-Server-Timeout") == "90"
         received.append(
             (
                 request.url.path.rsplit("/", 1)[-1].removesuffix(":generateContent"),
