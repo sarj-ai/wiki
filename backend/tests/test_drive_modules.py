@@ -8,6 +8,7 @@ import threading
 from typing import Any, Self, override
 import uuid
 
+from googleapiclient.errors import HttpError
 from httplib2 import Response
 from pydantic import JsonValue
 import pytest
@@ -28,6 +29,7 @@ from app.drive.service import GoogleDriveService
 from app.drive.snippets import extract_snippet
 from app.identifiers import DriveId, FileId, GoogleUserId, UserId
 from app.models.user import User
+from tests.support import dependency
 
 
 def _user() -> User:
@@ -829,6 +831,69 @@ async def test_walk_drive_folders_paginates(patch_drive_client: Any) -> None:
         if c.get("corpora") == "drive" and str(c.get("q", "")).startswith("(")
     ]
     assert walk_calls[1].get("pageToken") == "NEXT"
+
+
+@pytest.mark.parametrize("status", [429, 500, 502, 503, 504, 403, 404])
+@pytest.mark.parametrize("failure_page", [1, 2])
+async def test_walk_drive_folders_handles_exhausted_http_errors(
+    status: int,
+    failure_page: int,
+) -> None:
+    first_page: dict[str, JsonValue] = {
+        "files": [{"id": "f1", "name": "A", "mimeType": MIME_FOLDER, "parents": ["d"]}],
+        "nextPageToken": "NEXT",
+    }
+    error = HttpError(
+        Response({"reason": "test", "status": str(status), "retry-after": "0"}), b"{}"
+    )
+    attempts = 0
+    walk_calls: list[dict[str, JsonValue]] = []
+
+    class FailingRequest(_FakePendingCall):
+        @override
+        def execute(self) -> dict[str, JsonValue]:
+            nonlocal attempts
+            attempts += 1
+            raise error
+
+    class Files:
+        def list(self, **params: JsonValue) -> _FakePendingCall:
+            query = params["q"]
+            assert isinstance(query, str)
+            if query.startswith("("):
+                walk_calls.append(params)
+                if len(walk_calls) == failure_page:
+                    return FailingRequest({})
+                return _FakePendingCall(first_page)
+            return _FakePendingCall({"files": []})
+
+    files = Files()
+
+    class Client:
+        def files(self) -> Files:
+            return files
+
+    client = Client()
+    service = GoogleDriveService(
+        _user(), _Cache(), client_factory=lambda _user, _refresh: dependency(client)
+    )
+    service._my_drive_id = DriveId("personal-root")
+
+    if status in {403, 404}:
+        tree = await service.walk_drive_folders(DriveId("d"))
+        assert [folder.id for folder in tree.folders] == (["f1"] if failure_page == 2 else [])
+        assert attempts == 1
+    else:
+        with pytest.raises(HttpError) as raised:
+            await service.walk_drive_folders(DriveId("d"))
+        assert raised.value is error
+        assert attempts == 3
+
+    assert len(walk_calls) == failure_page
+    if failure_page == 2:
+        assert walk_calls[-1]["pageToken"] == "NEXT"
+    else:
+        assert "pageToken" not in walk_calls[-1]
 
 
 async def test_walk_populates_files_from_parallel_drive_listing(
@@ -1643,19 +1708,21 @@ async def test_search_short_circuits_on_empty_query(patch_drive_client: Any) -> 
     assert client.drives_captured == []
 
 
-async def test_probe_targets_dedupes_and_preserves_order(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    svc = _svc()
+async def test_probe_targets_dedupes_and_preserves_order() -> None:
     seen: list[list[FileId]] = []
 
-    def _fake(target_ids: list[FileId]) -> dict[FileId, ShortcutProbe | None]:
-        seen.append(list(target_ids))
-        return {
-            tid: ShortcutProbe(accessible=True, target_drive_id=DriveId("d")) for tid in target_ids
-        }
+    class ProbeDrive(GoogleDriveService):
+        @override
+        def _probe_targets_sync(
+            self, target_ids: list[FileId]
+        ) -> dict[FileId, ShortcutProbe | None]:
+            seen.append(list(target_ids))
+            return {
+                tid: ShortcutProbe(accessible=True, target_drive_id=DriveId("d"))
+                for tid in target_ids
+            }
 
-    monkeypatch.setattr(svc, "_probe_targets_sync", _fake)
+    svc = ProbeDrive(_user(), _Cache())
     out = await svc._probe_targets([FileId("t1"), None, FileId("t2"), FileId("t1")])
 
     assert seen == [["t1", "t2"]]
@@ -1664,19 +1731,21 @@ async def test_probe_targets_dedupes_and_preserves_order(
     assert out[3] == out[0]
 
 
-async def test_probe_targets_serves_repeat_walks_from_the_cache(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    svc = _svc()
+async def test_probe_targets_serves_repeat_walks_from_the_cache() -> None:
     seen: list[list[FileId]] = []
 
-    def _fake(target_ids: list[FileId]) -> dict[FileId, ShortcutProbe | None]:
-        seen.append(list(target_ids))
-        return {
-            tid: ShortcutProbe(accessible=True, target_drive_id=DriveId("d")) for tid in target_ids
-        }
+    class ProbeDrive(GoogleDriveService):
+        @override
+        def _probe_targets_sync(
+            self, target_ids: list[FileId]
+        ) -> dict[FileId, ShortcutProbe | None]:
+            seen.append(list(target_ids))
+            return {
+                tid: ShortcutProbe(accessible=True, target_drive_id=DriveId("d"))
+                for tid in target_ids
+            }
 
-    monkeypatch.setattr(svc, "_probe_targets_sync", _fake)
+    svc = ProbeDrive(_user(), _Cache())
     first = await svc._probe_targets([FileId("t1"), FileId("t2")])
     second = await svc._probe_targets([FileId("t1"), FileId("t2")])
     third = await svc._probe_targets([FileId("t1"), FileId("t3")])
@@ -1706,7 +1775,7 @@ def test_classify_probe_maps_statuses_like_the_old_per_call_path() -> None:
 async def test_snippet_with_known_mime_skips_metadata_get(
     patch_drive_client: Any,
 ) -> None:
-    captured: list[dict[str, Any]] = []
+    captured: list[dict[str, JsonValue]] = []
 
     class _FakeFiles:
         def get(self, **_: Any) -> _FakeFiles:

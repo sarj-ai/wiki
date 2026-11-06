@@ -1,6 +1,6 @@
 # /// script
-# requires-python = "==3.14.8"
-# dependencies = ["typer==0.27.3"]
+# requires-python = "==3.15.2"
+# dependencies = ["typer==0.28.0"]
 # ///
 
 from __future__ import annotations

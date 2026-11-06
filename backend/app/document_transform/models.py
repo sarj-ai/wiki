@@ -59,6 +59,8 @@ if TYPE_CHECKING:
 # Reserve a scheduling slice for Drive writes and final verification.
 _MODEL_COMPLETION_RESERVE = timedelta(seconds=30)
 _MIN_MODEL_ATTEMPT_BUDGET = timedelta(seconds=1)
+_UNSLOP_REVIEW_RESERVE = timedelta(seconds=60)
+_MIN_REVIEW_ATTEMPT_BUDGET = timedelta(seconds=15)
 _PRO_THINKING_MODEL = "gemini-3.1-pro-preview"
 _MAX_EDITOR_BATCH_CHARACTERS = 4_000
 _MAX_EDITOR_BATCH_BLOCKS = 6
@@ -443,7 +445,7 @@ class VertexGeminiPatchGenerator(PatchGenerator):
             return genai_types.ThinkingConfig(
                 thinking_level=genai_types.ThinkingLevel.HIGH
                 if repair
-                else genai_types.ThinkingLevel.MEDIUM
+                else genai_types.ThinkingLevel.LOW
             )
         if model == self._policy.fallback_model:
             if model != _PRO_THINKING_MODEL:
@@ -465,7 +467,14 @@ class VertexGeminiPatchGenerator(PatchGenerator):
         phase: TransformPhase,
         thinking_config: genai_types.ThinkingConfig | None,
     ) -> list[TextPatch]:
-        timeout_seconds = _model_request_timeout_seconds(self._policy.timeout)
+        review_reserve = (
+            _UNSLOP_REVIEW_RESERVE
+            if phase is TransformPhase.UNSLOP and model != self._policy.unslop_model
+            else None
+        )
+        timeout_seconds = _model_request_timeout_seconds(
+            self._policy.timeout, reserve=review_reserve
+        )
         async with asyncio.timeout(timeout_seconds):
             response = await self._client.aio.models.generate_content(
                 model=model,
@@ -554,8 +563,10 @@ class VertexGeminiPatchGenerator(PatchGenerator):
         raise ModelUnavailableError from last_error
 
     async def _review_once(self, *, model: str, pairs: list[_ReviewPair]) -> PatchReviewEnvelope:
-        seconds = _model_request_timeout_seconds(self._policy.timeout)
         prompt = _review_prompt(pairs)
+        seconds = _model_request_timeout_seconds(
+            self._policy.timeout, minimum_budget=_MIN_REVIEW_ATTEMPT_BUDGET
+        )
         async with asyncio.timeout(seconds):
             response = await self._client.aio.models.generate_content(
                 model=model,
@@ -614,10 +625,22 @@ async def _model_batch_slot(semaphore: asyncio.Semaphore) -> AsyncGenerator[None
         raise ModelUnavailableError from exc
 
 
-def _model_request_timeout_seconds(timeout: timedelta) -> float:
+def _model_request_timeout_seconds(
+    timeout: timedelta,
+    *,
+    reserve: timedelta | None = None,
+    minimum_budget: timedelta | None = None,
+) -> float:
     seconds = timeout.total_seconds()
     remaining = _model_remaining_seconds()
-    return seconds if remaining is None else min(seconds, remaining)
+    if remaining is None:
+        return seconds
+    if reserve is not None:
+        remaining -= reserve.total_seconds()
+    minimum = _MIN_MODEL_ATTEMPT_BUDGET if minimum_budget is None else minimum_budget
+    if remaining < minimum.total_seconds():
+        raise ModelUnavailableError
+    return min(seconds, remaining)
 
 
 def _writer_jitter_seconds() -> float:

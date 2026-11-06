@@ -29,7 +29,7 @@ def test_shared_release_preserves_all_qualification_and_pins_original_repository
 def test_cold_quality_checks_initialize_locked_local_providers_after_tool_setup() -> None:
     initialize = "terraform -chdir=terraform init -backend=false -input=false -lockfile=readonly"
     standards_initialize = (
-        f"mise --no-config --no-env --no-hooks exec aqua:hashicorp/terraform@1.17.0 -- {initialize}"
+        f"mise --no-config --no-env --no-hooks exec aqua:hashicorp/terraform@1.17.1 -- {initialize}"
     )
     manifest = tomllib.loads((ROOT / ".sarj-standards.toml").read_text())
     assert manifest["ci"]["bootstrap"] == [

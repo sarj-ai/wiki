@@ -689,7 +689,7 @@ def test_workflow_uses_main_only_existing_wif_and_no_input_shell_interpolation()
     read = next(
         step for step in steps if step.get("name") == "Read only bounded allowlisted diagnostics"
     )
-    assert setup["with"]["version"] == "0.13.5"
+    assert setup["with"]["version"] == "0.13.7"
     assert validate["run"] == (
         "uv run --script scripts/github/read-transform-diagnostics.py --validate-only"
     )

@@ -536,8 +536,8 @@
   },
   "backend/tests/test_drive_modules.py": {
     "SARJ442": 2,
-    "SARJ445": 7,
-    "SARJ447": 16,
+    "SARJ445": 5,
+    "SARJ447": 15,
     "SARJ477": 8,
     "SARJ528": 2
   },
@@ -794,7 +794,7 @@
     "SARJ528": 5
   },
   "backend/tests/test_qa_document_transform_cloud.py": {
-    "SARJ445": 13,
+    "SARJ445": 6,
     "SARJ528": 9
   },
   "backend/tests/test_qa_document_transform_corpus.py": {

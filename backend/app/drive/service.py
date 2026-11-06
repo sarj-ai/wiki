@@ -45,6 +45,7 @@ from app.drive.google_schemas import (
 from app.drive.retry import (
     execute_batch_with_retry,
     execute_with_retry,
+    is_retryable_provider_status,
     provider_http_status,
     provider_response_status,
 )
@@ -1058,6 +1059,8 @@ class GoogleDriveService(DriveService):
                 resp = execute_with_retry(client.files().list(**params))
             except HttpError as exc:
                 _log_provider_failure("walk_drive_folders", exc)
+                if is_retryable_provider_status(provider_http_status(exc)):
+                    raise
                 return out
             for file in _inventory_files(resp.get("files", [])):
                 if is_personal and file.drive_id is not None:

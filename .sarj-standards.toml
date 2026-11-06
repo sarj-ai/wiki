@@ -1,5 +1,5 @@
 # Managed by `code-standards setup`; commit this file.
-bundle = "8.194.2"
+bundle = "8.208.5"
 rule_profile = "all"
 schema = 4
 
@@ -51,6 +51,6 @@ bootstrap = [
   "npm --prefix frontend run patches:apply",
   "npm --prefix frontend run generate:api",
   "npm --prefix frontend run typegen",
-  "mise --no-config --no-env --no-hooks exec aqua:hashicorp/terraform@1.17.0 -- terraform -chdir=terraform init -backend=false -input=false -lockfile=readonly",
+  "mise --no-config --no-env --no-hooks exec aqua:hashicorp/terraform@1.17.1 -- terraform -chdir=terraform init -backend=false -input=false -lockfile=readonly",
 ]
 runner = "ubuntu-24.04"

@@ -9,6 +9,8 @@ from typing import Any, NamedTuple, override
 import uuid
 
 from cryptography.fernet import MultiFernet
+from googleapiclient.errors import HttpError
+from httplib2 import Response
 import pytest
 from sqlalchemy.sql import ClauseElement
 
@@ -484,6 +486,40 @@ def test_peek_returns_warm_row_without_walking() -> None:
     assert cached is not None
     assert cached.tree == tree
     assert drive.walks == 0
+
+
+@pytest.mark.parametrize("status", [429, 503])
+async def test_background_http_failure_preserves_stale_tree_and_refresh_time(status: int) -> None:
+    tree = _tree()
+    refreshed_at = datetime.now(UTC) - settings.SIDEBAR_CACHE_TTL * 2
+    row = DriveTreeCache(
+        drive_id=DriveId("drive-1"),
+        tree=encrypt_cache(tree.model_dump_json()),
+        refreshed_at=refreshed_at,
+    )
+    error = HttpError(Response({"reason": "test", "status": str(status)}), b"{}")
+
+    class FailingDrive(FakeDrive):
+        @override
+        async def walk_drive_folders(self, drive_id: str) -> DriveTree:
+            self.walks += 1
+            raise error
+
+    drive = FailingDrive(tree)
+    save_session = FakeSession(row=row)
+    service = _service(drive, save_session)
+
+    cached = await service.peek_drive_tree(_db(FakeSession(row=row)), row.drive_id)
+    await asyncio.gather(*tuple(service._bg_tasks))
+
+    assert cached is not None
+    assert cached.tree == tree
+    assert cached.refreshed_at == refreshed_at
+    assert drive.walks == 1
+    assert save_session.executed == []
+    assert save_session.commits == 0
+    assert row.refreshed_at == refreshed_at
+    assert DriveTree.model_validate_json(decrypt_cache(row.tree)) == tree
 
 
 def test_peek_cold_cache_returns_none_and_never_walks() -> None:

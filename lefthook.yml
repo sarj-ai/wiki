@@ -10,7 +10,7 @@ pre-commit:
     node-version:
       priority: 1
       run: uv run scripts/wiki.py check node
-      fail_text: "AGENT: hooks require node >= 26.7.0. Fix: run 'mise install' (repo ships .mise.toml) or prefix with 'mise exec node@26.12.1 --', and retry. NEVER use --no-verify."
+      fail_text: "AGENT: hooks require node >= 26.7.0. Fix: run 'mise install' (repo ships .mise.toml) or prefix with 'mise exec node@26.13.0 --', and retry. NEVER use --no-verify."
     standards-config:
       run: uvx --no-config --isolated --python 3.14 --from sarj-standards-bootstrap code-standards doctor
       fail_text: "AGENT: canonical Standards configs drifted. Fix: run 'uv run scripts/wiki.py standards sync', stage the result, and retry. NEVER use --no-verify."

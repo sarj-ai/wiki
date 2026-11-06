@@ -1689,7 +1689,7 @@ async def test_sdk_initial_fallback_and_flash_repair_keep_independent_review_hig
         for _model, config in received
     ]
     assert levels == [
-        types.ThinkingLevel.MEDIUM,
+        types.ThinkingLevel.LOW,
         types.ThinkingLevel.MEDIUM if fallback == "gemini-3.1-pro-preview" else None,
         types.ThinkingLevel.HIGH,
         *(
@@ -1998,7 +1998,7 @@ async def test_model_timeout_is_recomputed_after_waiting_for_shared_slot(
     assert timeouts == ["90", "90", "5"]
 
 
-async def test_review_retry_is_not_admitted_when_backoff_spends_completion_slice(
+async def test_review_without_minimum_budget_does_not_submit_to_sdk(
     sdk_client_factory: Callable[[httpx.AsyncClient], genai.Client],
     deadline_document: _DeadlineDocument,
     model_budget_clock: _ModelBudgetClock,
@@ -2007,12 +2007,6 @@ async def test_review_retry_is_not_admitted_when_backoff_spends_completion_slice
 
     def respond(request: httpx.Request) -> httpx.Response:
         timeouts.append(request.headers.get("X-Server-Timeout"))
-        assert request.extensions["timeout"] == {
-            "connect": 1.5,
-            "read": 1.5,
-            "write": 1.5,
-            "pool": 1.5,
-        }
         return httpx.Response(HTTPStatus.GATEWAY_TIMEOUT, json={"error": {"code": 504}})
 
     async with _deadline_generator(sdk_client_factory, respond) as generator:
@@ -2021,8 +2015,158 @@ async def test_review_retry_is_not_admitted_when_backoff_spends_completion_slice
             pytest.raises(ModelUnavailableError),
         ):
             await _call_model_operation(generator, deadline_document, review=True)
-    assert timeouts == ["2"]
+    assert not timeouts
     assert model_budget_clock.now == 0
+
+
+@pytest.mark.parametrize("repair", [False, True])
+async def test_unslop_fallback_reserves_time_for_independent_review(
+    sdk_client_factory: Callable[[httpx.AsyncClient], genai.Client],
+    deadline_document: _DeadlineDocument,
+    model_budget_clock: _ModelBudgetClock,
+    *,
+    repair: bool,
+) -> None:
+    timeouts: list[str | None] = []
+
+    def respond(request: httpx.Request) -> httpx.Response:
+        timeouts.append(request.headers.get("X-Server-Timeout"))
+        if len(timeouts) == 1:
+            model_budget_clock.advance(90)
+            return httpx.Response(HTTPStatus.GATEWAY_TIMEOUT, json={"error": {"code": 504}})
+        if len(timeouts) == 2:
+            assert request.extensions["timeout"] == {
+                "connect": 60,
+                "read": 60,
+                "write": 60,
+                "pool": 60,
+            }
+        else:
+            config = _VendorRequest.model_validate_json(request.content).generation_config
+            assert config.thinking_config is not None
+            assert config.thinking_config.thinking_level == types.ThinkingLevel.HIGH
+        model_budget_clock.advance(60)
+        return _deadline_response(request)
+
+    async with _deadline_generator(sdk_client_factory, respond) as generator:
+        with provider_retry_budget(timedelta(seconds=240), clock=model_budget_clock.read):
+            if repair:
+                patches = await generator.repair(
+                    deadline_document.document,
+                    [deadline_document.patch],
+                    (
+                        TransformFinding(
+                            code="semantic_review_rejected",
+                            block_id=deadline_document.patch.block_id,
+                            detail="Review the source relationship before accepting this rewrite.",
+                        ),
+                    ),
+                )
+            else:
+                patches = await generator.generate(
+                    deadline_document.document, phase=TransformPhase.UNSLOP
+                )
+            assert patches == [deadline_document.patch]
+            assert provider_retry_remaining_seconds() == 90
+            review = await generator.review(deadline_document.document, patches)
+            assert review.approved == {deadline_document.patch.block_id}
+            assert not review.rejected
+            assert provider_retry_remaining_seconds() == 30
+    assert timeouts == ["90", "60", "60"]
+    assert model_budget_clock.now == 210
+    assert provider_retry_remaining_seconds() is None
+
+
+async def test_unslop_fallback_cannot_spend_the_reserved_review_budget(
+    sdk_client_factory: Callable[[httpx.AsyncClient], genai.Client],
+    deadline_document: _DeadlineDocument,
+    model_budget_clock: _ModelBudgetClock,
+) -> None:
+    timeouts: list[str | None] = []
+
+    def respond(request: httpx.Request) -> httpx.Response:
+        timeouts.append(request.headers.get("X-Server-Timeout"))
+        model_budget_clock.advance(90)
+        return httpx.Response(HTTPStatus.GATEWAY_TIMEOUT, json={"error": {"code": 504}})
+
+    async with _deadline_generator(sdk_client_factory, respond) as generator:
+        with provider_retry_budget(timedelta(seconds=180), clock=model_budget_clock.read):
+            with pytest.raises(ModelUnavailableError):
+                await generator.generate(deadline_document.document, phase=TransformPhase.UNSLOP)
+            assert provider_retry_remaining_seconds() == 90
+    assert timeouts == ["90"]
+    assert model_budget_clock.now == 90
+    assert provider_retry_remaining_seconds() is None
+
+
+async def test_unslop_fallback_without_a_deadline_keeps_native_timeout(
+    sdk_client_factory: Callable[[httpx.AsyncClient], genai.Client],
+    deadline_document: _DeadlineDocument,
+) -> None:
+    timeouts: list[str | None] = []
+
+    def respond(request: httpx.Request) -> httpx.Response:
+        timeouts.append(request.headers.get("X-Server-Timeout"))
+        if len(timeouts) == 1:
+            return httpx.Response(HTTPStatus.GATEWAY_TIMEOUT, json={"error": {"code": 504}})
+        return _deadline_response(request)
+
+    async with _deadline_generator(sdk_client_factory, respond) as generator:
+        assert await generator.generate(
+            deadline_document.document, phase=TransformPhase.UNSLOP
+        ) == [deadline_document.patch]
+    assert timeouts == ["90", "90"]
+    assert provider_retry_remaining_seconds() is None
+
+
+@pytest.mark.parametrize("seconds", [44.5, 45], ids=["below-minimum", "at-minimum"])
+async def test_semantic_review_requires_minimum_remaining_model_budget(
+    sdk_client_factory: Callable[[httpx.AsyncClient], genai.Client],
+    deadline_document: _DeadlineDocument,
+    model_budget_clock: _ModelBudgetClock,
+    seconds: float,
+) -> None:
+    timeouts: list[str | None] = []
+
+    def respond(request: httpx.Request) -> httpx.Response:
+        timeouts.append(request.headers.get("X-Server-Timeout"))
+        return _deadline_response(request)
+
+    async with _deadline_generator(sdk_client_factory, respond) as generator:
+        with provider_retry_budget(timedelta(seconds=seconds), clock=model_budget_clock.read):
+            if seconds < 45:
+                with pytest.raises(ModelUnavailableError):
+                    await generator.review(deadline_document.document, [deadline_document.patch])
+            else:
+                review = await generator.review(
+                    deadline_document.document, [deadline_document.patch]
+                )
+                assert review.approved == {deadline_document.patch.block_id}
+                assert not review.rejected
+    assert timeouts == ([] if seconds < 45 else ["15"])
+    assert model_budget_clock.now == 0
+
+
+async def test_semantic_review_retry_with_less_than_minimum_budget_makes_no_rpc(
+    sdk_client_factory: Callable[[httpx.AsyncClient], genai.Client],
+    deadline_document: _DeadlineDocument,
+    model_budget_clock: _ModelBudgetClock,
+) -> None:
+    timeouts: list[str | None] = []
+
+    def respond(request: httpx.Request) -> httpx.Response:
+        timeouts.append(request.headers.get("X-Server-Timeout"))
+        model_budget_clock.advance(16)
+        return httpx.Response(HTTPStatus.GATEWAY_TIMEOUT, json={"error": {"code": 504}})
+
+    async with _deadline_generator(sdk_client_factory, respond) as generator:
+        with provider_retry_budget(timedelta(seconds=60), clock=model_budget_clock.read):
+            with pytest.raises(ModelUnavailableError):
+                await generator.review(deadline_document.document, [deadline_document.patch])
+            assert provider_retry_remaining_seconds() == 44
+    assert timeouts == ["30"]
+    assert model_budget_clock.now == 16
+    assert provider_retry_remaining_seconds() is None
 
 
 async def test_review_retry_recomputes_timeout_after_admitted_backoff(
@@ -2478,7 +2622,7 @@ async def test_cancelled_writer_wait_releases_admission_lock_and_rpc_capacity(
     [
         pytest.param(
             ModelId("gemini-3.8-flash"),
-            types.ThinkingLevel.MEDIUM,
+            types.ThinkingLevel.LOW,
             types.ThinkingLevel.HIGH,
             id="default-flash-editor",
         ),
