@@ -101,7 +101,10 @@ describe("DocumentPolishDialog", () => {
     await vi.waitFor(() => expect(create).toHaveBeenCalledOnce());
   });
 
-  it("always asks for a mode and discloses the untouched source copy", () => {
+  it("defaults to Both and an automatically named copy", async () => {
+    const create = vi
+      .spyOn(DOCUMENT_TRANSFORM_API, "create")
+      .mockRejectedValue(new Error("offline"));
     renderDialog(root, {
       allowInPlace: true,
       expectedModifiedTime: "2026-09-03T12:00:00Z",
@@ -111,12 +114,29 @@ describe("DocumentPolishDialog", () => {
       name: "Architecture review",
     });
 
-    expect(document.body).toHaveTextContent("Formatting");
+    expect(document.body).toHaveTextContent("Format");
     expect(document.body).toHaveTextContent("Unslop");
     expect(document.body).toHaveTextContent("Both");
+    expect(findButtonNow("Both")).toHaveAccessibleName("Both");
     expect(findButtonNow("Both")).toHaveAttribute("aria-pressed", "true");
-    expect(document.body).toHaveTextContent("“Architecture review” stays unchanged");
-    expect(document.body).toHaveTextContent("A new Google Doc will be created next to it");
+    expect(document.body).toHaveTextContent("Architecture review");
+    expect(document.body).toHaveTextContent("The original stays unchanged.");
+    expect(document.querySelector("#polish-copy-name")).toBeNull();
+    await vi.waitFor(() => expect(findButtonNow("Create polished copy")).toBeEnabled());
+    clickButton(findButtonNow("Create polished copy"));
+    await vi.waitFor(() =>
+      expect(create).toHaveBeenCalledExactlyOnceWith(
+        {
+          expectedModifiedTime: "2026-09-03T12:00:00Z",
+          fileId: "source-1",
+          kind: "drive_file",
+          name: "Architecture review",
+        },
+        "both",
+        expect.any(String),
+        "copy",
+      ),
+    );
   });
 
   it("starts once, polls, and navigates to the verified output copy", async () => {
@@ -355,7 +375,7 @@ describe("DocumentPolishDialog", () => {
         await vi.waitFor(() => expect(findButtonNow("Create polished copy")).toBeEnabled());
         clickButton(findButtonNow("Create polished copy"));
         await vi.waitFor(() => expect(document.body).toHaveTextContent("No changes needed"));
-        expect(findButtonNow("Formatting")).toBeDisabled();
+        expect(findButtonNow("Format")).toBeDisabled();
         expect(document.body).toHaveTextContent("do not change who can access");
         let retryWasDisabled = false;
         if (shortLinkStatus === "ready") {
@@ -488,8 +508,8 @@ describe("DocumentPolishDialog", () => {
     expect(document.querySelector('[role="alert"]')).toHaveTextContent(
       "Couldn’t verify the latest revision",
     );
-    expect(findButtonNow("Formatting")).toBeEnabled();
-    clickButton(findButtonNow("Formatting"));
+    expect(findButtonNow("Format")).toBeEnabled();
+    clickButton(findButtonNow("Format"));
     expect(document.body).not.toHaveTextContent("Polish interrupted");
     clickButton(findButtonNow("Create polished copy"));
     await vi.waitFor(() => {
@@ -529,7 +549,7 @@ describe("DocumentPolishDialog", () => {
     await vi.waitFor(() => {
       expect(create).toHaveBeenCalledOnce();
       expect(findButtonNow("Resume checking")).toBeEnabled();
-      expect(findButtonNow("Formatting")).toBeDisabled();
+      expect(findButtonNow("Format")).toBeDisabled();
       expect(document.querySelector('[role="alert"]')).toHaveTextContent("Response was lost");
       expect(document.body).toHaveTextContent("Your existing operation is still reserved");
     });
@@ -587,7 +607,7 @@ describe("DocumentPolishDialog", () => {
     );
     await vi.waitFor(() => expect(findButtonNow("Resume checking")).toBeEnabled());
     expect(create).not.toHaveBeenCalled();
-    expect(findButtonNow("Formatting")).toBeDisabled();
+    expect(findButtonNow("Format")).toBeDisabled();
     expect(document.body).toHaveTextContent(pending.id);
   });
 
@@ -812,16 +832,14 @@ describe("DocumentPolishDialog", () => {
       name: "Notes",
     });
     await vi.waitFor(() => {
-      expect(findButtonNow("Create review copy")).toHaveAccessibleName("Create review copy");
+      expect(findButtonNow("New copy")).toHaveAccessibleName("New copy");
     });
-    const copy = findButtonNow("Create review copy");
+    const copy = findButtonNow("New copy");
     const original = findButtonNow("Edit original");
     expect(original).toHaveAccessibleName("Edit original");
-    expect(copy).toHaveAccessibleDescription(
-      "Keep the original untouched and create a sibling Google Doc.",
-    );
+    expect(copy).toHaveAccessibleDescription("Keep the original unchanged.");
     expect(original).toHaveAccessibleDescription(
-      "Amend this Google Doc; Drive version history remains available.",
+      "Updates this file; Drive history stays available.",
     );
     expect(copy).toHaveAttribute("aria-pressed", "true");
     expect(original).toHaveAttribute("aria-pressed", "false");
@@ -830,7 +848,7 @@ describe("DocumentPolishDialog", () => {
     expect(original).toHaveAttribute("aria-pressed", "true");
     expect(copy).toHaveAttribute("aria-pressed", "false");
     clickButton(copy);
-    expect(copy).toHaveAccessibleName("Create review copy");
+    expect(copy).toHaveAccessibleName("New copy");
     expect(copy).toHaveAttribute("aria-pressed", "true");
     expect(original).toHaveAttribute("aria-pressed", "false");
     expect(create).not.toHaveBeenCalled();
@@ -897,7 +915,7 @@ describe("DocumentPolishDialog", () => {
     clickButton(findButtonNow("Already polished"));
     expect(create).not.toHaveBeenCalled();
 
-    clickButton(findButtonNow("Create review copy"));
+    clickButton(findButtonNow("New copy"));
     await vi.waitFor(() => expect(findButtonNow("Create polished copy")).toBeEnabled());
     expect(document.body).not.toHaveTextContent("This exact document revision already completed");
   });
@@ -934,7 +952,7 @@ describe("DocumentPolishDialog", () => {
     clickButton(findButtonNow("Edit original"));
     await vi.waitFor(() => expect(findButtonNow("Already polished")).toBeDisabled());
 
-    clickButton(findButtonNow("Formatting"));
+    clickButton(findButtonNow("Format"));
 
     await vi.waitFor(() => expect(findButtonNow("Polish original")).toBeEnabled());
     expect(document.body).not.toHaveTextContent("This exact document revision already completed");
@@ -1007,12 +1025,10 @@ describe("DocumentPolishDialog", () => {
     const invalidate = vi.spyOn(queryClient, "invalidateQueries");
 
     await vi.waitFor(() => {
-      expect(findButtonNow("Create review copy")).toHaveAttribute("aria-pressed", "true");
+      expect(findButtonNow("New copy")).toHaveAttribute("aria-pressed", "true");
     });
     clickButton(findButtonNow("Edit original"));
-    expect(document.body).toHaveTextContent(
-      "will be amended only after revision and safety checks",
-    );
+    expect(findButtonNow("Edit original")).toHaveAttribute("aria-pressed", "true");
     await vi.waitFor(() => expect(findButtonNow("Polish original")).toBeEnabled());
     clickButton(findButtonNow("Polish original"));
 
@@ -1176,7 +1192,7 @@ describe("DocumentPolishDialog", () => {
       await vi.waitFor(() => {
         expect(create).toHaveBeenCalledOnce();
         expect(findButtonNow(released ? "Create polished copy" : "Resume checking")).toBeEnabled();
-        expect(findButtonNow("Formatting").disabled).toBe(!released);
+        expect(findButtonNow("Format").disabled).toBe(!released);
       });
     },
   );
@@ -1210,7 +1226,7 @@ describe("DocumentPolishDialog", () => {
       );
       const receipt = document.querySelector('[role="alert"]');
       expect(receipt?.parentElement?.firstElementChild).toBe(receipt);
-      expect(receipt?.compareDocumentPosition(findButtonNow("Formatting")) ?? 0).toBe(
+      expect(receipt?.compareDocumentPosition(findButtonNow("Format")) ?? 0).toBe(
         Node.DOCUMENT_POSITION_FOLLOWING,
       );
       expect(document.body).toHaveTextContent("has not passed safety verification");
@@ -1221,7 +1237,7 @@ describe("DocumentPolishDialog", () => {
     });
     clickButton(findButtonNow("Create polished copy"));
     expect(DOCUMENT_TRANSFORM_API.create).toHaveBeenCalledOnce();
-    clickButton(findButtonNow("Formatting"));
+    clickButton(findButtonNow("Format"));
     await vi.waitFor(() => {
       expect(document.body).not.toHaveTextContent("Task reference:");
       expect(findButtonNow("Create polished copy")).toBeEnabled();
@@ -1345,7 +1361,7 @@ describe("DocumentPolishDialog", () => {
       );
       const receipt = document.querySelector('[role="alert"]');
       expect(receipt?.parentElement?.firstElementChild).toBe(receipt);
-      expect(receipt?.compareDocumentPosition(findButtonNow("Formatting")) ?? 0).toBe(
+      expect(receipt?.compareDocumentPosition(findButtonNow("Format")) ?? 0).toBe(
         Node.DOCUMENT_POSITION_FOLLOWING,
       );
       expect(findButtonNow("Create polished copy")).toBeDisabled();
@@ -1699,7 +1715,7 @@ describe("DocumentPolishDialog", () => {
     );
   });
 
-  it("never rewrites an older Word BOTH recovery into FORMAT", async () => {
+  it("preserves an older Word recovery mode and copy name", async () => {
     const savedSource = {
       expectedModifiedTime: "revision",
       fileId: "word-1",
@@ -1712,6 +1728,7 @@ describe("DocumentPolishDialog", () => {
       key,
       mode: "both",
       outputStrategy: "copy",
+      outputName: "Policy — review copy",
       source: savedSource,
       taskId: null,
     });
@@ -1728,7 +1745,15 @@ describe("DocumentPolishDialog", () => {
     expect(findButtonNow("Both")).toHaveAttribute("aria-pressed", "true");
     expect(findButtonNow("Both")).toBeDisabled();
     clickButton(findButtonNow("Resume checking"));
-    await vi.waitFor(() => expect(create).toHaveBeenCalledWith(savedSource, "both", key, "copy"));
+    await vi.waitFor(() =>
+      expect(create).toHaveBeenCalledExactlyOnceWith(
+        savedSource,
+        "both",
+        key,
+        "copy",
+        "Policy — review copy",
+      ),
+    );
     await vi.waitFor(() => expect(findButtonNow("Resume checking")).toBeEnabled());
     expect(findButtonNow("Both")).toHaveAttribute("aria-pressed", "true");
   });
@@ -1879,7 +1904,7 @@ describe("DocumentPolishDialog", () => {
     expect(findButtonNow("Import Google Doc")).toBeDisabled();
     typeTextarea("# Launch\n\nA concise plan.");
     await vi.waitFor(() => expect(findButtonNow("Import Google Doc")).toBeEnabled());
-    clickButton(findButtonNow("Formatting"));
+    clickButton(findButtonNow("Format"));
     clickButton(findButtonNow("Import Google Doc"));
 
     await vi.waitFor(() => {
