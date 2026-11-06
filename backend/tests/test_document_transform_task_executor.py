@@ -14,7 +14,9 @@ from app.aliases.schemas import DocumentAliasRead
 from app.document_transform import task_executor as task_executor_module
 from app.document_transform.brand_manifest import CURRENT_BRAND_MANIFEST
 from app.document_transform.errors import (
+    ConcisionTargetUnmetError,
     DocumentGatewayError,
+    DocumentTransformError,
     OutputVerificationError,
     UnsupportedSourceError,
 )
@@ -200,6 +202,16 @@ class _VerificationFailureTransform:
     ) -> Never:
         del operation_id, request
         raise OutputVerificationError
+
+
+class _ConcisionFailureTransform:
+    async def execute(
+        self,
+        *,
+        operation_id: uuid.UUID,
+        request: DocumentTransformRequest,
+    ) -> Never:
+        raise ConcisionTargetUnmetError
 
 
 class _SuccessTransform:
@@ -511,6 +523,28 @@ async def test_retryable_failure_defers_before_attempt_limit() -> None:
 
     assert tasks.deferred == 1
     assert tasks.failed == 0
+
+
+async def test_unmet_document_concision_is_terminal_without_provider_retry_or_resource() -> None:
+    tasks = _RetryTasks()
+    task_id = TaskId(uuid.uuid7())
+
+    result = await task_executor_module._execute_claimed(
+        task_id,
+        tasks=tasks,
+        transform=_ConcisionFailureTransform(),
+        claim=_claim(task_id, attempt_count=1),
+        payload=tasks.payload,
+    )
+
+    assert isinstance(result, FailedTaskRead)
+    assert result.error_code == ConcisionTargetUnmetError.code == DocumentTransformError.code
+    assert result.error_detail == ConcisionTargetUnmetError.public_detail
+    assert result.error_detail is not None
+    assert "concision target while preserving all content" in result.error_detail
+    assert result.resource_id is result.result is None
+    assert tasks.failed == 1
+    assert tasks.deferred == 0
 
 
 async def test_retryable_failure_becomes_terminal_at_attempt_limit() -> None:

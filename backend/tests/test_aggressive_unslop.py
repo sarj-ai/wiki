@@ -1,12 +1,12 @@
 from __future__ import annotations
 
 from collections.abc import Callable
-from dataclasses import replace
+from dataclasses import dataclass, replace
 from typing import override
 
 import pytest
 
-from app.document_transform.errors import ModelUnavailableError
+from app.document_transform.errors import ConcisionTargetUnmetError, ModelUnavailableError
 from app.document_transform.ir import BlockKind, DocumentIR, parse_markdown
 from app.document_transform.models import PatchGenerator, RewriteReview
 from app.document_transform.planner import TextTransformPlanner
@@ -19,7 +19,11 @@ from app.document_transform.schemas import (
     TransformMode,
     TransformPhase,
 )
-from app.document_transform.unslop import scan_unslop_candidates
+from app.document_transform.unslop import (
+    MAX_MODEL_EDITABLE_BLOCK_CHARS,
+    concision_target,
+    scan_unslop_candidates,
+)
 from app.identifiers import FileId
 
 
@@ -199,6 +203,87 @@ class _ConcisionEditor(_RepairEditor):
                 replacement=self.replacement,
             )
         ]
+
+
+class _DocumentBudgetEditor(PatchGenerator):
+    def __init__(self, initial: dict[str, str], repaired: dict[str, str]) -> None:
+        self.initial = initial
+        self.repaired = repaired
+        self.repair_calls = 0
+        self.feedback: tuple[TransformFinding, ...] = ()
+        self.rejected: set[str] = set()
+        self.reviewed: list[TextPatch] = []
+        self.generated: list[DocumentIR] = []
+
+    @property
+    @override
+    def model_ids(self) -> tuple[str, ...]:
+        return ("test-document-editor",)
+
+    @override
+    async def generate(self, document: DocumentIR, *, phase: TransformPhase) -> list[TextPatch]:
+        self.generated.append(document)
+        assert phase is TransformPhase.UNSLOP
+        return _budget_patches(document, self.initial)
+
+    @override
+    async def repair(
+        self, document: DocumentIR, patches: list[TextPatch], findings: tuple[TransformFinding, ...]
+    ) -> list[TextPatch]:
+        self.repair_calls += 1
+        self.feedback = findings
+        assert all(patch.block_id in self.initial for patch in patches)
+        return _budget_patches(document, self.repaired)
+
+    @override
+    async def review(self, document: DocumentIR, patches: list[TextPatch]) -> RewriteReview:
+        sources = {block.id: block for block in document.blocks}
+        assert all(patch.expected_sha256 == sources[patch.block_id].sha256 for patch in patches)
+        self.reviewed.extend(patches)
+        return RewriteReview(
+            approved=frozenset(
+                patch.block_id for patch in patches if patch.block_id not in self.rejected
+            ),
+            rejected=dict.fromkeys(self.rejected, "The proposal lost a source fact"),
+        )
+
+
+def _budget_patches(document: DocumentIR, replacements: dict[str, str]) -> list[TextPatch]:
+    return [
+        TextPatch(
+            block_id=block.id, expected_sha256=block.sha256, replacement=replacements[block.id]
+        )
+        for block in document.blocks
+        if block.id in replacements
+    ]
+
+
+@dataclass(frozen=True, slots=True)
+class _ConcisionFixture:
+    document: DocumentIR
+    replacements: dict[str, str]
+
+
+def _two_concision_blocks() -> _ConcisionFixture:
+    dense = (
+        "The sensor records temperature at night and stores each reading in the local log. "
+        "The operator checks the log before scheduled maintenance and compares readings with "
+        "the previous inspection. The device retains calibration notes beside the measurements "
+        "and records the test location. The operator sends the log to the laboratory after "
+        "nightly inspection, and the laboratory archives the received record."
+    )
+    sparse = (
+        "The logger records temperature at night, stores the readings in its archive, "
+        "and sends the complete log to the laboratory."
+    )
+    padding = " The account restates this description in extended and repetitive wording."
+    document = parse_markdown(dense + padding * 4 + "\n\n" + sparse + padding * 8, title="Logs")
+    blocks = [block for block in document.blocks if block.text]
+    assert [len(block.text.split()) for block in blocks] == [100, 100]
+    assert [len(text.split()) for text in (dense, sparse)] == [60, 20]
+    return _ConcisionFixture(
+        document=document, replacements={blocks[0].id: dense, blocks[1].id: sparse}
+    )
 
 
 def _request(
@@ -489,8 +574,10 @@ async def test_verbose_or_unchanged_prose_enters_one_quality_repair(
     assert editor.repair_calls == 1
     assert [finding.code for finding in editor.feedback] == ["concision_target_unmet"]
     assert "source 59 words" in editor.feedback[0].detail
-    assert "maximum 24" in editor.feedback[0].detail
-    assert [patch.replacement for patch in editor.reviewed] == [CONCISION_FACT]
+    assert "maximum 23" in editor.feedback[0].detail
+    assert [patch.replacement for patch in editor.reviewed] == ([] if unchanged else [initial]) + [
+        CONCISION_FACT
+    ]
     assert result.document.blocks[0].text == CONCISION_FACT
     assert result.applied_count == result.model_count == 1
     assert not result.findings
@@ -515,45 +602,46 @@ async def test_failed_quality_repair_is_bounded_and_preserves_original(
     editor.repair_block_id = "outside-current-source" if failure == "unknown" else None
     document = parse_markdown(CONCISION_SOURCE, title="Sensor")
 
-    result = await TextTransformPlanner(generator=editor, allow_unslop_model=True).transform(
-        document, _request(content=CONCISION_SOURCE)
-    )
+    with pytest.raises(ConcisionTargetUnmetError) as failure_info:
+        await TextTransformPlanner(generator=editor, allow_unslop_model=True).transform(
+            document, _request(content=CONCISION_SOURCE)
+        )
 
     assert editor.repair_calls == 1
-    assert result.document == document
-    assert result.applied_count == result.model_count == 0
-    assert result.llm_invoked
-    assert result.findings
-    assert (
-        "concision_target_unmet" in {finding.code for finding in result.findings}
-        or failure == "semantic"
-    )
+    assert document.blocks[0].text == CONCISION_SOURCE
+    assert editor.phases == [TransformPhase.UNSLOP]
+    assert failure_info.value.code == "document_transform_failed"
+    assert "no transformed output" in failure_info.value.public_detail
+    assert [finding.code for finding in editor.feedback] == ["concision_target_unmet"]
 
 
 @pytest.mark.parametrize(
     ("source_words", "proposed_words", "unmet"),
-    [(39, 39, False), (40, 16, False), (40, 17, True), (41, 17, False), (41, 18, True)],
+    [(39, 39, False), (40, 16, False), (40, 17, True), (41, 16, False), (41, 17, True)],
 )
-def test_quality_word_boundary_is_enforced_without_truncation(
-    source_words: int, proposed_words: int, *, unmet: bool
+async def test_quality_word_boundary_is_enforced_without_truncation(
+    source_words: int,
+    proposed_words: int,
+    concision_editor_factory: Callable[[str, str], _ConcisionEditor],
+    *,
+    unmet: bool,
 ) -> None:
     source = " ".join(["material"] * source_words)
     replacement = " ".join(["material"] * proposed_words)
     document = parse_markdown(source, title="Boundary")
-    block = document.blocks[0]
-
-    decision = validate_patches(
-        document,
-        [TextPatch(block_id=block.id, expected_sha256=block.sha256, replacement=replacement)],
-        phase=TransformPhase.UNSLOP,
-        aggressive_unslop=True,
-    )
-
-    assert [finding.code for finding in decision.findings] == (
-        ["concision_target_unmet"] if unmet else []
-    )
-    assert decision.accepted == ({} if unmet or replacement == source else {block.id: replacement})
-    assert block.text == source
+    editor = concision_editor_factory(replacement, replacement)
+    planner = TextTransformPlanner(generator=editor, allow_unslop_model=True)
+    if unmet:
+        with pytest.raises(ConcisionTargetUnmetError):
+            await planner.transform(document, _request(content=source))
+        assert editor.repair_calls == 1
+    else:
+        result = await planner.transform(document, _request(content=source))
+        assert result.document.blocks[0].text == replacement
+        assert result.model_count == int(replacement != source)
+        assert not result.findings
+        assert editor.repair_calls == 0
+    assert document.blocks[0].text == source
 
 
 def test_quality_budget_excludes_the_exact_protected_suffix() -> None:
@@ -618,14 +706,14 @@ async def test_dense_protected_facts_remain_when_the_target_cannot_be_met_safely
     document = parse_markdown(source, title="Measurements")
     editor = concision_editor_factory(source, source)
 
-    result = await TextTransformPlanner(generator=editor, allow_unslop_model=True).transform(
-        document, _request(content=source)
-    )
+    with pytest.raises(ConcisionTargetUnmetError):
+        await TextTransformPlanner(generator=editor, allow_unslop_model=True).transform(
+            document, _request(content=source)
+        )
 
     assert editor.repair_calls == 1
-    assert result.document == document
-    assert not result.applied_count
-    assert [finding.code for finding in result.findings] == ["concision_target_unmet"]
+    assert document.blocks[0].text == source
+    assert [finding.code for finding in editor.feedback] == ["concision_target_unmet"]
 
 
 @pytest.mark.parametrize(
@@ -660,3 +748,191 @@ def test_formatting_has_no_concision_target_for_an_unchanged_long_block() -> Non
 
     assert not decision.accepted
     assert not decision.findings
+
+
+async def test_document_budget_allows_a_dense_block_to_use_another_blocks_savings() -> None:
+    fixture = _two_concision_blocks()
+    document, faithful = fixture.document, fixture.replacements
+    editor = _DocumentBudgetEditor(faithful, {})
+
+    result = await TextTransformPlanner(generator=editor, allow_unslop_model=True).transform(
+        document, _request()
+    )
+
+    assert [len(block.text.split()) for block in result.document.blocks if block.text] == [60, 20]
+    assert result.document == document.replace_blocks(faithful)
+    assert result.model_count == 2
+    assert editor.repair_calls == 0
+    assert {patch.block_id for patch in editor.reviewed} == faithful.keys()
+    assert not result.findings
+
+
+async def test_global_overage_repairs_already_reviewed_blocks_only_once() -> None:
+    fixture = _two_concision_blocks()
+    document, faithful = fixture.document, fixture.replacements
+    second_id = next(reversed(faithful))
+    initial = {
+        **faithful,
+        second_id: faithful[second_id]
+        + " The account restates this description in extended and repetitive wording." * 2,
+    }
+    editor = _DocumentBudgetEditor(initial, faithful)
+
+    result = await TextTransformPlanner(generator=editor, allow_unslop_model=True).transform(
+        document, _request()
+    )
+
+    assert editor.repair_calls == 1
+    assert {finding.block_id for finding in editor.feedback} == faithful.keys()
+    assert all(finding.code == "concision_target_unmet" for finding in editor.feedback)
+    assert all(
+        "source 200 words; proposal 100 words; maximum 80" in item.detail
+        for item in editor.feedback
+    )
+    assert [patch.block_id for patch in editor.reviewed].count(second_id) == 2
+    assert result.document == document.replace_blocks(faithful)
+    assert not result.findings
+
+
+@pytest.mark.parametrize("retained", ["unchanged", "semantic", "missing"])
+async def test_original_retained_prose_cannot_disappear_from_the_global_total(
+    retained: str,
+) -> None:
+    fixture = _two_concision_blocks()
+    document, faithful = fixture.document, fixture.replacements
+    first = document.blocks[0]
+    initial = dict(faithful)
+    repaired = {**faithful, first.id: first.text}
+    if retained == "unchanged":
+        initial[first.id] = first.text
+    elif retained == "missing":
+        initial = {
+            block_id: replacement
+            for block_id, replacement in initial.items()
+            if block_id != first.id
+        }
+    editor = _DocumentBudgetEditor(initial, repaired)
+    if retained == "semantic":
+        editor.rejected.add(first.id)
+
+    with pytest.raises(ConcisionTargetUnmetError):
+        await TextTransformPlanner(generator=editor, allow_unslop_model=True).transform(
+            document, _request()
+        )
+
+    assert editor.repair_calls == 1
+    assert any("proposal 120 words; maximum 80" in finding.detail for finding in editor.feedback)
+    assert document.blocks[0].text == first.text
+
+
+async def test_original_concision_denominator_survives_deterministic_prefix_deletion() -> None:
+    source = "It is important to note that " + CONCISION_SOURCE
+    replacement = (
+        CONCISION_FACT
+        + " The explanation repeats the description with extended redundant wording." * 2
+    )
+    document = parse_markdown(source, title="Sensor")
+    block = document.blocks[0]
+    editor = _DocumentBudgetEditor({block.id: replacement}, {})
+
+    result = await TextTransformPlanner(generator=editor, allow_unslop_model=True).transform(
+        document, _request(content=source)
+    )
+
+    assert len(source.split()) == 65
+    assert editor.generated[0].blocks[0].text == CONCISION_SOURCE
+    assert len(replacement.split()) == 25
+    assert result.document.blocks[0].text == replacement
+    assert result.deterministic_count == result.model_count == 1
+    assert editor.repair_calls == 0
+    assert not result.findings
+
+
+@pytest.mark.parametrize("proposed_words", [16, 17], ids=["at-cap", "over-cap"])
+async def test_frozen_eligibility_and_exact_suffix_survive_shortening(
+    proposed_words: int,
+    concision_editor_factory: Callable[[str, str], _ConcisionEditor],
+) -> None:
+    suffix = " [41] [42]"
+    source = " ".join(["reading"] * 40)
+    original = parse_markdown(source + suffix, title="Native citations")
+    block = replace(original.blocks[0], protected_suffix=suffix)
+    document = replace(original, blocks=(block,))
+    replacement = " ".join(["reading"] * proposed_words) + suffix
+    editor = concision_editor_factory(replacement, replacement)
+    planner = TextTransformPlanner(generator=editor, allow_unslop_model=True)
+
+    assert concision_target(block) is not None
+    if proposed_words == 17:
+        with pytest.raises(ConcisionTargetUnmetError):
+            await planner.transform(document, _request(content=block.text))
+        assert editor.repair_calls == 1
+        assert "source 40 words; proposal 17 words; maximum 16" in editor.feedback[0].detail
+    else:
+        result = await planner.transform(document, _request(content=block.text))
+        assert result.document.blocks[0].text == replacement
+        assert editor.repair_calls == 0
+        assert not result.findings
+    assert document.blocks[0].text.endswith(suffix)
+
+
+@pytest.mark.parametrize(
+    "excluded",
+    ["short", "frozen", "oversized", "heading", "quote", "code", "table"],
+)
+async def test_previously_excluded_blocks_do_not_gain_a_document_quota(excluded: str) -> None:
+    document = parse_markdown(CONCISION_SOURCE, title="Eligibility")
+    long_block = document.blocks[0]
+    other = replace(long_block, id="outside-budget")
+    match excluded:
+        case "short":
+            other = replace(other, text=CONCISE)
+        case "frozen":
+            other = replace(other, editable=False)
+        case "oversized":
+            other = replace(other, text="reading " * (MAX_MODEL_EDITABLE_BLOCK_CHARS // 8 + 1))
+        case _:
+            other = replace(other, kind=BlockKind(excluded))
+    document = replace(document, blocks=(long_block, other))
+    editor = _DocumentBudgetEditor({long_block.id: CONCISION_FACT}, {})
+
+    result = await TextTransformPlanner(generator=editor, allow_unslop_model=True).transform(
+        document, _request()
+    )
+
+    assert concision_target(other) is None
+    assert result.document.blocks[0].text == CONCISION_FACT
+    assert result.document.blocks[1] == other
+    assert editor.repair_calls == 0
+
+
+async def test_originally_short_slides_remain_a_noop_without_a_global_target() -> None:
+    document = replace(parse_markdown(CONCISE, title="Bird"), source_format="google_slides")
+    block = document.blocks[0]
+    editor = _DocumentBudgetEditor({block.id: block.text}, {})
+
+    result = await TextTransformPlanner(generator=editor, allow_unslop_model=True).transform(
+        document, _request()
+    )
+
+    assert concision_target(block) is None
+    assert result.document == document
+    assert result.applied_count == 0
+    assert editor.repair_calls == 0
+    assert not result.findings
+
+
+async def test_failed_document_target_stops_before_the_format_phase(
+    concision_editor_factory: Callable[[str, str], _ConcisionEditor],
+) -> None:
+    document = parse_markdown(CONCISION_SOURCE, title="Unchanged")
+    editor = concision_editor_factory(CONCISION_SOURCE, CONCISION_SOURCE)
+
+    with pytest.raises(ConcisionTargetUnmetError):
+        await TextTransformPlanner(
+            generator=editor, allow_unslop_model=True, allow_format_text_edits=True
+        ).transform(document, _request(TransformMode.BOTH, content=CONCISION_SOURCE))
+
+    assert editor.phases == [TransformPhase.UNSLOP]
+    assert editor.repair_calls == 1
+    assert document.blocks[0].text == CONCISION_SOURCE

@@ -440,7 +440,11 @@ class VertexGeminiPatchGenerator(PatchGenerator):
         repair: bool,
     ) -> genai_types.ThinkingConfig | None:
         if phase is TransformPhase.UNSLOP and model == primary_model == "gemini-3.8-flash":
-            return genai_types.ThinkingConfig(thinking_level=genai_types.ThinkingLevel.LOW)
+            return genai_types.ThinkingConfig(
+                thinking_level=genai_types.ThinkingLevel.HIGH
+                if repair
+                else genai_types.ThinkingLevel.MEDIUM
+            )
         if model == self._policy.fallback_model:
             if model != _PRO_THINKING_MODEL:
                 return None
@@ -972,8 +976,10 @@ def _prompt(
     ]
     instruction = (
         "Apply the trusted system editing policy to every supplied block. "
-        "Aim at each supplied concision_target.draft_target_words before checking its hard "
-        "max_words; preserve every fact, qualification and original constraint count. "
+        "Each supplied concision_target.draft_target_words and max_words is an advisory "
+        "block allocation. The complete document must retain at most 40% of its originally "
+        "eligible prose words, counting unchanged blocks too. Preserve every fact, "
+        "qualification and original constraint count. "
         "protected_suffix is excluded from the word count."
         if phase is TransformPhase.UNSLOP
         else "Formatting preserves every character of the author's text, including whitespace "

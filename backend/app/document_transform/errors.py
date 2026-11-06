@@ -50,6 +50,14 @@ class ModelUnavailableError(DocumentTransformError):
     public_detail = "The document transformation model is temporarily unavailable"
 
 
+class ConcisionTargetUnmetError(DocumentTransformError):
+    public_detail = (
+        "A rewrite meeting the document's concision target while preserving all content "
+        "was not available; "
+        "no transformed output was created and the source was not changed"
+    )
+
+
 class DocumentGatewayError(DocumentTransformError):
     code = "document_provider_unavailable"
     public_detail = "Google Drive or Docs could not complete the transformation"
