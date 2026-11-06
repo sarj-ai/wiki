@@ -29,6 +29,25 @@ MAX_HTTP_ERROR_STATUS = 599
 MAX_BYTES = 4 * 1024 * 1024
 MAX_BULLET_SNAPSHOT_COUNT = 50_000
 MAX_FONT_PROOF_COUNT = 750
+MAX_FOOTER_SNAPSHOT_ITEMS = 64
+MAX_FOOTER_SNAPSHOT_ELEMENTS = MAX_FOOTER_SNAPSHOT_ITEMS**2
+FOOTER_SNAPSHOT_STATES = frozenset(
+    {"unavailable", "missing", "null", "empty", "nonempty", "present", "malformed"}
+)
+FOOTER_SNAPSHOT_COUNTS = frozenset(
+    {
+        "footer_snapshot_tab_matches",
+        "footer_snapshot_created_reply_count",
+        *(
+            f"footer_snapshot_{scope}_{field}"
+            for scope in ("document", "tab")
+            for field in ("map_count", "paragraph_count")
+        ),
+    }
+)
+FOOTER_SNAPSHOT_ELEMENT_COUNTS = frozenset(
+    f"footer_snapshot_{scope}_element_count" for scope in ("document", "tab")
+)
 FONT_PROOF_COUNT_FIELDS = frozenset({"font_proof_count", "font_proof_verified_count"})
 BULLET_SNAPSHOT_FIELDS = frozenset(
     f"bullet_snapshot_{field}_{state}"
@@ -219,6 +238,13 @@ PROVIDER_FIELDS = MappingProxyType(
             }
         ),
         "footer_shape_reason": frozenset({"missing", "mismatch"}),
+        "footer_snapshot_phase": frozenset({"create_input", "projection_empty", "create_reply"}),
+        "footer_snapshot_created_id_state": FOOTER_SNAPSHOT_STATES,
+        **{
+            f"footer_snapshot_{scope}_{field}_state": FOOTER_SNAPSHOT_STATES
+            for scope in ("document", "tab")
+            for field in ("map", "ref", "content")
+        },
         "provider_message_topic": frozenset(
             {
                 "unknown",
@@ -273,6 +299,13 @@ READ_FAILURES = (ValueError, TypeError, KeyError, OSError, subprocess.TimeoutExp
 _FAILURE_MESSAGE = "Diagnostic read rejected or unavailable; no raw logs emitted.\n"
 BOOLEAN_FIELDS = frozenset(
     [
+        "footer_snapshot_tabs_complete",
+        "footer_snapshot_reply_complete",
+        *[
+            f"footer_snapshot_{scope}_{field}"
+            for scope in ("document", "tab")
+            for field in ("ref_in_map", "created_in_map", "created_matches_ref", "complete")
+        ],
         "header_recovery_paragraph_mapping",
         "header_recovery_paragraph_direction_present",
         "header_recovery_paragraph_direction_ltr",
@@ -514,6 +547,8 @@ EMPHASIS_COUNT_FIELDS = frozenset(
     )
 )
 COUNT_FIELD_LIMITS = (
+    (FOOTER_SNAPSHOT_COUNTS, MAX_FOOTER_SNAPSHOT_ITEMS),
+    (FOOTER_SNAPSHOT_ELEMENT_COUNTS, MAX_FOOTER_SNAPSHOT_ELEMENTS),
     (BULLET_SNAPSHOT_FIELDS, MAX_BULLET_SNAPSHOT_COUNT),
     (FONT_PROOF_COUNT_FIELDS, MAX_FONT_PROOF_COUNT),
     (COUNT_FIELDS, MAX_COUNT),
@@ -546,6 +581,7 @@ MESSAGE_PREFIXES = (
     "document header recovery checks=",
     "document markdown import verification checks=",
     "document native safety stop stage=",
+    "document footer shape snapshot phase=",
     "document in-place preflight",
     "document bullet stage snapshot stage=",
     "document stage provider boundary http_status=",

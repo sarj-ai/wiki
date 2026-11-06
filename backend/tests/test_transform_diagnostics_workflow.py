@@ -1003,3 +1003,63 @@ def test_group_precedence_keeps_false_zero_empty_issues_and_protected_identity()
     assert row["error_code"] == "model_unavailable"
     assert "PRIVATE" not in json.dumps(row)
     assert "SECRET" not in json.dumps(row)
+
+
+def test_footer_snapshot_allowlist_keeps_shapes_and_drops_private_native_values() -> None:
+    record = _record()
+    record["jsonPayload"]["record"]["message"] = "document footer shape snapshot phase=SECRET"
+    record["jsonPayload"]["record"]["extra"]["diagnostics"] = {
+        "footer_snapshot_phase": "create_reply",
+        "footer_snapshot_document_map_state": "missing",
+        "footer_snapshot_tab_map_state": "nonempty",
+        "footer_snapshot_tab_content_state": "empty",
+        "footer_snapshot_created_id_state": "present",
+        "footer_snapshot_tab_matches": 1,
+        "footer_snapshot_tab_map_count": 1,
+        "footer_snapshot_tab_paragraph_count": 0,
+        "footer_snapshot_tab_element_count": 0,
+        "footer_snapshot_created_reply_count": 1,
+        "footer_snapshot_tab_created_in_map": True,
+        "footer_snapshot_tab_created_matches_ref": True,
+        "footer_snapshot_tabs_complete": True,
+        "footer_snapshot_reply_complete": True,
+        "footer_id": "SECRET",
+        "tab_id": "SECRET",
+        "document": {"content": "SECRET"},
+        "url": "https://private.example/SECRET",
+        "token": "SECRET",
+    }
+    row = MODULE["sanitize"]([record], TASK)[0]
+    assert row["footer_snapshot_phase"] == "create_reply"
+    assert row["footer_snapshot_document_map_state"] == "missing"
+    assert row["footer_snapshot_tab_content_state"] == "empty"
+    assert row["footer_snapshot_created_id_state"] == "present"
+    assert row["footer_snapshot_tab_created_in_map"] is True
+    assert row["footer_snapshot_created_reply_count"] == 1
+    assert "SECRET" not in json.dumps(row)
+    assert "message" not in row
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("footer_snapshot_phase", "SECRET"),
+        ("footer_snapshot_tab_content_state", "SECRET"),
+        ("footer_snapshot_created_id_state", "SECRET"),
+        ("footer_snapshot_tab_matches", True),
+        ("footer_snapshot_created_reply_count", -1),
+        ("footer_snapshot_document_map_count", 65),
+        ("footer_snapshot_tab_paragraph_count", 65),
+        ("footer_snapshot_tab_element_count", 4097),
+        ("footer_snapshot_tab_created_in_map", 1),
+        ("footer_snapshot_tabs_complete", None),
+    ],
+)
+def test_footer_snapshot_reader_rejects_untyped_or_unbounded_fields(
+    field: str, value: JsonValue
+) -> None:
+    record = _record()
+    record["jsonPayload"]["record"]["message"] = "document footer shape snapshot phase=create_input"
+    record["jsonPayload"]["record"]["extra"]["diagnostics"] = {field: value}
+    with pytest.raises(ValueError, match=r"^$"):
+        MODULE["sanitize"]([record], TASK)
