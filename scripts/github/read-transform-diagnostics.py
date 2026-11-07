@@ -118,6 +118,31 @@ PROVIDER_FIELDS = MappingProxyType(
         "model_payload_category": frozenset(
             {"none", "unknown", "empty", "coverage", "binding", "schema"}
         ),
+        "model_finish_reason": frozenset(
+            {
+                "unknown",
+                "FINISH_REASON_UNSPECIFIED",
+                "STOP",
+                "MAX_TOKENS",
+                "SAFETY",
+                "RECITATION",
+                "LANGUAGE",
+                "OTHER",
+                "BLOCKLIST",
+                "PROHIBITED_CONTENT",
+                "SPII",
+                "MALFORMED_FUNCTION_CALL",
+                "IMAGE_SAFETY",
+                "UNEXPECTED_TOOL_CALL",
+                "TOO_MANY_TOOL_CALLS",
+                "IMAGE_PROHIBITED_CONTENT",
+                "NO_IMAGE",
+                "IMAGE_RECITATION",
+                "IMAGE_OTHER",
+                "CONTINUATION",
+                "MALFORMED_RESPONSE",
+            }
+        ),
         "model_error_reason": frozenset(
             {
                 "unknown",
@@ -475,6 +500,10 @@ BOOLEAN_FIELDS = frozenset(
 )
 COUNT_FIELDS = frozenset(
     [
+        "model_prompt_token_count",
+        "model_candidate_token_count",
+        "model_thought_token_count",
+        "model_total_token_count",
         "spacer_planned_above_count",
         "spacer_planned_below_count",
         "spacer_examined_count",
@@ -578,6 +607,7 @@ ERROR_CODES = frozenset(
 )
 MESSAGE_PREFIXES = (
     "document model attempt failed operation=",
+    "document model response payload invalid operation=review",
     "document native font proof checks=",
     "document header recovery checks=",
     "document markdown import verification checks=",

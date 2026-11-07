@@ -1,7 +1,7 @@
 from dataclasses import asdict
 import json
 
-from google.genai import errors
+from google.genai import errors, types
 from loguru import logger
 from pydantic import ValidationError
 import pytest
@@ -11,6 +11,7 @@ from app.document_transform.model_diagnostics import (
     ModelCoverageError,
     ModelEmptyResponseError,
     log_model_failure,
+    log_model_response_failure,
     model_failure_details,
 )
 from app.document_transform.schemas import PatchEnvelope
@@ -117,4 +118,81 @@ def test_schema_error_locations_and_types_are_bounded_and_private() -> None:
     finally:
         logger.remove(sink)
     assert "PRIVATE" not in json.dumps(asdict(failure))
+    assert "PRIVATE" not in "".join(captured)
+
+
+@pytest.mark.parametrize("finish_reason", [types.FinishReason.STOP, types.FinishReason.MAX_TOKENS])
+@pytest.mark.parametrize("count", [0, 1_000_000])
+def test_response_failure_metadata_logs_only_bounded_counts_and_finite_reason(
+    finish_reason: types.FinishReason, count: int
+) -> None:
+    response = types.GenerateContentResponse(
+        candidates=[
+            types.Candidate(
+                finish_reason=finish_reason,
+                finish_message="PRIVATE REASON",
+                content=types.Content(parts=[types.Part(text="PRIVATE RESPONSE")]),
+            )
+        ],
+        usage_metadata=types.GenerateContentResponseUsageMetadata(
+            prompt_token_count=count,
+            candidates_token_count=count,
+            thoughts_token_count=count,
+            total_token_count=count,
+        ),
+        response_id="PRIVATE ID",
+        model_version="PRIVATE VERSION",
+    )
+    captured: list[str] = []
+    sink = logger.add(captured.append, serialize=True)
+    try:
+        log_model_response_failure(model="gemini-3.8-flash", response=response)
+    finally:
+        logger.remove(sink)
+    extra = {
+        key: value
+        for key, value in json.loads(captured[-1])["record"]["extra"].items()
+        if key.startswith("model_")
+    }
+    assert extra == {
+        "model_operation": "review",
+        "model_id": "gemini-3.8-flash",
+        "model_finish_reason": finish_reason,
+        "model_prompt_token_count": count,
+        "model_candidate_token_count": count,
+        "model_thought_token_count": count,
+        "model_total_token_count": count,
+    }
+    assert "PRIVATE" not in "".join(captured)
+
+
+@pytest.mark.parametrize("count", [None, True, -1, 1_000_001, "PRIVATE"])
+def test_response_failure_metadata_omits_malformed_values_without_masking_failure(
+    count: int | str | None,
+) -> None:
+    response = types.GenerateContentResponse.model_construct(
+        candidates=[types.Candidate.model_construct(finish_reason="PRIVATE REASON")],
+        usage_metadata=types.GenerateContentResponseUsageMetadata.model_construct(
+            prompt_token_count=count,
+            candidates_token_count=count,
+            thoughts_token_count=count,
+            total_token_count=count,
+        ),
+    )
+    captured: list[str] = []
+    sink = logger.add(captured.append, serialize=True)
+    try:
+        log_model_response_failure(model="gemini-3.8-flash", response=response)
+    finally:
+        logger.remove(sink)
+    extra = {
+        key: value
+        for key, value in json.loads(captured[-1])["record"]["extra"].items()
+        if key.startswith("model_")
+    }
+    assert extra == {
+        "model_operation": "review",
+        "model_id": "gemini-3.8-flash",
+        "model_finish_reason": "unknown",
+    }
     assert "PRIVATE" not in "".join(captured)

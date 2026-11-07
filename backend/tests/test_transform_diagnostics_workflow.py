@@ -1064,3 +1064,74 @@ def test_footer_snapshot_reader_rejects_untyped_or_unbounded_fields(
     record["jsonPayload"]["record"]["extra"]["diagnostics"] = {field: value}
     with pytest.raises(ValueError, match=r"^$"):
         MODULE["sanitize"]([record], TASK)
+
+
+@pytest.mark.parametrize("finish_reason", ["STOP", "MAX_TOKENS", "unknown"])
+@pytest.mark.parametrize("count", [0, 1_000_000])
+def test_response_failure_metadata_is_allowlisted_without_response_content(
+    finish_reason: str, count: int
+) -> None:
+    record = _record()
+    record["jsonPayload"]["record"]["message"] = (
+        "document model response payload invalid operation=review"
+    )
+    record["jsonPayload"]["record"]["extra"].update(
+        {
+            "model_id": "gemini-3.8-flash",
+            "model_operation": "review",
+            "model_finish_reason": finish_reason,
+            "model_prompt_token_count": count,
+            "model_candidate_token_count": count,
+            "model_thought_token_count": count,
+            "model_total_token_count": count,
+            "model_response": "PRIVATE RESPONSE",
+            "finish_message": "PRIVATE REASON",
+            "response_id": "PRIVATE ID",
+        }
+    )
+    row = MODULE["sanitize"]([record], TASK)[0]
+    assert row["model_id"] == "gemini-3.8-flash"
+    assert row["model_operation"] == "review"
+    assert row["model_finish_reason"] == finish_reason
+    assert row["model_prompt_token_count"] == count
+    assert row["model_candidate_token_count"] == count
+    assert row["model_thought_token_count"] == count
+    assert row["model_total_token_count"] == count
+    assert "PRIVATE" not in json.dumps(row)
+    assert "SECRET" not in json.dumps(row)
+
+
+@pytest.mark.parametrize(
+    "field",
+    [
+        "model_prompt_token_count",
+        "model_candidate_token_count",
+        "model_thought_token_count",
+        "model_total_token_count",
+    ],
+)
+@pytest.mark.parametrize("value", [None, True, -1, 1_000_001, "PRIVATE"])
+def test_response_token_counts_reject_invalid_or_unbounded_values(
+    field: str, value: JsonValue
+) -> None:
+    record = _record()
+    record["jsonPayload"]["record"]["extra"][field] = value
+    with pytest.raises(ValueError, match=r"^$"):
+        MODULE["sanitize"]([record], TASK)
+
+
+@pytest.mark.parametrize(
+    "reason",
+    [
+        "PRIVATE",
+        None,
+        True,
+        pytest.param([], id="array-finish-reason"),
+        pytest.param({}, id="object-finish-reason"),
+    ],
+)
+def test_response_finish_reason_rejects_values_outside_the_finite_enum(reason: JsonValue) -> None:
+    record = _record()
+    record["jsonPayload"]["record"]["extra"]["model_finish_reason"] = reason
+    with pytest.raises(ValueError, match=r"^$"):
+        MODULE["sanitize"]([record], TASK)

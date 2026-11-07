@@ -24,6 +24,7 @@ from app.document_transform.model_diagnostics import (
     ModelCoverageError,
     ModelEmptyResponseError,
     log_model_failure,
+    log_model_response_failure,
 )
 from app.document_transform.safety import (
     REPAIRABLE_REWRITE_CODES,
@@ -226,6 +227,7 @@ class GeminiModelPolicy:
     fallback_model: str
     restyle_model: str
     timeout: timedelta = timedelta(seconds=90)
+    review_timeout: timedelta | None = None
 
     def __post_init__(self) -> None:
         for model in (self.unslop_model, self.fallback_model, self.restyle_model):
@@ -571,7 +573,10 @@ class VertexGeminiPatchGenerator(PatchGenerator):
     async def _review_once(self, *, model: str, pairs: list[_ReviewPair]) -> PatchReviewEnvelope:
         prompt = _review_prompt(pairs)
         seconds = _model_request_timeout_seconds(
-            self._policy.timeout, minimum_budget=_MIN_REVIEW_ATTEMPT_BUDGET
+            self._policy.timeout
+            if self._policy.review_timeout is None
+            else self._policy.review_timeout,
+            minimum_budget=_MIN_REVIEW_ATTEMPT_BUDGET,
         )
         async with asyncio.timeout(seconds):
             response = await self._client.aio.models.generate_content(
@@ -591,12 +596,16 @@ class VertexGeminiPatchGenerator(PatchGenerator):
                     http_options=genai_types.HttpOptions(timeout=int(seconds * 1000)),
                 ),
             )
-        if isinstance(response.parsed, PatchReviewEnvelope):
-            return response.parsed
-        if response.text:
-            return PatchReviewEnvelope.model_validate_json(response.text)
-        msg = "Gemini returned no semantic review"
-        raise ModelEmptyResponseError(msg)
+        try:
+            if isinstance(response.parsed, PatchReviewEnvelope):
+                return response.parsed
+            if response.text:
+                return PatchReviewEnvelope.model_validate_json(response.text)
+            msg = "Gemini returned no semantic review"
+            raise ModelEmptyResponseError(msg)
+        except ValueError:
+            log_model_response_failure(model=model, response=response)
+            raise
 
 
 def _constraint_repair_feedback(block: TextBlock, patch: TextPatch) -> tuple[str, ...]:
