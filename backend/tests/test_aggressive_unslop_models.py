@@ -462,6 +462,7 @@ async def test_repair_can_keep_an_unspecified_subject_instead_of_inventing_one()
 @pytest.mark.parametrize(
     "status",
     [
+        HTTPStatus.FORBIDDEN,
         HTTPStatus.REQUEST_TIMEOUT,
         HTTPStatus.TOO_MANY_REQUESTS,
         HTTPStatus.INTERNAL_SERVER_ERROR,
@@ -471,7 +472,7 @@ async def test_repair_can_keep_an_unspecified_subject_instead_of_inventing_one()
         None,
     ],
 )
-async def test_transient_review_uses_the_configured_fallback_within_its_attempt_budget(
+async def test_review_failover_uses_the_configured_fallback_within_its_attempt_budget(
     failures: int,
     status: HTTPStatus | None,
 ) -> None:
@@ -572,7 +573,6 @@ async def test_transient_review_fallback_rejects_forged_bindings(
         HTTPStatus.BAD_REQUEST,
         HTTPStatus.UNAUTHORIZED,
         HTTPStatus.PAYMENT_REQUIRED,
-        HTTPStatus.FORBIDDEN,
         HTTPStatus.NOT_FOUND,
         HTTPStatus.UNPROCESSABLE_CONTENT,
     ],
