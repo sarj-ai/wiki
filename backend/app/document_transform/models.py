@@ -545,6 +545,11 @@ class VertexGeminiPatchGenerator(PatchGenerator):
     async def _review_batch(self, pairs: list[_ReviewPair]) -> RewriteReview:
         last_error: Exception | None = None
         model = self._policy.restyle_model
+        fallback_model = (
+            self._policy.unslop_model
+            if self._policy.fallback_model == model
+            else self._policy.fallback_model
+        )
         for attempt in range(1, _MAX_REVIEW_ATTEMPTS + 1):
             try:
                 reviews = await self._review_once(model=model, pairs=pairs)
@@ -555,7 +560,7 @@ class VertexGeminiPatchGenerator(PatchGenerator):
                 if isinstance(exc, TimeoutError) or (
                     isinstance(exc, genai_errors.APIError) and exc.code in _REVIEW_FALLBACK_STATUSES
                 ):
-                    model = self._policy.fallback_model
+                    model = fallback_model
                 if attempt < _MAX_REVIEW_ATTEMPTS:
                     await _model_retry_delay(attempt)
             else:

@@ -145,7 +145,15 @@ class TextTransformPlanner:
                 concision_source, document.replace_blocks(decision.accepted)
             )
         if aggressive and feedback:
-            decision = await self._repair_rewrites(document, patches, decision, feedback=feedback)
+            try:
+                decision = await self._repair_rewrites(
+                    document, patches, decision, feedback=feedback
+                )
+            except ModelUnavailableError:
+                if concision_source is not None and _document_concision_findings(
+                    concision_source, document.replace_blocks(decision.accepted)
+                ):
+                    raise
         count = len(decision.accepted)
         return TransformOutcome(
             document=document.replace_blocks(decision.accepted),
@@ -174,10 +182,7 @@ class TextTransformPlanner:
         restricted = replace(
             document, blocks=tuple(block for block in document.blocks if block.id in repair_ids)
         )
-        if (
-            repair := await self._attempt_repair(document, patches, feedback, restricted=restricted)
-        ) is None:
-            return decision
+        repair = await self._attempt_repair(document, patches, feedback, restricted=restricted)
         repaired = repair.decision
         remaining = tuple(
             finding
@@ -203,17 +208,14 @@ class TextTransformPlanner:
         findings: tuple[TransformFinding, ...],
         *,
         restricted: DocumentIR,
-    ) -> _ReviewedRepair | None:
-        try:
-            proposals = await self._generator.repair(document, patches, findings)
-            repaired = validate_patches(
-                restricted, proposals, phase=TransformPhase.UNSLOP, aggressive_unslop=True
-            )
-            validated_ids = frozenset(repaired.accepted)
-            if repaired.accepted:
-                repaired = await self._review_rewrites(restricted, repaired)
-        except ModelUnavailableError:
-            return None
+    ) -> _ReviewedRepair:
+        proposals = await self._generator.repair(document, patches, findings)
+        repaired = validate_patches(
+            restricted, proposals, phase=TransformPhase.UNSLOP, aggressive_unslop=True
+        )
+        validated_ids = frozenset(repaired.accepted)
+        if repaired.accepted:
+            repaired = await self._review_rewrites(restricted, repaired)
         return _ReviewedRepair(decision=repaired, validated_ids=validated_ids)
 
     async def _review_rewrites(

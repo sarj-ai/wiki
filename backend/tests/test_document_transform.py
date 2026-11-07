@@ -1372,7 +1372,9 @@ async def test_unmet_document_quality_stops_before_checkpoint_and_provider_write
         lease_token=uuid.uuid7(),
     )
 
-    with pytest.raises(ConcisionTargetUnmetError):
+    with pytest.raises(
+        ModelUnavailableError if failure == "unavailable" else ConcisionTargetUnmetError
+    ):
         await executor.execute(operation_id=task_id, request=request)
 
     assert generator.repair_calls == 1

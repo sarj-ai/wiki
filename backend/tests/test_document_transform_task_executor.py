@@ -17,6 +17,7 @@ from app.document_transform.errors import (
     ConcisionTargetUnmetError,
     DocumentGatewayError,
     DocumentTransformError,
+    ModelUnavailableError,
     OutputVerificationError,
     UnsupportedSourceError,
 )
@@ -68,6 +69,7 @@ class _RetryTasks:
         payload: DocumentTransformRequest | None = None,
     ) -> None:
         self.deferred = 0
+        self.deferred_task_ids: list[TaskId] = []
         self.failed = 0
         self.attempt_count = attempt_count
         self.payload = payload or _payload()
@@ -75,6 +77,7 @@ class _RetryTasks:
 
     async def defer(self, task_id: TaskId, *, lease_token: uuid.UUID) -> TaskRead:
         self.deferred += 1
+        self.deferred_task_ids.append(task_id)
         return _claim(task_id, attempt_count=1).task
 
     async def fail(
@@ -212,6 +215,16 @@ class _ConcisionFailureTransform:
         request: DocumentTransformRequest,
     ) -> Never:
         raise ConcisionTargetUnmetError
+
+
+class _ModelUnavailableTransform:
+    async def execute(
+        self,
+        *,
+        operation_id: uuid.UUID,
+        request: DocumentTransformRequest,
+    ) -> Never:
+        raise ModelUnavailableError
 
 
 class _SuccessTransform:
@@ -522,6 +535,28 @@ async def test_retryable_failure_defers_before_attempt_limit() -> None:
         )
 
     assert tasks.deferred == 1
+    assert tasks.failed == 0
+
+
+@pytest.mark.parametrize("attempt_count", [1, 9], ids=["first-attempt", "last-retry"])
+async def test_model_unavailability_defers_the_same_task_without_recording_output(
+    attempt_count: int,
+) -> None:
+    tasks = _RetryTasks()
+    task_id = TaskId(uuid.uuid7())
+
+    with pytest.raises(TaskExecutionDeferredError) as failure_info:
+        await task_executor_module._execute_claimed(
+            task_id,
+            tasks=tasks,
+            transform=_ModelUnavailableTransform(),
+            claim=_claim(task_id, attempt_count=attempt_count),
+            payload=tasks.payload,
+        )
+
+    assert isinstance(failure_info.value.__cause__, ModelUnavailableError)
+    assert tasks.deferred == 1
+    assert tasks.deferred_task_ids == [task_id]
     assert tasks.failed == 0
 
 

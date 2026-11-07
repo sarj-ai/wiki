@@ -911,6 +911,117 @@ async def test_real_sdk_review_gateway_timeout_uses_the_configured_fallback(
     assert models == ["gemini-3.8-flash", "gemini-3.1-flash-lite"]
 
 
+@pytest.mark.parametrize(
+    "status",
+    [HTTPStatus.TOO_MANY_REQUESTS, HTTPStatus.GATEWAY_TIMEOUT],
+    ids=["rate-limit", "gateway-timeout"],
+)
+@pytest.mark.parametrize(
+    "primary",
+    [ModelId("gemini-3.8-flash"), ModelId("gemini-3.1-pro-preview")],
+    ids=["default-flash", "explicit-pro"],
+)
+async def test_review_collision_uses_a_sticky_configured_high_fallback(
+    status: HTTPStatus,
+    primary: ModelId,
+    sdk_client_factory: Callable[[httpx.AsyncClient], genai.Client],
+) -> None:
+    document = parse_markdown("The hidden bird can sing unseen beside the path.", title="Bird")
+    block = document.blocks[0]
+    patch = TextPatch(block_id=block.id, expected_sha256=block.sha256, replacement=block.text)
+    models: list[ModelId] = []
+
+    def respond(request: httpx.Request) -> httpx.Response:
+        models.append(ModelId(request.url.path.rsplit("/", 1)[-1].removesuffix(":generateContent")))
+        config = _VendorRequest.model_validate_json(request.content).generation_config
+        assert config.thinking_config is not None
+        assert config.thinking_config.thinking_level == types.ThinkingLevel.HIGH
+        if len(models) < 3:
+            return httpx.Response(status, json={"error": {"code": int(status)}})
+        contents = _WireReviewRequest.model_validate_json(request.content).contents
+        wire = _WireReview.model_validate_json(contents[0].parts[0].text)
+        assert wire.document_contexts[0].source_block == block.text
+        assert wire.document_contexts[0].proposed_block == patch.replacement
+        assert [audit.block_id for audit in wire.sentence_audits] == [block.id]
+        return _review_response(_functional_audit_envelope(wire))
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(respond)) as http:
+        client = sdk_client_factory(http)
+        generator = VertexGeminiPatchGenerator(
+            policy=GeminiModelPolicy(
+                project="offline-fixture",
+                location="global",
+                unslop_model=primary,
+                fallback_model="gemini-3.1-pro-preview",
+                restyle_model="gemini-3.1-pro-preview",
+            ),
+            client=client,
+        )
+        try:
+            decision = await generator.review(document, [patch])
+        finally:
+            await client.aio.aclose()
+
+    assert decision.approved == {block.id}
+    assert not decision.rejected
+    assert models == [
+        ModelId("gemini-3.1-pro-preview"),
+        primary,
+        primary,
+    ]
+
+
+@pytest.mark.parametrize(
+    "field",
+    ["expected_sha256", "replacement_sha256"],
+    ids=["source-binding", "replacement-binding"],
+)
+async def test_distinct_review_fallback_cannot_approve_a_wrong_binding(
+    field: Literal["expected_sha256", "replacement_sha256"],
+    sdk_client_factory: Callable[[httpx.AsyncClient], genai.Client],
+) -> None:
+    document = parse_markdown("The hidden bird can sing unseen beside the path.", title="Bird")
+    block = document.blocks[0]
+    patch = TextPatch(block_id=block.id, expected_sha256=block.sha256, replacement=block.text)
+    models: list[ModelId] = []
+
+    def respond(request: httpx.Request) -> httpx.Response:
+        models.append(ModelId(request.url.path.rsplit("/", 1)[-1].removesuffix(":generateContent")))
+        if len(models) == 1:
+            return httpx.Response(HTTPStatus.TOO_MANY_REQUESTS, json={"error": {"code": 429}})
+        contents = _WireReviewRequest.model_validate_json(request.content).contents
+        wire = _WireReview.model_validate_json(contents[0].parts[0].text)
+        envelope = _functional_audit_envelope(wire)
+        envelope.reviews = [
+            review.model_copy(update={field: "0" * 64}) for review in envelope.reviews
+        ]
+        return _review_response(envelope)
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(respond)) as http:
+        client = sdk_client_factory(http)
+        generator = VertexGeminiPatchGenerator(
+            policy=GeminiModelPolicy(
+                project="offline-fixture",
+                location="global",
+                unslop_model="gemini-3.8-flash",
+                fallback_model="gemini-3.1-pro-preview",
+                restyle_model="gemini-3.1-pro-preview",
+            ),
+            client=client,
+        )
+        try:
+            with pytest.raises(ModelUnavailableError):
+                await generator.review(document, [patch])
+        finally:
+            await client.aio.aclose()
+
+    assert models == [
+        ModelId("gemini-3.1-pro-preview"),
+        ModelId("gemini-3.8-flash"),
+        ModelId("gemini-3.8-flash"),
+    ]
+
+
 async def test_real_sdk_serializes_structured_rewrite_and_review_without_sampling(
     sdk_client_factory: Callable[[httpx.AsyncClient], genai.Client],
 ) -> None:

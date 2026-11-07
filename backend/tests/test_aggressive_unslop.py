@@ -22,6 +22,7 @@ from app.document_transform.schemas import (
 from app.document_transform.unslop import (
     MAX_MODEL_EDITABLE_BLOCK_CHARS,
     concision_target,
+    model_editable_blocks,
     scan_unslop_candidates,
 )
 from app.identifiers import FileId
@@ -210,6 +211,7 @@ class _DocumentBudgetEditor(PatchGenerator):
         self.initial = initial
         self.repaired = repaired
         self.repair_calls = 0
+        self.repair_unavailable = False
         self.feedback: tuple[TransformFinding, ...] = ()
         self.rejected: set[str] = set()
         self.reviewed: list[TextPatch] = []
@@ -233,6 +235,8 @@ class _DocumentBudgetEditor(PatchGenerator):
         self.repair_calls += 1
         self.feedback = findings
         assert all(patch.block_id in self.initial for patch in patches)
+        if self.repair_unavailable:
+            raise ModelUnavailableError
         return _budget_patches(document, self.repaired)
 
     @override
@@ -584,9 +588,7 @@ async def test_verbose_or_unchanged_prose_enters_one_quality_repair(
     assert document.blocks[0].text == CONCISION_SOURCE
 
 
-@pytest.mark.parametrize(
-    "failure", ["unchanged", "verbose", "unavailable", "stale", "unknown", "semantic"]
-)
+@pytest.mark.parametrize("failure", ["unchanged", "verbose", "stale", "unknown", "semantic"])
 async def test_failed_quality_repair_is_bounded_and_preserves_original(
     failure: str, concision_editor_factory: Callable[[str, str], _ConcisionEditor]
 ) -> None:
@@ -596,7 +598,6 @@ async def test_failed_quality_repair_is_bounded_and_preserves_original(
         "semantic": CONCISION_FACT.replace("temperature", "pressure"),
     }.get(failure, CONCISION_FACT)
     editor = concision_editor_factory(CONCISION_SOURCE, replacement)
-    editor.unavailable = failure == "unavailable"
     editor.approve = failure != "semantic"
     editor.repair_sha256 = "0" * 64 if failure == "stale" else None
     editor.repair_block_id = "outside-current-source" if failure == "unknown" else None
@@ -613,6 +614,56 @@ async def test_failed_quality_repair_is_bounded_and_preserves_original(
     assert failure_info.value.code == "document_transform_failed"
     assert "no transformed output" in failure_info.value.public_detail
     assert [finding.code for finding in editor.feedback] == ["concision_target_unmet"]
+
+
+@pytest.mark.parametrize("stage", ["proposal", "review"])
+async def test_unavailable_required_repair_preserves_the_source_and_retryable_error(
+    stage: str, concision_editor_factory: Callable[[str, str], _ConcisionEditor]
+) -> None:
+    editor = concision_editor_factory(CONCISION_SOURCE, CONCISION_FACT)
+    editor.unavailable = stage == "proposal"
+    editor.review_unavailable = stage == "review"
+    document = parse_markdown(CONCISION_SOURCE, title="Sensor")
+
+    with pytest.raises(ModelUnavailableError) as failure_info:
+        await TextTransformPlanner(generator=editor, allow_unslop_model=True).transform(
+            document, _request(content=CONCISION_SOURCE)
+        )
+
+    assert failure_info.value.code == "model_unavailable"
+    assert editor.repair_calls == 1
+    assert document.blocks[0].text == CONCISION_SOURCE
+    assert editor.phases == [TransformPhase.UNSLOP]
+    assert [finding.code for finding in editor.feedback] == ["concision_target_unmet"]
+
+
+async def test_optional_repair_outage_keeps_an_already_concise_verified_result() -> None:
+    short = "The bird may sing unseen beside the path near the stream."
+    document = parse_markdown(CONCISION_SOURCE + "\n\n" + short, title="Sensor and bird")
+    first, separator, last = document.blocks
+    initial = {
+        first.id: CONCISION_FACT,
+        last.id: "The bird must sing unseen beside the path near the stream.",
+    }
+    editor = _DocumentBudgetEditor(initial, {})
+    editor.repair_unavailable = True
+
+    result = await TextTransformPlanner(generator=editor, allow_unslop_model=True).transform(
+        document, _request(content=CONCISION_SOURCE + "\n\n" + short)
+    )
+
+    assert concision_target(first) is not None
+    assert concision_target(last) is None
+    assert last in model_editable_blocks(document)
+    assert separator.kind is BlockKind.BLANK
+    assert not separator.text
+    assert [block.text for block in result.document.blocks] == [CONCISION_FACT, "", short]
+    assert first.text == CONCISION_SOURCE
+    assert last.text == short
+    assert result.model_count == 1
+    assert editor.repair_calls == 1
+    assert [finding.code for finding in editor.feedback] == ["force_language_changed"]
+    assert [finding.code for finding in result.findings] == ["force_language_changed"]
 
 
 @pytest.mark.parametrize(
