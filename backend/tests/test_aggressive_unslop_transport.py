@@ -917,13 +917,19 @@ async def test_real_sdk_review_gateway_timeout_uses_the_configured_fallback(
     ids=["rate-limit", "gateway-timeout"],
 )
 @pytest.mark.parametrize(
-    "primary",
-    [ModelId("gemini-3.8-flash"), ModelId("gemini-3.1-pro-preview")],
-    ids=["default-flash", "explicit-pro"],
+    ("primary", "reviewer"),
+    [
+        (ModelId("gemini-3.8-flash"), ModelId("gemini-3.1-pro-preview")),
+        (ModelId("gemini-3.1-pro-preview"), ModelId("gemini-3.1-pro-preview")),
+        (ModelId("gemini-3.8-flash"), ModelId("gemini-4-argon")),
+        (ModelId("gemini-4-argon"), ModelId("gemini-4-argon")),
+    ],
+    ids=["default-flash", "explicit-pro", "default-argon", "explicit-argon"],
 )
 async def test_review_collision_uses_a_sticky_configured_high_fallback(
     status: HTTPStatus,
     primary: ModelId,
+    reviewer: ModelId,
     sdk_client_factory: Callable[[httpx.AsyncClient], genai.Client],
 ) -> None:
     document = parse_markdown("The hidden bird can sing unseen beside the path.", title="Bird")
@@ -952,8 +958,8 @@ async def test_review_collision_uses_a_sticky_configured_high_fallback(
                 project="offline-fixture",
                 location="global",
                 unslop_model=primary,
-                fallback_model="gemini-3.1-pro-preview",
-                restyle_model="gemini-3.1-pro-preview",
+                fallback_model=reviewer,
+                restyle_model=reviewer,
             ),
             client=client,
         )
@@ -965,7 +971,7 @@ async def test_review_collision_uses_a_sticky_configured_high_fallback(
     assert decision.approved == {block.id}
     assert not decision.rejected
     assert models == [
-        ModelId("gemini-3.1-pro-preview"),
+        reviewer,
         primary,
         primary,
     ]
@@ -1107,8 +1113,14 @@ async def test_real_sdk_serializes_structured_rewrite_and_review_without_samplin
 
 
 @pytest.mark.parametrize(
-    ("review", "oversized", "blank_reason"),
-    [(False, False, False), (False, True, False), (True, False, False), (True, False, True)],
+    ("review", "oversized", "blank_reason", "long_rationale"),
+    [
+        (False, False, False, False),
+        (False, True, False, False),
+        (True, False, False, False),
+        (True, False, True, False),
+        (False, False, False, True),
+    ],
 )
 async def test_json_schema_responses_still_enforce_strict_local_validation(
     sdk_client_factory: Callable[[httpx.AsyncClient], genai.Client],
@@ -1116,6 +1128,7 @@ async def test_json_schema_responses_still_enforce_strict_local_validation(
     review: bool,
     oversized: bool,
     blank_reason: bool,
+    long_rationale: bool,
 ) -> None:
     document = parse_markdown(
         "The hidden bird can sing from dense scrub beside the path while remaining unseen by observers.",
@@ -1146,6 +1159,10 @@ async def test_json_schema_responses_still_enforce_strict_local_validation(
             }
         )
         if review
+        else json.dumps(
+            {"patches": [patch.model_copy(update={"rationale": "x" * 241}).model_dump()]}
+        )
+        if long_rationale
         else json.dumps({"patches": [patch.model_dump()] * 101})
         if oversized
         else '{"patches":[],"unexpected":"must be rejected"}'
@@ -1699,7 +1716,9 @@ def _assert_concision_wire_source(
 
 
 @pytest.mark.parametrize("repair_fault", [False, True], ids=["repair-success", "repair-504"])
-@pytest.mark.parametrize("fallback", ["gemini-3.1-pro-preview", "gemini-3.1-flash-lite"])
+@pytest.mark.parametrize(
+    "fallback", ["gemini-3.1-pro-preview", "gemini-4-argon", "gemini-3.1-flash-lite"]
+)
 async def test_sdk_initial_fallback_and_flash_repair_keep_independent_review_high(
     sdk_client_factory: Callable[[httpx.AsyncClient], genai.Client],
     fallback: str,
@@ -1801,10 +1820,16 @@ async def test_sdk_initial_fallback_and_flash_repair_keep_independent_review_hig
     ]
     assert levels == [
         types.ThinkingLevel.LOW,
-        types.ThinkingLevel.MEDIUM if fallback == "gemini-3.1-pro-preview" else None,
+        types.ThinkingLevel.MEDIUM
+        if fallback in {"gemini-3.1-pro-preview", "gemini-4-argon"}
+        else None,
         types.ThinkingLevel.HIGH,
         *(
-            [types.ThinkingLevel.HIGH if fallback == "gemini-3.1-pro-preview" else None]
+            [
+                types.ThinkingLevel.HIGH
+                if fallback in {"gemini-3.1-pro-preview", "gemini-4-argon"}
+                else None
+            ]
             if repair_fault
             else []
         ),
@@ -1812,8 +1837,14 @@ async def test_sdk_initial_fallback_and_flash_repair_keep_independent_review_hig
     ]
 
 
+@pytest.mark.parametrize(
+    "model",
+    [ModelId("gemini-3.1-pro-preview"), ModelId("gemini-4-argon")],
+    ids=["legacy-pro", "ga-argon"],
+)
 async def test_sdk_pro_primary_override_and_format_keep_high_thinking(
     sdk_client_factory: Callable[[httpx.AsyncClient], genai.Client],
+    model: ModelId,
 ) -> None:
     source = "The hidden bird can sing unseen from dense scrub beside the path."
     document = parse_markdown(source, title="Pro compatibility")
@@ -1845,9 +1876,9 @@ async def test_sdk_pro_primary_override_and_format_keep_high_thinking(
             policy=GeminiModelPolicy(
                 project="offline-fixture",
                 location="global",
-                unslop_model="gemini-3.1-pro-preview",
-                fallback_model="gemini-3.1-pro-preview",
-                restyle_model="gemini-3.1-pro-preview",
+                unslop_model=model,
+                fallback_model=model,
+                restyle_model=model,
             ),
             client=client,
         )

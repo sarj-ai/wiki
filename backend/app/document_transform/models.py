@@ -61,7 +61,7 @@ _MODEL_COMPLETION_RESERVE = timedelta(seconds=30)
 _MIN_MODEL_ATTEMPT_BUDGET = timedelta(seconds=1)
 _UNSLOP_REVIEW_RESERVE = timedelta(seconds=60)
 _MIN_REVIEW_ATTEMPT_BUDGET = timedelta(seconds=15)
-_PRO_THINKING_MODEL = "gemini-3.1-pro-preview"
+_THINKING_FALLBACK_MODELS = frozenset({"gemini-3.1-pro-preview", "gemini-4-argon"})
 _MAX_EDITOR_BATCH_CHARACTERS = 4_000
 _MAX_EDITOR_BATCH_BLOCKS = 6
 _MAX_REVIEW_ATTEMPTS = 3
@@ -448,7 +448,7 @@ class VertexGeminiPatchGenerator(PatchGenerator):
                 else genai_types.ThinkingLevel.LOW
             )
         if model == self._policy.fallback_model:
-            if model != _PRO_THINKING_MODEL:
+            if model not in _THINKING_FALLBACK_MODELS:
                 return None
             if phase is TransformPhase.UNSLOP and not repair and model != primary_model:
                 return genai_types.ThinkingConfig(thinking_level=genai_types.ThinkingLevel.MEDIUM)
@@ -582,7 +582,10 @@ class VertexGeminiPatchGenerator(PatchGenerator):
                     response_json_schema=_response_json_schema(PatchReviewEnvelope),
                     max_output_tokens=_STRUCTURED_RESPONSE_TOKEN_LIMIT,
                     thinking_config=None
-                    if model == self._policy.fallback_model and model != _PRO_THINKING_MODEL
+                    if (
+                        model == self._policy.fallback_model
+                        and model not in _THINKING_FALLBACK_MODELS
+                    )
                     else genai_types.ThinkingConfig(thinking_level=genai_types.ThinkingLevel.HIGH),
                     http_options=genai_types.HttpOptions(timeout=int(seconds * 1000)),
                 ),
@@ -1026,6 +1029,7 @@ def _prompt(
                 'The exact JSON shape is {"patches":[{"block_id":"b0",'
                 '"expected_sha256":"<supplied sha256>","replacement":"<complete replacement '
                 'block>","rationale":"<brief reason>"}]}. '
+                "Each rationale must be at most 240 characters. "
                 "Do not use JSON Patch op/path/value fields."
             ),
             (
