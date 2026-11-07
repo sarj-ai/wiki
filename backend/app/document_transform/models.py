@@ -65,7 +65,7 @@ _THINKING_FALLBACK_MODELS = frozenset({"gemini-3.1-pro-preview", "gemini-4-argon
 _MAX_EDITOR_BATCH_CHARACTERS = 4_000
 _MAX_EDITOR_BATCH_BLOCKS = 6
 _MAX_REVIEW_ATTEMPTS = 3
-_REVIEW_FALLBACK_STATUSES = frozenset(
+_TRANSIENT_MODEL_STATUSES = frozenset(
     {
         HTTPStatus.REQUEST_TIMEOUT,
         HTTPStatus.TOO_MANY_REQUESTS,
@@ -75,6 +75,7 @@ _REVIEW_FALLBACK_STATUSES = frozenset(
         HTTPStatus.GATEWAY_TIMEOUT,
     }
 )
+_REVIEW_FALLBACK_STATUSES = _TRANSIENT_MODEL_STATUSES | {HTTPStatus.FORBIDDEN}
 _MAX_REVIEW_BATCH_CHARACTERS = 8_000
 _MAX_REVIEW_BATCH_PAIRS = 12
 _MAX_CONCURRENT_MODEL_BATCHES = 2
@@ -384,7 +385,7 @@ class VertexGeminiPatchGenerator(PatchGenerator):
             delay = max(self._writer_next_start - loop.time(), 0.0)
             if isinstance(last_error, TimeoutError) or (
                 isinstance(last_error, genai_errors.APIError)
-                and last_error.code in _REVIEW_FALLBACK_STATUSES
+                and last_error.code in _TRANSIENT_MODEL_STATUSES
             ):
                 backoff = _INITIAL_WRITER_START_INTERVAL.total_seconds() * 2 ** (attempt - 2)
                 delay = max(delay, backoff + _writer_jitter_seconds())

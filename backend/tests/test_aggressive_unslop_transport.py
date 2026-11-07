@@ -913,8 +913,8 @@ async def test_real_sdk_review_gateway_timeout_uses_the_configured_fallback(
 
 @pytest.mark.parametrize(
     "status",
-    [HTTPStatus.TOO_MANY_REQUESTS, HTTPStatus.GATEWAY_TIMEOUT],
-    ids=["rate-limit", "gateway-timeout"],
+    [HTTPStatus.FORBIDDEN, HTTPStatus.TOO_MANY_REQUESTS, HTTPStatus.GATEWAY_TIMEOUT],
+    ids=["model-forbidden", "rate-limit", "gateway-timeout"],
 )
 @pytest.mark.parametrize(
     ("primary", "reviewer"),
@@ -2635,7 +2635,13 @@ def _empty_writer_response() -> httpx.Response:
 
 @pytest.mark.parametrize(
     "status",
-    [HTTPStatus.TOO_MANY_REQUESTS, HTTPStatus.GATEWAY_TIMEOUT, HTTPStatus.BAD_REQUEST, None],
+    [
+        HTTPStatus.TOO_MANY_REQUESTS,
+        HTTPStatus.GATEWAY_TIMEOUT,
+        HTTPStatus.BAD_REQUEST,
+        HTTPStatus.FORBIDDEN,
+        None,
+    ],
 )
 async def test_writer_backoff_only_follows_transient_errors_without_extra_attempts(
     sdk_client_factory: Callable[[httpx.AsyncClient], genai.Client],
