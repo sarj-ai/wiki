@@ -420,10 +420,17 @@ resource "google_certificate_manager_certificate_map_entry" "backend" {
   certificates = [google_certificate_manager_certificate.backend.id]
 }
 
+resource "google_compute_ssl_policy" "backend" {
+  name            = "${var.project_id}-backend-modern"
+  profile         = "MODERN"
+  min_tls_version = "TLS_1_2"
+}
+
 resource "google_compute_target_https_proxy" "backend" {
   name            = "sarj-docs-backend-https-proxy"
   url_map         = google_compute_url_map.backend.id
   certificate_map = "//certificatemanager.googleapis.com/${google_certificate_manager_certificate_map.backend.id}"
+  ssl_policy      = google_compute_ssl_policy.backend.id
 }
 
 resource "google_compute_global_forwarding_rule" "backend_https" {
