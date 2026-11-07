@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import asyncio
-from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager, nullcontext
 from dataclasses import dataclass
 from datetime import timedelta
 import hashlib
@@ -15,9 +15,12 @@ from google.genai import types
 from google.oauth2.credentials import Credentials
 from googleapiclient.http import HttpMock, HttpRequest
 import httpx
+from loguru import logger
 from pydantic import BaseModel, ConfigDict, Field, RootModel
 import pytest
 
+from app.document_settings import DocumentSettings
+from app.document_transform import dependencies as transform_dependencies
 from app.document_transform.errors import ModelUnavailableError
 from app.document_transform.ir import BlockKind, DocumentIR, TextBlock, parse_markdown
 from app.document_transform.models import GeminiModelPolicy, VertexGeminiPatchGenerator
@@ -2853,3 +2856,212 @@ async def test_sdk_repair_uses_the_configured_editor_while_format_and_review_use
         for _model, config in received
     ] == [initial_level, repair_level, types.ThinkingLevel.HIGH, types.ThinkingLevel.HIGH]
     assert all(config.max_output_tokens == 16_384 for _model, config in received)
+
+
+@pytest.fixture
+def document_settings() -> DocumentSettings:
+    return DocumentSettings()
+
+
+@pytest.fixture
+def normal_model_policy(document_settings: DocumentSettings) -> GeminiModelPolicy:
+    return transform_dependencies.document_model_policy(
+        project="offline-fixture", document=document_settings
+    )
+
+
+def test_normal_factory_policy_requires_a_project(document_settings: DocumentSettings) -> None:
+    with pytest.raises(
+        RuntimeError, match="GOOGLE_CLOUD_PROJECT is required for Document Transform"
+    ):
+        transform_dependencies.document_model_policy(project=None, document=document_settings)
+
+
+async def test_normal_factory_policy_extends_only_the_review_sdk_deadline(
+    sdk_client_factory: Callable[[httpx.AsyncClient], genai.Client],
+    deadline_document: _DeadlineDocument,
+    normal_model_policy: GeminiModelPolicy,
+) -> None:
+    timeouts: list[str | None] = []
+    configurations: list[types.GenerateContentConfig] = []
+
+    def respond(request: httpx.Request) -> httpx.Response:
+        timeouts.append(request.headers.get("X-Server-Timeout"))
+        configurations.append(_VendorRequest.model_validate_json(request.content).generation_config)
+        seconds = (90, 120, 90)[len(timeouts) - 1]
+        assert request.extensions["timeout"] == dict.fromkeys(
+            ("connect", "read", "write", "pool"), seconds
+        )
+        return _deadline_response(request)
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(respond)) as http:
+        client = sdk_client_factory(http)
+
+        generator = VertexGeminiPatchGenerator(policy=normal_model_policy, client=client)
+        try:
+            assert await generator.generate(
+                deadline_document.document, phase=TransformPhase.UNSLOP
+            ) == [deadline_document.patch]
+            decision = await generator.review(deadline_document.document, [deadline_document.patch])
+            assert decision.approved == {deadline_document.patch.block_id}
+            assert not decision.rejected
+            assert (
+                await generator.generate(deadline_document.document, phase=TransformPhase.FORMAT)
+                == []
+            )
+        finally:
+            await client.aio.aclose()
+    assert timeouts == ["90", "120", "90"]
+    assert configurations[1].thinking_config is not None
+    assert configurations[1].thinking_config.thinking_level == types.ThinkingLevel.HIGH
+    assert all(config.max_output_tokens == 16_384 for config in configurations)
+
+
+@dataclass(frozen=True, slots=True)
+class _ReviewDeadlineCase:
+    timeout: int
+    review_timeout: int | None
+    budget: int | None
+    elapsed: int
+    expected: int | None
+
+
+@pytest.mark.parametrize(
+    "case",
+    [
+        pytest.param(_ReviewDeadlineCase(30, None, None, 0, 30), id="custom-short-timeout"),
+        pytest.param(
+            _ReviewDeadlineCase(90, None, None, 0, 90), id="custom-policy-default-unchanged"
+        ),
+        pytest.param(
+            _ReviewDeadlineCase(90, 120, None, 0, 120), id="review-only-no-shared-deadline"
+        ),
+        pytest.param(
+            _ReviewDeadlineCase(90, 120, 240, 100, 110), id="review-clipped-to-shared-budget"
+        ),
+        pytest.param(_ReviewDeadlineCase(90, 120, 45, 1, None), id="review-below-minimum-no-rpc"),
+    ],
+)
+async def test_review_sdk_deadline_preserves_custom_limits_and_remaining_budget(
+    sdk_client_factory: Callable[[httpx.AsyncClient], genai.Client],
+    deadline_document: _DeadlineDocument,
+    model_budget_clock: _ModelBudgetClock,
+    case: _ReviewDeadlineCase,
+) -> None:
+    timeouts: list[str | None] = []
+
+    def respond(request: httpx.Request) -> httpx.Response:
+        timeouts.append(request.headers.get("X-Server-Timeout"))
+        assert request.extensions["timeout"] == dict.fromkeys(
+            ("connect", "read", "write", "pool"), case.expected
+        )
+        return _deadline_response(request)
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(respond)) as http:
+        client = sdk_client_factory(http)
+        generator = VertexGeminiPatchGenerator(
+            policy=GeminiModelPolicy(
+                project="offline-fixture",
+                location="global",
+                unslop_model="gemini-3.8-flash",
+                fallback_model="gemini-4-argon",
+                restyle_model="gemini-3.8-flash",
+                timeout=timedelta(seconds=case.timeout),
+                review_timeout=None
+                if case.review_timeout is None
+                else timedelta(seconds=case.review_timeout),
+            ),
+            client=client,
+        )
+        try:
+            with (
+                nullcontext()
+                if case.budget is None
+                else provider_retry_budget(
+                    timedelta(seconds=case.budget), clock=model_budget_clock.read
+                )
+            ):
+                model_budget_clock.advance(case.elapsed)
+                if case.expected is None:
+                    with pytest.raises(ModelUnavailableError):
+                        await generator.review(
+                            deadline_document.document, [deadline_document.patch]
+                        )
+                else:
+                    decision = await generator.review(
+                        deadline_document.document, [deadline_document.patch]
+                    )
+                    assert decision.approved == {deadline_document.patch.block_id}
+                    assert not decision.rejected
+        finally:
+            await client.aio.aclose()
+    assert timeouts == ([] if case.expected is None else [str(case.expected)])
+    assert model_budget_clock.now == case.elapsed
+    assert provider_retry_remaining_seconds() is None
+
+
+async def test_sdk_invalid_review_logs_bounded_response_metadata_without_accepting_payload(
+    sdk_client_factory: Callable[[httpx.AsyncClient], genai.Client],
+    deadline_document: _DeadlineDocument,
+) -> None:
+    captured: list[str] = []
+    requests: list[httpx.Request] = []
+
+    def respond(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        config = _VendorRequest.model_validate_json(request.content).generation_config
+        assert config.thinking_config is not None
+        assert config.thinking_config.thinking_level == types.ThinkingLevel.HIGH
+        assert config.max_output_tokens == 16_384
+        return httpx.Response(
+            HTTPStatus.OK,
+            json={
+                "candidates": [
+                    {
+                        "content": {"role": "model", "parts": [{"text": '{"reviews":["PRIVATE'}]},
+                        "finishReason": "MAX_TOKENS",
+                        "finishMessage": "PRIVATE REASON",
+                    }
+                ],
+                "usageMetadata": {
+                    "promptTokenCount": 123,
+                    "candidatesTokenCount": 456,
+                    "thoughtsTokenCount": 789,
+                    "totalTokenCount": 1368,
+                },
+                "responseId": "PRIVATE RESPONSE ID",
+                "modelVersion": "PRIVATE MODEL VERSION",
+            },
+        )
+
+    sink = logger.add(captured.append, serialize=True)
+    try:
+        async with _deadline_generator(sdk_client_factory, respond) as generator:
+            with pytest.raises(ModelUnavailableError):
+                await generator.review(deadline_document.document, [deadline_document.patch])
+    finally:
+        logger.remove(sink)
+    records = [json.loads(line)["record"] for line in captured]
+    metadata = [
+        record["extra"]
+        for record in records
+        if record["message"].startswith("document model response payload invalid")
+    ]
+    failures = [
+        record["extra"]
+        for record in records
+        if record["message"].startswith("document model attempt failed")
+    ]
+    assert len(requests) == len(metadata) == len(failures) == 3
+    assert all(item["model_finish_reason"] == "MAX_TOKENS" for item in metadata)
+    assert all(item["model_prompt_token_count"] == 123 for item in metadata)
+    assert all(item["model_candidate_token_count"] == 456 for item in metadata)
+    assert all(item["model_thought_token_count"] == 789 for item in metadata)
+    assert all(item["model_total_token_count"] == 1368 for item in metadata)
+    assert all(item["model_payload_category"] == "schema" for item in failures)
+    assert all(
+        item["model_validation_issues"] == [{"error_type": "json_invalid", "location": []}]
+        for item in failures
+    )
+    assert "PRIVATE" not in "".join(captured)
+    assert deadline_document.document.blocks[0].sha256 == deadline_document.patch.expected_sha256

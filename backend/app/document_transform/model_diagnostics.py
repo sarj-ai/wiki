@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import asdict, dataclass
 from typing import Literal
 
-from google.genai import errors as genai_errors
+from google.genai import errors as genai_errors, types as genai_types
 from loguru import logger
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
@@ -28,6 +28,31 @@ _HTTP_STATUS_MIN = 100
 _HTTP_STATUS_MAX = 599
 _MAX_VALIDATION_ISSUES = 5
 _MAX_VALIDATION_LOCATION_PARTS = 4
+_MAX_MODEL_TOKEN_COUNT = 1_000_000
+_SAFE_FINISH_REASONS = frozenset(
+    {
+        "FINISH_REASON_UNSPECIFIED",
+        "STOP",
+        "MAX_TOKENS",
+        "SAFETY",
+        "RECITATION",
+        "LANGUAGE",
+        "OTHER",
+        "BLOCKLIST",
+        "PROHIBITED_CONTENT",
+        "SPII",
+        "MALFORMED_FUNCTION_CALL",
+        "IMAGE_SAFETY",
+        "UNEXPECTED_TOOL_CALL",
+        "TOO_MANY_TOOL_CALLS",
+        "IMAGE_PROHIBITED_CONTENT",
+        "NO_IMAGE",
+        "IMAGE_RECITATION",
+        "IMAGE_OTHER",
+        "CONTINUATION",
+        "MALFORMED_RESPONSE",
+    }
+)
 _SAFE_VALIDATION_FIELDS = frozenset(
     {
         "patches",
@@ -186,4 +211,37 @@ def log_model_failure(
         model_error_kind=failure.kind,
         model_http_status=failure.http_status,
         model_error_reason=failure.reason,
+    )
+
+
+def log_model_response_failure(
+    *, model: str, response: genai_types.GenerateContentResponse
+) -> None:
+    finish_reason = response.candidates[0].finish_reason if response.candidates else None
+    metadata: dict[str, str | int] = {
+        "model_finish_reason": (
+            finish_reason
+            if isinstance(finish_reason, str) and finish_reason in _SAFE_FINISH_REASONS
+            else "unknown"
+        )
+    }
+    usage = response.usage_metadata
+    if usage is not None:
+        metadata.update(
+            {
+                field: value
+                for field, value in (
+                    ("model_prompt_token_count", usage.prompt_token_count),
+                    ("model_candidate_token_count", usage.candidates_token_count),
+                    ("model_thought_token_count", usage.thoughts_token_count),
+                    ("model_total_token_count", usage.total_token_count),
+                )
+                if type(value) is int and 0 <= value <= _MAX_MODEL_TOKEN_COUNT
+            }
+        )
+    logger.warning(
+        "document model response payload invalid operation=review",
+        model_operation="review",
+        model_id=model,
+        **metadata,
     )
