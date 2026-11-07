@@ -214,7 +214,12 @@ async def _yield_writer_sleep(_delay: float) -> None:
 async def test_aggressive_generation_uses_structured_output_and_supported_thinking() -> None:
     document = parse_markdown(SOURCE, title="Bird")
     block = document.blocks[0]
-    patch = TextPatch(block_id=block.id, expected_sha256=block.sha256, replacement=REPLACEMENT)
+    patch = TextPatch(
+        block_id=block.id,
+        expected_sha256=block.sha256,
+        replacement=REPLACEMENT,
+        rationale="x" * 240,
+    )
     harness = _generator(types.GenerateContentResponse(parsed=PatchEnvelope(patches=[patch])))
     assert await harness.generator.generate(document, phase=TransformPhase.UNSLOP) == [patch]
     config = harness.call.configurations[0]
@@ -226,6 +231,7 @@ async def test_aggressive_generation_uses_structured_output_and_supported_thinki
     assert config.thinking_config is not None
     assert config.thinking_config.thinking_level is types.ThinkingLevel.LOW
     assert SOURCE in harness.call.prompts[0]
+    assert "Each rationale must be at most 240 characters." in harness.call.prompts[0]
     assert isinstance(config.system_instruction, str)
     assert "60% fewer words" in config.system_instruction
     assert (

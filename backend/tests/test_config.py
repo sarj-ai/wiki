@@ -89,8 +89,8 @@ def test_baseline_parses_with_typed_defaults(monkeypatch: pytest.MonkeyPatch) ->
     assert s.RELEASE_SHA == "dev"
     assert timedelta(minutes=10) == s.SIDEBAR_CACHE_TTL
     assert s.DOCUMENT.TRANSFORM_UNSLOP_MODEL == "gemini-3.8-flash"
-    assert s.DOCUMENT.TRANSFORM_RESTYLE_MODEL == "gemini-3.1-pro-preview"
-    assert s.DOCUMENT.TRANSFORM_FALLBACK_MODEL == "gemini-3.1-pro-preview"
+    assert s.DOCUMENT.TRANSFORM_RESTYLE_MODEL == "gemini-4-argon"
+    assert s.DOCUMENT.TRANSFORM_FALLBACK_MODEL == "gemini-4-argon"
 
 
 def test_document_models_load_from_existing_environment_names(
@@ -126,7 +126,7 @@ def test_document_environment_retains_unknown_setting_compatibility(
         DOCUMENT_UNRELATED="ignored",
     )
     assert configured.DOCUMENT.TRANSFORM_UNSLOP_MODEL == "gemini-3.8-flash"
-    assert configured.DOCUMENT.TRANSFORM_RESTYLE_MODEL == "gemini-3.1-pro-preview"
+    assert configured.DOCUMENT.TRANSFORM_RESTYLE_MODEL == "gemini-4-argon"
 
 
 def test_document_settings_preserve_parent_source_precedence(

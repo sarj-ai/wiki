@@ -711,8 +711,9 @@ def test_workflow_uses_main_only_existing_wif_and_no_input_shell_interpolation()
         ModelId("gemini-3.7-flash"),
         ModelId("gemini-3.1-pro-preview"),
         ModelId("gemini-3.1-flash-lite"),
+        ModelId("gemini-4-argon"),
     ],
-    ids=["flash-38", "flash-37", "pro-31-preview", "lite-31"],
+    ids=["flash-38", "flash-37", "pro-31-preview", "lite-31", "argon-4"],
 )
 @pytest.mark.parametrize("category", ["none", "unknown", "empty", "coverage", "binding", "schema"])
 def test_model_identity_and_payload_category_keep_known_values(

@@ -63,6 +63,7 @@ MODEL_IDS = frozenset(
         "gemini-3.1-pro-preview",
         "gemini-3.7-flash",
         "gemini-3.8-flash",
+        "gemini-4-argon",
     }
 )
 MODEL_VALIDATION_FIELDS = frozenset(
