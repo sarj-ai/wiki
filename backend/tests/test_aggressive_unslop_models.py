@@ -224,7 +224,7 @@ async def test_aggressive_generation_uses_structured_output_and_supported_thinki
     assert config.response_json_schema["additionalProperties"] is False
     assert "patches" in config.response_json_schema["properties"]
     assert config.thinking_config is not None
-    assert config.thinking_config.thinking_level is types.ThinkingLevel.MEDIUM
+    assert config.thinking_config.thinking_level is types.ThinkingLevel.LOW
     assert SOURCE in harness.call.prompts[0]
     assert isinstance(config.system_instruction, str)
     assert "60% fewer words" in config.system_instruction

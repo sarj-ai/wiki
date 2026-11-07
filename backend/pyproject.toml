@@ -1,28 +1,28 @@
 [project]
 dependencies = [
   "fastapi>=0.162.0",
-  "fastmcp==4.1.3",
+  "fastmcp==4.1.6",
   "mcp>=2.3.0",
   "uvicorn[standard]>=0.54.0",
-  "sqlalchemy[asyncio]>=2.1.6",
+  "sqlalchemy[asyncio]>=2.1.8",
   "asyncpg>=0.32.0",
   "alembic>=1.20.1",
   "cryptography>=50.0.2",
   "httpx>=0.28.1",
   "google-api-python-client>=2.201.0",
-  "google-api-core>=2.43.0",
-  "google-auth>=2.62.0",
+  "google-api-core>=2.44.0",
+  "google-auth>=2.62.1",
   "google-auth-httplib2>=0.4.4",
-  "google-genai>=2.33.0",
+  "google-genai>=3.0.0",
   "google-cloud-tasks>=2.26.0",
-  "httplib2>=0.32.0",
-  "pydantic-settings>=2.16.1",
+  "httplib2>=0.32.1",
+  "pydantic-settings>=2.16.2",
   "pyjwt>=2.15.1",
   "loguru>=0.7.3",
-  "tenacity>=9.1.4,<9.2",  # google-genai 2.33.0 requires the 9.1 compatibility line.
+  "tenacity>=9.1.4,<9.2",  # google-genai 3.0.0 requires the 9.1 compatibility line.
   "cloud-sql-python-connector[asyncpg]>=1.23.0",
-  "pydantic[email]>=2.14.1",
-  "pydantic-core>=2.50.1",
+  "pydantic[email]>=2.14.3",
+  "pydantic-core>=2.50.4",
   "starlette>=1.10.0",
   "py-key-value-aio>=0.4.6",
   "python-docx>=1.2.0",
@@ -38,22 +38,22 @@ version = "0.1.0"
 
 [dependency-groups]
 dev = [
-    "ruff>=0.17.2",
-    "mypy>=2.4.0",
-    "pytest>=9.1.1",
-    "pytest-asyncio>=1.4.0",
+    "ruff>=0.17.4",
+    "mypy>=2.4.1",
+    "pytest>=9.2.0",
+    "pytest-asyncio>=1.4.1.post1",
     "pytest-cov>=7.1.0",
-    "types-requests>=2.33.0.20261006",
-    "types-httplib2>=0.32.0.20260720",
+    "types-requests>=2.33.0.20261030",
+    "types-httplib2>=0.32.1.20261029",
     "vulture>=2.16",
     "basedpyright>=1.40.2",
-    "ty>=0.0.91",
+    "ty>=0.0.99",
     "google-api-python-client-stubs>=1.40.0",
     "types-defusedxml>=0.7.0.20260504",
-    "sarj-iac-lint==0.33.2",
-    "sarj-python-lint==1.111.1",
-    "sarj-sql-lint==0.44.2",
-    "import-linter>=2.15",
+    "sarj-iac-lint==0.36.0",
+    "sarj-python-lint==1.116.8",
+    "sarj-sql-lint==0.45.0",
+    "import-linter>=2.16",
     "pip-audit>=2.10.1",
     "deptry>=0.25.1",
 ]
@@ -80,7 +80,7 @@ packages = ["app"]
 
 [build-system]
 build-backend = "hatchling.build"
-requires = ["hatchling"]
+requires = ["hatchling==1.33.0"]
 
 [tool.ruff]
 extend = ".ruff-strict.toml"
@@ -160,7 +160,7 @@ target-version = "py314"
 [tool.ruff.lint.isort]
 combine-as-imports = true
 force-sort-within-sections = true
-known-first-party = ["app"]
+known-first-party = ["app", "scripts"]
 lines-after-imports = 2
 
 [tool.importlinter]

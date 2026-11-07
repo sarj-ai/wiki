@@ -1,7 +1,7 @@
 #!/usr/bin/env -S uv run --script
 # /// script
-# requires-python = "==3.14.8"
-# dependencies = ["typer==0.27.3"]
+# requires-python = "==3.15.2"
+# dependencies = ["typer==0.28.0"]
 # ///
 """Set up, verify and maintain Sarj Wiki using its native tools."""
 
@@ -21,7 +21,7 @@ import typer
 
 ROOT = Path(__file__).resolve().parents[1]
 # Audit the latest repository engine independently of the immutable Standards bundle.
-REPOSITORY_STANDARDS_VERSION = "6.18.0"
+REPOSITORY_STANDARDS_VERSION = "6.20.0"
 REPOSITORY_TESTS = (
     "test_release_gate.py",
     "test_wiki_cli.py",
@@ -344,7 +344,7 @@ def protection_command(
                     "run",
                     "--no-project",
                     "--with",
-                    "typer==0.27.3",
+                    "typer==0.28.0",
                     "--python",
                     "3.14",
                     "python",
