@@ -115,6 +115,7 @@ _NAMED_PURPOSE = re.compile(
     r"(?:(?:is|was)[ \t]+(?:intended|designed)[ \t]+)?to[ \t]+[a-z][a-z'-]*\b"
 )
 _STRUCTURED_RESPONSE_TOKEN_LIMIT = 16_384
+_SEMANTIC_REVIEW_RESPONSE_TOKEN_LIMIT = 32_768
 _DRAFT_WORD_NUMERATOR = 4
 _DRAFT_WORD_DENOMINATOR = 5
 _ReviewContextId = NewType("_ReviewContextId", str)
@@ -586,7 +587,7 @@ class VertexGeminiPatchGenerator(PatchGenerator):
                     system_instruction=UNSLOP_REVIEW_INSTRUCTION,
                     response_mime_type="application/json",
                     response_json_schema=_response_json_schema(PatchReviewEnvelope),
-                    max_output_tokens=_STRUCTURED_RESPONSE_TOKEN_LIMIT,
+                    max_output_tokens=_SEMANTIC_REVIEW_RESPONSE_TOKEN_LIMIT,
                     thinking_config=None
                     if (
                         model == self._policy.fallback_model

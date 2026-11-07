@@ -1739,7 +1739,6 @@ async def test_sdk_initial_fallback_and_flash_repair_keep_independent_review_hig
         config = _VendorRequest.model_validate_json(request.content).generation_config
         received.append((model, config))
         assert request.headers.get("X-Server-Timeout") == "90"
-        assert config.max_output_tokens == 16_384
         if len(received) == 1 or (repair_fault and len(received) == 3):
             return httpx.Response(HTTPStatus.GATEWAY_TIMEOUT, json={"error": {"code": 504}})
         prompt = _WireReviewRequest.model_validate_json(request.content).contents[0].parts[0].text
@@ -1837,6 +1836,13 @@ async def test_sdk_initial_fallback_and_flash_repair_keep_independent_review_hig
             else []
         ),
         types.ThinkingLevel.HIGH,
+    ]
+    assert [config.max_output_tokens for _model, config in received] == [
+        16_384,
+        16_384,
+        16_384,
+        *([16_384] if repair_fault else []),
+        32_768,
     ]
 
 
@@ -2490,11 +2496,12 @@ async def test_no_operation_deadline_keeps_native_timeout_and_format_protocol(
     deadline_document: _DeadlineDocument,
 ) -> None:
     timeouts: list[str | None] = []
+    token_limits: list[int | None] = []
 
     def respond(request: httpx.Request) -> httpx.Response:
         timeouts.append(request.headers.get("X-Server-Timeout"))
         config = _VendorRequest.model_validate_json(request.content).generation_config
-        assert config.max_output_tokens == 16_384
+        token_limits.append(config.max_output_tokens)
         return _deadline_response(request)
 
     async with _deadline_generator(sdk_client_factory, respond) as generator:
@@ -2508,6 +2515,7 @@ async def test_no_operation_deadline_keeps_native_timeout_and_format_protocol(
     assert result.approved == {deadline_document.patch.block_id}
     assert not result.rejected
     assert timeouts == ["90", "90", "90"]
+    assert token_limits == [16_384, 16_384, 32_768]
 
 
 async def test_shared_provider_clock_follows_nested_budgets_and_threads(
@@ -2855,7 +2863,12 @@ async def test_sdk_repair_uses_the_configured_editor_while_format_and_review_use
         config.thinking_config.thinking_level if config.thinking_config else None
         for _model, config in received
     ] == [initial_level, repair_level, types.ThinkingLevel.HIGH, types.ThinkingLevel.HIGH]
-    assert all(config.max_output_tokens == 16_384 for _model, config in received)
+    assert [config.max_output_tokens for _model, config in received] == [
+        16_384,
+        16_384,
+        32_768,
+        16_384,
+    ]
 
 
 @pytest.fixture
@@ -2914,7 +2927,7 @@ async def test_normal_factory_policy_extends_only_the_review_sdk_deadline(
     assert timeouts == ["90", "120", "90"]
     assert configurations[1].thinking_config is not None
     assert configurations[1].thinking_config.thinking_level == types.ThinkingLevel.HIGH
-    assert all(config.max_output_tokens == 16_384 for config in configurations)
+    assert [config.max_output_tokens for config in configurations] == [16_384, 32_768, 16_384]
 
 
 @dataclass(frozen=True, slots=True)
@@ -3012,7 +3025,7 @@ async def test_sdk_invalid_review_logs_bounded_response_metadata_without_accepti
         config = _VendorRequest.model_validate_json(request.content).generation_config
         assert config.thinking_config is not None
         assert config.thinking_config.thinking_level == types.ThinkingLevel.HIGH
-        assert config.max_output_tokens == 16_384
+        assert config.max_output_tokens == 32_768
         return httpx.Response(
             HTTPStatus.OK,
             json={
