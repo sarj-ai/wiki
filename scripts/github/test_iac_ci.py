@@ -335,7 +335,7 @@ def test_direct_root_lint_ci_attests_native_tools_before_analysis(
         step for step in steps if step.get("name") == "Install and attest applicable native tools"
     )
     gate = next(step for step in steps if step.get("name") == gate_name)
-    assert "--with code-standards==9.4.5" in bootstrap["run"]
+    assert "--with code-standards==9.6.2" in bootstrap["run"]
     assert bootstrap["run"].endswith("python -m sarj_standards.libs.adoption.native_bootstrap")
     assert setup["run"].endswith("code-standards setup --tools-only")
     assert steps.index(bootstrap) < steps.index(setup) < steps.index(gate)
