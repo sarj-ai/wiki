@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "merge_base": "586a842d613a8dcba327f1edc3bb30a09537d5c6",
+  "merge_base": "36304cd43515a555dd77ccca9c4601a4c5cb67ba",
   "from_bundle": "8.208.5",
   "to_bundle": "9.2.3",
   "reason": "Initial native engine adoption: ten independently reproduced findings on immutable base application source. Existing iframe sandbox and MIME hint behavior is historical debt; lifetime variables, cancellation authorities and BroadcastChannel expose shared rule limitations. Current reviewed source hashes permit only this exact migration; normal future changed-line and count ceilings remain active.",
