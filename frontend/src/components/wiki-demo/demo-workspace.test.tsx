@@ -78,6 +78,7 @@ describe("public read-only Wiki demo", () => {
       ),
     ).toBeNull();
     expect(screen.queryByRole("textbox")).toBeNull();
+    expect(screen.queryByRole("heading", { name: "Search Drive" })).toBeNull();
     expect(screen.queryByRole("form")).toBeNull();
     expect(HTTP).not.toHaveBeenCalled();
     expect(COOKIE_WRITE).not.toHaveBeenCalled();
@@ -216,6 +217,88 @@ describe("public read-only Wiki demo", () => {
     expect(screen.queryByRole("dialog")).toBeNull();
     expect(HTTP).not.toHaveBeenCalled();
   });
+
+  it("closes search with Enter without opening its highlighted result", async () => {
+    await mount();
+    fireEvent.click(screen.getByRole("button", { name: "Open search" }));
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    const close = screen.getByRole("button", { name: "Close search" });
+    fireEvent.keyDown(close, { key: "Enter" });
+    expect(ROUTING.push).not.toHaveBeenCalled();
+    fireEvent.click(close);
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(ROUTING.push).not.toHaveBeenCalled();
+  });
+
+  it.each([{ ctrlKey: true }, { metaKey: true }])(
+    "toggles search closed from its input with the same shortcut: %j",
+    async (modifier) => {
+      await mount();
+      fireEvent.keyDown(window, { key: "k", ...modifier });
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(0);
+      });
+      const input = screen.getByRole("combobox", { name: "Search Drive" });
+      fireEvent.keyDown(input, { key: "k", ...modifier });
+      expect(screen.queryByRole("dialog")).toBeNull();
+      expect(ROUTING.push).not.toHaveBeenCalled();
+    },
+  );
+
+  it("announces an empty search through a persistent live region", async () => {
+    await mount();
+    fireEvent.click(screen.getByRole("button", { name: "Open search" }));
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    const dialog = screen.getByRole("dialog", { name: "Search Drive" });
+    const announcement = within(dialog).getByRole("status");
+    expect(announcement).toBeEmptyDOMElement();
+    fireEvent.change(within(dialog).getByRole("combobox"), {
+      target: { value: "no-file-matches-this-query-9327" },
+    });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    expect(within(dialog).getByRole("status")).toBe(announcement);
+    expect(announcement).toHaveTextContent("No files found");
+    expect(announcement).toHaveAttribute("aria-live", "polite");
+  });
+
+  it("preserves keyboard focus on the toolbar when retrying a slow preview", async () => {
+    await mount();
+    const oldFrame = screen.getByTitle(/read-only preview/);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(10_000);
+    });
+    const retry = screen.getByRole("button", { name: "Try again" });
+    retry.focus();
+    fireEvent.click(retry);
+    expect(
+      screen.getByRole("button", { name: "Reload preview" }),
+    ).toHaveFocus();
+    expect(screen.getByTitle(/read-only preview/)).not.toBe(oldFrame);
+    expect(HTTP).not.toHaveBeenCalled();
+  });
+
+  it.each([{ altKey: true }, { shiftKey: true }])(
+    "preserves modified keyboard shortcuts: %j",
+    async (modifier) => {
+      await mount();
+      const event = new KeyboardEvent("keydown", {
+        cancelable: true,
+        ctrlKey: true,
+        key: "k",
+        ...modifier,
+      });
+      fireEvent(window, event);
+      expect(event.defaultPrevented).toBe(false);
+      expect(screen.queryByRole("dialog")).toBeNull();
+      expect(ROUTING.push).not.toHaveBeenCalled();
+    },
+  );
 
   it.each([
     { handled: false, label: "held", repeat: true },

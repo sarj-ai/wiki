@@ -7,6 +7,7 @@ import hashlib
 import json
 import math
 from operator import itemgetter
+import re
 from typing import Any, NamedTuple
 
 from pydantic import JsonValue
@@ -62,6 +63,11 @@ _CANVAS_ASPECT_REL_TOLERANCE = 1e-5
 _MIN_NARRATIVE_TEXT_SIZE_PT = 12
 _MIN_NARRATIVE_TEXT_CHARS = 80
 _NARRATIVE_PLACEHOLDER_TYPES = frozenset({"BODY", "OBJECT"})
+_MAX_METRIC_TEXT_CHARS = 24
+_NUMERIC_METRIC_PATTERN = re.compile(
+    r"[~≈]?(?:[0-9]{1,3}(?:,[0-9]{3})+|[0-9]+)(?:\.[0-9]+)?"
+    r"(?: ?(?:ns|[µμu]s|ms|s|[kMGT]?B(?:/s)?))?"
+)
 _ASCII_CONTROL_LIMIT = 0x20
 _BMP_PRIVATE_USE_START = 0xE000
 _BMP_PRIVATE_USE_END = 0xF8FF
@@ -100,6 +106,7 @@ class _StyleTarget:
     object_id: SlideObjectId
     placeholder_type: str | None
     runs: tuple[_StyleRun, ...]
+    metric_size_pt: float | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -430,6 +437,7 @@ def _text_style_requests(
         style, fields = _desired_style(
             placeholder_type=target.placeholder_type,
             font_weight=target.runs[0].font_weight,
+            metric_size_pt=target.metric_size_pt,
         )
         requests.append(
             {
@@ -452,6 +460,7 @@ def _desired_style(
     *,
     placeholder_type: str | None,
     font_weight: int = 400,
+    metric_size_pt: float | None = None,
 ) -> _DesiredTextStyle:
     manifest = CURRENT_BRAND_MANIFEST
     slides = manifest.slides
@@ -459,11 +468,13 @@ def _desired_style(
     title = placeholder_type in {"TITLE", "CENTERED_TITLE"}
     subtitle = placeholder_type == "SUBTITLE"
     caption = placeholder_type in {"DATE_AND_TIME", "FOOTER", "HEADER", "SLIDE_NUMBER"}
-    size = (
+    size: float = (
         slides.deck_title_size_pt if placeholder_type == "CENTERED_TITLE" else slides.title_size_pt
     )
     if not title:
         size = slides.caption_size_pt if caption else slides.body_size_pt
+    if metric_size_pt is not None:
+        size = metric_size_pt
     color = colors.primary_dark if title else colors.muted if subtitle or caption else colors.ink
     style: dict[str, Any] = {
         "weightedFontFamily": {
@@ -573,9 +584,37 @@ def _style_target(
             object_id=object_id,
             placeholder_type=eligibility.placeholder_type,
             runs=(run,),
+            metric_size_pt=_numeric_metric_size(
+                plain_text,
+                placeholder_type=eligibility.placeholder_type,
+                inherited_styles=inherited_styles,
+            ),
         ),
         None,
     )
+
+
+def _numeric_metric_size(
+    plain_text: PlainSlideText,
+    *,
+    placeholder_type: str,
+    inherited_styles: tuple[dict[str, JsonValue], ...],
+) -> float | None:
+    text = plain_text.text.strip()
+    if (
+        placeholder_type not in _NARRATIVE_PLACEHOLDER_TYPES
+        or len(text) > _MAX_METRIC_TEXT_CHARS
+        or _NUMERIC_METRIC_PATTERN.fullmatch(text) is None
+        or not isinstance(plain_text.style, dict)
+    ):
+        return None
+    # Use the original resolved dimension, not the rounded brand fingerprint size.
+    style = _effective_text_style(
+        {str(key): value for key, value in plain_text.style.items()},
+        inherited_styles=inherited_styles,
+    )
+    size = _dimension_points(style.get("fontSize"))
+    return size if size is not None and size > CURRENT_BRAND_MANIFEST.slides.body_size_pt else None
 
 
 def _style_eligibility(
@@ -747,11 +786,7 @@ def _target_style_run(
             start_index=plain_text.start_index,
             end_index=plain_text.end_index,
             preserved_style_json=_canonical_json(
-                {
-                    key: explicit_style[key]
-                    for key in _PRESERVED_TEXT_STYLE_FIELDS
-                    if key in explicit_style
-                }
+                {key: style[key] for key in _PRESERVED_TEXT_STYLE_FIELDS if key in style}
             ),
             brand_style_json=_canonical_json(observed_brand),
             font_weight=weight,
@@ -1837,6 +1872,7 @@ def _expected_style(target: _StyleTarget) -> dict[str, Any]:
     desired, _ = _desired_style(
         placeholder_type=target.placeholder_type,
         font_weight=target.runs[0].font_weight,
+        metric_size_pt=target.metric_size_pt,
     )
     branded = _canonical_style(desired)
     return _canonical_style_target(target, brand_style_json=_canonical_json(branded))

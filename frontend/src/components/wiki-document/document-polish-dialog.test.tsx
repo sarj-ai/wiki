@@ -7,7 +7,10 @@ import * as wikiActions from "@/app/actions/wiki-actions";
 import { ApiError } from "@/lib/api-error";
 import { BrowserUserContext } from "@/lib/browser-user-context";
 import { DOCUMENT_TRANSFORM_API } from "@/lib/document-transform-api";
-import { writeTransformRecovery } from "@/lib/document-transform-recovery";
+import {
+  readTransformRecovery,
+  writeTransformRecovery,
+} from "@/lib/document-transform-recovery";
 import {
   DocumentTransformNeedsReviewError,
   type DocumentTransformResult,
@@ -220,6 +223,295 @@ describe("DocumentPolishDialog", () => {
     expect(document.body).toHaveTextContent("choose Short link");
     clickButton(findButtonNow("Open polished document"));
     expect(NavigationMock.push).toHaveBeenCalledWith("/d/output-1");
+  });
+
+  it.each(["button", "Escape"] as const)(
+    "closes an accepted task with %s and resumes the same task without another POST",
+    async (dismissal) => {
+      const pending = {
+        id: "55555555-5555-4555-8555-555555555555",
+        status: "pending",
+      } as const;
+      const firstCompletion = deferred<DocumentTransformResult>();
+      const resumedCompletion = deferred<DocumentTransformResult>();
+      const create = vi
+        .spyOn(DOCUMENT_TRANSFORM_API, "create")
+        .mockResolvedValue(pending);
+      const getTask = vi
+        .spyOn(DOCUMENT_TRANSFORM_API, "getTask")
+        .mockResolvedValue(pending);
+      const wait = vi
+        .spyOn(DOCUMENT_TRANSFORM_API, "waitForCompletion")
+        .mockReturnValueOnce(firstCompletion.promise)
+        .mockReturnValue(resumedCompletion.promise);
+      const onOpenChange = vi.fn();
+      const info = vi.spyOn(toast, "info");
+      const { rerender } = renderDialog(
+        root,
+        {
+          allowInPlace: false,
+          expectedModifiedTime: "revision",
+          fileId: "source-1",
+          kind: "drive_file",
+          mimeType: MIME_DOC,
+          name: "Architecture review",
+        },
+        undefined,
+        "owner-1",
+        onOpenChange,
+      );
+      await vi.waitFor(() =>
+        expect(findButtonNow("Create polished copy")).toBeEnabled(),
+      );
+      clickButton(findButtonNow("Create polished copy"));
+      await vi.waitFor(() => expect(findButtonNow("Close")).toBeEnabled());
+      const key = create.mock.calls[0]?.[2];
+      expect(
+        document.querySelector('[data-slot="dialog-footer"]'),
+      ).toHaveTextContent("Close");
+
+      if (dismissal === "button") clickButton(findButtonNow("Close"));
+      else pressEscape();
+
+      expect(onOpenChange).toHaveBeenCalledExactlyOnceWith(false);
+      expect(wait.mock.calls[0]?.[1]?.aborted).toBe(true);
+      expect(readTransformRecovery("owner-1", "drive:source-1")).toMatchObject({
+        key,
+        taskId: pending.id,
+      });
+      expect(info).toHaveBeenCalledWith("Check progress by reopening Polish.");
+      rerender(false);
+      rerender(true);
+      await vi.waitFor(() =>
+        expect(findButtonNow("Resume checking")).toBeEnabled(),
+      );
+      clickButton(findButtonNow("Resume checking"));
+      await vi.waitFor(() => expect(wait).toHaveBeenCalledTimes(2));
+      expect(getTask).toHaveBeenCalledExactlyOnceWith(
+        pending.id,
+        expect.any(AbortSignal),
+      );
+      expect(create).toHaveBeenCalledOnce();
+      expect(readTransformRecovery("owner-1", "drive:source-1")?.key).toBe(key);
+
+      resumedCompletion.resolve(transformResult());
+      await vi.waitFor(() =>
+        expect(document.body).toHaveTextContent("Polish complete"),
+      );
+      firstCompletion.resolve(
+        transformResult({ outputFileId: "discarded-output" }),
+      );
+      await vi.waitFor(() =>
+        expect(wait.mock.settledResults[0]?.type).toBe("fulfilled"),
+      );
+      expect(create).toHaveBeenCalledOnce();
+    },
+  );
+
+  it.each(["metadata", "submission"] as const)(
+    "keeps dismissal locked while %s is unacknowledged",
+    async (pendingStage) => {
+      const pending = {
+        id: "55555555-5555-4555-8555-555555555555",
+        status: "pending",
+      } as const;
+      const metadata = deferred<string>();
+      const admission =
+        deferred<Awaited<ReturnType<typeof DOCUMENT_TRANSFORM_API.create>>>();
+      const completion = deferred<DocumentTransformResult>();
+      const create = vi
+        .spyOn(DOCUMENT_TRANSFORM_API, "create")
+        .mockReturnValue(admission.promise);
+      vi.spyOn(DOCUMENT_TRANSFORM_API, "waitForCompletion").mockReturnValue(
+        completion.promise,
+      );
+      const onOpenChange = vi.fn();
+      renderDialog(
+        root,
+        {
+          allowInPlace: false,
+          expectedModifiedTime: "revision",
+          fileId: "source-1",
+          kind: "drive_file",
+          mimeType: MIME_DOC,
+          name: "Architecture review",
+          refreshExpectedModifiedTime: async () =>
+            pendingStage === "metadata" ? await metadata.promise : "revision",
+        },
+        undefined,
+        "owner-1",
+        onOpenChange,
+      );
+      await vi.waitFor(() =>
+        expect(findButtonNow("Create polished copy")).toBeEnabled(),
+      );
+      clickButton(findButtonNow("Create polished copy"));
+      await vi.waitFor(() =>
+        expect(create).toHaveBeenCalledTimes(
+          pendingStage === "submission" ? 1 : 0,
+        ),
+      );
+      expect(findButtonNow("Close")).toBeDisabled();
+      expect(document.querySelector('[data-slot="dialog-close"]')).toBeNull();
+      clickButton(findButtonNow("Close"));
+      pressEscape();
+      expect(onOpenChange).not.toHaveBeenCalled();
+
+      metadata.resolve("revision");
+      admission.resolve(pending);
+      await vi.waitFor(() => expect(findButtonNow("Close")).toBeEnabled());
+      clickButton(findButtonNow("Close"));
+      expect(onOpenChange).toHaveBeenCalledExactlyOnceWith(false);
+      completion.resolve(transformResult());
+    },
+  );
+
+  it("keeps dismissal locked until the accepted task is durably recorded", async () => {
+    const pending = {
+      id: "55555555-5555-4555-8555-555555555555",
+      status: "pending",
+    } as const;
+    const recording = deferred<undefined>();
+    const completion = deferred<DocumentTransformResult>();
+    const create = vi
+      .spyOn(DOCUMENT_TRANSFORM_API, "create")
+      .mockResolvedValue(pending);
+    const wait = vi
+      .spyOn(DOCUMENT_TRANSFORM_API, "waitForCompletion")
+      .mockReturnValue(completion.promise);
+    Object.defineProperty(navigator, "locks", {
+      configurable: true,
+      value: {
+        request: async (_name: string, callback: () => unknown) => {
+          if (create.mock.calls.length > 0) await recording.promise;
+          return callback();
+        },
+      },
+    });
+    const onOpenChange = vi.fn();
+    renderDialog(
+      root,
+      {
+        allowInPlace: false,
+        expectedModifiedTime: "revision",
+        fileId: "source-1",
+        kind: "drive_file",
+        mimeType: MIME_DOC,
+        name: "Architecture review",
+      },
+      undefined,
+      "owner-1",
+      onOpenChange,
+    );
+    await vi.waitFor(() =>
+      expect(findButtonNow("Create polished copy")).toBeEnabled(),
+    );
+    clickButton(findButtonNow("Create polished copy"));
+    await vi.waitFor(() =>
+      expect(document.body).toHaveTextContent(`Task: ${pending.id}`),
+    );
+    expect(
+      readTransformRecovery("owner-1", "drive:source-1")?.taskId,
+    ).toBeNull();
+    expect(wait).not.toHaveBeenCalled();
+    expect(findButtonNow("Close")).toBeDisabled();
+    pressEscape();
+    expect(onOpenChange).not.toHaveBeenCalled();
+
+    recording.resolve(undefined);
+    await vi.waitFor(() => expect(findButtonNow("Close")).toBeEnabled());
+    expect(readTransformRecovery("owner-1", "drive:source-1")?.taskId).toBe(
+      pending.id,
+    );
+    clickButton(findButtonNow("Close"));
+    expect(onOpenChange).toHaveBeenCalledExactlyOnceWith(false);
+    completion.resolve(transformResult());
+  });
+
+  it("ignores a discarded poll completion while closed", async () => {
+    const {
+      create,
+      current,
+      discarded,
+      key,
+      pending,
+      rerender,
+      success,
+      wait,
+    } = await startClosedPolish(root);
+
+    discarded.resolve(transformResult({ outputFileId: "discarded-output" }));
+    await vi.waitFor(() =>
+      expect(wait.mock.settledResults[0]?.type).toBe("fulfilled"),
+    );
+    rerender(false);
+    expect(success).not.toHaveBeenCalled();
+    expect(NavigationMock.push).not.toHaveBeenCalled();
+    expect(readTransformRecovery("owner-1", "drive:source-1")).toMatchObject({
+      key,
+      taskId: pending.id,
+    });
+    expect(document.querySelector('[role="dialog"]')).toBeNull();
+
+    rerender(true);
+    await vi.waitFor(() =>
+      expect(findButtonNow("Resume checking")).toBeEnabled(),
+    );
+    clickButton(findButtonNow("Resume checking"));
+    await vi.waitFor(() => expect(wait).toHaveBeenCalledTimes(2));
+    expect(findButtonNow("Polishing…")).toBeDisabled();
+    expect(document.body).not.toHaveTextContent("Polish complete");
+    current.resolve(transformResult({ outputFileName: "Current result" }));
+    await vi.waitFor(() =>
+      expect(document.body).toHaveTextContent("Polish complete"),
+    );
+    expect(document.body).toHaveTextContent("Current result");
+    expect(success).toHaveBeenCalledExactlyOnceWith(
+      "Resumed the existing polish",
+    );
+    expect(create).toHaveBeenCalledOnce();
+  });
+
+  it("ignores a discarded poll completion after reopening", async () => {
+    const {
+      create,
+      current,
+      discarded,
+      key,
+      pending,
+      rerender,
+      success,
+      wait,
+    } = await startClosedPolish(root);
+    rerender(true);
+    await vi.waitFor(() =>
+      expect(findButtonNow("Resume checking")).toBeEnabled(),
+    );
+    clickButton(findButtonNow("Resume checking"));
+    await vi.waitFor(() => expect(wait).toHaveBeenCalledTimes(2));
+
+    discarded.resolve(transformResult({ outputFileId: "discarded-output" }));
+    await vi.waitFor(() =>
+      expect(wait.mock.settledResults[0]?.type).toBe("fulfilled"),
+    );
+    rerender(true);
+    expect(success).not.toHaveBeenCalled();
+    expect(NavigationMock.push).not.toHaveBeenCalled();
+    expect(readTransformRecovery("owner-1", "drive:source-1")).toMatchObject({
+      key,
+      taskId: pending.id,
+    });
+    expect(findButtonNow("Polishing…")).toBeDisabled();
+    expect(document.body).not.toHaveTextContent("Polish complete");
+    current.resolve(transformResult({ outputFileName: "Current result" }));
+    await vi.waitFor(() =>
+      expect(document.body).toHaveTextContent("Polish complete"),
+    );
+    expect(document.body).toHaveTextContent("Current result");
+    expect(success).toHaveBeenCalledExactlyOnceWith(
+      "Resumed the existing polish",
+    );
+    expect(create).toHaveBeenCalledOnce();
   });
 
   it("completes once and shows verified preservation details without a review alert", async () => {
@@ -2499,6 +2791,7 @@ function renderDialog(
   source: DialogTestSource,
   onInPlaceComplete?: () => void,
   owner: null | string = "owner-1",
+  onOpenChange: (open: boolean) => void = vi.fn(),
 ) {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
@@ -2519,21 +2812,72 @@ function renderDialog(
   } else {
     normalizedSource = source;
   }
+  const rerender = (open: boolean) =>
+    flushSync(() => {
+      root.render(
+        <QueryClientProvider client={queryClient}>
+          <BrowserUserContext value={owner}>
+            <DocumentPolishDialog
+              onOpenChange={onOpenChange}
+              open={open}
+              source={normalizedSource}
+              {...(onInPlaceComplete === undefined
+                ? {}
+                : { onInPlaceComplete })}
+            />
+          </BrowserUserContext>
+        </QueryClientProvider>,
+      );
+    });
+  rerender(true);
+  return { queryClient, rerender };
+}
+
+async function startClosedPolish(root: Root) {
+  const pending = {
+    id: "55555555-5555-4555-8555-555555555555",
+    status: "pending",
+  } as const;
+  const discarded = deferred<DocumentTransformResult>();
+  const current = deferred<DocumentTransformResult>();
+  const create = vi
+    .spyOn(DOCUMENT_TRANSFORM_API, "create")
+    .mockResolvedValue(pending);
+  vi.spyOn(DOCUMENT_TRANSFORM_API, "getTask").mockResolvedValue(pending);
+  const wait = vi
+    .spyOn(DOCUMENT_TRANSFORM_API, "waitForCompletion")
+    .mockReturnValueOnce(discarded.promise)
+    .mockReturnValue(current.promise);
+  const success = vi.spyOn(toast, "success");
+  const { rerender } = renderDialog(root, {
+    allowInPlace: false,
+    expectedModifiedTime: "revision",
+    fileId: "source-1",
+    kind: "drive_file",
+    mimeType: MIME_DOC,
+    name: "Architecture review",
+  });
+  await vi.waitFor(() =>
+    expect(findButtonNow("Create polished copy")).toBeEnabled(),
+  );
+  clickButton(findButtonNow("Create polished copy"));
+  await vi.waitFor(() => expect(findButtonNow("Close")).toBeEnabled());
+  const key = create.mock.calls[0]?.[2];
+  clickButton(findButtonNow("Close"));
+  rerender(false);
+  return { create, current, discarded, key, pending, rerender, success, wait };
+}
+
+function pressEscape() {
   flushSync(() => {
-    root.render(
-      <QueryClientProvider client={queryClient}>
-        <BrowserUserContext value={owner}>
-          <DocumentPolishDialog
-            onOpenChange={vi.fn()}
-            open
-            source={normalizedSource}
-            {...(onInPlaceComplete === undefined ? {} : { onInPlaceComplete })}
-          />
-        </BrowserUserContext>
-      </QueryClientProvider>,
+    document.dispatchEvent(
+      new KeyboardEvent("keydown", {
+        bubbles: true,
+        cancelable: true,
+        key: "Escape",
+      }),
     );
   });
-  return { queryClient };
 }
 
 function clickButton(button: HTMLButtonElement) {

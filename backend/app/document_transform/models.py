@@ -494,12 +494,16 @@ class VertexGeminiPatchGenerator(PatchGenerator):
                     http_options=genai_types.HttpOptions(timeout=int(timeout_seconds * 1000)),
                 ),
             )
-        if isinstance(response.parsed, PatchEnvelope):
-            return response.parsed.patches
-        if response.text:
-            return PatchEnvelope.model_validate_json(response.text).patches
-        msg = "Gemini returned no patch proposal"
-        raise ModelEmptyResponseError(msg)
+        try:
+            if isinstance(response.parsed, PatchEnvelope):
+                return response.parsed.patches
+            if response.text:
+                return PatchEnvelope.model_validate_json(response.text).patches
+            msg = "Gemini returned no patch proposal"
+            raise ModelEmptyResponseError(msg)
+        except ValueError:
+            log_model_response_failure(model=model, response=response, operation=phase)
+            raise
 
     @override
     async def verify(self, document: DocumentIR, patches: list[TextPatch]) -> frozenset[str]:
@@ -530,10 +534,14 @@ class VertexGeminiPatchGenerator(PatchGenerator):
         )
 
     async def _review_all_batches(self, pairs: list[_ReviewPair]) -> tuple[RewriteReview, ...]:
+        # Permission failures are shared only by this invocation's queued batches.
+        denied_models: set[str] = set()
         try:
             async with asyncio.TaskGroup() as group:
                 tasks = [
-                    group.create_task(self._bounded_review_batch(batch, self._model_semaphore))
+                    group.create_task(
+                        self._bounded_review_batch(batch, self._model_semaphore, denied_models)
+                    )
                     for batch in _review_batches(pairs)
                 ]
         except* ModelUnavailableError as error:
@@ -541,12 +549,14 @@ class VertexGeminiPatchGenerator(PatchGenerator):
         return tuple(task.result() for task in tasks)
 
     async def _bounded_review_batch(
-        self, pairs: list[_ReviewPair], semaphore: asyncio.Semaphore
+        self, pairs: list[_ReviewPair], semaphore: asyncio.Semaphore, denied_models: set[str]
     ) -> RewriteReview:
         async with _model_batch_slot(semaphore):
-            return await self._review_batch(pairs)
+            return await self._review_batch(pairs, denied_models)
 
-    async def _review_batch(self, pairs: list[_ReviewPair]) -> RewriteReview:
+    async def _review_batch(
+        self, pairs: list[_ReviewPair], denied_models: set[str]
+    ) -> RewriteReview:
         last_error: Exception | None = None
         model = self._policy.restyle_model
         fallback_model = (
@@ -554,6 +564,8 @@ class VertexGeminiPatchGenerator(PatchGenerator):
             if self._policy.fallback_model == model
             else self._policy.fallback_model
         )
+        if model in denied_models:
+            model = fallback_model
         for attempt in range(1, _MAX_REVIEW_ATTEMPTS + 1):
             try:
                 reviews = await self._review_once(model=model, pairs=pairs)
@@ -561,6 +573,8 @@ class VertexGeminiPatchGenerator(PatchGenerator):
             except (TimeoutError, ValueError, genai_errors.APIError) as exc:
                 log_model_failure(operation="review", attempt=attempt, model=model, error=exc)
                 last_error = exc
+                if isinstance(exc, genai_errors.APIError) and exc.code == HTTPStatus.FORBIDDEN:
+                    denied_models.add(model)
                 if isinstance(exc, TimeoutError) or (
                     isinstance(exc, genai_errors.APIError) and exc.code in _REVIEW_FALLBACK_STATUSES
                 ):

@@ -302,6 +302,7 @@ export function DocumentPolishDialog({
   const sessionIdentityUnavailable = !owner;
   const optionsLocked =
     submitting || unresolved !== null || completedResult !== null;
+  const closeLocked = submitting && stage !== "transforming";
   const saveRecovery = (operation: null | TransformRecovery) => {
     writeTransformRecovery(owner, sourceIdentity, operation);
     queryClient.setQueryData(recoveryKey, operation);
@@ -377,11 +378,14 @@ export function DocumentPolishDialog({
   };
 
   const close = () => {
+    if (closeLocked) return;
     setRetryMessage(null);
     abortRef.current?.abort();
     abortRef.current = null;
     submitLatch.current = false;
     if (unresolved) {
+      if (stage === "transforming")
+        toast.info("Check progress by reopening Polish.");
       setSubmitting(false);
       setStage("idle");
       onOpenChange(false);
@@ -598,6 +602,7 @@ export function DocumentPolishDialog({
     };
     const clearRecovery = async () => {
       await completeTransformRecovery(owner, sourceIdentity, operation.key);
+      if (!isCurrent()) return;
       saveRecovery(null);
     };
     const submitTask = async () => {
@@ -620,7 +625,7 @@ export function DocumentPolishDialog({
           operation.taskId === null
         ) {
           await clearRecovery();
-          resetRequest();
+          if (isCurrent()) resetRequest();
         }
         throw error;
       }
@@ -659,6 +664,7 @@ export function DocumentPolishDialog({
       );
       if (!isCurrent()) return;
       await clearRecovery();
+      if (!isCurrent()) return;
       if (result.shortLinkStatus === "ready" && result.shortLinkAlias) {
         queryClient.setQueryData(["document-alias", result.outputFile.id], {
           alias: result.shortLinkAlias,
@@ -697,6 +703,7 @@ export function DocumentPolishDialog({
       if (error instanceof DocumentTransformNeedsReviewError) {
         if (!isCurrent()) return;
         await completeTransformRecovery(owner, sourceIdentity, operation.key);
+        if (!isCurrent()) return;
         saveRecovery(null);
         setReviewMessage(error.message);
         setTerminalTaskId(knownTaskId);
@@ -720,6 +727,7 @@ export function DocumentPolishDialog({
         if (!isCurrent()) return;
         if (error instanceof DocumentTransformTerminalError) {
           await completeTransformRecovery(owner, sourceIdentity, operation.key);
+          if (!isCurrent()) return;
           saveRecovery(null);
           setTerminalMessage(error.message);
           setTerminalTaskId(knownTaskId);
@@ -760,7 +768,7 @@ export function DocumentPolishDialog({
     <>
       <Dialog
         onOpenChange={(next) => {
-          if (!next && !submitting) close();
+          if (!next) close();
         }}
         open={open}
       >
@@ -768,9 +776,9 @@ export function DocumentPolishDialog({
           aria-busy={submitting}
           className="max-h-[calc(100dvh-1rem)] grid-cols-1 grid-rows-[auto_minmax(0,1fr)_auto] gap-0 overflow-hidden p-0 sm:max-w-xl"
           onEscapeKeyDown={(event) => {
-            if (submitting) event.preventDefault();
+            if (closeLocked) event.preventDefault();
           }}
-          showCloseButton={!submitting}
+          showCloseButton={!closeLocked}
         >
           <div className="border-b px-5 pt-5 pb-4 sm:px-6 sm:pt-6">
             <DialogHeader>
@@ -1407,12 +1415,12 @@ export function DocumentPolishDialog({
           <DialogFooter className="bg-background border-t px-5 py-4 sm:flex sm:px-6">
             <Button
               className="w-full sm:w-auto"
-              disabled={submitting}
+              disabled={closeLocked}
               onClick={close}
               type="button"
               variant="ghost"
             >
-              {completedResult ? "Done" : "Cancel"}
+              {completedResult ? "Done" : submitting ? "Close" : "Cancel"}
             </Button>
             <Button
               className="w-full sm:w-auto"

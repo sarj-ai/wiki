@@ -16,13 +16,14 @@ from google.oauth2.credentials import Credentials
 from googleapiclient.http import HttpMock, HttpRequest
 import httpx
 from loguru import logger
-from pydantic import BaseModel, ConfigDict, Field, RootModel
+from pydantic import BaseModel, ConfigDict, Field, RootModel, ValidationError
 import pytest
 
 from app.document_settings import DocumentSettings
 from app.document_transform import dependencies as transform_dependencies
 from app.document_transform.errors import ModelUnavailableError
 from app.document_transform.ir import BlockKind, DocumentIR, TextBlock, parse_markdown
+from app.document_transform.model_diagnostics import ModelEmptyResponseError
 from app.document_transform.models import GeminiModelPolicy, VertexGeminiPatchGenerator
 from app.document_transform.planner import TextTransformPlanner
 from app.document_transform.safety import validate_patches
@@ -982,6 +983,141 @@ async def test_review_collision_uses_a_sticky_configured_fallback_effort(
         primary,
         primary,
     ]
+
+
+@pytest.mark.parametrize(
+    "fallback",
+    [ModelId("gemini-4-argon"), ModelId("gemini-3.1-flash-lite")],
+    ids=["default-flash-fallback", "custom-fallback-none"],
+)
+async def test_queued_review_batches_share_forbidden_models_only_within_one_invocation(
+    sdk_client_factory: Callable[[httpx.AsyncClient], genai.Client], fallback: ModelId
+) -> None:
+    document = parse_markdown(
+        "\n\n".join(
+            "The hidden bird can sing unseen from dense scrub beside the path." for _ in range(49)
+        ),
+        title="Queued review",
+    )
+    patches = [
+        TextPatch(block_id=block.id, expected_sha256=block.sha256, replacement=block.text)
+        for block in model_editable_blocks(document)
+    ]
+    assert len(patches) == 49
+    models: list[ModelId] = []
+    submitted: list[_WireReview] = []
+    started = asyncio.Event()
+    fallback_model = ModelId("gemini-3.8-flash") if fallback == "gemini-4-argon" else fallback
+
+    async def respond(request: httpx.Request) -> httpx.Response:
+        model = ModelId(request.url.path.rsplit("/", 1)[-1].removesuffix(":generateContent"))
+        models.append(model)
+        config = _VendorRequest.model_validate_json(request.content).generation_config
+        assert config.max_output_tokens == 32_768
+        assert request.headers.get("X-Server-Timeout") == "120"
+        if model == "gemini-4-argon":
+            assert config.thinking_config is not None
+            assert config.thinking_config.thinking_level == types.ThinkingLevel.HIGH
+            if models.count(ModelId("gemini-4-argon")) % 2 == 0:
+                started.set()
+            await started.wait()
+            return httpx.Response(HTTPStatus.FORBIDDEN, json={"error": {"code": 403}})
+        assert model == fallback_model
+        if model == "gemini-3.1-flash-lite":
+            assert config.thinking_config is None
+        else:
+            assert config.thinking_config is not None
+            assert config.thinking_config.thinking_level == types.ThinkingLevel.MEDIUM
+        wire = _WireReview.model_validate_json(
+            _WireReviewRequest.model_validate_json(request.content).contents[0].parts[0].text
+        )
+        submitted.append(wire)
+        return _review_response(_functional_audit_envelope(wire))
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(respond)) as http:
+        client = sdk_client_factory(http)
+        generator = VertexGeminiPatchGenerator(
+            policy=GeminiModelPolicy(
+                project="offline-fixture",
+                location="global",
+                unslop_model="gemini-3.8-flash",
+                fallback_model=fallback,
+                restyle_model="gemini-4-argon",
+                review_timeout=timedelta(seconds=120),
+            ),
+            client=client,
+        )
+        try:
+            for invocation in range(1, 3):
+                started.clear()
+                decision = await generator.review(document, patches)
+                assert decision.approved == {patch.block_id for patch in patches}
+                assert not decision.rejected
+                assert models.count(ModelId("gemini-4-argon")) == invocation * 2
+                assert models.count(fallback_model) == len(submitted)
+                assert len(submitted) > 2
+                assert sorted(
+                    audit.block_id for wire in submitted for audit in wire.sentence_audits
+                ) == sorted([patch.block_id for patch in patches] * invocation)
+                assert all(0 < len(wire.sentence_audits) <= 12 for wire in submitted)
+        finally:
+            await client.aio.aclose()
+
+
+@pytest.mark.parametrize("status", [HTTPStatus.TOO_MANY_REQUESTS, HTTPStatus.GATEWAY_TIMEOUT])
+async def test_queued_review_batches_do_not_share_transient_model_failures(
+    sdk_client_factory: Callable[[httpx.AsyncClient], genai.Client], status: HTTPStatus
+) -> None:
+    document = parse_markdown(
+        "\n\n".join(
+            "The hidden bird can sing unseen from dense scrub beside the path." for _ in range(49)
+        ),
+        title="Transient review",
+    )
+    patches = [
+        TextPatch(block_id=block.id, expected_sha256=block.sha256, replacement=block.text)
+        for block in model_editable_blocks(document)
+    ]
+    assert len(patches) == 49
+    models: list[ModelId] = []
+    submitted: list[_WireReview] = []
+
+    def respond(request: httpx.Request) -> httpx.Response:
+        model = ModelId(request.url.path.rsplit("/", 1)[-1].removesuffix(":generateContent"))
+        models.append(model)
+        if model == "gemini-4-argon":
+            return httpx.Response(status, json={"error": {"code": int(status)}})
+        assert model == "gemini-3.1-flash-lite"
+        wire = _WireReview.model_validate_json(
+            _WireReviewRequest.model_validate_json(request.content).contents[0].parts[0].text
+        )
+        submitted.append(wire)
+        return _review_response(_functional_audit_envelope(wire))
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(respond)) as http:
+        client = sdk_client_factory(http)
+        generator = VertexGeminiPatchGenerator(
+            policy=GeminiModelPolicy(
+                project="offline-fixture",
+                location="global",
+                unslop_model="gemini-3.8-flash",
+                fallback_model="gemini-3.1-flash-lite",
+                restyle_model="gemini-4-argon",
+            ),
+            client=client,
+        )
+        try:
+            decision = await generator.review(document, patches)
+        finally:
+            await client.aio.aclose()
+
+    assert decision.approved == {patch.block_id for patch in patches}
+    assert not decision.rejected
+    assert models.count(ModelId("gemini-4-argon")) == len(submitted) > 2
+    assert models.count(ModelId("gemini-3.1-flash-lite")) == len(submitted)
+    assert sorted(audit.block_id for wire in submitted for audit in wire.sentence_audits) == sorted(
+        patch.block_id for patch in patches
+    )
 
 
 @pytest.mark.parametrize(
@@ -3017,6 +3153,93 @@ async def test_review_sdk_deadline_preserves_custom_limits_and_remaining_budget(
     assert timeouts == ([] if case.expected is None else [str(case.expected)])
     assert model_budget_clock.now == case.elapsed
     assert provider_retry_remaining_seconds() is None
+
+
+@pytest.mark.parametrize("phase", [TransformPhase.UNSLOP, TransformPhase.FORMAT])
+@pytest.mark.parametrize("payload", ["malformed", "empty"])
+async def test_sdk_invalid_writer_logs_only_bounded_metadata_and_preserves_parse_failure(
+    sdk_client_factory: Callable[[httpx.AsyncClient], genai.Client],
+    deadline_document: _DeadlineDocument,
+    phase: TransformPhase,
+    payload: Literal["malformed", "empty"],
+) -> None:
+    captured: list[str] = []
+    requests: list[httpx.Request] = []
+
+    def respond(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        config = _VendorRequest.model_validate_json(request.content).generation_config
+        assert config.max_output_tokens == 16_384
+        assert request.headers.get("X-Server-Timeout") == "90"
+        candidate_text = '{"patches":["PRIVATE' if payload == "malformed" else ""
+        return httpx.Response(
+            HTTPStatus.OK,
+            json={
+                "candidates": [
+                    {
+                        "content": {
+                            "role": "model",
+                            "parts": [{"text": candidate_text}],
+                        },
+                        "finishReason": "MAX_TOKENS",
+                        "finishMessage": "PRIVATE FINISH MESSAGE",
+                    }
+                ],
+                "usageMetadata": {
+                    "promptTokenCount": 123,
+                    "candidatesTokenCount": 456,
+                    "thoughtsTokenCount": 789,
+                    "totalTokenCount": 1368,
+                },
+                "responseId": "PRIVATE RESPONSE ID",
+                "modelVersion": "PRIVATE MODEL VERSION",
+            },
+        )
+
+    sink = logger.add(captured.append, serialize=True)
+    try:
+        async with _deadline_generator(sdk_client_factory, respond) as generator:
+            with pytest.raises(ModelUnavailableError) as failure:
+                await generator.generate(deadline_document.document, phase=phase)
+    finally:
+        logger.remove(sink)
+    cause = failure.value.__cause__
+    if isinstance(cause, BaseExceptionGroup):
+        cause = cause.exceptions[0].__cause__
+    assert isinstance(cause, ValueError)
+    if payload == "empty":
+        assert isinstance(cause, ModelEmptyResponseError)
+        assert str(cause) == "Gemini returned no patch proposal"
+    else:
+        assert isinstance(cause, ValidationError)
+        assert cause.errors()[0]["type"] == "json_invalid"
+    records = [json.loads(line)["record"] for line in captured]
+    metadata = [
+        record["extra"]
+        for record in records
+        if record["message"].startswith("document model response payload invalid")
+    ]
+    assert len(metadata) == len(requests) == (3 if phase is TransformPhase.UNSLOP else 2)
+    assert all(
+        set(item)
+        == {
+            "model_operation",
+            "model_id",
+            "model_finish_reason",
+            "model_prompt_token_count",
+            "model_candidate_token_count",
+            "model_thought_token_count",
+            "model_total_token_count",
+        }
+        for item in metadata
+    )
+    assert all(item["model_operation"] == phase.value for item in metadata)
+    assert all(item["model_finish_reason"] == "MAX_TOKENS" for item in metadata)
+    assert all(item["model_prompt_token_count"] == 123 for item in metadata)
+    assert all(item["model_candidate_token_count"] == 456 for item in metadata)
+    assert all(item["model_thought_token_count"] == 789 for item in metadata)
+    assert all(item["model_total_token_count"] == 1368 for item in metadata)
+    assert "PRIVATE" not in "".join(captured)
 
 
 async def test_sdk_invalid_review_logs_bounded_response_metadata_without_accepting_payload(

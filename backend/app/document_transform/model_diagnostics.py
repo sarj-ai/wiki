@@ -215,7 +215,10 @@ def log_model_failure(
 
 
 def log_model_response_failure(
-    *, model: str, response: genai_types.GenerateContentResponse
+    *,
+    model: str,
+    response: genai_types.GenerateContentResponse,
+    operation: TransformPhase | Literal["review"] = "review",
 ) -> None:
     finish_reason = response.candidates[0].finish_reason if response.candidates else None
     metadata: dict[str, str | int] = {
@@ -240,8 +243,8 @@ def log_model_response_failure(
             }
         )
     logger.warning(
-        "document model response payload invalid operation=review",
-        model_operation="review",
+        "document model response payload invalid operation={model_operation}",
+        model_operation=operation.value if isinstance(operation, TransformPhase) else operation,
         model_id=model,
         **metadata,
     )

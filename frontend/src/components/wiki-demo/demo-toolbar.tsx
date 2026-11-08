@@ -8,7 +8,7 @@ import {
   ExternalLink,
   RefreshCw,
 } from "lucide-react";
-import { useEffect, useState } from "react";
+import { type Ref, useEffect, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { renderMimeIcon } from "@/lib/file-icons";
@@ -19,9 +19,11 @@ import { demoDownloadUrl, demoViewUrl } from "./demo-file-urls";
 export function DemoToolbar({
   file,
   onReload,
+  reloadButtonRef,
 }: {
   file: DemoFile;
   onReload: () => void;
+  reloadButtonRef?: Ref<HTMLButtonElement>;
 }) {
   const downloadUrl = demoDownloadUrl(file);
   const viewUrl = demoViewUrl(file);
@@ -66,6 +68,7 @@ export function DemoToolbar({
         <Button
           aria-label="Reload preview"
           onClick={onReload}
+          ref={reloadButtonRef}
           size="icon-sm"
           title="Reload preview"
           variant="outline"
