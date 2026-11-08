@@ -929,7 +929,7 @@ async def test_real_sdk_review_gateway_timeout_uses_the_configured_fallback(
     ],
     ids=["default-flash", "explicit-pro", "default-argon", "explicit-argon"],
 )
-async def test_review_collision_uses_a_sticky_configured_high_fallback(
+async def test_review_collision_uses_a_sticky_configured_fallback_effort(
     status: HTTPStatus,
     primary: ModelId,
     reviewer: ModelId,
@@ -944,7 +944,11 @@ async def test_review_collision_uses_a_sticky_configured_high_fallback(
         models.append(ModelId(request.url.path.rsplit("/", 1)[-1].removesuffix(":generateContent")))
         config = _VendorRequest.model_validate_json(request.content).generation_config
         assert config.thinking_config is not None
-        assert config.thinking_config.thinking_level == types.ThinkingLevel.HIGH
+        assert config.thinking_config.thinking_level == (
+            types.ThinkingLevel.MEDIUM
+            if models[-1] == "gemini-3.8-flash"
+            else types.ThinkingLevel.HIGH
+        )
         if len(models) < 3:
             return httpx.Response(status, json={"error": {"code": int(status)}})
         contents = _WireReviewRequest.model_validate_json(request.content).contents
@@ -1112,7 +1116,9 @@ async def test_real_sdk_serializes_structured_rewrite_and_review_without_samplin
         requests[0].generation_config.thinking_config.thinking_level == types.ThinkingLevel.MEDIUM
     )
     assert requests[1].generation_config.thinking_config is not None
-    assert requests[1].generation_config.thinking_config.thinking_level == types.ThinkingLevel.HIGH
+    assert (
+        requests[1].generation_config.thinking_config.thinking_level == types.ThinkingLevel.MEDIUM
+    )
 
 
 @pytest.mark.parametrize(
@@ -2195,7 +2201,7 @@ async def test_unslop_fallback_reserves_time_for_independent_review(
         else:
             config = _VendorRequest.model_validate_json(request.content).generation_config
             assert config.thinking_config is not None
-            assert config.thinking_config.thinking_level == types.ThinkingLevel.HIGH
+            assert config.thinking_config.thinking_level == types.ThinkingLevel.MEDIUM
         model_budget_clock.advance(60)
         return _deadline_response(request)
 
@@ -3024,7 +3030,7 @@ async def test_sdk_invalid_review_logs_bounded_response_metadata_without_accepti
         requests.append(request)
         config = _VendorRequest.model_validate_json(request.content).generation_config
         assert config.thinking_config is not None
-        assert config.thinking_config.thinking_level == types.ThinkingLevel.HIGH
+        assert config.thinking_config.thinking_level == types.ThinkingLevel.MEDIUM
         assert config.max_output_tokens == 32_768
         return httpx.Response(
             HTTPStatus.OK,
@@ -3078,3 +3084,148 @@ async def test_sdk_invalid_review_logs_bounded_response_metadata_without_accepti
     )
     assert "PRIVATE" not in "".join(captured)
     assert deadline_document.document.blocks[0].sha256 == deadline_document.patch.expected_sha256
+
+
+@dataclass(frozen=True, slots=True)
+class _ReviewThinkingRoleCase:
+    primary: ModelId
+    fallback: ModelId
+    reviewer: ModelId
+    levels: tuple[types.ThinkingLevel | None, ...]
+
+
+@pytest.mark.parametrize(
+    "case",
+    [
+        pytest.param(
+            _ReviewThinkingRoleCase(
+                ModelId("gemini-3.8-flash"),
+                ModelId("gemini-4-argon"),
+                ModelId("gemini-3.8-flash"),
+                (
+                    types.ThinkingLevel.LOW,
+                    types.ThinkingLevel.HIGH,
+                    types.ThinkingLevel.MEDIUM,
+                    types.ThinkingLevel.MEDIUM,
+                ),
+            ),
+            id="explicit-flash-review",
+        ),
+        pytest.param(
+            _ReviewThinkingRoleCase(
+                ModelId("gemini-3.8-flash"),
+                ModelId("gemini-3.8-flash"),
+                ModelId("gemini-3.8-flash"),
+                (types.ThinkingLevel.LOW, types.ThinkingLevel.HIGH, None, None),
+            ),
+            id="custom-flash-fallback-none",
+        ),
+        pytest.param(
+            _ReviewThinkingRoleCase(
+                ModelId("gemini-3.8-flash"),
+                ModelId("gemini-3.1-flash-lite"),
+                ModelId("gemini-3.1-flash-lite"),
+                (types.ThinkingLevel.LOW, types.ThinkingLevel.HIGH, None, None),
+            ),
+            id="custom-lite-fallback-none",
+        ),
+        *[
+            pytest.param(
+                _ReviewThinkingRoleCase(
+                    model,
+                    model,
+                    model,
+                    (types.ThinkingLevel.HIGH,) * 4,
+                ),
+                id=label,
+            )
+            for model, label in (
+                (ModelId("gemini-3.1-pro-preview"), "legacy-pro-high"),
+                (ModelId("gemini-4-argon"), "argon-high"),
+            )
+        ],
+    ],
+)
+async def test_real_sdk_review_effort_preserves_writer_repair_and_custom_roles(
+    sdk_client_factory: Callable[[httpx.AsyncClient], genai.Client],
+    deadline_document: _DeadlineDocument,
+    case: _ReviewThinkingRoleCase,
+) -> None:
+    received: list[tuple[str, bool, types.GenerateContentConfig]] = []
+
+    def respond(request: httpx.Request) -> httpx.Response:
+        prompt = _WireReviewRequest.model_validate_json(request.content).contents[0].parts[0].text
+        review = prompt.startswith("{")
+        seconds = 120 if review else 90
+        assert request.headers.get("X-Server-Timeout") == str(seconds)
+        assert request.extensions["timeout"] == dict.fromkeys(
+            ("connect", "read", "write", "pool"), seconds
+        )
+        received.append(
+            (
+                request.url.path.rsplit("/", 1)[-1].removesuffix(":generateContent"),
+                review,
+                _VendorRequest.model_validate_json(request.content).generation_config,
+            )
+        )
+        return _deadline_response(request)
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(respond)) as http:
+        client = sdk_client_factory(http)
+        generator = VertexGeminiPatchGenerator(
+            policy=GeminiModelPolicy(
+                project="offline-fixture",
+                location="global",
+                unslop_model=case.primary,
+                fallback_model=case.fallback,
+                restyle_model=case.reviewer,
+                review_timeout=timedelta(seconds=120),
+            ),
+            client=client,
+            writer_sleep=_yield_writer_sleep,
+        )
+        try:
+            assert await generator.generate(
+                deadline_document.document, phase=TransformPhase.UNSLOP
+            ) == [deadline_document.patch]
+            assert await generator.repair(
+                deadline_document.document,
+                [deadline_document.patch],
+                (
+                    TransformFinding(
+                        code="semantic_review_rejected",
+                        block_id=deadline_document.patch.block_id,
+                        detail="Retain the exact source action, condition, and factual meaning.",
+                    ),
+                ),
+            ) == [deadline_document.patch]
+            decision = await generator.review(deadline_document.document, [deadline_document.patch])
+            assert decision.approved == {deadline_document.patch.block_id}
+            assert not decision.rejected
+            assert (
+                await generator.generate(deadline_document.document, phase=TransformPhase.FORMAT)
+                == []
+            )
+        finally:
+            await client.aio.aclose()
+
+    assert [model for model, _review, _config in received] == [
+        case.primary,
+        case.primary,
+        case.reviewer,
+        case.reviewer,
+    ]
+    assert [review for _model, review, _config in received] == [False, False, True, False]
+    assert (
+        tuple(
+            config.thinking_config.thinking_level if config.thinking_config else None
+            for _model, _review, config in received
+        )
+        == case.levels
+    )
+    assert [config.max_output_tokens for _model, _review, config in received] == [
+        16_384,
+        16_384,
+        32_768,
+        16_384,
+    ]
