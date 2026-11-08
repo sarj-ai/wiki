@@ -444,22 +444,35 @@ def _text_style_requests(
     targets, findings = _style_targets(presentation)
     requests = []
     for target in targets:
-        style, fields = _desired_style(
+        style, _ = _desired_style(
             placeholder_type=target.placeholder_type,
             font_weight=target.runs[0].font_weight,
             metric_size_pt=target.metric_size_pt,
         )
+        observed = json.loads(target.runs[0].brand_style_json)
+        desired = _canonical_style(style)
+        fields = [
+            field
+            for field, properties in (
+                ("weightedFontFamily", ("fontFamily", "fontWeight")),
+                ("fontSize", ("fontSizePt",)),
+                ("foregroundColor", ("color",)),
+            )
+            if any(observed[key] != desired[key] for key in properties)
+        ]
+        if not fields:
+            continue
         requests.append(
             {
                 "updateTextStyle": {
                     "objectId": target.object_id,
-                    "style": style,
+                    "style": {field: style[field] for field in fields},
                     "textRange": {
                         "type": "FIXED_RANGE",
                         "startIndex": target.runs[0].start_index,
                         "endIndex": target.runs[0].end_index,
                     },
-                    "fields": fields,
+                    "fields": ",".join(fields),
                 }
             }
         )

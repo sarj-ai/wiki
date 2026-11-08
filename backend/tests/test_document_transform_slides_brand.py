@@ -660,16 +660,16 @@ def test_inherited_placeholder_template_does_not_block_logo_placement() -> None:
 
 def test_caption_placeholder_uses_caption_size_and_muted_color() -> None:
     presentation = _presentation()
-    presentation["slides"][0]["pageElements"].append(
-        _text_shape(
-            "footer-1",
-            "Confidential",
-            placeholder_type="FOOTER",
-            left=24,
-            top=360,
-            width=200,
-        )
+    caption = _text_shape(
+        "footer-1",
+        "Confidential",
+        placeholder_type="FOOTER",
+        left=24,
+        top=360,
+        width=200,
     )
+    caption["shape"]["text"]["textElements"][1]["textRun"]["style"]["fontSize"]["magnitude"] = 20
+    presentation["slides"][0]["pageElements"].append(caption)
     parsed = parse_google_presentation(presentation, title="Review")
 
     plan = _format_plan(presentation, parsed=parsed)
@@ -901,6 +901,105 @@ def test_native_slide_number_inherits_only_existing_ancestor_text(parent_text: s
         assert "slide_text_style_inherited_unresolved" in {
             finding.code for finding in plan.findings
         }
+
+
+@pytest.mark.parametrize("missing_font_readback", [False, True])
+def test_native_caption_color_update_retains_explicit_fonts_and_all_targets(
+    missing_font_readback: bool,
+) -> None:
+    presentation = _presentation()
+    presentation["slides"] = []
+    presentation["layouts"] = []
+    master = _text_shape("p8_i8", "", placeholder_type="SLIDE_NUMBER", left=600, top=340, width=90)
+    master["shape"].pop("text")
+    presentation["masters"] = [{"objectId": "p8", "masterProperties": {}, "pageElements": [master]}]
+    for number in range(1, 8):
+        caption = _text_shape(
+            f"p{number}_i8",
+            f"{number:02} / 07",
+            placeholder_type="SLIDE_NUMBER",
+            left=600,
+            top=340,
+            width=90,
+        )
+        caption["shape"]["placeholder"]["parentObjectId"] = f"p{number + 8}_i8"
+        caption["shape"]["text"]["textElements"][1]["textRun"]["style"] = {
+            "bold": False,
+            "fontFamily": "Nunito",
+            "weightedFontFamily": {"fontFamily": "Nunito", "weight": 400},
+            "fontSize": {"magnitude": 12, "unit": "PT"},
+            "foregroundColor": {
+                "opaqueColor": {
+                    "rgbColor": {"red": 0.4392157, "green": 0.40392157, "blue": 0.47843137}
+                }
+            },
+        }
+        layout = deepcopy(master)
+        layout["objectId"] = f"p{number + 8}_i8"
+        layout["shape"]["placeholder"]["parentObjectId"] = "p8_i8"
+        presentation["layouts"].append(
+            {
+                "objectId": f"p{number + 8}",
+                "layoutProperties": {"masterObjectId": "p8"},
+                "pageElements": [layout],
+            }
+        )
+        presentation["slides"].append(
+            {
+                "objectId": f"p{number}",
+                "slideProperties": {"layoutObjectId": f"p{number + 8}"},
+                "pageElements": [caption],
+            }
+        )
+    for index in range(93):
+        presentation["slides"][index % 7]["pageElements"].append(
+            _text_shape(
+                f"body-{index}",
+                "Concise note",
+                placeholder_type="BODY",
+                left=24,
+                top=140,
+                width=500,
+            )
+        )
+    parsed = parse_google_presentation(presentation, title="Review")
+    plan = _format_plan(presentation, parsed=parsed)
+    updates = {
+        request["updateTextStyle"]["objectId"]: request["updateTextStyle"]
+        for request in plan.requests
+        if "updateTextStyle" in request
+    }
+    assert plan.findings == ()
+    assert len(updates) == 100
+    for number in range(1, 8):
+        update = updates[f"p{number}_i8"]
+        assert update["fields"] == "foregroundColor"
+        assert set(update["style"]) == {"foregroundColor"}
+
+    branded = deepcopy(presentation)
+    _apply_brand_requests(branded, plan.requests)
+    if missing_font_readback:
+        for slide in branded["slides"]:
+            style = slide["pageElements"][0]["shape"]["text"]["textElements"][1]["textRun"]["style"]
+            slide["pageElements"][0]["shape"]["text"]["textElements"][1]["textRun"]["style"] = {
+                "foregroundColor": deepcopy(style["foregroundColor"])
+            }
+    observed = presentation_fingerprint(branded, "Review")
+    readback = _format_plan(branded, parsed=parse_google_presentation(branded, title="Review"))
+    if missing_font_readback:
+        assert observed.brand_sha256 != plan.expected_brand_sha256
+        assert {
+            finding.block_id
+            for finding in readback.findings
+            if finding.code == "slide_text_style_inherited_unresolved"
+        } == {f"p{number}_i8" for number in range(1, 8)}
+    else:
+        assert observed.brand_sha256 == plan.expected_brand_sha256
+        assert observed.semantic_sha256 == parsed.document.semantic_sha256
+        assert observed.protected_structure_sha256 == parsed.protected_sha256
+        assert readback.findings == ()
+        assert readback.requests == []
+        assert readback.expected_brand_sha256 == plan.expected_brand_sha256
 
 
 def test_autofit_text_is_preserved_for_review() -> None:
@@ -1403,9 +1502,15 @@ def test_font_weight_is_preserved_and_verified() -> None:
         if request.get("updateTextStyle", {}).get("objectId") == "title-1"
     )
 
-    assert update["style"]["weightedFontFamily"]["weight"] == 700
+    assert "weightedFontFamily" not in update["style"]
     branded = deepcopy(presentation)
     _apply_brand_requests(branded, plan.requests)
+    assert (
+        branded["slides"][0]["pageElements"][0]["shape"]["text"]["textElements"][1]["textRun"][
+            "style"
+        ]["weightedFontFamily"]["weight"]
+        == 700
+    )
     branded["slides"][0]["pageElements"][0]["shape"]["text"]["textElements"][1]["textRun"]["style"][
         "weightedFontFamily"
     ]["weight"] = 400
@@ -1512,10 +1617,23 @@ def test_canonical_provider_placeholder_style_table_resolves_level_zero(
         for request in plan.requests
         if request.get("updateTextStyle", {}).get("objectId") == "title-1"
     )
-    assert update["style"]["weightedFontFamily"]["weight"] == 700
+    assert "weightedFontFamily" not in update["style"]
     assert "slide_text_style_inherited_unresolved" not in {
         finding.code for finding in plan.findings
     }
+    explicit = deepcopy(presentation)
+    explicit["slides"][0]["pageElements"][0]["shape"]["text"]["textElements"][1]["textRun"][
+        "style"
+    ]["weightedFontFamily"] = {
+        "fontFamily": CURRENT_BRAND_MANIFEST.document.font_family,
+        "weight": 700,
+    }
+    assert (
+        _format_plan(
+            explicit, parsed=parse_google_presentation(explicit, title="Review")
+        ).expected_brand_sha256
+        == plan.expected_brand_sha256
+    )
 
 
 def test_split_parent_inheritance_uses_terminal_newline_style() -> None:
@@ -1553,7 +1671,20 @@ def test_split_parent_inheritance_uses_terminal_newline_style() -> None:
         for request in plan.requests
         if request.get("updateTextStyle", {}).get("objectId") == "title-1"
     )
-    assert update["style"]["weightedFontFamily"]["weight"] == 700
+    assert "weightedFontFamily" not in update["style"]
+    explicit = deepcopy(presentation)
+    explicit["slides"][0]["pageElements"][0]["shape"]["text"]["textElements"][1]["textRun"][
+        "style"
+    ]["weightedFontFamily"] = {
+        "fontFamily": CURRENT_BRAND_MANIFEST.document.font_family,
+        "weight": 700,
+    }
+    assert (
+        _format_plan(
+            explicit, parsed=parse_google_presentation(explicit, title="Review")
+        ).expected_brand_sha256
+        == plan.expected_brand_sha256
+    )
 
 
 @pytest.mark.parametrize(
@@ -2124,13 +2255,20 @@ def test_short_numeric_metric_keeps_source_size_and_verified_brand(
         if request.get("updateTextStyle", {}).get("objectId") == "body-1"
     )
     assert presentation == original
-    assert update["style"]["fontSize"] == {"magnitude": size, "unit": "PT"}
-    assert (
-        update["style"]["weightedFontFamily"]["fontFamily"]
-        == CURRENT_BRAND_MANIFEST.document.font_family
-    )
+    assert "fontSize" not in update["style"]
+    assert "weightedFontFamily" not in update["style"]
     assert plan.findings == ()
     _apply_brand_requests(presentation, plan.requests)
+    assert element["shape"]["text"]["textElements"][1]["textRun"]["style"]["fontSize"] == {
+        "magnitude": size,
+        "unit": "PT",
+    }
+    assert (
+        element["shape"]["text"]["textElements"][1]["textRun"]["style"]["weightedFontFamily"][
+            "fontFamily"
+        ]
+        == CURRENT_BRAND_MANIFEST.document.font_family
+    )
     actual = parse_google_presentation(presentation, title="Review")
     assert actual.document.semantic_sha256 == parsed.document.semantic_sha256
     assert actual.protected_sha256 == parsed.protected_sha256

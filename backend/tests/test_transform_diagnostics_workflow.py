@@ -55,6 +55,72 @@ def test_only_static_typed_fields_are_emitted() -> None:
     assert "message" not in rows[0]
 
 
+def test_presentation_verification_keeps_boolean_outcomes_without_private_payloads() -> None:
+    record = _record()
+    record["jsonPayload"]["record"]["message"] = "presentation output verification failed"
+    record["jsonPayload"]["record"]["extra"] = {
+        "task_id": TASK,
+        "request_id": REQUEST,
+        "content_preserved": True,
+        "structure_preserved": True,
+        "brand_applied": False,
+        "expected_semantic_sha256": "a" * 64,
+        "observed_semantic_sha256": "a" * 64,
+        "expected_structure_sha256": "b" * 64,
+        "observed_structure_sha256": "b" * 64,
+        "expected_brand_sha256": "c" * 64,
+        "observed_brand_sha256": "d" * 64,
+        "presentation": {"slides": [{"text": "SECRET"}]},
+        "raw_style": {"fontFamily": "SECRET"},
+        "unallowlisted_field": "SECRET",
+    }
+
+    rows = MODULE["sanitize"]([record], TASK)
+
+    assert rows == [
+        {
+            "timestamp": "2026-09-05T00:12:10.927000+00:00",
+            "task_id": TASK,
+            "request_id": REQUEST,
+            "content_preserved": True,
+            "structure_preserved": True,
+            "brand_applied": False,
+        }
+    ]
+    assert rows[0]["content_preserved"] is True
+    assert rows[0]["structure_preserved"] is True
+    assert rows[0]["brand_applied"] is False
+
+
+@pytest.mark.parametrize("field", ["content_preserved", "structure_preserved", "brand_applied"])
+def test_presentation_verification_rejects_nonboolean_outcomes(field: str) -> None:
+    record = _record()
+    record["jsonPayload"]["record"]["message"] = "presentation output verification failed"
+    record["jsonPayload"]["record"]["extra"][field] = 1
+
+    with pytest.raises(ValueError, match=r"^$"):
+        MODULE["sanitize"]([record], TASK)
+
+
+def test_presentation_verification_rejects_other_tasks_even_with_a_correlated_request() -> None:
+    record = _record()
+    record["jsonPayload"]["record"]["message"] = "presentation output verification failed"
+    record["jsonPayload"]["record"]["extra"]["task_id"] = "00000000-0000-0000-0000-000000000000"
+
+    with pytest.raises(ValueError, match=r"^$"):
+        MODULE["sanitize"]([record], TASK, frozenset({REQUEST}))
+
+
+def test_unallowlisted_presentation_messages_are_not_diagnostic_sources() -> None:
+    record = _record()
+    record["jsonPayload"]["record"]["message"] = "presentation output verification pending"
+    record["jsonPayload"]["record"]["extra"].update(
+        {"content_preserved": True, "structure_preserved": True, "brand_applied": False}
+    )
+
+    assert MODULE["sanitize"]([record], TASK) == []
+
+
 @pytest.mark.parametrize("invalid", [False, True])
 def test_header_recovery_diagnostics_are_finite_and_private(*, invalid: bool) -> None:
     record = _record()

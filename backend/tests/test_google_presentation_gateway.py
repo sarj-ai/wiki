@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
+from copy import deepcopy
 import hashlib
 from http import HTTPStatus
 from io import BytesIO
@@ -16,6 +17,7 @@ import pytest
 from app.document_transform.errors import (
     DocumentGatewayError,
     IncompatiblePendingOutputError,
+    OutputVerificationError,
     SourceChangedError,
     SourceTooLargeError,
     UnsupportedSourceError,
@@ -964,6 +966,46 @@ async def test_pending_commit_is_reconciled_after_mutation_property_update_is_lo
     assert reconciled.applied_mutation_sha256 == "mutation-hash"
     assert reconciled.revision_id == "revision-after"
     assert len(state.batch_calls) == 1
+
+
+async def test_successful_batch_brand_mismatch_is_terminal_and_preserves_source() -> None:
+    state = _GoogleState()
+    original = deepcopy((state.metadata["source"], state.presentations["source"]))
+    gateway = _gateway(state)
+    operation_id = uuid.uuid7()
+    source = await gateway.load_source(_source_request())
+    draft = await gateway.create_copy(
+        operation_id=operation_id,
+        source=source,
+        source_sha256="source-hash",
+        output_name="Review — Sarj",
+    )
+
+    with pytest.raises(OutputVerificationError) as failure:
+        await _apply_standard_mutation(gateway, draft, expected_brand_sha256="different-brand")
+
+    assert failure.value.code == "output_verification_failed"
+    assert not isinstance(failure.value, DocumentGatewayError)
+    assert state.presentations["output"]["revisionId"] == "revision-after"
+    assert state.presentations["output"]["semantic"] == "semantic-after"
+    assert state.presentations["output"]["protected"] == "protected-after"
+    assert state.presentations["output"]["brand"] == "brand-after"
+    properties = state.metadata["output"]["appProperties"]
+    assert properties["sarjTransformState"] == "incomplete"
+    assert properties["sarjTransformPendingMutation"] == "mutation-hash"
+    assert "sarjTransformMutation" not in properties
+
+    recovered = await gateway.recover_output(
+        operation_id,
+        expected_parent_folder_id=FileId("folder"),
+    )
+    assert recovered is not None
+    with pytest.raises(SourceChangedError):
+        await gateway.reconcile_pending(recovered)
+
+    assert len(state.batch_calls) == 1
+    assert len(state.copy_calls) == 1
+    assert (state.metadata["source"], state.presentations["source"]) == original
 
 
 async def test_pending_mismatch_with_changed_revision_is_not_retried() -> None:
