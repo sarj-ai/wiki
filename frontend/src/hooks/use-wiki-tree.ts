@@ -1,6 +1,11 @@
 "use client";
 
-import { type InfiniteData, queryOptions, useInfiniteQuery, useQuery } from "@tanstack/react-query";
+import {
+  type InfiniteData,
+  queryOptions,
+  useInfiniteQuery,
+  useQuery,
+} from "@tanstack/react-query";
 
 import { wikiKeys } from "@/lib/wiki-keys";
 import { WIKI_READ_API } from "@/lib/wiki-read-api";
@@ -30,10 +35,14 @@ export function useDriveTree(driveId: null | string, enabled = true) {
   return useQuery(driveTreeQueryOptions(driveId, enabled));
 }
 
-export function driveTreeQueryOptions(driveId: null | string, enabled: boolean) {
+export function driveTreeQueryOptions(
+  driveId: null | string,
+  enabled: boolean,
+) {
   return queryOptions<DriveTree>({
     enabled: enabled && !!driveId,
-    queryFn: async ({ signal }) => await WIKI_READ_API.getDriveFolders(driveId ?? "", signal),
+    queryFn: async ({ signal }) =>
+      await WIKI_READ_API.getDriveFolders(driveId ?? "", signal),
     queryKey: wikiKeys.driveTree(driveId ?? "disabled"),
     staleTime: TREE_STALE_MS,
   });
@@ -80,7 +89,8 @@ export function useFolderFiles(folderId: null | string, enabled: boolean) {
 
 export function folderFilesQueryOptions(folderId: string) {
   return queryOptions<DriveNode[]>({
-    queryFn: async ({ signal }) => await WIKI_READ_API.getFolderFiles(folderId, signal),
+    queryFn: async ({ signal }) =>
+      await WIKI_READ_API.getFolderFiles(folderId, signal),
     queryKey: wikiKeys.folderFiles(folderId),
     staleTime: TREE_STALE_MS,
   });

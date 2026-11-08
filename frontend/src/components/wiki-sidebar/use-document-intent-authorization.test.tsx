@@ -13,7 +13,9 @@ import { useDocViewerStore } from "../wiki-document/doc-viewer-store";
 import { FilePageClient } from "../wiki-document/file-page-client";
 import { useDocumentIntent } from "./use-document-intent";
 
-vi.mock("next/navigation", () => ({ useRouter: () => ({ prefetch: vi.fn() }) }));
+vi.mock("next/navigation", () => ({
+  useRouter: () => ({ prefetch: vi.fn() }),
+}));
 vi.mock("@/lib/wiki-read-api", () => ({ WIKI_READ_API: { getFile: vi.fn() } }));
 vi.mock("@/lib/file-urls", () => ({ embedUrlFor: () => "about:blank" }));
 vi.mock("@/components/wiki-document/wiki-toolbar", () => ({ WikiToolbar }));
@@ -56,7 +58,9 @@ describe("document intent authorization outcome", () => {
     useDocViewerStore.getState().reset();
     vi.spyOn(document, "visibilityState", "get").mockReturnValue("visible");
     client = new QueryClient({
-      defaultOptions: { queries: { gcTime: Infinity, retry: false, staleTime: 60_000 } },
+      defaultOptions: {
+        queries: { gcTime: Infinity, retry: false, staleTime: 60_000 },
+      },
     });
     host = document.createElement("div");
     document.body.append(host);
@@ -89,34 +93,51 @@ describe("document intent authorization outcome", () => {
   it.each([401, 403, 404, 503])(
     "does not turn a fresh %i into prewarm success using older cache data",
     async (status) => {
-      client.setQueryData(wikiKeys.file(FILE.id), FILE, { updatedAt: Date.now() - 120_000 });
-      vi.mocked(WIKI_READ_API.getFile).mockRejectedValue(new ApiError(status, "Read denied"));
+      client.setQueryData(wikiKeys.file(FILE.id), FILE, {
+        updatedAt: Date.now() - 120_000,
+      });
+      vi.mocked(WIKI_READ_API.getFile).mockRejectedValue(
+        new ApiError(status, "Read denied"),
+      );
       commit();
       await vi.advanceTimersByTimeAsync(0);
       expect(WIKI_READ_API.getFile).toHaveBeenCalledOnce();
       expect(client.getQueryData(wikiKeys.file(FILE.id))).toEqual(FILE);
-      expect(client.getQueryState(wikiKeys.file(FILE.id))?.status).toBe("error");
+      expect(client.getQueryState(wikiKeys.file(FILE.id))?.status).toBe(
+        "error",
+      );
       expect(useDocViewerStore.getState().prewarm).toBeNull();
     },
   );
 
   it("uses metadata returned by the admitted read and allows a later successful retry", async () => {
-    client.setQueryData(wikiKeys.file(FILE.id), FILE, { updatedAt: Date.now() - 120_000 });
-    vi.mocked(WIKI_READ_API.getFile).mockRejectedValueOnce(new ApiError(403, "Read denied"));
+    client.setQueryData(wikiKeys.file(FILE.id), FILE, {
+      updatedAt: Date.now() - 120_000,
+    });
+    vi.mocked(WIKI_READ_API.getFile).mockRejectedValueOnce(
+      new ApiError(403, "Read denied"),
+    );
     commit();
     await vi.advanceTimersByTimeAsync(0);
-    vi.mocked(WIKI_READ_API.getFile).mockResolvedValue({ ...FILE, name: "Current authorized" });
+    vi.mocked(WIKI_READ_API.getFile).mockResolvedValue({
+      ...FILE,
+      name: "Current authorized",
+    });
     commit();
     await vi.advanceTimersByTimeAsync(0);
     expect(WIKI_READ_API.getFile).toHaveBeenCalledTimes(2);
-    expect(useDocViewerStore.getState().prewarm).toMatchObject({ title: "Current authorized" });
+    expect(useDocViewerStore.getState().prewarm).toMatchObject({
+      title: "Current authorized",
+    });
   });
 
   it.each([403, 404])(
     "retries a known %i outcome even when the retained metadata timestamp is recent",
     async (status) => {
       client.setQueryData(wikiKeys.file(FILE.id), FILE);
-      vi.mocked(WIKI_READ_API.getFile).mockRejectedValue(new ApiError(status, "Read denied"));
+      vi.mocked(WIKI_READ_API.getFile).mockRejectedValue(
+        new ApiError(status, "Read denied"),
+      );
       await client
         .query({
           queryFn: async () => await WIKI_READ_API.getFile(FILE.id),
@@ -124,16 +145,23 @@ describe("document intent authorization outcome", () => {
           staleTime: 0,
         })
         .catch(() => null);
-      expect(client.getQueryState(wikiKeys.file(FILE.id))?.dataUpdatedAt).toBe(Date.now());
+      expect(client.getQueryState(wikiKeys.file(FILE.id))?.dataUpdatedAt).toBe(
+        Date.now(),
+      );
       commit();
       await vi.advanceTimersByTimeAsync(0);
       expect(WIKI_READ_API.getFile).toHaveBeenCalledTimes(2);
       expect(useDocViewerStore.getState().prewarm).toBeNull();
-      vi.mocked(WIKI_READ_API.getFile).mockResolvedValue({ ...FILE, name: "Access restored" });
+      vi.mocked(WIKI_READ_API.getFile).mockResolvedValue({
+        ...FILE,
+        name: "Access restored",
+      });
       commit();
       await vi.advanceTimersByTimeAsync(0);
       expect(WIKI_READ_API.getFile).toHaveBeenCalledTimes(3);
-      expect(useDocViewerStore.getState().prewarm?.title).toBe("Access restored");
+      expect(useDocViewerStore.getState().prewarm?.title).toBe(
+        "Access restored",
+      );
     },
   );
 
@@ -152,7 +180,10 @@ describe("document intent authorization outcome", () => {
     commit();
     await vi.advanceTimersByTimeAsync(0);
     const signal = vi.mocked(WIKI_READ_API.getFile).mock.calls[0]?.[1];
-    await client.cancelQueries({ exact: true, queryKey: wikiKeys.file(FILE.id) });
+    await client.cancelQueries({
+      exact: true,
+      queryKey: wikiKeys.file(FILE.id),
+    });
     pending.resolve(FILE);
     await vi.advanceTimersByTimeAsync(0);
     expect(signal?.aborted).toBe(true);
@@ -162,7 +193,9 @@ describe("document intent authorization outcome", () => {
 
   it("keeps an errored file page inactive and mounts no denied intent iframe", async () => {
     client.setQueryData(wikiKeys.file(FILE.id), FILE);
-    vi.mocked(WIKI_READ_API.getFile).mockRejectedValue(new ApiError(403, "Read denied"));
+    vi.mocked(WIKI_READ_API.getFile).mockRejectedValue(
+      new ApiError(403, "Read denied"),
+    );
     await client
       .query({
         queryFn: async () => await WIKI_READ_API.getFile(FILE.id),
@@ -180,7 +213,8 @@ describe("document intent authorization outcome", () => {
       ),
     );
     const link = host.querySelector("a[href='#document']");
-    if (!(link instanceof HTMLAnchorElement)) throw new TypeError("Intent link missing");
+    if (!(link instanceof HTMLAnchorElement))
+      throw new TypeError("Intent link missing");
     flushSync(() => link.click());
     await vi.advanceTimersByTimeAsync(0);
     expect(host.textContent).toContain("Can't load this file");

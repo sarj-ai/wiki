@@ -9,7 +9,12 @@ import { useSidebar } from "@/components/ui/sidebar";
 import { ApiError } from "@/lib/api-error";
 import { captureMutationSession } from "@/lib/mutation-session";
 import { wikiKeys } from "@/lib/wiki-keys";
-import type { DriveNode, DriveSummary, DriveTree, FileDetail } from "@/types/wiki";
+import type {
+  DriveNode,
+  DriveSummary,
+  DriveTree,
+  FileDetail,
+} from "@/types/wiki";
 
 import type { ItemMenuProps } from "./item-menu";
 
@@ -66,7 +71,10 @@ function MoveDialogOwner({
   const queryClient = useQueryClient();
   const { mobileTriggerRef } = useSidebar();
   const [move, setMove] = useState<MoveSelection | null>(null);
-  const contentRef = useRef<{ content: HTMLElement | null; token: symbol } | null>(null);
+  const contentRef = useRef<{
+    content: HTMLElement | null;
+    token: symbol;
+  } | null>(null);
   const closeTimer = useRef<null | number>(null);
 
   useEffect(
@@ -78,7 +86,8 @@ function MoveDialogOwner({
 
   useEffect(() => {
     if (!move) return;
-    const retire = () => setMove((current) => (current?.token === move.token ? null : current));
+    const retire = () =>
+      setMove((current) => (current?.token === move.token ? null : current));
     if (move.session.aborted) {
       retire();
       return;
@@ -93,9 +102,11 @@ function MoveDialogOwner({
         event.action.type === "error" &&
         sameKey(key, wikiKeys.file(move.item.fileId)) &&
         event.action.error instanceof ApiError &&
-        (event.action.error.status === 403 || event.action.error.status === 404);
+        (event.action.error.status === 403 ||
+          event.action.error.status === 404);
       const changed =
-        event.action.type === "success" && !sourceStillMatches(queryClient, move.item, key);
+        event.action.type === "success" &&
+        !sourceStillMatches(queryClient, move.item, key);
       if (denied || changed) retire();
     });
     return () => {
@@ -113,10 +124,13 @@ function MoveDialogOwner({
           sameItem(currentMove.item, item) &&
           contentRef.current?.token === currentMove.token &&
           !!contentRef.current.content?.isConnected,
-        isOpenFor: (item) => !!currentMove?.open && sameItem(currentMove.item, item),
+        isOpenFor: (item) =>
+          !!currentMove?.open && sameItem(currentMove.item, item),
         observeItem: (item, opener) => {
           setMove((current) =>
-            current?.opener === opener && !sameItem(current.item, item) ? null : current,
+            current?.opener === opener && !sameItem(current.item, item)
+              ? null
+              : current,
           );
         },
         openItem: (item, opener) => {
@@ -134,7 +148,10 @@ function MoveDialogOwner({
     >
       {children}
       {currentMove ? (
-        <FocusReturnProvider fallbackTargetRef={mobileTriggerRef} targetRef={currentMove.opener}>
+        <FocusReturnProvider
+          fallbackTargetRef={mobileTriggerRef}
+          targetRef={currentMove.opener}
+        >
           <MoveFileDialog
             currentDriveId={currentMove.item.driveId}
             currentParentFolderId={currentMove.item.parentFolderId}
@@ -152,24 +169,30 @@ function MoveDialogOwner({
               )
                 return;
               contentRef.current = null;
-              if (closeTimer.current !== null) window.clearTimeout(closeTimer.current);
+              if (closeTimer.current !== null)
+                window.clearTimeout(closeTimer.current);
 
               closeTimer.current = window.setTimeout(() => {
                 closeTimer.current = null;
                 setMove((current) =>
-                  current?.token === currentMove.token && !current.open ? null : current,
+                  current?.token === currentMove.token && !current.open
+                    ? null
+                    : current,
                 );
               }, 0);
             }}
             onOpenAutoFocus={(event) => {
               contentRef.current = {
-                content: event.target instanceof HTMLElement ? event.target : null,
+                content:
+                  event.target instanceof HTMLElement ? event.target : null,
                 token: currentMove.token,
               };
             }}
             onOpenChange={(open) => {
               setMove((current) =>
-                current?.token === currentMove.token ? { ...current, open } : current,
+                current?.token === currentMove.token
+                  ? { ...current, open }
+                  : current,
               );
             }}
             open={currentMove.open}
@@ -191,7 +214,10 @@ function sameItem(left: ItemMenuProps, right: ItemMenuProps): boolean {
 }
 
 function sameKey(left: readonly unknown[], right: readonly unknown[]): boolean {
-  return left.length === right.length && left.every((part, index) => part === right[index]);
+  return (
+    left.length === right.length &&
+    left.every((part, index) => part === right[index])
+  );
 }
 
 function sourceStillMatches(
@@ -204,10 +230,16 @@ function sourceStillMatches(
   }
   if (sameKey(key, wikiKeys.drives)) {
     const drives = queryClient.getQueryData<DriveSummary[]>(wikiKeys.drives);
-    return !item.driveId || !drives || drives.some((drive) => drive.id === item.driveId);
+    return (
+      !item.driveId ||
+      !drives ||
+      drives.some((drive) => drive.id === item.driveId)
+    );
   }
   if (item.driveId && sameKey(key, wikiKeys.driveTree(item.driveId))) {
-    const tree = queryClient.getQueryData<DriveTree>(wikiKeys.driveTree(item.driveId));
+    const tree = queryClient.getQueryData<DriveTree>(
+      wikiKeys.driveTree(item.driveId),
+    );
     if (!tree || (!item.isFolder && !tree.filesComplete)) return true;
     const node = (item.isFolder ? tree.folders : tree.files).find(
       (entry) => entry.id === item.fileId,
@@ -215,24 +247,38 @@ function sourceStillMatches(
     return (
       !!node &&
       node.name === item.currentName &&
-      (node.parentId === item.driveId ? undefined : node.parentId) === item.parentFolderId
+      (node.parentId === item.driveId ? undefined : node.parentId) ===
+        item.parentFolderId
     );
   }
   const container = item.parentFolderId ?? item.driveId;
-  if (container && !item.isFolder && sameKey(key, wikiKeys.folderFiles(container))) {
-    const files = queryClient.getQueryData<DriveNode[]>(wikiKeys.folderFiles(container));
+  if (
+    container &&
+    !item.isFolder &&
+    sameKey(key, wikiKeys.folderFiles(container))
+  ) {
+    const files = queryClient.getQueryData<DriveNode[]>(
+      wikiKeys.folderFiles(container),
+    );
     return (
-      !files || files.some((file) => file.id === item.fileId && file.name === item.currentName)
+      !files ||
+      files.some(
+        (file) => file.id === item.fileId && file.name === item.currentName,
+      )
     );
   }
   return true;
 }
 
-function fileStillMatches(queryClient: QueryClient, item: ItemMenuProps): boolean {
+function fileStillMatches(
+  queryClient: QueryClient,
+  item: ItemMenuProps,
+): boolean {
   const file = queryClient.getQueryData<FileDetail>(wikiKeys.file(item.fileId));
   if (!file) return true;
   if (file.id !== item.fileId || file.name !== item.currentName) return false;
-  if (file.driveId && item.driveId && file.driveId !== item.driveId) return false;
+  if (file.driveId && item.driveId && file.driveId !== item.driveId)
+    return false;
   if (!file.parentFolderId) return true;
   const driveId = file.driveId ?? item.driveId;
   const personal =
@@ -250,5 +296,7 @@ function normalizedParent(
   driveId: string | undefined,
   personal: boolean,
 ) {
-  return parentId === driveId || (personal && parentId === "root") ? undefined : parentId;
+  return parentId === driveId || (personal && parentId === "root")
+    ? undefined
+    : parentId;
 }

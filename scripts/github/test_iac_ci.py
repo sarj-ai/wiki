@@ -29,7 +29,7 @@ def test_shared_release_preserves_all_qualification_and_pins_original_repository
 def test_cold_quality_checks_initialize_locked_local_providers_after_tool_setup() -> None:
     initialize = "terraform -chdir=terraform init -backend=false -input=false -lockfile=readonly"
     standards_initialize = (
-        f"mise --no-config --no-env --no-hooks exec aqua:hashicorp/terraform@1.17.1 -- {initialize}"
+        f"mise --no-config --no-env --no-hooks exec aqua:hashicorp/terraform@1.17.0 -- {initialize}"
     )
     manifest = tomllib.loads((ROOT / ".sarj-standards.toml").read_text())
     assert manifest["ci"]["bootstrap"] == [
@@ -297,3 +297,84 @@ else:
         "Total churn: 18 lines (+13/-5, 3 files)\n"
         "```\n"
     )
+
+
+@pytest.mark.parametrize(
+    ("workflow", "job_name"),
+    [
+        ("standards", "standards"),
+        ("ci-frontend", "lint-and-typecheck"),
+        ("ci-quality", "repository-quality"),
+    ],
+)
+def test_root_lint_ci_has_complete_comparison_history(workflow: str, job_name: str) -> None:
+    document = yaml.safe_load((ROOT / f".github/workflows/{workflow}.yml").read_text())
+    steps = document["jobs"][job_name]["steps"]
+    checkout = next(step for step in steps if step.get("uses", "").startswith("actions/checkout@"))
+    assert checkout["with"]["fetch-depth"] == 0
+    assert checkout["with"]["persist-credentials"] is False
+    assert "sparse-checkout" not in checkout["with"]
+
+
+@pytest.mark.parametrize(
+    ("workflow", "job_name", "gate_name"),
+    [
+        ("standards", "standards", "Run standards"),
+        ("ci-frontend", "lint-and-typecheck", "Native lint with exact baseline"),
+    ],
+)
+def test_direct_root_lint_ci_attests_native_tools_before_analysis(
+    workflow: str, job_name: str, gate_name: str
+) -> None:
+    document = yaml.safe_load((ROOT / f".github/workflows/{workflow}.yml").read_text())
+    steps = document["jobs"][job_name]["steps"]
+    bootstrap = next(
+        step for step in steps if step.get("name") == "Install the pinned native tool bootstrap"
+    )
+    setup = next(
+        step for step in steps if step.get("name") == "Install and attest applicable native tools"
+    )
+    gate = next(step for step in steps if step.get("name") == gate_name)
+    assert "--with code-standards==9.2.3" in bootstrap["run"]
+    assert bootstrap["run"].endswith("python -m sarj_standards.libs.adoption.native_bootstrap")
+    assert setup["run"].endswith("code-standards setup --tools-only")
+    assert steps.index(bootstrap) < steps.index(setup) < steps.index(gate)
+    for step in [bootstrap, setup, gate]:
+        assert "if" not in step
+        assert "continue-on-error" not in step
+    for step in [bootstrap, setup]:
+        assert step.get("working-directory", ".") == "."
+    comparison = gate["env"]["SARJ_STANDARDS_BASE"]
+    for base in [
+        "github.event.pull_request.base.sha",
+        "github.event.merge_group.base_sha",
+        "github.event.before",
+    ]:
+        assert base in comparison
+    uv_setup = next(
+        step for step in steps if step.get("uses", "").startswith("astral-sh/setup-uv@")
+    )
+    assert uv_setup["with"]["version-file"] == "backend/uv.toml"
+    assert steps.index(uv_setup) < steps.index(bootstrap)
+    if workflow == "ci-frontend":
+        assert gate["run"] == "npm run lint"
+        package = json.loads((ROOT / "package.json").read_text())
+        command = package["scripts"]["lint"]
+    else:
+        command = gate["run"]
+    assert "--from sarj-standards-bootstrap" in command
+    assert "--trust-repository-code" in command
+
+
+@pytest.mark.parametrize("workflow", ["ci-iac", "ci-quality"])
+def test_ci_terraform_matches_repository_pin(workflow: str) -> None:
+    manifest = tomllib.loads((ROOT / ".mise.toml").read_text())
+    document = yaml.safe_load((ROOT / f".github/workflows/{workflow}.yml").read_text())
+    job = "required" if workflow == "ci-iac" else "repository-quality"
+    setup = next(
+        step
+        for step in document["jobs"][job]["steps"]
+        if step.get("uses", "").startswith("hashicorp/setup-terraform@")
+    )
+    assert setup["with"]["terraform_version"] == manifest["tools"]["terraform"]
+    assert setup["with"]["terraform_wrapper"] is False

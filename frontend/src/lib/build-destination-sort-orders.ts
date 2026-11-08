@@ -1,4 +1,9 @@
-import { EMPTY_NODES, indexChildren, indexSidebarNodes, indexSortOrders } from "@/lib/wiki-indexes";
+import {
+  EMPTY_NODES,
+  indexChildren,
+  indexSidebarNodes,
+  indexSortOrders,
+} from "@/lib/wiki-indexes";
 import { buildSiblingItems, orderSiblingItems } from "@/lib/wiki-tree";
 import type { DriveNode, DriveTree, SortOrder } from "@/types/wiki";
 
@@ -22,15 +27,21 @@ export function buildDestinationSortOrders({
   tree,
 }: DestinationOrderArgs): null | SortOrder[] {
   const parentKey = folderId === driveId ? "__root__" : folderId;
-  const folders = indexChildren(tree?.folders ?? EMPTY_NODES).get(parentKey) ?? EMPTY_NODES;
+  const folders =
+    indexChildren(tree?.folders ?? EMPTY_NODES).get(parentKey) ?? EMPTY_NODES;
   const files = tree?.filesComplete
     ? (indexChildren(tree.files).get(parentKey) ?? EMPTY_NODES)
     : indexSidebarNodes(folderFiles).files;
-  const items = buildSiblingItems(folders, files).filter((item) => item.node.id !== movedNode.id);
+  const items = buildSiblingItems(folders, files).filter(
+    (item) => item.node.id !== movedNode.id,
+  );
   const baseline = orderSiblingItems(items, indexSortOrders(sortOrders), null);
-  const overIndex = baseline.findIndex((item) => item.node.id === positionHint.rowId);
+  const overIndex = baseline.findIndex(
+    (item) => item.node.id === positionHint.rowId,
+  );
   if (overIndex < 0) return null;
-  const insertIndex = positionHint.intent === "below" ? overIndex + 1 : overIndex;
+  const insertIndex =
+    positionHint.intent === "below" ? overIndex + 1 : overIndex;
   const finalOrder: SortOrder[] = [];
   let index = 0;
   for (const item of baseline) {

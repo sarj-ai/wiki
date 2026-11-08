@@ -38,12 +38,16 @@ describe("shared immutable sidebar indexes", () => {
 
   it("shares overlays without mixing separately scoped query arrays", () => {
     const folders: FolderIcon[] = [{ folderDriveId: "folder", icon: "📚" }];
-    const docs: DocIcon[] = [{ driveId: "file", icon: "🚀", coverUrl: undefined }];
+    const docs: DocIcon[] = [
+      { driveId: "file", icon: "🚀", coverUrl: undefined },
+    ];
     const sorts: SortOrder[] = [{ driveId: "file", sortOrder: 1.5 }];
     expect(indexFolderIcons(folders)).toBe(indexFolderIcons(folders));
     expect(indexDocIcons(docs)).toBe(indexDocIcons(docs));
     expect(indexSortOrders(sorts)).toBe(indexSortOrders(sorts));
-    expect(indexFolderIcons([{ folderDriveId: "folder", icon: "🔒" }]).get("folder")).toBe("🔒");
+    expect(
+      indexFolderIcons([{ folderDriveId: "folder", icon: "🔒" }]).get("folder"),
+    ).toBe("🔒");
     expect(indexFolderIcons(folders).get("folder")).toBe("📚");
   });
 
@@ -54,9 +58,11 @@ describe("shared immutable sidebar indexes", () => {
     const first = indexDestinationFolders(folders);
     expect(first.get("__root__")).toEqual([real]);
     expect(indexDestinationFolders(folders)).toBe(first);
-    expect(indexDestinationFolders([{ ...real, name: "Renamed" }]).get("__root__")?.[0]?.name).toBe(
-      "Renamed",
-    );
+    expect(
+      indexDestinationFolders([{ ...real, name: "Renamed" }]).get(
+        "__root__",
+      )?.[0]?.name,
+    ).toBe("Renamed");
     expect(first.get("__root__")?.[0]?.name).toBe("real");
   });
 
@@ -69,15 +75,31 @@ describe("shared immutable sidebar indexes", () => {
       node("doc-shortcut", MIME_SHORTCUT, MIME_DOC),
     ];
     const result = indexSidebarNodes(nodes);
-    expect(result.folders.map((item) => item.id)).toEqual(["folder", "folder-shortcut"]);
-    expect(result.files.map((item) => item.id)).toEqual(["doc", "html", "doc-shortcut"]);
+    expect(result.folders.map((item) => item.id)).toEqual([
+      "folder",
+      "folder-shortcut",
+    ]);
+    expect(result.files.map((item) => item.id)).toEqual([
+      "doc",
+      "html",
+      "doc-shortcut",
+    ]);
     expect(indexSidebarNodes(nodes)).toBe(result);
-    expect(indexVisibleDocuments(result.files).map((item) => item.id)).toEqual(["doc", "html"]);
-    expect(indexVisibleDocuments(result.files)).toBe(indexVisibleDocuments(result.files));
+    expect(indexVisibleDocuments(result.files).map((item) => item.id)).toEqual([
+      "doc",
+      "html",
+    ]);
+    expect(indexVisibleDocuments(result.files)).toBe(
+      indexVisibleDocuments(result.files),
+    );
   });
 });
 
-function node(id: string, mimeType: string, targetMimeType?: string): DriveNode {
+function node(
+  id: string,
+  mimeType: string,
+  targetMimeType?: string,
+): DriveNode {
   return {
     id,
     name: id,

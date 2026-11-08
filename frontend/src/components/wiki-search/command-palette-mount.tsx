@@ -2,7 +2,10 @@
 
 import dynamic from "next/dynamic";
 
-import { useCommandPaletteHotkey, useCommandPaletteMounted } from "@/hooks/use-command-palette";
+import {
+  useCommandPaletteHotkey,
+  useCommandPaletteMounted,
+} from "@/hooks/use-command-palette";
 
 const CommandPalette = dynamic(
   async () => {

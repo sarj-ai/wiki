@@ -1,7 +1,14 @@
 "use client";
 
 import { useQueryClient } from "@tanstack/react-query";
-import { Bot, ChevronLeft, FileStack, FolderOpen, Loader2, RefreshCw } from "lucide-react";
+import {
+  Bot,
+  ChevronLeft,
+  FileStack,
+  FolderOpen,
+  Loader2,
+  RefreshCw,
+} from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
@@ -41,7 +48,9 @@ import { MIME_DOC } from "@/types/wiki";
 import { FolderPickerDialog } from "./folder-picker-dialog";
 
 type TemplateCatalogStatus =
-  { kind: "error"; message: string } | { kind: "loading" } | { kind: "ready" };
+  | { kind: "error"; message: string }
+  | { kind: "loading" }
+  | { kind: "ready" };
 
 export function SmartCreateDialog({
   invokingDriveId,
@@ -55,9 +64,13 @@ export function SmartCreateDialog({
   const [templates, setTemplates] = useState<
     Awaited<ReturnType<typeof smartCreateApi.listTemplates>>
   >([]);
-  const [catalogStatus, setCatalogStatus] = useState<TemplateCatalogStatus>({ kind: "loading" });
+  const [catalogStatus, setCatalogStatus] = useState<TemplateCatalogStatus>({
+    kind: "loading",
+  });
   const [submitting, setSubmitting] = useState(false);
-  const [creationStage, setCreationStage] = useState<"enqueuing" | "idle" | "waiting">("idle");
+  const [creationStage, setCreationStage] = useState<
+    "enqueuing" | "idle" | "waiting"
+  >("idle");
   const [destinationOpen, setDestinationOpen] = useState(false);
   const catalogSequence = useRef(0);
   const catalogAbort = useRef<AbortController | null>(null);
@@ -72,14 +85,19 @@ export function SmartCreateDialog({
     catalogAbort.current?.abort();
     const controller = new AbortController();
     catalogAbort.current = controller;
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- Opening the dialog intentionally starts a fresh catalog load.
+    // eslint-disable-next-line react/set-state-in-effect -- Opening the dialog intentionally starts a fresh catalog load.
     setCatalogStatus({ kind: "loading" });
     void (async () => {
-      const result = await smartCreateApi.listTemplates(false, controller.signal);
+      const result = await smartCreateApi.listTemplates(
+        false,
+        controller.signal,
+      );
       if (sequence !== catalogSequence.current) return;
       const scopedTemplates = templatesInDrive(result, invokingDriveId);
       setTemplates(scopedTemplates);
-      setState((current) => reconcileTemplateSelection(current, scopedTemplates));
+      setState((current) =>
+        reconcileTemplateSelection(current, scopedTemplates),
+      );
       setCatalogStatus({ kind: "ready" });
     })().catch((error: unknown) => {
       if (sequence !== catalogSequence.current) return;
@@ -117,11 +135,16 @@ export function SmartCreateDialog({
     catalogAbort.current = controller;
     setCatalogStatus({ kind: "loading" });
     try {
-      const result = await smartCreateApi.listTemplates(true, controller.signal);
+      const result = await smartCreateApi.listTemplates(
+        true,
+        controller.signal,
+      );
       if (sequence !== catalogSequence.current) return;
       const scopedTemplates = templatesInDrive(result, invokingDriveId);
       setTemplates(scopedTemplates);
-      setState((current) => reconcileTemplateSelection(current, scopedTemplates));
+      setState((current) =>
+        reconcileTemplateSelection(current, scopedTemplates),
+      );
       setCatalogStatus({ kind: "ready" });
     } catch (error: unknown) {
       if (sequence !== catalogSequence.current) return;
@@ -204,15 +227,24 @@ export function SmartCreateDialog({
     }
   };
 
-  const updatePlan = (update: (plan: SmartCreationPlan) => SmartCreationPlan) => {
+  const updatePlan = (
+    update: (plan: SmartCreationPlan) => SmartCreationPlan,
+  ) => {
     idempotencyKey.current = null;
     setState((current) =>
-      current.phase === "review" ? { ...current, plan: update(current.plan) } : current,
+      current.phase === "review"
+        ? { ...current, plan: update(current.plan) }
+        : current,
     );
   };
 
   const create = async () => {
-    if (state.phase !== "review" || submitLatch.current || !isValidPlan(state.plan)) return;
+    if (
+      state.phase !== "review" ||
+      submitLatch.current ||
+      !isValidPlan(state.plan)
+    )
+      return;
     submitLatch.current = true;
     setSubmitting(true);
     setCreationStage("enqueuing");
@@ -221,10 +253,16 @@ export function SmartCreateDialog({
     createAbort.current?.abort();
     createAbort.current = controller;
     try {
-      const task = await smartCreateApi.create(state.plan, idempotencyKey.current);
+      const task = await smartCreateApi.create(
+        state.plan,
+        idempotencyKey.current,
+      );
       controller.signal.throwIfAborted();
       setCreationStage("waiting");
-      const result = await smartCreateApi.waitForCompletion(task, controller.signal);
+      const result = await smartCreateApi.waitForCompletion(
+        task,
+        controller.signal,
+      );
       injectNewFileIntoCaches(queryClient, result.file);
       for (const warning of result.warnings) toast.warning(warning.detail);
       toast.success(`Created “${result.file.name}”`);
@@ -249,7 +287,9 @@ export function SmartCreateDialog({
         <DialogContent className="max-h-[calc(100dvh-1rem)] grid-rows-[auto_minmax(0,1fr)_auto] gap-0 overflow-hidden p-0 sm:max-w-2xl">
           <div className="border-b px-4 pt-5 pb-4 sm:px-6 sm:pt-6">
             <DialogHeader>
-              <DialogTitle>{state.phase === "compose" ? "Create file" : "Review file"}</DialogTitle>
+              <DialogTitle>
+                {state.phase === "compose" ? "Create file" : "Review file"}
+              </DialogTitle>
               <DialogDescription className="sr-only">
                 {state.phase === "compose"
                   ? "Choose how to create the file"
@@ -313,17 +353,23 @@ export function SmartCreateDialog({
               type="button"
               variant="ghost"
             >
-              {state.phase === "review" ? <ChevronLeft className="size-4" /> : null}
+              {state.phase === "review" ? (
+                <ChevronLeft className="size-4" />
+              ) : null}
               {state.phase === "review" ? "Back" : "Cancel"}
             </Button>
             <Button
               className="w-full sm:w-auto"
               disabled={
                 submitting ||
-                (state.phase === "compose" ? !canContinue(state) : !isValidPlan(state.plan))
+                (state.phase === "compose"
+                  ? !canContinue(state)
+                  : !isValidPlan(state.plan))
               }
               onClick={() => {
-                void (state.phase === "compose" ? continueFromCompose() : create());
+                void (state.phase === "compose"
+                  ? continueFromCompose()
+                  : create());
               }}
               type="button"
             >
@@ -367,7 +413,10 @@ export function SmartCreateDialog({
                   plan.source.kind === "template" &&
                   plan.source.templateDriveId !== destination.driveId
                     ? {
-                        fileType: plan.source.mimeType === MIME_DOC ? "document" : "presentation",
+                        fileType:
+                          plan.source.mimeType === MIME_DOC
+                            ? "document"
+                            : "presentation",
                         kind: "blank",
                       }
                     : plan.source,
@@ -415,9 +464,15 @@ function ComposeStep({
         }}
         value={mode.kind}
       >
-        <TabsList aria-label="Starting point" className="grid w-full grid-cols-2">
+        <TabsList
+          aria-label="Starting point"
+          className="grid w-full grid-cols-2"
+        >
           <TabsTrigger
-            disabled={disabled || (catalogStatus.kind === "ready" && templates.length === 0)}
+            disabled={
+              disabled ||
+              (catalogStatus.kind === "ready" && templates.length === 0)
+            }
             value="template"
           >
             <FileStack className="size-4" /> Template
@@ -432,8 +487,8 @@ function ComposeStep({
         <div className="space-y-4">
           {catalogStatus.kind === "ready" && templates.length === 0 ? (
             <p className="text-muted-foreground text-sm" role="status">
-              This drive has no templates. Describe your file, or add a Doc or Slides file to a
-              top-level Templates folder.
+              This drive has no templates. Describe your file, or add a Doc or
+              Slides file to a top-level Templates folder.
             </p>
           ) : null}
           <div className="space-y-1.5">
@@ -454,7 +509,10 @@ function ComposeStep({
             <Label>File type</Label>
             <Tabs
               onValueChange={(value) => {
-                onModeChange({ ...mode, fileType: value === "presentation" ? value : "document" });
+                onModeChange({
+                  ...mode,
+                  fileType: value === "presentation" ? value : "document",
+                });
               }}
               value={mode.fileType}
             >
@@ -494,7 +552,9 @@ interface TemplateCatalogProps {
   catalogStatus: TemplateCatalogStatus;
   disabled: boolean;
   onRefresh: () => void;
-  onSelect: (template: Awaited<ReturnType<typeof smartCreateApi.listTemplates>>[number]) => void;
+  onSelect: (
+    template: Awaited<ReturnType<typeof smartCreateApi.listTemplates>>[number],
+  ) => void;
   selectedId?: string;
   templates: Awaited<ReturnType<typeof smartCreateApi.listTemplates>>;
 }
@@ -519,7 +579,10 @@ function TemplateCatalog({
           variant="ghost"
         >
           <RefreshCw
-            className={cn("size-3.5", catalogStatus.kind === "loading" && "animate-spin")}
+            className={cn(
+              "size-3.5",
+              catalogStatus.kind === "loading" && "animate-spin",
+            )}
           />
           Refresh
         </Button>
@@ -544,7 +607,8 @@ function TemplateCatalog({
               <FolderOpen className="size-6" />
               <p>No templates available.</p>
               <p className="text-xs">
-                Add a native Doc or Slides file to a root-level Templates folder.
+                Add a native Doc or Slides file to a root-level Templates
+                folder.
               </p>
             </div>
           ) : null}
@@ -563,11 +627,17 @@ function TemplateCatalog({
                   type="button"
                   variant="ghost"
                 >
-                  <span className="pt-0.5 text-lg">{defaultEmoji(template.mimeType)}</span>
+                  <span className="pt-0.5 text-lg">
+                    {defaultEmoji(template.mimeType)}
+                  </span>
                   <span className="min-w-0 flex-1">
-                    <span className="block truncate text-sm font-medium">{template.name}</span>
+                    <span className="block truncate text-sm font-medium">
+                      {template.name}
+                    </span>
                     <span className="text-muted-foreground block truncate text-xs">
-                      {[template.driveName, ...template.categoryPath].join(" / ")}
+                      {[template.driveName, ...template.categoryPath].join(
+                        " / ",
+                      )}
                     </span>
                     {template.description ? (
                       <span className="text-muted-foreground mt-1 line-clamp-2 block text-xs">
@@ -594,9 +664,17 @@ interface ReviewStepProps {
   templates: Awaited<ReturnType<typeof smartCreateApi.listTemplates>>;
 }
 
-function ReviewStep({ onChange, onChooseDestination, plan, templates }: ReviewStepProps) {
-  const templateFileId = plan.source.kind === "template" ? plan.source.templateFileId : undefined;
-  const selectedTemplate = templates.find((template) => template.fileId === templateFileId);
+function ReviewStep({
+  onChange,
+  onChooseDestination,
+  plan,
+  templates,
+}: ReviewStepProps) {
+  const templateFileId =
+    plan.source.kind === "template" ? plan.source.templateFileId : undefined;
+  const selectedTemplate = templates.find(
+    (template) => template.fileId === templateFileId,
+  );
   return (
     <div className="space-y-5">
       <div className="bg-muted/45 flex items-center justify-between rounded-lg border px-3 py-2.5">
@@ -608,7 +686,9 @@ function ReviewStep({ onChange, onChooseDestination, plan, templates }: ReviewSt
               : (selectedTemplate?.name ?? "Drive template")}
           </p>
         </div>
-        <Badge variant="secondary">{plan.source.kind === "blank" ? "Blank" : "Template"}</Badge>
+        <Badge variant="secondary">
+          {plan.source.kind === "blank" ? "Blank" : "Template"}
+        </Badge>
       </div>
       <div className="grid gap-4 sm:grid-cols-[5rem_1fr]">
         <div className="space-y-1.5">
@@ -618,7 +698,10 @@ function ReviewStep({ onChange, onChooseDestination, plan, templates }: ReviewSt
             id="smart-emoji"
             maxLength={16}
             onChange={(event) => {
-              onChange((current) => ({ ...current, emoji: event.target.value }));
+              onChange((current) => ({
+                ...current,
+                emoji: event.target.value,
+              }));
             }}
             value={plan.emoji}
           />
@@ -649,14 +732,21 @@ function ReviewStep({ onChange, onChooseDestination, plan, templates }: ReviewSt
             className="border-0 font-mono shadow-none focus-visible:ring-0"
             id="smart-alias"
             onChange={(event) => {
-              onChange((current) => ({ ...current, alias: event.target.value }));
+              onChange((current) => ({
+                ...current,
+                alias: event.target.value,
+              }));
             }}
             spellCheck={false}
             value={plan.alias}
           />
         </div>
         {documentAliasError(plan.alias) !== null ? (
-          <p className="text-destructive text-xs" id="smart-alias-error" role="alert">
+          <p
+            className="text-destructive text-xs"
+            id="smart-alias-error"
+            role="alert"
+          >
             {documentAliasError(plan.alias)}
           </p>
         ) : null}
@@ -670,7 +760,9 @@ function ReviewStep({ onChange, onChooseDestination, plan, templates }: ReviewSt
           variant="outline"
         >
           <span className="min-w-0">
-            <span className="block truncate text-sm font-medium">{plan.destination.driveName}</span>
+            <span className="block truncate text-sm font-medium">
+              {plan.destination.driveName}
+            </span>
             <span className="text-muted-foreground block truncate text-xs">
               {plan.destination.folderPath.length > 0
                 ? plan.destination.folderPath.join(" / ")
@@ -684,7 +776,9 @@ function ReviewStep({ onChange, onChooseDestination, plan, templates }: ReviewSt
   );
 }
 
-function canContinue(state: Extract<SmartCreateState, { phase: "compose" }>): boolean {
+function canContinue(
+  state: Extract<SmartCreateState, { phase: "compose" }>,
+): boolean {
   return state.mode.kind === "ai"
     ? state.mode.description.trim().length > 0
     : state.mode.selection.kind === "selected";
@@ -718,17 +812,28 @@ function reconcileTemplateSelection(
       template.modifiedTime === selected.modifiedTime,
   );
   return current === undefined
-    ? { mode: { kind: "template", selection: { kind: "unselected" } }, phase: "compose" }
+    ? {
+        mode: { kind: "template", selection: { kind: "unselected" } },
+        phase: "compose",
+      }
     : {
-        mode: { kind: "template", selection: { kind: "selected", template: current } },
+        mode: {
+          kind: "template",
+          selection: { kind: "selected", template: current },
+        },
         phase: "compose",
       };
 }
 
 function errorMessage(error: unknown, fallback: string): string {
-  return error instanceof ApiError || error instanceof Error ? error.message : fallback;
+  return error instanceof ApiError || error instanceof Error
+    ? error.message
+    : fallback;
 }
 
-function templatesInDrive(templates: DriveTemplate[], driveId: string): DriveTemplate[] {
+function templatesInDrive(
+  templates: DriveTemplate[],
+  driveId: string,
+): DriveTemplate[] {
   return templates.filter((template) => template.driveId === driveId);
 }

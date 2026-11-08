@@ -70,21 +70,28 @@ const NEXT_CONFIG: NextConfig = {
     Promise.resolve([
       {
         headers: [
-          { key: "Cache-Control", value: "public, max-age=86400, stale-while-revalidate=604800" },
+          {
+            key: "Cache-Control",
+            value: "public, max-age=86400, stale-while-revalidate=604800",
+          },
           ...SECURITY_HEADERS,
         ],
 
         source: "/brand/:path*",
       },
-      ...["/brand/sarj-loader-12132f41.svg", "/brand/sarj-loader-still-12132f41.svg"].map(
-        (source) => ({
-          headers: [
-            { key: "Cache-Control", value: "public, max-age=31536000, immutable" },
-            ...SECURITY_HEADERS,
-          ],
-          source,
-        }),
-      ),
+      ...[
+        "/brand/sarj-loader-12132f41.svg",
+        "/brand/sarj-loader-still-12132f41.svg",
+      ].map((source) => ({
+        headers: [
+          {
+            key: "Cache-Control",
+            value: "public, max-age=31536000, immutable",
+          },
+          ...SECURITY_HEADERS,
+        ],
+        source,
+      })),
       {
         headers: [
           { key: "Cache-Control", value: "no-cache, must-revalidate" },
@@ -94,7 +101,10 @@ const NEXT_CONFIG: NextConfig = {
         source: "/((?!_next/static|_next/image|brand/).*)",
       },
       {
-        headers: [{ key: "Cache-Control", value: "private, no-store" }, ...SECURITY_HEADERS],
+        headers: [
+          { key: "Cache-Control", value: "private, no-store" },
+          ...SECURITY_HEADERS,
+        ],
         source: "/health",
       },
       {
@@ -105,16 +115,21 @@ const NEXT_CONFIG: NextConfig = {
         headers: [
           ...SECURITY_HEADERS.filter(
             (header) =>
-              !["Content-Security-Policy", "Referrer-Policy", "X-Frame-Options"].includes(
-                header.key,
-              ),
+              ![
+                "Content-Security-Policy",
+                "Referrer-Policy",
+                "X-Frame-Options",
+              ].includes(header.key),
           ),
           { key: "Cache-Control", value: "private, no-store" },
           { key: "Referrer-Policy", value: "no-referrer" },
           { key: "X-Frame-Options", value: "DENY" },
           {
             key: "Content-Security-Policy",
-            value: CSP_DIRECTIVES.replace("frame-ancestors 'self'", "frame-ancestors 'none'"),
+            value: CSP_DIRECTIVES.replace(
+              "frame-ancestors 'self'",
+              "frame-ancestors 'none'",
+            ),
           },
         ],
         source: "/mcp/:path*",

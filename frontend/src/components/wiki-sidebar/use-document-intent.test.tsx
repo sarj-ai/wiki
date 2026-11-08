@@ -9,7 +9,10 @@ import {
   DOCUMENT_INTENT_PREWARM_MS,
   useDocumentIntent,
 } from "@/components/wiki-sidebar/use-document-intent";
-import { claimBrowserSession, retireBrowserSession } from "@/lib/browser-session";
+import {
+  claimBrowserSession,
+  retireBrowserSession,
+} from "@/lib/browser-session";
 
 const MOCKS = vi.hoisted(() => ({
   getQueryData: vi.fn(() => ({
@@ -89,19 +92,28 @@ describe("predictive document intent", () => {
 
     advance(DOCUMENT_INTENT_PREWARM_MS - DOCUMENT_INTENT_PREFETCH_MS);
     await flushAsync();
-    expect(useDocViewerStore.getState().prewarm).toMatchObject({ fileId: "doc-1" });
+    expect(useDocViewerStore.getState().prewarm).toMatchObject({
+      fileId: "doc-1",
+    });
   });
 
   it("takes one current navigator snapshot at each iframe-policy boundary", async () => {
     const connection = vi.fn(() => ({ effectiveType: "4g", saveData: false }));
-    Object.defineProperty(navigator, "connection", { configurable: true, get: connection });
+    Object.defineProperty(navigator, "connection", {
+      configurable: true,
+      get: connection,
+    });
     renderHarness(root);
-    dispatchPointer(getLink(container), "pointerover", { pointerType: "mouse" });
+    dispatchPointer(getLink(container), "pointerover", {
+      pointerType: "mouse",
+    });
     advance(DOCUMENT_INTENT_PREWARM_MS);
     await flushAsync();
 
     expect(connection).toHaveBeenCalledTimes(4);
-    expect(useDocViewerStore.getState().prewarm).toMatchObject({ fileId: "doc-1" });
+    expect(useDocViewerStore.getState().prewarm).toMatchObject({
+      fileId: "doc-1",
+    });
   });
 
   it("keeps the initial intent alive while hover and focus overlap", () => {
@@ -142,7 +154,13 @@ describe("predictive document intent", () => {
     expect(MOCKS.query).not.toHaveBeenCalled();
   });
 
-  it.each(["hover leaves", "row unmounts", "Save-Data", "hidden tab", "disabled row"])(
+  it.each([
+    "hover leaves",
+    "row unmounts",
+    "Save-Data",
+    "hidden tab",
+    "disabled row",
+  ])(
     "discards authorized weak prewarm after %s while retaining its reusable authorization",
     async (scenario) => {
       const authorization = Promise.withResolvers<undefined>();
@@ -168,7 +186,9 @@ describe("predictive document intent", () => {
           break;
         }
         case "hidden tab": {
-          vi.spyOn(document, "visibilityState", "get").mockReturnValue("hidden");
+          vi.spyOn(document, "visibilityState", "get").mockReturnValue(
+            "hidden",
+          );
           break;
         }
         case "disabled row": {
@@ -176,7 +196,9 @@ describe("predictive document intent", () => {
           break;
         }
         default: {
-          throw new Error(`Unexpected prewarm retirement scenario: ${scenario}`);
+          throw new Error(
+            `Unexpected prewarm retirement scenario: ${scenario}`,
+          );
         }
       }
       authorization.resolve(undefined);
@@ -203,20 +225,27 @@ describe("predictive document intent", () => {
 
     advance(DOCUMENT_INTENT_PREWARM_MS);
     await flushAsync();
-    expect(useDocViewerStore.getState().prewarm).toMatchObject({ fileId: "doc-1" });
+    expect(useDocViewerStore.getState().prewarm).toMatchObject({
+      fileId: "doc-1",
+    });
   });
 
   it("lets committed navigation publish after its sidebar row unmounts", async () => {
     const authorization = Promise.withResolvers<undefined>();
     MOCKS.query.mockReturnValue(authorization.promise);
     renderHarness(root);
-    dispatchPointer(getLink(container), "pointerdown", { button: 0, pointerType: "mouse" });
+    dispatchPointer(getLink(container), "pointerdown", {
+      button: 0,
+      pointerType: "mouse",
+    });
     flushSync(() => root?.unmount());
     root = null;
     authorization.resolve(undefined);
     await flushAsync();
 
-    expect(useDocViewerStore.getState().prewarm).toMatchObject({ fileId: "doc-1" });
+    expect(useDocViewerStore.getState().prewarm).toMatchObject({
+      fileId: "doc-1",
+    });
     expect(MOCKS.query).toHaveBeenCalledOnce();
   });
 
@@ -226,7 +255,10 @@ describe("predictive document intent", () => {
     const authorization = Promise.withResolvers<undefined>();
     MOCKS.query.mockReturnValue(authorization.promise);
     renderHarness(root);
-    dispatchPointer(getLink(container), "pointerdown", { button: 0, pointerType: "mouse" });
+    dispatchPointer(getLink(container), "pointerdown", {
+      button: 0,
+      pointerType: "mouse",
+    });
     retireBrowserSession(owner);
     authorization.resolve(undefined);
     await flushAsync();
@@ -246,7 +278,9 @@ describe("predictive document intent", () => {
     expect(MOCKS.strongIntent).toHaveBeenCalledOnce();
     expect(MOCKS.query).toHaveBeenCalledOnce();
     expect(MOCKS.prefetchRoute).toHaveBeenCalledOnce();
-    expect(useDocViewerStore.getState().prewarm).toMatchObject({ fileId: "doc-1" });
+    expect(useDocViewerStore.getState().prewarm).toMatchObject({
+      fileId: "doc-1",
+    });
     advance(DOCUMENT_INTENT_PREWARM_MS);
     expect(MOCKS.query).toHaveBeenCalledOnce();
   });
@@ -267,49 +301,62 @@ describe("predictive document intent", () => {
     expect(MOCKS.strongIntent).toHaveBeenCalledOnce();
     expect(MOCKS.query).toHaveBeenCalledOnce();
     expect(MOCKS.prefetchRoute).toHaveBeenCalledOnce();
-    expect(useDocViewerStore.getState().prewarm).toMatchObject({ fileId: "doc-1" });
+    expect(useDocViewerStore.getState().prewarm).toMatchObject({
+      fileId: "doc-1",
+    });
   });
 
   it.each([
     ["Save-Data", { connection: { saveData: true } }],
     ["a hidden tab", { visibility: "hidden" }],
-  ])("blocks every speculative stage for %s but not committed navigation", async (_name, hints) => {
-    if ("connection" in hints) setNavigatorHint("connection", hints.connection);
-    if ("visibility" in hints) {
-      vi.spyOn(document, "visibilityState", "get").mockReturnValue(
-        hints.visibility === "hidden" ? "hidden" : "visible",
-      );
-    }
-    renderHarness(root);
-    const link = getLink(container);
+  ])(
+    "blocks every speculative stage for %s but not committed navigation",
+    async (_name, hints) => {
+      if ("connection" in hints)
+        setNavigatorHint("connection", hints.connection);
+      if ("visibility" in hints) {
+        vi.spyOn(document, "visibilityState", "get").mockReturnValue(
+          hints.visibility === "hidden" ? "hidden" : "visible",
+        );
+      }
+      renderHarness(root);
+      const link = getLink(container);
 
-    dispatchPointer(link, "pointerover", { pointerType: "mouse" });
-    advance(DOCUMENT_INTENT_PREWARM_MS);
-    expect(MOCKS.query).not.toHaveBeenCalled();
-    expect(useDocViewerStore.getState().prewarm).toBeNull();
+      dispatchPointer(link, "pointerover", { pointerType: "mouse" });
+      advance(DOCUMENT_INTENT_PREWARM_MS);
+      expect(MOCKS.query).not.toHaveBeenCalled();
+      expect(useDocViewerStore.getState().prewarm).toBeNull();
 
-    dispatchPointer(link, "pointerdown", { button: 0, pointerType: "mouse" });
-    await flushAsync();
-    expect(MOCKS.query).toHaveBeenCalledOnce();
-    expect(useDocViewerStore.getState().prewarm).toMatchObject({ fileId: "doc-1" });
-  });
+      dispatchPointer(link, "pointerdown", { button: 0, pointerType: "mouse" });
+      await flushAsync();
+      expect(MOCKS.query).toHaveBeenCalledOnce();
+      expect(useDocViewerStore.getState().prewarm).toMatchObject({
+        fileId: "doc-1",
+      });
+    },
+  );
 
   it.each([
     ["slow-2g", { connection: { effectiveType: "slow-2g" } }],
     ["2g", { connection: { effectiveType: "2g" } }],
     ["2GB", { deviceMemory: 2 }],
-  ])("allows reusable speculation but blocks speculative iframe work on %s", (_name, hints) => {
-    if ("connection" in hints) setNavigatorHint("connection", hints.connection);
-    if ("deviceMemory" in hints) setNavigatorHint("deviceMemory", hints.deviceMemory);
-    renderHarness(root);
+  ])(
+    "allows reusable speculation but blocks speculative iframe work on %s",
+    (_name, hints) => {
+      if ("connection" in hints)
+        setNavigatorHint("connection", hints.connection);
+      if ("deviceMemory" in hints)
+        setNavigatorHint("deviceMemory", hints.deviceMemory);
+      renderHarness(root);
 
-    dispatchPointer(getControl(), "pointerover", { pointerType: "mouse" });
-    advance(DOCUMENT_INTENT_PREWARM_MS);
+      dispatchPointer(getControl(), "pointerover", { pointerType: "mouse" });
+      advance(DOCUMENT_INTENT_PREWARM_MS);
 
-    expect(MOCKS.query).toHaveBeenCalledOnce();
-    expect(MOCKS.prefetchRoute).toHaveBeenCalledOnce();
-    expect(useDocViewerStore.getState().prewarm).toBeNull();
-  });
+      expect(MOCKS.query).toHaveBeenCalledOnce();
+      expect(MOCKS.prefetchRoute).toHaveBeenCalledOnce();
+      expect(useDocViewerStore.getState().prewarm).toBeNull();
+    },
+  );
 
   it("skips active, inaccessible, and form-style disabled targets", () => {
     renderHarness(root, true);
@@ -366,9 +413,15 @@ function setNavigatorHint(key: string, value: unknown): void {
   Object.defineProperty(navigator, key, { configurable: true, value });
 }
 
-function dispatch(element: HTMLElement, type: string, init: MouseEventInit = {}): void {
+function dispatch(
+  element: HTMLElement,
+  type: string,
+  init: MouseEventInit = {},
+): void {
   act(() => {
-    element.dispatchEvent(new MouseEvent(type, { bubbles: true, cancelable: true, ...init }));
+    element.dispatchEvent(
+      new MouseEvent(type, { bubbles: true, cancelable: true, ...init }),
+    );
   });
 }
 
@@ -377,7 +430,11 @@ function dispatchPointer(
   type: string,
   init: MouseEventInit & { pointerType: string },
 ): void {
-  const event = new MouseEvent(type, { bubbles: true, cancelable: true, ...init });
+  const event = new MouseEvent(type, {
+    bubbles: true,
+    cancelable: true,
+    ...init,
+  });
   Object.defineProperty(event, "pointerType", { value: init.pointerType });
   act(() => {
     element.dispatchEvent(event);

@@ -5,7 +5,8 @@ export function validateCrossDriveMove({
   mimeType,
   sourceDriveId,
 }: CrossDriveMove): null | string {
-  if (sourceDriveId === destinationDriveId || mimeType !== MIME_FOLDER) return null;
+  if (sourceDriveId === destinationDriveId || mimeType !== MIME_FOLDER)
+    return null;
   return "Google Drive can’t move folders between drives. Move the folder’s files instead.";
 }
 

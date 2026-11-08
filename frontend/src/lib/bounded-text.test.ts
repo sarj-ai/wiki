@@ -34,9 +34,9 @@ describe("direct bounded text reads", () => {
       },
       cancel,
     });
-    await expect(boundedText(body, 3, undefined, "fixture limit")).rejects.toThrow(
-      new RangeError("fixture limit"),
-    );
+    await expect(
+      boundedText(body, 3, undefined, "fixture limit"),
+    ).rejects.toThrow(new RangeError("fixture limit"));
     expect(cancel).toHaveBeenCalledOnce();
     expect(body.locked).toBe(false);
   });
@@ -58,10 +58,17 @@ describe("direct bounded text reads", () => {
   it("rejects a stalled read on abort without waiting for source cancellation", async () => {
     const controller = new AbortController();
     const cleanup = Promise.withResolvers<undefined>();
-    const cancel = vi.fn<() => Promise<undefined>>().mockReturnValue(cleanup.promise);
-    const body = new ReadableStream<Uint8Array>({ cancel }, { highWaterMark: 0 });
+    const cancel = vi
+      .fn<() => Promise<undefined>>()
+      .mockReturnValue(cleanup.promise);
+    const body = new ReadableStream<Uint8Array>(
+      { cancel },
+      { highWaterMark: 0 },
+    );
     const removed = vi.spyOn(controller.signal, "removeEventListener");
-    const pending = boundedText(body, 10, controller.signal).catch((error: unknown) => error);
+    const pending = boundedText(body, 10, controller.signal).catch(
+      (error: unknown) => error,
+    );
     try {
       controller.abort(new DOMException("fixture abort", "AbortError"));
       await expect(pending).resolves.toMatchObject({ name: "AbortError" });
@@ -82,7 +89,9 @@ describe("direct bounded text reads", () => {
       },
     });
     const removed = vi.spyOn(controller.signal, "removeEventListener");
-    await expect(boundedText(body, 10, controller.signal)).rejects.toBe(failure);
+    await expect(boundedText(body, 10, controller.signal)).rejects.toBe(
+      failure,
+    );
     expect(removed).toHaveBeenCalledOnce();
     expect(body.locked).toBe(false);
   });

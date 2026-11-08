@@ -3,18 +3,35 @@ import { StrictMode, useRef } from "react";
 import { flushSync } from "react-dom";
 import { createRoot, type Root } from "react-dom/client";
 
-import { Sidebar, SidebarProvider, SidebarTrigger, useSidebar } from "@/components/ui/sidebar";
+import {
+  Sidebar,
+  SidebarProvider,
+  SidebarTrigger,
+  useSidebar,
+} from "@/components/ui/sidebar";
 import { useDriveTree } from "@/hooks/use-wiki-tree";
 import type { ActionResult } from "@/lib/action-result";
 import { ApiError } from "@/lib/api-error";
 import { BrowserUserContext } from "@/lib/browser-user-context";
-import { activateMutationSession, retireMutationSession } from "@/lib/mutation-session";
+import {
+  activateMutationSession,
+  retireMutationSession,
+} from "@/lib/mutation-session";
 import { wikiKeys } from "@/lib/wiki-keys";
-import type { DriveNode, DriveSummary, DriveTree, FileDetail, FileResponse } from "@/types/wiki";
+import type {
+  DriveNode,
+  DriveSummary,
+  DriveTree,
+  FileDetail,
+  FileResponse,
+} from "@/types/wiki";
 import { MIME_DOC } from "@/types/wiki";
 
 import { ItemMenu, type ItemMenuProps } from "./item-menu";
-import { MoveDialogOutletProvider, useMoveDialogOutlet } from "./move-dialog-outlet";
+import {
+  MoveDialogOutletProvider,
+  useMoveDialogOutlet,
+} from "./move-dialog-outlet";
 
 const ACTIONS = vi.hoisted(() => ({
   copy: vi.fn(),
@@ -87,7 +104,11 @@ const FILE_DETAIL: FileDetail = {
 
 function SourceChildren() {
   const query = useDriveTree("source");
-  return <span data-source-child>{query.data?.files[0]?.name ?? "Source loading"}</span>;
+  return (
+    <span data-source-child>
+      {query.data?.files[0]?.name ?? "Source loading"}
+    </span>
+  );
 }
 
 function ResponsiveMode() {
@@ -99,7 +120,11 @@ function ReopenMove({ item }: { item: ItemMenuProps }) {
   const outlet = useMoveDialogOutlet();
   const opener = useRef<HTMLButtonElement | null>(null);
   return (
-    <button onClick={() => outlet?.openItem(item, opener)} ref={opener} type="button">
+    <button
+      onClick={() => outlet?.openItem(item, opener)}
+      ref={opener}
+      type="button"
+    >
       Reopen Move
     </button>
   );
@@ -156,7 +181,10 @@ describe("admitted Move ownership above the responsive sidebar", () => {
     await vi.advanceTimersByTimeAsync(0);
     animationStyle?.remove();
     host.remove();
-    Object.defineProperty(window, "innerWidth", { configurable: true, value: initialWidth });
+    Object.defineProperty(window, "innerWidth", {
+      configurable: true,
+      value: initialWidth,
+    });
     vi.useRealTimers();
   });
 
@@ -165,7 +193,10 @@ describe("admitted Move ownership above the responsive sidebar", () => {
     item = ITEM,
     userId = "user-a",
   }: { width?: number; item?: ItemMenuProps; userId?: string } = {}) {
-    Object.defineProperty(window, "innerWidth", { configurable: true, value: width });
+    Object.defineProperty(window, "innerWidth", {
+      configurable: true,
+      value: width,
+    });
     flushSync(() =>
       root.render(
         <StrictMode>
@@ -179,7 +210,8 @@ describe("admitted Move ownership above the responsive sidebar", () => {
 
   function toggle(): HTMLButtonElement {
     const element = host.querySelector('[data-slot="sidebar-trigger"]');
-    if (!(element instanceof HTMLButtonElement)) throw new TypeError("Sidebar toggle missing");
+    if (!(element instanceof HTMLButtonElement))
+      throw new TypeError("Sidebar toggle missing");
     return element;
   }
 
@@ -198,10 +230,11 @@ describe("admitted Move ownership above the responsive sidebar", () => {
   }
 
   function moveDialog(): HTMLElement {
-    const dialog = [...document.querySelectorAll('[role="dialog"]')].find((element) =>
-      element.textContent.includes(`Move “${ITEM.currentName}”`),
+    const dialog = [...document.querySelectorAll('[role="dialog"]')].find(
+      (element) => element.textContent.includes(`Move “${ITEM.currentName}”`),
     );
-    if (!(dialog instanceof HTMLElement)) throw new TypeError("Move dialog missing");
+    if (!(dialog instanceof HTMLElement))
+      throw new TypeError("Move dialog missing");
     return dialog;
   }
 
@@ -209,21 +242,29 @@ describe("admitted Move ownership above the responsive sidebar", () => {
     const opener = document.querySelector(
       `button[aria-label="Actions for ${CSS.escape(ITEM.currentName)}"]`,
     );
-    if (!(opener instanceof HTMLButtonElement)) throw new TypeError("Actions trigger missing");
+    if (!(opener instanceof HTMLButtonElement))
+      throw new TypeError("Actions trigger missing");
     flushSync(() => {
       opener.focus();
-      opener.dispatchEvent(new KeyboardEvent("keydown", { bubbles: true, key: "Enter" }));
+      opener.dispatchEvent(
+        new KeyboardEvent("keydown", { bubbles: true, key: "Enter" }),
+      );
     });
 
     await vi.dynamicImportSettled();
-    await vi.waitFor(() => expect(document.querySelector('[role="menu"]')).not.toBeNull());
+    await vi.waitFor(() =>
+      expect(document.querySelector('[role="menu"]')).not.toBeNull(),
+    );
     const action = [...document.querySelectorAll('[role="menuitem"]')].find(
       (element) => element.textContent === "Move to…",
     );
-    if (!(action instanceof HTMLElement)) throw new TypeError("Move action missing");
+    if (!(action instanceof HTMLElement))
+      throw new TypeError("Move action missing");
     flushSync(() => action.click());
     await vi.dynamicImportSettled();
-    await vi.waitFor(() => expect(document.body).toHaveTextContent(`Move “${ITEM.currentName}”`));
+    await vi.waitFor(() =>
+      expect(document.body).toHaveTextContent(`Move “${ITEM.currentName}”`),
+    );
     await vi.advanceTimersByTimeAsync(0);
     return opener;
   }
@@ -271,8 +312,8 @@ describe("admitted Move ownership above the responsive sidebar", () => {
     await vi.advanceTimersByTimeAsync(0);
     await openMove();
     flushSync(() => button("Destination").click());
-    const dialog = [...document.querySelectorAll('[role="dialog"]')].find((element) =>
-      element.textContent.includes(`Move “${ITEM.currentName}”`),
+    const dialog = [...document.querySelectorAll('[role="dialog"]')].find(
+      (element) => element.textContent.includes(`Move “${ITEM.currentName}”`),
     );
     render({ width: 1200 });
     await vi.advanceTimersByTimeAsync(0);
@@ -383,7 +424,9 @@ describe("admitted Move ownership above the responsive sidebar", () => {
       } catch (error) {
         outcome = error;
       }
-      expect(outcome).toEqual(authority === "session" ? null : new ApiError(authority, "Denied"));
+      expect(outcome).toEqual(
+        authority === "session" ? null : new ApiError(authority, "Denied"),
+      );
       await vi.advanceTimersByTimeAsync(1);
       expect(dialog.isConnected).toBe(false);
       expect(restoreOpener).not.toHaveBeenCalled();
@@ -450,7 +493,10 @@ describe("admitted Move ownership above the responsive sidebar", () => {
     await openMove();
     render({ width: 390 });
     flushSync(() =>
-      client.setQueryData<DriveTree>(wikiKeys.driveTree("source"), { ...SOURCE, files: [] }),
+      client.setQueryData<DriveTree>(wikiKeys.driveTree("source"), {
+        ...SOURCE,
+        files: [],
+      }),
     );
     await vi.advanceTimersByTimeAsync(0);
     expect(document.querySelector('[role="dialog"]')).toBeNull();
@@ -507,7 +553,11 @@ describe("admitted Move ownership above the responsive sidebar", () => {
     },
     {
       name: "missing drive with known unchanged root",
-      file: { ...FILE_DETAIL, driveId: undefined, parentFolderId: ITEM.driveId },
+      file: {
+        ...FILE_DETAIL,
+        driveId: undefined,
+        parentFolderId: ITEM.driveId,
+      },
       personal: false,
     },
   ])(
@@ -516,7 +566,9 @@ describe("admitted Move ownership above the responsive sidebar", () => {
       client.setQueryData(
         wikiKeys.drives,
         DRIVES.map((drive) =>
-          drive.id === ITEM.driveId ? { ...drive, isPersonal: personal } : drive,
+          drive.id === ITEM.driveId
+            ? { ...drive, isPersonal: personal }
+            : drive,
         ),
       );
       render();
@@ -567,7 +619,10 @@ describe("admitted Move ownership above the responsive sidebar", () => {
     expect(button("Move")).toBeEnabled();
     flushSync(() => button("Move").click());
     await vi.advanceTimersByTimeAsync(0);
-    expect(ACTIONS.move).toHaveBeenCalledExactlyOnceWith(ITEM.fileId, "destination");
+    expect(ACTIONS.move).toHaveBeenCalledExactlyOnceWith(
+      ITEM.fileId,
+      "destination",
+    );
     render({ width: 390 });
     await vi.advanceTimersByTimeAsync(0);
     expect(button("Cancel")).toBeDisabled();
@@ -586,7 +641,9 @@ describe("admitted Move ownership above the responsive sidebar", () => {
         parentFolderId: "destination",
       },
     });
-    await vi.waitFor(() => expect(document.querySelector('[role="dialog"]')).toBeNull());
+    await vi.waitFor(() =>
+      expect(document.querySelector('[role="dialog"]')).toBeNull(),
+    );
   });
 });
 
@@ -602,7 +659,8 @@ function button(text: string): HTMLButtonElement {
   const result = [...document.querySelectorAll("button")].find(
     (element) => element.textContent === text,
   );
-  if (!(result instanceof HTMLButtonElement)) throw new TypeError(`Missing ${text}`);
+  if (!(result instanceof HTMLButtonElement))
+    throw new TypeError(`Missing ${text}`);
   return result;
 }
 

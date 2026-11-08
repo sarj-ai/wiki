@@ -1,11 +1,15 @@
 "use client";
 
-import dynamic from "next/dynamic";
 import { useTheme } from "next-themes";
+import dynamic from "next/dynamic";
 import { useTransition } from "react";
 
 import { Button } from "@/components/ui/button";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
 import { useDeferredDialog } from "@/hooks/use-deferred-dialog";
 import { useIsClient } from "@/hooks/use-is-client";
 import { useSetDocIcon, useSetFolderIcon } from "@/hooks/use-wiki-mutations";
@@ -18,7 +22,8 @@ export interface IconTarget {
 
 type IconChange = (next: null | string) => Promise<void> | void;
 type IconChangeProps =
-  { onChange: IconChange; target?: never } | { onChange?: never; target: IconTarget };
+  | { onChange: IconChange; target?: never }
+  | { onChange?: never; target: IconTarget };
 
 type EmojiPickerPopoverProps = IconChangeProps & {
   children: React.ReactElement;
@@ -88,7 +93,13 @@ function IconPickerContent({
   return <EmojiPickerContent onChange={onChange} value={value} />;
 }
 
-function DocIconPicker({ fileId, value }: { fileId: string; value: string | undefined }) {
+function DocIconPicker({
+  fileId,
+  value,
+}: {
+  fileId: string;
+  value: string | undefined;
+}) {
   const mutation = useSetDocIcon();
   return (
     <EmojiPickerContent
@@ -102,7 +113,13 @@ function DocIconPicker({ fileId, value }: { fileId: string; value: string | unde
   );
 }
 
-function FolderIconPicker({ folderId, value }: { folderId: string; value: string | undefined }) {
+function FolderIconPicker({
+  folderId,
+  value,
+}: {
+  folderId: string;
+  value: string | undefined;
+}) {
   const mutation = useSetFolderIcon();
   return (
     <EmojiPickerContent

@@ -41,7 +41,11 @@ export function clearUserBrowserStorage(userId: string): void {
     collapsedDrivesStorageKey(userId),
     LAST_REFRESH_KEY,
   ]);
-  removeSessionStorageKeys([ACTIVE_USER_KEY, REDIRECT_KEY, markdownRecoveryStorageKey(userId)]);
+  removeSessionStorageKeys([
+    ACTIVE_USER_KEY,
+    REDIRECT_KEY,
+    markdownRecoveryStorageKey(userId),
+  ]);
 }
 
 export function purgeLegacyBrowserStorage(): void {

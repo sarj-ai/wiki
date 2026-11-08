@@ -7,7 +7,9 @@ export const EMPTY_DOC_ICONS: readonly DocIcon[] = [];
 export const EMPTY_FOLDER_ICONS: readonly FolderIcon[] = [];
 export const EMPTY_SORT_ORDERS: readonly SortOrder[] = [];
 
-function memoizeIndex<T, V>(build: (items: readonly T[]) => V): (items: readonly T[]) => V {
+function memoizeIndex<T, V>(
+  build: (items: readonly T[]) => V,
+): (items: readonly T[]) => V {
   const cache = new WeakMap<readonly T[], V>();
   return (items) => {
     const cached = cache.get(items);
@@ -36,8 +38,8 @@ export const indexNodes = memoizeIndex((items: readonly DriveNode[]) =>
     (item) => item,
   ),
 );
-export const indexDestinationFolders = memoizeIndex((items: readonly DriveNode[]) =>
-  buildChildrenIndex(items, MIME_SHORTCUT),
+export const indexDestinationFolders = memoizeIndex(
+  (items: readonly DriveNode[]) => buildChildrenIndex(items, MIME_SHORTCUT),
 );
 export const indexSidebarNodes = memoizeIndex((items: readonly DriveNode[]) => {
   const files: DriveNode[] = [];
@@ -48,8 +50,11 @@ export const indexSidebarNodes = memoizeIndex((items: readonly DriveNode[]) => {
   }
   return { files, folders };
 });
-export const indexVisibleDocuments = memoizeIndex((items: readonly DriveNode[]) =>
-  items.filter((node) => node.mimeType === MIME_DOC || node.mimeType === MIME_HTML),
+export const indexVisibleDocuments = memoizeIndex(
+  (items: readonly DriveNode[]) =>
+    items.filter(
+      (node) => node.mimeType === MIME_DOC || node.mimeType === MIME_HTML,
+    ),
 );
 export const indexFolderIcons = memoizeIndex((items: readonly FolderIcon[]) =>
   mapByKey(

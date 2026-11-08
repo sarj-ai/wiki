@@ -8,7 +8,9 @@ const MOCKS = vi.hoisted(() => ({
 }));
 
 vi.mock("next/headers", () => ({ headers: MOCKS.headers }));
-vi.mock("@/lib/server-api", () => ({ serverWikiApi: { getFile: MOCKS.getFile } }));
+vi.mock("@/lib/server-api", () => ({
+  serverWikiApi: { getFile: MOCKS.getFile },
+}));
 
 describe("FilePage metadata hydration", () => {
   beforeEach(() => {
@@ -26,7 +28,11 @@ describe("FilePage metadata hydration", () => {
   });
 
   it("opportunistically hydrates metadata for a direct request", async () => {
-    const file = { id: "doc-1", mimeType: "application/vnd.google-apps.document", name: "Doc" };
+    const file = {
+      id: "doc-1",
+      mimeType: "application/vnd.google-apps.document",
+      name: "Doc",
+    };
     MOCKS.headers.mockResolvedValue(new Headers());
     MOCKS.getFile.mockResolvedValue(file);
 
@@ -46,7 +52,9 @@ async function renderPage() {
   });
 }
 
-function dehydratedQueries(view: Awaited<ReturnType<typeof renderPage>>): unknown[] {
+function dehydratedQueries(
+  view: Awaited<ReturnType<typeof renderPage>>,
+): unknown[] {
   expect(isValidElement(view)).toBe(true);
   if (!isValidElement<{ state: { queries: unknown[] } }>(view)) return [];
   return view.props.state.queries;

@@ -4,7 +4,8 @@ import { MIME_FOLDER, MIME_SHORTCUT } from "@/types/wiki";
 export function isFolderLikeNode(node: DriveNode): boolean {
   return (
     node.mimeType === MIME_FOLDER ||
-    (node.mimeType === MIME_SHORTCUT && node.shortcutTargetMimeType === MIME_FOLDER)
+    (node.mimeType === MIME_SHORTCUT &&
+      node.shortcutTargetMimeType === MIME_FOLDER)
   );
 }
 
@@ -14,7 +15,8 @@ export function buildChildrenIndex(
 ): Map<string, DriveNode[]> {
   const map = new Map<string, DriveNode[]>();
   for (const folder of folders) {
-    if (excludedMimeType !== undefined && folder.mimeType === excludedMimeType) continue;
+    if (excludedMimeType !== undefined && folder.mimeType === excludedMimeType)
+      continue;
     const key = folder.parentId ?? "__root__";
     const bucket = map.get(key);
     if (bucket) bucket.push(folder);
@@ -43,7 +45,8 @@ export function orderSiblingItems(
   sortOrderMap: Map<string, number>,
   optimisticOrder: null | readonly string[],
 ): readonly KindedNode[] {
-  if (optimisticOrder) return applyOptimisticOrder(items, optimisticOrder, sortOrderMap);
+  if (optimisticOrder)
+    return applyOptimisticOrder(items, optimisticOrder, sortOrderMap);
   return items.toSorted((a, b) => compareNodeOrder(a, b, sortOrderMap));
 }
 
@@ -71,7 +74,10 @@ export function applyOptimisticOrder(
       ? items.toSorted((a, b) => compareNodeOrder(a, b, fallbackSortOrderMap))
       : items;
   }
-  if (order.length === items.length && order.every((id, index) => items[index]?.node.id === id)) {
+  if (
+    order.length === items.length &&
+    order.every((id, index) => items[index]?.node.id === id)
+  ) {
     return items;
   }
   const byId = new Map<string, KindedNode>();
@@ -87,7 +93,9 @@ export function applyOptimisticOrder(
   }
   if (fallbackSortOrderMap) {
     const remaining = items.filter((item) => !seen.has(item.node.id));
-    const sorted = remaining.toSorted((a, b) => compareNodeOrder(a, b, fallbackSortOrderMap));
+    const sorted = remaining.toSorted((a, b) =>
+      compareNodeOrder(a, b, fallbackSortOrderMap),
+    );
     for (const item of sorted) ordered.push(item);
   } else {
     for (const item of items) {

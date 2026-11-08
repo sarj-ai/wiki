@@ -12,7 +12,8 @@ export function captureMutationSession(queryClient: QueryClient): AbortSignal {
 }
 
 export function activateMutationSession(queryClient: QueryClient): void {
-  if (OWNERS.get(queryClient)?.signal.aborted) OWNERS.set(queryClient, new AbortController());
+  if (OWNERS.get(queryClient)?.signal.aborted)
+    OWNERS.set(queryClient, new AbortController());
 }
 
 export function retireMutationSession(queryClient: QueryClient): void {

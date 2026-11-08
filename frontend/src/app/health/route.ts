@@ -6,14 +6,22 @@ function get(request: Request): Response {
   const requestId = requestIdFor(request);
   const revision = frontendReleaseSha();
   if (revision === undefined) {
-    return Response.json({ status: "error" }, { headers: responseHeaders(requestId), status: 503 });
+    return Response.json(
+      { status: "error" },
+      { headers: responseHeaders(requestId), status: 503 },
+    );
   }
-  return Response.json({ revision, status: "ok" }, { headers: responseHeaders(requestId) });
+  return Response.json(
+    { revision, status: "ok" },
+    { headers: responseHeaders(requestId) },
+  );
 }
 
 function requestIdFor(request: Request): string {
   const requested = request.headers.get("X-Request-ID");
-  return requested !== null && REQUEST_ID_PATTERN.test(requested) ? requested : crypto.randomUUID();
+  return requested !== null && REQUEST_ID_PATTERN.test(requested)
+    ? requested
+    : crypto.randomUUID();
 }
 
 function responseHeaders(requestId: string): HeadersInit {

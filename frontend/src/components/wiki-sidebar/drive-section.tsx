@@ -1,7 +1,10 @@
 "use client";
 
 import { useDroppable } from "@dnd-kit/core";
-import { SortableContext, verticalListSortingStrategy } from "@dnd-kit/sortable";
+import {
+  SortableContext,
+  verticalListSortingStrategy,
+} from "@dnd-kit/sortable";
 import {
   ChevronRight,
   ExternalLink,
@@ -33,9 +36,23 @@ import { useRefreshDrive } from "@/hooks/use-wiki-mutations";
 import { useFolderFiles } from "@/hooks/use-wiki-tree";
 import { folderUrlFor } from "@/lib/file-urls";
 import { cn } from "@/lib/utils";
-import { EMPTY_NODES, indexSidebarNodes, indexVisibleDocuments } from "@/lib/wiki-indexes";
-import { buildSiblingItems, type KindedNode, orderSiblingItems } from "@/lib/wiki-tree";
-import type { DocIcon, DriveNode, DriveSummary, FolderIcon, SortOrder } from "@/types/wiki";
+import {
+  EMPTY_NODES,
+  indexSidebarNodes,
+  indexVisibleDocuments,
+} from "@/lib/wiki-indexes";
+import {
+  buildSiblingItems,
+  type KindedNode,
+  orderSiblingItems,
+} from "@/lib/wiki-tree";
+import type {
+  DocIcon,
+  DriveNode,
+  DriveSummary,
+  FolderIcon,
+  SortOrder,
+} from "@/types/wiki";
 
 import { CreateFileMenu } from "./create-file-menu";
 import { DriveAccessSheet } from "./drive-access-sheet";
@@ -150,7 +167,10 @@ export function DriveSection({
               variant="ghost"
             >
               <ChevronRight
-                className={cn("size-3 transition-transform", expanded && "rotate-90")}
+                className={cn(
+                  "size-3 transition-transform",
+                  expanded && "rotate-90",
+                )}
               />
               {drive.isPersonal ? (
                 <Home className="size-3.5" />
@@ -181,7 +201,10 @@ export function DriveSection({
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end" className="w-48">
-                <DropdownMenuItem disabled={refreshDrive.isPending} onClick={handleRefresh}>
+                <DropdownMenuItem
+                  disabled={refreshDrive.isPending}
+                  onClick={handleRefresh}
+                >
                   {refreshDrive.isPending ? (
                     <Loader2 className="size-4 animate-spin" />
                   ) : (
@@ -190,25 +213,36 @@ export function DriveSection({
                   Refresh from Drive
                 </DropdownMenuItem>
                 <DropdownMenuItem asChild>
-                  <a href={folderUrlFor(drive.id)} rel="noopener noreferrer" target="_blank">
+                  <a
+                    href={folderUrlFor(drive.id)}
+                    rel="noopener noreferrer"
+                    target="_blank"
+                  >
                     <ExternalLink className="size-4" />
                     Open in Google Drive
                   </a>
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
-            <CreateFileMenu driveId={drive.id} parentFolderId={drive.id} parentName={drive.name} />
+            <CreateFileMenu
+              driveId={drive.id}
+              parentFolderId={drive.id}
+              parentName={drive.name}
+            />
           </div>
         </div>
         {expanded ? (
           <SidebarGroupContent>
             <SidebarMenu>
-              {treeQuery.isPending || (!treeQuery.data && treeQuery.isFetching) ? (
+              {treeQuery.isPending ||
+              (!treeQuery.data && treeQuery.isFetching) ? (
                 <DriveTreeSkeleton />
               ) : null}
               {treeQuery.isError && !treeQuery.isFetching && !treeQuery.data ? (
                 <SidebarMenuItem>
-                  <span className="text-destructive px-2 py-1 text-xs">Failed to load drive</span>
+                  <span className="text-destructive px-2 py-1 text-xs">
+                    Failed to load drive
+                  </span>
                 </SidebarMenuItem>
               ) : null}
               {!treeQuery.isLoading && (
@@ -229,7 +263,11 @@ export function DriveSection({
                       variant="item"
                     >
                       {type === "folder" ? (
-                        <TreeNode depth={0} node={node} parentFolderId={undefined} />
+                        <TreeNode
+                          depth={0}
+                          node={node}
+                          parentFolderId={undefined}
+                        />
                       ) : (
                         <FileRow
                           activeDriveId={activeDriveId}
@@ -290,8 +328,14 @@ function buildRootItems({
 }: BuildRootItemsArgs): readonly KindedNode[] {
   const folders = childrenByParent.get("__root__") ?? EMPTY_NODES;
   const rawFiles = indexSidebarNodes(rootFiles).files;
-  const visibleFiles = showNonDocFiles ? rawFiles : indexVisibleDocuments(rawFiles);
-  return orderSiblingItems(buildSiblingItems(folders, visibleFiles), sortOrderMap, optimisticOrder);
+  const visibleFiles = showNonDocFiles
+    ? rawFiles
+    : indexVisibleDocuments(rawFiles);
+  return orderSiblingItems(
+    buildSiblingItems(folders, visibleFiles),
+    sortOrderMap,
+    optimisticOrder,
+  );
 }
 
 function DriveTreeSkeleton() {

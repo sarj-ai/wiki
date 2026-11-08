@@ -57,7 +57,9 @@ export const useDragOverStore = create<DragOverState>((set, get) => ({
     releaseActive?.();
     const onAbort = () => get().reset(owner);
     session?.addEventListener("abort", onAbort, { once: true });
-    releaseActive = session ? () => session.removeEventListener("abort", onAbort) : undefined;
+    releaseActive = session
+      ? () => session.removeEventListener("abort", onAbort)
+      : undefined;
     set({
       activeContainerId: containerId,
       activeId: id,
@@ -71,7 +73,11 @@ export const useDragOverStore = create<DragOverState>((set, get) => ({
   setOver: ({ containerId, id, intent }, owner) => {
     set((state) => {
       if (owner !== undefined && state.activeOwner !== owner) return state;
-      if (state.overId === id && state.overContainerId === containerId && state.intent === intent) {
+      if (
+        state.overId === id &&
+        state.overContainerId === containerId &&
+        state.intent === intent
+      ) {
         return state;
       }
       return { intent, overContainerId: containerId, overId: id };
@@ -89,7 +95,11 @@ const FEEDBACK_LISTENERS: Record<FeedbackKind, Map<string, Set<() => void>>> = {
 let feedbackListenerCount = 0;
 let releaseFeedback: (() => void) | undefined;
 
-function subscribeFeedback(kind: FeedbackKind, id: string, listener: () => void): () => void {
+function subscribeFeedback(
+  kind: FeedbackKind,
+  id: string,
+  listener: () => void,
+): () => void {
   const listeners = FEEDBACK_LISTENERS[kind];
   const bucket = listeners.get(id) ?? new Set<() => void>();
   listeners.set(id, bucket);
@@ -111,9 +121,13 @@ function notifyFeedback(state: DragOverState, previous: DragOverState): void {
   const rowIds = new Set([previous.overId, state.overId]);
   for (const id of rowIds) {
     if (id === null) continue;
-    if (rowDropEdge(state, id) !== rowDropEdge(previous, id)) notifyForId("row", id);
+    if (rowDropEdge(state, id) !== rowDropEdge(previous, id))
+      notifyForId("row", id);
   }
-  const containerIds = new Set([previous.overContainerId, state.overContainerId]);
+  const containerIds = new Set([
+    previous.overContainerId,
+    state.overContainerId,
+  ]);
   for (const id of containerIds) {
     if (id === null) continue;
     if (crossContainerDrop(state, id) !== crossContainerDrop(previous, id)) {
@@ -123,7 +137,8 @@ function notifyFeedback(state: DragOverState, previous: DragOverState): void {
   }
   for (const id of rowIds) {
     if (id === null) continue;
-    if (folderDrop(state, id) !== folderDrop(previous, id)) notifyForId("folder", id);
+    if (folderDrop(state, id) !== folderDrop(previous, id))
+      notifyForId("folder", id);
   }
 }
 
@@ -133,7 +148,10 @@ function notifyForId(kind: FeedbackKind, id: string): void {
   for (const listener of listeners) listener();
 }
 
-function crossContainerDrop(state: DragOverState, containerId: string): boolean {
+function crossContainerDrop(
+  state: DragOverState,
+  containerId: string,
+): boolean {
   return (
     state.activeContainerId !== null &&
     state.overContainerId === containerId &&
@@ -149,7 +167,10 @@ function folderDrop(state: DragOverState, folderId: string): boolean {
   );
 }
 
-function rowDropEdge(state: DragOverState, rowId: string): "above" | "below" | null {
+function rowDropEdge(
+  state: DragOverState,
+  rowId: string,
+): "above" | "below" | null {
   if (state.activeId === null || state.overId !== rowId) return null;
   if (state.intent === "above") return "above";
   if (state.intent === "below") return "below";

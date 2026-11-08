@@ -33,8 +33,12 @@ export interface ReorganizationProposal {
   suggestedDestination?: ReorganizationDestination;
 }
 
-export async function proposeFileReorganization(fileId: string): Promise<ReorganizationProposal> {
-  const body = await runAction(async () => await proposeFileReorganizationAction(fileId));
+export async function proposeFileReorganization(
+  fileId: string,
+): Promise<ReorganizationProposal> {
+  const body = await runAction(
+    async () => await proposeFileReorganizationAction(fileId),
+  );
   const proposal = ProposalSchema.parse(JSON.parse(body));
   return {
     currentDestination: toDestination(proposal.current_destination),
@@ -45,7 +49,9 @@ export async function proposeFileReorganization(fileId: string): Promise<Reorgan
   };
 }
 
-function toDestination(value: z.output<typeof DestinationSchema>): ReorganizationDestination {
+function toDestination(
+  value: z.output<typeof DestinationSchema>,
+): ReorganizationDestination {
   return {
     driveId: value.drive_id,
     driveName: value.drive_name,

@@ -14,5 +14,7 @@ export function retireBrowserSession(owner: object): void {
   currentOwner = null;
   const retired = currentSession;
   currentSession = new AbortController();
-  retired.abort(new DOMException("The browser session was retired", "AbortError"));
+  retired.abort(
+    new DOMException("The browser session was retired", "AbortError"),
+  );
 }

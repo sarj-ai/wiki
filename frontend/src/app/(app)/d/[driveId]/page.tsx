@@ -1,4 +1,8 @@
-import { dehydrate, HydrationBoundary, QueryClient } from "@tanstack/react-query";
+import {
+  dehydrate,
+  HydrationBoundary,
+  QueryClient,
+} from "@tanstack/react-query";
 import { headers } from "next/headers";
 
 import { QuickLinkVisitRecorder } from "@/components/quick-links/quick-link-visit-recorder";
@@ -34,7 +38,9 @@ export default async function FilePage({
   if (file) queryClient.setQueryData(wikiKeys.file(driveId), file);
   return (
     <HydrationBoundary state={dehydrate(queryClient)}>
-      {parsed.success ? <QuickLinkVisitRecorder alias={parsed.data.alias} /> : null}
+      {parsed.success ? (
+        <QuickLinkVisitRecorder alias={parsed.data.alias} />
+      ) : null}
       <FilePageClient driveId={driveId} />
     </HydrationBoundary>
   );

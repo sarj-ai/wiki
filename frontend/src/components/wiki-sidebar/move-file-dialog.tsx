@@ -37,7 +37,8 @@ export function MoveFileDialog({
   open,
 }: MoveFileDialogProps) {
   const drivesQuery = useDrives();
-  const hasNoDestinations = drivesQuery.isSuccess && drivesQuery.data.length === 0;
+  const hasNoDestinations =
+    drivesQuery.isSuccess && drivesQuery.data.length === 0;
   const moveFile = useMoveFile();
   const [selection] = useState(() =>
     createStore<DestinationSelection>((set) => ({
@@ -94,8 +95,8 @@ export function MoveFileDialog({
         <DialogHeader className="px-6 pt-6 pr-12">
           <DialogTitle>Move &ldquo;{fileName}&rdquo;</DialogTitle>
           <DialogDescription>
-            Pick a destination folder or drive. Cross-drive moves may be blocked by Drive admin
-            settings — copy the file instead if that fails.
+            Pick a destination folder or drive. Cross-drive moves may be blocked
+            by Drive admin settings — copy the file instead if that fails.
           </DialogDescription>
         </DialogHeader>
         <div
@@ -134,7 +135,9 @@ export function MoveFileDialog({
           <Button
             disabled={!selectedId || moveFile.isPending}
             onClick={() => {
-              void handleConfirm().catch(() => console.warn("Move confirmation could not finish"));
+              void handleConfirm().catch(() =>
+                console.warn("Move confirmation could not finish"),
+              );
             }}
           >
             {moveFile.isPending ? (
@@ -190,14 +193,20 @@ const FolderRow = memo(function FolderRowContent({
   folder,
   selection,
 }: FolderRowProps) {
-  const selected = useStore(selection, (state) => state.selectedId === folder.id);
+  const selected = useStore(
+    selection,
+    (state) => state.selectedId === folder.id,
+  );
   const [expanded, setExpanded] = useState(false);
   const subFolders = childrenByParent.get(folder.id) ?? EMPTY_NODES;
   const isDisabled = folder.id === disabledId;
 
   return (
     <>
-      <div className="flex items-center gap-1" style={{ paddingLeft: `${rowIndent(depth)}px` }}>
+      <div
+        className="flex items-center gap-1"
+        style={{ paddingLeft: `${rowIndent(depth)}px` }}
+      >
         <Button
           aria-expanded={expanded}
           aria-label={`${expanded ? "Collapse" : "Expand"} ${folder.name}`}
@@ -211,7 +220,12 @@ const FolderRow = memo(function FolderRowContent({
           variant="ghost"
         >
           {subFolders.length > 0 && (
-            <ChevronRight className={cn("size-3 transition-transform", expanded && "rotate-90")} />
+            <ChevronRight
+              className={cn(
+                "size-3 transition-transform",
+                expanded && "rotate-90",
+              )}
+            />
           )}
         </Button>
         <Button
@@ -259,7 +273,9 @@ const DriveRow = memo(function DriveRowContent({
 
   const treeQuery = useDriveTree(expanded ? driveId : null);
 
-  const childrenByParent = indexDestinationFolders(treeQuery.data?.folders ?? EMPTY_NODES);
+  const childrenByParent = indexDestinationFolders(
+    treeQuery.data?.folders ?? EMPTY_NODES,
+  );
   const rootFolders = childrenByParent.get("__root__") ?? EMPTY_NODES;
   const isDriveDisabled = driveId === disabledId;
 
@@ -277,7 +293,12 @@ const DriveRow = memo(function DriveRowContent({
           type="button"
           variant="ghost"
         >
-          <ChevronRight className={cn("size-3 transition-transform", expanded && "rotate-90")} />
+          <ChevronRight
+            className={cn(
+              "size-3 transition-transform",
+              expanded && "rotate-90",
+            )}
+          />
         </Button>
         <Button
           className={cn(
@@ -312,7 +333,9 @@ const DriveRow = memo(function DriveRowContent({
           <Button
             disabled={treeQuery.isFetching}
             onClick={() => {
-              void treeQuery.refetch().catch(() => console.warn("Folder retry could not finish"));
+              void treeQuery
+                .refetch()
+                .catch(() => console.warn("Folder retry could not finish"));
             }}
             size="sm"
             type="button"

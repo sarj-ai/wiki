@@ -47,7 +47,9 @@ it.each([0, 1, 2, 20])(
         unsafePatchCount: 0,
       },
     };
-    const view = renderToStaticMarkup(<DocumentPolishReceipt result={result} />);
+    const view = renderToStaticMarkup(
+      <DocumentPolishReceipt result={result} />,
+    );
     expect(view.includes("native heading")).toBe(count > 0);
     expect(
       view.includes(

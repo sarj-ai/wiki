@@ -24,14 +24,22 @@ export function DocWarmup() {
     let cancelled = false;
     let unsubscribe: (() => void) | undefined;
     const run = () => {
-      if (document.visibilityState !== "visible" || useDocViewerStore.getState().active) return;
+      if (
+        document.visibilityState !== "visible" ||
+        useDocViewerStore.getState().active
+      )
+        return;
       warmedUser.current = userId;
       const limit = warmCountFor(readNavigatorHints(navigator));
       if (limit === 0) return;
 
-      const recents = readRecentDocs(userId).filter((doc) => doc.mimeType !== MIME_HTML);
+      const recents = readRecentDocs(userId).filter(
+        (doc) => doc.mimeType !== MIME_HTML,
+      );
       const targets =
-        recents.length > 0 ? recents.slice(0, limit) : firstWorkspaceDocs(queryClient, limit);
+        recents.length > 0
+          ? recents.slice(0, limit)
+          : firstWorkspaceDocs(queryClient, limit);
       if (targets.length === 0) return;
       unsubscribe = useDocViewerStore.subscribe((state) => {
         if (state.active !== null) cancelled = true;
@@ -78,7 +86,9 @@ async function authorizeAndWarm(
             mimeType: file.mimeType,
             reloadKey: 0,
             title: file.name,
-            ...(!(file.modifiedTime === undefined) && { version: file.modifiedTime }),
+            ...(!(file.modifiedTime === undefined) && {
+              version: file.modifiedTime,
+            }),
           },
         ],
   );
@@ -91,8 +101,13 @@ function scheduleWarmup(run: () => void): () => void {
   };
 }
 
-function firstWorkspaceDocs(queryClient: QueryClient, limit: number): LastDoc[] {
-  const trees = queryClient.getQueriesData<DriveTree>({ queryKey: wikiKeys.driveTreePrefix });
+function firstWorkspaceDocs(
+  queryClient: QueryClient,
+  limit: number,
+): LastDoc[] {
+  const trees = queryClient.getQueriesData<DriveTree>({
+    queryKey: wikiKeys.driveTreePrefix,
+  });
   const docs: LastDoc[] = [];
   for (const [, tree] of trees) {
     for (const node of tree?.files ?? []) {

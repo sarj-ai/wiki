@@ -3,7 +3,10 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useShallow } from "zustand/react/shallow";
 
-import { type ActiveDoc, useDocViewerStore } from "@/components/wiki-document/doc-viewer-store";
+import {
+  type ActiveDoc,
+  useDocViewerStore,
+} from "@/components/wiki-document/doc-viewer-store";
 import { DocumentLoading } from "@/components/wiki-document/document-loading";
 import { useReducedMotion } from "@/hooks/use-reduced-motion";
 import { embedUrlFor } from "@/lib/file-urls";
@@ -25,8 +28,10 @@ export const DOCUMENT_LOADING_EXIT_MS = 160;
 export const DOCUMENT_LOADING_MIN_MS = 300;
 export const DOCUMENT_LOADING_SLOW_MS = 10_000;
 
-export const HTML_IFRAME_SANDBOX = "allow-popups allow-popups-to-escape-sandbox allow-scripts";
-export const HTML_IFRAME_CLASS_NAME = "html-theme-frame block h-full w-full border-0";
+export const HTML_IFRAME_SANDBOX =
+  "allow-popups allow-popups-to-escape-sandbox allow-scripts";
+export const HTML_IFRAME_CLASS_NAME =
+  "html-theme-frame block h-full w-full border-0";
 
 export function htmlContentUrl(fileId: string, version?: string): string {
   const query = new URLSearchParams({ version: version ?? "current" });
@@ -53,7 +58,10 @@ export const DocViewerHost = () => {
     if (index < pool.length) entry = pool[index];
     else if (index === pool.length && prewarm !== null) entry = prewarm;
     else entry = warm[index - pool.length - prewarmCount];
-    if (entry === undefined || (entry.mimeType === MIME_HTML && entry.fileId !== active?.fileId))
+    if (
+      entry === undefined ||
+      (entry.mimeType === MIME_HTML && entry.fileId !== active?.fileId)
+    )
       continue;
     if (mounted.some((existing) => existing.fileId === entry.fileId)) continue;
     mounted.push(entry);
@@ -69,7 +77,12 @@ export const DocViewerHost = () => {
         resizeFrame = undefined;
       }
       const r = slot.getBoundingClientRect();
-      const next = { height: r.height, left: r.left, top: r.top, width: r.width };
+      const next = {
+        height: r.height,
+        left: r.left,
+        top: r.top,
+        width: r.width,
+      };
       setRect((previous) =>
         previous?.height === next.height &&
         previous.left === next.left &&
@@ -101,18 +114,29 @@ export const DocViewerHost = () => {
       className={cn("fixed z-10", !visible && "pointer-events-none invisible")}
       style={visible ? { ...rect } : { height: 0, left: 0, top: 0, width: 0 }}
     >
-      {mounted.length > 0 ? <PooledFrames active={active} mounted={mounted} /> : null}
+      {mounted.length > 0 ? (
+        <PooledFrames active={active} mounted={mounted} />
+      ) : null}
     </div>
   );
 };
 
-function PooledFrames({ active, mounted }: { active: ActiveDoc | null; mounted: ActiveDoc[] }) {
+function PooledFrames({
+  active,
+  mounted,
+}: {
+  active: ActiveDoc | null;
+  mounted: ActiveDoc[];
+}) {
   const reducedMotion = useReducedMotion();
   const activeKey = active === null ? null : viewerKey(active);
   return mounted.map((entry) => (
     <div
       aria-hidden={viewerKey(entry) !== activeKey}
-      className={cn("absolute inset-0", entry.fileId !== active?.fileId && "hidden")}
+      className={cn(
+        "absolute inset-0",
+        entry.fileId !== active?.fileId && "hidden",
+      )}
       key={entry.fileId}
     >
       <PooledIframe
@@ -129,7 +153,8 @@ function PooledFrames({ active, mounted }: { active: ActiveDoc | null; mounted: 
 }
 
 export function viewerKey(entry: ActiveDoc): string {
-  const contentVersion = entry.mimeType === MIME_HTML ? (entry.version ?? "current") : "stable";
+  const contentVersion =
+    entry.mimeType === MIME_HTML ? (entry.version ?? "current") : "stable";
   return `${entry.fileId}:${entry.reloadKey}:${contentVersion}`;
 }
 
@@ -187,7 +212,11 @@ const DrivePreviewIframe = ({
   }, [fileId]);
 
   return (
-    <DocumentFrame active={active} loading={isLoading} reducedMotion={reducedMotion}>
+    <DocumentFrame
+      active={active}
+      loading={isLoading}
+      reducedMotion={reducedMotion}
+    >
       <iframe
         allow="clipboard-read; clipboard-write"
         className="block size-full border-0"
@@ -201,7 +230,10 @@ const DrivePreviewIframe = ({
   );
 };
 
-function attachIframeLoadListener(onLoaded: () => void, iframe: HTMLIFrameElement | null) {
+function attachIframeLoadListener(
+  onLoaded: () => void,
+  iframe: HTMLIFrameElement | null,
+) {
   if (!iframe) return;
   iframe.addEventListener("load", onLoaded);
   return () => {
@@ -209,7 +241,10 @@ function attachIframeLoadListener(onLoaded: () => void, iframe: HTMLIFrameElemen
   };
 }
 
-function markIframeLoaded(fileId: string, setIsLoading: (isLoading: boolean) => void): void {
+function markIframeLoaded(
+  fileId: string,
+  setIsLoading: (isLoading: boolean) => void,
+): void {
   markNav(fileId, "iframeLoad");
   setIsLoading(false);
 }
@@ -229,7 +264,11 @@ function HtmlIframe({
 }) {
   const [isLoading, setIsLoading] = useState(true);
   return (
-    <DocumentFrame active={active} loading={isLoading} reducedMotion={reducedMotion}>
+    <DocumentFrame
+      active={active}
+      loading={isLoading}
+      reducedMotion={reducedMotion}
+    >
       <iframe
         className={HTML_IFRAME_CLASS_NAME}
         ref={attachIframeLoadListener.bind(undefined, () => {
@@ -244,7 +283,12 @@ function HtmlIframe({
   );
 }
 
-type LoadingOverlayPhase = "exiting" | "hidden" | "masked-exiting" | "masked" | "visible";
+type LoadingOverlayPhase =
+  | "exiting"
+  | "hidden"
+  | "masked-exiting"
+  | "masked"
+  | "visible";
 
 function DocumentFrame({
   active,
@@ -275,7 +319,9 @@ function DocumentFrame({
           data-loading-phase={phase}
         >
           {announced ? (
-            <DocumentLoading label={slow ? "Still loading document…" : "Loading document…"} />
+            <DocumentLoading
+              label={slow ? "Still loading document…" : "Loading document…"}
+            />
           ) : null}
         </div>
       )}
@@ -311,7 +357,7 @@ function useDocumentLoading(
     };
 
     if (!active) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect -- Reset the timer state machine immediately when its document becomes inactive.
+      // eslint-disable-next-line react/set-state-in-effect -- Reset the timer state machine immediately when its document becomes inactive.
       setSlow(false);
       setPhase(loading ? "masked" : "hidden");
       return cleanup;
@@ -347,7 +393,10 @@ function useDocumentLoading(
     if (phaseRef.current === "hidden") return cleanup;
     const minimumRemaining =
       phaseRef.current === "visible"
-        ? Math.max(0, visibleSinceRef.current + DOCUMENT_LOADING_MIN_MS - Date.now())
+        ? Math.max(
+            0,
+            visibleSinceRef.current + DOCUMENT_LOADING_MIN_MS - Date.now(),
+          )
         : 0;
     timers.push(
       window.setTimeout(() => {
@@ -362,7 +411,9 @@ function useDocumentLoading(
                   setPhase("hidden");
                   return;
                 }
-                setPhase(phaseRef.current === "visible" ? "exiting" : "masked-exiting");
+                setPhase(
+                  phaseRef.current === "visible" ? "exiting" : "masked-exiting",
+                );
                 timers.push(
                   window.setTimeout(() => {
                     if (isCurrent()) setPhase("hidden");

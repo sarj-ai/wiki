@@ -33,7 +33,11 @@ function ShortLinkDialogForFile({ fileId }: { fileId: string }) {
         <span className="hidden @min-[40rem]/toolbar:inline">Short link</span>
       </Button>
       {dialog.mounted ? (
-        <ShortLinkEditor fileId={fileId} onOpenChange={dialog.onOpenChange} open={dialog.open} />
+        <ShortLinkEditor
+          fileId={fileId}
+          onOpenChange={dialog.onOpenChange}
+          open={dialog.open}
+        />
       ) : null}
     </>
   );

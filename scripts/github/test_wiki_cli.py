@@ -151,7 +151,7 @@ def test_frontend_contract_checks_generated_api_and_types_before_the_production_
         "generate:api",
         "format:check",
         "typecheck",
-        "lint:baseline-check",
+        "lint",
         "check:dependencies",
         "knip",
         "type-coverage",
@@ -220,3 +220,45 @@ def test_setup_initializes_locked_local_providers_after_packages_and_preserves_d
         ["-chdir=terraform", "init", "-backend=false", "-input=false", "-lockfile=readonly"],
     ]
     assert all(call.terraform_data_directory == selected_directory for call in calls)
+
+
+@pytest.mark.parametrize("review", ["missing", "matching", "tampered"])
+def test_migration_allowance_requires_the_exact_reviewed_changed_source(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, review: str
+) -> None:
+    from hashlib import sha256
+
+    from scripts.standards_checks.check_baseline_growth import (
+        _BootstrapGrowth,
+        _validated_allowances,
+    )
+
+    monkeypatch.chdir(tmp_path)
+    source = tmp_path / "frontend/sample.ts"
+    source.parent.mkdir()
+    source.write_text("export const value = 1;\n", encoding="utf-8")
+    relative_source = "frontend/sample.ts"
+    digest = sha256(source.read_bytes()).hexdigest()
+    hashes = {} if review == "missing" else {relative_source: digest}
+    if review == "tampered":
+        source.write_text("export const value = 2;\n", encoding="utf-8")
+
+    allowances = {"sample.ts": {"rule": _BootstrapGrowth(before=0, after=1)}}
+
+    def verify() -> bool:
+        return bool(
+            _validated_allowances(
+                allowances,
+                bootstrap="review.json",
+                changed={relative_source},
+                changed_prefix="frontend/",
+                reviewed_source_hashes=hashes,
+            )
+        )
+
+    if review == "matching":
+        assert verify()
+    else:
+        with pytest.raises(SystemExit) as failure:
+            verify()
+        assert failure.value.code == _USAGE_ERROR

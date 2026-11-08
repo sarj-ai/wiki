@@ -19,7 +19,12 @@ import {
   SheetTitle,
 } from "@/components/ui/sheet";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { useIsMobile } from "@/hooks/use-is-mobile";
 import { cn } from "@/lib/utils";
 
@@ -33,7 +38,9 @@ const SIDEBAR_KEYBOARD_SHORTCUT = "b";
 const SidebarCallbackSchema = z.function();
 const SidebarTextSchema = z.string();
 
-function isOpenUpdater(value: React.SetStateAction<boolean>): value is (value: boolean) => boolean {
+function isOpenUpdater(
+  value: React.SetStateAction<boolean>,
+): value is (value: boolean) => boolean {
   return SidebarCallbackSchema.safeParse(value).success;
 }
 
@@ -93,8 +100,12 @@ function SidebarProvider({
   persistState?: boolean;
 }) {
   const isMobile = useIsMobile();
-  const [mobileDrawer, setMobileDrawer] = React.useState({ isMobile, open: false });
-  if (mobileDrawer.isMobile !== isMobile) setMobileDrawer({ isMobile, open: false });
+  const [mobileDrawer, setMobileDrawer] = React.useState({
+    isMobile,
+    open: false,
+  });
+  if (mobileDrawer.isMobile !== isMobile)
+    setMobileDrawer({ isMobile, open: false });
   const openMobile = mobileDrawer.isMobile === isMobile && mobileDrawer.open;
   const setOpenMobile = React.useCallback(
     (value: boolean) => setMobileDrawer({ isMobile, open: value }),
@@ -135,7 +146,10 @@ function SidebarProvider({
 
   React.useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === SIDEBAR_KEYBOARD_SHORTCUT && (event.metaKey || event.ctrlKey)) {
+      if (
+        event.key === SIDEBAR_KEYBOARD_SHORTCUT &&
+        (event.metaKey || event.ctrlKey)
+      ) {
         event.preventDefault();
         toggleSidebar();
       }
@@ -199,7 +213,8 @@ function Sidebar({
   variant?: "floating" | "inset" | "sidebar";
   collapsible?: "icon" | "none" | "offcanvas";
 }) {
-  const { isMobile, mobileTriggerRef, openMobile, setOpenMobile, state } = useSidebar();
+  const { isMobile, mobileTriggerRef, openMobile, setOpenMobile, state } =
+    useSidebar();
   const mobileSidebarStyle: SidebarStyle = {
     "--sidebar-width": SIDEBAR_WIDTH_MOBILE,
   };
@@ -307,7 +322,8 @@ function SidebarTrigger({
   size = "icon-sm",
   ...props
 }: React.ComponentProps<typeof Button>) {
-  const { isMobile, mobileTriggerRef, open, openMobile, toggleSidebar } = useSidebar();
+  const { isMobile, mobileTriggerRef, open, openMobile, toggleSidebar } =
+    useSidebar();
 
   return (
     <Button
@@ -324,7 +340,8 @@ function SidebarTrigger({
         const cleanup = isSidebarRefCallback(ref) ? ref(element) : undefined;
         if (ref && !isSidebarRefCallback(ref)) ref.current = element;
         return () => {
-          if (mobileTriggerRef.current === element) mobileTriggerRef.current = null;
+          if (mobileTriggerRef.current === element)
+            mobileTriggerRef.current = null;
           if (isSidebarRefCleanup(cleanup)) cleanup();
           else if (isSidebarRefCallback(ref)) ref(null);
           else if (ref?.current === element) ref.current = null;
@@ -380,7 +397,10 @@ function SidebarInset({ className, ...props }: React.ComponentProps<"main">) {
   );
 }
 
-function SidebarInput({ className, ...props }: React.ComponentProps<typeof Input>) {
+function SidebarInput({
+  className,
+  ...props
+}: React.ComponentProps<typeof Input>) {
   return (
     <Input
       className={cn("bg-background h-8 w-full shadow-none", className)}
@@ -413,10 +433,16 @@ function SidebarFooter({ className, ...props }: React.ComponentProps<"div">) {
   );
 }
 
-function SidebarSeparator({ className, ...props }: React.ComponentProps<typeof Separator>) {
+function SidebarSeparator({
+  className,
+  ...props
+}: React.ComponentProps<typeof Separator>) {
   return (
     <Separator
-      className={cn("bg-sidebar-border mx-2 data-[orientation=horizontal]:w-auto", className)}
+      className={cn(
+        "bg-sidebar-border mx-2 data-[orientation=horizontal]:w-auto",
+        className,
+      )}
       data-sidebar="separator"
       data-slot="sidebar-separator"
       {...props}
@@ -493,7 +519,10 @@ function SidebarGroupAction({
   );
 }
 
-function SidebarGroupContent({ className, ...props }: React.ComponentProps<"div">) {
+function SidebarGroupContent({
+  className,
+  ...props
+}: React.ComponentProps<"div">) {
   return (
     <div
       className={cn("w-full text-sm", className)}
@@ -632,7 +661,10 @@ function SidebarMenuAction({
   );
 }
 
-function SidebarMenuBadge({ className, ...props }: React.ComponentProps<"div">) {
+function SidebarMenuBadge({
+  className,
+  ...props
+}: React.ComponentProps<"div">) {
   return (
     <div
       className={cn(
@@ -668,7 +700,10 @@ function SidebarMenuSkeleton({
       {...props}
     >
       {showIcon ? (
-        <Skeleton className="size-4 rounded-md" data-sidebar="menu-skeleton-icon" />
+        <Skeleton
+          className="size-4 rounded-md"
+          data-sidebar="menu-skeleton-icon"
+        />
       ) : null}
       <Skeleton
         className="h-4 max-w-(--skeleton-width) flex-1"
@@ -694,7 +729,10 @@ function SidebarMenuSub({ className, ...props }: React.ComponentProps<"ul">) {
   );
 }
 
-function SidebarMenuSubItem({ className, ...props }: React.ComponentProps<"li">) {
+function SidebarMenuSubItem({
+  className,
+  ...props
+}: React.ComponentProps<"li">) {
   return (
     <li
       className={cn("group/menu-sub-item relative", className)}

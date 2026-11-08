@@ -12,7 +12,9 @@ describe("file presentation", () => {
   });
 
   it("hides HTML suffixes without changing unrelated names", () => {
-    expect(displayFileName("Organization Chart.html", MIME_HTML)).toBe("Organization Chart");
+    expect(displayFileName("Organization Chart.html", MIME_HTML)).toBe(
+      "Organization Chart",
+    );
     expect(displayFileName("Prototype.HTM", MIME_HTML)).toBe("Prototype");
     expect(displayFileName("Notes.txt", "text/plain")).toBe("Notes.txt");
   });
@@ -22,12 +24,15 @@ describe("file presentation", () => {
     ["audio/ogg", "lucide-file-headphone", "text-icon-generic"],
     ["video/webm", "lucide-file-play", "text-icon-slide"],
     ["application/x-synthetic", "lucide-file-text", "text-icon-generic"],
-  ])("preserves fallback glyph, tint and caller classes for %s", (mimeType, glyph, tint) => {
-    const view = renderToStaticMarkup(renderMimeIcon(mimeType, "size-4"));
-    expect(view).toContain(glyph);
-    expect(view).toContain(tint);
-    expect(view).toContain("size-4");
-  });
+  ])(
+    "preserves fallback glyph, tint and caller classes for %s",
+    (mimeType, glyph, tint) => {
+      const view = renderToStaticMarkup(renderMimeIcon(mimeType, "size-4"));
+      expect(view).toContain(glyph);
+      expect(view).toContain(tint);
+      expect(view).toContain("size-4");
+    },
+  );
 
   it.each([
     ["application/zip", "lucide-archive"],

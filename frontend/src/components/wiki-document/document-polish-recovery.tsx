@@ -27,9 +27,20 @@ interface Props {
   source: DocumentTransformSource | null;
 }
 
-type RecoveryAction = "check" | "export" | "import" | "legacy" | "reload" | "restore";
+type RecoveryAction =
+  | "check"
+  | "export"
+  | "import"
+  | "legacy"
+  | "reload"
+  | "restore";
 
-export function DocumentPolishRecovery({ owner, operation, source, onRestore }: Props) {
+export function DocumentPolishRecovery({
+  owner,
+  operation,
+  source,
+  onRestore,
+}: Props) {
   const [transfer, setTransfer] = useState("");
   const [message, setMessage] = useState("");
   const [busy, setBusy] = useState(false);
@@ -84,10 +95,14 @@ export function DocumentPolishRecovery({ owner, operation, source, onRestore }: 
         break;
       }
       case "export":
-        setTransfer(JSON.stringify(makeMarkdownRecovery(owner, operation, source)));
+        setTransfer(
+          JSON.stringify(makeMarkdownRecovery(owner, operation, source)),
+        );
         break;
       case "restore": {
-        const raw = window.sessionStorage.getItem(markdownRecoveryStorageKey(owner));
+        const raw = window.sessionStorage.getItem(
+          markdownRecoveryStorageKey(owner),
+        );
         if (!raw) throw new Error("No saved recovery draft");
         await resolve(validateMarkdownRecovery(raw, owner, operation));
         break;
@@ -112,9 +127,10 @@ export function DocumentPolishRecovery({ owner, operation, source, onRestore }: 
       <p className="font-medium">Recover original import</p>
       <p className="break-all">Recovery reference: {operation.key}</p>
       <p>
-        Do not start a new import. Reloading without saving the exact draft can lose it. Saving
-        below stores sensitive draft text in this tab’s session storage, readable by this site,
-        until the task is recovered or you sign out.
+        Do not start a new import. Reloading without saving the exact draft can
+        lose it. Saving below stores sensitive draft text in this tab’s session
+        storage, readable by this site, until the task is recovered or you sign
+        out.
       </p>
       <div className="flex flex-wrap gap-2">
         <Button
@@ -178,15 +194,17 @@ export function DocumentPolishRecovery({ owner, operation, source, onRestore }: 
         Restore exact recovery bundle
       </Button>
       <p>
-        For an older tab without an export button: preserve the original Markdown, source name,
-        destination, and this recovery reference before reloading. Do not clear its reservation. A
-        matching recovery bundle is required if admission lookup finds no task.
+        For an older tab without an export button: preserve the original
+        Markdown, source name, destination, and this recovery reference before
+        reloading. Do not clear its reservation. A matching recovery bundle is
+        required if admission lookup finds no task.
       </p>
       <details>
         <summary>Recover an older tab from the exact original values</summary>
         <p>
-          Use only the exact values from this reserved submission. Changed values may conflict with
-          the original request. This never changes the recovery reference or submits automatically.
+          Use only the exact values from this reserved submission. Changed
+          values may conflict with the original request. This never changes the
+          recovery reference or submits automatically.
         </p>
         <Label className="block" htmlFor="polish-recovery-original-name">
           Original source name

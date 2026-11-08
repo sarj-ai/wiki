@@ -1,7 +1,8 @@
 import { readdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
-const BANNER = "// @ts-nocheck — vendored hey-api runtime; see scripts/patch-generated.ts\n";
+const BANNER =
+  "// @ts-nocheck — vendored hey-api runtime; see scripts/patch-generated.ts\n";
 
 await Promise.all(
   ["src/lib/generated/client", "src/lib/generated/core"].map(async (dir) => {

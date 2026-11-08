@@ -4,8 +4,14 @@
     "src/app/**/{page,layout,loading,not-found,error,template,default}.{ts,tsx}",
     "open-next.config.ts"
   ],
-  "ignore": ["src/components/ui/**", "src/test-stubs/**"],
-  "ignoreDependencies": ["@taplo/cli", "lefthook", "markdownlint-cli2", "react-doctor"],
+  "ignore": ["src/components/ui/**", "oxlint.strict.mts", "oxfmt.strict.mts"],
+  "ignoreDependencies": [
+    "@taplo/cli",
+    "lefthook",
+    "markdownlint-cli2",
+    "oxlint-plugin-react-doctor",
+    "parse5"
+  ],
   "ignoreExportsUsedInFile": true,
   "lefthook": false
 }

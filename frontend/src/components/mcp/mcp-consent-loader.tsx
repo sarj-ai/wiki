@@ -27,7 +27,8 @@ export function McpConsentLoader({ intent }: { intent: string }) {
     const controller = new AbortController();
     const load = async () => {
       const view = await getMcpConsent(intent, controller.signal);
-      if (current) setState({ intent, kind: "ready", signal: controller.signal, view });
+      if (current)
+        setState({ intent, kind: "ready", signal: controller.signal, view });
     };
     void load().catch((error: unknown) => {
       if (current)
@@ -77,7 +78,9 @@ export function McpConsentLoader({ intent }: { intent: string }) {
   return (
     <section className="bg-card mx-auto w-full max-w-lg space-y-4 rounded-xl border p-6">
       <h1 className="text-2xl font-semibold">
-        {state.kind === "signin" ? "Sign in to review access" : "Connection request unavailable"}
+        {state.kind === "signin"
+          ? "Sign in to review access"
+          : "Connection request unavailable"}
       </h1>
       <p className="text-muted-foreground" role="status">
         {state.kind === "signin"
@@ -89,7 +92,9 @@ export function McpConsentLoader({ intent }: { intent: string }) {
           <Link
             href={{
               pathname: "/login",
-              query: { redirect: `/mcp/consent?intent=${encodeURIComponent(intent)}` },
+              query: {
+                redirect: `/mcp/consent?intent=${encodeURIComponent(intent)}`,
+              },
             }}
           >
             Sign in to Wiki

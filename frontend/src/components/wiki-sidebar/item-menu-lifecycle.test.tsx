@@ -11,7 +11,9 @@ import { MIME_DOC } from "@/types/wiki";
 
 import { ItemMenu } from "./item-menu";
 
-const ACTIONS = vi.hoisted(() => ({ rename: vi.fn<() => Promise<ActionResult<FileDetail>>>() }));
+const ACTIONS = vi.hoisted(() => ({
+  rename: vi.fn<() => Promise<ActionResult<FileDetail>>>(),
+}));
 vi.mock("@/app/actions/wiki-actions", () => ({
   renameFileAction: ACTIONS.rename,
   copyFileAction: vi.fn(),
@@ -42,10 +44,12 @@ const FILE: FileDetail = {
 
 function submitRename() {
   const input = document.querySelector("input");
-  if (!(input instanceof HTMLInputElement)) throw new TypeError("Name input missing");
-  const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set?.bind(
-    input,
-  );
+  if (!(input instanceof HTMLInputElement))
+    throw new TypeError("Name input missing");
+  const setter = Object.getOwnPropertyDescriptor(
+    HTMLInputElement.prototype,
+    "value",
+  )?.set?.bind(input);
   if (!setter) throw new Error("Native input setter missing");
   flushSync(() => {
     setter("Rename requested");
@@ -53,7 +57,11 @@ function submitRename() {
   });
   const form = document.querySelector("form");
   if (!form) throw new Error("Name prompt form missing");
-  flushSync(() => form.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true })));
+  flushSync(() =>
+    form.dispatchEvent(
+      new Event("submit", { bubbles: true, cancelable: true }),
+    ),
+  );
 }
 
 describe("used item-action body lifetime", () => {
@@ -106,17 +114,25 @@ describe("used item-action body lifetime", () => {
   async function openRename() {
     renderMenu();
     const trigger = host.querySelector("button");
-    if (!(trigger instanceof HTMLButtonElement)) throw new TypeError("Menu trigger missing");
+    if (!(trigger instanceof HTMLButtonElement))
+      throw new TypeError("Menu trigger missing");
     flushSync(() => {
-      trigger.dispatchEvent(new KeyboardEvent("keydown", { bubbles: true, key: "Enter" }));
+      trigger.dispatchEvent(
+        new KeyboardEvent("keydown", { bubbles: true, key: "Enter" }),
+      );
     });
-    await vi.waitFor(() => expect(document.querySelector('[role="menu"]')).not.toBeNull());
+    await vi.waitFor(() =>
+      expect(document.querySelector('[role="menu"]')).not.toBeNull(),
+    );
     const action = [...document.querySelectorAll('[role="menuitem"]')].find(
       (item) => item.textContent === "Rename",
     );
-    if (!(action instanceof HTMLElement)) throw new TypeError("Rename action missing");
+    if (!(action instanceof HTMLElement))
+      throw new TypeError("Rename action missing");
     flushSync(() => action.click());
-    await vi.waitFor(() => expect(document.querySelector('[role="dialog"]')).not.toBeNull());
+    await vi.waitFor(() =>
+      expect(document.querySelector('[role="dialog"]')).not.toBeNull(),
+    );
   }
 
   it.each(["Rename", "Duplicate", "Move to…", "Move to trash"])(
@@ -124,28 +140,39 @@ describe("used item-action body lifetime", () => {
     async (label) => {
       renderMenu();
       const trigger = host.querySelector("button");
-      if (!(trigger instanceof HTMLButtonElement)) throw new TypeError("Menu trigger missing");
+      if (!(trigger instanceof HTMLButtonElement))
+        throw new TypeError("Menu trigger missing");
       flushSync(() => {
         trigger.focus();
-        trigger.dispatchEvent(new KeyboardEvent("keydown", { bubbles: true, key: "Enter" }));
+        trigger.dispatchEvent(
+          new KeyboardEvent("keydown", { bubbles: true, key: "Enter" }),
+        );
       });
-      await vi.waitFor(() => expect(document.querySelector('[role="menu"]')).not.toBeNull());
+      await vi.waitFor(() =>
+        expect(document.querySelector('[role="menu"]')).not.toBeNull(),
+      );
       const action = [...document.querySelectorAll('[role="menuitem"]')].find(
         (item) => item.textContent === label,
       );
-      if (!(action instanceof HTMLElement)) throw new TypeError("Action missing");
+      if (!(action instanceof HTMLElement))
+        throw new TypeError("Action missing");
       flushSync(() => action.click());
       await vi.waitFor(() =>
-        expect(document.querySelector('[role="dialog"], [role="alertdialog"]')).not.toBeNull(),
+        expect(
+          document.querySelector('[role="dialog"], [role="alertdialog"]'),
+        ).not.toBeNull(),
       );
       await vi.advanceTimersByTimeAsync(250);
       const cancel = [...document.querySelectorAll("button")].find(
         (button) => button.textContent === "Cancel",
       );
-      if (!(cancel instanceof HTMLButtonElement)) throw new TypeError("Cancel missing");
+      if (!(cancel instanceof HTMLButtonElement))
+        throw new TypeError("Cancel missing");
       flushSync(() => cancel.click());
       await vi.advanceTimersByTimeAsync(250);
-      expect(document.querySelector('[role="dialog"], [role="alertdialog"]')).toBeNull();
+      expect(
+        document.querySelector('[role="dialog"], [role="alertdialog"]'),
+      ).toBeNull();
       expect(trigger).toHaveFocus();
       expect(client.getMutationCache().getAll()).toHaveLength(0);
       expect(ACTIONS.rename).not.toHaveBeenCalled();
@@ -159,11 +186,19 @@ describe("used item-action body lifetime", () => {
     submitRename();
     await vi.advanceTimersByTimeAsync(1_000);
     expect(ACTIONS.rename).toHaveBeenCalledOnce();
-    expect(document.querySelector('[role="dialog"]')?.textContent).toContain("Rename file");
-    expect(client.getQueryData<FileDetail>(wikiKeys.file(FILE.id))?.name).toBe(FILE.name);
+    expect(document.querySelector('[role="dialog"]')?.textContent).toContain(
+      "Rename file",
+    );
+    expect(client.getQueryData<FileDetail>(wikiKeys.file(FILE.id))?.name).toBe(
+      FILE.name,
+    );
     pending.resolve({ data: { ...FILE, name: "Rename requested" }, ok: true });
-    await vi.waitFor(() => expect(document.querySelector('[role="dialog"]')).toBeNull());
-    expect(client.getQueryData<FileDetail>(wikiKeys.file(FILE.id))?.name).toBe("Rename requested");
+    await vi.waitFor(() =>
+      expect(document.querySelector('[role="dialog"]')).toBeNull(),
+    );
+    expect(client.getQueryData<FileDetail>(wikiKeys.file(FILE.id))?.name).toBe(
+      "Rename requested",
+    );
     await vi.advanceTimersByTimeAsync(250);
     await openRename();
     expect(document.querySelector("input")).toHaveValue(FILE.name);
@@ -176,9 +211,12 @@ describe("used item-action body lifetime", () => {
     submitRename();
     await vi.advanceTimersByTimeAsync(0);
     const dialog = document.querySelector('[role="dialog"]');
-    if (!(dialog instanceof HTMLElement)) throw new TypeError("Name dialog missing");
+    if (!(dialog instanceof HTMLElement))
+      throw new TypeError("Name dialog missing");
     flushSync(() => {
-      dialog.dispatchEvent(new KeyboardEvent("keydown", { bubbles: true, key: "Escape" }));
+      dialog.dispatchEvent(
+        new KeyboardEvent("keydown", { bubbles: true, key: "Escape" }),
+      );
     });
     await vi.advanceTimersByTimeAsync(1_000);
     expect(ACTIONS.rename).toHaveBeenCalledOnce();
@@ -188,13 +226,16 @@ describe("used item-action body lifetime", () => {
       expect(client.getMutationCache().getAll()[0]?.state.status).toBe("error"),
     );
     await vi.advanceTimersByTimeAsync(250);
-    ACTIONS.rename.mockResolvedValue({ data: { ...FILE, name: "Rename requested" }, ok: true });
+    ACTIONS.rename.mockResolvedValue({
+      data: { ...FILE, name: "Rename requested" },
+      ok: true,
+    });
     await openRename();
     submitRename();
     await vi.waitFor(() =>
-      expect(client.getQueryData<FileDetail>(wikiKeys.file(FILE.id))?.name).toBe(
-        "Rename requested",
-      ),
+      expect(
+        client.getQueryData<FileDetail>(wikiKeys.file(FILE.id))?.name,
+      ).toBe("Rename requested"),
     );
     expect(ACTIONS.rename).toHaveBeenCalledTimes(2);
   });

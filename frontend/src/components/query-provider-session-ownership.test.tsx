@@ -1,4 +1,8 @@
-import { type QueryClient, useQuery, useQueryClient } from "@tanstack/react-query";
+import {
+  type QueryClient,
+  useQuery,
+  useQueryClient,
+} from "@tanstack/react-query";
 import { StrictMode, useLayoutEffect } from "react";
 import { flushSync } from "react-dom";
 import { createRoot, type Root } from "react-dom/client";
@@ -8,7 +12,10 @@ import { runAction } from "@/lib/action-client";
 import { ApiError } from "@/lib/api-error";
 import { wikiReadHttp } from "@/lib/clients/wiki-read-http";
 import { TERMINAL_UNAUTHORIZED_EVENT } from "@/lib/session-events";
-import { broadcastSessionClear, clearAuthenticatedSession } from "@/lib/session-isolation";
+import {
+  broadcastSessionClear,
+  clearAuthenticatedSession,
+} from "@/lib/session-isolation";
 import { makeWikiApi } from "@/lib/wiki-api";
 import { installLocalStorage } from "@/test-stubs/install-local-storage";
 
@@ -33,7 +40,11 @@ describe("query provider session ownership", () => {
     clients.add(currentClient);
   }
 
-  function renderProvider(userId: string, key = userId, children?: React.ReactNode) {
+  function renderProvider(
+    userId: string,
+    key = userId,
+    children?: React.ReactNode,
+  ) {
     flushSync(() =>
       root.render(
         <QueryProvider key={key} userId={userId}>
@@ -63,7 +74,10 @@ describe("query provider session ownership", () => {
     await vi.advanceTimersByTimeAsync(0);
     for (const currentClient of clients) currentClient.clear();
     clients.clear();
-    window.removeEventListener(TERMINAL_UNAUTHORIZED_EVENT, terminalUnauthorized);
+    window.removeEventListener(
+      TERMINAL_UNAUTHORIZED_EVENT,
+      terminalUnauthorized,
+    );
     vi.restoreAllMocks();
     vi.unstubAllGlobals();
     vi.useRealTimers();
@@ -124,7 +138,11 @@ describe("query provider session ownership", () => {
     "prevents an unsignalled retired action from refreshing the replacement %s provider",
     async (replacementUser) => {
       renderProvider("user-a", "old-provider");
-      const pending = Promise.withResolvers<{ error: string; ok: false; status: number }>();
+      const pending = Promise.withResolvers<{
+        error: string;
+        ok: false;
+        status: number;
+      }>();
       const action = vi.fn(async () => await pending.promise);
       const fetch = vi.fn<typeof globalThis.fetch>();
       vi.stubGlobal("fetch", fetch);
@@ -132,14 +150,22 @@ describe("query provider session ownership", () => {
         gcTime: Infinity,
         mutationFn: async () => await runAction(action),
       });
-      const retiredMutation = mutation.execute(undefined).catch((error: unknown) => error);
+      const retiredMutation = mutation
+        .execute(undefined)
+        .catch((error: unknown) => error);
       await vi.advanceTimersByTimeAsync(0);
       expect(action).toHaveBeenCalledOnce();
 
       renderProvider(replacementUser, "new-provider");
       client.setQueryData(["replacement-document"], "keep");
-      pending.resolve({ error: "Retired action expired", ok: false, status: 401 });
-      await expect(retiredMutation).resolves.toMatchObject({ name: "AbortError" });
+      pending.resolve({
+        error: "Retired action expired",
+        ok: false,
+        status: 401,
+      });
+      await expect(retiredMutation).resolves.toMatchObject({
+        name: "AbortError",
+      });
       expect(action).toHaveBeenCalledOnce();
       expect(fetch).not.toHaveBeenCalled();
       expect(terminalUnauthorized).not.toHaveBeenCalled();
@@ -151,7 +177,9 @@ describe("query provider session ownership", () => {
   it("prevents a dispatched generated mutation from recovering into a replacement provider", async () => {
     renderProvider("user-a");
     const pending = Promise.withResolvers<Response>();
-    const fetch = vi.fn<typeof globalThis.fetch>().mockReturnValue(pending.promise);
+    const fetch = vi
+      .fn<typeof globalThis.fetch>()
+      .mockReturnValue(pending.promise);
     vi.stubGlobal("fetch", fetch);
     const operation = makeWikiApi().renameFile("file-1", "Old draft");
     const outcome = operation.catch((error: unknown) => error);
@@ -163,7 +191,9 @@ describe("query provider session ownership", () => {
 
     renderProvider("user-b");
     expect(request.signal.aborted).toBe(false);
-    pending.resolve(Response.json({ detail: "Retired session expired" }, { status: 401 }));
+    pending.resolve(
+      Response.json({ detail: "Retired session expired" }, { status: 401 }),
+    );
     await expect(outcome).resolves.toMatchObject({ name: "AbortError" });
     expect(fetch).toHaveBeenCalledOnce();
     expect(terminalUnauthorized).not.toHaveBeenCalled();
@@ -173,13 +203,20 @@ describe("query provider session ownership", () => {
 
   it("stops a retired read transport from publishing its own terminal auth event", async () => {
     const pending = Promise.withResolvers<Response>();
-    const fetch = vi.fn<typeof globalThis.fetch>().mockReturnValue(pending.promise);
+    const fetch = vi
+      .fn<typeof globalThis.fetch>()
+      .mockReturnValue(pending.promise);
     vi.stubGlobal("fetch", fetch);
     renderProvider("user-a");
     const retiredRead = client
       .query({
         queryFn: async ({ signal }) =>
-          await wikiReadHttp("/files/old-user", z.object({ value: z.string() }), {}, signal),
+          await wikiReadHttp(
+            "/files/old-user",
+            z.object({ value: z.string() }),
+            {},
+            signal,
+          ),
         queryKey: ["private-http-document"],
       })
       .catch(() => null);
@@ -198,7 +235,9 @@ describe("query provider session ownership", () => {
 
   it("retains hydrated data and resumes observed reads through Strict Mode cleanup", async () => {
     const pending = Promise.withResolvers<string>();
-    const unneededRefetch = vi.fn<() => Promise<string>>().mockResolvedValue("unneeded-refetch");
+    const unneededRefetch = vi
+      .fn<() => Promise<string>>()
+      .mockResolvedValue("unneeded-refetch");
     const signals: AbortSignal[] = [];
     const read = vi.fn(async ({ signal }: { signal: AbortSignal }) => {
       signals.push(signal);
@@ -210,7 +249,10 @@ describe("query provider session ownership", () => {
         queryFn: unneededRefetch,
         queryKey: ["hydrated-document"],
       });
-      const observed = useQuery({ queryFn: read, queryKey: ["observed-document"] });
+      const observed = useQuery({
+        queryFn: read,
+        queryKey: ["observed-document"],
+      });
       return <span>{`${hydrated.data}:${observed.data ?? "pending"}`}</span>;
     }
     flushSync(() =>
@@ -255,8 +297,13 @@ describe("query provider session ownership", () => {
     await vi.advanceTimersByTimeAsync(0);
 
     expect(fetch).toHaveBeenCalledTimes(2);
-    expect(fetch.mock.calls.map(([, init]) => init?.signal?.aborted)).toEqual([true, false]);
-    expect(client.getQueryData(["strict-http-document"])).toEqual({ value: "loaded" });
+    expect(fetch.mock.calls.map(([, init]) => init?.signal?.aborted)).toEqual([
+      true,
+      false,
+    ]);
+    expect(client.getQueryData(["strict-http-document"])).toEqual({
+      value: "loaded",
+    });
     expect(host.textContent).toBe("loaded");
     expect(terminalUnauthorized).not.toHaveBeenCalled();
   });
@@ -266,10 +313,15 @@ describe("query provider session ownership", () => {
     const signals: AbortSignal[] = [];
     const read = vi.fn(async ({ signal }: { signal: AbortSignal }) => {
       signals.push(signal);
-      return await (signals.length === 1 ? pending.promise : Promise.resolve("replacement"));
+      return await (signals.length === 1
+        ? pending.promise
+        : Promise.resolve("replacement"));
     });
     function ReadProbe() {
-      const observed = useQuery({ queryFn: read, queryKey: ["observed-document"] });
+      const observed = useQuery({
+        queryFn: read,
+        queryKey: ["observed-document"],
+      });
       return <span>{observed.data ?? "pending"}</span>;
     }
     renderProvider("user-a", "initial-provider", <ReadProbe />);
@@ -304,7 +356,11 @@ describe("query provider session ownership", () => {
   });
 });
 
-function CaptureClient({ onClient }: { onClient: (client: QueryClient) => void }) {
+function CaptureClient({
+  onClient,
+}: {
+  onClient: (client: QueryClient) => void;
+}) {
   const client = useQueryClient();
   useLayoutEffect(() => {
     onClient(client);
@@ -315,7 +371,12 @@ function CaptureClient({ onClient }: { onClient: (client: QueryClient) => void }
 function HttpReadProbe() {
   const observed = useQuery({
     queryFn: async ({ signal }) =>
-      await wikiReadHttp("/files/current-user", z.object({ value: z.string() }), {}, signal),
+      await wikiReadHttp(
+        "/files/current-user",
+        z.object({ value: z.string() }),
+        {},
+        signal,
+      ),
     queryKey: ["strict-http-document"],
   });
   return <span>{observed.data?.value ?? "pending"}</span>;

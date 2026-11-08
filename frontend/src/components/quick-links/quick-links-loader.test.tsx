@@ -12,7 +12,9 @@ vi.mock("@/hooks/use-current-user", () => ({
   useCurrentUser: () => ({ data: { id: "user-1" }, isError: false }),
 }));
 
-vi.mock("@/app/actions/wiki-actions", () => ({ getRecentDocumentAliasesAction }));
+vi.mock("@/app/actions/wiki-actions", () => ({
+  getRecentDocumentAliasesAction,
+}));
 vi.mock("@/components/wiki-sidebar/use-document-intent", () => ({
   useDocumentIntent: () => ({}),
 }));
@@ -44,7 +46,13 @@ describe("QuickLinksLoader", () => {
 
   it("preserves new visits and refreshed timestamps recorded while authorization is pending", async () => {
     const pending = Promise.withResolvers<{
-      data: { alias: string; driveName: string; fileId: string; mimeType: string; name: string }[];
+      data: {
+        alias: string;
+        driveName: string;
+        fileId: string;
+        mimeType: string;
+        name: string;
+      }[];
       ok: true;
     }>();
     getRecentDocumentAliasesAction.mockReturnValue(pending.promise);
@@ -93,7 +101,9 @@ describe("QuickLinksLoader", () => {
     flushSync(() => root.render(<QuickLinksLoader />));
     await vi.waitFor(() => expect(host).toHaveTextContent("team-handbook"));
     expect(
-      writes.mock.calls.filter(([key]) => key === recentAliasesStorageKey("user-1")),
+      writes.mock.calls.filter(
+        ([key]) => key === recentAliasesStorageKey("user-1"),
+      ),
     ).toHaveLength(0);
     expect(readRecentAliases("user-1")).toEqual(visits);
   });
@@ -121,7 +131,9 @@ describe("QuickLinksLoader", () => {
     });
 
     expect(host).not.toHaveTextContent("revoked-page");
-    expect(readRecentAliases("user-1").map((visit) => visit.alias)).toEqual(["team-handbook"]);
+    expect(readRecentAliases("user-1").map((visit) => visit.alias)).toEqual([
+      "team-handbook",
+    ]);
   });
 
   it("fails closed without rendering cached aliases", async () => {

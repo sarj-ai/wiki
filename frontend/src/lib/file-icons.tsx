@@ -38,7 +38,10 @@ const MIME_ICONS: Record<string, { icon: typeof FileText; tint: string }> = {
   "application/json": { icon: Braces, tint: "text-icon-generic" },
   "application/msword": { icon: FileText, tint: "text-icon-doc" },
   "application/vnd.ms-excel": { icon: Table, tint: "text-icon-sheet" },
-  "application/vnd.ms-powerpoint": { icon: Presentation, tint: "text-icon-slide" },
+  "application/vnd.ms-powerpoint": {
+    icon: Presentation,
+    tint: "text-icon-slide",
+  },
   "application/vnd.openxmlformats-officedocument.presentationml.presentation": {
     icon: Presentation,
     tint: "text-icon-slide",
@@ -65,7 +68,10 @@ const MIME_ICONS: Record<string, { icon: typeof FileText; tint: string }> = {
   "text/plain": { icon: FileText, tint: "text-icon-generic" },
 };
 
-export function renderMimeIcon(mimeType: string, className?: string): ReactElement {
+export function renderMimeIcon(
+  mimeType: string,
+  className?: string,
+): ReactElement {
   const entry = MIME_ICONS[mimeType] ?? fallbackIcon(mimeType);
   const Icon = entry.icon;
   return <Icon className={cn(entry.tint, className)} />;
@@ -76,7 +82,10 @@ export function displayFileName(name: string, mimeType: string): string {
   return name.replace(/\.html?$/iu, "");
 }
 
-export function renderNodeIcon(node: NodeIconShape, className?: string): ReactElement {
+export function renderNodeIcon(
+  node: NodeIconShape,
+  className?: string,
+): ReactElement {
   if (node.mimeType !== MIME_SHORTCUT) {
     return renderMimeIcon(node.mimeType, className);
   }
@@ -128,7 +137,10 @@ const FALLBACK_ICONS = {
   video: { icon: FileVideo, tint: "text-icon-slide" },
 } as const;
 
-function fallbackIcon(mimeType: string): { icon: typeof FileText; tint: string } {
+function fallbackIcon(mimeType: string): {
+  icon: typeof FileText;
+  tint: string;
+} {
   if (mimeType.startsWith("image/")) return FALLBACK_ICONS.image;
   if (mimeType.startsWith("audio/")) return FALLBACK_ICONS.audio;
   if (mimeType.startsWith("video/")) return FALLBACK_ICONS.video;

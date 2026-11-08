@@ -1,6 +1,13 @@
 "use client";
 
-import { Copy, ExternalLink, FolderInput, Loader2, Pencil, Trash2 } from "lucide-react";
+import {
+  Copy,
+  ExternalLink,
+  FolderInput,
+  Loader2,
+  Pencil,
+  Trash2,
+} from "lucide-react";
 import dynamic from "next/dynamic";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
@@ -16,9 +23,16 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { DropdownMenuContent, DropdownMenuItem } from "@/components/ui/dropdown-menu";
+import {
+  DropdownMenuContent,
+  DropdownMenuItem,
+} from "@/components/ui/dropdown-menu";
 import { useDeferredDialog } from "@/hooks/use-deferred-dialog";
-import { useCopyFile, useDeleteFile, useRenameFile } from "@/hooks/use-wiki-mutations";
+import {
+  useCopyFile,
+  useDeleteFile,
+  useRenameFile,
+} from "@/hooks/use-wiki-mutations";
 import { isGoogleWorkspaceType } from "@/lib/file-icons";
 import { folderUrlFor, openUrlFor } from "@/lib/file-urls";
 import { runWithErrorToast } from "@/lib/mutation-toast";
@@ -108,7 +122,11 @@ export function ItemMenuActions({
       const file = await copyFile.mutateAsync({ fileId, name });
 
       if (file.mimeType === MIME_FORM) {
-        window.open(openUrlFor(file.mimeType, file.id), "_blank", "noopener,noreferrer");
+        window.open(
+          openUrlFor(file.mimeType, file.id),
+          "_blank",
+          "noopener,noreferrer",
+        );
       } else if (isGoogleWorkspaceType(file.mimeType)) {
         router.push(`/d/${encodeURIComponent(file.id)}`);
       }
@@ -176,7 +194,11 @@ export function ItemMenuActions({
         )}
         {isFolder ? (
           <DropdownMenuItem asChild className="flex items-center gap-2 text-sm">
-            <a href={folderUrlFor(fileId)} rel="noopener noreferrer" target="_blank">
+            <a
+              href={folderUrlFor(fileId)}
+              rel="noopener noreferrer"
+              target="_blank"
+            >
               <ExternalLink className="size-4" />
               Open in Google Drive
             </a>
@@ -205,18 +227,22 @@ export function ItemMenuActions({
               {isFolder ? "Move folder to trash?" : "Move file to trash?"}
             </AlertDialogTitle>
             <AlertDialogDescription>
-              &ldquo;{currentName}&rdquo; will be moved to your Drive trash. You can restore it from
-              drive.google.com within 30 days.
+              &ldquo;{currentName}&rdquo; will be moved to your Drive trash. You
+              can restore it from drive.google.com within 30 days.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel disabled={deleteFile.isPending}>Cancel</AlertDialogCancel>
+            <AlertDialogCancel disabled={deleteFile.isPending}>
+              Cancel
+            </AlertDialogCancel>
             <AlertDialogAction
               disabled={deleteFile.isPending}
               onClick={(e) => {
                 e.preventDefault();
                 void handleDelete().catch((error: unknown) => {
-                  toast.error(error instanceof Error ? error.message : "Delete failed");
+                  toast.error(
+                    error instanceof Error ? error.message : "Delete failed",
+                  );
                 });
               }}
             >
@@ -239,10 +265,12 @@ export function ItemMenuActions({
           fileId={fileId}
           fileName={currentName}
           onCloseAutoFocus={(event) => {
-            if (event.target === moveContent.current) moveContent.current = null;
+            if (event.target === moveContent.current)
+              moveContent.current = null;
           }}
           onOpenAutoFocus={(event) => {
-            moveContent.current = event.target instanceof HTMLElement ? event.target : null;
+            moveContent.current =
+              event.target instanceof HTMLElement ? event.target : null;
           }}
           onOpenChange={moveDialog.onOpenChange}
           open={moveDialog.open}

@@ -3,7 +3,10 @@ import { flushSync } from "react-dom";
 import { createRoot, type Root } from "react-dom/client";
 
 import type { ActionResult } from "@/lib/action-result";
-import { activateMutationSession, retireMutationSession } from "@/lib/mutation-session";
+import {
+  activateMutationSession,
+  retireMutationSession,
+} from "@/lib/mutation-session";
 import { wikiKeys } from "@/lib/wiki-keys";
 import type {
   DocIcon,
@@ -106,9 +109,13 @@ describe("round-six mutation lifecycle fixtures", () => {
     expect(readSignal?.aborted).toBe(true);
     expect(ACTIONS.icon).toHaveBeenCalledOnce();
     expect(icon.isPending).toBe(true);
-    staleRead.resolve([{ driveId: "file", icon: "stale", coverUrl: undefined }]);
+    staleRead.resolve([
+      { driveId: "file", icon: "stale", coverUrl: undefined },
+    ]);
     await read;
-    expect(client.getQueryData<DocIcon[]>(wikiKeys.docIcons)?.[0]?.icon).toBe("pending");
+    expect(client.getQueryData<DocIcon[]>(wikiKeys.docIcons)?.[0]?.icon).toBe(
+      "pending",
+    );
     action.resolve({ ok: true, data: {} });
     await write;
   });
@@ -117,14 +124,18 @@ describe("round-six mutation lifecycle fixtures", () => {
     render();
     client.setQueryData<DocIcon[]>(wikiKeys.docIcons, []);
     const invalidate = vi.spyOn(client, "invalidateQueries");
-    const actions = Array.from({ length: 8 }, () => Promise.withResolvers<ActionResult<unknown>>());
-    for (const action of actions) ACTIONS.icon.mockReturnValueOnce(action.promise);
+    const actions = Array.from({ length: 8 }, () =>
+      Promise.withResolvers<ActionResult<unknown>>(),
+    );
+    for (const action of actions)
+      ACTIONS.icon.mockReturnValueOnce(action.promise);
     const writes = actions.map(
       async (_action, index) =>
         await icon.mutateAsync({ driveId: `file-${index}`, icon: "pending" }),
     );
     await vi.advanceTimersByTimeAsync(0);
-    for (const action of actions.slice(0, 7)) action.resolve({ ok: true, data: {} });
+    for (const action of actions.slice(0, 7))
+      action.resolve({ ok: true, data: {} });
     await Promise.all(writes.slice(0, 7));
     expect(invalidate).not.toHaveBeenCalled();
     actions[7]?.resolve({ ok: true, data: {} });
@@ -139,7 +150,9 @@ describe("round-six mutation lifecycle fixtures", () => {
       { driveId: "file", icon: "old", coverUrl: undefined },
     ]);
     const cancellation = Promise.withResolvers<undefined>();
-    const cancel = vi.spyOn(client, "cancelQueries").mockReturnValueOnce(cancellation.promise);
+    const cancel = vi
+      .spyOn(client, "cancelQueries")
+      .mockReturnValueOnce(cancellation.promise);
     const old = icon
       .mutateAsync({ driveId: "file", icon: "old-epoch" })
       .catch((error: unknown) => error);
@@ -154,12 +167,16 @@ describe("round-six mutation lifecycle fixtures", () => {
     const invalidate = vi.spyOn(client, "invalidateQueries");
     await icon.mutateAsync({ driveId: "file", icon: "new-epoch" });
     expect(invalidate).toHaveBeenCalledOnce();
-    expect(client.getQueryData<DocIcon[]>(wikiKeys.docIcons)?.[0]?.icon).toBe("new-epoch");
+    expect(client.getQueryData<DocIcon[]>(wikiKeys.docIcons)?.[0]?.icon).toBe(
+      "new-epoch",
+    );
   });
 
   it("cleans up pending ownership on retirement even when onSettled is skipped", async () => {
     render();
-    client.setQueryData<SortOrder[]>(wikiKeys.sortOrders, [{ driveId: "file", sortOrder: 1 }]);
+    client.setQueryData<SortOrder[]>(wikiKeys.sortOrders, [
+      { driveId: "file", sortOrder: 1 },
+    ]);
     const pending = Promise.withResolvers<ActionResult<unknown>>();
     ACTIONS.bulk.mockReturnValueOnce(pending.promise);
     const old = bulk
@@ -168,14 +185,18 @@ describe("round-six mutation lifecycle fixtures", () => {
     await vi.advanceTimersByTimeAsync(0);
     retireMutationSession(client);
     activateMutationSession(client);
-    client.setQueryData<SortOrder[]>(wikiKeys.sortOrders, [{ driveId: "file", sortOrder: 9 }]);
+    client.setQueryData<SortOrder[]>(wikiKeys.sortOrders, [
+      { driveId: "file", sortOrder: 9 },
+    ]);
     ACTIONS.bulk.mockResolvedValueOnce({ ok: true, data: { updated: 1 } });
     const invalidate = vi.spyOn(client, "invalidateQueries");
     await bulk.mutateAsync([{ driveId: "file", sortOrder: 10 }]);
     pending.resolve({ ok: false, error: "Old denial", status: 403 });
     await expect(old).resolves.toMatchObject({ name: "AbortError" });
     expect(invalidate).toHaveBeenCalledOnce();
-    expect(client.getQueryData<SortOrder[]>(wikiKeys.sortOrders)?.[0]?.sortOrder).toBe(10);
+    expect(
+      client.getQueryData<SortOrder[]>(wikiKeys.sortOrders)?.[0]?.sortOrder,
+    ).toBe(10);
   });
 
   it("stages preferences immediately, serializes provider writes and rolls back only the denied field", async () => {
@@ -186,7 +207,9 @@ describe("round-six mutation lifecycle fixtures", () => {
     });
     const first = Promise.withResolvers<ActionResult<Preferences>>();
     const second = Promise.withResolvers<ActionResult<Preferences>>();
-    ACTIONS.preferences.mockReturnValueOnce(first.promise).mockReturnValueOnce(second.promise);
+    ACTIONS.preferences
+      .mockReturnValueOnce(first.promise)
+      .mockReturnValueOnce(second.promise);
     const one = preferences.mutateAsync({ showNonDocFiles: false });
     const two = preferences
       .mutateAsync({ hiddenWorkspaceIds: ["drive"] })
@@ -198,13 +221,17 @@ describe("round-six mutation lifecycle fixtures", () => {
       showNonDocFiles: false,
       hiddenWorkspaceIds: ["drive"],
     });
-    first.resolve({ ok: true, data: { showNonDocFiles: false, hiddenWorkspaceIds: [] } });
+    first.resolve({
+      ok: true,
+      data: { showNonDocFiles: false, hiddenWorkspaceIds: [] },
+    });
     await one;
     await vi.advanceTimersByTimeAsync(0);
     expect(ACTIONS.preferences).toHaveBeenCalledTimes(2);
-    expect(client.getQueryData<Preferences>(wikiKeys.preferences)?.hiddenWorkspaceIds).toEqual([
-      "drive",
-    ]);
+    expect(
+      client.getQueryData<Preferences>(wikiKeys.preferences)
+        ?.hiddenWorkspaceIds,
+    ).toEqual(["drive"]);
     second.resolve({ ok: false, error: "Denied", status: 403 });
     await expect(two).resolves.toMatchObject({ status: 403 });
     expect(client.getQueryData(wikiKeys.preferences)).toEqual({
@@ -228,7 +255,11 @@ describe("round-six mutation lifecycle fixtures", () => {
     await vi.advanceTimersByTimeAsync(0);
     await client.query({
       queryKey: wikiKeys.preferences,
-      queryFn: () => ({ showNonDocFiles: true, hiddenWorkspaceIds: ["fresh"], extra: "fresh" }),
+      queryFn: () => ({
+        showNonDocFiles: true,
+        hiddenWorkspaceIds: ["fresh"],
+        extra: "fresh",
+      }),
     });
     pending.resolve({ ok: false, error: "Denied", status: 403 });
     await expect(write).resolves.toMatchObject({ status: 403 });
@@ -276,19 +307,32 @@ describe("round-six mutation lifecycle fixtures", () => {
     ACTIONS.rename.mockReturnValueOnce(pending.promise);
     const write = rename.mutateAsync({ fileId: node.id, name: "requested" });
     await vi.advanceTimersByTimeAsync(0);
-    expect(client.getQueryData<DriveTree>(wikiKeys.driveTree("drive"))?.files[0]?.name).toBe("old");
-    pending.resolve({ ok: true, data: { ...file, canEdit: true, name: "confirmed" } });
+    expect(
+      client.getQueryData<DriveTree>(wikiKeys.driveTree("drive"))?.files[0]
+        ?.name,
+    ).toBe("old");
+    pending.resolve({
+      ok: true,
+      data: { ...file, canEdit: true, name: "confirmed" },
+    });
     await write;
-    expect(client.getQueryData<DriveTree>(wikiKeys.driveTree("drive"))?.files[0]).toMatchObject({
+    expect(
+      client.getQueryData<DriveTree>(wikiKeys.driveTree("drive"))?.files[0],
+    ).toMatchObject({
       name: "confirmed",
       shortcutTargetId: "target",
       shortcutTargetMimeType: MIME_DOC,
     });
-    expect(client.getQueryData<FileDetail>(wikiKeys.file(node.id))).toMatchObject({
+    expect(
+      client.getQueryData<FileDetail>(wikiKeys.file(node.id)),
+    ).toMatchObject({
       name: "confirmed",
       canEdit: false,
       breadcrumb: [],
     });
-    expect(client.getQueryData<DriveTree>(wikiKeys.driveTree("drive"))?.filesComplete).toBe(false);
+    expect(
+      client.getQueryData<DriveTree>(wikiKeys.driveTree("drive"))
+        ?.filesComplete,
+    ).toBe(false);
   });
 });

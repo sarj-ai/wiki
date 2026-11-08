@@ -1,4 +1,7 @@
-export async function abortableDelay(milliseconds: number, signal?: AbortSignal): Promise<void> {
+export async function abortableDelay(
+  milliseconds: number,
+  signal?: AbortSignal,
+): Promise<void> {
   signal?.throwIfAborted();
   await new Promise<void>((resolve, reject) => {
     const onAbort = () => {

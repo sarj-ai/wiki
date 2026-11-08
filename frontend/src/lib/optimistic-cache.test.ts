@@ -5,7 +5,10 @@ import {
   captureMutationSession,
   retireMutationSession,
 } from "./mutation-session";
-import { updateOptimisticFields, updateOptimisticList } from "./optimistic-cache";
+import {
+  updateOptimisticFields,
+  updateOptimisticList,
+} from "./optimistic-cache";
 
 interface Item {
   id: string;
@@ -18,7 +21,9 @@ describe("sparse optimistic entry ownership", () => {
   let client: QueryClient;
 
   beforeEach(() => {
-    client = new QueryClient({ defaultOptions: { queries: { gcTime: Infinity } } });
+    client = new QueryClient({
+      defaultOptions: { queries: { gcTime: Infinity } },
+    });
     client.setQueryData<Item[]>(KEY, [
       { id: "a", value: "original-a" },
       { id: "b", value: "original-b" },
@@ -56,7 +61,8 @@ describe("sparse optimistic entry ownership", () => {
     (order) => {
       const first = patch("a", "first");
       const second = patch("a", "second");
-      const changes = order === "older-first" ? [first, second] : [second, first];
+      const changes =
+        order === "older-first" ? [first, second] : [second, first];
       for (const change of changes) {
         change.rollback();
         change.settle();
@@ -104,7 +110,9 @@ describe("sparse optimistic entry ownership", () => {
     });
     old.rollback();
     old.settle();
-    expect(client.getQueryData(KEY)).toEqual([{ id: "a", value: "equal-to-server" }]);
+    expect(client.getQueryData(KEY)).toEqual([
+      { id: "a", value: "equal-to-server" },
+    ]);
   });
 
   it("accepts an equal external manual publication even when structural sharing retains its array", () => {
@@ -121,7 +129,9 @@ describe("sparse optimistic entry ownership", () => {
   it("restores an owned failure while preserving an unrelated external manual confirmation", () => {
     const old = patch("a", "denied");
     client.setQueryData<Item[]>(KEY, (data) =>
-      data?.map((item) => (item.id === "b" ? { id: "b", value: "confirmed" } : item)),
+      data?.map((item) =>
+        item.id === "b" ? { id: "b", value: "confirmed" } : item,
+      ),
     );
     old.rollback();
     old.settle();
@@ -168,22 +178,40 @@ describe("sparse optimistic entry ownership", () => {
     const key = ["fixture", "fields"];
     const original = { a: "old-a", b: "old-b" };
     client.setQueryData(key, original);
-    const old = updateOptimisticFields(client, key, captureMutationSession(client), {
-      a: "retired",
-    });
+    const old = updateOptimisticFields(
+      client,
+      key,
+      captureMutationSession(client),
+      {
+        a: "retired",
+      },
+    );
     retireMutationSession(client);
     activateMutationSession(client);
     client.setQueryData(key, original);
-    const first = updateOptimisticFields(client, key, captureMutationSession(client), {
-      a: "pending-a",
-    });
+    const first = updateOptimisticFields(
+      client,
+      key,
+      captureMutationSession(client),
+      {
+        a: "pending-a",
+      },
+    );
     old?.settle();
-    const second = updateOptimisticFields(client, key, captureMutationSession(client), {
-      b: "pending-b",
-    });
+    const second = updateOptimisticFields(
+      client,
+      key,
+      captureMutationSession(client),
+      {
+        b: "pending-b",
+      },
+    );
     first?.confirm({ a: "confirmed-a" });
     first?.settle();
-    expect(client.getQueryData(key)).toEqual({ a: "confirmed-a", b: "pending-b" });
+    expect(client.getQueryData(key)).toEqual({
+      a: "confirmed-a",
+      b: "pending-b",
+    });
     second?.confirm({ b: "confirmed-b" });
     second?.settle();
   });

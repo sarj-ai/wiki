@@ -41,7 +41,9 @@ describe("Smart Create edge actions", () => {
     vi.clearAllMocks();
     mocks.createBindingAvailable = true;
     mocks.cookies.mockResolvedValue({ get: () => ({ value: "access-token" }) });
-    mocks.headers.mockResolvedValue(new Headers({ "cf-connecting-ip": "203.0.113.10" }));
+    mocks.headers.mockResolvedValue(
+      new Headers({ "cf-connecting-ip": "203.0.113.10" }),
+    );
     mocks.createLimit.mockResolvedValue({ success: true });
     mocks.proposalLimit.mockResolvedValue({ success: true });
     mocks.callApi.mockResolvedValue({ body: "{}", ok: true, status: 200 });
@@ -55,7 +57,10 @@ describe("Smart Create edge actions", () => {
       if (missing === "address") mocks.headers.mockResolvedValue(new Headers());
       try {
         await expect(
-          createDocumentTransformAction("{}", "55555555-5555-4555-8555-555555555555"),
+          createDocumentTransformAction(
+            "{}",
+            "55555555-5555-4555-8555-555555555555",
+          ),
         ).resolves.toMatchObject({ ok: false, status: 503 });
         expect(mocks.callApi).not.toHaveBeenCalled();
       } finally {
@@ -101,7 +106,9 @@ describe("Smart Create edge actions", () => {
   });
 
   it("uses the proposal limit for document reorganization", async () => {
-    await expect(proposeFileReorganizationAction("file/with spaces")).resolves.toEqual({
+    await expect(
+      proposeFileReorganizationAction("file/with spaces"),
+    ).resolves.toEqual({
       data: "{}",
       ok: true,
     });
@@ -128,7 +135,10 @@ describe("Smart Create edge actions", () => {
   });
 
   it("routes document transforms through the creation limit with idempotency", async () => {
-    await createDocumentTransformAction('{"mode":"both"}', "66666666-6666-4666-8666-666666666666");
+    await createDocumentTransformAction(
+      '{"mode":"both"}',
+      "66666666-6666-4666-8666-666666666666",
+    );
 
     expect(mocks.createLimit).toHaveBeenCalledWith({ key: "203.0.113.10" });
     expect(mocks.callApi).toHaveBeenCalledWith(
@@ -148,7 +158,10 @@ describe("Smart Create edge actions", () => {
     });
 
     await expect(
-      createDocumentTransformAction("{}", "66666666-6666-4666-8666-666666666666"),
+      createDocumentTransformAction(
+        "{}",
+        "66666666-6666-4666-8666-666666666666",
+      ),
     ).resolves.toEqual({ data: '{"id":"task"}', ok: true, replayed: true });
   });
 
@@ -162,7 +175,10 @@ describe("Smart Create edge actions", () => {
     });
 
     await expect(
-      createDocumentTransformAction("{}", "66666666-6666-4666-8666-666666666666"),
+      createDocumentTransformAction(
+        "{}",
+        "66666666-6666-4666-8666-666666666666",
+      ),
     ).resolves.toEqual({
       code: "document_transform_source_changed",
       error: "safe detail",

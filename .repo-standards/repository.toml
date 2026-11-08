@@ -13,8 +13,3 @@ enabled_rules = [
 ]
 repository_id = "wiki"
 components = []
-
-[[javascript.artifacts]]
-path = "frontend/eslint.strict.mjs"
-kind = "tool-config"
-reason = "Managed Code Standards preset loaded directly by the checked TypeScript ESLint configuration; its JavaScript entrypoint preserves the published loader contract."

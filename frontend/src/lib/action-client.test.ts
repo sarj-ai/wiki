@@ -2,7 +2,10 @@
 
 import { runAction } from "@/lib/action-client";
 import { ApiError } from "@/lib/api-error";
-import { claimBrowserSession, retireBrowserSession } from "@/lib/browser-session";
+import {
+  claimBrowserSession,
+  retireBrowserSession,
+} from "@/lib/browser-session";
 import { TERMINAL_UNAUTHORIZED_EVENT } from "@/lib/session-events";
 
 describe("server action session expiry", () => {
@@ -10,7 +13,11 @@ describe("server action session expiry", () => {
     const previous = {};
     const replacement = {};
     claimBrowserSession(previous);
-    const result = Promise.withResolvers<{ error: string; ok: false; status: number }>();
+    const result = Promise.withResolvers<{
+      error: string;
+      ok: false;
+      status: number;
+    }>();
     const action = vi.fn(async () => await result.promise);
     const fetchMock = vi.fn<typeof fetch>();
     vi.stubGlobal("fetch", fetchMock);
@@ -52,7 +59,9 @@ describe("server action session expiry", () => {
     const refresh = Promise.withResolvers<Response>();
     const fetchMock = vi.fn<typeof fetch>().mockReturnValue(refresh.promise);
     vi.stubGlobal("fetch", fetchMock);
-    const action = vi.fn().mockResolvedValue({ error: "expired", ok: false, status: 401 });
+    const action = vi
+      .fn()
+      .mockResolvedValue({ error: "expired", ok: false, status: 401 });
     const pending = runAction(action).catch((error: unknown) => error);
     await vi.waitFor(() => {
       expect(fetchMock).toHaveBeenCalledOnce();
@@ -87,7 +96,9 @@ describe("server action session expiry", () => {
     const refresh = Promise.withResolvers<Response>();
     const fetchMock = vi.fn<typeof fetch>().mockReturnValue(refresh.promise);
     vi.stubGlobal("fetch", fetchMock);
-    const expired = vi.fn().mockResolvedValue({ error: "expired", ok: false, status: 401 });
+    const expired = vi
+      .fn()
+      .mockResolvedValue({ error: "expired", ok: false, status: 401 });
     const controller = new AbortController();
     const discarded = runAction(expired, controller.signal);
     const discardedResult = discarded.catch((error: unknown) => error);
@@ -97,7 +108,9 @@ describe("server action session expiry", () => {
     });
 
     controller.abort();
-    await expect(discardedResult).resolves.toMatchObject({ name: "AbortError" });
+    await expect(discardedResult).resolves.toMatchObject({
+      name: "AbortError",
+    });
     expired.mockResolvedValue({ data: "ready", ok: true });
     refresh.resolve(new Response(null));
     await expect(retained).resolves.toBe("ready");
@@ -105,8 +118,13 @@ describe("server action session expiry", () => {
     vi.unstubAllGlobals();
   });
   it("announces one terminal 401 after refresh cannot recover", async () => {
-    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(null, { status: 401 })));
-    const expired = vi.fn().mockResolvedValue({ error: "expired", ok: false, status: 401 });
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(new Response(null, { status: 401 })),
+    );
+    const expired = vi
+      .fn()
+      .mockResolvedValue({ error: "expired", ok: false, status: 401 });
     const listener = vi.fn();
     window.addEventListener(TERMINAL_UNAUTHORIZED_EVENT, listener);
 
@@ -118,8 +136,13 @@ describe("server action session expiry", () => {
   });
 
   it("keeps the session when refresh is temporarily unavailable", async () => {
-    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(null, { status: 429 })));
-    const expired = vi.fn().mockResolvedValue({ error: "expired", ok: false, status: 401 });
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(new Response(null, { status: 429 })),
+    );
+    const expired = vi
+      .fn()
+      .mockResolvedValue({ error: "expired", ok: false, status: 401 });
     const listener = vi.fn();
     window.addEventListener(TERMINAL_UNAUTHORIZED_EVENT, listener);
 
@@ -135,7 +158,10 @@ describe("server action session expiry", () => {
   });
 
   it("replays the action only after a successful refresh", async () => {
-    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(null, { status: 200 })));
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(new Response(null, { status: 200 })),
+    );
     const action = vi
       .fn()
       .mockResolvedValueOnce({ error: "expired", ok: false, status: 401 })

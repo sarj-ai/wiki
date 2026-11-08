@@ -58,7 +58,11 @@ export function updateOptimisticFields<TData extends object>(
   owner.pending.set(id, patch);
   writePendingFields(qc, queryKey, owner);
   const restore = (confirmed?: TData) => {
-    if (session.aborted || qc.getQueryCache().find({ exact: true, queryKey }) !== query) return;
+    if (
+      session.aborted ||
+      qc.getQueryCache().find({ exact: true, queryKey }) !== query
+    )
+      return;
     if (confirmed && owner.readRevision === readRevision)
       owner.base = { ...owner.base, ...confirmed };
     owner.pending.delete(id);
@@ -119,7 +123,11 @@ function fieldsOwner(
   return owner;
 }
 
-function writePendingFields(qc: QueryClient, queryKey: QueryKey, owner: FieldsOwner): void {
+function writePendingFields(
+  qc: QueryClient,
+  queryKey: QueryKey,
+  owner: FieldsOwner,
+): void {
   let next = owner.base;
   for (const patch of owner.pending.values()) next = { ...next, ...patch };
   owner.writing = true;
@@ -134,15 +142,24 @@ export function updateOptimisticList<TItem>(
   qc: QueryClient,
   queryKey: QueryKey,
   session: AbortSignal,
-  updates: ReadonlyMap<string, ((existing: TItem | undefined) => TItem | undefined) | undefined>,
+  updates: ReadonlyMap<
+    string,
+    ((existing: TItem | undefined) => TItem | undefined) | undefined
+  >,
   itemId: (item: TItem) => string,
   append = false,
 ): OptimisticListChange | undefined {
   const previous = qc.getQueryData<TItem[]>(queryKey);
   const query = qc.getQueryCache().find({ exact: true, queryKey });
-  if (!previous || !query || session.aborted || updates.size === 0) return undefined;
+  if (!previous || !query || session.aborted || updates.size === 0)
+    return undefined;
   const owner = listOwner(qc, query, queryKey, session, itemId, previous);
-  const { next, originals, positions, values } = buildListUpdate(previous, updates, itemId, append);
+  const { next, originals, positions, values } = buildListUpdate(
+    previous,
+    updates,
+    itemId,
+    append,
+  );
   owner.writing = true;
   const current = qc.setQueryData<TItem[]>(queryKey, next);
   owner.writing = false;
@@ -151,7 +168,8 @@ export function updateOptimisticList<TItem>(
   for (const [id, item] of values) {
     const original = originals.get(id);
     let chain = owner.items.get(id);
-    if (chain && !sameItems(original?.items ?? [], chain.expected)) chain = undefined;
+    if (chain && !sameItems(original?.items ?? [], chain.expected))
+      chain = undefined;
     if (!chain) {
       chain = {
         entries: [],
@@ -163,7 +181,10 @@ export function updateOptimisticList<TItem>(
     }
     const position = positions.get(id);
     const written = position === undefined ? undefined : current?.[position];
-    const entry: Entry = { failed: false, items: item === undefined ? [] : [item] };
+    const entry: Entry = {
+      failed: false,
+      items: item === undefined ? [] : [item],
+    };
     chain.entries.push(entry);
     chain.expected = written === undefined ? [] : [written];
     entries.set(id, entry);
@@ -187,7 +208,12 @@ export function updateOptimisticList<TItem>(
       qc.setQueryData<unknown[]>(queryKey, restored);
       owner.writing = false;
       owner.data = qc.getQueryData<TItem[]>(queryKey);
-      recordExpectedItems(qc.getQueryData<TItem[]>(queryKey), owner, entries, itemId);
+      recordExpectedItems(
+        qc.getQueryData<TItem[]>(queryKey),
+        owner,
+        entries,
+        itemId,
+      );
     },
     settle: () => {
       if (settled) return false;
@@ -196,14 +222,20 @@ export function updateOptimisticList<TItem>(
       if (owner.active !== 0) return false;
       owner.release();
       if (LIST_OWNERS.get(query) === owner) LIST_OWNERS.delete(query);
-      return !session.aborted && qc.getQueryCache().find({ exact: true, queryKey }) === query;
+      return (
+        !session.aborted &&
+        qc.getQueryCache().find({ exact: true, queryKey }) === query
+      );
     },
   };
 }
 
 function buildListUpdate<TItem>(
   previous: TItem[],
-  updates: ReadonlyMap<string, ((existing: TItem | undefined) => TItem | undefined) | undefined>,
+  updates: ReadonlyMap<
+    string,
+    ((existing: TItem | undefined) => TItem | undefined) | undefined
+  >,
   itemId: (item: TItem) => string,
   append: boolean,
 ) {
@@ -231,7 +263,8 @@ function buildListUpdate<TItem>(
   }
   for (const [id, build] of updates) {
     if (!originals.has(id)) values.set(id, build?.(undefined));
-    if (append || !originals.has(id)) appendUpdate(next, positions, id, values.get(id));
+    if (append || !originals.has(id))
+      appendUpdate(next, positions, id, values.get(id));
   }
   return { next, originals, positions, values };
 }
@@ -272,7 +305,9 @@ function listOwner<TItem>(
 
     if (
       event.type === "removed" ||
-      (event.type === "updated" && event.action.type === "success" && !event.action.manual)
+      (event.type === "updated" &&
+        event.action.type === "success" &&
+        !event.action.manual)
     ) {
       owner.items.clear();
     } else if (event.type === "updated" && event.action.type === "success") {
@@ -311,7 +346,8 @@ function discardReplacedItems<TItem>(
     current.set(id, group);
   }
   for (const [id, chain] of owner.items) {
-    if (!sameItems(current.get(id) ?? [], chain.expected)) owner.items.delete(id);
+    if (!sameItems(current.get(id) ?? [], chain.expected))
+      owner.items.delete(id);
   }
 }
 
@@ -340,15 +376,20 @@ function restoreOwnedItems<TItem>(
     const failed = entries.get(id);
     if (!failed) continue;
     const latest = chain.entries.findLast((entry) => !entry.failed);
-    if (latest && chain.entries.indexOf(latest) > chain.entries.indexOf(failed)) continue;
+    if (latest && chain.entries.indexOf(latest) > chain.entries.indexOf(failed))
+      continue;
     replacements.set(id, chain);
   }
   if (replacements.size === 0) return data;
-  const next: unknown[] = data.filter((item) => !replacements.has(itemId(item)));
+  const next: unknown[] = data.filter(
+    (item) => !replacements.has(itemId(item)),
+  );
   for (const chain of replacements.values()) {
-    const replacement = chain.entries.findLast((entry) => !entry.failed)?.items ?? chain.original;
+    const replacement =
+      chain.entries.findLast((entry) => !entry.failed)?.items ?? chain.original;
     for (const [index, item] of replacement.entries()) {
-      const position = chain.positions[index] ?? chain.positions[0] ?? next.length;
+      const position =
+        chain.positions[index] ?? chain.positions[0] ?? next.length;
       next.splice(Math.min(position, next.length), 0, item);
     }
   }
@@ -373,5 +414,8 @@ function recordExpectedItems<TItem>(
 }
 
 function sameItems(left: unknown[], right: unknown[]): boolean {
-  return left.length === right.length && left.every((item, index) => item === right[index]);
+  return (
+    left.length === right.length &&
+    left.every((item, index) => item === right[index])
+  );
 }

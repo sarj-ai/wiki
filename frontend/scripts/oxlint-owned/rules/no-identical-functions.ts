@@ -1,10 +1,13 @@
-import { AST_NODE_TYPES, type TSESTree } from "@typescript-eslint/utils";
+import type { ESTree as TSESTree } from "@oxlint/plugins";
+import { z } from "zod";
 
 import { children, type FunctionNode, isFunction } from "../shared/ast.ts";
 import { createRule } from "../shared/create-rule.ts";
 import { equivalent } from "../shared/equivalent.ts";
 
-export default createRule<[number], "duplicate">({
+const MinimumLinesSchema = z.number().default(3);
+
+export default createRule({
   name: "no-identical-functions",
   meta: {
     defaultOptions: [3],
@@ -15,25 +18,14 @@ export default createRule<[number], "duplicate">({
       requiresTypeChecking: false,
     },
     schema: [{ type: "integer", minimum: 3 }],
-    messages: { duplicate: "This function repeats the implementation on line {{line}}." },
+    messages: {
+      duplicate: "This function repeats the implementation on line {{line}}.",
+    },
   },
-  create(context, [minimumLines]) {
+  create(context) {
+    const minimumLines = MinimumLinesSchema.parse(context.options[0]);
     const source = context.sourceCode;
     const functions: FunctionNode[] = [];
-
-    function receiverOwner(node: FunctionNode): null | TSESTree.Node {
-      let current: TSESTree.Node = node;
-      while (current.parent.type !== AST_NODE_TYPES.Program) {
-        current = current.parent;
-        if (
-          current.type === AST_NODE_TYPES.ClassBody ||
-          current.type === AST_NODE_TYPES.ObjectExpression ||
-          (isFunction(current) && current.type !== AST_NODE_TYPES.ArrowFunctionExpression)
-        )
-          return current;
-      }
-      return null;
-    }
 
     function receiverUse(node: FunctionNode): "meta" | "none" | "receiver" {
       let result: "none" | "receiver" = "none";
@@ -41,26 +33,20 @@ export default createRule<[number], "duplicate">({
       while (stack.length > 0) {
         const child = stack.pop();
         if (child === undefined) break;
-        if (child.type === AST_NODE_TYPES.MetaProperty) return "meta";
-        if (child.type === AST_NODE_TYPES.ThisExpression || child.type === AST_NODE_TYPES.Super)
+        if (child.type === "MetaProperty") return "meta";
+        if (child.type === "ThisExpression" || child.type === "Super")
           result = "receiver";
-        if (isFunction(child) && child.type !== AST_NODE_TYPES.ArrowFunctionExpression) continue;
+        if (isFunction(child) && child.type !== "ArrowFunctionExpression")
+          continue;
         stack.push(...children(child, source));
       }
       return result;
     }
 
-    function form(node: FunctionNode): string {
-      const parent = node.parent;
-      if (parent.type === AST_NODE_TYPES.MethodDefinition)
-        return `${parent.kind}:${String(parent.static)}`;
-      if (parent.type === AST_NODE_TYPES.Property) return `${parent.kind}:${String(parent.method)}`;
-      return node.type;
-    }
-
-    function collect(node: FunctionNode): void {
+    function collect(node: TSESTree.Node): void {
+      if (!isFunction(node)) return;
       if (
-        node.body.type === AST_NODE_TYPES.BlockStatement &&
+        node.body.type === "BlockStatement" &&
         receiverUse(node) !== "meta" &&
         enoughLines(node)
       )
@@ -70,9 +56,16 @@ export default createRule<[number], "duplicate">({
     function enoughLines(node: FunctionNode): boolean {
       const lines = new Set<number>();
       for (const token of source.getTokens(node.body)) {
-        if (token.range[0] === node.body.range[0] || token.range[1] === node.body.range[1])
+        if (
+          token.range[0] === node.body.range[0] ||
+          token.range[1] === node.body.range[1]
+        )
           continue;
-        for (let line = token.loc.start.line; line <= token.loc.end.line; line += 1)
+        for (
+          let line = token.loc.start.line;
+          line <= token.loc.end.line;
+          line += 1
+        )
           lines.add(line);
       }
       return lines.size >= minimumLines;
@@ -90,27 +83,28 @@ export default createRule<[number], "duplicate">({
               first.type !== node.type ||
               form(first) !== form(node) ||
               first.async !== node.async ||
-              (first.type !== AST_NODE_TYPES.ArrowFunctionExpression && first.generator) !==
-                (node.type !== AST_NODE_TYPES.ArrowFunctionExpression && node.generator) ||
+              (first.type !== "ArrowFunctionExpression" && first.generator) !==
+                (node.type !== "ArrowFunctionExpression" && node.generator) ||
               first.params.length !== node.params.length
             )
               return false;
             if (
-              (receiverUse(first) === "receiver" || receiverUse(node) === "receiver") &&
+              (receiverUse(first) === "receiver" ||
+                receiverUse(node) === "receiver") &&
               receiverOwner(first) !== receiverOwner(node)
             )
               return false;
             return equivalent(
               [
                 ...first.params,
-                ...(first.typeParameters === undefined ? [] : [first.typeParameters]),
-                ...(first.returnType === undefined ? [] : [first.returnType]),
+                ...(first.typeParameters == null ? [] : [first.typeParameters]),
+                ...(first.returnType == null ? [] : [first.returnType]),
                 first.body,
               ],
               [
                 ...node.params,
-                ...(node.typeParameters === undefined ? [] : [node.typeParameters]),
-                ...(node.returnType === undefined ? [] : [node.returnType]),
+                ...(node.typeParameters == null ? [] : [node.typeParameters]),
+                ...(node.returnType == null ? [] : [node.returnType]),
                 node.body,
               ],
               source,
@@ -120,7 +114,10 @@ export default createRule<[number], "duplicate">({
           if (duplicate === undefined) prior.push(node);
           else
             context.report({
-              node: node.type === AST_NODE_TYPES.ArrowFunctionExpression ? node : (node.id ?? node),
+              node:
+                node.type === "ArrowFunctionExpression"
+                  ? node
+                  : (node.id ?? node),
               messageId: "duplicate",
               data: { line: String(duplicate.loc.start.line) },
             });
@@ -129,3 +126,26 @@ export default createRule<[number], "duplicate">({
     };
   },
 });
+
+function receiverOwner(node: FunctionNode): null | TSESTree.Node {
+  let current: TSESTree.Node = node;
+  while (current.parent.type !== "Program") {
+    current = current.parent;
+    if (
+      current.type === "ClassBody" ||
+      current.type === "ObjectExpression" ||
+      (isFunction(current) && current.type !== "ArrowFunctionExpression")
+    )
+      return current;
+  }
+  return null;
+}
+
+function form(node: FunctionNode): string {
+  const parent = node.parent;
+  if (parent.type === "MethodDefinition")
+    return `${parent.kind}:${String(parent.static)}`;
+  if (parent.type === "Property")
+    return `${parent.kind}:${String(parent.method)}`;
+  return node.type;
+}

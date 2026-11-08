@@ -15,11 +15,19 @@ interface DemoPreviewProps {
 }
 
 export function DemoPreview({ file, onReload }: DemoPreviewProps) {
-  return <PreviewFrame file={file} key={`${file.id}:${file.previewUrl}`} onReload={onReload} />;
+  return (
+    <PreviewFrame
+      file={file}
+      key={`${file.id}:${file.previewUrl}`}
+      onReload={onReload}
+    />
+  );
 }
 
 function PreviewFrame({ file, onReload }: DemoPreviewProps) {
-  const [loadStatus, setLoadStatus] = useState<"loading" | "ready" | "slow">("loading");
+  const [loadStatus, setLoadStatus] = useState<"loading" | "ready" | "slow">(
+    "loading",
+  );
   const timeout = useRef<null | number>(null);
   const previewUrl = demoPreviewUrl(file);
   const invalidPreview = previewUrl === null;
@@ -48,7 +56,9 @@ function PreviewFrame({ file, onReload }: DemoPreviewProps) {
       aria-label={`${file.format} preview`}
       className="bg-muted/30 relative min-h-0 flex-1"
     >
-      {status === "failed" || status === "slow" || previewUrl === null ? null : (
+      {status === "failed" ||
+      status === "slow" ||
+      previewUrl === null ? null : (
         <iframe
           aria-hidden={status !== "ready"}
           className="html-theme-frame block size-full border-0"

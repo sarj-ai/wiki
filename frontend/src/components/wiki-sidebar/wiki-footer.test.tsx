@@ -19,7 +19,9 @@ const ACTIONS = vi.hoisted(() => ({
   theme: vi.fn(),
 }));
 const viewport = vi.hoisted(() => ({ mobile: false }));
-vi.mock("@/hooks/use-is-mobile", () => ({ useIsMobile: () => viewport.mobile }));
+vi.mock("@/hooks/use-is-mobile", () => ({
+  useIsMobile: () => viewport.mobile,
+}));
 
 vi.mock("@/hooks/use-current-user", () => ({
   useCurrentUser: () => ({
@@ -34,11 +36,21 @@ vi.mock("@/hooks/use-current-user", () => ({
 vi.mock("next-themes", () => ({
   useTheme: () => ({ resolvedTheme: "light", setTheme: ACTIONS.theme }),
 }));
-vi.mock("@/app/actions/wiki-actions", () => ({ setPreferencesAction: ACTIONS.preferences }));
+vi.mock("@/app/actions/wiki-actions", () => ({
+  setPreferencesAction: ACTIONS.preferences,
+}));
 vi.mock("@/lib/auth", () => ({ logout: ACTIONS.logout }));
 vi.mock("@/lib/wiki-read-api", () => ({
   WIKI_READ_API: { getPreferences: ACTIONS.readPreferences },
 }));
+
+function openAccountMenu(trigger: HTMLButtonElement) {
+  flushSync(() => {
+    trigger.dispatchEvent(
+      new KeyboardEvent("keydown", { bubbles: true, key: "Enter" }),
+    );
+  });
+}
 
 describe("account menu preferences transition", () => {
   let client: QueryClient;
@@ -53,7 +65,10 @@ describe("account menu preferences transition", () => {
     client = new QueryClient({
       defaultOptions: { queries: { gcTime: Infinity, staleTime: Infinity } },
     });
-    client.setQueryData(wikiKeys.preferences, { showNonDocFiles: true, hiddenWorkspaceIds: [] });
+    client.setQueryData(wikiKeys.preferences, {
+      showNonDocFiles: true,
+      hiddenWorkspaceIds: [],
+    });
     client.setQueryData(wikiKeys.drives, []);
     container = document.createElement("div");
     backgroundFrame = document.createElement("iframe");
@@ -94,22 +109,26 @@ describe("account menu preferences transition", () => {
     "closes the account menu before Preferences and restores the trigger after %s",
     async (dismissal) => {
       mount();
-      const trigger = container.querySelector<HTMLButtonElement>('[aria-label="Account menu"]');
+      const trigger = container.querySelector<HTMLButtonElement>(
+        '[aria-label="Account menu"]',
+      );
       if (!trigger) throw new Error("Account trigger missing");
       backgroundFrame.focus();
       expect(document.activeElement).toBe(backgroundFrame);
       trigger.focus();
-      flushSync(() => {
-        trigger.dispatchEvent(new KeyboardEvent("keydown", { bubbles: true, key: "Enter" }));
-      });
-      await vi.waitFor(() => expect(document.querySelector('[role="menu"]')).not.toBeNull());
-      const preferences = [...document.querySelectorAll('[role="menuitem"]')].find(
-        (item) => item.textContent === "Preferences",
+      openAccountMenu(trigger);
+      await vi.waitFor(() =>
+        expect(document.querySelector('[role="menu"]')).not.toBeNull(),
       );
+      const preferences = [
+        ...document.querySelectorAll('[role="menuitem"]'),
+      ].find((item) => item.textContent === "Preferences");
       if (!(preferences instanceof HTMLElement))
         throw new TypeError("Preferences menu item missing");
       flushSync(() => preferences.click());
-      await vi.waitFor(() => expect(document.querySelector('[role="dialog"]')).not.toBeNull());
+      await vi.waitFor(() =>
+        expect(document.querySelector('[role="dialog"]')).not.toBeNull(),
+      );
       await vi.advanceTimersByTimeAsync(0);
       const dialog = document.querySelector<HTMLElement>('[role="dialog"]');
       if (!dialog) throw new Error("Preferences dialog missing");
@@ -119,7 +138,9 @@ describe("account menu preferences transition", () => {
 
       if (dismissal === "Escape") {
         flushSync(() => {
-          dialog.dispatchEvent(new KeyboardEvent("keydown", { bubbles: true, key: "Escape" }));
+          dialog.dispatchEvent(
+            new KeyboardEvent("keydown", { bubbles: true, key: "Escape" }),
+          );
         });
       } else {
         const close = [...dialog.querySelectorAll("button")].find(
@@ -136,10 +157,10 @@ describe("account menu preferences transition", () => {
       expect(ACTIONS.theme).not.toHaveBeenCalled();
       expect(ACTIONS.logout).not.toHaveBeenCalled();
 
-      flushSync(() => {
-        trigger.dispatchEvent(new KeyboardEvent("keydown", { bubbles: true, key: "Enter" }));
-      });
-      await vi.waitFor(() => expect(document.querySelector('[role="menu"]')).not.toBeNull());
+      openAccountMenu(trigger);
+      await vi.waitFor(() =>
+        expect(document.querySelector('[role="menu"]')).not.toBeNull(),
+      );
     },
   );
 
@@ -159,7 +180,9 @@ describe("account menu preferences transition", () => {
     flushSync(() => done.click());
     await vi.advanceTimersByTimeAsync(0);
     expect(document.querySelector('[role="dialog"]')).toBeNull();
-    expect(document.activeElement).toBe(container.querySelector('[data-sidebar="trigger"]'));
+    expect(document.activeElement).toBe(
+      container.querySelector('[data-sidebar="trigger"]'),
+    );
     expect(ACTIONS.preferences).not.toHaveBeenCalled();
   });
 
@@ -168,7 +191,9 @@ describe("account menu preferences transition", () => {
     async (dismissal) => {
       viewport.mobile = true;
       mount();
-      const navigation = container.querySelector<HTMLButtonElement>('[data-sidebar="trigger"]');
+      const navigation = container.querySelector<HTMLButtonElement>(
+        '[data-sidebar="trigger"]',
+      );
       if (!navigation) throw new Error("Navigation trigger missing");
       flushSync(() => navigation.click());
       await vi.advanceTimersByTimeAsync(0);
@@ -181,12 +206,18 @@ describe("account menu preferences transition", () => {
       mount();
       await vi.advanceTimersByTimeAsync(0);
       expect(previousTrigger.isConnected).toBe(false);
-      expect(document.querySelector('[data-slot="dialog-content"]')).toBe(dialog);
-      const nextTrigger = container.querySelector<HTMLButtonElement>('[aria-label="Account menu"]');
+      expect(document.querySelector('[data-slot="dialog-content"]')).toBe(
+        dialog,
+      );
+      const nextTrigger = container.querySelector<HTMLButtonElement>(
+        '[aria-label="Account menu"]',
+      );
       if (!nextTrigger) throw new Error("Replacement Account trigger missing");
       if (dismissal === "Escape") {
         flushSync(() =>
-          dialog.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })),
+          dialog.dispatchEvent(
+            new KeyboardEvent("keydown", { key: "Escape", bubbles: true }),
+          ),
         );
       } else {
         const close = [...dialog.querySelectorAll("button")].find(
@@ -225,7 +256,9 @@ describe("account menu preferences transition", () => {
       if (!checkbox) throw new Error("Preference checkbox missing");
       flushSync(() => checkbox.click());
       await vi.advanceTimersByTimeAsync(0);
-      expect(document.querySelector('[role="status"]')).toHaveTextContent("Saving preferences…");
+      expect(document.querySelector('[role="status"]')).toHaveTextContent(
+        "Saving preferences…",
+      );
       const done = [...document.querySelectorAll("button")].find(
         (button) => button.textContent === "Done",
       );
@@ -234,8 +267,13 @@ describe("account menu preferences transition", () => {
       await vi.advanceTimersByTimeAsync(1);
       expect(document.querySelector('[data-slot="dialog-content"]')).toBeNull();
       await openPreferences();
-      expect(document.querySelector('[role="status"]')).toHaveTextContent("Saving preferences…");
-      expect(document.querySelector('[role="checkbox"]')).toHaveAttribute("aria-checked", "false");
+      expect(document.querySelector('[role="status"]')).toHaveTextContent(
+        "Saving preferences…",
+      );
+      expect(document.querySelector('[role="checkbox"]')).toHaveAttribute(
+        "aria-checked",
+        "false",
+      );
       expect(ACTIONS.preferences).toHaveBeenCalledOnce();
       pending.resolve({ ok: true, data: saved });
       await vi.advanceTimersByTimeAsync(0);
@@ -248,19 +286,28 @@ describe("account menu preferences transition", () => {
 });
 
 async function openPreferences() {
-  const trigger = document.querySelector<HTMLButtonElement>('[aria-label="Account menu"]');
+  const trigger = document.querySelector<HTMLButtonElement>(
+    '[aria-label="Account menu"]',
+  );
   if (!trigger) throw new Error("Account trigger missing");
   trigger.focus();
   flushSync(() =>
-    trigger.dispatchEvent(new KeyboardEvent("keydown", { bubbles: true, key: "Enter" })),
+    trigger.dispatchEvent(
+      new KeyboardEvent("keydown", { bubbles: true, key: "Enter" }),
+    ),
   );
-  await vi.waitFor(() => expect(document.querySelector('[role="menu"]')).not.toBeNull());
+  await vi.waitFor(() =>
+    expect(document.querySelector('[role="menu"]')).not.toBeNull(),
+  );
   const preferences = [...document.querySelectorAll('[role="menuitem"]')].find(
     (item) => item.textContent === "Preferences",
   );
-  if (!(preferences instanceof HTMLElement)) throw new TypeError("Preferences menu item missing");
+  if (!(preferences instanceof HTMLElement))
+    throw new TypeError("Preferences menu item missing");
   flushSync(() => preferences.click());
-  await vi.waitFor(() => expect(document.querySelector('[role="dialog"]')).not.toBeNull());
+  await vi.waitFor(() =>
+    expect(document.querySelector('[role="dialog"]')).not.toBeNull(),
+  );
   await vi.advanceTimersByTimeAsync(0);
   return trigger;
 }

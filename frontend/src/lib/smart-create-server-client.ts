@@ -31,7 +31,8 @@ export async function smartCreateServerClient(
     Authorization: `Bearer ${token}`,
     "content-type": "application/json",
   });
-  if (idempotencyKey !== undefined) headers.set("idempotency-key", idempotencyKey);
+  if (idempotencyKey !== undefined)
+    headers.set("idempotency-key", idempotencyKey);
 
   try {
     const signal = AbortSignal.timeout(UPSTREAM_TIMEOUT_MS);
@@ -46,18 +47,25 @@ export async function smartCreateServerClient(
       discardStream(response.body);
       signal.throwIfAborted();
     }
-    const responseBody = await (response.ok ? boundedTransformText : boundedErrorText)(
-      response.body,
-      signal,
-    );
+    const responseBody = await (
+      response.ok ? boundedTransformText : boundedErrorText
+    )(response.body, signal);
     signal.throwIfAborted();
     return smartCreateResponse(response, responseBody);
   } catch {
-    return { body: "", error: "Smart Create could not reach the API", ok: false, status: 502 };
+    return {
+      body: "",
+      error: "Smart Create could not reach the API",
+      ok: false,
+      status: 502,
+    };
   }
 }
 
-function smartCreateResponse(response: Response, body: string): SmartUpstreamResponse {
+function smartCreateResponse(
+  response: Response,
+  body: string,
+): SmartUpstreamResponse {
   if (response.ok) {
     const replayHeader = response.headers.get("idempotency-replayed");
     return {
@@ -73,7 +81,8 @@ function smartCreateResponse(response: Response, body: string): SmartUpstreamRes
   const error = parsed.success ? parsed.data.detail : undefined;
   const rawErrorCode = response.headers.get("x-wiki-error-code");
   const errorCode =
-    response.status === 409 && rawErrorCode === "document_transform_source_changed"
+    response.status === 409 &&
+    rawErrorCode === "document_transform_source_changed"
       ? rawErrorCode
       : undefined;
   return {

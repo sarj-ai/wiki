@@ -1,8 +1,15 @@
 import { z } from "zod";
 
-const ConnectionValueSchema = z.union([z.object({}), z.custom<readonly unknown[]>(Array.isArray)]);
+const ConnectionValueSchema = z.union([
+  z.object({}),
+  z.custom<readonly unknown[]>(Array.isArray),
+]);
 
-const DeviceMemorySchema = z.union([z.number(), z.nan(), z.literal([Infinity, -Infinity])]);
+const DeviceMemorySchema = z.union([
+  z.number(),
+  z.nan(),
+  z.literal([Infinity, -Infinity]),
+]);
 const EffectiveTypeSchema = z.string();
 const SaveDataSchema = z.boolean();
 

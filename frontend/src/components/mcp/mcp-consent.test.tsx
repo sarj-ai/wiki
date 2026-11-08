@@ -9,19 +9,28 @@ function maybeRole(
   options?: { name: string },
 ): HTMLElement | null {
   return (
-    [...container.querySelectorAll<HTMLElement>("button, [role]")].find((element) => {
-      const actual =
-        element.getAttribute("role") ?? (element.tagName === "BUTTON" ? "button" : null);
-      return (
-        actual === role && (options === undefined || element.textContent.trim() === options.name)
-      );
-    }) ?? null
+    [...container.querySelectorAll<HTMLElement>("button, [role]")].find(
+      (element) => {
+        const actual =
+          element.getAttribute("role") ??
+          (element.tagName === "BUTTON" ? "button" : null);
+        return (
+          actual === role &&
+          (options === undefined || element.textContent.trim() === options.name)
+        );
+      },
+    ) ?? null
   );
 }
 
-function findRole(container: HTMLElement, role: string, options?: { name: string }): HTMLElement {
+function findRole(
+  container: HTMLElement,
+  role: string,
+  options?: { name: string },
+): HTMLElement {
   const element = maybeRole(container, role, options);
-  if (element === null) throw new Error(`Missing ${role}: ${options?.name ?? ""}`);
+  if (element === null)
+    throw new Error(`Missing ${role}: ${options?.name ?? ""}`);
   return element;
 }
 
@@ -30,9 +39,13 @@ describe("McpConsent", () => {
   let root: Root;
   const onDecision =
     vi.fn<
-      (decision: { approve: boolean; transformApproved: boolean }) => Promise<"approved" | "denied">
+      (decision: {
+        approve: boolean;
+        transformApproved: boolean;
+      }) => Promise<"approved" | "denied">
     >();
-  const onRecover = vi.fn<() => Promise<"approved" | "denied" | "expired" | "pending">>();
+  const onRecover =
+    vi.fn<() => Promise<"approved" | "denied" | "expired" | "pending">>();
 
   beforeEach(() => {
     container = document.createElement("div");
@@ -78,7 +91,9 @@ describe("McpConsent", () => {
       }),
     );
     await vi.waitFor(() =>
-      expect(findRole(container, "status")).toHaveTextContent("No document has been changed"),
+      expect(findRole(container, "status")).toHaveTextContent(
+        "No document has been changed",
+      ),
     );
   });
 
@@ -97,7 +112,9 @@ describe("McpConsent", () => {
   it("does not offer editing when the app requested only reading", () => {
     render(false);
     expect(maybeRole(container, "checkbox")).toBeNull();
-    expect(findRole(container, "button", { name: "Allow read access" })).toBeEnabled();
+    expect(
+      findRole(container, "button", { name: "Allow read access" }),
+    ).toBeEnabled();
   });
 
   it("blocks double-clicks and competing decisions before React rerenders", async () => {
@@ -106,7 +123,9 @@ describe("McpConsent", () => {
     click("Allow read access");
     click("Deny");
     expect(onDecision).toHaveBeenCalledOnce();
-    await vi.waitFor(() => expect(findRole(container, "button", { name: "Deny" })).toBeDisabled());
+    await vi.waitFor(() =>
+      expect(findRole(container, "button", { name: "Deny" })).toBeDisabled(),
+    );
   });
 
   it("never includes editing approval in a denial", async () => {
@@ -130,14 +149,20 @@ describe("McpConsent", () => {
     render();
     click("Allow read access");
     await vi.waitFor(() =>
-      expect(findRole(container, "alert")).toHaveTextContent("could not confirm"),
+      expect(findRole(container, "alert")).toHaveTextContent(
+        "could not confirm",
+      ),
     );
-    expect(findRole(container, "button", { name: "Allow read access" })).toBeDisabled();
+    expect(
+      findRole(container, "button", { name: "Allow read access" }),
+    ).toBeDisabled();
     click("Check status");
     click("Check status");
     expect(onRecover).toHaveBeenCalledOnce();
     await vi.waitFor(() =>
-      expect(findRole(container, "button", { name: "Allow read access" })).toBeEnabled(),
+      expect(
+        findRole(container, "button", { name: "Allow read access" }),
+      ).toBeEnabled(),
     );
     click("Allow read access");
     await vi.waitFor(() => expect(onDecision).toHaveBeenCalledTimes(2));
@@ -150,12 +175,18 @@ describe("McpConsent", () => {
       onRecover.mockResolvedValue(status);
       render();
       click("Allow read access");
-      await vi.waitFor(() => expect(findRole(container, "alert")).toBeInTheDocument());
+      await vi.waitFor(() =>
+        expect(findRole(container, "alert")).toBeInTheDocument(),
+      );
       click("Check status");
       await vi.waitFor(() =>
-        expect(maybeRole(container, "button", { name: "Check status" })).toBeNull(),
+        expect(
+          maybeRole(container, "button", { name: "Check status" }),
+        ).toBeNull(),
       );
-      expect(findRole(container, "button", { name: "Allow read access" })).toBeDisabled();
+      expect(
+        findRole(container, "button", { name: "Allow read access" }),
+      ).toBeDisabled();
       expect(onDecision).toHaveBeenCalledOnce();
     },
   );

@@ -7,7 +7,10 @@ export default defineConfig({
     alias: {
       "@": path.resolve(import.meta.dirname, "./src"),
 
-      "server-only": path.resolve(import.meta.dirname, "./src/test-stubs/empty.ts"),
+      "server-only": path.resolve(
+        import.meta.dirname,
+        "./node_modules/server-only/empty.js",
+      ),
     },
   },
   test: {

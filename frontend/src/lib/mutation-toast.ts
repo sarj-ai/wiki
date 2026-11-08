@@ -11,7 +11,9 @@ export async function runWithErrorToast(
     await fn();
   } catch (err) {
     if (isAbortError(err)) return;
-    toast.error(isErrorFallback(fallback) ? fallback(err) : toErrorMessage(err, fallback));
+    toast.error(
+      isErrorFallback(fallback) ? fallback(err) : toErrorMessage(err, fallback),
+    );
   }
 }
 

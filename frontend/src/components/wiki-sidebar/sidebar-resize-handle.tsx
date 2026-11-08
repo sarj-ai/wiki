@@ -8,17 +8,25 @@ const MIN_WIDTH_PX = 224;
 const MAX_WIDTH_PX = 576;
 const KEYBOARD_STEP_PX = 16;
 
-const clampSidebarWidth = (px: number) => Math.max(MIN_WIDTH_PX, Math.min(MAX_WIDTH_PX, px));
+const clampSidebarWidth = (px: number) =>
+  Math.max(MIN_WIDTH_PX, Math.min(MAX_WIDTH_PX, px));
 
 const resizeDirection = (sidebar: HTMLElement) =>
-  sidebar.closest<HTMLElement>('[data-slot="sidebar"][data-side]')?.dataset["side"] === "right"
+  sidebar.closest<HTMLElement>('[data-slot="sidebar"][data-side]')?.dataset[
+    "side"
+  ] === "right"
     ? -1
     : 1;
 
-function intendedSidebarWidth(wrapper: HTMLElement | null, sidebar: HTMLElement) {
+function intendedSidebarWidth(
+  wrapper: HTMLElement | null,
+  sidebar: HTMLElement,
+) {
   const value = wrapper?.style.getPropertyValue("--sidebar-width").trim() ?? "";
   const pixels = value.endsWith("px") ? Number.parseFloat(value) : NaN;
-  return Number.isFinite(pixels) && pixels > 0 ? pixels : sidebar.getBoundingClientRect().width;
+  return Number.isFinite(pixels) && pixels > 0
+    ? pixels
+    : sidebar.getBoundingClientRect().width;
 }
 
 function persistSidebarWidth(wrapper: HTMLElement) {
@@ -35,9 +43,17 @@ export function SidebarResizeHandle() {
   const releaseDrag = useRef<(() => void) | null>(null);
   const syncWidth = (element: HTMLElement | null) => {
     if (!element) return;
-    const sidebar = document.querySelector<HTMLElement>('[data-slot="sidebar-container"]');
-    const wrapper = document.querySelector<HTMLElement>('[data-slot="sidebar-wrapper"]');
-    setWidth(sidebar ? clampSidebarWidth(intendedSidebarWidth(wrapper, sidebar)) : null);
+    const sidebar = document.querySelector<HTMLElement>(
+      '[data-slot="sidebar-container"]',
+    );
+    const wrapper = document.querySelector<HTMLElement>(
+      '[data-slot="sidebar-wrapper"]',
+    );
+    setWidth(
+      sidebar
+        ? clampSidebarWidth(intendedSidebarWidth(wrapper, sidebar))
+        : null,
+    );
   };
 
   useEffect(() => () => releaseDrag.current?.(), []);
@@ -50,15 +66,20 @@ export function SidebarResizeHandle() {
       !["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)
     )
       return;
-    const wrapper = document.querySelector<HTMLElement>('[data-slot="sidebar-wrapper"]');
-    const sidebar = document.querySelector<HTMLElement>('[data-slot="sidebar-container"]');
+    const wrapper = document.querySelector<HTMLElement>(
+      '[data-slot="sidebar-wrapper"]',
+    );
+    const sidebar = document.querySelector<HTMLElement>(
+      '[data-slot="sidebar-container"]',
+    );
     if (!wrapper || !sidebar) return;
 
     event.preventDefault();
     releaseDrag.current?.();
     setDragging(false);
     const current = intendedSidebarWidth(wrapper, sidebar);
-    const delta = (event.key === "ArrowRight" ? 1 : -1) * resizeDirection(sidebar);
+    const delta =
+      (event.key === "ArrowRight" ? 1 : -1) * resizeDirection(sidebar);
     const next =
       event.key === "Home"
         ? MIN_WIDTH_PX
@@ -85,8 +106,12 @@ export function SidebarResizeHandle() {
   const handlePointerDown = (event: React.PointerEvent<HTMLDivElement>) => {
     event.preventDefault();
     releaseDrag.current?.();
-    const wrapper = document.querySelector<HTMLElement>('[data-slot="sidebar-wrapper"]');
-    const sidebar = document.querySelector<HTMLElement>('[data-slot="sidebar-container"]');
+    const wrapper = document.querySelector<HTMLElement>(
+      '[data-slot="sidebar-wrapper"]',
+    );
+    const sidebar = document.querySelector<HTMLElement>(
+      '[data-slot="sidebar-container"]',
+    );
     if (!wrapper || !sidebar) {
       setDragging(false);
       return;
@@ -118,7 +143,9 @@ export function SidebarResizeHandle() {
     const apply = () => {
       rafId = null;
       if (released || pendingX === null) return;
-      const next = clampSidebarWidth(startWidth + (pendingX - startX) * direction);
+      const next = clampSidebarWidth(
+        startWidth + (pendingX - startX) * direction,
+      );
       wrapper.style.setProperty("--sidebar-width", `${next}px`);
       setWidth(next);
       pendingX = null;
@@ -184,7 +211,9 @@ export function SidebarResizeHandle() {
         aria-valuemax={MAX_WIDTH_PX}
         aria-valuemin={MIN_WIDTH_PX}
         aria-valuenow={width ?? undefined}
-        aria-valuetext={width === null ? undefined : `${Math.round(width)} pixels wide`}
+        aria-valuetext={
+          width === null ? undefined : `${Math.round(width)} pixels wide`
+        }
         className="focus-visible:ring-ring hover:before:bg-sidebar-border/80 focus-visible:before:bg-sidebar-border absolute top-0 -right-1.5 z-20 hidden h-full w-3 cursor-col-resize group-data-[side=right]:right-auto group-data-[side=right]:-left-1.5 before:absolute before:inset-y-0 before:left-1/2 before:w-px before:-translate-x-1/2 before:transition-colors focus-visible:ring-2 focus-visible:outline-none md:block"
         onPointerDown={handlePointerDown}
         ref={attachHandle}
@@ -193,7 +222,10 @@ export function SidebarResizeHandle() {
       />
 
       {dragging ? (
-        <div aria-hidden="true" className="fixed inset-0 z-50 cursor-col-resize bg-transparent" />
+        <div
+          aria-hidden="true"
+          className="fixed inset-0 z-50 cursor-col-resize bg-transparent"
+        />
       ) : null}
     </>
   );

@@ -1,12 +1,19 @@
 // @vitest-environment happy-dom
-import { CancelledError, QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import {
+  CancelledError,
+  QueryClient,
+  QueryClientProvider,
+} from "@tanstack/react-query";
 import { flushSync } from "react-dom";
 import { createRoot, type Root } from "react-dom/client";
 
 import type { WIKI_READ_API } from "@/lib/wiki-read-api";
 import type { DriveTree } from "@/types/wiki";
 
-import { DRIVE_PREFETCH_DELAY_MS, useDrivePredictiveLoading } from "./use-drive-predictive-loading";
+import {
+  DRIVE_PREFETCH_DELAY_MS,
+  useDrivePredictiveLoading,
+} from "./use-drive-predictive-loading";
 
 type WikiReadApi = typeof WIKI_READ_API;
 
@@ -27,7 +34,10 @@ describe("useDrivePredictiveLoading", () => {
 
   beforeEach(() => {
     vi.useFakeTimers();
-    Object.defineProperty(navigator, "connection", { configurable: true, value: undefined });
+    Object.defineProperty(navigator, "connection", {
+      configurable: true,
+      value: undefined,
+    });
     API.getDriveFolders.mockReset();
     API.getFolderFiles.mockReset();
     API.getDriveFolders.mockResolvedValue({
@@ -37,7 +47,9 @@ describe("useDrivePredictiveLoading", () => {
       filesComplete: false,
     });
     API.getFolderFiles.mockResolvedValue([]);
-    queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
     container = document.createElement("div");
     document.body.append(container);
     root = createRoot(container);
@@ -85,14 +97,23 @@ describe("useDrivePredictiveLoading", () => {
     for (let index = 0; index < 4; index += 1) pointer("pointerdown", "mouse");
     await advance(0);
     expect(API.getDriveFolders).toHaveBeenCalledOnce();
-    pending.resolve({ driveId: "drive-1", files: [], folders: [], filesComplete: false });
+    pending.resolve({
+      driveId: "drive-1",
+      files: [],
+      folders: [],
+      filesComplete: false,
+    });
     await advance(0);
     expect(API.getFolderFiles).toHaveBeenCalledOnce();
     expect(
-      prepare.mock.calls.filter(([options]) => options.queryKey[1] === "drive-tree"),
+      prepare.mock.calls.filter(
+        ([options]) => options.queryKey[1] === "drive-tree",
+      ),
     ).toHaveLength(1);
     expect(
-      prepare.mock.calls.filter(([options]) => options.queryKey[1] === "folder-files"),
+      prepare.mock.calls.filter(
+        ([options]) => options.queryKey[1] === "folder-files",
+      ),
     ).toHaveLength(1);
   });
 
@@ -104,12 +125,19 @@ describe("useDrivePredictiveLoading", () => {
     await advance(DRIVE_PREFETCH_DELAY_MS);
     pointer("pointerdown", "mouse");
     pointer("pointerout", "mouse");
-    pending.resolve({ driveId: "drive-1", files: [], folders: [], filesComplete: false });
+    pending.resolve({
+      driveId: "drive-1",
+      files: [],
+      folders: [],
+      filesComplete: false,
+    });
     await advance(0);
     expect(API.getFolderFiles).toHaveBeenCalledOnce();
 
     queryClient.clear();
-    API.getDriveFolders.mockRejectedValueOnce(new Error("temporarily unavailable"));
+    API.getDriveFolders.mockRejectedValueOnce(
+      new Error("temporarily unavailable"),
+    );
     pointer("pointerdown", "mouse");
     await advance(0);
     pointer("pointerdown", "mouse");
@@ -118,21 +146,24 @@ describe("useDrivePredictiveLoading", () => {
     expect(API.getFolderFiles).toHaveBeenCalledTimes(2);
   });
 
-  it.each(["query", "abort"] as const)("keeps canceled %s preparations quiet", async (kind) => {
-    const warn = vi.spyOn(console, "warn");
-    const error =
-      kind === "query"
-        ? new CancelledError()
-        : new DOMException("The hover read was retired", "AbortError");
-    API.getDriveFolders.mockRejectedValueOnce(error);
-    mount();
-    pointer("pointerdown", "mouse");
-    await advance(0);
+  it.each(["query", "abort"] as const)(
+    "keeps canceled %s preparations quiet",
+    async (kind) => {
+      const warn = vi.spyOn(console, "warn");
+      const error =
+        kind === "query"
+          ? new CancelledError()
+          : new DOMException("The hover read was retired", "AbortError");
+      API.getDriveFolders.mockRejectedValueOnce(error);
+      mount();
+      pointer("pointerdown", "mouse");
+      await advance(0);
 
-    expect(API.getDriveFolders).toHaveBeenCalledOnce();
-    expect(API.getFolderFiles).not.toHaveBeenCalled();
-    expect(warn).not.toHaveBeenCalled();
-  });
+      expect(API.getDriveFolders).toHaveBeenCalledOnce();
+      expect(API.getFolderFiles).not.toHaveBeenCalled();
+      expect(warn).not.toHaveBeenCalled();
+    },
+  );
 
   it("cancels speculative work after the last intent leaves", async () => {
     mount();
@@ -190,7 +221,9 @@ describe("useDrivePredictiveLoading", () => {
           break;
         }
         case "hidden": {
-          vi.spyOn(document, "visibilityState", "get").mockReturnValue("hidden");
+          vi.spyOn(document, "visibilityState", "get").mockReturnValue(
+            "hidden",
+          );
           break;
         }
         case "expanded": {
@@ -205,7 +238,12 @@ describe("useDrivePredictiveLoading", () => {
           throw new Error("Unknown intent transition");
         }
       }
-      pending.resolve({ driveId: "drive-1", files: [], folders: [], filesComplete: false });
+      pending.resolve({
+        driveId: "drive-1",
+        files: [],
+        folders: [],
+        filesComplete: false,
+      });
       await advance(0);
       expect(API.getFolderFiles).not.toHaveBeenCalled();
       expect(signal?.aborted).toBe(false);
@@ -220,32 +258,45 @@ describe("useDrivePredictiveLoading", () => {
     expect(API.getDriveFolders).not.toHaveBeenCalled();
   });
 
-  it.each(["save-data", "hidden"])("does not speculate when the page is %s", async (mode) => {
-    if (mode === "save-data") {
-      Object.defineProperty(navigator, "connection", {
-        configurable: true,
-        value: { saveData: true },
-      });
-    } else {
-      vi.spyOn(document, "visibilityState", "get").mockReturnValue("hidden");
-    }
-    mount();
-    pointer("pointerover", "mouse");
-    await advance(DRIVE_PREFETCH_DELAY_MS);
+  it.each(["save-data", "hidden"])(
+    "does not speculate when the page is %s",
+    async (mode) => {
+      if (mode === "save-data") {
+        Object.defineProperty(navigator, "connection", {
+          configurable: true,
+          value: { saveData: true },
+        });
+      } else {
+        vi.spyOn(document, "visibilityState", "get").mockReturnValue("hidden");
+      }
+      mount();
+      pointer("pointerover", "mouse");
+      await advance(DRIVE_PREFETCH_DELAY_MS);
 
-    expect(API.getDriveFolders).not.toHaveBeenCalled();
-  });
+      expect(API.getDriveFolders).not.toHaveBeenCalled();
+    },
+  );
 
-  function pointer(type: string, pointerType: string, init: PointerEventInit = {}): void {
+  function pointer(
+    type: string,
+    pointerType: string,
+    init: PointerEventInit = {},
+  ): void {
     button.dispatchEvent(
-      new PointerEvent(type, { bubbles: true, button: 0, pointerType, ...init }),
+      new PointerEvent(type, {
+        bubbles: true,
+        button: 0,
+        pointerType,
+        ...init,
+      }),
     );
   }
 
   function mount(expanded = false): void {
     renderHarness(root, queryClient, expanded);
     const rendered = container.querySelector("button");
-    if (!(rendered instanceof HTMLButtonElement)) throw new TypeError("button missing");
+    if (!(rendered instanceof HTMLButtonElement))
+      throw new TypeError("button missing");
     button = rendered;
   }
 });
@@ -259,7 +310,11 @@ function Harness({ expanded }: { expanded: boolean }) {
   );
 }
 
-function renderHarness(root: Root, queryClient: QueryClient, expanded: boolean): void {
+function renderHarness(
+  root: Root,
+  queryClient: QueryClient,
+  expanded: boolean,
+): void {
   flushSync(() => {
     root.render(
       <QueryClientProvider client={queryClient}>

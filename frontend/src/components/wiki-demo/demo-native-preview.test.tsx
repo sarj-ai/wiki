@@ -1,4 +1,9 @@
-import { fireEvent, render, type RenderResult, screen } from "@testing-library/react";
+import {
+  fireEvent,
+  render,
+  type RenderResult,
+  screen,
+} from "@testing-library/react";
 import { act } from "react";
 
 import { type DemoFile, demoFileFor } from "./demo-data";
@@ -44,7 +49,13 @@ describe("native public read-only preview lifecycle", () => {
   });
 
   async function showPreview(previewUrl = PREVIEW_URL, attempt = 0) {
-    const preview = <DemoPreview file={nativeSample(previewUrl)} key={attempt} onReload={RELOAD} />;
+    const preview = (
+      <DemoPreview
+        file={nativeSample(previewUrl)}
+        key={attempt}
+        onReload={RELOAD}
+      />
+    );
     if (view) view.rerender(preview);
     else view = render(preview);
     await act(async () => {
@@ -58,7 +69,9 @@ describe("native public read-only preview lifecycle", () => {
     expect(frame).toHaveAttribute("src", PREVIEW_URL);
     expect(frame).not.toHaveAttribute("srcdoc");
     expect(frame).toHaveAttribute("sandbox", "allow-scripts allow-same-origin");
-    expect(frame.getAttribute("sandbox")?.split(" ")).not.toContain("allow-popups");
+    expect(frame.getAttribute("sandbox")?.split(" ")).not.toContain(
+      "allow-popups",
+    );
     expect(frame.getAttribute("sandbox")?.split(" ")).not.toContain(
       "allow-popups-to-escape-sandbox",
     );
@@ -78,7 +91,9 @@ describe("native public read-only preview lifecycle", () => {
   it("offers the actual export and retry when a preview route is rejected", async () => {
     await showPreview("https://docs.google.com/document/d/public-doc/edit");
     expect(screen.queryByTitle(/read-only preview/)).toBeNull();
-    expect(screen.getByRole("heading", { name: "The preview couldn’t load" })).toBeInTheDocument();
+    expect(
+      screen.getByRole("heading", { name: "The preview couldn’t load" }),
+    ).toBeInTheDocument();
     const download = screen.getByRole("link", { name: "Download sample" });
     expect(download).toHaveAttribute("href", DOWNLOAD_URL);
     expect(download).toHaveAttribute("download", "public-native.docx");
@@ -99,7 +114,9 @@ describe("native public read-only preview lifecycle", () => {
     });
     expect(screen.queryByTitle(/read-only preview/)).toBeNull();
     expect(
-      screen.getByRole("heading", { name: "The preview is taking a little longer" }),
+      screen.getByRole("heading", {
+        name: "The preview is taking a little longer",
+      }),
     ).toBeInTheDocument();
     fireEvent.load(retired);
     expect(screen.queryByTitle(/read-only preview/)).toBeNull();
@@ -126,7 +143,8 @@ describe("native public read-only preview lifecycle", () => {
     await act(async () => {
       await vi.advanceTimersByTimeAsync(9_000);
     });
-    const nextUrl = "https://docs.google.com/document/d/next-public-doc/preview";
+    const nextUrl =
+      "https://docs.google.com/document/d/next-public-doc/preview";
     await showPreview(nextUrl);
     await act(async () => {
       await vi.advanceTimersByTimeAsync(1_500);
@@ -145,10 +163,15 @@ describe("native public read-only preview lifecycle", () => {
     "https://docs.google.com/document/d/public-doc/preview?edit=true",
     "https://evil.example/document/d/public-doc/preview",
     "/api/wiki/files/private-id",
-  ])("fails closed for an untrusted preview without a local fallback: %s", async (previewUrl) => {
-    await showPreview(previewUrl);
-    expect(screen.queryByTitle(/read-only preview/)).toBeNull();
-    expect(screen.getByRole("heading", { name: "The preview couldn’t load" })).toBeInTheDocument();
-    expect(HTTP).not.toHaveBeenCalled();
-  });
+  ])(
+    "fails closed for an untrusted preview without a local fallback: %s",
+    async (previewUrl) => {
+      await showPreview(previewUrl);
+      expect(screen.queryByTitle(/read-only preview/)).toBeNull();
+      expect(
+        screen.getByRole("heading", { name: "The preview couldn’t load" }),
+      ).toBeInTheDocument();
+      expect(HTTP).not.toHaveBeenCalled();
+    },
+  );
 });

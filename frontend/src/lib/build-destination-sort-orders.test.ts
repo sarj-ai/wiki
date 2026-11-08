@@ -30,7 +30,10 @@ describe("destination move ordering", () => {
       const lazy = [
         node("lazy-doc", MIME_DOC),
         node("root-folder", MIME_FOLDER),
-        { ...node("root-shortcut", MIME_SHORTCUT), shortcutTargetMimeType: MIME_FOLDER },
+        {
+          ...node("root-shortcut", MIME_SHORTCUT),
+          shortcutTargetMimeType: MIME_FOLDER,
+        },
       ];
       const result = buildDestinationSortOrders({
         driveId: "drive",
@@ -69,15 +72,18 @@ describe("destination move ordering", () => {
     ["anchor-a", "below", ["anchor-a", "moved", "anchor-z"]],
     ["anchor-z", "above", ["anchor-a", "moved", "anchor-z"]],
     ["anchor-z", "below", ["anchor-a", "anchor-z", "moved"]],
-  ] as const)("inserts %s %s with consecutive final ranks", (rowId, intent, expected) => {
-    const tree: DriveTree = {
-      driveId: "drive",
-      filesComplete: true,
-      folders: [],
-      files: [node("anchor-z", MIME_DOC), MOVED, node("anchor-a", MIME_DOC)],
-    };
-    expect(order(tree, "drive", rowId, intent)).toEqual(expected);
-  });
+  ] as const)(
+    "inserts %s %s with consecutive final ranks",
+    (rowId, intent, expected) => {
+      const tree: DriveTree = {
+        driveId: "drive",
+        filesComplete: true,
+        folders: [],
+        files: [node("anchor-z", MIME_DOC), MOVED, node("anchor-a", MIME_DOC)],
+      };
+      expect(order(tree, "drive", rowId, intent)).toEqual(expected);
+    },
+  );
 
   it("does not persist a rank list for an absent destination anchor", () => {
     expect(order(fixtureTree(), "root-folder", "root-doc", "above")).toBeNull();
@@ -93,7 +99,10 @@ describe("destination move ordering", () => {
       "nested-doc",
       "moved",
     ]);
-    const updated = { ...tree, files: tree.files.map((item) => ({ ...item, name: item.id })) };
+    const updated = {
+      ...tree,
+      files: tree.files.map((item) => ({ ...item, name: item.id })),
+    };
     expect(order(updated, "root-folder", "nested-doc", "below")).toEqual([
       "nested-folder",
       "nested-doc",
@@ -136,7 +145,9 @@ function order(
     tree,
   });
   if (result)
-    expect(result.map((item) => item.sortOrder)).toEqual(result.map((_, index) => index + 1));
+    expect(result.map((item) => item.sortOrder)).toEqual(
+      result.map((_, index) => index + 1),
+    );
   return result?.map((item) => item.driveId) ?? null;
 }
 
@@ -146,10 +157,16 @@ function fixtureTree(): DriveTree {
     filesComplete: true,
     folders: [
       node("root-folder", MIME_FOLDER),
-      { ...node("root-shortcut", MIME_SHORTCUT), shortcutTargetMimeType: MIME_FOLDER },
+      {
+        ...node("root-shortcut", MIME_SHORTCUT),
+        shortcutTargetMimeType: MIME_FOLDER,
+      },
       node("nested-folder", MIME_FOLDER, "root-folder"),
     ],
-    files: [node("root-doc", MIME_DOC), node("nested-doc", MIME_DOC, "root-folder")],
+    files: [
+      node("root-doc", MIME_DOC),
+      node("nested-doc", MIME_DOC, "root-folder"),
+    ],
   };
 }
 

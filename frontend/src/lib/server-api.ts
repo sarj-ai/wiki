@@ -9,17 +9,28 @@ import { createClient, createConfig } from "@/lib/generated/client";
 import { makeWikiApi } from "@/lib/wiki-api";
 
 const serverClient = createClient(
-  createConfig({ baseUrl: API_URL, cache: "no-store", fetch: fetchBackend, redirect: "manual" }),
+  createConfig({
+    baseUrl: API_URL,
+    cache: "no-store",
+    fetch: fetchBackend,
+    redirect: "manual",
+  }),
 );
 
 serverClient.interceptors.request.use(async (request) => {
-  const [cookieStore, requestHeaders] = await Promise.all([cookies(), headers()]);
+  const [cookieStore, requestHeaders] = await Promise.all([
+    cookies(),
+    headers(),
+  ]);
   const token = cookieStore.get("access_token")?.value;
   if (token === undefined) {
     throw new ServerApiError(401);
   }
   request.headers.set("Authorization", `Bearer ${token}`);
-  request.headers.set("X-Request-ID", requestHeaders.get("X-Request-ID") ?? crypto.randomUUID());
+  request.headers.set(
+    "X-Request-ID",
+    requestHeaders.get("X-Request-ID") ?? crypto.randomUUID(),
+  );
   return request;
 });
 

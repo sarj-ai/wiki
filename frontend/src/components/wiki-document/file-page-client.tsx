@@ -55,10 +55,14 @@ export function FilePageClient({ driveId }: { driveId: string }) {
     markNav(driveId, "commit");
   }, [driveId]);
 
-  const isLoading = fileQuery.isPending || (!fileQuery.data && fileQuery.isFetching);
+  const isLoading =
+    fileQuery.isPending || (!fileQuery.data && fileQuery.isFetching);
   if (isLoading) {
     const hint = findCachedNodeMeta(queryClient, driveId);
-    if (!hint || (hint.mimeType === MIME_HTML && hint.modifiedTime === undefined)) {
+    if (
+      !hint ||
+      (hint.mimeType === MIME_HTML && hint.modifiedTime === undefined)
+    ) {
       return <FilePagePending />;
     }
     return (
@@ -75,12 +79,18 @@ export function FilePageClient({ driveId }: { driveId: string }) {
         parentFolderId={undefined}
         reloadKey={reloadKey}
         title={hint.name}
-        {...(hint.modifiedTime === undefined ? {} : { version: hint.modifiedTime })}
+        {...(hint.modifiedTime === undefined
+          ? {}
+          : { version: hint.modifiedTime })}
       />
     );
   }
 
-  if (fileQuery.isError && fileQuery.error instanceof ApiError && fileQuery.error.status === 404) {
+  if (
+    fileQuery.isError &&
+    fileQuery.error instanceof ApiError &&
+    fileQuery.error.status === 404
+  ) {
     notFound();
   }
 
@@ -111,13 +121,17 @@ export function FilePageClient({ driveId }: { driveId: string }) {
         const refreshed = await refetchFile();
         if (refreshed.isError) throw refreshed.error;
         if (!refreshed.data?.modifiedTime) {
-          throw new Error("Couldn’t verify the document’s latest revision. Please try again.");
+          throw new Error(
+            "Couldn’t verify the document’s latest revision. Please try again.",
+          );
         }
         return refreshed.data.modifiedTime;
       }}
       reloadKey={reloadKey}
       title={file.name}
-      {...(file.modifiedTime === undefined ? {} : { version: file.modifiedTime })}
+      {...(file.modifiedTime === undefined
+        ? {}
+        : { version: file.modifiedTime })}
     />
   );
 }
@@ -160,7 +174,8 @@ function FilePageBody({
     setSlot(slot, viewerOwner.current);
   };
   const displayTitle = displayFileName(title, mimeType);
-  const mobileReadUrl = authority === "resolved" ? mobileReadUrlFor(mimeType, fileId) : null;
+  const mobileReadUrl =
+    authority === "resolved" ? mobileReadUrlFor(mimeType, fileId) : null;
   useDocumentTitle(displayTitle);
 
   useEffect(() => {
@@ -185,7 +200,16 @@ function FilePageBody({
     return () => {
       clearActive(owner);
     };
-  }, [authority, clearActive, displayTitle, fileId, mimeType, reloadKey, setActive, version]);
+  }, [
+    authority,
+    clearActive,
+    displayTitle,
+    fileId,
+    mimeType,
+    reloadKey,
+    setActive,
+    version,
+  ]);
   useEffect(() => {
     if (authority === "resolved" && userId) {
       saveLastDoc(userId, { fileId, mimeType, title: displayTitle });

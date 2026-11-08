@@ -56,13 +56,18 @@ describe("public Google preview URL boundary", () => {
 });
 
 describe("public sample document links", () => {
-  it.each(DEMO_FILES)("opens the known public $id in the anonymous demo", (file) => {
-    const preview = demoPreviewUrl(file);
-    if (preview === null) throw new Error("A public demo file needs a verified preview URL");
-    const id = new URL(preview).pathname.split("/", 4)[3];
-    if (id === undefined) throw new Error("A public demo preview must identify its file");
-    expect(demoHrefForDocumentPath(`/d/${id}`)).toBe(demoHref(file));
-  });
+  it.each(DEMO_FILES)(
+    "opens the known public $id in the anonymous demo",
+    (file) => {
+      const preview = demoPreviewUrl(file);
+      if (preview === null)
+        throw new Error("A public demo file needs a verified preview URL");
+      const id = new URL(preview).pathname.split("/", 4)[3];
+      if (id === undefined)
+        throw new Error("A public demo preview must identify its file");
+      expect(demoHrefForDocumentPath(`/d/${id}`)).toBe(demoHref(file));
+    },
+  );
 
   it.each([
     "/d/private-document",
@@ -93,9 +98,12 @@ describe("public sample download URL boundary", () => {
     "https://drive.google.com/uc?export=download&id=../private",
     "/api/wiki/files/private-id",
     "javascript:alert(1)",
-  ])("does not substitute an untrusted export or private route: %s", (downloadUrl) => {
-    expect(demoDownloadUrl(sample({ downloadUrl }))).toBeNull();
-  });
+  ])(
+    "does not substitute an untrusted export or private route: %s",
+    (downloadUrl) => {
+      expect(demoDownloadUrl(sample({ downloadUrl }))).toBeNull();
+    },
+  );
 
   it("omits a download until a verified external URL is configured", () => {
     expect(demoDownloadUrl(sample({ downloadUrl: "" }))).toBeNull();

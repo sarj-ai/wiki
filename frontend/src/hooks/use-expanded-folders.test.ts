@@ -24,10 +24,18 @@ describe("per-user sidebar expansion", () => {
   it("persists Drive and folder ids only inside the immutable user's namespace", () => {
     expandPath("user-a", "drive-a", ["folder-a"]);
 
-    expect(window.localStorage.getItem(expandedFoldersStorageKey("user-b"))).toBeNull();
-    expect(window.localStorage.getItem(collapsedDrivesStorageKey("user-b"))).toBeNull();
-    expect(window.localStorage.getItem(expandedFoldersStorageKey("user-a"))).toContain("folder-a");
-    expect(window.localStorage.getItem(expandedDrivesStorageKey("user-a"))).toContain("drive-a");
+    expect(
+      window.localStorage.getItem(expandedFoldersStorageKey("user-b")),
+    ).toBeNull();
+    expect(
+      window.localStorage.getItem(collapsedDrivesStorageKey("user-b")),
+    ).toBeNull();
+    expect(
+      window.localStorage.getItem(expandedFoldersStorageKey("user-a")),
+    ).toContain("folder-a");
+    expect(
+      window.localStorage.getItem(expandedDrivesStorageKey("user-a")),
+    ).toContain("drive-a");
   });
 
   it("does not persist when authenticated identity is unavailable", () => {
@@ -42,10 +50,14 @@ describe("per-user sidebar expansion", () => {
     expandPath("user-batch", "drive-batch", folders);
     expect(writes).toHaveBeenCalledTimes(2);
     expect(
-      writes.mock.calls.filter(([key]) => key === expandedFoldersStorageKey("user-batch")),
+      writes.mock.calls.filter(
+        ([key]) => key === expandedFoldersStorageKey("user-batch"),
+      ),
     ).toHaveLength(1);
     for (const id of folders) {
-      expect(window.localStorage.getItem(expandedFoldersStorageKey("user-batch"))).toContain(id);
+      expect(
+        window.localStorage.getItem(expandedFoldersStorageKey("user-batch")),
+      ).toContain(id);
     }
     writes.mockClear();
     expandPath("user-batch", "drive-batch", [...folders, folders[0] ?? ""]);
@@ -63,9 +75,15 @@ describe("per-user sidebar expansion", () => {
     resetExpansionState("user-a");
     clearUserBrowserStorage("user-a");
 
-    expect(window.localStorage.getItem(expandedFoldersStorageKey("user-a"))).toBeNull();
-    expect(window.localStorage.getItem(expandedDrivesStorageKey("user-a"))).toBeNull();
-    expect(window.localStorage.getItem(collapsedDrivesStorageKey("user-a"))).toBeNull();
+    expect(
+      window.localStorage.getItem(expandedFoldersStorageKey("user-a")),
+    ).toBeNull();
+    expect(
+      window.localStorage.getItem(expandedDrivesStorageKey("user-a")),
+    ).toBeNull();
+    expect(
+      window.localStorage.getItem(collapsedDrivesStorageKey("user-a")),
+    ).toBeNull();
     expect(consumeRevealFor("private-file")).toBe(false);
   });
 });

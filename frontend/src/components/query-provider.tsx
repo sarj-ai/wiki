@@ -1,10 +1,18 @@
 "use client";
 
-import { MutationCache, QueryCache, QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import {
+  MutationCache,
+  QueryCache,
+  QueryClient,
+  QueryClientProvider,
+} from "@tanstack/react-query";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 
 import { ApiError } from "@/lib/api-error";
-import { claimBrowserSession, retireBrowserSession } from "@/lib/browser-session";
+import {
+  claimBrowserSession,
+  retireBrowserSession,
+} from "@/lib/browser-session";
 import { storeLoginRedirect } from "@/lib/browser-storage";
 import {
   activateMutationSession,
@@ -12,7 +20,10 @@ import {
   retireMutationSession,
 } from "@/lib/mutation-session";
 import { sanitizeRedirectPath } from "@/lib/sanitize-redirect-path";
-import { notifyTerminalUnauthorized, TERMINAL_UNAUTHORIZED_EVENT } from "@/lib/session-events";
+import {
+  notifyTerminalUnauthorized,
+  TERMINAL_UNAUTHORIZED_EVENT,
+} from "@/lib/session-events";
 import {
   broadcastSessionClear,
   clearAuthenticatedSession,
@@ -92,25 +103,41 @@ export function QueryProvider({
       if (redirecting.current || window.location.pathname === "/login") return;
       redirecting.current = true;
       const safePath = sanitizeRedirectPath(window.location.pathname);
-      clearAuthenticatedSession(queryClient, userId ?? readVerifiedBrowserUser(queryClient));
+      clearAuthenticatedSession(
+        queryClient,
+        userId ?? readVerifiedBrowserUser(queryClient),
+      );
       broadcastSessionClear();
       storeLoginRedirect(safePath);
-      window.location.replace(`/login?redirect=${encodeURIComponent(safePath)}`);
+      window.location.replace(
+        `/login?redirect=${encodeURIComponent(safePath)}`,
+      );
     };
-    window.addEventListener(TERMINAL_UNAUTHORIZED_EVENT, handleTerminalUnauthorized);
+    window.addEventListener(
+      TERMINAL_UNAUTHORIZED_EVENT,
+      handleTerminalUnauthorized,
+    );
     const unsubscribe = subscribeToSessionClear(() => {
       if (redirecting.current) return;
       redirecting.current = true;
-      clearAuthenticatedSession(queryClient, userId ?? readVerifiedBrowserUser(queryClient));
+      clearAuthenticatedSession(
+        queryClient,
+        userId ?? readVerifiedBrowserUser(queryClient),
+      );
       window.location.replace("/login");
     });
     return () => {
       retireBrowserSession(owner);
-      window.removeEventListener(TERMINAL_UNAUTHORIZED_EVENT, handleTerminalUnauthorized);
+      window.removeEventListener(
+        TERMINAL_UNAUTHORIZED_EVENT,
+        handleTerminalUnauthorized,
+      );
       unsubscribe();
       retire();
     };
   }, [activate, queryClient, retire, userId]);
 
-  return <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>;
+  return (
+    <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+  );
 }

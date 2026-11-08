@@ -7,7 +7,10 @@ import { toast } from "sonner";
 import { z } from "zod";
 
 import { QueryProvider } from "@/components/query-provider";
-import { useRetireDocumentAlias, useSaveDocumentAlias } from "@/hooks/use-document-alias";
+import {
+  useRetireDocumentAlias,
+  useSaveDocumentAlias,
+} from "@/hooks/use-document-alias";
 import {
   useBulkSetSortOrders,
   useMoveFile,
@@ -48,11 +51,15 @@ vi.mock("@/app/actions/wiki-actions", () => ({
   setFolderIconAction: ACTIONS.folderIcon,
 }));
 vi.mock("@/lib/session-client", () => ({
-  deduplicatedRefresh: vi.fn<typeof deduplicatedRefresh>().mockResolvedValue("unauthorized"),
+  deduplicatedRefresh: vi
+    .fn<typeof deduplicatedRefresh>()
+    .mockResolvedValue("unauthorized"),
 }));
 vi.mock("sonner", () => ({ toast: { error: vi.fn(), success: vi.fn() } }));
 vi.mock("@/lib/session-isolation", async () => ({
-  ...(await vi.importActual<typeof sessionIsolation>("@/lib/session-isolation")),
+  ...(await vi.importActual<typeof sessionIsolation>(
+    "@/lib/session-isolation",
+  )),
   broadcastSessionClear: vi.fn(),
   subscribeToSessionClear: vi.fn(() => vi.fn()),
 }));
@@ -114,10 +121,15 @@ describe("sidebar mutation session ownership", () => {
         </BrowserUserContext>
       </QueryProvider>
     );
-    flushSync(() => root.render(strict ? <StrictMode>{provider}</StrictMode> : provider));
+    flushSync(() =>
+      root.render(strict ? <StrictMode>{provider}</StrictMode> : provider),
+    );
   }
 
-  function move(overId = `parent:${DESTINATION.id}`, overData?: Record<string, unknown>) {
+  function move(
+    overId = `parent:${DESTINATION.id}`,
+    overData?: Record<string, unknown>,
+  ) {
     const event = dragEvent(overId, overData);
     flushSync(() => hooks.reorder.onDragStart(event));
     flushSync(() => hooks.reorder.onDragOver(event));
@@ -156,7 +168,11 @@ describe("sidebar mutation session ownership", () => {
     let itemReads = 0;
     const siblingIds = new Proxy(
       Array.from({ length: 10_000 }, (_, index) =>
-        index === 0 ? FILE.id : index === 9_999 ? DESTINATION.id : `item-${index}`,
+        index === 0
+          ? FILE.id
+          : index === 9_999
+            ? DESTINATION.id
+            : `item-${index}`,
       ),
       {
         get(target, key, receiver) {
@@ -169,14 +185,23 @@ describe("sidebar mutation session ownership", () => {
     const event = dragEvent(DESTINATION.id, {
       driveId: "shared-drive",
       isFolder: true,
-      sortable: { containerId: "parent:shared-drive", index: 9_999, items: siblingIds },
+      sortable: {
+        containerId: "parent:shared-drive",
+        index: 9_999,
+        items: siblingIds,
+      },
     });
     event.active.data.current = {
       driveId: "shared-drive",
-      sortable: { containerId: "parent:shared-drive", index: 0, items: siblingIds },
+      sortable: {
+        containerId: "parent:shared-drive",
+        index: 0,
+        items: siblingIds,
+      },
     };
     flushSync(() => hooks.reorder.onDragStart(event));
-    for (let index = 0; index < 100; index += 1) hooks.reorder.onDragOver(event);
+    for (let index = 0; index < 100; index += 1)
+      hooks.reorder.onDragOver(event);
     expect(useDragOverStore.getState().intent).toBe("below");
     expect(itemReads).toBe(0);
     hooks.reorder.onDragCancel();
@@ -187,18 +212,30 @@ describe("sidebar mutation session ownership", () => {
     renderProvider("user-a");
     const event = dragEvent(DESTINATION.id, {
       driveId: "shared-drive",
-      sortable: { containerId: "parent:shared-drive", index: 1, items: [FILE.id, DESTINATION.id] },
+      sortable: {
+        containerId: "parent:shared-drive",
+        index: 1,
+        items: [FILE.id, DESTINATION.id],
+      },
     });
     event.active.data.current = {
       driveId: "shared-drive",
-      sortable: { containerId: "parent:shared-drive", index: 0, items: [FILE.id, DESTINATION.id] },
+      sortable: {
+        containerId: "parent:shared-drive",
+        index: 0,
+        items: [FILE.id, DESTINATION.id],
+      },
     };
     flushSync(() => hooks.reorder.onDragStart(event));
     hooks.reorder.onDragOver(event);
     expect(useDragOverStore.getState().intent).toBe("below");
     event.active.data.current = {
       driveId: "shared-drive",
-      sortable: { containerId: "parent:shared-drive", index: 0, items: [DESTINATION.id, FILE.id] },
+      sortable: {
+        containerId: "parent:shared-drive",
+        index: 0,
+        items: [DESTINATION.id, FILE.id],
+      },
     };
     flushSync(() => hooks.reorder.onDragEnd(event));
     await vi.advanceTimersByTimeAsync(0);
@@ -235,7 +272,10 @@ describe("sidebar mutation session ownership", () => {
     flushSync(() => hooks.reorder.onDragEnd(event));
     await vi.advanceTimersByTimeAsync(0);
     expect(itemReads).toBe(0);
-    expect(ACTIONS.move).toHaveBeenCalledExactlyOnceWith(FILE.id, DESTINATION.id);
+    expect(ACTIONS.move).toHaveBeenCalledExactlyOnceWith(
+      FILE.id,
+      DESTINATION.id,
+    );
   });
 
   it("admits one provider move for repeated same-file gestures and permits retry after denial", async () => {
@@ -285,10 +325,16 @@ describe("sidebar mutation session ownership", () => {
     if (!Array.isArray(previous)) throw new TypeError("Rank fixture missing");
     const filtered = vi.spyOn(previous, "filter");
     const wrote = vi.spyOn(client, "setQueryData");
-    const rankQuery = client.getQueryCache().find({ queryKey: wikiKeys.sortOrders });
+    const rankQuery = client
+      .getQueryCache()
+      .find({ queryKey: wikiKeys.sortOrders });
     const published = vi.fn();
     const release = client.getQueryCache().subscribe((event) => {
-      if (event.type === "updated" && event.query === rankQuery && event.action.type === "success")
+      if (
+        event.type === "updated" &&
+        event.query === rankQuery &&
+        event.action.type === "success"
+      )
         published();
     });
     const operation = hooks.move.mutateAsync({
@@ -330,7 +376,10 @@ describe("sidebar mutation session ownership", () => {
     });
     const failure = operation.catch((error: unknown) => error);
     await vi.advanceTimersByTimeAsync(0);
-    expect(client.getQueryData(wikiKeys.sortOrders)).toEqual([leading, trailing]);
+    expect(client.getQueryData(wikiKeys.sortOrders)).toEqual([
+      leading,
+      trailing,
+    ]);
     pending.resolve({ error: "Current move denied", ok: false, status: 403 });
     await expect(failure).resolves.toMatchObject({ status: 403 });
     expect(client.getQueryData(wikiKeys.sortOrders)).toEqual(previous);
@@ -339,14 +388,20 @@ describe("sidebar mutation session ownership", () => {
   it("resets ephemeral state and keeps B's same-file move owned when A settles", async () => {
     const oldAction = Promise.withResolvers<ActionResult<unknown>>();
     const currentAction = Promise.withResolvers<ActionResult<unknown>>();
-    ACTIONS.move.mockReturnValueOnce(oldAction.promise).mockReturnValueOnce(currentAction.promise);
+    ACTIONS.move
+      .mockReturnValueOnce(oldAction.promise)
+      .mockReturnValueOnce(currentAction.promise);
     renderProvider("user-a");
     const oldClient = client;
     move();
     await vi.advanceTimersByTimeAsync(0);
     expect(ACTIONS.move).toHaveBeenCalledOnce();
-    useDragOverStore.getState().setActive({ containerId: "parent:old", id: "retired-drag" });
-    useDragOverStore.getState().setOver({ containerId: "parent:old", id: "old", intent: "into" });
+    useDragOverStore
+      .getState()
+      .setActive({ containerId: "parent:old", id: "retired-drag" });
+    useDragOverStore
+      .getState()
+      .setOver({ containerId: "parent:old", id: "old", intent: "into" });
 
     clearAuthenticatedSession(oldClient, "user-a");
     expect(useInFlightMovesStore.getState().ids.size).toBe(0);
@@ -367,7 +422,11 @@ describe("sidebar mutation session ownership", () => {
     expect(deduplicatedRefresh).not.toHaveBeenCalled();
     expect(replace).not.toHaveBeenCalled();
 
-    currentAction.resolve({ error: "Current move denied", ok: false, status: 403 });
+    currentAction.resolve({
+      error: "Current move denied",
+      ok: false,
+      status: 403,
+    });
     await vi.advanceTimersByTimeAsync(0);
     expect(useInFlightMovesStore.getState().ids.has(FILE.id)).toBe(false);
     expect(client.getQueryData(wikiKeys.sortOrders)).toEqual(RANKS);
@@ -376,7 +435,9 @@ describe("sidebar mutation session ownership", () => {
         .getQueryData<DriveTree>(wikiKeys.driveTree("shared-drive"))
         ?.files.find((item) => item.id === FILE.id)?.parentId,
     ).toBeUndefined();
-    expect(toast.error).toHaveBeenCalledWith(expect.stringContaining("Drive denied this move"));
+    expect(toast.error).toHaveBeenCalledWith(
+      expect.stringContaining("Drive denied this move"),
+    );
   });
 
   it("prevents an old queued drag from dispatching under B's browser epoch", async () => {
@@ -419,23 +480,34 @@ describe("sidebar mutation session ownership", () => {
     const oldClient = client;
     const oldHooks = hooks;
     const boundary = Promise.withResolvers<undefined>();
-    oldClient.getMutationCache().config.onMutate = async () => await boundary.promise;
+    oldClient.getMutationCache().config.onMutate = async () =>
+      await boundary.promise;
     const settled = vi.fn();
-    oldHooks.bulk.mutate([{ driveId: FILE.id, sortOrder: 7 }], { onSettled: settled });
+    oldHooks.bulk.mutate([{ driveId: FILE.id, sortOrder: 7 }], {
+      onSettled: settled,
+    });
     renderProvider("user-b");
     boundary.resolve(undefined);
     await vi.advanceTimersByTimeAsync(0);
 
     expect(ACTIONS.bulk).not.toHaveBeenCalled();
     expect(settled).not.toHaveBeenCalled();
-    await expect(oldHooks.aliasSave.mutateAsync("old-alias")).rejects.toMatchObject({
+    await expect(
+      oldHooks.aliasSave.mutateAsync("old-alias"),
+    ).rejects.toMatchObject({
       name: "AbortError",
     });
     expect(ACTIONS.aliasSave).not.toHaveBeenCalled();
     expect(oldClient.getQueryCache().getAll()).toHaveLength(0);
   });
 
-  it.each(["bulk", "docIcon", "folderIcon", "aliasSave", "aliasRetire"] as const)(
+  it.each([
+    "bulk",
+    "docIcon",
+    "folderIcon",
+    "aliasSave",
+    "aliasRetire",
+  ] as const)(
     "does not restore or invalidate retired optimistic %s data",
     async (kind) => {
       const pending = Promise.withResolvers<ActionResult<unknown>>();
@@ -446,20 +518,31 @@ describe("sidebar mutation session ownership", () => {
       expect(ACTIONS[kind]).toHaveBeenCalledOnce();
       const invalidate = vi.spyOn(client, "invalidateQueries");
       clearAuthenticatedSession(client, "user-a");
-      pending.resolve({ error: "Retired mutation denied", ok: false, status: 403 });
+      pending.resolve({
+        error: "Retired mutation denied",
+        ok: false,
+        status: 403,
+      });
       await expect(operation).resolves.toMatchObject({ name: "AbortError" });
       expect(client.getQueryCache().getAll()).toHaveLength(0);
       expect(invalidate).not.toHaveBeenCalled();
     },
   );
 
-  it.each(["bulk", "docIcon", "folderIcon", "aliasSave", "aliasRetire"] as const)(
+  it.each([
+    "bulk",
+    "docIcon",
+    "folderIcon",
+    "aliasSave",
+    "aliasRetire",
+  ] as const)(
     "captures %s admission before the MutationCache's asynchronous onMutate",
     async (kind) => {
       renderProvider("user-a");
       const oldClient = client;
       const boundary = Promise.withResolvers<undefined>();
-      oldClient.getMutationCache().config.onMutate = async () => await boundary.promise;
+      oldClient.getMutationCache().config.onMutate = async () =>
+        await boundary.promise;
       const operation = mutate(kind, hooks).catch((error: unknown) => error);
       renderProvider("user-b");
       client.setQueryData(["replacement-private-data"], "keep");
@@ -476,7 +559,11 @@ describe("sidebar mutation session ownership", () => {
   it.each(["bulk", "docIcon", "folderIcon"] as const)(
     "preserves current %s optimistic rollback and normal errors",
     async (kind) => {
-      ACTIONS[kind].mockResolvedValue({ error: "Current mutation denied", ok: false, status: 403 });
+      ACTIONS[kind].mockResolvedValue({
+        error: "Current mutation denied",
+        ok: false,
+        status: 403,
+      });
       renderProvider("user-a");
       const key = {
         bulk: wikiKeys.sortOrders,
@@ -498,7 +585,10 @@ describe("sidebar mutation session ownership", () => {
     move(SIBLING.id, {
       driveId: "shared-drive",
       parentFolderId: DESTINATION.id,
-      sortable: { containerId: `parent:${DESTINATION.id}`, items: [SIBLING.id, NESTED_FOLDER.id] },
+      sortable: {
+        containerId: `parent:${DESTINATION.id}`,
+        items: [SIBLING.id, NESTED_FOLDER.id],
+      },
     });
     await vi.advanceTimersByTimeAsync(0);
 
@@ -588,7 +678,10 @@ async function mutate(
     case "docIcon":
       return await hooks.docIcon.mutateAsync({ driveId: FILE.id, icon: "new" });
     case "folderIcon":
-      return await hooks.folderIcon.mutateAsync({ folderDriveId: DESTINATION.id, icon: "new" });
+      return await hooks.folderIcon.mutateAsync({
+        folderDriveId: DESTINATION.id,
+        icon: "new",
+      });
   }
 }
 
@@ -600,11 +693,18 @@ function seed(client: QueryClient): void {
     folders: [DESTINATION, NESTED_FOLDER],
   });
   client.setQueryData(wikiKeys.sortOrders, RANKS);
-  client.setQueryData(wikiKeys.docIcons, [{ driveId: FILE.id, icon: "old", coverUrl: "cover" }]);
-  client.setQueryData(wikiKeys.folderIcons, [{ folderDriveId: DESTINATION.id, icon: "old" }]);
+  client.setQueryData(wikiKeys.docIcons, [
+    { driveId: FILE.id, icon: "old", coverUrl: "cover" },
+  ]);
+  client.setQueryData(wikiKeys.folderIcons, [
+    { folderDriveId: DESTINATION.id, icon: "old" },
+  ]);
 }
 
-function dragEvent(overId: string, overData?: Record<string, unknown>): DragEndEvent {
+function dragEvent(
+  overId: string,
+  overData?: Record<string, unknown>,
+): DragEndEvent {
   return {
     active: {
       data: {
@@ -621,7 +721,12 @@ function dragEvent(overId: string, overData?: Record<string, unknown>): DragEndE
     collisions: null,
     delta: { x: 0, y: 0 },
     over: {
-      data: { current: overData ?? { driveId: "shared-drive", parentFolderId: DESTINATION.id } },
+      data: {
+        current: overData ?? {
+          driveId: "shared-drive",
+          parentFolderId: DESTINATION.id,
+        },
+      },
       disabled: false,
       id: overId,
       rect: { bottom: 10, height: 10, left: 0, right: 10, top: 0, width: 10 },

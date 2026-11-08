@@ -41,8 +41,11 @@ describe("sidebar resource cancellation", () => {
       API.listFolderIcons,
       API.listSortOrders,
     ];
-    for (const method of methods) method.mockImplementation(pendingUntilAborted);
-    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    for (const method of methods)
+      method.mockImplementation(pendingUntilAborted);
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
     const host = document.createElement("div");
     const root = createRoot(host);
     try {
@@ -80,6 +83,8 @@ function SidebarQueries() {
 async function pendingUntilAborted(signal?: AbortSignal): Promise<never> {
   if (!signal) throw new Error("Query cancellation signal is missing");
   return await new Promise((_resolve, reject) => {
-    signal.addEventListener("abort", () => reject(new Error("Query aborted")), { once: true });
+    signal.addEventListener("abort", () => reject(new Error("Query aborted")), {
+      once: true,
+    });
   });
 }

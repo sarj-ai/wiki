@@ -5,7 +5,10 @@ import { useEffect, useRef, useState } from "react";
 import { SHORT_LINK_COPY_FEEDBACK_MS } from "@/lib/document-short-link";
 
 export function useCopyFeedback(identity: string) {
-  const [identityState, setIdentityState] = useState(() => ({ identity, owner: Symbol(identity) }));
+  const [identityState, setIdentityState] = useState(() => ({
+    identity,
+    owner: Symbol(identity),
+  }));
   if (identityState.identity !== identity) {
     setIdentityState({ identity, owner: Symbol(identity) });
   }

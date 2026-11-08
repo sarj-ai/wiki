@@ -17,7 +17,10 @@ const ViewSchema = z.object({
   scopes: z.array(CapabilitySchema).max(2),
   status: StatusSchema,
 });
-const RecoverySchema = z.object({ restart_required: z.boolean(), status: StatusSchema });
+const RecoverySchema = z.object({
+  restart_required: z.boolean(),
+  status: StatusSchema,
+});
 const DecisionSchema = z.object({ redirect_uri: z.url() });
 const GrantIdSchema = z.uuid();
 
@@ -53,9 +56,14 @@ function endpoint(intent: string): string {
   return `${API_URL}/integrations/mcp/consent/${IntentSchema.parse(intent)}`;
 }
 
-async function request(url: string, options?: RequestInit, signal?: AbortSignal): Promise<unknown> {
+async function request(
+  url: string,
+  options?: RequestInit,
+  signal?: AbortSignal,
+): Promise<unknown> {
   const deadline = AbortSignal.timeout(15_000);
-  const requestSignal = signal === undefined ? deadline : AbortSignal.any([deadline, signal]);
+  const requestSignal =
+    signal === undefined ? deadline : AbortSignal.any([deadline, signal]);
   requestSignal.throwIfAborted();
   const response = await fetch(url, {
     cache: "no-store",
@@ -85,21 +93,31 @@ async function request(url: string, options?: RequestInit, signal?: AbortSignal)
   }
 }
 
-export async function getMcpConsent(intent: string, signal?: AbortSignal): Promise<McpConsentView> {
+export async function getMcpConsent(
+  intent: string,
+  signal?: AbortSignal,
+): Promise<McpConsentView> {
   return ViewSchema.parse(await request(endpoint(intent), undefined, signal));
 }
 
 export async function recoverMcpConsent(intent: string, signal?: AbortSignal) {
-  return RecoverySchema.parse(await request(`${endpoint(intent)}/status`, undefined, signal));
+  return RecoverySchema.parse(
+    await request(`${endpoint(intent)}/status`, undefined, signal),
+  );
 }
 
-export async function getMcpConnections(signal?: AbortSignal): Promise<McpConnections> {
+export async function getMcpConnections(
+  signal?: AbortSignal,
+): Promise<McpConnections> {
   return ConnectionsSchema.parse(
     await request(`${API_URL}/integrations/mcp/connections`, undefined, signal),
   );
 }
 
-export async function disconnectMcpConnection(grantId: string, csrf: string): Promise<void> {
+export async function disconnectMcpConnection(
+  grantId: string,
+  csrf: string,
+): Promise<void> {
   const response = await fetch(
     `${API_URL}/integrations/mcp/connections/${GrantIdSchema.parse(grantId)}`,
     {
@@ -113,7 +131,8 @@ export async function disconnectMcpConnection(grantId: string, csrf: string): Pr
     },
   );
   discardStream(response.body);
-  if (response.status !== 204) throw new McpConsentRequestError(response.status);
+  if (response.status !== 204)
+    throw new McpConsentRequestError(response.status);
 }
 
 export async function decideMcpConsent(
@@ -133,7 +152,9 @@ export async function decideMcpConsent(
     }),
   );
   const callback = new URL(result.redirect_uri);
-  const loopback = ["127.0.0.1", "localhost", "[::1]"].includes(callback.hostname);
+  const loopback = ["127.0.0.1", "localhost", "[::1]"].includes(
+    callback.hostname,
+  );
   if (
     callback.username ||
     callback.password ||

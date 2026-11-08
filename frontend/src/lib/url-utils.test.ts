@@ -20,9 +20,12 @@ describe("sanitizeRedirectPath", () => {
     },
   );
 
-  it.each(["evil.com", "relative/path", ""])("rejects non-absolute path %s", (path) => {
-    expect(sanitizeRedirectPath(path)).toBe("/");
-  });
+  it.each(["evil.com", "relative/path", ""])(
+    "rejects non-absolute path %s",
+    (path) => {
+      expect(sanitizeRedirectPath(path)).toBe("/");
+    },
+  );
 
   it("rejects paths embedding a scheme later in the string", () => {
     expect(sanitizeRedirectPath("/redirect?next=https://evil")).toBe("/");

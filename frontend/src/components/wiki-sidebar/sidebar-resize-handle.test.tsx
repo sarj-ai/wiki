@@ -13,6 +13,12 @@ function clearWidthCookie() {
   document.cookie = `${SIDEBAR_WIDTH_COOKIE}=; Max-Age=0; Expires=Thu, 01 Jan 1970 00:00:00 GMT; Path=/`;
 }
 
+function send(type: string, clientX: number, pointerId = 1) {
+  flushSync(() =>
+    window.dispatchEvent(new PointerEvent(type, { clientX, pointerId })),
+  );
+}
+
 describe("sidebar resize ownership", () => {
   let root: Root;
   let host: HTMLDivElement;
@@ -25,7 +31,9 @@ describe("sidebar resize ownership", () => {
   let add: MockInstance<typeof window.addEventListener>;
   let remove: MockInstance<typeof window.removeEventListener>;
   let elementAdd: MockInstance<typeof HTMLElement.prototype.addEventListener>;
-  let elementRemove: MockInstance<typeof HTMLElement.prototype.removeEventListener>;
+  let elementRemove: MockInstance<
+    typeof HTMLElement.prototype.removeEventListener
+  >;
   let cookieWrite: MockInstance<(value: string) => void>;
 
   beforeEach(() => {
@@ -56,7 +64,9 @@ describe("sidebar resize ownership", () => {
         new DOMRect(
           0,
           0,
-          Number.parseFloat(wrapper.style.getPropertyValue("--sidebar-width")) || 300,
+          Number.parseFloat(
+            wrapper.style.getPropertyValue("--sidebar-width"),
+          ) || 300,
           0,
         ),
     );
@@ -67,8 +77,9 @@ describe("sidebar resize ownership", () => {
         new DOMRect(
           0,
           0,
-          (Number.parseFloat(wrapper.style.getPropertyValue("--sidebar-width")) || 300) -
-            contentInset,
+          (Number.parseFloat(
+            wrapper.style.getPropertyValue("--sidebar-width"),
+          ) || 300) - contentInset,
           0,
         ),
     );
@@ -91,7 +102,8 @@ describe("sidebar resize ownership", () => {
     flushSync(() => root.unmount());
 
     for (const [type, listener, options] of add.mock.calls) {
-      if (type.startsWith("pointer")) window.removeEventListener(type, listener, options);
+      if (type.startsWith("pointer"))
+        window.removeEventListener(type, listener, options);
     }
     wrapper.remove();
     document.body.style.cursor = "";
@@ -115,10 +127,6 @@ describe("sidebar resize ownership", () => {
         }),
       ),
     );
-  }
-
-  function send(type: string, clientX: number, pointerId = 1) {
-    flushSync(() => window.dispatchEvent(new PointerEvent(type, { clientX, pointerId })));
   }
 
   function mountHandle(strict = false) {
@@ -157,16 +165,19 @@ describe("sidebar resize ownership", () => {
   function active(type: string) {
     const removed = remove.mock.calls.filter(([event]) => event === type);
     return add.mock.calls.filter(
-      ([event, handler]) => event === type && !removed.some(([, released]) => handler === released),
+      ([event, handler]) =>
+        event === type && !removed.some(([, released]) => handler === released),
     ).length;
   }
 
   function activeElementListeners(separator: HTMLElement, eventType: string) {
     const attached = elementAdd.mock.calls.filter(
-      ([type], index) => type === eventType && elementAdd.mock.contexts[index] === separator,
+      ([type], index) =>
+        type === eventType && elementAdd.mock.contexts[index] === separator,
     ).length;
     const retired = elementRemove.mock.calls.filter(
-      ([type], index) => type === eventType && elementRemove.mock.contexts[index] === separator,
+      ([type], index) =>
+        type === eventType && elementRemove.mock.contexts[index] === separator,
     ).length;
     return attached - retired;
   }
@@ -198,9 +209,13 @@ describe("sidebar resize ownership", () => {
   }
 
   it("accumulates rapid keyboard steps while the rendered width is still animating", () => {
-    const sidebar = wrapper.querySelector<HTMLElement>('[data-slot="sidebar-container"]');
+    const sidebar = wrapper.querySelector<HTMLElement>(
+      '[data-slot="sidebar-container"]',
+    );
     if (!sidebar) throw new Error("Sidebar container missing");
-    vi.spyOn(sidebar, "getBoundingClientRect").mockReturnValue(new DOMRect(0, 0, 300, 800));
+    vi.spyOn(sidebar, "getBoundingClientRect").mockReturnValue(
+      new DOMRect(0, 0, 300, 800),
+    );
     wrapper.style.setProperty("--sidebar-width", "300px");
     const separator = mountHandle();
     press("ArrowRight");
@@ -218,9 +233,13 @@ describe("sidebar resize ownership", () => {
   it.each(["left", "right"])(
     "retains the intended %s width when a pointer takes over an animated keyboard resize",
     (side) => {
-      const sidebar = wrapper.querySelector<HTMLElement>('[data-slot="sidebar-container"]');
+      const sidebar = wrapper.querySelector<HTMLElement>(
+        '[data-slot="sidebar-container"]',
+      );
       if (!sidebar) throw new Error("Sidebar container missing");
-      vi.spyOn(sidebar, "getBoundingClientRect").mockReturnValue(new DOMRect(0, 0, 300, 800));
+      vi.spyOn(sidebar, "getBoundingClientRect").mockReturnValue(
+        new DOMRect(0, 0, 300, 800),
+      );
       pane.dataset["side"] = side;
       wrapper.style.setProperty("--sidebar-width", "300px");
       mountHandle();
@@ -255,10 +274,12 @@ describe("sidebar resize ownership", () => {
     expect(wrapper.style.getPropertyValue("--sidebar-width")).toBe("300px");
     press("Home");
     expect(wrapper.style.getPropertyValue("--sidebar-width")).toBe("224px");
-    for (let count = 0; count < 4; count++) press("ArrowLeft", { repeat: true });
+    for (let count = 0; count < 4; count++)
+      press("ArrowLeft", { repeat: true });
     expect(wrapper.style.getPropertyValue("--sidebar-width")).toBe("224px");
     press("End");
-    for (let count = 0; count < 4; count++) press("ArrowRight", { repeat: true });
+    for (let count = 0; count < 4; count++)
+      press("ArrowRight", { repeat: true });
     expect(wrapper.style.getPropertyValue("--sidebar-width")).toBe("576px");
     expect(separator).toHaveAttribute("aria-valuenow", "576");
     expect(document.cookie).toContain(`${SIDEBAR_WIDTH_COOKIE}=576px`);
@@ -267,20 +288,23 @@ describe("sidebar resize ownership", () => {
     expectReleased();
   });
 
-  it.each([1, 16])("measures the whole pane when border or padding consumes %s pixels", (inset) => {
-    contentInset = inset;
-    const separator = mountHandle();
-    expect(separator).toHaveAttribute("aria-valuenow", "300");
-    for (let count = 0; count < 3; count++) press("ArrowRight");
-    expect(wrapper.style.getPropertyValue("--sidebar-width")).toBe("348px");
-    for (let count = 0; count < 3; count++) press("ArrowLeft");
-    expect(wrapper.style.getPropertyValue("--sidebar-width")).toBe("300px");
-    start();
-    send("pointerup", 132);
-    expect(wrapper.style.getPropertyValue("--sidebar-width")).toBe("332px");
-    expect(separator).toHaveAttribute("aria-valuenow", "332");
-    expectReleased();
-  });
+  it.each([1, 16])(
+    "measures the whole pane when border or padding consumes %s pixels",
+    (inset) => {
+      contentInset = inset;
+      const separator = mountHandle();
+      expect(separator).toHaveAttribute("aria-valuenow", "300");
+      for (let count = 0; count < 3; count++) press("ArrowRight");
+      expect(wrapper.style.getPropertyValue("--sidebar-width")).toBe("348px");
+      for (let count = 0; count < 3; count++) press("ArrowLeft");
+      expect(wrapper.style.getPropertyValue("--sidebar-width")).toBe("300px");
+      start();
+      send("pointerup", 132);
+      expect(wrapper.style.getPropertyValue("--sidebar-width")).toBe("332px");
+      expect(separator).toHaveAttribute("aria-valuenow", "332");
+      expectReleased();
+    },
+  );
 
   it.each([false, true])(
     "retires its keyboard listener after native focus and rerenders (strict=%s)",
@@ -302,7 +326,9 @@ describe("sidebar resize ownership", () => {
       expect(activeElementListeners(separator, "keydown")).toBe(0);
       expect(activeElementListeners(separator, "focus")).toBe(0);
       separator.dispatchEvent(new KeyboardEvent("keydown", { key: "End" }));
-      expect(wrapper.style.getPropertyValue("--sidebar-width")).toBe(previousWidth);
+      expect(wrapper.style.getPropertyValue("--sidebar-width")).toBe(
+        previousWidth,
+      );
       expect(document.cookie).toBe(previousCookie);
       expect(cookieWrite).toHaveBeenCalledOnce();
 
@@ -333,7 +359,9 @@ describe("sidebar resize ownership", () => {
     expect(serverSeparator.tabIndex).toBe(-1);
     expect(serverSeparator).not.toHaveAttribute("aria-valuenow");
     const recoverable = vi.fn();
-    root = hydrateRoot(host, <SidebarResizeHandle />, { onRecoverableError: recoverable });
+    root = hydrateRoot(host, <SidebarResizeHandle />, {
+      onRecoverableError: recoverable,
+    });
     await vi.waitFor(() => {
       expect(findSeparator().tabIndex).toBe(0);
       expect(findSeparator()).toHaveAttribute("aria-valuenow", "300");
@@ -350,7 +378,11 @@ describe("sidebar resize ownership", () => {
     for (const key of ["ArrowUp", "ArrowDown", "Enter", "Tab", "Escape", "a"]) {
       expect(press(key).defaultPrevented).toBe(false);
     }
-    for (const modifiers of [{ altKey: true }, { ctrlKey: true }, { metaKey: true }]) {
+    for (const modifiers of [
+      { altKey: true },
+      { ctrlKey: true },
+      { metaKey: true },
+    ]) {
       expect(press("ArrowRight", modifiers).defaultPrevented).toBe(false);
     }
     expect(wrapper.style.getPropertyValue("--sidebar-width")).toBe("");
@@ -358,18 +390,21 @@ describe("sidebar resize ownership", () => {
     expectReleased();
   });
 
-  it.each(["ltr", "rtl"])("uses the physical right pane direction in %s layouts", (direction) => {
-    pane.dataset["side"] = "right";
-    wrapper.dir = direction;
-    const separator = mountHandle();
-    flushSync(() => separator.focus());
-    press("ArrowRight");
-    expect(wrapper.style.getPropertyValue("--sidebar-width")).toBe("284px");
-    press("ArrowLeft");
-    expect(wrapper.style.getPropertyValue("--sidebar-width")).toBe("300px");
-    expect(separator).toHaveAttribute("aria-valuenow", "300");
-    expect(document.activeElement).toBe(separator);
-  });
+  it.each(["ltr", "rtl"])(
+    "uses the physical right pane direction in %s layouts",
+    (direction) => {
+      pane.dataset["side"] = "right";
+      wrapper.dir = direction;
+      const separator = mountHandle();
+      flushSync(() => separator.focus());
+      press("ArrowRight");
+      expect(wrapper.style.getPropertyValue("--sidebar-width")).toBe("284px");
+      press("ArrowLeft");
+      expect(wrapper.style.getPropertyValue("--sidebar-width")).toBe("300px");
+      expect(separator).toHaveAttribute("aria-valuenow", "300");
+      expect(document.activeElement).toBe(separator);
+    },
+  );
 
   it("keeps pointer and keyboard direction consistent for a right pane", () => {
     pane.dataset["side"] = "right";
@@ -427,7 +462,11 @@ describe("sidebar resize ownership", () => {
     start();
     send("pointermove", 150);
     start(2);
-    expect({ frames: frames.size, move: active("pointermove"), up: active("pointerup") }).toEqual({
+    expect({
+      frames: frames.size,
+      move: active("pointermove"),
+      up: active("pointerup"),
+    }).toEqual({
       frames: 0,
       move: 1,
       up: 1,

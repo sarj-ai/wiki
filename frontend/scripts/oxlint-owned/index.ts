@@ -1,7 +1,3 @@
-import { fixupPluginRules } from "@eslint/compat";
-import type { TSESLint } from "@typescript-eslint/utils";
-import type { CompatiblePlugin } from "typescript-eslint";
-
 import noAllDuplicatedBranches from "./rules/no-all-duplicated-branches.ts";
 import noCollapsibleIf from "./rules/no-collapsible-if.ts";
 import noElementOverwrite from "./rules/no-element-overwrite.ts";
@@ -23,10 +19,7 @@ const PLUGIN = Object.freeze({
     "no-use-of-empty-return-value": noUseOfEmptyReturnValue,
     "prefer-immediate-return": preferImmediateReturn,
   }),
-} satisfies TSESLint.FlatConfig.Plugin);
-
-const COMPATIBLE_PLUGIN: CompatiblePlugin = PLUGIN;
+});
 
 export { PLUGIN as rawPlugin };
-
-export default fixupPluginRules(COMPATIBLE_PLUGIN);
+export default PLUGIN;

@@ -4,7 +4,10 @@ import { Plus } from "lucide-react";
 import dynamic from "next/dynamic";
 
 import { Button } from "@/components/ui/button";
-import { DropdownMenu, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import {
+  DropdownMenu,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { useDeferredDialog } from "@/hooks/use-deferred-dialog";
 
 const CreateFileMenuActions = dynamic(
@@ -26,7 +29,9 @@ export function CreateFileMenu({
     <DropdownMenu onOpenChange={menu.onOpenChange} open={menu.open}>
       <DropdownMenuTrigger asChild>
         <Button
-          aria-label={parentName ? `Create item in ${parentName}` : "Create item"}
+          aria-label={
+            parentName ? `Create item in ${parentName}` : "Create item"
+          }
           className="text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground size-5 shrink-0 rounded-sm"
           onClick={(event) => {
             event.stopPropagation();

@@ -19,7 +19,10 @@ describe("optional performance event delivery", () => {
 
     sendPerformanceEvent(EVENT);
 
-    expect(beacon).toHaveBeenCalledExactlyOnceWith("/api/perf", expect.any(Blob));
+    expect(beacon).toHaveBeenCalledExactlyOnceWith(
+      "/api/perf",
+      expect.any(Blob),
+    );
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
@@ -27,13 +30,17 @@ describe("optional performance event delivery", () => {
     "discards the unused fallback HTTP %s body without waiting for cleanup or retrying",
     async (status) => {
       const cleanup = Promise.withResolvers<undefined>();
-      const cancelled = vi.fn<() => Promise<undefined>>().mockReturnValue(cleanup.promise);
-      const fetchMock = vi
-        .fn<typeof fetch>()
-        .mockResolvedValue(
-          new Response(new ReadableStream<Uint8Array>({ cancel: cancelled }), { status }),
-        );
-      vi.stubGlobal("navigator", { sendBeacon: vi.fn().mockReturnValue(false) });
+      const cancelled = vi
+        .fn<() => Promise<undefined>>()
+        .mockReturnValue(cleanup.promise);
+      const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(
+        new Response(new ReadableStream<Uint8Array>({ cancel: cancelled }), {
+          status,
+        }),
+      );
+      vi.stubGlobal("navigator", {
+        sendBeacon: vi.fn().mockReturnValue(false),
+      });
       vi.stubGlobal("fetch", fetchMock);
       try {
         sendPerformanceEvent(EVENT);

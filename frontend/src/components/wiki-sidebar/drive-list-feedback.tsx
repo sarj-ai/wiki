@@ -10,7 +10,10 @@ export function DriveListFeedback({
 }: {
   empty: boolean;
   emptyMessage?: string;
-  query: Pick<ReturnType<typeof useDrives>, "isError" | "isFetching" | "isPending" | "refetch">;
+  query: Pick<
+    ReturnType<typeof useDrives>,
+    "isError" | "isFetching" | "isPending" | "refetch"
+  >;
 }) {
   if (query.isPending) {
     return (
@@ -26,7 +29,9 @@ export function DriveListFeedback({
         <Button
           disabled={query.isFetching}
           onClick={() => {
-            void query.refetch().catch(() => console.warn("Drive retry could not finish"));
+            void query
+              .refetch()
+              .catch(() => console.warn("Drive retry could not finish"));
           }}
           size="sm"
           type="button"
@@ -37,5 +42,7 @@ export function DriveListFeedback({
       </div>
     );
   }
-  return empty ? <p className="text-muted-foreground p-3 text-sm">{emptyMessage}</p> : null;
+  return empty ? (
+    <p className="text-muted-foreground p-3 text-sm">{emptyMessage}</p>
+  ) : null;
 }

@@ -48,21 +48,29 @@ describe("recent aliases", () => {
     recordRecentAlias("user-1", "INVALID");
 
     expect(readRecentAliases("user-1")).toEqual([]);
-    expect(window.localStorage.getItem("sarj-wiki:recent-go:user-1")).toBe("[]");
+    expect(window.localStorage.getItem("sarj-wiki:recent-go:user-1")).toBe(
+      "[]",
+    );
   });
 
   it("continues validating arbitrary caller-provided visits before writing them", () => {
     recordRecentAlias("user-1", "team-handbook");
-    writeRecentAliases("user-1", [{ alias: "team-handbook", visitedAt: "yesterday" }]);
+    writeRecentAliases("user-1", [
+      { alias: "team-handbook", visitedAt: "yesterday" },
+    ]);
 
     expect(readRecentAliases("user-1")).toEqual([]);
-    expect(window.localStorage.getItem("sarj-wiki:recent-go:user-1")).toBe("[]");
+    expect(window.localStorage.getItem("sarj-wiki:recent-go:user-1")).toBe(
+      "[]",
+    );
   });
 
   it("records a new visit when the optional history read fails but writes work", () => {
-    const read = vi.spyOn(window.localStorage, "getItem").mockImplementation(() => {
-      throw new Error("Storage read unavailable");
-    });
+    const read = vi
+      .spyOn(window.localStorage, "getItem")
+      .mockImplementation(() => {
+        throw new Error("Storage read unavailable");
+      });
 
     recordRecentAlias("user-1", "team-handbook");
     read.mockRestore();
@@ -73,9 +81,11 @@ describe("recent aliases", () => {
   });
 
   it("keeps an unavailable visit write optional", () => {
-    const write = vi.spyOn(window.localStorage, "setItem").mockImplementation(() => {
-      throw new Error("Storage write unavailable");
-    });
+    const write = vi
+      .spyOn(window.localStorage, "setItem")
+      .mockImplementation(() => {
+        throw new Error("Storage write unavailable");
+      });
 
     expect(() => recordRecentAlias("user-1", "team-handbook")).not.toThrow();
     write.mockRestore();

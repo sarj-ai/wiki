@@ -1,6 +1,13 @@
 "use client";
 
-import { createContext, useContext, useEffect, useLayoutEffect, useRef, useState } from "react";
+import {
+  createContext,
+  useContext,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from "react";
 
 type FocusTargetRef = React.RefObject<HTMLElement | null>;
 type AutoFocusHandler = (event: Event) => void;
@@ -41,7 +48,12 @@ export function FocusReturnProvider({
   }, [fallbackTargetRef, fallbackTargetRefs, owner, targetRef]);
   return (
     <FocusReturnContext
-      value={{ fallbackTargetRef: fallbackTargetRef ?? null, fallbackTargetRefs, owner, targetRef }}
+      value={{
+        fallbackTargetRef: fallbackTargetRef ?? null,
+        fallbackTargetRefs,
+        owner,
+        targetRef,
+      }}
     >
       <FocusDepthContext value={0}>{children}</FocusDepthContext>
     </FocusReturnContext>
@@ -74,11 +86,17 @@ export function useFocusReturn({
   }, [localOwner]);
   useEffect(() => {
     const lease = opening.current;
-    if (lease?.content?.isConnected && lease.content.dataset["state"] === "open") {
+    if (
+      lease?.content?.isConnected &&
+      lease.content.dataset["state"] === "open"
+    ) {
       lease.claim.discard();
       opening.current = {
         ...lease,
-        claim: (explicit?.owner ?? localOwner).capture(explicit?.targetRef ?? null, depth),
+        claim: (explicit?.owner ?? localOwner).capture(
+          explicit?.targetRef ?? null,
+          depth,
+        ),
       };
     }
   }, [depth, explicit?.owner, explicit?.targetRef, localOwner]);
@@ -106,7 +124,10 @@ export function useFocusReturn({
         if (!event.defaultPrevented) event.preventDefault();
         return;
       }
-      if (lease.content?.isConnected && lease.content.dataset["state"] === "open") {
+      if (
+        lease.content?.isConnected &&
+        lease.content.dataset["state"] === "open"
+      ) {
         if (!event.defaultPrevented) event.preventDefault();
         return;
       }
@@ -144,7 +165,10 @@ export function useFocusReturn({
   };
 }
 
-function captureReturnTarget(content: HTMLElement | null, targetRef: FocusTargetRef | null) {
+function captureReturnTarget(
+  content: HTMLElement | null,
+  targetRef: FocusTargetRef | null,
+) {
   const previous = document.activeElement;
   const parentDialog =
     previous instanceof HTMLElement
@@ -156,9 +180,15 @@ function captureReturnTarget(content: HTMLElement | null, targetRef: FocusTarget
     parentDialog !== content &&
     !parentDialog.contains(targetRef?.current ?? null)
   )
-    return { target: previous instanceof HTMLElement ? previous : null, targetRef: null };
+    return {
+      target: previous instanceof HTMLElement ? previous : null,
+      targetRef: null,
+    };
   const candidate = targetRef?.current ?? previous;
-  return { target: candidate instanceof HTMLElement ? candidate : null, targetRef };
+  return {
+    target: candidate instanceof HTMLElement ? candidate : null,
+    targetRef,
+  };
 }
 
 function resolveReturnTarget({
@@ -167,7 +197,11 @@ function resolveReturnTarget({
   target,
   targetRef,
 }: FocusOpening) {
-  if (target && (!targetRef || targetRef.current === target) && canReturnFocus(target))
+  if (
+    target &&
+    (!targetRef || targetRef.current === target) &&
+    canReturnFocus(target)
+  )
     return target;
   const fallback = fallbackTargetRef?.current;
   if (fallback && canReturnFocus(fallback)) return fallback;
@@ -193,7 +227,8 @@ function createFocusOwner() {
   }[] = [];
   const top = () =>
     claims.reduce<(typeof claims)[number] | null>(
-      (current, claim) => (current && current.depth > claim.depth ? current : claim),
+      (current, claim) =>
+        current && current.depth > claim.depth ? current : claim,
       null,
     );
   return {
@@ -254,7 +289,11 @@ function canReturnFocus(element: HTMLElement): boolean {
     return false;
   const view = element.ownerDocument.defaultView;
   if (!view) return false;
-  for (let current: HTMLElement | null = element; current; current = current.parentElement) {
+  for (
+    let current: HTMLElement | null = element;
+    current;
+    current = current.parentElement
+  ) {
     const style = view.getComputedStyle(current);
     if (
       style.display === "none" ||

@@ -16,6 +16,12 @@ export function installLocalStorage(): void {
       values.set(key, value);
     },
   };
-  Object.defineProperty(window, "localStorage", { configurable: true, value: storage });
-  Object.defineProperty(globalThis, "localStorage", { configurable: true, value: storage });
+  Object.defineProperty(window, "localStorage", {
+    configurable: true,
+    value: storage,
+  });
+  Object.defineProperty(globalThis, "localStorage", {
+    configurable: true,
+    value: storage,
+  });
 }

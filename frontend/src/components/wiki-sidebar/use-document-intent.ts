@@ -90,11 +90,13 @@ export function useDocumentIntent({
     if (state.prefetchTimer !== null || state.prewarmTimer !== null) return;
     state.prefetchTimer = window.setTimeout(() => {
       state.prefetchTimer = null;
-      if ((state.hovered || state.focused) && allowsSpeculation()) void prefetch();
+      if ((state.hovered || state.focused) && allowsSpeculation())
+        void prefetch();
     }, DOCUMENT_INTENT_PREFETCH_MS);
     state.prewarmTimer = window.setTimeout(() => {
       state.prewarmTimer = null;
-      if ((state.hovered || state.focused) && allowsIframeIntentSpeculation()) void prewarm();
+      if ((state.hovered || state.focused) && allowsIframeIntentSpeculation())
+        void prewarm();
     }, DOCUMENT_INTENT_PREWARM_MS);
   };
 
@@ -160,8 +162,16 @@ function isHoverPointer(pointerType: string): boolean {
   return pointerType === "" || pointerType === "mouse" || pointerType === "pen";
 }
 
-function isPrimaryUnmodifiedPointer(event: React.PointerEvent<HTMLAnchorElement>): boolean {
-  return event.button === 0 && !event.altKey && !event.ctrlKey && !event.metaKey && !event.shiftKey;
+function isPrimaryUnmodifiedPointer(
+  event: React.PointerEvent<HTMLAnchorElement>,
+): boolean {
+  return (
+    event.button === 0 &&
+    !event.altKey &&
+    !event.ctrlKey &&
+    !event.metaKey &&
+    !event.shiftKey
+  );
 }
 
 function allowsSpeculation(): boolean {

@@ -83,7 +83,11 @@ export function CreateFileMenuActions({
       });
 
       if (file.mimeType === MIME_FORM) {
-        window.open(openUrlFor(file.mimeType, file.id), "_blank", "noopener,noreferrer");
+        window.open(
+          openUrlFor(file.mimeType, file.id),
+          "_blank",
+          "noopener,noreferrer",
+        );
       } else if (isGoogleWorkspaceType(file.mimeType)) {
         router.push(`/d/${encodeURIComponent(file.id)}`);
       }
@@ -155,7 +159,9 @@ export function CreateFileMenuActions({
         confirmLabel="Create"
         defaultValue={pendingType?.defaultName ?? ""}
         description={
-          pendingType ? `Creates a new ${pendingType.label.toLowerCase()} in this folder.` : ""
+          pendingType
+            ? `Creates a new ${pendingType.label.toLowerCase()} in this folder.`
+            : ""
         }
         onConfirm={confirmCreate}
         onOpenChange={(open) => {
