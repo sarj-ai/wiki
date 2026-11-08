@@ -593,7 +593,11 @@ class VertexGeminiPatchGenerator(PatchGenerator):
                         model == self._policy.fallback_model
                         and model not in _THINKING_FALLBACK_MODELS
                     )
-                    else genai_types.ThinkingConfig(thinking_level=genai_types.ThinkingLevel.HIGH),
+                    else genai_types.ThinkingConfig(
+                        thinking_level=genai_types.ThinkingLevel.MEDIUM
+                        if model == "gemini-3.8-flash"
+                        else genai_types.ThinkingLevel.HIGH
+                    ),
                     http_options=genai_types.HttpOptions(timeout=int(seconds * 1000)),
                 ),
             )
