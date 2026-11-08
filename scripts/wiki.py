@@ -239,6 +239,15 @@ def check_command(scopes: Annotated[list[Check] | None, typer.Argument()] = None
     run(tuple(dict.fromkeys(commands)))
 
 
+@CLI.command(
+    "lint",
+    context_settings={"allow_extra_args": True, "ignore_unknown_options": True},
+    help="Run source standards with forwarded paths and options.",
+)
+def lint_command(context: typer.Context) -> None:
+    run((_standards("check", "--trust-repository-code", *context.args),))
+
+
 @CLI.command("standards", help="Maintain the pinned source and repository standards.")
 def standards_command(action: Annotated[Standards, typer.Argument()] = Standards.CHECK) -> None:
     if action is Standards.SYNC:

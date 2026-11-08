@@ -359,11 +359,10 @@ def test_direct_root_lint_ci_attests_native_tools_before_analysis(
     if workflow == "ci-frontend":
         assert gate["run"] == "npm run lint"
         package = json.loads((ROOT / "package.json").read_text())
-        command = package["scripts"]["lint"]
+        assert package["scripts"]["lint"] == "uv run scripts/wiki.py lint"
     else:
-        command = gate["run"]
-    assert "--from sarj-standards-bootstrap" in command
-    assert "--trust-repository-code" in command
+        assert "--from sarj-standards-bootstrap" in gate["run"]
+        assert "--trust-repository-code" in gate["run"]
 
 
 @pytest.mark.parametrize("workflow", ["ci-iac", "ci-quality"])
