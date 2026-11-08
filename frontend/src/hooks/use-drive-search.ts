@@ -26,7 +26,8 @@ export function useDriveSearchState(query: string, enabled = true) {
       currentQuery.length >= 2 &&
       currentQuery.length <= 2048,
     gcTime: SEARCH_GC_TIME_MS,
-    queryFn: async ({ signal }) => await WIKI_READ_API.driveSearch(debouncedQuery, 10, signal),
+    queryFn: async ({ signal }) =>
+      await WIKI_READ_API.driveSearch(debouncedQuery, 10, signal),
     queryKey: wikiKeys.driveSearch(debouncedQuery),
 
     staleTime: 30_000,
@@ -42,7 +43,10 @@ export function useDriveSearchSnippet(
 ) {
   const [debouncedQuery] = useDebounce(query, SEARCH_DEBOUNCE_MS);
   const supportsSnippet =
-    !mimeType || mimeType === MIME_DOC || mimeType === MIME_SHEET || mimeType === MIME_SLIDE;
+    !mimeType ||
+    mimeType === MIME_DOC ||
+    mimeType === MIME_SHEET ||
+    mimeType === MIME_SLIDE;
   return useQuery<SnippetResult>({
     enabled:
       enabled &&
@@ -53,7 +57,12 @@ export function useDriveSearchSnippet(
       query.length <= 2048,
     gcTime: SEARCH_GC_TIME_MS,
     queryFn: async ({ signal }) =>
-      await WIKI_READ_API.driveSearchSnippet(fileId ?? "", debouncedQuery, mimeType, signal),
+      await WIKI_READ_API.driveSearchSnippet(
+        fileId ?? "",
+        debouncedQuery,
+        mimeType,
+        signal,
+      ),
 
     queryKey: fileId
       ? wikiKeys.driveSearchSnippet(fileId, debouncedQuery)

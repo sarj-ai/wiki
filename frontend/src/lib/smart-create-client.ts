@@ -1,6 +1,9 @@
 import * as z from "zod";
 
-import { createSmartFileAction, proposeSmartFileAction } from "@/app/actions/smart-create-actions";
+import {
+  createSmartFileAction,
+  proposeSmartFileAction,
+} from "@/app/actions/smart-create-actions";
 import { abortableDelay } from "@/lib/abortable-delay";
 import { runAction } from "@/lib/action-client";
 import { captureBrowserSession } from "@/lib/browser-session";
@@ -66,7 +69,10 @@ export interface SmartProposalInput {
 }
 
 const SmartCreateApi = {
-  create: async (plan: SmartCreationPlan, idempotencyKey: string): Promise<SmartCreateTask> => {
+  create: async (
+    plan: SmartCreationPlan,
+    idempotencyKey: string,
+  ): Promise<SmartCreateTask> => {
     const body = JSON.stringify({
       alias: plan.alias,
       emoji: plan.emoji,
@@ -80,12 +86,23 @@ const SmartCreateApi = {
     return parseTask(TaskSchema.parse(JSON.parse(responseBody)));
   },
 
-  getTask: async (taskId: string, signal?: AbortSignal): Promise<SmartCreateTask> => {
-    const task = await wikiReadHttp(`/tasks/${encodeURIComponent(taskId)}`, TaskSchema, {}, signal);
+  getTask: async (
+    taskId: string,
+    signal?: AbortSignal,
+  ): Promise<SmartCreateTask> => {
+    const task = await wikiReadHttp(
+      `/tasks/${encodeURIComponent(taskId)}`,
+      TaskSchema,
+      {},
+      signal,
+    );
     return parseTask(task);
   },
 
-  listTemplates: async (refresh = false, signal?: AbortSignal): Promise<DriveTemplate[]> => {
+  listTemplates: async (
+    refresh = false,
+    signal?: AbortSignal,
+  ): Promise<DriveTemplate[]> => {
     const result = await wikiReadHttp(
       "/templates",
       TemplateCatalogSchema,
@@ -94,7 +111,9 @@ const SmartCreateApi = {
     );
     return result.templates.map((template) => ({
       categoryPath: template.category_path,
-      ...(!(template.description === null) && { description: template.description }),
+      ...(!(template.description === null) && {
+        description: template.description,
+      }),
       driveId: template.drive_id,
       driveName: template.drive_name,
       fileId: template.file_id,
@@ -112,7 +131,9 @@ const SmartCreateApi = {
       invoking_folder_id: input.invokingFolderId ?? null,
       kind: "ai",
     });
-    const responseBody = await runAction(async () => await proposeSmartFileAction(body));
+    const responseBody = await runAction(
+      async () => await proposeSmartFileAction(body),
+    );
     const result = ProposalSchema.parse(JSON.parse(responseBody));
     return {
       alias: result.alias,
@@ -132,7 +153,8 @@ const SmartCreateApi = {
     initialTask: SmartCreateTask,
     signal?: AbortSignal,
     pollIntervalMs = DEFAULT_TASK_POLL_MS,
-  ): Promise<SmartCreateResult> => await waitForTask(initialTask, signal, pollIntervalMs),
+  ): Promise<SmartCreateResult> =>
+    await waitForTask(initialTask, signal, pollIntervalMs),
 } as const;
 
 export { SmartCreateApi as smartCreateApi };
@@ -143,7 +165,8 @@ async function waitForTask(
   pollIntervalMs: number,
 ): Promise<SmartCreateResult> {
   const owner = captureBrowserSession();
-  const pollSignal = signal === undefined ? owner : AbortSignal.any([owner, signal]);
+  const pollSignal =
+    signal === undefined ? owner : AbortSignal.any([owner, signal]);
   let current = task;
   for (;;) {
     pollSignal.throwIfAborted();
@@ -151,7 +174,9 @@ async function waitForTask(
       case "cancelled":
         throw new Error("File creation was cancelled");
       case "failed":
-        throw new Error(current.errorDetail ?? `File creation failed (${current.errorCode})`);
+        throw new Error(
+          current.errorDetail ?? `File creation failed (${current.errorCode})`,
+        );
       case "succeeded":
         return current.result;
       case "pending":
@@ -171,7 +196,9 @@ function parseTask(task: z.infer<typeof TaskSchema>): SmartCreateTask {
     case "failed":
       return {
         errorCode: task.error_code,
-        ...(!(task.error_detail === null) && { errorDetail: task.error_detail }),
+        ...(!(task.error_detail === null) && {
+          errorDetail: task.error_detail,
+        }),
         id: task.id,
         status: "failed",
       };
@@ -179,11 +206,17 @@ function parseTask(task: z.infer<typeof TaskSchema>): SmartCreateTask {
     case "running":
       return { id: task.id, status: task.status };
     case "succeeded":
-      return { id: task.id, result: parseCreateResult(task.result), status: "succeeded" };
+      return {
+        id: task.id,
+        result: parseCreateResult(task.result),
+        status: "succeeded",
+      };
   }
 }
 
-function parseCreateResult(result: z.infer<typeof CreateResultSchema>): SmartCreateResult {
+function parseCreateResult(
+  result: z.infer<typeof CreateResultSchema>,
+): SmartCreateResult {
   return {
     file: {
       canEdit: result.file.can_edit,

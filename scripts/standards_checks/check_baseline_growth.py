@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from hashlib import sha256
 from pathlib import Path
 import re
 import sys
@@ -32,6 +33,11 @@ class _BootstrapGrowth(BaseModel):
     after: int = Field(gt=0)
 
 
+class _ReviewedSource(BaseModel):
+    path: str
+    sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+
+
 class _Bootstrap(BaseModel):
     schema_version: Literal[1]
     merge_base: str = Field(pattern=r"^[0-9a-f]{40}$")
@@ -39,6 +45,7 @@ class _Bootstrap(BaseModel):
     to_bundle: str = Field(min_length=1)
     reason: str = Field(min_length=1)
     allowances: dict[str, dict[str, dict[str, _BootstrapGrowth]]]
+    reviewed_sources: list[_ReviewedSource] = Field(default_factory=list)
 
 
 def main(
@@ -162,6 +169,9 @@ def _declared_rebaseline(
         bootstrap=bootstrap,
         changed=set(Path(changed_files).read_text(encoding="utf-8").splitlines()),
         changed_prefix=changed_prefix,
+        reviewed_source_hashes={
+            source.path: source.sha256 for source in declaration.reviewed_sources
+        },
     )
 
 
@@ -171,11 +181,18 @@ def _validated_allowances(
     bootstrap: str,
     changed: set[str],
     changed_prefix: str,
+    reviewed_source_hashes: dict[str, str],
 ) -> dict[_FindingKey, _BootstrapGrowth]:
     declared: dict[_FindingKey, _BootstrapGrowth] = {}
     for filename, rules in allowances.items():
-        if f"{changed_prefix}{filename}" in changed:
-            _abort(f"{bootstrap}: cannot re-baseline changed source {changed_prefix}{filename}")
+        source = f"{changed_prefix}{filename}"
+        if (
+            source in changed
+            and reviewed_source_hashes.get(source) != sha256(Path(source).read_bytes()).hexdigest()
+        ):
+            _abort(
+                f"{bootstrap}: cannot re-baseline changed source without an exact reviewed hash: {source}"
+            )
         for rule, counts in rules.items():
             if counts.after <= counts.before:
                 _abort(f"{bootstrap}: {filename}/{rule} must declare actual growth")
@@ -285,7 +302,11 @@ def _check_command(
         ):
             _usage()
         raise SystemExit(
-            check_initial(baseline_path=base_path, changed_path=current_path, prefix=initial_prefix)
+            check_initial(
+                baseline_path=base_path,
+                changed_path=current_path,
+                prefix=initial_prefix,
+            )
         )
     if initial_prefix is not None:
         _usage()

@@ -1,4 +1,8 @@
-import { QueryClient, QueryClientProvider, QueryObserver } from "@tanstack/react-query";
+import {
+  QueryClient,
+  QueryClientProvider,
+  QueryObserver,
+} from "@tanstack/react-query";
 import { flushSync } from "react-dom";
 import { createRoot, type Root } from "react-dom/client";
 
@@ -10,7 +14,9 @@ import { MIME_FOLDER, MIME_SHORTCUT } from "@/types/wiki";
 
 import { useRefreshDrive } from "./use-wiki-mutations";
 
-const REFRESH = vi.hoisted(() => vi.fn<() => Promise<ActionResult<DriveTree>>>());
+const REFRESH = vi.hoisted(() =>
+  vi.fn<() => Promise<ActionResult<DriveTree>>>(),
+);
 vi.mock("@/app/actions/wiki-actions", () => ({ refreshDriveAction: REFRESH }));
 
 describe("drive refresh listing invalidation", () => {
@@ -70,7 +76,10 @@ describe("drive refresh listing invalidation", () => {
       observe(`${id}-folder`);
     }
     observe("unknown-folder");
-    REFRESH.mockResolvedValue({ data: tree("drive-0", ["drive-0-folder"]), ok: true });
+    REFRESH.mockResolvedValue({
+      data: tree("drive-0", ["drive-0-folder"]),
+      ok: true,
+    });
     await refresh.mutateAsync("drive-0");
     await vi.advanceTimersByTimeAsync(0);
     expect(read.mock.calls.map(([id]) => id).toSorted()).toEqual([
@@ -79,17 +88,29 @@ describe("drive refresh listing invalidation", () => {
       "unknown-folder",
     ]);
     expect(REFRESH).toHaveBeenCalledOnce();
-    expect(client.getQueryData<DriveTree>(wikiKeys.driveTree("drive-0"))?.filesComplete).toBe(true);
+    expect(
+      client.getQueryData<DriveTree>(wikiKeys.driveTree("drive-0"))
+        ?.filesComplete,
+    ).toBe(true);
   });
 
   it("invalidates prior membership and shortcut targets shared with other cached drives", async () => {
     mount();
-    client.setQueryData(wikiKeys.driveTree("drive"), tree("drive", ["removed-folder"]));
+    client.setQueryData(
+      wikiKeys.driveTree("drive"),
+      tree("drive", ["removed-folder"]),
+    );
     client.setQueryData(
       wikiKeys.driveTree("other"),
       tree("other", ["removed-folder", "shared-target", "unrelated"]),
     );
-    for (const id of ["removed-folder", "shared-target", "unrelated", "new-folder"]) observe(id);
+    for (const id of [
+      "removed-folder",
+      "shared-target",
+      "unrelated",
+      "new-folder",
+    ])
+      observe(id);
     const refreshed = tree("drive", ["new-folder"]);
     refreshed.folders.push({
       ...folder("shortcut"),
@@ -112,7 +133,9 @@ describe("drive refresh listing invalidation", () => {
     const pending = Promise.withResolvers<ActionResult<DriveTree>>();
     REFRESH.mockReturnValue(pending.promise);
     observe("drive");
-    const operation = refresh.mutateAsync("drive").catch((error: unknown) => error);
+    const operation = refresh
+      .mutateAsync("drive")
+      .catch((error: unknown) => error);
     await vi.advanceTimersByTimeAsync(0);
     retireMutationSession(client);
     client.clear();
@@ -124,7 +147,12 @@ describe("drive refresh listing invalidation", () => {
 });
 
 function tree(driveId: string, folderIds: string[]): DriveTree {
-  return { driveId, files: [], filesComplete: true, folders: folderIds.map(folder) };
+  return {
+    driveId,
+    files: [],
+    filesComplete: true,
+    folders: folderIds.map(folder),
+  };
 }
 
 function folder(id: string): DriveNode {

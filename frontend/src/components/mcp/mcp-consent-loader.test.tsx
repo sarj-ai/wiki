@@ -6,7 +6,10 @@ import * as transport from "@/lib/mcp-consent-client";
 import { McpConsentLoader } from "./mcp-consent-loader";
 
 const INTENT = `wm_intent_${"a".repeat(43)}`;
-const FIELDS = { clientName: "client_name", restartRequired: "restart_required" } as const;
+const FIELDS = {
+  clientName: "client_name",
+  restartRequired: "restart_required",
+} as const;
 const VIEW: transport.McpConsentView = {
   account_email: "person@example.com",
   client_id: "app",
@@ -39,7 +42,9 @@ describe("McpConsentLoader", () => {
 
   it("loads the authenticated account and defaults to reading", async () => {
     render();
-    await vi.waitFor(() => expect(container).toHaveTextContent("person@example.com"));
+    await vi.waitFor(() =>
+      expect(container).toHaveTextContent("person@example.com"),
+    );
     expect(container).toHaveTextContent("Requested app");
     expect(container.querySelector('[role="checkbox"]')).not.toBeChecked();
     expect(container).toHaveTextContent("Allow read access");
@@ -65,10 +70,14 @@ describe("McpConsentLoader", () => {
     const nextIntent = `wm_intent_${"c".repeat(43)}`;
     const pending = Promise.withResolvers<transport.McpConsentView>();
     const read = vi.mocked(transport.getMcpConsent);
-    const decide = vi.spyOn(transport, "decideMcpConsent").mockRejectedValue(new Error("network"));
+    const decide = vi
+      .spyOn(transport, "decideMcpConsent")
+      .mockRejectedValue(new Error("network"));
     read.mockResolvedValueOnce(VIEW).mockReturnValueOnce(pending.promise);
     render();
-    await vi.waitFor(() => expect(container).toHaveTextContent(VIEW[FIELDS.clientName]));
+    await vi.waitFor(() =>
+      expect(container).toHaveTextContent(VIEW[FIELDS.clientName]),
+    );
     const originalSignal = read.mock.calls[0]?.[1];
 
     flushSync(() => root.render(<McpConsentLoader intent={nextIntent} />));
@@ -77,9 +86,15 @@ describe("McpConsentLoader", () => {
     expect(container).toHaveTextContent("Checking this connection request");
     expect(container).not.toHaveTextContent(VIEW[FIELDS.clientName]);
     expect(container.querySelector("button")).toBeNull();
-    const nextView = { ...VIEW, [FIELDS.clientName]: "Replacement app", csrf: nextIntent };
+    const nextView = {
+      ...VIEW,
+      [FIELDS.clientName]: "Replacement app",
+      csrf: nextIntent,
+    };
     pending.resolve(nextView);
-    await vi.waitFor(() => expect(container).toHaveTextContent(nextView[FIELDS.clientName]));
+    await vi.waitFor(() =>
+      expect(container).toHaveTextContent(nextView[FIELDS.clientName]),
+    );
     const approve = [...container.querySelectorAll("button")].find(
       (button) => button.textContent.trim() === "Allow read access",
     );
@@ -92,16 +107,26 @@ describe("McpConsentLoader", () => {
 
   it("aborts pending decision-status recovery on unmount without resubmitting a decision", async () => {
     const pending =
-      Promise.withResolvers<Awaited<ReturnType<typeof transport.recoverMcpConsent>>>();
-    const decide = vi.spyOn(transport, "decideMcpConsent").mockRejectedValue(new Error("network"));
-    const recover = vi.spyOn(transport, "recoverMcpConsent").mockReturnValue(pending.promise);
+      Promise.withResolvers<
+        Awaited<ReturnType<typeof transport.recoverMcpConsent>>
+      >();
+    const decide = vi
+      .spyOn(transport, "decideMcpConsent")
+      .mockRejectedValue(new Error("network"));
+    const recover = vi
+      .spyOn(transport, "recoverMcpConsent")
+      .mockReturnValue(pending.promise);
     render();
-    await vi.waitFor(() => expect(container).toHaveTextContent(VIEW[FIELDS.clientName]));
+    await vi.waitFor(() =>
+      expect(container).toHaveTextContent(VIEW[FIELDS.clientName]),
+    );
     const approve = [...container.querySelectorAll("button")].find(
       (button) => button.textContent.trim() === "Allow read access",
     );
     approve?.click();
-    await vi.waitFor(() => expect(container.querySelector('[role="alert"]')).toBeInTheDocument());
+    await vi.waitFor(() =>
+      expect(container.querySelector('[role="alert"]')).toBeInTheDocument(),
+    );
     const check = [...container.querySelectorAll("button")].find(
       (button) => button.textContent.trim() === "Check status",
     );
@@ -130,7 +155,9 @@ describe("McpConsentLoader", () => {
       .mockReturnValueOnce(otherRead.promise)
       .mockReturnValueOnce(returnedRead.promise);
     render();
-    await vi.waitFor(() => expect(container).toHaveTextContent(VIEW[FIELDS.clientName]));
+    await vi.waitFor(() =>
+      expect(container).toHaveTextContent(VIEW[FIELDS.clientName]),
+    );
     const previousOwner = read.mock.calls[0]?.[1];
     flushSync(() => root.render(<McpConsentLoader intent={nextIntent} />));
     const otherOwner = read.mock.calls[1]?.[1];
@@ -145,8 +172,13 @@ describe("McpConsentLoader", () => {
     await otherRead.promise;
     await Promise.resolve();
     expect(container).not.toHaveTextContent("Discarded app");
-    returnedRead.resolve({ ...VIEW, [FIELDS.clientName]: "Fresh returned app" });
-    await vi.waitFor(() => expect(container).toHaveTextContent("Fresh returned app"));
+    returnedRead.resolve({
+      ...VIEW,
+      [FIELDS.clientName]: "Fresh returned app",
+    });
+    await vi.waitFor(() =>
+      expect(container).toHaveTextContent("Fresh returned app"),
+    );
   });
 
   it.each(["approved", "denied"] as const)(
@@ -154,8 +186,11 @@ describe("McpConsentLoader", () => {
     async (status) => {
       vi.mocked(transport.getMcpConsent).mockResolvedValue({ ...VIEW, status });
       render();
-      await vi.waitFor(() => expect(container).toHaveTextContent("Requested app"));
-      for (const button of container.querySelectorAll("button")) expect(button).toBeDisabled();
+      await vi.waitFor(() =>
+        expect(container).toHaveTextContent("Requested app"),
+      );
+      for (const button of container.querySelectorAll("button"))
+        expect(button).toBeDisabled();
       expect(container).toHaveTextContent(
         status === "approved" ? "Start a new connection" : "Access denied",
       );
@@ -163,22 +198,32 @@ describe("McpConsentLoader", () => {
   );
 
   it("offers a same-app login continuation on 401 without granting access", async () => {
-    vi.mocked(transport.getMcpConsent).mockRejectedValue(new transport.McpConsentRequestError(401));
+    vi.mocked(transport.getMcpConsent).mockRejectedValue(
+      new transport.McpConsentRequestError(401),
+    );
     const decide = vi.spyOn(transport, "decideMcpConsent");
     render();
-    await vi.waitFor(() => expect(container).toHaveTextContent("Sign in to review access"));
+    await vi.waitFor(() =>
+      expect(container).toHaveTextContent("Sign in to review access"),
+    );
     const href = container.querySelector("a")?.getAttribute("href");
     expect(href).toBeDefined();
     const login = new URL(href ?? "", "https://wiki.example");
     expect(login.pathname).toBe("/login");
-    expect(login.searchParams.get("redirect")).toBe(`/mcp/consent?intent=${INTENT}`);
+    expect(login.searchParams.get("redirect")).toBe(
+      `/mcp/consent?intent=${INTENT}`,
+    );
     expect(decide).not.toHaveBeenCalled();
   });
 
   it("shows unavailable without approval controls when the endpoint is disabled", async () => {
-    vi.mocked(transport.getMcpConsent).mockRejectedValue(new transport.McpConsentRequestError(404));
+    vi.mocked(transport.getMcpConsent).mockRejectedValue(
+      new transport.McpConsentRequestError(404),
+    );
     render();
-    await vi.waitFor(() => expect(container).toHaveTextContent("Connection request unavailable"));
+    await vi.waitFor(() =>
+      expect(container).toHaveTextContent("Connection request unavailable"),
+    );
     expect(container.querySelector("button")).toBeNull();
   });
 });

@@ -3,7 +3,10 @@ import {
   claimBrowserSession,
   retireBrowserSession,
 } from "@/lib/browser-session";
-import { notifyTerminalUnauthorized, TERMINAL_UNAUTHORIZED_EVENT } from "@/lib/session-events";
+import {
+  notifyTerminalUnauthorized,
+  TERMINAL_UNAUTHORIZED_EVENT,
+} from "@/lib/session-events";
 
 it("adopts child work started before the provider claims the current session", () => {
   const startedByChild = captureBrowserSession();

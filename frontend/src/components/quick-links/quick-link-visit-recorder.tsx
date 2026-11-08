@@ -11,7 +11,8 @@ export function QuickLinkVisitRecorder({ alias }: { alias: string }) {
 
   useEffect(() => {
     if (userId === undefined) return;
-    if (recorded.current?.alias === alias && recorded.current.userId === userId) return;
+    if (recorded.current?.alias === alias && recorded.current.userId === userId)
+      return;
     recordRecentAlias(userId, alias);
     recorded.current = { alias, userId };
     const url = new URL(window.location.href);

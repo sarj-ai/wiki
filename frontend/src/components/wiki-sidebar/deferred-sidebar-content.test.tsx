@@ -41,7 +41,11 @@ vi.mock("@/hooks/use-expanded-folders", () => ({
 }));
 vi.mock("next-themes", () => ({ useTheme: OBSERVERS.theme }));
 vi.mock("@emoji-mart/react", () => ({
-  default: ({ onEmojiSelect }: { onEmojiSelect: (emoji: { native: string }) => void }) => (
+  default: ({
+    onEmojiSelect,
+  }: {
+    onEmojiSelect: (emoji: { native: string }) => void;
+  }) => (
     <button onClick={() => onEmojiSelect({ native: "📚" })} type="button">
       Pick emoji
     </button>
@@ -49,7 +53,11 @@ vi.mock("@emoji-mart/react", () => ({
 }));
 vi.mock("next/navigation", () => ({ useRouter: () => ({ push: vi.fn() }) }));
 
-const DRIVE: DriveSummary = { id: "drive-1", isPersonal: false, name: "Workspace" };
+const DRIVE: DriveSummary = {
+  id: "drive-1",
+  isPersonal: false,
+  name: "Workspace",
+};
 
 describe("unused sidebar controls", () => {
   let host: HTMLDivElement;
@@ -58,7 +66,10 @@ describe("unused sidebar controls", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     OBSERVERS.folderRead.mockResolvedValue([]);
-    Object.defineProperty(navigator, "connection", { configurable: true, value: undefined });
+    Object.defineProperty(navigator, "connection", {
+      configurable: true,
+      value: undefined,
+    });
     host = document.createElement("div");
     document.body.append(host);
     root = createRoot(host);
@@ -74,7 +85,11 @@ describe("unused sidebar controls", () => {
     const view = renderToStaticMarkup(
       <>
         {Array.from({ length: 500 }, (_, index) => (
-          <CreateFileMenu driveId="drive-1" key={index} parentFolderId={`folder-${index}`} />
+          <CreateFileMenu
+            driveId="drive-1"
+            key={index}
+            parentFolderId={`folder-${index}`}
+          />
         ))}
       </>,
     );
@@ -84,11 +99,15 @@ describe("unused sidebar controls", () => {
 
   it("keeps a create dialog alive after choosing a type closes the menu", async () => {
     flushSync(() => {
-      root.render(<CreateFileMenu driveId="drive-1" parentFolderId="folder-1" />);
+      root.render(
+        <CreateFileMenu driveId="drive-1" parentFolderId="folder-1" />,
+      );
     });
     const trigger = buttonIn(host);
     flushSync(() => {
-      trigger.dispatchEvent(new KeyboardEvent("keydown", { bubbles: true, key: "Enter" }));
+      trigger.dispatchEvent(
+        new KeyboardEvent("keydown", { bubbles: true, key: "Enter" }),
+      );
     });
     await vi.waitFor(() => {
       expect(document.body.textContent).toContain("Smart create…");
@@ -96,11 +115,14 @@ describe("unused sidebar controls", () => {
     const doc = [...document.querySelectorAll('[role="menuitem"]')].find(
       (item) => item.textContent === "Doc",
     );
-    if (!(doc instanceof HTMLElement)) throw new TypeError("Doc action missing");
+    if (!(doc instanceof HTMLElement))
+      throw new TypeError("Doc action missing");
     flushSync(() => doc.click());
     expect(trigger).toHaveAttribute("aria-expanded", "false");
     await vi.waitFor(() => {
-      expect(document.querySelector('[role="dialog"]')?.textContent).toContain("New Doc");
+      expect(document.querySelector('[role="dialog"]')?.textContent).toContain(
+        "New Doc",
+      );
     });
     expect(document.querySelector("input")).toHaveValue("Untitled Doc");
   });
@@ -110,7 +132,9 @@ describe("unused sidebar controls", () => {
     expect(OBSERVERS.permissions).not.toHaveBeenCalled();
     flushSync(() => buttonIn(host).click());
     expect(OBSERVERS.permissions).toHaveBeenCalledWith("drive-1", true);
-    expect(document.querySelector('[role="dialog"]')?.textContent).toContain("Workspace access");
+    expect(document.querySelector('[role="dialog"]')?.textContent).toContain(
+      "Workspace access",
+    );
   });
 
   it("subscribes emoji contents to the theme only after its picker is opened", () => {
@@ -243,7 +267,10 @@ describe("unused sidebar controls", () => {
                 <DriveSectionProvider value={value}>
                   <TreeNode
                     depth={0}
-                    node={{ ...node("folder-1", "Folder"), mimeType: MIME_FOLDER }}
+                    node={{
+                      ...node("folder-1", "Folder"),
+                      mimeType: MIME_FOLDER,
+                    }}
                     parentFolderId={undefined}
                   />
                 </DriveSectionProvider>
@@ -252,7 +279,8 @@ describe("unused sidebar controls", () => {
           );
         });
         const folder = host.querySelector('[data-file-id="folder-1"]');
-        if (!(folder instanceof HTMLElement)) throw new TypeError("folder row missing");
+        if (!(folder instanceof HTMLElement))
+          throw new TypeError("folder row missing");
         folder.dispatchEvent(
           new PointerEvent("pointerover", {
             bubbles: true,
@@ -260,7 +288,9 @@ describe("unused sidebar controls", () => {
           }),
         );
         await vi.advanceTimersByTimeAsync(80);
-        expect(OBSERVERS.folderRead).toHaveBeenCalledTimes(mode === "healthy" ? 1 : 0);
+        expect(OBSERVERS.folderRead).toHaveBeenCalledTimes(
+          mode === "healthy" ? 1 : 0,
+        );
       } finally {
         queryClient.clear();
         vi.useRealTimers();
@@ -271,13 +301,17 @@ describe("unused sidebar controls", () => {
 
 function buttonIn(host: HTMLElement): HTMLButtonElement {
   const button = host.querySelector("button");
-  if (!(button instanceof HTMLButtonElement)) throw new TypeError("button missing");
+  if (!(button instanceof HTMLButtonElement))
+    throw new TypeError("button missing");
   return button;
 }
 
 function buttonWithText(text: string): HTMLButtonElement {
-  const button = [...document.querySelectorAll("button")].find((item) => item.textContent === text);
-  if (!(button instanceof HTMLButtonElement)) throw new TypeError(`button ${text} missing`);
+  const button = [...document.querySelectorAll("button")].find(
+    (item) => item.textContent === text,
+  );
+  if (!(button instanceof HTMLButtonElement))
+    throw new TypeError(`button ${text} missing`);
   return button;
 }
 

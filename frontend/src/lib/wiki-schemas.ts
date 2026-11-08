@@ -48,7 +48,12 @@ function toFileResponse(f: z.infer<typeof zFileResponse>) {
   };
 }
 
-export const DrivePrincipalTypeSchemaSchema = z.enum(["anyone", "domain", "group", "user"]);
+export const DrivePrincipalTypeSchemaSchema = z.enum([
+  "anyone",
+  "domain",
+  "group",
+  "user",
+]);
 
 export const documentAlias = zDocumentAliasRead.transform((a) => ({
   alias: a.alias,
@@ -80,7 +85,9 @@ export const drivePermissionsPage = zDrivePermissionsPage.transform((page) => ({
     expirationTime: permission["expiration_time"] ?? undefined,
     id: permission.id,
     pendingOwner: permission["pending_owner"],
-    principalType: DrivePrincipalTypeSchemaSchema.parse(permission["principal_type"]),
+    principalType: DrivePrincipalTypeSchemaSchema.parse(
+      permission["principal_type"],
+    ),
     role: permission.role,
   })),
 }));
@@ -182,7 +189,9 @@ export const bootstrapRead = zBootstrapRead.transform((b) => ({
   docIcons: b["doc_icons"].map(toDocIcon),
   drives: b.drives.map(toDriveSummary),
 
-  firstDriveTree: b["first_drive_tree"] ? toDriveTree(b["first_drive_tree"]) : undefined,
+  firstDriveTree: b["first_drive_tree"]
+    ? toDriveTree(b["first_drive_tree"])
+    : undefined,
   folderIcons: b["folder_icons"].map(toFolderIcon),
   me: toUserProfile(b.me),
   preferences: toPreferences(b.preferences),

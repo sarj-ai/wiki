@@ -88,7 +88,10 @@ export type DocumentTransformTask = (
 export class DocumentTransformNeedsReviewError extends Error {
   readonly result: DocumentTransformResult | undefined;
 
-  constructor(message: string, options?: ErrorOptions & { result?: DocumentTransformResult }) {
+  constructor(
+    message: string,
+    options?: ErrorOptions & { result?: DocumentTransformResult },
+  ) {
     super(message, options);
     this.name = "DocumentTransformNeedsReviewError";
     this.result = options?.result;
@@ -101,7 +104,10 @@ export class DocumentTransformTerminalError extends Error {
 
   constructor(
     message: string,
-    options: ErrorOptions & { code: string; unverifiedOutputId?: string | undefined },
+    options: ErrorOptions & {
+      code: string;
+      unverifiedOutputId?: string | undefined;
+    },
   ) {
     super(message, options);
     this.code = options.code;

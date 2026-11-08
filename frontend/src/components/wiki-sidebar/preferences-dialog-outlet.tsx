@@ -32,7 +32,8 @@ const PreferencesDialogContext = createContext<{
 
 export function usePreferencesDialogOutlet() {
   const outlet = useContext(PreferencesDialogContext);
-  if (!outlet) throw new Error("Preferences requires a PreferencesDialogOutletProvider");
+  if (!outlet)
+    throw new Error("Preferences requires a PreferencesDialogOutletProvider");
   return outlet;
 }
 
@@ -60,13 +61,21 @@ function PreferencesDialogOwner({
   const queryClient = useQueryClient();
   const { mobileTriggerRef } = useSidebar();
   const accountTriggerRef = useRef<HTMLButtonElement | null>(null);
-  const [fallbackTargetRefs] = useState(() => [accountTriggerRef, mobileTriggerRef]);
+  const [fallbackTargetRefs] = useState(() => [
+    accountTriggerRef,
+    mobileTriggerRef,
+  ]);
   const [opening, setOpening] = useState<null | PreferencesOpening>(null);
-  const contentRef = useRef<{ content: HTMLElement | null; token: symbol } | null>(null);
+  const contentRef = useRef<{
+    content: HTMLElement | null;
+    token: symbol;
+  } | null>(null);
   useEffect(() => {
     if (!opening) return;
     const retire = () =>
-      setOpening((current) => (current?.token === opening.token ? null : current));
+      setOpening((current) =>
+        current?.token === opening.token ? null : current,
+      );
     if (opening.session.aborted) {
       retire();
       return;
@@ -91,7 +100,8 @@ function PreferencesDialogOwner({
         registerOpener: (element) => {
           accountTriggerRef.current = element;
           return () => {
-            if (accountTriggerRef.current === element) accountTriggerRef.current = null;
+            if (accountTriggerRef.current === element)
+              accountTriggerRef.current = null;
           };
         },
       }}
@@ -115,13 +125,16 @@ function PreferencesDialogOwner({
             }}
             onOpenAutoFocus={(event) => {
               contentRef.current = {
-                content: event.target instanceof HTMLElement ? event.target : null,
+                content:
+                  event.target instanceof HTMLElement ? event.target : null,
                 token: currentOpening.token,
               };
             }}
             onOpenChange={(open) => {
               setOpening((current) =>
-                current?.token === currentOpening.token ? { ...current, open } : current,
+                current?.token === currentOpening.token
+                  ? { ...current, open }
+                  : current,
               );
             }}
             open={currentOpening.open}

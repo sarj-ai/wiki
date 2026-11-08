@@ -19,7 +19,10 @@ import { SidebarFooter } from "@/components/ui/sidebar";
 import { useCurrentUser } from "@/hooks/use-current-user";
 import { useIsClient } from "@/hooks/use-is-client";
 import { logout as apiLogout } from "@/lib/auth";
-import { broadcastSessionClear, clearAuthenticatedSession } from "@/lib/session-isolation";
+import {
+  broadcastSessionClear,
+  clearAuthenticatedSession,
+} from "@/lib/session-isolation";
 
 import { usePreferencesDialogOutlet } from "./preferences-dialog-outlet";
 
@@ -65,7 +68,8 @@ export function WikiFooter() {
                 if (!element) return;
                 const release = preferencesDialog.registerOpener(element);
                 return () => {
-                  if (accountTrigger.current === element) accountTrigger.current = null;
+                  if (accountTrigger.current === element)
+                    accountTrigger.current = null;
                   release();
                 };
               }}
@@ -85,7 +89,10 @@ export function WikiFooter() {
                 </AvatarFallback>
               </Avatar>
               <div className="min-w-0 flex-1">
-                <div className="truncate text-sm font-medium" title={user?.displayName ?? ""}>
+                <div
+                  className="truncate text-sm font-medium"
+                  title={user?.displayName ?? ""}
+                >
                   {user?.displayName ?? "Signed in"}
                 </div>
                 <div
@@ -123,7 +130,13 @@ export function WikiFooter() {
                 toggleTheme();
               }}
             >
-              {mounted ? isDark ? <Sun className="size-4" /> : <Moon className="size-4" /> : null}
+              {mounted ? (
+                isDark ? (
+                  <Sun className="size-4" />
+                ) : (
+                  <Moon className="size-4" />
+                )
+              ) : null}
               {isDark ? "Switch to light mode" : "Switch to dark mode"}
             </DropdownMenuItem>
             <DropdownMenuSeparator />

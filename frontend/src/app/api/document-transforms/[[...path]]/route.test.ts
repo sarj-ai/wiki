@@ -93,7 +93,9 @@ it("cancels unfinished request ingress before create admission", async () => {
     duplex: "half",
     signal: controller.signal,
   };
-  const pending = POST(new Request(URL, options), { params: Promise.resolve({}) });
+  const pending = POST(new Request(URL, options), {
+    params: Promise.resolve({}),
+  });
   await vi.waitFor(() => {
     expect(pull).toHaveBeenCalled();
   });
@@ -107,7 +109,9 @@ it("cancels unfinished request ingress before create admission", async () => {
 
 it("bounds unfinished request ingress with the existing 30-second deadline", async () => {
   const deadline = new AbortController();
-  const timeout = vi.spyOn(AbortSignal, "timeout").mockReturnValue(deadline.signal);
+  const timeout = vi
+    .spyOn(AbortSignal, "timeout")
+    .mockReturnValue(deadline.signal);
   const cancel = vi.fn();
   const body = new ReadableStream<Uint8Array>({
     start(stream) {
@@ -117,7 +121,9 @@ it("bounds unfinished request ingress with the existing 30-second deadline", asy
   });
   const options = { method: "POST", headers: HEADERS, body, duplex: "half" };
   try {
-    const pending = POST(new Request(URL, options), { params: Promise.resolve({}) });
+    const pending = POST(new Request(URL, options), {
+      params: Promise.resolve({}),
+    });
     await vi.waitFor(() => {
       expect(timeout).toHaveBeenCalledExactlyOnceWith(30_000);
     });
@@ -134,7 +140,11 @@ it("bounds unfinished request ingress with the existing 30-second deadline", asy
 
 it("preserves a started admission and its replay result after request abort", async () => {
   const controller = new AbortController();
-  const admission = Promise.withResolvers<{ data: string; ok: true; replayed: boolean }>();
+  const admission = Promise.withResolvers<{
+    data: string;
+    ok: true;
+    replayed: boolean;
+  }>();
   MOCKS.create.mockReturnValueOnce(admission.promise);
   const pending = POST(
     new Request(URL, {
@@ -160,7 +170,11 @@ it("preserves a started admission and its replay result after request abort", as
 
 it("issues an upload through the authenticated limited action", async () => {
   const response = await POST(
-    new Request(`${URL}/uploads`, { method: "POST", headers: HEADERS, body: "{}" }),
+    new Request(`${URL}/uploads`, {
+      method: "POST",
+      headers: HEADERS,
+      body: "{}",
+    }),
     {
       params: Promise.resolve({ path: ["uploads"] }),
     },
@@ -172,19 +186,29 @@ it("issues an upload through the authenticated limited action", async () => {
 
 it("forwards exact body/KEY through existing authenticated rate-limited operation", async () => {
   const body = '{"source":{"content":"private text"}}';
-  const response = await POST(new Request(URL, { method: "POST", headers: HEADERS, body }), {
-    params: Promise.resolve({}),
-  });
+  const response = await POST(
+    new Request(URL, { method: "POST", headers: HEADERS, body }),
+    {
+      params: Promise.resolve({}),
+    },
+  );
   expect(response.status).toBe(200);
   expect(response.headers.get("cache-control")).toBe("private, no-store");
   expect(MOCKS.create).toHaveBeenCalledExactlyOnceWith(body, KEY);
 });
 
 it("exposes only the typed replay bit on a successful submission", async () => {
-  MOCKS.create.mockResolvedValue({ ok: true, data: '{"id":"task"}', replayed: true });
-  const response = await POST(new Request(URL, { method: "POST", headers: HEADERS, body: "{}" }), {
-    params: Promise.resolve({}),
+  MOCKS.create.mockResolvedValue({
+    ok: true,
+    data: '{"id":"task"}',
+    replayed: true,
   });
+  const response = await POST(
+    new Request(URL, { method: "POST", headers: HEADERS, body: "{}" }),
+    {
+      params: Promise.resolve({}),
+    },
+  );
 
   expect(response.headers.get("idempotency-replayed")).toBe("true");
   await expect(response.text()).resolves.toBe('{"id":"task"}');
@@ -197,14 +221,18 @@ it("returns allowlisted reload guidance for a source revision conflict", async (
     ok: false,
     status: 409,
   });
-  const response = await POST(new Request(URL, { method: "POST", headers: HEADERS, body: "{}" }), {
-    params: Promise.resolve({}),
-  });
+  const response = await POST(
+    new Request(URL, { method: "POST", headers: HEADERS, body: "{}" }),
+    {
+      params: Promise.resolve({}),
+    },
+  );
 
   expect(response.status).toBe(409);
   await expect(response.json()).resolves.toEqual({
     code: "document_transform_source_changed",
-    error: "The document changed since polishing was requested. Reload it before trying again.",
+    error:
+      "The document changed since polishing was requested. Reload it before trying again.",
   });
 });
 
@@ -214,9 +242,12 @@ it("keeps unrelated conflict details and codes redacted", async () => {
     ok: false,
     status: 409,
   });
-  const response = await POST(new Request(URL, { method: "POST", headers: HEADERS, body: "{}" }), {
-    params: Promise.resolve({}),
-  });
+  const response = await POST(
+    new Request(URL, { method: "POST", headers: HEADERS, body: "{}" }),
+    {
+      params: Promise.resolve({}),
+    },
+  );
 
   expect(response.status).toBe(409);
   await expect(response.json()).resolves.toEqual({
@@ -231,9 +262,12 @@ it("does not expose a source-change code on a non-conflict response", async () =
     ok: false,
     status: 503,
   });
-  const response = await POST(new Request(URL, { method: "POST", headers: HEADERS, body: "{}" }), {
-    params: Promise.resolve({}),
-  });
+  const response = await POST(
+    new Request(URL, { method: "POST", headers: HEADERS, body: "{}" }),
+    {
+      params: Promise.resolve({}),
+    },
+  );
 
   expect(response.status).toBe(503);
   await expect(response.json()).resolves.toEqual({
@@ -250,7 +284,11 @@ it.each([
   { "idempotency-key": "../secret" },
 ])("rejects unsafe request headers %j before admission", async (override) => {
   const response = await POST(
-    new Request(URL, { method: "POST", headers: { ...HEADERS, ...override }, body: "{}" }),
+    new Request(URL, {
+      method: "POST",
+      headers: { ...HEADERS, ...override },
+      body: "{}",
+    }),
     { params: Promise.resolve({}) },
   );
   expect(response.status).toBeGreaterThanOrEqual(400);
@@ -266,14 +304,18 @@ it("never proxies an arbitrary path", async () => {
 });
 
 it("looks up only a validated KEY with server-side authentication", async () => {
-  FETCH_MOCK.mockResolvedValue(Response.json({ task_id: KEY, status: "pending" }));
+  FETCH_MOCK.mockResolvedValue(
+    Response.json({ task_id: KEY, status: "pending" }),
+  );
   const response = await GET(new Request(URL, { headers: HEADERS }), {
     params: Promise.resolve({ path: ["admissions", KEY] }),
   });
   expect(response.status).toBe(200);
   const [url, options] = FETCH_MOCK.mock.calls[0] ?? [];
   expect(url).toContain(`/document-transforms/admissions/${KEY}`);
-  expect(options?.headers).toMatchObject({ authorization: "Bearer private-token" });
+  expect(options?.headers).toMatchObject({
+    authorization: "Bearer private-token",
+  });
 });
 
 it("forwards only a bounded file and supported mode to the current-polish read", async () => {
@@ -290,7 +332,10 @@ it("forwards only a bounded file and supported mode to the current-polish read",
   await expect(response.json()).resolves.toEqual({ result: null });
 });
 
-it.each([`${URL}/current?file_id=&mode=both`, `${URL}/current?file_id=doc-1&mode=unknown`])(
+it.each([
+  `${URL}/current?file_id=&mode=both`,
+  `${URL}/current?file_id=doc-1&mode=unknown`,
+])(
   "rejects an invalid current-polish query before fetching: %s",
   async (url) => {
     const response = await GET(new Request(url, { headers: HEADERS }), {
@@ -304,9 +349,12 @@ it.each([`${URL}/current?file_id=&mode=both`, `${URL}/current?file_id=doc-1&mode
 
 it("redacts upstream exception details", async () => {
   MOCKS.create.mockRejectedValue(new Error("private draft or token"));
-  const response = await POST(new Request(URL, { method: "POST", headers: HEADERS, body: "{}" }), {
-    params: Promise.resolve({}),
-  });
+  const response = await POST(
+    new Request(URL, { method: "POST", headers: HEADERS, body: "{}" }),
+    {
+      params: Promise.resolve({}),
+    },
+  );
   expect(response.status).toBe(502);
   await expect(response.text()).resolves.not.toContain("private draft");
 });
@@ -373,11 +421,16 @@ it.each(["capabilities", "current", "tasks", "admissions"])(
     });
     FETCH_MOCK.mockResolvedValue(
       new Response(body, {
-        headers: { "server-timing": "app;dur=2.0", "set-cookie": "provider=private" },
+        headers: {
+          "server-timing": "app;dur=2.0",
+          "set-cookie": "provider=private",
+        },
       }),
     );
-    const parts = path === "tasks" || path === "admissions" ? [path, KEY] : [path];
-    const url = path === "current" ? `${URL}/current?file_id=doc-1&mode=both` : URL;
+    const parts =
+      path === "tasks" || path === "admissions" ? [path, KEY] : [path];
+    const url =
+      path === "current" ? `${URL}/current?file_id=doc-1&mode=both` : URL;
 
     const response = await GET(new Request(url, { headers: HEADERS }), {
       params: Promise.resolve({ path: parts }),
@@ -395,9 +448,12 @@ it("propagates transform disconnects and redacts upstream fetch failures", async
   const controller = new AbortController();
   const upstream = Promise.withResolvers<Response>();
   FETCH_MOCK.mockReturnValue(upstream.promise);
-  const pending = GET(new Request(URL, { headers: HEADERS, signal: controller.signal }), {
-    params: Promise.resolve({ path: ["tasks", KEY] }),
-  });
+  const pending = GET(
+    new Request(URL, { headers: HEADERS, signal: controller.signal }),
+    {
+      params: Promise.resolve({ path: ["tasks", KEY] }),
+    },
+  );
   await vi.waitFor(() => {
     expect(FETCH_MOCK).toHaveBeenCalledOnce();
   });

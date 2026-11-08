@@ -74,7 +74,9 @@ describe("document authority and revision checks", () => {
   });
 
   it("skips hidden-tab polling and keeps checks on the existing visible interval", async () => {
-    const visibility = vi.spyOn(document, "visibilityState", "get").mockReturnValue("hidden");
+    const visibility = vi
+      .spyOn(document, "visibilityState", "get")
+      .mockReturnValue("hidden");
     renderFile(root, client, "html-file");
     await vi.advanceTimersByTimeAsync(30 * 60 * 1_000);
     expect(refetchFile).not.toHaveBeenCalled();
@@ -91,7 +93,9 @@ describe("document authority and revision checks", () => {
     renderFile(root, client, "doc-a");
     const firstLink = container.querySelector("a");
     expect(firstLink?.textContent).toContain("Read document");
-    expect(firstLink?.href).toBe("https://docs.google.com/document/d/doc-a/mobilebasic");
+    expect(firstLink?.href).toBe(
+      "https://docs.google.com/document/d/doc-a/mobilebasic",
+    );
     expect(firstLink?.target).toBe("_blank");
     expect(firstLink?.rel).toBe("noopener noreferrer");
     expect(useDocViewerStore.getState().active?.fileId).toBe("doc-a");
@@ -108,7 +112,9 @@ describe("document authority and revision checks", () => {
   it("removes the reading action when document authority is pending or access fails", () => {
     fileQuery.mockReturnValue(resolvedFile(MIME_DOC, "doc-a"));
     renderFile(root, client, "doc-a");
-    expect(container.querySelector("a")?.textContent).toContain("Read document");
+    expect(container.querySelector("a")?.textContent).toContain(
+      "Read document",
+    );
 
     fileQuery.mockReturnValue({
       ...resolvedFile(MIME_DOC, "doc-a"),

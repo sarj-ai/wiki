@@ -1,6 +1,12 @@
 "use client";
 
-import { createContext, useContext, useEffect, useLayoutEffect, useRef } from "react";
+import {
+  createContext,
+  useContext,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+} from "react";
 
 import { useSidebar } from "@/components/ui/sidebar";
 import { registerCommandPaletteNavigationOwner } from "@/hooks/use-command-palette";
@@ -64,16 +70,25 @@ export function SidebarNavigationProvider({
       pending.current = null;
     }
   }, [isMobile, openMobile, pathname, setOpenMobile]);
-  const capture = () => captureNavigation(ownerKey, lifetime, pending, view, setOpenMobile);
+  const capture = () =>
+    captureNavigation(ownerKey, lifetime, pending, view, setOpenMobile);
   const navigate = (href: string) => capture()?.onNavigate(href);
   useLayoutEffect(() => {
     if (!isMobile || !openMobile) return;
-    const owner = captureNavigation(ownerKey, lifetime, pending, view, setOpenMobile);
+    const owner = captureNavigation(
+      ownerKey,
+      lifetime,
+      pending,
+      view,
+      setOpenMobile,
+    );
     if (!owner) return;
     return registerCommandPaletteNavigationOwner(owner);
   }, [isMobile, openMobile, ownerKey, setOpenMobile]);
   return (
-    <SidebarNavigationContext value={{ capture, navigate }}>{children}</SidebarNavigationContext>
+    <SidebarNavigationContext value={{ capture, navigate }}>
+      {children}
+    </SidebarNavigationContext>
   );
 }
 

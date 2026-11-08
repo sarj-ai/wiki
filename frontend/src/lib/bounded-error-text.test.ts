@@ -23,7 +23,9 @@ describe("bounded error bodies", () => {
       return controller.signal;
     });
     const cleanup = Promise.withResolvers<undefined>();
-    const cancel = vi.fn<() => Promise<undefined>>().mockReturnValue(cleanup.promise);
+    const cancel = vi
+      .fn<() => Promise<undefined>>()
+      .mockReturnValue(cleanup.promise);
     const body = new ReadableStream<Uint8Array>({
       start(controller) {
         controller.enqueue(new TextEncoder().encode("{"));

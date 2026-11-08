@@ -8,7 +8,8 @@ const VALID_ALIAS = /^[a-z]{2,12}(?:-[a-z]{2,12}){1,2}(?![\s\S])/;
 export function documentAliasError(value: string): null | string {
   if (value.length <= MAX_ALIAS_LENGTH && VALID_ALIAS.test(value)) return null;
   if (value.length === 0) return "Enter a short-link name.";
-  if (/[A-Z]/.test(value)) return "Uppercase letters aren’t allowed; use lowercase only.";
+  if (/[A-Z]/.test(value))
+    return "Uppercase letters aren’t allowed; use lowercase only.";
   if (/[\s_]/.test(value))
     return "Use hyphens between words; spaces and underscores aren’t allowed.";
   if (/[^a-z-]/.test(value)) {
@@ -25,7 +26,8 @@ export function documentAliasError(value: string): null | string {
   const invalidWord = words.find(
     (word) => word.length < MIN_WORD_LENGTH || word.length > MAX_WORD_LENGTH,
   );
-  if (invalidWord !== undefined) return "Each word must contain 2–12 lowercase letters.";
+  if (invalidWord !== undefined)
+    return "Each word must contain 2–12 lowercase letters.";
   if (value.length > MAX_ALIAS_LENGTH)
     return "Keep the complete short link to 32 characters or fewer.";
   return null;

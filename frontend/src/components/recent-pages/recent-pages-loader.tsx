@@ -7,7 +7,10 @@ import { RecentPages } from "@/components/recent-pages/recent-pages";
 import { useRecentPagesScope } from "@/components/recent-pages/recent-pages-session";
 import { recentDocsStorageKey } from "@/lib/browser-storage";
 import { readRecentDocs } from "@/lib/last-doc";
-import { recentPagesQueryOptions, type RecentPagesScope } from "@/lib/recent-pages-query";
+import {
+  recentPagesQueryOptions,
+  type RecentPagesScope,
+} from "@/lib/recent-pages-query";
 
 export function RecentPagesLoader() {
   const scope = useRecentPagesScope();
@@ -26,13 +29,15 @@ function UserRecentPages({ scope }: { scope: RecentPagesScope }) {
       if (!isActive()) return;
       const ids = readRecentDocs(userId).map((visit) => visit.fileId);
       setFileIds((current) =>
-        current.length === ids.length && current.every((id, index) => id === ids[index])
+        current.length === ids.length &&
+        current.every((id, index) => id === ids[index])
           ? current
           : ids,
       );
     };
     const handleStorage = (event: StorageEvent) => {
-      if (event.key === null || event.key === recentDocsStorageKey(userId)) refreshVisits();
+      if (event.key === null || event.key === recentDocsStorageKey(userId))
+        refreshVisits();
     };
     const handleVisibility = () => {
       if (document.visibilityState === "visible") refreshVisits();
@@ -72,7 +77,9 @@ function UserRecentPages({ scope }: { scope: RecentPagesScope }) {
             setRetrying(false);
           }
         };
-        void retry().catch(() => console.warn("Recent-page retry could not finish"));
+        void retry().catch(() =>
+          console.warn("Recent-page retry could not finish"),
+        );
       }}
       pages={query.isSuccess && !loading ? query.data : []}
     />

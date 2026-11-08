@@ -1,6 +1,8 @@
 const DELIVERY = vi.hoisted(() => vi.fn());
 
-vi.mock("@/lib/clients/send-performance-event", () => ({ sendPerformanceEvent: DELIVERY }));
+vi.mock("@/lib/clients/send-performance-event", () => ({
+  sendPerformanceEvent: DELIVERY,
+}));
 
 const SAMPLED_ID = "00000000-0000-4000-8000-000000000001";
 const NEXT_ID = "00000000-0000-4000-8000-000000000002";
@@ -64,7 +66,9 @@ describe("navigation performance samples", () => {
     const now = vi.spyOn(performance, "now").mockReturnValue(42);
     markNav("document", "commit");
     expect(now).toHaveBeenCalledOnce();
-    expect(window.__sarjPerf).toEqual([{ extra: null, id: "document", phase: "commit", t: 42 }]);
+    expect(window.__sarjPerf).toEqual([
+      { extra: null, id: "document", phase: "commit", t: 42 },
+    ]);
     expect(DELIVERY).not.toHaveBeenCalled();
   });
 
@@ -91,7 +95,11 @@ describe("navigation performance samples", () => {
     frame();
 
     expect(DELIVERY).toHaveBeenCalledExactlyOnceWith(
-      expect.objectContaining({ durationMs: 80, navigationId: SAMPLED_ID, phase: "toolbarPaint" }),
+      expect.objectContaining({
+        durationMs: 80,
+        navigationId: SAMPLED_ID,
+        phase: "toolbarPaint",
+      }),
     );
   });
 
@@ -112,7 +120,10 @@ describe("navigation performance samples", () => {
       frame();
       frame();
       expect(DELIVERY).toHaveBeenCalledExactlyOnceWith(
-        expect.objectContaining({ navigationId: NEXT_ID, phase: "toolbarPaint" }),
+        expect.objectContaining({
+          navigationId: NEXT_ID,
+          phase: "toolbarPaint",
+        }),
       );
     },
   );
@@ -152,14 +163,22 @@ describe("navigation performance samples", () => {
     expect(DELIVERY).toHaveBeenCalledTimes(4);
     expect(DELIVERY).toHaveBeenNthCalledWith(
       2,
-      expect.objectContaining({ durationMs: 10, navigationId: SAMPLED_ID, phase: "toolbarPaint" }),
+      expect.objectContaining({
+        durationMs: 10,
+        navigationId: SAMPLED_ID,
+        phase: "toolbarPaint",
+      }),
     );
     expect(vi.getTimerCount()).toBe(0);
     sampleId = NEXT_ID;
     markNav("document", "click");
     markNav("document", "toolbarPaint");
     expect(DELIVERY).toHaveBeenLastCalledWith(
-      expect.objectContaining({ durationMs: 0, navigationId: NEXT_ID, phase: "toolbarPaint" }),
+      expect.objectContaining({
+        durationMs: 0,
+        navigationId: NEXT_ID,
+        phase: "toolbarPaint",
+      }),
     );
     expect(DELIVERY).toHaveBeenCalledTimes(5);
   });

@@ -43,7 +43,9 @@ export default async function LoginPage({
 }) {
   const params = await searchParams;
   const errorType = AuthErrorParamSchema.safeParse(params["error"]).data;
-  const redirect = isRedirectParam(params["redirect"]) ? params["redirect"] : undefined;
+  const redirect = isRedirectParam(params["redirect"])
+    ? params["redirect"]
+    : undefined;
   const errorConfig = errorType ? ERROR_CONFIG[errorType] : undefined;
 
   return (
@@ -53,18 +55,25 @@ export default async function LoginPage({
       <div className="flex w-full max-w-sm flex-col items-center gap-8">
         <div className="flex flex-col items-center gap-3">
           <SarjLogo size={120} />
-          <p className="text-muted-foreground text-sm">Internal knowledge base for Sarj</p>
+          <p className="text-muted-foreground text-sm">
+            Internal knowledge base for Sarj
+          </p>
         </div>
 
         {errorConfig ? (
-          <div className="border-border bg-card w-full rounded-xl border p-5" role="alert">
+          <div
+            className="border-border bg-card w-full rounded-xl border p-5"
+            role="alert"
+          >
             <div className="flex gap-3">
               <errorConfig.icon
                 aria-hidden="true"
                 className={`mt-0.5 size-5 shrink-0 ${errorConfig.color}`}
               />
               <div className="flex flex-col gap-1.5">
-                <p className="text-card-foreground text-sm font-semibold">{errorConfig.title}</p>
+                <p className="text-card-foreground text-sm font-semibold">
+                  {errorConfig.title}
+                </p>
                 <p className="text-muted-foreground text-sm leading-relaxed text-pretty">
                   {errorConfig.message}
                 </p>
@@ -101,6 +110,8 @@ export default async function LoginPage({
   );
 }
 
-function isRedirectParam(value: string | string[] | undefined): value is string {
+function isRedirectParam(
+  value: string | string[] | undefined,
+): value is string {
   return RedirectParamSchema.safeParse(value).success;
 }

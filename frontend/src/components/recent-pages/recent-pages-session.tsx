@@ -27,7 +27,8 @@ export function RecentPagesSessionProvider({
   children: React.ReactNode;
   userId: null | string;
 }) {
-  if (userId === null) return <RecentPagesContext value={null}>{children}</RecentPagesContext>;
+  if (userId === null)
+    return <RecentPagesContext value={null}>{children}</RecentPagesContext>;
   return (
     <OwnedRecentPagesSession key={userId} userId={userId}>
       {children}
@@ -44,7 +45,9 @@ function OwnedRecentPagesSession({
 }) {
   const queryClient = useQueryClient();
   const ownerId = useId();
-  const [scope] = useState(() => createRecentPagesScope({ queryClient, userId, ownerId }));
+  const [scope] = useState(() =>
+    createRecentPagesScope({ queryClient, userId, ownerId }),
+  );
   useLayoutEffect(() => {
     scope.activate();
     return () => scope.retire();
@@ -69,7 +72,9 @@ export function useRecentPagesScope(): null | RecentPagesScope {
     scope?.getSnapshot ?? inactiveSession,
     inactiveSession,
   );
-  return generation === null || scope === null ? null : { ...scope, generation };
+  return generation === null || scope === null
+    ? null
+    : { ...scope, generation };
 }
 
 function noSubscription(): () => void {

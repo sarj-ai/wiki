@@ -41,12 +41,18 @@ describe("idle document warmup ownership", () => {
     vi.spyOn(document, "visibilityState", "get").mockReturnValue("visible");
     host = document.createElement("div");
     root = createRoot(host);
-    client = new QueryClient({ defaultOptions: { queries: { gcTime: Infinity, retry: false } } });
+    client = new QueryClient({
+      defaultOptions: { queries: { gcTime: Infinity, retry: false } },
+    });
     pending = Promise.withResolvers<FileDetail>();
     vi.mocked(readRecentDocs)
       .mockReset()
-      .mockReturnValue([{ fileId: "recent", mimeType: MIME_DOC, title: "Recent" }]);
-    vi.mocked(WIKI_READ_API.getFile).mockReset().mockReturnValue(pending.promise);
+      .mockReturnValue([
+        { fileId: "recent", mimeType: MIME_DOC, title: "Recent" },
+      ]);
+    vi.mocked(WIKI_READ_API.getFile)
+      .mockReset()
+      .mockReturnValue(pending.promise);
   });
 
   afterEach(() => {
@@ -64,7 +70,12 @@ describe("idle document warmup ownership", () => {
     pending.resolve(FILE);
     await vi.advanceTimersByTimeAsync(0);
     expect(useDocViewerStore.getState().warm).toEqual([
-      { fileId: "recent", mimeType: MIME_DOC, reloadKey: 0, title: "Authorized recent" },
+      {
+        fileId: "recent",
+        mimeType: MIME_DOC,
+        reloadKey: 0,
+        title: "Authorized recent",
+      },
     ]);
   });
 
@@ -72,7 +83,9 @@ describe("idle document warmup ownership", () => {
     "does not warm retained recent metadata after a known %i outcome",
     async (status) => {
       client.setQueryData(["wiki", "file", "recent"], FILE);
-      vi.mocked(WIKI_READ_API.getFile).mockRejectedValue(new ApiError(status, "Read denied"));
+      vi.mocked(WIKI_READ_API.getFile).mockRejectedValue(
+        new ApiError(status, "Read denied"),
+      );
       await client
         .query({
           queryKey: ["wiki", "file", "recent"],
@@ -80,18 +93,25 @@ describe("idle document warmup ownership", () => {
           staleTime: 0,
         })
         .catch(() => null);
-      client.setDefaultOptions({ queries: { gcTime: Infinity, retry: false, staleTime: 60_000 } });
+      client.setDefaultOptions({
+        queries: { gcTime: Infinity, retry: false, staleTime: 60_000 },
+      });
       renderWarmup(root, client);
       await vi.advanceTimersByTimeAsync(3_000);
       expect(WIKI_READ_API.getFile).toHaveBeenCalledTimes(2);
       expect(useDocViewerStore.getState().warm).toEqual([]);
       expect(client.getQueryData(["wiki", "file", "recent"])).toEqual(FILE);
       flushSync(() => root.render(null));
-      vi.mocked(WIKI_READ_API.getFile).mockResolvedValue({ ...FILE, name: "Access restored" });
+      vi.mocked(WIKI_READ_API.getFile).mockResolvedValue({
+        ...FILE,
+        name: "Access restored",
+      });
       renderWarmup(root, client);
       await vi.advanceTimersByTimeAsync(3_000);
       expect(WIKI_READ_API.getFile).toHaveBeenCalledTimes(3);
-      expect(useDocViewerStore.getState().warm[0]?.title).toBe("Access restored");
+      expect(useDocViewerStore.getState().warm[0]?.title).toBe(
+        "Access restored",
+      );
     },
   );
 
@@ -126,12 +146,15 @@ describe("idle document warmup ownership", () => {
     renderWarmup(root, client);
     await vi.advanceTimersByTimeAsync(3_000);
     const owner = Symbol("foreground");
-    useDocViewerStore
-      .getState()
-      .setActive(
-        { fileId: "foreground", mimeType: MIME_DOC, reloadKey: 0, title: "Foreground" },
-        owner,
-      );
+    useDocViewerStore.getState().setActive(
+      {
+        fileId: "foreground",
+        mimeType: MIME_DOC,
+        reloadKey: 0,
+        title: "Foreground",
+      },
+      owner,
+    );
     useDocViewerStore.getState().clearActive(owner);
     pending.resolve(FILE);
     await vi.advanceTimersByTimeAsync(0);
@@ -169,8 +192,13 @@ describe("idle document warmup ownership", () => {
     renderWarmup(root, client, "user-a");
     await vi.advanceTimersByTimeAsync(3_000);
     const previousClient = client;
-    client = new QueryClient({ defaultOptions: { queries: { gcTime: Infinity, retry: false } } });
-    vi.mocked(WIKI_READ_API.getFile).mockResolvedValue({ ...FILE, name: "User B document" });
+    client = new QueryClient({
+      defaultOptions: { queries: { gcTime: Infinity, retry: false } },
+    });
+    vi.mocked(WIKI_READ_API.getFile).mockResolvedValue({
+      ...FILE,
+      name: "User B document",
+    });
     renderWarmup(root, client, "user-b");
     pending.resolve(FILE);
     await vi.advanceTimersByTimeAsync(0);
@@ -182,7 +210,11 @@ describe("idle document warmup ownership", () => {
   });
 });
 
-function renderWarmup(root: Root, client: QueryClient, userId: null | string = "user-a") {
+function renderWarmup(
+  root: Root,
+  client: QueryClient,
+  userId: null | string = "user-a",
+) {
   flushSync(() => {
     root.render(
       <QueryClientProvider client={client}>

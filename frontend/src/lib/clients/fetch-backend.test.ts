@@ -13,11 +13,14 @@ describe("Cloudflare backend fetch", () => {
       const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(response);
       vi.stubGlobal("fetch", fetchMock);
       const controller = new AbortController();
-      const result = await fetchBackend("https://api-wiki.sarj.ai/sidebar/drives", {
-        cache: "no-store",
-        headers: { authorization: "Bearer test-token" },
-        signal: controller.signal,
-      });
+      const result = await fetchBackend(
+        "https://api-wiki.sarj.ai/sidebar/drives",
+        {
+          cache: "no-store",
+          headers: { authorization: "Bearer test-token" },
+          signal: controller.signal,
+        },
+      );
       expect(result).toBe(response);
       expect(fetchMock).toHaveBeenCalledExactlyOnceWith(
         "https://api-wiki.sarj.ai/sidebar/drives",
@@ -35,11 +38,16 @@ describe("Cloudflare backend fetch", () => {
     "rejects redirect %s without following or exposing it",
     async (status) => {
       const cleanup = Promise.withResolvers<undefined>();
-      const cancel = vi.fn<() => Promise<undefined>>().mockReturnValue(cleanup.promise);
-      const response = new Response(new ReadableStream<Uint8Array>({ cancel }), {
-        headers: { location: "https://other-origin.test/private-token" },
-        status,
-      });
+      const cancel = vi
+        .fn<() => Promise<undefined>>()
+        .mockReturnValue(cleanup.promise);
+      const response = new Response(
+        new ReadableStream<Uint8Array>({ cancel }),
+        {
+          headers: { location: "https://other-origin.test/private-token" },
+          status,
+        },
+      );
       const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(response);
       vi.stubGlobal("fetch", fetchMock);
       try {

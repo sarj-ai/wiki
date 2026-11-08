@@ -1,6 +1,9 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { getRecentDocumentAliases, resolveDocumentAlias } from "@/lib/alias-client";
+import {
+  getRecentDocumentAliases,
+  resolveDocumentAlias,
+} from "@/lib/alias-client";
 
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -10,10 +13,14 @@ describe("alias server client", () => {
   it("resolves an alias through the access-checking endpoint", async () => {
     const fetchMock = vi
       .fn<typeof fetch>()
-      .mockResolvedValue(Response.json({ alias: "team-handbook", file_id: "file-1" }));
+      .mockResolvedValue(
+        Response.json({ alias: "team-handbook", file_id: "file-1" }),
+      );
     vi.stubGlobal("fetch", fetchMock);
 
-    await expect(resolveDocumentAlias("team-handbook", "token")).resolves.toEqual({
+    await expect(
+      resolveDocumentAlias("team-handbook", "token"),
+    ).resolves.toEqual({
       fileId: "file-1",
       status: "found",
     });
@@ -40,7 +47,9 @@ describe("alias server client", () => {
       ),
     );
 
-    await expect(getRecentDocumentAliases("token", ["team-handbook"])).resolves.toEqual({
+    await expect(
+      getRecentDocumentAliases("token", ["team-handbook"]),
+    ).resolves.toEqual({
       aliases: [
         {
           alias: "team-handbook",
@@ -64,10 +73,14 @@ describe("alias server client", () => {
   it("fails closed when a recent-alias response is malformed", async () => {
     vi.stubGlobal(
       "fetch",
-      vi.fn<typeof fetch>().mockResolvedValue(Response.json([{ alias: "private-document" }])),
+      vi
+        .fn<typeof fetch>()
+        .mockResolvedValue(Response.json([{ alias: "private-document" }])),
     );
 
-    await expect(getRecentDocumentAliases("token", ["private-document"])).resolves.toEqual({
+    await expect(
+      getRecentDocumentAliases("token", ["private-document"]),
+    ).resolves.toEqual({
       status: "unavailable",
     });
   });

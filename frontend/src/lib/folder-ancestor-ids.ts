@@ -1,7 +1,10 @@
 import { indexNodes } from "@/lib/wiki-indexes";
 import type { DriveNode } from "@/types/wiki";
 
-export function folderAncestorIds(folders: readonly DriveNode[], nodeId: string): string[] {
+export function folderAncestorIds(
+  folders: readonly DriveNode[],
+  nodeId: string,
+): string[] {
   const byId = indexNodes(folders);
   const chain: string[] = [];
   const seen = new Set([nodeId]);

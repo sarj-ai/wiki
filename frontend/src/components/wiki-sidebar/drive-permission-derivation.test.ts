@@ -1,4 +1,8 @@
-import type { DrivePermission, DrivePermissionsPage, DrivePrincipalType } from "@/types/wiki";
+import type {
+  DrivePermission,
+  DrivePermissionsPage,
+  DrivePrincipalType,
+} from "@/types/wiki";
 
 import { derivePermissions } from "./drive-access-sheet";
 
@@ -11,14 +15,18 @@ describe("paginated access derivation", () => {
     const manager = permission("manager", "user", "organizer", "Manager");
     const alpha = permission("alpha", "user", "writer", "Alpha");
     const unknown = permission("unknown", "user", "futureRole", "Future");
-    const pages = [page([domain, old, anyone, unknown]), page([updated, manager, alpha])];
+    const pages = [
+      page([domain, old, anyone, unknown]),
+      page([updated, manager, alpha]),
+    ];
     const result = derivePermissions(pages);
     expect(result.count).toBe(6);
     expect(result.generalAccess).toEqual([domain, anyone]);
     expect(result.people).toEqual([manager, alpha, updated, unknown]);
     expect(pages[0]?.permissions).toEqual([domain, old, anyone, unknown]);
     expect(
-      derivePermissions([page([{ ...updated, displayName: "Renamed" }])]).people[0]?.displayName,
+      derivePermissions([page([{ ...updated, displayName: "Renamed" }])])
+        .people[0]?.displayName,
     ).toBe("Renamed");
   });
 
@@ -44,7 +52,11 @@ describe("paginated access derivation", () => {
     expect(result.count).toBe(1_000);
     expect(result.people).toHaveLength(1_000);
     expect(reads).toBe(1_000);
-    expect(derivePermissions([])).toEqual({ count: 0, generalAccess: [], people: [] });
+    expect(derivePermissions([])).toEqual({
+      count: 0,
+      generalAccess: [],
+      people: [],
+    });
   });
 });
 

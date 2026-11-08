@@ -22,13 +22,18 @@ describe("session refresh classification", () => {
     vi.stubGlobal("fetch", fetchMock);
     const removed = vi.spyOn(session, "removeEventListener");
     const added = vi.spyOn(session, "addEventListener");
-    const controllers = Array.from({ length: 100 }, () => new AbortController());
+    const controllers = Array.from(
+      { length: 100 },
+      () => new AbortController(),
+    );
     const callerRemovals = controllers.map((controller) =>
       vi.spyOn(controller.signal, "removeEventListener"),
     );
     const discarded = controllers.map(
       async (controller) =>
-        await deduplicatedRefresh(controller.signal, session).catch((error: unknown) => error),
+        await deduplicatedRefresh(controller.signal, session).catch(
+          (error: unknown) => error,
+        ),
     );
     const retained = deduplicatedRefresh(undefined, session);
     try {
@@ -38,7 +43,9 @@ describe("session refresh classification", () => {
       expect(added).toHaveBeenCalledTimes(2);
       expect(removed).not.toHaveBeenCalled();
       expect(
-        callerRemovals.map((spy) => spy.mock.calls.some(([event]) => event === "abort")),
+        callerRemovals.map((spy) =>
+          spy.mock.calls.some(([event]) => event === "abort"),
+        ),
       ).toEqual(Array.from({ length: 100 }, () => true));
       expect(fetchMock).toHaveBeenCalledOnce();
       expect(fetchMock.mock.calls[0]?.[1]?.signal?.aborted).toBe(false);
@@ -59,15 +66,21 @@ describe("session refresh classification", () => {
     vi.stubGlobal("fetch", fetchMock);
     const added = vi.spyOn(session, "addEventListener");
     const removed = vi.spyOn(session, "removeEventListener");
-    const controllers = Array.from({ length: 100 }, () => new AbortController());
+    const controllers = Array.from(
+      { length: 100 },
+      () => new AbortController(),
+    );
     const waiters = controllers.map(
       async (controller) =>
-        await deduplicatedRefresh(controller.signal, session).catch((error: unknown) => error),
+        await deduplicatedRefresh(controller.signal, session).catch(
+          (error: unknown) => error,
+        ),
     );
     retireBrowserSession(owner);
     const results = await Promise.all(waiters);
     expect(results).toHaveLength(100);
-    for (const result of results) expect(result).toMatchObject({ name: "AbortError" });
+    for (const result of results)
+      expect(result).toMatchObject({ name: "AbortError" });
     expect(added).toHaveBeenCalledTimes(2);
     expect(removed).toHaveBeenCalledWith("abort", expect.any(Function));
     expect(fetchMock).toHaveBeenCalledOnce();
@@ -87,7 +100,9 @@ describe("session refresh classification", () => {
       .mockReturnValueOnce(oldResponse.promise)
       .mockReturnValueOnce(nextResponse.promise);
     vi.stubGlobal("fetch", fetchMock);
-    const oldWaiter = deduplicatedRefresh(undefined, oldSession).catch((error: unknown) => error);
+    const oldWaiter = deduplicatedRefresh(undefined, oldSession).catch(
+      (error: unknown) => error,
+    );
     retireBrowserSession(previous);
     claimBrowserSession(next);
     expect(fetchMock.mock.calls[0]?.[1]?.signal?.aborted).toBe(true);
@@ -100,11 +115,12 @@ describe("session refresh classification", () => {
     expect(fetchMock).toHaveBeenCalledTimes(2);
     expect(fetchMock.mock.calls[1]?.[1]?.signal?.aborted).toBe(false);
     nextResponse.resolve(new Response(null));
-    await expect(Promise.all([firstNewWaiter, secondNewWaiter])).resolves.toEqual([
-      "refreshed",
-      "refreshed",
-    ]);
-    await expect(deduplicatedRefresh(undefined, oldSession)).rejects.toMatchObject({
+    await expect(
+      Promise.all([firstNewWaiter, secondNewWaiter]),
+    ).resolves.toEqual(["refreshed", "refreshed"]);
+    await expect(
+      deduplicatedRefresh(undefined, oldSession),
+    ).rejects.toMatchObject({
       name: "AbortError",
     });
     expect(fetchMock).toHaveBeenCalledTimes(2);
@@ -113,9 +129,13 @@ describe("session refresh classification", () => {
 
   it("drops unused refresh bodies without waiting and prohibits cached/redirected recovery", async () => {
     const cleanup = Promise.withResolvers<undefined>();
-    const cancel = vi.fn<() => Promise<undefined>>().mockReturnValue(cleanup.promise);
+    const cancel = vi
+      .fn<() => Promise<undefined>>()
+      .mockReturnValue(cleanup.promise);
     const body = new ReadableStream<Uint8Array>({ cancel });
-    const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(new Response(body));
+    const fetchMock = vi
+      .fn<typeof fetch>()
+      .mockResolvedValue(new Response(body));
     vi.stubGlobal("fetch", fetchMock);
     try {
       await expect(deduplicatedRefresh()).resolves.toBe("refreshed");
@@ -132,13 +152,19 @@ describe("session refresh classification", () => {
     [429, "unavailable"],
     [503, "unavailable"],
   ] as const)("maps HTTP %s to %s", async (status, expected) => {
-    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(null, { status })));
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(new Response(null, { status })),
+    );
 
     await expect(deduplicatedRefresh()).resolves.toBe(expected);
   });
 
   it("treats an opaque transport failure as unavailable", async () => {
-    vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new TypeError("Failed to fetch")));
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockRejectedValue(new TypeError("Failed to fetch")),
+    );
 
     await expect(deduplicatedRefresh()).resolves.toBe("unavailable");
   });
@@ -152,7 +178,10 @@ describe("session refresh classification", () => {
     const second = deduplicatedRefresh();
     response.resolve(new Response(null, { status: 200 }));
 
-    await expect(Promise.all([first, second])).resolves.toEqual(["refreshed", "refreshed"]);
+    await expect(Promise.all([first, second])).resolves.toEqual([
+      "refreshed",
+      "refreshed",
+    ]);
     expect(fetchMock).toHaveBeenCalledOnce();
   });
 
@@ -167,7 +196,9 @@ describe("session refresh classification", () => {
 
     controller.abort();
 
-    await expect(discardedResult).resolves.toMatchObject({ name: "AbortError" });
+    await expect(discardedResult).resolves.toMatchObject({
+      name: "AbortError",
+    });
     expect(fetchMock.mock.calls[0]?.[1]?.signal?.aborted).toBe(false);
     response.resolve(new Response(null, { status: 200 }));
     await expect(retained).resolves.toBe("refreshed");
@@ -187,11 +218,16 @@ describe("session refresh classification", () => {
   });
 
   it("removes cancellation listeners after the shared request settles", async () => {
-    vi.stubGlobal("fetch", vi.fn<typeof fetch>().mockResolvedValue(new Response(null)));
+    vi.stubGlobal(
+      "fetch",
+      vi.fn<typeof fetch>().mockResolvedValue(new Response(null)),
+    );
     const controller = new AbortController();
     const removed = vi.spyOn(controller.signal, "removeEventListener");
 
-    await expect(deduplicatedRefresh(controller.signal)).resolves.toBe("refreshed");
+    await expect(deduplicatedRefresh(controller.signal)).resolves.toBe(
+      "refreshed",
+    );
     expect(removed).toHaveBeenCalledOnce();
   });
 });

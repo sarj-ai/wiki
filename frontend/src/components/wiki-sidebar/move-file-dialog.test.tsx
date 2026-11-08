@@ -12,7 +12,9 @@ import { MIME_DOC, MIME_FOLDER } from "@/types/wiki";
 
 import { MoveFileDialog } from "./move-file-dialog";
 
-const MOVE = vi.hoisted(() => vi.fn<() => Promise<ActionResult<FileResponse>>>());
+const MOVE = vi.hoisted(() =>
+  vi.fn<() => Promise<ActionResult<FileResponse>>>(),
+);
 vi.mock("@/app/actions/wiki-actions", () => ({ moveFileAction: MOVE }));
 vi.mock("sonner", () => ({ toast: { error: vi.fn(), success: vi.fn() } }));
 
@@ -157,7 +159,10 @@ describe("move dialog admission", () => {
     flushSync(() =>
       root.render(
         <QueryClientProvider client={client}>
-          <ReopenHarness onCloseAutoFocus={onCloseAutoFocus} onOpenAutoFocus={onOpenAutoFocus} />
+          <ReopenHarness
+            onCloseAutoFocus={onCloseAutoFocus}
+            onOpenAutoFocus={onOpenAutoFocus}
+          />
         </QueryClientProvider>,
       ),
     );
@@ -216,21 +221,28 @@ describe("move dialog admission", () => {
         folders,
       });
       render();
-      const expand = document.querySelector('button[aria-label="Expand Destination"]');
-      if (!(expand instanceof HTMLButtonElement)) throw new TypeError("Drive expansion missing");
+      const expand = document.querySelector(
+        'button[aria-label="Expand Destination"]',
+      );
+      if (!(expand instanceof HTMLButtonElement))
+        throw new TypeError("Drive expansion missing");
       flushSync(() => expand.click());
       nameReads = 0;
       accessedFolderIds.clear();
       flushSync(() => button("Folder 0").click());
       expect(accessedFolderIds).toEqual(new Set(["folder-0"]));
-      expect(nameReads).toBeLessThanOrEqual(maxNameReadsPerChangedFolder * accessedFolderIds.size);
+      expect(nameReads).toBeLessThanOrEqual(
+        maxNameReadsPerChangedFolder * accessedFolderIds.size,
+      );
       expect(button("Folder 0")).toHaveClass("bg-accent");
       expect(button("Destination")).not.toHaveClass("bg-accent");
       nameReads = 0;
       accessedFolderIds.clear();
       flushSync(() => button("Folder 999").click());
       expect(accessedFolderIds).toEqual(new Set(["folder-0", "folder-999"]));
-      expect(nameReads).toBeLessThanOrEqual(maxNameReadsPerChangedFolder * accessedFolderIds.size);
+      expect(nameReads).toBeLessThanOrEqual(
+        maxNameReadsPerChangedFolder * accessedFolderIds.size,
+      );
       expect(button("Folder 0")).not.toHaveClass("bg-accent");
       expect(button("Folder 999")).toHaveClass("bg-accent");
       expect(button("Folder 999").type).toBe("button");
@@ -270,8 +282,11 @@ function ReopenHarness({
 }
 
 function button(text: string): HTMLButtonElement {
-  const result = [...document.querySelectorAll("button")].find((item) => item.textContent === text);
-  if (!(result instanceof HTMLButtonElement)) throw new TypeError(`Button ${text} missing`);
+  const result = [...document.querySelectorAll("button")].find(
+    (item) => item.textContent === text,
+  );
+  if (!(result instanceof HTMLButtonElement))
+    throw new TypeError(`Button ${text} missing`);
   return result;
 }
 

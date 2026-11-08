@@ -1,6 +1,10 @@
 import { z } from "zod";
 
-import { ApiError, RATE_LIMIT_MESSAGE, SESSION_REFRESH_UNAVAILABLE_MESSAGE } from "@/lib/api-error";
+import {
+  ApiError,
+  RATE_LIMIT_MESSAGE,
+  SESSION_REFRESH_UNAVAILABLE_MESSAGE,
+} from "@/lib/api-error";
 import { boundedErrorText } from "@/lib/bounded-error-text";
 import { captureBrowserSession } from "@/lib/browser-session";
 import { discardStream } from "@/lib/discard-stream";
@@ -19,7 +23,8 @@ export async function wikiReadHttp<S extends z.ZodType>(
   const session = captureBrowserSession();
   let params: undefined | URLSearchParams;
   for (const [key, value] of Object.entries(query)) {
-    if (value !== undefined) (params ??= new URLSearchParams()).set(key, String(value));
+    if (value !== undefined)
+      (params ??= new URLSearchParams()).set(key, String(value));
   }
   const search = params === undefined ? "" : `?${params.toString()}`;
   const requestSignal = AbortSignal.any([
@@ -57,7 +62,9 @@ export async function wikiReadHttp<S extends z.ZodType>(
     }
     let payload: unknown = null;
     try {
-      payload = JSON.parse(await boundedErrorText(response.body, requestSignal));
+      payload = JSON.parse(
+        await boundedErrorText(response.body, requestSignal),
+      );
     } catch {}
     requestSignal.throwIfAborted();
     const error = ErrorSchema.safeParse(payload);
@@ -73,10 +80,14 @@ export async function wikiReadHttp<S extends z.ZodType>(
   return schema.parse(payload);
 }
 
-async function refreshWikiSession(signal: AbortSignal, session: AbortSignal): Promise<void> {
+async function refreshWikiSession(
+  signal: AbortSignal,
+  session: AbortSignal,
+): Promise<void> {
   const refresh = await deduplicatedRefresh(signal, session);
   signal.throwIfAborted();
-  if (refresh === "unavailable") throw new ApiError(503, SESSION_REFRESH_UNAVAILABLE_MESSAGE);
+  if (refresh === "unavailable")
+    throw new ApiError(503, SESSION_REFRESH_UNAVAILABLE_MESSAGE);
   if (refresh === "unauthorized") {
     notifyTerminalUnauthorized(session);
     throw new ApiError(401, "Your session has expired");

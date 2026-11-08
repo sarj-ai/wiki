@@ -8,7 +8,10 @@ import { useRecentPagesScope } from "@/components/recent-pages/recent-pages-sess
 import { handlePrefetchError } from "@/lib/handle-prefetch-error";
 import { readRecentDocs } from "@/lib/last-doc";
 import { recentPagesQueryOptions } from "@/lib/recent-pages-query";
-import { allowsReusableSpeculation, readNavigatorHints } from "@/lib/speculation-policy";
+import {
+  allowsReusableSpeculation,
+  readNavigatorHints,
+} from "@/lib/speculation-policy";
 
 const PREFETCH_DELAY_MS = 150;
 
@@ -41,13 +44,24 @@ export function RecentPagesLink({
     if (!scope?.isActive()) return;
     router.prefetch("/");
     const ids = readRecentDocs(scope.userId).map((visit) => visit.fileId);
-    void scope.queryClient.query(recentPagesQueryOptions(scope, ids)).catch(handlePrefetchError);
+    void scope.queryClient
+      .query(recentPagesQueryOptions(scope, ids))
+      .catch(handlePrefetchError);
   };
   const schedule = () => {
-    if (state.current.committed || state.current.timer !== null || !allowsSpeculation()) return;
+    if (
+      state.current.committed ||
+      state.current.timer !== null ||
+      !allowsSpeculation()
+    )
+      return;
     state.current.timer = window.setTimeout(() => {
       state.current.timer = null;
-      if ((state.current.focused || state.current.hovered) && allowsSpeculation()) prefetch();
+      if (
+        (state.current.focused || state.current.hovered) &&
+        allowsSpeculation()
+      )
+        prefetch();
     }, PREFETCH_DELAY_MS);
   };
   const endIfIdle = () => {

@@ -4,7 +4,14 @@ import { createRoot } from "react-dom/client";
 
 import { wikiKeys } from "@/lib/wiki-keys";
 import { WIKI_READ_API } from "@/lib/wiki-read-api";
-import { MIME_DOC, MIME_FOLDER, MIME_HTML, MIME_PDF, MIME_SHEET, MIME_SLIDE } from "@/types/wiki";
+import {
+  MIME_DOC,
+  MIME_FOLDER,
+  MIME_HTML,
+  MIME_PDF,
+  MIME_SHEET,
+  MIME_SLIDE,
+} from "@/types/wiki";
 
 import { useDriveSearchSnippet, useDriveSearchState } from "./use-drive-search";
 
@@ -26,15 +33,19 @@ function SnippetProbe({
 }
 
 it("skips out-of-contract snippet queries while valid queries still load", async () => {
-  const readSnippet = vi.mocked(WIKI_READ_API.driveSearchSnippet).mockResolvedValue({
-    fileId: "file-1",
-    mimeType: "application/vnd.google-apps.document",
-    matchTerm: "ok",
-    snippet: "ok",
-  });
+  const readSnippet = vi
+    .mocked(WIKI_READ_API.driveSearchSnippet)
+    .mockResolvedValue({
+      fileId: "file-1",
+      mimeType: "application/vnd.google-apps.document",
+      matchTerm: "ok",
+      snippet: "ok",
+    });
   const host = document.createElement("div");
   const root = createRoot(host);
-  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  const client = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  });
   try {
     flushSync(() => {
       root.render(
@@ -106,14 +117,20 @@ describe("search preview request budget", () => {
     await vi.advanceTimersByTimeAsync(0);
     expect(WIKI_READ_API.driveSearchSnippet).toHaveBeenCalledOnce();
     for (let length = 3; length <= query.length; length++) {
-      window.setTimeout(() => renderSnippet(query.slice(0, length)), (length - 2) * 50);
+      window.setTimeout(
+        () => renderSnippet(query.slice(0, length)),
+        (length - 2) * 50,
+      );
     }
     await vi.advanceTimersByTimeAsync((query.length - 2) * 50 + 250);
-    await vi.waitFor(() => expect(WIKI_READ_API.driveSearchSnippet).toHaveBeenCalledTimes(2));
-    expect(vi.mocked(WIKI_READ_API.driveSearchSnippet).mock.calls.map(([, term]) => term)).toEqual([
-      "qu",
-      query,
-    ]);
+    await vi.waitFor(() =>
+      expect(WIKI_READ_API.driveSearchSnippet).toHaveBeenCalledTimes(2),
+    );
+    expect(
+      vi
+        .mocked(WIKI_READ_API.driveSearchSnippet)
+        .mock.calls.map(([, term]) => term),
+    ).toEqual(["qu", query]);
   });
 
   it("does not fetch an old query for a newly selected file while typing is unsettled", async () => {
@@ -141,7 +158,12 @@ describe("search preview request budget", () => {
     expect(WIKI_READ_API.driveSearchSnippet).toHaveBeenCalledOnce();
   });
 
-  it.each([MIME_FOLDER, MIME_PDF, MIME_HTML, "application/vnd.google-apps.form"])(
+  it.each([
+    MIME_FOLDER,
+    MIME_PDF,
+    MIME_HTML,
+    "application/vnd.google-apps.form",
+  ])(
     "skips preview reads for known non-exportable MIME %s",
     async (mimeType) => {
       renderSnippet("roadmap", mimeType);
@@ -167,7 +189,10 @@ function CachedSearchProbe({ query }: { query: string }) {
 
 it("collects abandoned search terms after ten minutes while preserving an observed fresh result", async () => {
   vi.useFakeTimers();
-  const read = vi.mocked(WIKI_READ_API.driveSearch).mockReset().mockResolvedValue([]);
+  const read = vi
+    .mocked(WIKI_READ_API.driveSearch)
+    .mockReset()
+    .mockResolvedValue([]);
   const client = new QueryClient({
     defaultOptions: { queries: { gcTime: 24 * 60 * 60 * 1000, retry: false } },
   });
@@ -184,12 +209,15 @@ it("collects abandoned search terms after ten minutes while preserving an observ
     );
   }
   try {
-    await Array.from({ length: 100 }, (_, index) => index).reduce(async (previous, index) => {
-      await previous;
-      render(`term-${index}`);
-      await vi.advanceTimersByTimeAsync(0);
-      render(null);
-    }, Promise.resolve());
+    await Array.from({ length: 100 }, (_, index) => index).reduce(
+      async (previous, index) => {
+        await previous;
+        render(`term-${index}`);
+        await vi.advanceTimersByTimeAsync(0);
+        render(null);
+      },
+      Promise.resolve(),
+    );
     expect(client.getQueryCache().getAll()).toHaveLength(100);
     render("term-99");
     await vi.advanceTimersByTimeAsync(0);
@@ -212,8 +240,18 @@ function SearchProbe({ enabled }: { enabled: boolean }) {
 }
 
 it.each([
-  { expectedCalls: 1, expectedQuery: "roadmap", label: "too short", nextQuery: "x" },
-  { expectedCalls: 1, expectedQuery: "roadmap", label: "too long", nextQuery: "x".repeat(2049) },
+  {
+    expectedCalls: 1,
+    expectedQuery: "roadmap",
+    label: "too short",
+    nextQuery: "x",
+  },
+  {
+    expectedCalls: 1,
+    expectedQuery: "roadmap",
+    label: "too long",
+    nextQuery: "x".repeat(2049),
+  },
   {
     expectedCalls: 2,
     expectedQuery: "new roadmap",
@@ -224,8 +262,13 @@ it.each([
   "does not refetch the discarded main-search term while the $label input is unsettled",
   async ({ expectedCalls, expectedQuery, nextQuery }) => {
     vi.useFakeTimers();
-    const read = vi.mocked(WIKI_READ_API.driveSearch).mockReset().mockResolvedValue([]);
-    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const read = vi
+      .mocked(WIKI_READ_API.driveSearch)
+      .mockReset()
+      .mockResolvedValue([]);
+    const client = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
     const root = createRoot(document.createElement("div"));
     function render(query: string) {
       flushSync(() =>
@@ -241,13 +284,19 @@ it.each([
       await vi.advanceTimersByTimeAsync(0);
       expect(read).toHaveBeenCalledOnce();
       render(nextQuery);
-      await client.invalidateQueries({ queryKey: wikiKeys.driveSearch("roadmap") });
+      await client.invalidateQueries({
+        queryKey: wikiKeys.driveSearch("roadmap"),
+      });
       expect(read).toHaveBeenCalledOnce();
       await vi.advanceTimersByTimeAsync(249);
       expect(read).toHaveBeenCalledOnce();
       await vi.advanceTimersByTimeAsync(1);
       await vi.waitFor(() => expect(read).toHaveBeenCalledTimes(expectedCalls));
-      expect(read).toHaveBeenLastCalledWith(expectedQuery, 10, expect.any(AbortSignal));
+      expect(read).toHaveBeenLastCalledWith(
+        expectedQuery,
+        10,
+        expect.any(AbortSignal),
+      );
     } finally {
       flushSync(() => root.unmount());
       client.clear();
@@ -258,10 +307,15 @@ it.each([
 
 it("disables closed-palette reads without cancelling a shared foreground consumer", async () => {
   const pending = Promise.withResolvers<[]>();
-  const search = vi.mocked(WIKI_READ_API.driveSearch).mockReset().mockReturnValue(pending.promise);
+  const search = vi
+    .mocked(WIKI_READ_API.driveSearch)
+    .mockReset()
+    .mockReturnValue(pending.promise);
   const host = document.createElement("div");
   const root = createRoot(host);
-  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  const client = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  });
   const render = (enabled: boolean) =>
     flushSync(() => {
       root.render(
@@ -272,7 +326,9 @@ it("disables closed-palette reads without cancelling a shared foreground consume
     });
   try {
     render(false);
-    await client.invalidateQueries({ queryKey: ["wiki", "drive-search", "roadmap"] });
+    await client.invalidateQueries({
+      queryKey: ["wiki", "drive-search", "roadmap"],
+    });
     expect(search).not.toHaveBeenCalled();
     render(true);
     await vi.waitFor(() => expect(search).toHaveBeenCalledOnce());
@@ -285,7 +341,9 @@ it("disables closed-palette reads without cancelling a shared foreground consume
     expect(signal?.aborted).toBe(false);
     pending.resolve([]);
     await expect(foreground).resolves.toEqual([]);
-    await client.invalidateQueries({ queryKey: ["wiki", "drive-search", "roadmap"] });
+    await client.invalidateQueries({
+      queryKey: ["wiki", "drive-search", "roadmap"],
+    });
     expect(search).toHaveBeenCalledOnce();
   } finally {
     flushSync(() => root.unmount());

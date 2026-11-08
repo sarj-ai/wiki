@@ -153,7 +153,7 @@ def checks(scope: Check) -> tuple[Command, ...]:
                 "generate:api",
                 "format:check",
                 "typecheck",
-                "lint:baseline-check",
+                "lint",
                 "check:dependencies",
                 "knip",
                 "type-coverage",
@@ -175,7 +175,6 @@ def _quality_checks() -> tuple[Command, ...]:
             "check",
             "--trust-repository-code",
             "--skip-python-type-check",
-            "--skip-eslint",
             ".",
         ),
         _project(
@@ -309,21 +308,7 @@ def fix_command() -> None:
             _backend("ruff", "check", "--fix", "."),
             _backend("ruff", "format", "."),
             _frontend("format"),
-            Command(
-                arguments=(
-                    "uv",
-                    "--directory",
-                    "frontend",
-                    "run",
-                    "--no-project",
-                    "node_modules/.bin/eslint",
-                    "--fix",
-                    "--suppressions-location",
-                    "eslint-suppressions.json",
-                    ".",
-                ),
-                allow_failure=True,
-            ),
+            _standards("check", "--fix", "--trust-repository-code"),
         )
     )
 

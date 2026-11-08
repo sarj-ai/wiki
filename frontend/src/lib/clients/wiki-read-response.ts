@@ -20,7 +20,8 @@ export async function wikiReadResponse(
   timeoutMs = 25_000,
 ): Promise<Response> {
   const inboundId = request.headers.get("x-request-id");
-  const requestId = inboundId && REQUEST_ID.test(inboundId) ? inboundId : crypto.randomUUID();
+  const requestId =
+    inboundId && REQUEST_ID.test(inboundId) ? inboundId : crypto.randomUUID();
   const fail = (status: number): Response => {
     const response = failure(status);
     response.headers.set("x-request-id", requestId);
@@ -32,7 +33,10 @@ export async function wikiReadResponse(
   if (!token) return fail(401);
   try {
     request.signal.throwIfAborted();
-    const upstreamSignal = AbortSignal.any([request.signal, AbortSignal.timeout(timeoutMs)]);
+    const upstreamSignal = AbortSignal.any([
+      request.signal,
+      AbortSignal.timeout(timeoutMs),
+    ]);
     const upstream = await fetchBackend(`${API_URL}${path}`, {
       cache: "no-store",
       headers: { authorization: `Bearer ${token}`, "x-request-id": requestId },

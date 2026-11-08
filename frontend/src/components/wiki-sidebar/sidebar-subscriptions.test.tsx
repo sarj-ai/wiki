@@ -6,7 +6,13 @@ import { renderToStaticMarkup } from "react-dom/server";
 
 import { SidebarProvider } from "@/components/ui/sidebar";
 import { wikiKeys } from "@/lib/wiki-keys";
-import type { DocIcon, DriveNode, DriveSummary, FolderIcon, SortOrder } from "@/types/wiki";
+import type {
+  DocIcon,
+  DriveNode,
+  DriveSummary,
+  FolderIcon,
+  SortOrder,
+} from "@/types/wiki";
 import { MIME_DOC, MIME_FORM, MIME_SHORTCUT } from "@/types/wiki";
 
 import { FileRow } from "./file-row";
@@ -35,15 +41,27 @@ vi.mock("./drive-section", () => ({
     folderIcons: readonly FolderIcon[];
     sortOrders: readonly SortOrder[];
   }) {
-    const index = useDriveTreeIndex(drive.id, docIcons, folderIcons, sortOrders, false);
+    const index = useDriveTreeIndex(
+      drive.id,
+      docIcons,
+      folderIcons,
+      sortOrders,
+      false,
+    );
     return <span data-drive-id={drive.id}>{index.docIconOverrides.size}</span>;
   }),
 }));
 vi.mock("./drive-search-box", () => ({ DriveSearchBox: vi.fn(() => null) }));
 vi.mock("./wiki-footer", () => ({ WikiFooter: vi.fn(() => null) }));
-vi.mock("./sidebar-resize-handle", () => ({ SidebarResizeHandle: vi.fn(() => null) }));
+vi.mock("./sidebar-resize-handle", () => ({
+  SidebarResizeHandle: vi.fn(() => null),
+}));
 vi.mock("./use-wiki-reorder", () => ({
-  useWikiReorder: () => ({ activeNode: null, optimisticByContainer: new Map(), sensors: [] }),
+  useWikiReorder: () => ({
+    activeNode: null,
+    optimisticByContainer: new Map(),
+    sensors: [],
+  }),
 }));
 vi.mock("./use-document-intent", () => ({ useDocumentIntent: () => ({}) }));
 vi.mock("./item-menu", () => ({ ItemMenu: vi.fn(() => null) }));
@@ -58,7 +76,9 @@ describe("sidebar subscriptions", () => {
     ICON_READ.mockResolvedValue([]);
     DRIVES_READ.mockResolvedValue([]);
     PATHNAME.mockReturnValue("/");
-    queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
     const drives = Array.from({ length: 20 }, (_, index) => ({
       id: `drive-${index}`,
       isPersonal: false,
@@ -87,7 +107,10 @@ describe("sidebar subscriptions", () => {
   it("shares one document-icon observer among 20 drive indexes", () => {
     flushSync(() => root.render(wrap(<WikiSidebar />)));
     expect(
-      queryClient.getQueryCache().find({ queryKey: wikiKeys.docIcons })?.getObserversCount(),
+      queryClient
+        .getQueryCache()
+        .find({ queryKey: wikiKeys.docIcons })
+        ?.getObserversCount(),
     ).toBe(1);
     expect(ICON_READ).not.toHaveBeenCalled();
   });
@@ -101,14 +124,20 @@ describe("sidebar subscriptions", () => {
     expect(home).toBeInstanceOf(HTMLAnchorElement);
     expect(home).toHaveAttribute("href", "/");
     expect(home).toHaveClass("focus-visible:ring-2");
-    expect(home?.querySelector('svg[role="img"]')).toHaveAttribute("aria-label", "Sarj");
+    expect(home?.querySelector('svg[role="img"]')).toHaveAttribute(
+      "aria-label",
+      "Sarj",
+    );
   });
 
   it("does not request document icons when all drives are hidden", () => {
     queryClient.removeQueries({ queryKey: wikiKeys.docIcons });
     queryClient.setQueryData(wikiKeys.preferences, {
       showNonDocFiles: true,
-      hiddenWorkspaceIds: Array.from({ length: 20 }, (_, index) => `drive-${index}`),
+      hiddenWorkspaceIds: Array.from(
+        { length: 20 },
+        (_, index) => `drive-${index}`,
+      ),
     });
     flushSync(() => root.render(wrap(<WikiSidebar />)));
     expect(ICON_READ).not.toHaveBeenCalled();
@@ -116,10 +145,16 @@ describe("sidebar subscriptions", () => {
 
   it("exposes cold drive loading without claiming an empty successful result", () => {
     queryClient.removeQueries({ queryKey: wikiKeys.drives });
-    DRIVES_READ.mockReturnValue(Promise.withResolvers<DriveSummary[]>().promise);
+    DRIVES_READ.mockReturnValue(
+      Promise.withResolvers<DriveSummary[]>().promise,
+    );
     flushSync(() => root.render(wrap(<WikiSidebar />)));
-    expect(host.querySelector('[role="status"]')).toHaveTextContent("Loading drives");
-    expect(host.querySelector('[role="status"] [aria-hidden="true"]')?.children).toHaveLength(3);
+    expect(host.querySelector('[role="status"]')).toHaveTextContent(
+      "Loading drives",
+    );
+    expect(
+      host.querySelector('[role="status"] [aria-hidden="true"]')?.children,
+    ).toHaveLength(3);
     expect(host).not.toHaveTextContent("No accessible drives");
   });
 
@@ -130,7 +165,9 @@ describe("sidebar subscriptions", () => {
     DRIVES_READ.mockReturnValueOnce(retry.promise);
     flushSync(() => root.render(wrap(<WikiSidebar />)));
     await vi.waitFor(() =>
-      expect(host.querySelector('[role="alert"]')).toHaveTextContent("Failed to load drives"),
+      expect(host.querySelector('[role="alert"]')).toHaveTextContent(
+        "Failed to load drives",
+      ),
     );
     expect(host).not.toHaveTextContent("No accessible drives");
     const button = [...host.querySelectorAll("button")].find(
@@ -141,7 +178,9 @@ describe("sidebar subscriptions", () => {
     await vi.waitFor(() => expect(DRIVES_READ).toHaveBeenCalledTimes(2));
     expect(host).not.toHaveTextContent("No accessible drives");
     retry.resolve([]);
-    await vi.waitFor(() => expect(host).toHaveTextContent("No accessible drives"));
+    await vi.waitFor(() =>
+      expect(host).toHaveTextContent("No accessible drives"),
+    );
     expect(host).not.toHaveTextContent("Failed to load drives");
   });
 
@@ -155,7 +194,9 @@ describe("sidebar subscriptions", () => {
     expect(host.querySelectorAll("[data-drive-id]")).toHaveLength(20);
     retry.resolve([]);
     await refresh;
-    await vi.waitFor(() => expect(host).toHaveTextContent("No accessible drives"));
+    await vi.waitFor(() =>
+      expect(host).toHaveTextContent("No accessible drives"),
+    );
   });
 
   it("renders 500 normal rows without repeating the sidebar pathname subscription", () => {

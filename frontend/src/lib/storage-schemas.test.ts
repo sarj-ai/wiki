@@ -50,11 +50,15 @@ describe("ZAUTH_ERROR_PARAM", () => {
 describe("ZPERSISTED_EXPANSION", () => {
   it("accepts a valid envelope and rejects malformed shapes", () => {
     expect(
-      PersistedExpansionSchema.safeParse({ state: { expanded: { f1: true } }, version: 0 }).success,
+      PersistedExpansionSchema.safeParse({
+        state: { expanded: { f1: true } },
+        version: 0,
+      }).success,
     ).toBe(true);
-    expect(PersistedExpansionSchema.safeParse({ state: { expanded: { f1: false } } }).success).toBe(
-      false,
-    );
+    expect(
+      PersistedExpansionSchema.safeParse({ state: { expanded: { f1: false } } })
+        .success,
+    ).toBe(false);
     expect(PersistedExpansionSchema.safeParse("nope").success).toBe(false);
   });
 });

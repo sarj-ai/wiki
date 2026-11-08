@@ -24,7 +24,11 @@ const template: DriveTemplate = {
 describe("smart create types", () => {
   it("switching modes replaces all incompatible mode state", () => {
     const aiState = {
-      mode: { description: "A launch brief", fileType: "presentation", kind: "ai" },
+      mode: {
+        description: "A launch brief",
+        fileType: "presentation",
+        kind: "ai",
+      },
       phase: "compose",
     } as const;
 

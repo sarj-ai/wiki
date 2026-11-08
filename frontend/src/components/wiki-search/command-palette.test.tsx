@@ -36,8 +36,12 @@ vi.mock("@/hooks/use-drive-search", () => ({
   },
   useDriveSearchSnippet: () => mocks.snippetQuery,
 }));
-vi.mock("@/lib/browser-user-context", () => ({ useBrowserUserId: () => "user-1" }));
-vi.mock("@/lib/wiki-read-api", () => ({ WIKI_READ_API: { getFile: mocks.getFile } }));
+vi.mock("@/lib/browser-user-context", () => ({
+  useBrowserUserId: () => "user-1",
+}));
+vi.mock("@/lib/wiki-read-api", () => ({
+  WIKI_READ_API: { getFile: mocks.getFile },
+}));
 
 import { CommandPalette } from "./command-palette";
 
@@ -54,7 +58,10 @@ const RESULT: DriveSearchResult = {
   shortcutTargetId: undefined,
   shortcutTargetMimeType: undefined,
 };
-const ORIGINAL_CONNECTION = Object.getOwnPropertyDescriptor(navigator, "connection");
+const ORIGINAL_CONNECTION = Object.getOwnPropertyDescriptor(
+  navigator,
+  "connection",
+);
 
 describe("CommandPalette rate-limit errors", () => {
   let host: HTMLDivElement;
@@ -78,7 +85,8 @@ describe("CommandPalette rate-limit errors", () => {
     flushSync(() => root.unmount());
     host.remove();
     vi.restoreAllMocks();
-    if (ORIGINAL_CONNECTION) Object.defineProperty(navigator, "connection", ORIGINAL_CONNECTION);
+    if (ORIGINAL_CONNECTION)
+      Object.defineProperty(navigator, "connection", ORIGINAL_CONNECTION);
     else Reflect.deleteProperty(navigator, "connection");
   });
 
@@ -92,7 +100,9 @@ describe("CommandPalette rate-limit errors", () => {
     renderPalette(root);
     await enterSearchQuery();
 
-    expect(document.body).toHaveTextContent("Too many requests. Try again in a minute.");
+    expect(document.body).toHaveTextContent(
+      "Too many requests. Try again in a minute.",
+    );
     expect(document.body).not.toHaveTextContent("No results");
 
     clickButton("Retry search");
@@ -122,8 +132,12 @@ describe("CommandPalette rate-limit errors", () => {
     renderPalette(root);
     await enterSearchQuery();
 
-    expect(document.body).toHaveTextContent("Too many requests. Try again in a minute.");
-    expect(document.body).not.toHaveTextContent("couldn't pinpoint the exact phrase");
+    expect(document.body).toHaveTextContent(
+      "Too many requests. Try again in a minute.",
+    );
+    expect(document.body).not.toHaveTextContent(
+      "couldn't pinpoint the exact phrase",
+    );
 
     clickButton("Retry preview");
     expect(refetch).toHaveBeenCalledOnce();
@@ -168,10 +182,14 @@ describe("CommandPalette rate-limit errors", () => {
       });
       expect(mocks.getFile).not.toHaveBeenCalled();
       expect(mocks.routerPrefetch).not.toHaveBeenCalled();
-      const input = document.body.querySelector<HTMLInputElement>('[aria-label="Search Drive"]');
+      const input = document.body.querySelector<HTMLInputElement>(
+        '[aria-label="Search Drive"]',
+      );
       if (!input) throw new Error("Search input not found");
       flushSync(() =>
-        input.dispatchEvent(new KeyboardEvent("keydown", { bubbles: true, key: "Enter" })),
+        input.dispatchEvent(
+          new KeyboardEvent("keydown", { bubbles: true, key: "Enter" }),
+        ),
       );
       await vi.waitFor(() => expect(mocks.getFile).toHaveBeenCalledOnce());
       expect(mocks.routerPush).toHaveBeenCalledWith("/d/file-1");
@@ -179,7 +197,9 @@ describe("CommandPalette rate-limit errors", () => {
   );
 });
 
-function queryState(overrides: Record<string, unknown> = {}): Record<string, unknown> {
+function queryState(
+  overrides: Record<string, unknown> = {},
+): Record<string, unknown> {
   return {
     data: undefined,
     error: null,
@@ -194,7 +214,9 @@ function queryState(overrides: Record<string, unknown> = {}): Record<string, unk
 }
 
 function renderPalette(root: Root): void {
-  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  const queryClient = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  });
   flushSync(() => {
     root.render(
       <QueryClientProvider client={queryClient}>
@@ -205,7 +227,9 @@ function renderPalette(root: Root): void {
 }
 
 async function enterSearchQuery(): Promise<void> {
-  const input = document.body.querySelector<HTMLInputElement>('[aria-label="Search Drive"]');
+  const input = document.body.querySelector<HTMLInputElement>(
+    '[aria-label="Search Drive"]',
+  );
   if (input === null) throw new Error("Search input not found");
   flushSync(() => {
     const setValue = Object.getOwnPropertyDescriptor(
@@ -225,9 +249,9 @@ function clickButton(text: string): void {
 }
 
 function findButton(text: string): HTMLButtonElement {
-  const button = [...document.body.querySelectorAll<HTMLButtonElement>("button")].find(
-    (candidate) => candidate.textContent === text,
-  );
+  const button = [
+    ...document.body.querySelectorAll<HTMLButtonElement>("button"),
+  ].find((candidate) => candidate.textContent === text);
   if (button === undefined) throw new Error(`${text} button not found`);
   return button;
 }

@@ -35,11 +35,14 @@ async function get(request: Request, context: RouteContext): Promise<Response> {
   }
 
   try {
-    const upstream = await fetchBackend(`${API_URL}/files/${encodeURIComponent(fileId)}/content`, {
-      cache: "no-store",
-      headers: { Authorization: `Bearer ${token}` },
-      signal: AbortSignal.any([request.signal, AbortSignal.timeout(15_000)]),
-    });
+    const upstream = await fetchBackend(
+      `${API_URL}/files/${encodeURIComponent(fileId)}/content`,
+      {
+        cache: "no-store",
+        headers: { Authorization: `Bearer ${token}` },
+        signal: AbortSignal.any([request.signal, AbortSignal.timeout(15_000)]),
+      },
+    );
     if (!upstream.ok) {
       discardStream(upstream.body);
       return unavailable(upstream.status);

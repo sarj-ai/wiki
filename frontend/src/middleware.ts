@@ -25,13 +25,19 @@ const PREVIEW_HTML = `<!doctype html>
 </html>`;
 
 export default function middleware(request: NextRequest) {
-  if (request.cookies.has("access_token") || request.cookies.has("refresh_token")) {
+  if (
+    request.cookies.has("access_token") ||
+    request.cookies.has("refresh_token")
+  ) {
     const response = NextResponse.next();
     response.headers.set("cache-control", "private, no-store");
     return response;
   }
   const demoHref = demoHrefForDocumentPath(request.nextUrl.pathname);
-  if (demoHref !== null && (request.method === "GET" || request.method === "HEAD")) {
+  if (
+    demoHref !== null &&
+    (request.method === "GET" || request.method === "HEAD")
+  ) {
     const response = NextResponse.redirect(new URL(demoHref, request.url));
     response.headers.set("cache-control", "private, no-store");
     return response;
@@ -40,7 +46,8 @@ export default function middleware(request: NextRequest) {
     return new NextResponse(PREVIEW_HTML, {
       headers: {
         "cache-control": "private, no-store",
-        "content-security-policy": "default-src 'none'; img-src https://wiki.sarj.ai",
+        "content-security-policy":
+          "default-src 'none'; img-src https://wiki.sarj.ai",
         "content-type": "text/html; charset=utf-8",
         "x-content-type-options": "nosniff",
       },

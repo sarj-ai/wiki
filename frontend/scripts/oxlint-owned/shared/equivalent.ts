@@ -1,9 +1,18 @@
-import { AST_NODE_TYPES, TSESLint, type TSESTree } from "@typescript-eslint/utils";
+import type { ESTree as TSESTree, SourceCode } from "@oxlint/plugins";
 
-import { children, isNode, isObjectReference, readField, unwrap } from "./ast.ts";
+import type { Identifier } from "./ast.ts";
+import {
+  children,
+  isNode,
+  isObjectReference,
+  readField,
+  unwrap,
+} from "./ast.ts";
 import { definedWithin, type Variable, variable } from "./bindings.ts";
 
 const POSITION_FIELDS: ReadonlySet<string> = new Set([
+  "start",
+  "end",
   "parent",
   "loc",
   "range",
@@ -14,16 +23,18 @@ const POSITION_FIELDS: ReadonlySet<string> = new Set([
 export function equivalent(
   left: readonly TSESTree.Node[] | TSESTree.Node,
   right: readonly TSESTree.Node[] | TSESTree.Node,
-  source: TSESLint.SourceCode,
+  source: SourceCode,
   roots?: readonly [TSESTree.Node, TSESTree.Node],
 ): boolean {
   const variables = new Map<Variable, Variable>();
   const reverseVariables = new Map<Variable, Variable>();
-  type Scope = ReturnType<TSESLint.SourceCode["getScope"]>;
+  type Scope = ReturnType<SourceCode["getScope"]>;
   const scopes = new Map<Scope, Scope>();
   const reverseScopes = new Map<Scope, Scope>();
   const allowRenaming =
-    roots !== undefined && !dynamicNames(roots[0], source) && !dynamicNames(roots[1], source);
+    roots !== undefined &&
+    !dynamicNames(roots[0], source) &&
+    !dynamicNames(roots[1], source);
 
   if (roots !== undefined && !pairScope(roots[0], roots[1])) return false;
   return compare(left, right);
@@ -36,7 +47,8 @@ export function equivalent(
   }
 
   function compareArrays(a: unknown, b: unknown): boolean {
-    if (!Array.isArray(a) || !Array.isArray(b) || a.length !== b.length) return false;
+    if (!Array.isArray(a) || !Array.isArray(b) || a.length !== b.length)
+      return false;
     const aa: readonly unknown[] = a;
     const bb: readonly unknown[] = b;
     return aa.every((item, i) => compare(item, bb[i]));
@@ -44,29 +56,35 @@ export function equivalent(
 
   function compareNodes(a: unknown, b: unknown): boolean {
     if (!isNode(a) || !isNode(b)) return false;
-
     const aa = roots === undefined ? unwrap(a) : a;
     const bb = roots === undefined ? unwrap(b) : b;
     if (aa.type !== bb.type || !pairScope(aa, bb)) return false;
     if (
-      aa.type === AST_NODE_TYPES.Identifier &&
-      bb.type === AST_NODE_TYPES.Identifier &&
+      aa.type === "Identifier" &&
+      bb.type === "Identifier" &&
       !identifier(aa, bb)
     )
       return false;
     return compareProperties(aa, bb);
   }
 
-  function identifier(a: TSESTree.Identifier, b: TSESTree.Identifier): boolean {
+  function identifier(a: Identifier, b: Identifier): boolean {
     if (isPropertyName(a) || isPropertyName(b))
       return isPropertyName(a) && isPropertyName(b) && a.name === b.name;
     const va = variable(a, source);
     const vb = variable(b, source);
     if (va === null || vb === null) return va === vb && a.name === b.name;
     if (va === vb) return true;
-    if (roots === undefined || !definedWithin(va, roots[0]) || !definedWithin(vb, roots[1]))
+    if (
+      roots === undefined ||
+      !definedWithin(va, roots[0]) ||
+      !definedWithin(vb, roots[1])
+    )
       return false;
-    if ((!allowRenaming || inferredName(va) || inferredName(vb)) && va.name !== vb.name)
+    if (
+      (!allowRenaming || inferredName(va) || inferredName(vb)) &&
+      va.name !== vb.name
+    )
       return false;
     if (
       scopes.get(va.scope) !== vb.scope ||
@@ -94,14 +112,18 @@ export function equivalent(
       .toSorted();
     return (
       keysA.length === keysB.length &&
-      keysA.every((key, i) => key === keysB[i] && compare(readField(a, key), readField(b, key)))
+      keysA.every(
+        (key, i) =>
+          key === keysB[i] && compare(readField(a, key), readField(b, key)),
+      )
     );
   }
 
   function pairScope(a: TSESTree.Node, b: TSESTree.Node): boolean {
     const sa = source.getScope(a);
     const sb = source.getScope(b);
-    if (sa.block !== a || sb.block !== b) return sa.block !== a && sb.block !== b;
+    if (sa.block !== a || sb.block !== b)
+      return sa.block !== a && sb.block !== b;
     if (sa.type !== sb.type) return false;
     if (
       (scopes.has(sa) && scopes.get(sa) !== sb) ||
@@ -114,15 +136,15 @@ export function equivalent(
   }
 }
 
-function dynamicNames(root: TSESTree.Node, source: TSESLint.SourceCode): boolean {
+function dynamicNames(root: TSESTree.Node, source: SourceCode): boolean {
   const stack = [root];
   while (stack.length > 0) {
     const node = stack.pop();
     if (node === undefined) break;
-    const callee = node.type === AST_NODE_TYPES.CallExpression ? unwrap(node.callee) : null;
+    const callee = node.type === "CallExpression" ? unwrap(node.callee) : null;
     if (
-      node.type === AST_NODE_TYPES.WithStatement ||
-      (callee?.type === AST_NODE_TYPES.Identifier && callee.name === "eval")
+      node.type === "WithStatement" ||
+      (callee?.type === "Identifier" && callee.name === "eval")
     )
       return true;
     stack.push(...children(node, source));
@@ -130,20 +152,20 @@ function dynamicNames(root: TSESTree.Node, source: TSESLint.SourceCode): boolean
   return false;
 }
 
-function isPropertyName(node: TSESTree.Identifier): boolean {
+function isPropertyName(node: Identifier): boolean {
   const parent = node.parent;
   return (
-    ((parent.type === AST_NODE_TYPES.MemberExpression ||
-      parent.type === AST_NODE_TYPES.Property ||
-      parent.type === AST_NODE_TYPES.MethodDefinition ||
-      parent.type === AST_NODE_TYPES.PropertyDefinition) &&
+    ((parent.type === "MemberExpression" ||
+      parent.type === "Property" ||
+      parent.type === "MethodDefinition" ||
+      parent.type === "PropertyDefinition") &&
       !parent.computed &&
-      (parent.type === AST_NODE_TYPES.MemberExpression
+      (parent.type === "MemberExpression"
         ? parent.property === node
         : parent.key === node)) ||
-    parent.type === AST_NODE_TYPES.LabeledStatement ||
-    parent.type === AST_NODE_TYPES.BreakStatement ||
-    parent.type === AST_NODE_TYPES.ContinueStatement
+    parent.type === "LabeledStatement" ||
+    parent.type === "BreakStatement" ||
+    parent.type === "ContinueStatement"
   );
 }
 
@@ -151,11 +173,11 @@ function inferredName(binding: Variable): boolean {
   return (
     binding.defs.some(
       (definition) =>
-        definition.type === TSESLint.Scope.DefinitionType.FunctionName ||
-        definition.type === TSESLint.Scope.DefinitionType.ClassName ||
-        (definition.node.type === AST_NODE_TYPES.VariableDeclarator &&
+        definition.type === "FunctionName" ||
+        definition.type === "ClassName" ||
+        (definition.node.type === "VariableDeclarator" &&
           anonymousName(definition.node.init)) ||
-        (definition.name.type === AST_NODE_TYPES.Identifier && defaultName(definition.name)),
+        defaultName(definition.name),
     ) ||
     binding.references.some(
       (reference) =>
@@ -168,7 +190,7 @@ function inferredName(binding: Variable): boolean {
 function defaultName(node: TSESTree.Node): boolean {
   const parent = node.parent;
   return (
-    parent?.type === AST_NODE_TYPES.AssignmentPattern &&
+    parent?.type === "AssignmentPattern" &&
     parent.left === node &&
     anonymousName(parent.right)
   );
@@ -178,9 +200,9 @@ function anonymousName(node: null | TSESTree.Node | undefined): boolean {
   if (node === null || node === undefined) return false;
   const value = unwrap(node);
   return (
-    value.type === AST_NODE_TYPES.ArrowFunctionExpression ||
-    ((value.type === AST_NODE_TYPES.FunctionExpression ||
-      value.type === AST_NODE_TYPES.ClassExpression) &&
+    value.type === "ArrowFunctionExpression" ||
+    ((value.type === "FunctionExpression" ||
+      value.type === "ClassExpression") &&
       value.id === null)
   );
 }
@@ -189,7 +211,7 @@ function omitField(key: string, value: unknown): boolean {
   return (
     POSITION_FIELDS.has(key) ||
     (isNode(value) &&
-      ((value.type === AST_NODE_TYPES.Literal && key === "raw") ||
-        (value.type === AST_NODE_TYPES.Identifier && key === "name")))
+      ((value.type === "Literal" && key === "raw") ||
+        (value.type === "Identifier" && key === "name")))
   );
 }

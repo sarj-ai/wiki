@@ -6,6 +6,9 @@ export function sanitizeRedirectPath(path: string): Route {
 
 function isSafeRoute(path: string): path is Route {
   return (
-    path.startsWith("/") && !path.startsWith("//") && !path.includes("\\") && !path.includes("://")
+    path.startsWith("/") &&
+    !path.startsWith("//") &&
+    !path.includes("\\") &&
+    !path.includes("://")
   );
 }

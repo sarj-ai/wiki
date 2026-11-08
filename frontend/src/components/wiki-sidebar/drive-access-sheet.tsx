@@ -73,9 +73,20 @@ export function DriveAccessSheet({ drive }: { drive: DriveSummary }) {
   );
 }
 
-function DriveAccessContent({ drive, open }: { drive: DriveSummary; open: boolean }) {
-  const query = useDrivePermissions(drive.isPersonal ? null : drive.id, open && !drive.isPersonal);
-  const { count, generalAccess, people } = derivePermissions(query.data?.pages ?? []);
+function DriveAccessContent({
+  drive,
+  open,
+}: {
+  drive: DriveSummary;
+  open: boolean;
+}) {
+  const query = useDrivePermissions(
+    drive.isPersonal ? null : drive.id,
+    open && !drive.isPersonal,
+  );
+  const { count, generalAccess, people } = derivePermissions(
+    query.data?.pages ?? [],
+  );
 
   return (
     <>
@@ -142,7 +153,9 @@ function DriveAccessContent({ drive, open }: { drive: DriveSummary; open: boolea
                 type="button"
                 variant="outline"
               >
-                {query.isFetchingNextPage ? <Loader2 className="size-4 animate-spin" /> : null}
+                {query.isFetchingNextPage ? (
+                  <Loader2 className="size-4 animate-spin" />
+                ) : null}
                 {query.isFetchingNextPage ? "Loading…" : "Load more people"}
               </Button>
             ) : null}
@@ -153,7 +166,11 @@ function DriveAccessContent({ drive, open }: { drive: DriveSummary; open: boolea
       {!drive.isPersonal ? (
         <div className="border-t p-4">
           <Button asChild className="w-full" variant="outline">
-            <a href={folderUrlFor(drive.id)} rel="noopener noreferrer" target="_blank">
+            <a
+              href={folderUrlFor(drive.id)}
+              rel="noopener noreferrer"
+              target="_blank"
+            >
               <ExternalLink className="size-4" />
               Manage in Google Drive
             </a>
@@ -165,22 +182,35 @@ function DriveAccessContent({ drive, open }: { drive: DriveSummary; open: boolea
 }
 
 export function roleLabel(role: string): string {
-  return ROLE_LABELS[role] ?? role.replaceAll(/([a-z])([A-Z])/g, "$1 $2").toLowerCase();
+  return (
+    ROLE_LABELS[role] ??
+    role.replaceAll(/([a-z])([A-Z])/g, "$1 $2").toLowerCase()
+  );
 }
 
-function AccessSection({ children, label }: { children: React.ReactNode; label: string }) {
+function AccessSection({
+  children,
+  label,
+}: {
+  children: React.ReactNode;
+  label: string;
+}) {
   return (
     <section>
       <h3 className="text-muted-foreground mb-2 px-1 text-[11px] font-semibold tracking-wide uppercase">
         {label}
       </h3>
-      <div className="divide-border/70 divide-y rounded-lg border">{children}</div>
+      <div className="divide-border/70 divide-y rounded-lg border">
+        {children}
+      </div>
     </section>
   );
 }
 
 function PermissionRow({ permission }: { permission: DrivePermission }) {
-  const broad = permission.principalType === "domain" || permission.principalType === "anyone";
+  const broad =
+    permission.principalType === "domain" ||
+    permission.principalType === "anyone";
   return (
     <div className="flex min-h-14 items-center gap-3 px-3 py-2.5">
       <div
@@ -195,8 +225,12 @@ function PermissionRow({ permission }: { permission: DrivePermission }) {
         </div>
       </div>
       <div className="min-w-0 flex-1">
-        <div className="truncate text-sm font-medium">{principalName(permission)}</div>
-        <div className="text-muted-foreground truncate text-xs">{principalDetail(permission)}</div>
+        <div className="truncate text-sm font-medium">
+          {principalName(permission)}
+        </div>
+        <div className="text-muted-foreground truncate text-xs">
+          {principalDetail(permission)}
+        </div>
       </div>
       <div className="text-muted-foreground shrink-0 pl-2 text-xs font-medium">
         {roleLabel(permission.role)}
@@ -221,12 +255,16 @@ function PersonalDriveNotice({ driveId }: { driveId: string }) {
           Access varies by item
         </div>
         <p className="text-muted-foreground text-sm leading-relaxed">
-          My Drive has no single member list. Open a file or folder in Google Drive to see who can
-          access that item.
+          My Drive has no single member list. Open a file or folder in Google
+          Drive to see who can access that item.
         </p>
       </div>
       <Button asChild className="w-full" variant="outline">
-        <a href={folderUrlFor(driveId)} rel="noopener noreferrer" target="_blank">
+        <a
+          href={folderUrlFor(driveId)}
+          rel="noopener noreferrer"
+          target="_blank"
+        >
           <ExternalLink className="size-4" />
           Open My Drive
         </a>
@@ -255,11 +293,19 @@ function AccessSkeleton() {
 function AccessError({ onRetry }: { onRetry: () => void }) {
   return (
     <div className="border-destructive/30 bg-destructive/5 rounded-lg border p-4">
-      <p className="text-destructive text-sm font-medium">Couldn&apos;t load drive access</p>
+      <p className="text-destructive text-sm font-medium">
+        Couldn&apos;t load drive access
+      </p>
       <p className="text-muted-foreground mt-1 text-sm">
         Google Drive may not allow your role to view the member list.
       </p>
-      <Button className="mt-3" onClick={onRetry} size="sm" type="button" variant="outline">
+      <Button
+        className="mt-3"
+        onClick={onRetry}
+        size="sm"
+        type="button"
+        variant="outline"
+      >
         <RefreshCw className="size-3.5" />
         Retry
       </Button>
@@ -270,7 +316,8 @@ function AccessError({ onRetry }: { onRetry: () => void }) {
 export function derivePermissions(pages: readonly DrivePermissionsPage[]) {
   const byId = new Map<string, DrivePermission>();
   for (const page of pages) {
-    for (const permission of page.permissions) byId.set(permission.id, permission);
+    for (const permission of page.permissions)
+      byId.set(permission.id, permission);
   }
   const generalAccess: DrivePermission[] = [];
   const people: DrivePermission[] = [];
@@ -279,11 +326,16 @@ export function derivePermissions(pages: readonly DrivePermissionsPage[]) {
     if (type === "domain" || type === "anyone") generalAccess.push(permission);
     else people.push(permission);
   }
-  return { count: byId.size, generalAccess, people: people.toSorted(comparePermissions) };
+  return {
+    count: byId.size,
+    generalAccess,
+    people: people.toSorted(comparePermissions),
+  };
 }
 
 function comparePermissions(a: DrivePermission, b: DrivePermission): number {
-  const roleDifference = (ROLE_ORDER.get(a.role) ?? 99) - (ROLE_ORDER.get(b.role) ?? 99);
+  const roleDifference =
+    (ROLE_ORDER.get(a.role) ?? 99) - (ROLE_ORDER.get(b.role) ?? 99);
   if (roleDifference !== 0) return roleDifference;
   return principalName(a).localeCompare(principalName(b));
 }
@@ -294,14 +346,19 @@ function principalName(permission: DrivePermission): string {
   if (permission.emailAddress) return permission.emailAddress;
   if (permission.domain) return permission.domain;
   if (permission.principalType === "anyone") return "Anyone with the link";
-  return permission.principalType === "group" ? "Unknown group" : "Unknown user";
+  return permission.principalType === "group"
+    ? "Unknown group"
+    : "Unknown user";
 }
 
 function principalDetail(permission: DrivePermission): string {
   if (permission.pendingOwner) return "Ownership pending";
   if (permission.expirationTime)
     return `Expires ${new Date(permission.expirationTime).toLocaleDateString()}`;
-  if (permission.emailAddress && permission.emailAddress !== permission.displayName) {
+  if (
+    permission.emailAddress &&
+    permission.emailAddress !== permission.displayName
+  ) {
     return permission.emailAddress;
   }
   if (permission.principalType === "domain") {
@@ -310,9 +367,13 @@ function principalDetail(permission: DrivePermission): string {
       : "Domain access · link only";
   }
   if (permission.principalType === "anyone") {
-    return permission.allowFileDiscovery ? "Public on the web" : "Anyone with the link";
+    return permission.allowFileDiscovery
+      ? "Public on the web"
+      : "Anyone with the link";
   }
-  return permission.principalType === "group" ? "Google group" : "Google account";
+  return permission.principalType === "group"
+    ? "Google group"
+    : "Google account";
 }
 
 function permissionSummary(count: number): string {

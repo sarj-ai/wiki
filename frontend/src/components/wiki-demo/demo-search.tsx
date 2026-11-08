@@ -44,7 +44,9 @@ export function DemoSearch({
       <CommandList className="max-h-[min(400px,65dvh)]">
         <CommandEmpty>
           <p className="font-medium">No files found</p>
-          <p className="text-muted-foreground mt-1 text-xs">{DEMO_SEARCH_SUGGESTION}</p>
+          <p className="text-muted-foreground mt-1 text-xs">
+            {DEMO_SEARCH_SUGGESTION}
+          </p>
         </CommandEmpty>
         <CommandGroup heading={DEMO_WORKSPACE_NAME}>
           {DEMO_FILES.map((file) => (
@@ -59,7 +61,9 @@ export function DemoSearch({
                   {renderMimeIcon(file.mimeType, "size-4")}
                 </span>
                 <span className="min-w-0">
-                  <span className="block truncate font-medium">{file.name}</span>
+                  <span className="block truncate font-medium">
+                    {file.name}
+                  </span>
                   <span className="text-muted-foreground mt-0.5 block text-xs">
                     {file.description}
                   </span>

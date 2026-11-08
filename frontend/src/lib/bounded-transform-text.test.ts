@@ -47,20 +47,31 @@ it("decodes multibyte UTF-8 split across individual byte chunks", async () => {
 });
 
 it("ignores empty chunks between text fragments", async () => {
-  const body = streamOf([new Uint8Array(), new Uint8Array([97]), new Uint8Array()]);
+  const body = streamOf([
+    new Uint8Array(),
+    new Uint8Array([97]),
+    new Uint8Array(),
+  ]);
   await expect(boundedTransformText(body)).resolves.toBe("a");
   expect(body.locked).toBe(false);
 });
 
 it("accepts exactly the byte limit", async () => {
   const body = streamOf([new Uint8Array(BODY_LIMIT).fill(97)]);
-  await expect(boundedTransformText(body)).resolves.toBe("a".repeat(BODY_LIMIT));
+  await expect(boundedTransformText(body)).resolves.toBe(
+    "a".repeat(BODY_LIMIT),
+  );
   expect(body.locked).toBe(false);
 });
 
 it("rejects a cumulative body one byte over the limit", async () => {
-  const body = streamOf([new Uint8Array(BODY_LIMIT).fill(97), new Uint8Array([98])]);
-  await expect(boundedTransformText(body)).rejects.toThrow("Transform body exceeds the safe limit");
+  const body = streamOf([
+    new Uint8Array(BODY_LIMIT).fill(97),
+    new Uint8Array([98]),
+  ]);
+  await expect(boundedTransformText(body)).rejects.toThrow(
+    "Transform body exceeds the safe limit",
+  );
   expect(body.locked).toBe(false);
 });
 
@@ -86,19 +97,28 @@ it("preserves an upstream read failure and releases the reader", async () => {
 
 it.each([
   { name: "malformed", bytes: new Uint8Array([0xff]), error: TypeError },
-  { name: "oversized", bytes: new Uint8Array(BODY_LIMIT + 1), error: RangeError },
-])("cancels an open $name stream without masking its error", async ({ bytes, error }) => {
-  const cancel = vi.fn<() => Promise<void>>().mockRejectedValue(new Error("cleanup failed"));
-  const body = new ReadableStream<Uint8Array>({
-    cancel,
-    start(controller) {
-      controller.enqueue(bytes);
-    },
-  });
-  await expect(boundedTransformText(body)).rejects.toBeInstanceOf(error);
-  expect(cancel).toHaveBeenCalledOnce();
-  expect(body.locked).toBe(false);
-});
+  {
+    name: "oversized",
+    bytes: new Uint8Array(BODY_LIMIT + 1),
+    error: RangeError,
+  },
+])(
+  "cancels an open $name stream without masking its error",
+  async ({ bytes, error }) => {
+    const cancel = vi
+      .fn<() => Promise<void>>()
+      .mockRejectedValue(new Error("cleanup failed"));
+    const body = new ReadableStream<Uint8Array>({
+      cancel,
+      start(controller) {
+        controller.enqueue(bytes);
+      },
+    });
+    await expect(boundedTransformText(body)).rejects.toBeInstanceOf(error);
+    expect(cancel).toHaveBeenCalledOnce();
+    expect(body.locked).toBe(false);
+  },
+);
 
 it("does not take ownership of an already locked stream", async () => {
   const body = streamOf([]);

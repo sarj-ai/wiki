@@ -19,7 +19,11 @@ export const metadata: Metadata = {
     url: "https://wiki.sarj.ai/demo",
   },
   title: DEMO_TITLE,
-  twitter: { card: "summary", description: DEMO_DESCRIPTION, title: DEMO_TITLE },
+  twitter: {
+    card: "summary",
+    description: DEMO_DESCRIPTION,
+    title: DEMO_TITLE,
+  },
 };
 
 export default function DemoPage() {

@@ -23,10 +23,26 @@ const nunito = localFont({
   display: "swap",
   preload: false,
   src: [
-    { path: "../../public/fonts/Nunito-Regular.woff2", style: "normal", weight: "400" },
-    { path: "../../public/fonts/Nunito-Medium.woff2", style: "normal", weight: "500" },
-    { path: "../../public/fonts/Nunito-SemiBold.woff2", style: "normal", weight: "600" },
-    { path: "../../public/fonts/Nunito-Bold.woff2", style: "normal", weight: "700" },
+    {
+      path: "../../public/fonts/Nunito-Regular.woff2",
+      style: "normal",
+      weight: "400",
+    },
+    {
+      path: "../../public/fonts/Nunito-Medium.woff2",
+      style: "normal",
+      weight: "500",
+    },
+    {
+      path: "../../public/fonts/Nunito-SemiBold.woff2",
+      style: "normal",
+      weight: "600",
+    },
+    {
+      path: "../../public/fonts/Nunito-Bold.woff2",
+      style: "normal",
+      weight: "700",
+    },
   ],
   variable: "--font-nunito",
 });
@@ -67,7 +83,11 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html className={`${nunito.variable} ${GeistMono.variable}`} lang="en" suppressHydrationWarning>
+    <html
+      className={`${nunito.variable} ${GeistMono.variable}`}
+      lang="en"
+      suppressHydrationWarning
+    >
       <head>
         <link href="https://docs.google.com" rel="preconnect" />
         <link href="https://docs.google.com" rel="dns-prefetch" />

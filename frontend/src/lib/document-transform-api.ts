@@ -22,9 +22,18 @@ const FindingSeveritySchema = z.enum(["informational", "review"]);
 const AccessScopeSchema = z.enum(["inherited", "owner_only"]);
 const ArtifactKindSchema = z.enum(["document", "presentation"]);
 const ShortLinkStatusSchema = z.enum(["ready", "unavailable"]);
-const TaskStatusSchema = z.enum(["pending", "running", "succeeded", "failed", "cancelled"]);
+const TaskStatusSchema = z.enum([
+  "pending",
+  "running",
+  "succeeded",
+  "failed",
+  "cancelled",
+]);
 const UuidSchema = z.uuid();
-const AdmissionSchema = z.strictObject({ task_id: UuidSchema, status: TaskStatusSchema });
+const AdmissionSchema = z.strictObject({
+  task_id: UuidSchema,
+  status: TaskStatusSchema,
+});
 const CapabilitiesSchema = z.object({
   copy: z.literal(true),
   in_place: z.boolean(),
@@ -81,10 +90,14 @@ const ResultSchema = z
   .transform((result) => ({
     ...result,
     needs_review:
-      result.needs_review || result.findings.some((finding) => finding.severity === "review"),
+      result.needs_review ||
+      result.findings.some((finding) => finding.severity === "review"),
   }));
 const TaskSchema = z.discriminatedUnion("status", [
-  z.object({ id: UuidSchema, status: TaskStatusSchema.exclude(["failed", "succeeded"]) }),
+  z.object({
+    id: UuidSchema,
+    status: TaskStatusSchema.exclude(["failed", "succeeded"]),
+  }),
   z.object({
     error_code: z.string(),
     error_detail: z.string().nullable(),
@@ -92,7 +105,11 @@ const TaskSchema = z.discriminatedUnion("status", [
     status: z.literal("failed"),
     unverified_output: z.object({ file_id: z.string().min(1) }).nullish(),
   }),
-  z.object({ id: UuidSchema, result: ResultSchema, status: z.literal("succeeded") }),
+  z.object({
+    id: UuidSchema,
+    result: ResultSchema,
+    status: z.literal("succeeded"),
+  }),
 ]);
 const CurrentPolishSchema = z.object({ result: ResultSchema.nullable() });
 const UploadSchema = z.strictObject({
@@ -108,8 +125,10 @@ const DEFAULT_MAX_TASK_POLLS = 900;
 const MAX_TRANSIENT_POLL_FAILURES = 5;
 const REDACTED_TASK_FAILURE_DETAIL = "Task could not be completed";
 const TASK_FAILURE_FALLBACKS: Readonly<Record<string, string>> = {
-  google_auth_required: "Reconnect Google Drive, then start the document polish again.",
-  header_conflict: "Review the document header before applying Sarj branding again.",
+  google_auth_required:
+    "Reconnect Google Drive, then start the document polish again.",
+  header_conflict:
+    "Review the document header before applying Sarj branding again.",
   incompatible_pending_output:
     "An incomplete result from an earlier polish needs review before you try again.",
   in_place_not_allowed:
@@ -126,7 +145,9 @@ const TASK_FAILURE_FALLBACKS: Readonly<Record<string, string>> = {
 
 export const DOCUMENT_TRANSFORM_API = {
   uploadMarkdown: async (file: File): Promise<string> => {
-    const body = await runAction(async () => await transformHttp("/uploads", "{}"));
+    const body = await runAction(
+      async () => await transformHttp("/uploads", "{}"),
+    );
     const upload = UploadSchema.parse(JSON.parse(body));
     const response = await fetch(upload.url, {
       method: upload.method,
@@ -135,7 +156,10 @@ export const DOCUMENT_TRANSFORM_API = {
       signal: AbortSignal.timeout(60_000),
     });
     discardStream(response.body);
-    if (!response.ok) throw new Error("Markdown upload failed. Choose the file again to retry.");
+    if (!response.ok)
+      throw new Error(
+        "Markdown upload failed. Choose the file again to retry.",
+      );
     return upload.upload_id;
   },
   admission: async (key: string, signal?: AbortSignal) => {
@@ -159,7 +183,8 @@ export const DOCUMENT_TRANSFORM_API = {
   },
   capabilities: async (signal?: AbortSignal) => {
     const responseBody = await runAction(
-      async () => await transformHttp("/capabilities", undefined, undefined, signal),
+      async () =>
+        await transformHttp("/capabilities", undefined, undefined, signal),
       signal,
     );
     const capabilities = CapabilitiesSchema.parse(JSON.parse(responseBody));
@@ -171,7 +196,11 @@ export const DOCUMENT_TRANSFORM_API = {
     } as const;
   },
 
-  current: async (fileId: string, mode: "both" | "format" | "unslop", signal?: AbortSignal) => {
+  current: async (
+    fileId: string,
+    mode: "both" | "format" | "unslop",
+    signal?: AbortSignal,
+  ) => {
     const responseBody = await runAction(
       async () =>
         await transformHttp(
@@ -204,15 +233,25 @@ export const DOCUMENT_TRANSFORM_API = {
     );
     return {
       ...parseTask(TaskSchema.parse(JSON.parse(response.data))),
-      ...(!(response.replayed === undefined) && { replayed: response.replayed }),
+      ...(!(response.replayed === undefined) && {
+        replayed: response.replayed,
+      }),
     };
   },
 
-  getTask: async (taskId: string, signal?: AbortSignal): Promise<DocumentTransformTask> => {
+  getTask: async (
+    taskId: string,
+    signal?: AbortSignal,
+  ): Promise<DocumentTransformTask> => {
     signal?.throwIfAborted();
     const responseBody = await runAction(
       async () =>
-        await transformHttp(`/tasks/${encodeURIComponent(taskId)}`, undefined, undefined, signal),
+        await transformHttp(
+          `/tasks/${encodeURIComponent(taskId)}`,
+          undefined,
+          undefined,
+          signal,
+        ),
       signal,
     );
     signal?.throwIfAborted();
@@ -235,18 +274,25 @@ async function waitForTask(
   maxPolls: number,
 ): Promise<DocumentTransformResult> {
   const owner = captureBrowserSession();
-  const pollSignal = signal === undefined ? owner : AbortSignal.any([owner, signal]);
+  const pollSignal =
+    signal === undefined ? owner : AbortSignal.any([owner, signal]);
   let current = task;
   let transientFailures = 0;
   for (let poll = 0; ; poll += 1) {
     pollSignal.throwIfAborted();
     switch (current.status) {
       case "cancelled":
-        throw new DocumentTransformTerminalError("Document polish was cancelled", {
-          code: "cancelled",
-        });
+        throw new DocumentTransformTerminalError(
+          "Document polish was cancelled",
+          {
+            code: "cancelled",
+          },
+        );
       case "failed":
-        if (current.errorCode === "needs_review" && !current.unverifiedOutputId) {
+        if (
+          current.errorCode === "needs_review" &&
+          !current.unverifiedOutputId
+        ) {
           throw new DocumentTransformNeedsReviewError(
             taskFailureDetail(
               current.errorCode,
@@ -261,7 +307,10 @@ async function waitForTask(
             current.errorDetail,
             `Document polish failed (${current.errorCode})`,
           ),
-          { code: current.errorCode, unverifiedOutputId: current.unverifiedOutputId },
+          {
+            code: current.errorCode,
+            unverifiedOutputId: current.unverifiedOutputId,
+          },
         );
       case "succeeded":
         if (current.result.needsReview) {
@@ -277,21 +326,32 @@ async function waitForTask(
       case "pending":
       case "running":
         if (poll >= maxPolls) {
-          throw new Error("Document polish timed out; check its task status before retrying");
+          throw new Error(
+            "Document polish timed out; check its task status before retrying",
+          );
         }
         // eslint-disable-next-line no-await-in-loop -- Polling must wait before issuing the next status request.
         await abortableDelay(pollIntervalMs, pollSignal);
         try {
           // eslint-disable-next-line no-await-in-loop -- Each poll depends on the preceding task status.
-          current = await DOCUMENT_TRANSFORM_API.getTask(current.id, pollSignal);
+          current = await DOCUMENT_TRANSFORM_API.getTask(
+            current.id,
+            pollSignal,
+          );
           transientFailures = 0;
         } catch (error: unknown) {
-          if (!isTransientPollError(error) || transientFailures >= MAX_TRANSIENT_POLL_FAILURES) {
+          if (
+            !isTransientPollError(error) ||
+            transientFailures >= MAX_TRANSIENT_POLL_FAILURES
+          ) {
             throw error;
           }
           transientFailures += 1;
           // eslint-disable-next-line no-await-in-loop -- Backoff must finish before the next attempt.
-          await abortableDelay(pollIntervalMs * 2 ** transientFailures, pollSignal);
+          await abortableDelay(
+            pollIntervalMs * 2 ** transientFailures,
+            pollSignal,
+          );
         }
     }
   }
@@ -302,7 +362,8 @@ function taskFailureDetail(
   errorDetail: string | undefined,
   fallback: string,
 ): string {
-  if (errorDetail && errorDetail !== REDACTED_TASK_FAILURE_DETAIL) return errorDetail;
+  if (errorDetail && errorDetail !== REDACTED_TASK_FAILURE_DETAIL)
+    return errorDetail;
   return TASK_FAILURE_FALLBACKS[errorCode] ?? fallback;
 }
 
@@ -315,17 +376,27 @@ function parseTask(task: z.infer<typeof TaskSchema>): DocumentTransformTask {
     case "failed":
       return {
         errorCode: task.error_code,
-        ...(!(task.error_detail === null) && { errorDetail: task.error_detail }),
+        ...(!(task.error_detail === null) && {
+          errorDetail: task.error_detail,
+        }),
         id: task.id,
         status: "failed",
-        ...(!!task.unverified_output && { unverifiedOutputId: task.unverified_output.file_id }),
+        ...(!!task.unverified_output && {
+          unverifiedOutputId: task.unverified_output.file_id,
+        }),
       };
     case "succeeded":
-      return { id: task.id, result: parseResult(task.result), status: "succeeded" };
+      return {
+        id: task.id,
+        result: parseResult(task.result),
+        status: "succeeded",
+      };
   }
 }
 
-function parseResult(result: z.infer<typeof ResultSchema>): DocumentTransformResult {
+function parseResult(
+  result: z.infer<typeof ResultSchema>,
+): DocumentTransformResult {
   return {
     accessScope: result.access_scope,
     appliedPatchCount: result.applied_patch_count,
@@ -374,7 +445,9 @@ function parseResult(result: z.infer<typeof ResultSchema>): DocumentTransformRes
   };
 }
 
-function serializeSource(source: DocumentTransformSource): Record<string, string> {
+function serializeSource(
+  source: DocumentTransformSource,
+): Record<string, string> {
   return source.kind === "uploaded_markdown"
     ? {
         destination_folder_id: source.destinationFolderId,

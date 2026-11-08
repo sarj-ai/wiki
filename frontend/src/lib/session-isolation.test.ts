@@ -6,7 +6,9 @@ import { clearAuthenticatedSession } from "@/lib/session-isolation";
 
 describe("authenticated session cleanup", () => {
   it("prevents a late in-flight query from repopulating cleared metadata", async () => {
-    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
     const { promise: upstream, resolve: resolveQuery } = Promise.withResolvers<{
       id: string;
       name: string;
@@ -21,7 +23,9 @@ describe("authenticated session cleanup", () => {
     await expect(pending).rejects.toThrow("CancelledError");
     await Promise.resolve();
 
-    expect(queryClient.getQueryData(["wiki", "file", "private-file"])).toBeUndefined();
+    expect(
+      queryClient.getQueryData(["wiki", "file", "private-file"]),
+    ).toBeUndefined();
     expect(queryClient.getQueryCache().getAll()).toEqual([]);
   });
 });

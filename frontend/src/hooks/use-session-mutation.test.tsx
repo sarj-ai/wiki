@@ -2,7 +2,10 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { flushSync } from "react-dom";
 import { createRoot, type Root } from "react-dom/client";
 
-import { captureMutationSession, retireMutationSession } from "@/lib/mutation-session";
+import {
+  captureMutationSession,
+  retireMutationSession,
+} from "@/lib/mutation-session";
 
 import { useSessionMutation } from "./use-session-mutation";
 
@@ -19,7 +22,8 @@ describe("owned mutation public result and callbacks", () => {
   let client: QueryClient;
   let mutation: ReturnType<typeof useSessionMutation<number, Input, Context>>;
   const work = vi.fn<(input: Input) => Promise<number>>();
-  const success = vi.fn<(data: number, input: Input, result: Context) => void>();
+  const success =
+    vi.fn<(data: number, input: Input, result: Context) => void>();
   const settled = vi.fn();
 
   function Probe() {
@@ -34,7 +38,9 @@ describe("owned mutation public result and callbacks", () => {
 
   beforeEach(() => {
     vi.useFakeTimers();
-    client = new QueryClient({ defaultOptions: { mutations: { gcTime: Infinity, retry: false } } });
+    client = new QueryClient({
+      defaultOptions: { mutations: { gcTime: Infinity, retry: false } },
+    });
     work.mockReset();
     success.mockClear();
     settled.mockClear();
@@ -64,7 +70,9 @@ describe("owned mutation public result and callbacks", () => {
     const input = { value: 6 };
     const onSuccess = vi.fn();
     const onSettled = vi.fn();
-    await expect(mutation.mutateAsync(input, { onSettled, onSuccess })).resolves.toBe(12);
+    await expect(
+      mutation.mutateAsync(input, { onSettled, onSuccess }),
+    ).resolves.toBe(12);
     await vi.advanceTimersByTimeAsync(0);
 
     expect(mutation.variables).toBe(input);
@@ -121,8 +129,11 @@ describe("owned mutation public result and callbacks", () => {
   it("converts a retired asynchronous admission error to quiet cancellation", async () => {
     render();
     const admission = Promise.withResolvers<undefined>();
-    client.getMutationCache().config.onMutate = async () => await admission.promise;
-    const operation = mutation.mutateAsync({ value: 4 }).catch((error: unknown) => error);
+    client.getMutationCache().config.onMutate = async () =>
+      await admission.promise;
+    const operation = mutation
+      .mutateAsync({ value: 4 })
+      .catch((error: unknown) => error);
     retireMutationSession(client);
     admission.reject(new Error("Old admission failed"));
 

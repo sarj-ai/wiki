@@ -2,11 +2,21 @@
 
 import { useEffect } from "react";
 import { create, type StateCreator } from "zustand";
-import { persist, type PersistStorage, type StorageValue } from "zustand/middleware";
+import {
+  persist,
+  type PersistStorage,
+  type StorageValue,
+} from "zustand/middleware";
 
-import { expandedDrivesStorageKey, expandedFoldersStorageKey } from "@/lib/browser-storage";
+import {
+  expandedDrivesStorageKey,
+  expandedFoldersStorageKey,
+} from "@/lib/browser-storage";
 import { useBrowserUserId } from "@/lib/browser-user-context";
-import { PersistedDriveExpansionSchema, PersistedExpansionSchema } from "@/lib/storage-schemas";
+import {
+  PersistedDriveExpansionSchema,
+  PersistedExpansionSchema,
+} from "@/lib/storage-schemas";
 
 interface FolderExpansionState {
   expanded: Record<string, true>;
@@ -20,7 +30,10 @@ interface DriveExpansionState {
   setExpanded: (id: string, next: boolean) => void;
 }
 
-type PersistedDriveExpansionState = Pick<DriveExpansionState, "expanded" | "initialized">;
+type PersistedDriveExpansionState = Pick<
+  DriveExpansionState,
+  "expanded" | "initialized"
+>;
 
 const DRIVE_EXPANSION_VERSION = 1;
 
@@ -53,10 +66,14 @@ const driveInitializer: StateCreator<DriveExpansionState> = (set, get) => ({
   initialized: false,
   setExpanded: (id: string, next: boolean) => {
     const previous = get();
-    if (previous.initialized && (previous.expanded[id] === true) === next) return;
+    if (previous.initialized && (previous.expanded[id] === true) === next)
+      return;
     set((state) => {
       if (next) {
-        return { expanded: { ...state.expanded, [id]: true }, initialized: true };
+        return {
+          expanded: { ...state.expanded, [id]: true },
+          initialized: true,
+        };
       }
       const { [id]: _removed, ...rest } = state.expanded;
       return { expanded: rest, initialized: true };
@@ -85,12 +102,15 @@ function createFolderStore(userId: null | string) {
 function createDriveStore(userId: null | string) {
   if (!userId) return create<DriveExpansionState>()(driveInitializer);
   return create<DriveExpansionState>()(
-    persist<DriveExpansionState, [], [], PersistedDriveExpansionState>(driveInitializer, {
-      name: expandedDrivesStorageKey(userId),
-      partialize: ({ expanded, initialized }) => ({ expanded, initialized }),
-      storage: driveExpansionStorage(),
-      version: DRIVE_EXPANSION_VERSION,
-    }),
+    persist<DriveExpansionState, [], [], PersistedDriveExpansionState>(
+      driveInitializer,
+      {
+        name: expandedDrivesStorageKey(userId),
+        partialize: ({ expanded, initialized }) => ({ expanded, initialized }),
+        storage: driveExpansionStorage(),
+        version: DRIVE_EXPANSION_VERSION,
+      },
+    ),
   );
 }
 
@@ -114,7 +134,9 @@ function driveStore(userId: null | string) {
 
 let pendingReveal: null | string = null;
 
-export function useExpandedFolder(id: string): [boolean, (next: boolean) => void] {
+export function useExpandedFolder(
+  id: string,
+): [boolean, (next: boolean) => void] {
   const store = folderStore(useBrowserUserId());
   const expanded = store((s) => s.expanded[id] === true);
   const setter = (next: boolean) => {
@@ -138,16 +160,26 @@ export function useExpandedDrive(
   const setter = (next: boolean) => {
     setDriveExpanded(userId, id, next);
   };
-  return [resolveDriveExpanded({ expanded, initialized }, defaultExpanded), setter];
+  return [
+    resolveDriveExpanded({ expanded, initialized }, defaultExpanded),
+    setter,
+  ];
 }
 
-export function initializeDefaultExpandedDrive(userId: null | string, driveId: string): void {
+export function initializeDefaultExpandedDrive(
+  userId: null | string,
+  driveId: string,
+): void {
   const state = driveStore(userId).getState();
   if (state.initialized) return;
   state.setExpanded(driveId, true);
 }
 
-export function setDriveExpanded(userId: null | string, driveId: string, expanded: boolean): void {
+export function setDriveExpanded(
+  userId: null | string,
+  driveId: string,
+  expanded: boolean,
+): void {
   driveStore(userId).getState().setExpanded(driveId, expanded);
 }
 
@@ -182,13 +214,18 @@ export function resetExpansionState(userId: null | string): void {
   pendingReveal = null;
 }
 
-function driveExpansionStorage(): PersistStorage<PersistedDriveExpansionState, void> {
+function driveExpansionStorage(): PersistStorage<
+  PersistedDriveExpansionState,
+  void
+> {
   return {
     getItem: (name) => {
       if (typeof window === "undefined") return null;
       const raw = window.localStorage.getItem(name);
       if (!raw) return null;
-      const validated = PersistedDriveExpansionSchema.safeParse(parseJsonOrNull(raw));
+      const validated = PersistedDriveExpansionSchema.safeParse(
+        parseJsonOrNull(raw),
+      );
       if (!validated.success) return null;
       return {
         state: {
@@ -231,7 +268,10 @@ function validatedStorage<S>(
       const parsed = parseJsonOrNull(raw);
       const validated = PersistedExpansionSchema.safeParse(parsed);
       if (!validated.success) return null;
-      return toValue(validated.data.state[stateKey] ?? {}, validated.data.version);
+      return toValue(
+        validated.data.state[stateKey] ?? {},
+        validated.data.version,
+      );
     },
     removeItem: (name: string) => {
       if (typeof window === "undefined") return;

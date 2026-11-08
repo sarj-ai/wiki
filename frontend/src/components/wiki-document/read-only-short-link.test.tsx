@@ -29,35 +29,46 @@ describe("ReadOnlyShortLink", () => {
   });
 
   it("shows and copies an existing alias without mutation controls", async () => {
-    vi.mocked(WIKI_READ_API.getDocumentAlias).mockResolvedValue({ alias: "people-org-chart" });
-    const writeText = vi.spyOn(navigator.clipboard, "writeText").mockResolvedValue();
+    vi.mocked(WIKI_READ_API.getDocumentAlias).mockResolvedValue({
+      alias: "people-org-chart",
+    });
+    const writeText = vi
+      .spyOn(navigator.clipboard, "writeText")
+      .mockResolvedValue();
 
     renderReader(root);
 
     const copyButton = await findButton(container, "Copy short link");
     expect(copyButton).toHaveTextContent("go/people-org-chart");
-    expect(container).not.toHaveTextContent(/create|rename|remove|save changes/i);
+    expect(container).not.toHaveTextContent(
+      /create|rename|remove|save changes/i,
+    );
     expect(container.querySelector("input")).not.toBeInTheDocument();
 
     copyButton.click();
 
     await vi.waitFor(() => {
-      expect(writeText).toHaveBeenCalledWith("http://localhost:3000/go/people-org-chart");
+      expect(writeText).toHaveBeenCalledWith(
+        "http://localhost:3000/go/people-org-chart",
+      );
       expect(copyButton).toHaveAccessibleName("Short link copied");
     });
   });
 
   it("renders nothing when the document has no alias", async () => {
-    vi.mocked(WIKI_READ_API.getDocumentAlias).mockResolvedValue({ alias: undefined });
+    vi.mocked(WIKI_READ_API.getDocumentAlias).mockResolvedValue({
+      alias: undefined,
+    });
 
     const { queryClient } = renderReader(root);
 
     await vi.waitFor(() => {
-      expect(queryClient.getQueryState(["document-alias", "read-only-file"])?.status).toBe(
-        "success",
-      );
+      expect(
+        queryClient.getQueryState(["document-alias", "read-only-file"])?.status,
+      ).toBe("success");
     });
-    const [fileId, signal] = vi.mocked(WIKI_READ_API.getDocumentAlias).mock.calls[0] ?? [];
+    const [fileId, signal] =
+      vi.mocked(WIKI_READ_API.getDocumentAlias).mock.calls[0] ?? [];
     expect(fileId).toBe("read-only-file");
     expect(signal).toBeInstanceOf(AbortSignal);
     expect(container).toBeEmptyDOMElement();
@@ -79,11 +90,14 @@ function renderReader(root: Root): { queryClient: QueryClient } {
   return { queryClient };
 }
 
-async function findButton(container: HTMLElement, name: string): Promise<HTMLButtonElement> {
+async function findButton(
+  container: HTMLElement,
+  name: string,
+): Promise<HTMLButtonElement> {
   return vi.waitFor(() => {
-    const button = [...container.querySelectorAll<HTMLButtonElement>("button")].find(
-      (candidate) => candidate.getAttribute("aria-label") === name,
-    );
+    const button = [
+      ...container.querySelectorAll<HTMLButtonElement>("button"),
+    ].find((candidate) => candidate.getAttribute("aria-label") === name);
     if (button === undefined) throw new Error(`Button not found: ${name}`);
     return button;
   });

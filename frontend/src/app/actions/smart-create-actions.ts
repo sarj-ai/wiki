@@ -18,7 +18,10 @@ const CONFIG = {
     binding: "SMART_PROPOSAL_RATE_LIMITER",
     upstreamPath: "/files/smart-proposal",
   },
-} as const satisfies Record<SmartOperation, { binding: keyof CloudflareEnv; upstreamPath: string }>;
+} as const satisfies Record<
+  SmartOperation,
+  { binding: keyof CloudflareEnv; upstreamPath: string }
+>;
 
 export async function createSmartFileAction(
   body: string,
@@ -31,14 +34,28 @@ export async function createDocumentTransformAction(
   body: string,
   idempotencyKey: string,
 ): Promise<ActionResult<string>> {
-  return runSmartOperation("create", body, idempotencyKey, "/document-transforms");
+  return runSmartOperation(
+    "create",
+    body,
+    idempotencyKey,
+    "/document-transforms",
+  );
 }
 
-export async function createDocumentTransformUploadAction(): Promise<ActionResult<string>> {
-  return runSmartOperation("create", "{}", undefined, "/document-transforms/uploads");
+export async function createDocumentTransformUploadAction(): Promise<
+  ActionResult<string>
+> {
+  return runSmartOperation(
+    "create",
+    "{}",
+    undefined,
+    "/document-transforms/uploads",
+  );
 }
 
-export async function proposeSmartFileAction(body: string): Promise<ActionResult<string>> {
+export async function proposeSmartFileAction(
+  body: string,
+): Promise<ActionResult<string>> {
   return runSmartOperation("proposal", body);
 }
 
@@ -101,6 +118,10 @@ async function runSmartOperation(
   };
 }
 
-function failure(status: number, error: string, code?: ActionErrorCode): ActionResult<never> {
+function failure(
+  status: number,
+  error: string,
+  code?: ActionErrorCode,
+): ActionResult<never> {
   return { ...(!(code === undefined) && { code }), error, ok: false, status };
 }

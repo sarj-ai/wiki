@@ -52,7 +52,10 @@ describe("QuickLinks", () => {
 
     expect(host).toHaveTextContent("Launch Plan");
     expect(host).not.toHaveTextContent("Team Handbook");
-    expect(host.querySelector("a")).toHaveAttribute("href", "/d/file-launch?go=launch-plan");
+    expect(host.querySelector("a")).toHaveAttribute(
+      "href",
+      "/d/file-launch?go=launch-plan",
+    );
   });
 
   it("reuses case normalization across typing and refreshes it when accessible aliases change", () => {
@@ -63,10 +66,19 @@ describe("QuickLinks", () => {
     const normalize = vi.spyOn(String.prototype, "toLocaleLowerCase");
     render(root, <QuickLinks aliases={aliases} />);
     const input = getSearchInput(host);
-    for (const query of ["pro", "produ", "product", "launch", "hand", "handbook"]) {
+    for (const query of [
+      "pro",
+      "produ",
+      "product",
+      "launch",
+      "hand",
+      "handbook",
+    ]) {
       typeInto(input, query);
     }
-    const fieldCalls = normalize.mock.contexts.filter((value) => fields.has(String(value)));
+    const fieldCalls = normalize.mock.contexts.filter((value) =>
+      fields.has(String(value)),
+    );
     expect(fieldCalls).toHaveLength(6);
     expect(host).toHaveTextContent("Team Handbook");
     expect(host).not.toHaveTextContent("Launch Plan");
@@ -87,19 +99,23 @@ describe("QuickLinks", () => {
   });
 
   it("supports arrow-key selection and Enter to open", () => {
-    const click = vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => null);
+    const click = vi
+      .spyOn(HTMLAnchorElement.prototype, "click")
+      .mockImplementation(() => null);
     render(root, <QuickLinks aliases={RECENT_ALIASES} />);
     const input = getSearchInput(host);
 
     keyDown(input, "ArrowDown");
-    expect(host.querySelector('a[href="/d/file-launch?go=launch-plan"]')).toHaveAttribute(
-      "aria-selected",
-      "true",
-    );
+    expect(
+      host.querySelector('a[href="/d/file-launch?go=launch-plan"]'),
+    ).toHaveAttribute("aria-selected", "true");
     keyDown(input, "Enter");
 
     expect(click).toHaveBeenCalledOnce();
-    expect(click.mock.instances[0]).toHaveAttribute("href", "/d/file-launch?go=launch-plan");
+    expect(click.mock.instances[0]).toHaveAttribute(
+      "href",
+      "/d/file-launch?go=launch-plan",
+    );
   });
 
   it("focuses search with the global slash shortcut", () => {
@@ -107,14 +123,17 @@ describe("QuickLinks", () => {
     const input = getSearchInput(host);
     input.blur();
 
-    window.dispatchEvent(new KeyboardEvent("keydown", { bubbles: true, key: "/" }));
+    window.dispatchEvent(
+      new KeyboardEvent("keydown", { bubbles: true, key: "/" }),
+    );
 
     expect(input).toHaveFocus();
   });
 
   it("keeps mobile results as full-row links with page, drive, and alias visible", () => {
     const firstAlias = RECENT_ALIASES[0];
-    if (firstAlias === undefined) throw new Error("Recent alias fixture missing");
+    if (firstAlias === undefined)
+      throw new Error("Recent alias fixture missing");
     render(root, <QuickLinks aliases={[firstAlias]} />);
 
     const link = host.querySelector("a");
@@ -150,14 +169,19 @@ function render(root: Root, element: React.ReactNode) {
 }
 
 function getSearchInput(host: HTMLElement): HTMLInputElement {
-  const input = host.querySelector<HTMLInputElement>('input[aria-label="Search quick links"]');
+  const input = host.querySelector<HTMLInputElement>(
+    'input[aria-label="Search quick links"]',
+  );
   if (input === null) throw new Error("Search input not found");
   return input;
 }
 
 function typeInto(input: HTMLInputElement, value: string) {
-  // eslint-disable-next-line @typescript-eslint/unbound-method -- The native setter is rebound immediately.
-  const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set;
+  // eslint-disable-next-line typescript/unbound-method -- The native setter is rebound immediately.
+  const setter = Object.getOwnPropertyDescriptor(
+    HTMLInputElement.prototype,
+    "value",
+  )?.set;
   if (setter === undefined) throw new Error("Input value setter not found");
   flushSync(() => {
     setter.call(input, value);

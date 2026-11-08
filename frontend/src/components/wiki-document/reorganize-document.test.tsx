@@ -13,7 +13,9 @@ const MutationMock = vi.hoisted(() => ({
 vi.mock("@/hooks/use-wiki-mutations", () => ({
   useMoveFile: () => MutationMock,
 }));
-vi.mock("@/lib/reorganize-client", () => ({ proposeFileReorganization: vi.fn() }));
+vi.mock("@/lib/reorganize-client", () => ({
+  proposeFileReorganization: vi.fn(),
+}));
 
 describe("ReorganizeDocument", () => {
   let host: HTMLDivElement;
@@ -88,9 +90,9 @@ function click(button: HTMLButtonElement) {
 }
 
 function findButton(text: string): HTMLButtonElement {
-  const button = [...document.body.querySelectorAll<HTMLButtonElement>("button")].find(
-    (candidate) => candidate.textContent.includes(text),
-  );
+  const button = [
+    ...document.body.querySelectorAll<HTMLButtonElement>("button"),
+  ].find((candidate) => candidate.textContent.includes(text));
   if (button === undefined) throw new Error(`Button not found: ${text}`);
   return button;
 }

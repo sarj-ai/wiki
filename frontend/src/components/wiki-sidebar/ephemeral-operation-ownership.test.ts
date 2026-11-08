@@ -16,7 +16,8 @@ describe("ephemeral sidebar operation leases", () => {
     const store = useInFlightMovesStore.getState();
     const oldOwner = store.start("shared-file", old.signal);
     const currentOwner = store.start("shared-file", current.signal);
-    if (oldOwner === null || currentOwner === null) throw new Error("Expected current move leases");
+    if (oldOwner === null || currentOwner === null)
+      throw new Error("Expected current move leases");
 
     expect(oldRemove).toHaveBeenCalledOnce();
     store.end("shared-file", oldOwner);
@@ -70,7 +71,8 @@ describe("ephemeral sidebar operation leases", () => {
     const add = vi.spyOn(session.signal, "addEventListener");
     const remove = vi.spyOn(session.signal, "removeEventListener");
     const store = useInFlightMovesStore.getState();
-    for (let index = 0; index < 1_000; index++) store.start(`file-${index}`, session.signal);
+    for (let index = 0; index < 1_000; index++)
+      store.start(`file-${index}`, session.signal);
     const published = vi.fn<() => void>();
     const release = useInFlightMovesStore.subscribe(published);
     session.abort();
@@ -87,15 +89,25 @@ describe("ephemeral sidebar operation leases", () => {
     const oldRemove = vi.spyOn(old.signal, "removeEventListener");
     const currentRemove = vi.spyOn(current.signal, "removeEventListener");
     const store = useDragOverStore.getState();
-    const oldOwner = store.setActive({ containerId: "parent:a", id: "old" }, old.signal);
+    const oldOwner = store.setActive(
+      { containerId: "parent:a", id: "old" },
+      old.signal,
+    );
     const currentOwner = store.setActive(
       { containerId: "parent:b", id: "current" },
       current.signal,
     );
-    if (oldOwner === null || currentOwner === null) throw new Error("Expected current drag leases");
+    if (oldOwner === null || currentOwner === null)
+      throw new Error("Expected current drag leases");
 
-    store.setOver({ containerId: "parent:b", id: "destination", intent: "into" }, currentOwner);
-    store.setOver({ containerId: "parent:a", id: "old-destination", intent: "above" }, oldOwner);
+    store.setOver(
+      { containerId: "parent:b", id: "destination", intent: "into" },
+      currentOwner,
+    );
+    store.setOver(
+      { containerId: "parent:a", id: "old-destination", intent: "above" },
+      oldOwner,
+    );
     store.reset(oldOwner);
     old.abort();
     expect(oldRemove).toHaveBeenCalledOnce();
@@ -106,8 +118,16 @@ describe("ephemeral sidebar operation leases", () => {
     expect(currentRemove).not.toHaveBeenCalled();
 
     current.abort();
-    expect(useDragOverStore.getState()).toMatchObject({ activeId: null, overId: null });
+    expect(useDragOverStore.getState()).toMatchObject({
+      activeId: null,
+      overId: null,
+    });
     expect(currentRemove).toHaveBeenCalledWith("abort", expect.any(Function));
-    expect(store.setActive({ containerId: "parent:b", id: "retired" }, current.signal)).toBeNull();
+    expect(
+      store.setActive(
+        { containerId: "parent:b", id: "retired" },
+        current.signal,
+      ),
+    ).toBeNull();
   });
 });

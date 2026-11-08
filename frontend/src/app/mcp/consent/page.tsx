@@ -23,7 +23,11 @@ export default async function ConsentPage({
   const parsed = ConsentIntentSchema.safeParse(intent);
   return (
     <main className="mx-auto flex min-h-dvh max-w-2xl flex-col items-center justify-center gap-8 px-4 py-10">
-      <Button asChild className="text-muted-foreground self-start px-0" variant="link">
+      <Button
+        asChild
+        className="text-muted-foreground self-start px-0"
+        variant="link"
+      >
         <Link href="/">Back to Wiki</Link>
       </Button>
       <SarjLogo className="text-primary" size={40} />
@@ -31,7 +35,9 @@ export default async function ConsentPage({
         <McpConsentLoader intent={parsed.data} key={parsed.data} />
       ) : (
         <section className="bg-card w-full space-y-3 rounded-xl border p-6">
-          <h1 className="text-xl font-semibold">Connection request unavailable</h1>
+          <h1 className="text-xl font-semibold">
+            Connection request unavailable
+          </h1>
           <p className="text-muted-foreground text-sm" role="alert">
             Invalid connection request. Start a new connection from your app.
           </p>

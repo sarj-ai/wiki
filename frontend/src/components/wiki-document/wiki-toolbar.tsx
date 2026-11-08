@@ -1,6 +1,13 @@
 "use client";
 
-import { Check, ChevronRight, Copy, ExternalLink, RefreshCw, Sparkles } from "lucide-react";
+import {
+  Check,
+  ChevronRight,
+  Copy,
+  ExternalLink,
+  RefreshCw,
+  Sparkles,
+} from "lucide-react";
 import { Fragment } from "react";
 import { toast } from "sonner";
 
@@ -14,7 +21,13 @@ import {
 } from "@/lib/file-icons";
 import { openUrlFor } from "@/lib/file-urls";
 import type { BreadcrumbItem } from "@/types/wiki";
-import { MIME_DOC, MIME_DOCX, MIME_MARKDOWN, MIME_PPTX, MIME_SLIDE } from "@/types/wiki";
+import {
+  MIME_DOC,
+  MIME_DOCX,
+  MIME_MARKDOWN,
+  MIME_PPTX,
+  MIME_SLIDE,
+} from "@/types/wiki";
 
 import { LazyDocumentPolishDialog } from "./lazy-document-polish-dialog";
 import { ReadOnlyShortLink } from "./read-only-short-link";
@@ -65,7 +78,8 @@ export function WikiToolbar({
       await navigator.clipboard.writeText(window.location.href);
       showCopied();
     })().catch((err: unknown) => {
-      const message = err instanceof Error ? err.message : "Failed to copy link";
+      const message =
+        err instanceof Error ? err.message : "Failed to copy link";
       toast.error(message);
     });
   };
@@ -117,7 +131,11 @@ export function WikiToolbar({
         type="button"
         variant="outline"
       >
-        {copied ? <Check className="size-3.5" /> : <Copy className="size-3.5" />}
+        {copied ? (
+          <Check className="size-3.5" />
+        ) : (
+          <Copy className="size-3.5" />
+        )}
         <span className="hidden @min-[40rem]/toolbar:inline">
           {copied ? "Copied" : "Copy link"}
         </span>
@@ -163,7 +181,9 @@ export function WikiToolbar({
                   refreshModifiedTime ??
                   (() =>
                     Promise.reject(
-                      new Error("Couldn’t verify the document’s latest revision. Please reload."),
+                      new Error(
+                        "Couldn’t verify the document’s latest revision. Please reload.",
+                      ),
                     )),
               }}
             />
@@ -183,7 +203,10 @@ export function WikiToolbar({
         ) : null
       ) : (
         <div className="size-6 shrink-0 @min-[40rem]/toolbar:w-24">
-          <span aria-hidden className="bg-muted block size-full animate-pulse rounded-md" />
+          <span
+            aria-hidden
+            className="bg-muted block size-full animate-pulse rounded-md"
+          />
         </div>
       )}
       <div className="size-6 shrink-0 @min-[40rem]/toolbar:w-24">
@@ -194,13 +217,23 @@ export function WikiToolbar({
             <ReadOnlyShortLink fileId={fileId} />
           )
         ) : (
-          <span aria-hidden className="bg-muted block size-full animate-pulse rounded-md" />
+          <span
+            aria-hidden
+            className="bg-muted block size-full animate-pulse rounded-md"
+          />
         )}
       </div>
       <Button asChild size="xs" variant="outline">
-        <a aria-label={openLabel} href={openUrl} rel="noopener noreferrer" target="_blank">
+        <a
+          aria-label={openLabel}
+          href={openUrl}
+          rel="noopener noreferrer"
+          target="_blank"
+        >
           <ExternalLink className="size-3.5" />
-          <span className="hidden @min-[48rem]/toolbar:inline">{openLabel}</span>
+          <span className="hidden @min-[48rem]/toolbar:inline">
+            {openLabel}
+          </span>
         </a>
       </Button>
     </header>

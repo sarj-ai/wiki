@@ -29,7 +29,10 @@ describe("server session bootstrap recovery", () => {
       getBootstrap: vi.fn().mockResolvedValue(bootstrap),
       getMe: vi.fn<() => Promise<UserProfile>>(),
     };
-    await expect(loadSessionBootstrap(api)).resolves.toEqual({ bootstrap, me: ME });
+    await expect(loadSessionBootstrap(api)).resolves.toEqual({
+      bootstrap,
+      me: ME,
+    });
     expect(api.getMe).not.toHaveBeenCalled();
   });
 
@@ -40,16 +43,26 @@ describe("server session bootstrap recovery", () => {
         .mockRejectedValue(new Error("Drive unavailable")),
       getMe: vi.fn().mockResolvedValue(ME),
     };
-    await expect(loadSessionBootstrap(api)).resolves.toEqual({ bootstrap: null, me: ME });
+    await expect(loadSessionBootstrap(api)).resolves.toEqual({
+      bootstrap: null,
+      me: ME,
+    });
     expect(api.getMe).toHaveBeenCalledOnce();
   });
 
   it("remains anonymous when fresh authentication also fails", async () => {
     const api = {
-      getBootstrap: vi.fn<() => Promise<Bootstrap>>().mockRejectedValue(new Error("Unauthorized")),
-      getMe: vi.fn<() => Promise<UserProfile>>().mockRejectedValue(new Error("Unauthorized")),
+      getBootstrap: vi
+        .fn<() => Promise<Bootstrap>>()
+        .mockRejectedValue(new Error("Unauthorized")),
+      getMe: vi
+        .fn<() => Promise<UserProfile>>()
+        .mockRejectedValue(new Error("Unauthorized")),
     };
-    await expect(loadSessionBootstrap(api)).resolves.toEqual({ bootstrap: null, me: null });
+    await expect(loadSessionBootstrap(api)).resolves.toEqual({
+      bootstrap: null,
+      me: null,
+    });
   });
 
   it("starts fresh identity recovery after the provider preload deadline", async () => {
@@ -91,7 +104,10 @@ describe("server session bootstrap recovery", () => {
       getMe: vi.fn().mockResolvedValue(ME),
     };
 
-    await expect(loadSessionBootstrap(api)).resolves.toEqual({ bootstrap: null, me: ME });
+    await expect(loadSessionBootstrap(api)).resolves.toEqual({
+      bootstrap: null,
+      me: ME,
+    });
     expect(api.getMe).toHaveBeenCalledOnce();
   });
 });
@@ -101,7 +117,9 @@ function mockAbortTimeout(): void {
   vi.spyOn(AbortSignal, "timeout").mockImplementation((milliseconds) => {
     const controller = new AbortController();
     setTimeout(() => {
-      controller.abort(new DOMException("The operation timed out", "TimeoutError"));
+      controller.abort(
+        new DOMException("The operation timed out", "TimeoutError"),
+      );
     }, milliseconds);
     return controller.signal;
   });

@@ -35,7 +35,9 @@ export function PreferencesDialog({
   const hiddenWorkspaceIds = prefsQuery.data?.hiddenWorkspaceIds ?? [];
   const hiddenSet = new Set(hiddenWorkspaceIds);
 
-  const updatePrefs = (payload: Parameters<typeof setPreferences.mutateAsync>[0]) => {
+  const updatePrefs = (
+    payload: Parameters<typeof setPreferences.mutateAsync>[0],
+  ) => {
     if (!hasPreferences) return;
     void runWithErrorToast(async () => {
       await setPreferences.mutateAsync(payload);
@@ -80,7 +82,9 @@ export function PreferencesDialog({
                 onClick={() => {
                   void prefsQuery
                     .refetch()
-                    .catch(() => console.warn("Preference retry could not finish"));
+                    .catch(() =>
+                      console.warn("Preference retry could not finish"),
+                    );
                 }}
                 size="sm"
                 type="button"
@@ -136,7 +140,11 @@ export function PreferencesDialog({
 
         <DialogFooter className="flex-row items-center border-t px-6 py-4">
           {setPreferences.isPending ? (
-            <p aria-live="polite" className="text-muted-foreground mr-auto text-xs" role="status">
+            <p
+              aria-live="polite"
+              className="text-muted-foreground mr-auto text-xs"
+              role="status"
+            >
               Saving preferences…
             </p>
           ) : null}
@@ -187,7 +195,9 @@ function CheckboxRow({
       />
       <div className="min-w-0 flex-1">
         <div className="font-medium wrap-anywhere">{label}</div>
-        {description ? <div className="text-muted-foreground text-xs">{description}</div> : null}
+        {description ? (
+          <div className="text-muted-foreground text-xs">{description}</div>
+        ) : null}
       </div>
     </label>
   );

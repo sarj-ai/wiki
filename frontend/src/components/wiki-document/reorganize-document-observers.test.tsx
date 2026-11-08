@@ -1,4 +1,8 @@
-import { MutationObserver, QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import {
+  MutationObserver,
+  QueryClient,
+  QueryClientProvider,
+} from "@tanstack/react-query";
 import { flushSync } from "react-dom";
 import { createRoot, type Root } from "react-dom/client";
 import { toast } from "sonner";
@@ -13,7 +17,9 @@ import { type FileResponse, MIME_DOC } from "@/types/wiki";
 import { ReorganizeDocument } from "./reorganize-document";
 
 vi.mock("@/app/actions/wiki-actions", () => ({ moveFileAction: vi.fn() }));
-vi.mock("@/lib/reorganize-client", () => ({ proposeFileReorganization: vi.fn() }));
+vi.mock("@/lib/reorganize-client", () => ({
+  proposeFileReorganization: vi.fn(),
+}));
 vi.mock("sonner", () => ({ toast: { error: vi.fn(), success: vi.fn() } }));
 
 const MOVED_FILE: FileResponse = {
@@ -30,16 +36,22 @@ describe("reorganization move observer admission", () => {
   let root: Root;
   let host: HTMLDivElement;
   let client: QueryClient;
-  let moved: ReturnType<typeof Promise.withResolvers<ActionResult<FileResponse>>>;
+  let moved: ReturnType<
+    typeof Promise.withResolvers<ActionResult<FileResponse>>
+  >;
 
   beforeEach(() => {
     host = document.createElement("div");
     document.body.append(host);
     root = createRoot(host);
-    client = new QueryClient({ defaultOptions: { mutations: { retry: false } } });
+    client = new QueryClient({
+      defaultOptions: { mutations: { retry: false } },
+    });
     moved = Promise.withResolvers<ActionResult<FileResponse>>();
     vi.mocked(moveFileAction).mockReset().mockReturnValue(moved.promise);
-    vi.mocked(proposeFileReorganization).mockReset().mockResolvedValue(proposalResult());
+    vi.mocked(proposeFileReorganization)
+      .mockReset()
+      .mockResolvedValue(proposalResult());
     vi.mocked(toast.success).mockClear();
     vi.mocked(toast.error).mockClear();
   });
@@ -92,7 +104,9 @@ describe("reorganization move observer admission", () => {
     render("file-2");
     moved.resolve({ data: MOVED_FILE, ok: true });
     await vi.waitFor(() =>
-      expect(client.getMutationCache().getAll()[0]?.state.status).toBe("success"),
+      expect(client.getMutationCache().getAll()[0]?.state.status).toBe(
+        "success",
+      ),
     );
     expect(toast.success).not.toHaveBeenCalled();
     expect(toast.error).not.toHaveBeenCalled();
@@ -120,9 +134,9 @@ describe("reorganization move observer admission", () => {
 });
 
 function findButton(text: string): HTMLButtonElement {
-  const button = [...document.body.querySelectorAll<HTMLButtonElement>("button")].find(
-    (candidate) => candidate.textContent.includes(text),
-  );
+  const button = [
+    ...document.body.querySelectorAll<HTMLButtonElement>("button"),
+  ].find((candidate) => candidate.textContent.includes(text));
   if (!button) throw new Error(`Button not found: ${text}`);
   return button;
 }

@@ -2,8 +2,7 @@
   "recommendations": [
     "charliermarsh.ruff",
     "detachhead.basedpyright",
-    "dbaeumer.vscode-eslint",
-    "esbenp.prettier-vscode",
+    "oxc.oxc-vscode",
     "editorconfig.editorconfig",
     "tamasfe.even-better-toml",
     "redhat.vscode-yaml",

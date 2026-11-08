@@ -6,7 +6,11 @@ import type { StateCreator } from "zustand";
 import { BrowserUserContext } from "@/lib/browser-user-context";
 import { installLocalStorage } from "@/test-stubs/install-local-storage";
 
-import { expandPath, resetExpansionState, useExpandedFolder } from "./use-expanded-folders";
+import {
+  expandPath,
+  resetExpansionState,
+  useExpandedFolder,
+} from "./use-expanded-folders";
 
 const METRICS = vi.hoisted(() => ({ active: 0, notifications: 0 }));
 
@@ -30,10 +34,10 @@ function instrument(initialize: StateCreator<unknown>): StateCreator<unknown> {
 
 vi.mock("zustand", async (importOriginal) => {
   const actual = await importOriginal<typeof Zustand>();
-  const create = (initialize?: StateCreator<unknown>) => {
-    const bound = (stateCreator: StateCreator<unknown>) => actual.create(instrument(stateCreator));
-    return initialize ? bound(initialize) : bound;
-  };
+  const bound = (stateCreator: StateCreator<unknown>) =>
+    actual.create(instrument(stateCreator));
+  const create = (initialize?: StateCreator<unknown>) =>
+    initialize ? bound(initialize) : bound;
   return { ...actual, create };
 });
 
@@ -81,13 +85,19 @@ describe("folder expansion subscriptions", () => {
     render();
     flushSync(() => expandPath("subscriptions-a", "drive", ["folder-0"]));
     expect(METRICS).toEqual({ active: 500, notifications: 500 });
-    expect(host.querySelector('[data-folder="folder-0"]')).toHaveTextContent("open");
-    expect(host.querySelector('[data-folder="folder-1"]')).toHaveTextContent("closed");
+    expect(host.querySelector('[data-folder="folder-0"]')).toHaveTextContent(
+      "open",
+    );
+    expect(host.querySelector('[data-folder="folder-1"]')).toHaveTextContent(
+      "closed",
+    );
     const notifications = METRICS.notifications;
     flushSync(() => setFirst(true));
     expect(METRICS.notifications).toBe(notifications);
     flushSync(() => setFirst(false));
-    expect(host.querySelector('[data-folder="folder-0"]')).toHaveTextContent("closed");
+    expect(host.querySelector('[data-folder="folder-0"]')).toHaveTextContent(
+      "closed",
+    );
     flushSync(() => root.unmount());
     expect(METRICS.active).toBe(0);
   });
@@ -97,10 +107,16 @@ describe("folder expansion subscriptions", () => {
     flushSync(() => setFirst(true));
     render("subscriptions-b");
     expect(METRICS.active).toBe(500);
-    expect(host.querySelector('[data-folder="folder-0"]')).toHaveTextContent("closed");
+    expect(host.querySelector('[data-folder="folder-0"]')).toHaveTextContent(
+      "closed",
+    );
     flushSync(() => setFirst(true));
-    expect(host.querySelector('[data-folder="folder-0"]')).toHaveTextContent("open");
+    expect(host.querySelector('[data-folder="folder-0"]')).toHaveTextContent(
+      "open",
+    );
     render();
-    expect(host.querySelector('[data-folder="folder-0"]')).toHaveTextContent("open");
+    expect(host.querySelector('[data-folder="folder-0"]')).toHaveTextContent(
+      "open",
+    );
   });
 });

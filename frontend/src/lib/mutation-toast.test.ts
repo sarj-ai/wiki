@@ -10,7 +10,9 @@ describe("mutation cancellation feedback", () => {
   it("quietly settles a retired mutation without evaluating its error formatter", async () => {
     const fallback = vi.fn(() => "Formatted error");
     await runWithErrorToast(async () => {
-      await Promise.reject(new DOMException("The mutation session was retired", "AbortError"));
+      await Promise.reject(
+        new DOMException("The mutation session was retired", "AbortError"),
+      );
     }, fallback);
     expect(toast.error).not.toHaveBeenCalled();
     expect(fallback).not.toHaveBeenCalled();

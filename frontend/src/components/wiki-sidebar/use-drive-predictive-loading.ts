@@ -1,11 +1,21 @@
 "use client";
 
 import { useQueryClient } from "@tanstack/react-query";
-import { type PointerEvent as ReactPointerEvent, useEffect, useRef } from "react";
+import {
+  type PointerEvent as ReactPointerEvent,
+  useEffect,
+  useRef,
+} from "react";
 
-import { driveTreeQueryOptions, folderFilesQueryOptions } from "@/hooks/use-wiki-tree";
+import {
+  driveTreeQueryOptions,
+  folderFilesQueryOptions,
+} from "@/hooks/use-wiki-tree";
 import { handlePrefetchError } from "@/lib/handle-prefetch-error";
-import { allowsReusableSpeculation, readNavigatorHints } from "@/lib/speculation-policy";
+import {
+  allowsReusableSpeculation,
+  readNavigatorHints,
+} from "@/lib/speculation-policy";
 
 export const DRIVE_PREFETCH_DELAY_MS = 150;
 
@@ -29,7 +39,8 @@ export function useDrivePredictiveLoading(driveId: string, expanded: boolean) {
 
   const prepare = async (strongIntent = false) => {
     const owner = ownerRef.current;
-    if (expanded || owner === null || (!strongIntent && !ownsSpeculation())) return;
+    if (expanded || owner === null || (!strongIntent && !ownsSpeculation()))
+      return;
     owner.strongIntent ||= strongIntent;
     if (owner.pending) return;
     owner.pending = true;
@@ -43,7 +54,9 @@ export function useDrivePredictiveLoading(driveId: string, expanded: boolean) {
         tree &&
         !tree.filesComplete
       ) {
-        await queryClient.query(folderFilesQueryOptions(driveId)).catch(handlePrefetchError);
+        await queryClient
+          .query(folderFilesQueryOptions(driveId))
+          .catch(handlePrefetchError);
       }
     } finally {
       owner.pending = false;
@@ -55,7 +68,8 @@ export function useDrivePredictiveLoading(driveId: string, expanded: boolean) {
     (focusedRef.current || hoveredRef.current) && allowsDriveSpeculation();
 
   const schedule = () => {
-    if (expanded || timerRef.current !== null || !allowsDriveSpeculation()) return;
+    if (expanded || timerRef.current !== null || !allowsDriveSpeculation())
+      return;
     timerRef.current = window.setTimeout(() => {
       timerRef.current = null;
       void prepare();
@@ -92,7 +106,13 @@ export function useDrivePredictiveLoading(driveId: string, expanded: boolean) {
       schedule();
     },
     onPointerDown: (event: ReactPointerEvent<HTMLButtonElement>) => {
-      if (event.button !== 0 || event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) {
+      if (
+        event.button !== 0 ||
+        event.altKey ||
+        event.ctrlKey ||
+        event.metaKey ||
+        event.shiftKey
+      ) {
         return;
       }
       cancelTimer();
@@ -114,5 +134,8 @@ export function useDrivePredictiveLoading(driveId: string, expanded: boolean) {
 function allowsDriveSpeculation(): boolean {
   if (document.visibilityState !== "visible") return false;
   const hints = readNavigatorHints(navigator);
-  return allowsReusableSpeculation(hints) && hints.connection?.effectiveType !== "slow-2g";
+  return (
+    allowsReusableSpeculation(hints) &&
+    hints.connection?.effectiveType !== "slow-2g"
+  );
 }

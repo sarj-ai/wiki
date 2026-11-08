@@ -27,7 +27,9 @@ it("purges legacy storage once at the browser session boundary", () => {
         </QueryProvider>,
       ),
     );
-    expect(remove.mock.calls.filter(([key]) => legacyKeys.has(key))).toHaveLength(4);
+    expect(
+      remove.mock.calls.filter(([key]) => legacyKeys.has(key)),
+    ).toHaveLength(4);
     for (const key of legacyKeys) expect(localStorage.getItem(key)).toBeNull();
   } finally {
     flushSync(() => root.unmount());

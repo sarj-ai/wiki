@@ -3,7 +3,9 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { GET } from "@/app/health/route";
 
 const releaseSha = "0123456789abcdef0123456789abcdef01234567";
-const releaseIdentity = vi.hoisted<{ value: string | undefined }>(() => ({ value: undefined }));
+const releaseIdentity = vi.hoisted<{ value: string | undefined }>(() => ({
+  value: undefined,
+}));
 
 vi.mock("@/lib/env", () => ({
   frontendReleaseSha: () => releaseIdentity.value,
@@ -22,7 +24,10 @@ describe("frontend release health", () => {
       }),
     );
 
-    await expect(response.json()).resolves.toEqual({ revision: releaseSha, status: "ok" });
+    await expect(response.json()).resolves.toEqual({
+      revision: releaseSha,
+      status: "ok",
+    });
     expect(response.status).toBe(200);
     expect(response.headers.get("cache-control")).toBe("private, no-store");
     expect(response.headers.get("content-type")).toContain("application/json");
@@ -44,7 +49,9 @@ describe("frontend release health", () => {
       releaseIdentity.value = releaseSha;
 
       const response = GET(
-        new Request("https://wiki.sarj.ai/health", { headers: { "X-Request-ID": requestId } }),
+        new Request("https://wiki.sarj.ai/health", {
+          headers: { "X-Request-ID": requestId },
+        }),
       );
       const generated = response.headers.get("x-request-id");
 

@@ -10,7 +10,9 @@ import type { Preferences } from "@/types/wiki";
 
 import { PreferencesDialog } from "./preferences-dialog";
 
-const ACTION = vi.hoisted(() => vi.fn<() => Promise<ActionResult<Preferences>>>());
+const ACTION = vi.hoisted(() =>
+  vi.fn<() => Promise<ActionResult<Preferences>>>(),
+);
 vi.mock("@/app/actions/wiki-actions", () => ({ setPreferencesAction: ACTION }));
 
 it("shows saving feedback for staged preferences without announcing success before confirmation", async () => {
@@ -21,7 +23,10 @@ it("shows saving feedback for staged preferences without announcing success befo
       mutations: { retry: false },
     },
   });
-  client.setQueryData(wikiKeys.preferences, { showNonDocFiles: true, hiddenWorkspaceIds: [] });
+  client.setQueryData(wikiKeys.preferences, {
+    showNonDocFiles: true,
+    hiddenWorkspaceIds: [],
+  });
   client.setQueryData(wikiKeys.drives, []);
   const container = document.createElement("div");
   document.body.append(container);
@@ -40,9 +45,14 @@ it("shows saving feedback for staged preferences without announcing success befo
     if (!checkbox) throw new Error("Preference checkbox missing");
     flushSync(() => checkbox.click());
     await vi.advanceTimersByTimeAsync(0);
-    expect(document.querySelector('[role="status"]')).toHaveTextContent("Saving preferences…");
+    expect(document.querySelector('[role="status"]')).toHaveTextContent(
+      "Saving preferences…",
+    );
     expect(checkbox).toHaveAttribute("aria-checked", "false");
-    pending.resolve({ ok: true, data: { showNonDocFiles: false, hiddenWorkspaceIds: [] } });
+    pending.resolve({
+      ok: true,
+      data: { showNonDocFiles: false, hiddenWorkspaceIds: [] },
+    });
     await vi.advanceTimersByTimeAsync(0);
     expect(document.querySelector('[role="status"]')).toBeNull();
   } finally {
@@ -60,7 +70,10 @@ it("keeps a focusable settings region and closes with Done without changing pref
   const client = new QueryClient({
     defaultOptions: { queries: { gcTime: Infinity, staleTime: Infinity } },
   });
-  client.setQueryData(wikiKeys.preferences, { showNonDocFiles: true, hiddenWorkspaceIds: [] });
+  client.setQueryData(wikiKeys.preferences, {
+    showNonDocFiles: true,
+    hiddenWorkspaceIds: [],
+  });
   client.setQueryData(
     wikiKeys.drives,
     Array.from({ length: 24 }, (_, index) => ({
@@ -87,7 +100,8 @@ it("keeps a focusable settings region and closes with Done without changing pref
     const settings = dialog?.querySelector<HTMLElement>(
       '[role="region"][aria-label="Preferences settings"]',
     );
-    if (!dialog || !settings) throw new Error("Focusable preferences settings missing");
+    if (!dialog || !settings)
+      throw new Error("Focusable preferences settings missing");
     expect(settings).toHaveTextContent("Fixture drive 23");
     settings.focus();
     expect(document.activeElement).toBe(settings);
@@ -117,6 +131,10 @@ function PreferencesCloseHarness({
 }) {
   const [open, setOpen] = useState(true);
   return (
-    <PreferencesDialog onCloseAutoFocus={onCloseAutoFocus} onOpenChange={setOpen} open={open} />
+    <PreferencesDialog
+      onCloseAutoFocus={onCloseAutoFocus}
+      onOpenChange={setOpen}
+      open={open}
+    />
   );
 }

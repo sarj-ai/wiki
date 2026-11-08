@@ -27,7 +27,12 @@ describe("WIKI_READ_API", () => {
     await expect(
       WIKI_READ_API.getRecentFiles(["file-1", "file-2"], controller.signal),
     ).resolves.toEqual([
-      { id: "file-1", name: "Updated plan", mimeType: "text/plain", driveName: "Engineering" },
+      {
+        id: "file-1",
+        name: "Updated plan",
+        mimeType: "text/plain",
+        driveName: "Engineering",
+      },
     ]);
     expect(fetchMock).toHaveBeenCalledOnce();
     expect(fetchMock.mock.calls[0]?.[0]).toBe(
@@ -71,7 +76,9 @@ describe("WIKI_READ_API", () => {
       WIKI_READ_API.driveSearch("launch & learn", 10, controller.signal),
     ).resolves.toEqual([]);
     const [url, options] = fetchMock.mock.calls[0] ?? [];
-    expect(url).toBe("/api/wiki/drive-search?q=launch+%26+learn&limit_per_drive=10");
+    expect(url).toBe(
+      "/api/wiki/drive-search?q=launch+%26+learn&limit_per_drive=10",
+    );
     expect(options?.signal).toBeInstanceOf(AbortSignal);
     controller.abort();
     expect(fetchMock.mock.calls[0]?.[1]?.signal?.aborted).toBe(true);
@@ -90,7 +97,11 @@ describe("WIKI_READ_API", () => {
     const sorts = WIKI_READ_API.listSortOrders();
     expect(fetchMock).toHaveBeenCalledTimes(3);
     for (const resolve of resolvers) resolve(Response.json([]));
-    await expect(Promise.all([drives, folders, sorts])).resolves.toEqual([[], [], []]);
+    await expect(Promise.all([drives, folders, sorts])).resolves.toEqual([
+      [],
+      [],
+      [],
+    ]);
   });
 
   it("rejects malformed successful responses", async () => {

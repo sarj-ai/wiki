@@ -61,18 +61,34 @@ function DemoWorkspaceContent() {
       >
         Skip to document
       </a>
-      <DemoSidebar file={file} onNavigate={closeMobile} onSearch={() => setSearchOpen(true)} />
+      <DemoSidebar
+        file={file}
+        onNavigate={closeMobile}
+        onSearch={() => setSearchOpen(true)}
+      />
       <WorkspaceFrame>
-        <div className="flex size-full min-h-0 flex-col" id="demo-document" tabIndex={-1}>
+        <div
+          className="flex size-full min-h-0 flex-col"
+          id="demo-document"
+          tabIndex={-1}
+        >
           <DemoToolbar file={file} key={file.id} onReload={reload} />
-          <DemoPreview file={file} key={`${file.id}:${reloadKey}`} onReload={reload} />
+          <DemoPreview
+            file={file}
+            key={`${file.id}:${reloadKey}`}
+            onReload={reload}
+          />
           <div className="bg-background text-muted-foreground flex h-7 shrink-0 items-center gap-1.5 border-t px-3 text-xs">
             <LockKeyhole aria-hidden className="size-3" />
             <span>Public demo · Read only</span>
           </div>
         </div>
       </WorkspaceFrame>
-      <DemoSearch onOpenChange={setSearchOpen} onSelect={selectFile} open={searchOpen} />
+      <DemoSearch
+        onOpenChange={setSearchOpen}
+        onSelect={selectFile}
+        open={searchOpen}
+      />
     </>
   );
 }

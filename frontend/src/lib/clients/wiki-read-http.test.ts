@@ -1,7 +1,14 @@
 import { z } from "zod";
 
-import { ApiError, RATE_LIMIT_MESSAGE, SESSION_REFRESH_UNAVAILABLE_MESSAGE } from "@/lib/api-error";
-import { claimBrowserSession, retireBrowserSession } from "@/lib/browser-session";
+import {
+  ApiError,
+  RATE_LIMIT_MESSAGE,
+  SESSION_REFRESH_UNAVAILABLE_MESSAGE,
+} from "@/lib/api-error";
+import {
+  claimBrowserSession,
+  retireBrowserSession,
+} from "@/lib/browser-session";
 import { wikiReadHttp } from "@/lib/clients/wiki-read-http";
 import { TERMINAL_UNAUTHORIZED_EVENT } from "@/lib/session-events";
 
@@ -27,7 +34,9 @@ afterEach(() => {
 describe("authenticated wiki read recovery", () => {
   it("reports fixed rate-limit guidance without reading or awaiting an unused body", async () => {
     const cleanup = Promise.withResolvers<undefined>();
-    const cancel = vi.fn<() => Promise<undefined>>().mockReturnValue(cleanup.promise);
+    const cancel = vi
+      .fn<() => Promise<undefined>>()
+      .mockReturnValue(cleanup.promise);
     const body = new ReadableStream<Uint8Array>({ cancel });
     fetchMock.mockResolvedValue(new Response(body, { status: 429 }));
     try {
@@ -45,8 +54,12 @@ describe("authenticated wiki read recovery", () => {
     fetchMock
       .mockResolvedValueOnce(Response.json({ value: "fresh" }))
       .mockResolvedValueOnce(Response.json({ value: "fresh" }));
-    await expect(wikiReadHttp("/auth/me", PayloadSchema)).resolves.toEqual({ value: "fresh" });
-    await expect(wikiReadHttp("/auth/me", PayloadSchema, { ignored: undefined })).resolves.toEqual({
+    await expect(wikiReadHttp("/auth/me", PayloadSchema)).resolves.toEqual({
+      value: "fresh",
+    });
+    await expect(
+      wikiReadHttp("/auth/me", PayloadSchema, { ignored: undefined }),
+    ).resolves.toEqual({
       value: "fresh",
     });
     expect(parameters).not.toHaveBeenCalled();
@@ -64,7 +77,9 @@ describe("authenticated wiki read recovery", () => {
       zero: 0,
       ignored: undefined,
     });
-    expect(fetchMock.mock.calls[0]?.[0]).toBe("/api/wiki/drive-search?q=a+b%26c&empty=&zero=0");
+    expect(fetchMock.mock.calls[0]?.[0]).toBe(
+      "/api/wiki/drive-search?q=a+b%26c&empty=&zero=0",
+    );
   });
   it("stops and redacts an oversized BFF error body", async () => {
     const cancel = vi.fn();
@@ -75,7 +90,9 @@ describe("authenticated wiki read recovery", () => {
       cancel,
     });
     fetchMock.mockResolvedValue(new Response(body, { status: 502 }));
-    await expect(wikiReadHttp("/files/first", PayloadSchema)).rejects.toMatchObject({
+    await expect(
+      wikiReadHttp("/files/first", PayloadSchema),
+    ).rejects.toMatchObject({
       message: "The request could not be completed",
       status: 502,
     });
@@ -92,9 +109,12 @@ describe("authenticated wiki read recovery", () => {
       cancel,
     });
     fetchMock.mockResolvedValue(new Response(body, { status: 502 }));
-    const pending = wikiReadHttp("/files/first", PayloadSchema, {}, controller.signal).catch(
-      (error: unknown) => error,
-    );
+    const pending = wikiReadHttp(
+      "/files/first",
+      PayloadSchema,
+      {},
+      controller.signal,
+    ).catch((error: unknown) => error);
     await vi.waitFor(() => {
       expect(body.locked).toBe(true);
     });
@@ -111,9 +131,12 @@ describe("authenticated wiki read recovery", () => {
       .mockResolvedValueOnce(new Response(null, { status: 401 }))
       .mockResolvedValueOnce(new Response(null))
       .mockReturnValueOnce(replay.promise);
-    const pending = wikiReadHttp("/files/first", PayloadSchema, {}, controller.signal).catch(
-      (error: unknown) => error,
-    );
+    const pending = wikiReadHttp(
+      "/files/first",
+      PayloadSchema,
+      {},
+      controller.signal,
+    ).catch((error: unknown) => error);
     await vi.waitFor(() => {
       expect(fetchMock).toHaveBeenCalledTimes(3);
     });
@@ -144,7 +167,9 @@ describe("authenticated wiki read recovery", () => {
       expect(fetchMock).toHaveBeenCalledOnce();
       expect(listener).not.toHaveBeenCalled();
       fetchMock.mockResolvedValueOnce(Response.json({ value: "replacement" }));
-      await expect(wikiReadHttp("/files/new-user", PayloadSchema)).resolves.toEqual({
+      await expect(
+        wikiReadHttp("/files/new-user", PayloadSchema),
+      ).resolves.toEqual({
         value: "replacement",
       });
       expect(fetchMock.mock.calls[1]?.[1]?.signal?.aborted).toBe(false);
@@ -155,11 +180,15 @@ describe("authenticated wiki read recovery", () => {
   });
 
   it("refreshes a known expiring session once before concurrent GETs", async () => {
-    vi.spyOn(document, "cookie", "get").mockReturnValue(`session_exp=${Date.now() - 1}`);
+    vi.spyOn(document, "cookie", "get").mockReturnValue(
+      `session_exp=${Date.now() - 1}`,
+    );
     const refresh = Promise.withResolvers<Response>();
     fetchMock.mockImplementation(async (input) => {
       const url = requestUrl(input);
-      return url.endsWith("/auth/refresh") ? await refresh.promise : Response.json({ value: url });
+      return url.endsWith("/auth/refresh")
+        ? await refresh.promise
+        : Response.json({ value: url });
     });
     const first = wikiReadHttp("/files/first", PayloadSchema);
     const second = wikiReadHttp("/files/second", PayloadSchema);
@@ -171,13 +200,17 @@ describe("authenticated wiki read recovery", () => {
 
   it("starts refresh without waiting for a stalled 401 body cleanup", async () => {
     const cleanup = Promise.withResolvers<undefined>();
-    const body = new ReadableStream<Uint8Array>({ cancel: async () => await cleanup.promise });
+    const body = new ReadableStream<Uint8Array>({
+      cancel: async () => await cleanup.promise,
+    });
     fetchMock
       .mockResolvedValueOnce(new Response(body, { status: 401 }))
       .mockResolvedValueOnce(new Response(null))
       .mockResolvedValueOnce(Response.json({ value: "ready" }));
     try {
-      await expect(wikiReadHttp("/files/first", PayloadSchema)).resolves.toEqual({
+      await expect(
+        wikiReadHttp("/files/first", PayloadSchema),
+      ).resolves.toEqual({
         value: "ready",
       });
       expect(fetchMock).toHaveBeenCalledTimes(3);
@@ -193,7 +226,9 @@ describe("authenticated wiki read recovery", () => {
       if (url.endsWith("/auth/refresh")) return await refresh.promise;
       const attempt = (attempts.get(url) ?? 0) + 1;
       attempts.set(url, attempt);
-      return attempt === 1 ? new Response(null, { status: 401 }) : Response.json({ value: url });
+      return attempt === 1
+        ? new Response(null, { status: 401 })
+        : Response.json({ value: url });
     });
     const first = wikiReadHttp("/files/first", PayloadSchema);
     const second = wikiReadHttp("/files/second", PayloadSchema);
@@ -228,12 +263,16 @@ describe("authenticated wiki read recovery", () => {
 
   it("reports a terminal authentication failure without replaying a denied refresh", async () => {
     fetchMock
-      .mockResolvedValueOnce(Response.json({ detail: "Your session has expired" }, { status: 401 }))
+      .mockResolvedValueOnce(
+        Response.json({ detail: "Your session has expired" }, { status: 401 }),
+      )
       .mockResolvedValueOnce(new Response(null, { status: 401 }));
     const expired = vi.fn<() => void>();
     window.addEventListener(TERMINAL_UNAUTHORIZED_EVENT, expired);
     try {
-      await expect(wikiReadHttp("/files/first", PayloadSchema)).rejects.toMatchObject({
+      await expect(
+        wikiReadHttp("/files/first", PayloadSchema),
+      ).rejects.toMatchObject({
         status: 401,
         message: "Your session has expired",
       });
@@ -262,10 +301,17 @@ describe("authenticated wiki read recovery", () => {
     fetchMock.mockImplementation(async (input) => {
       const url = requestUrl(input);
       if (url.endsWith("/auth/refresh")) return await refresh.promise;
-      return isFresh ? Response.json({ value: url }) : new Response(null, { status: 401 });
+      return isFresh
+        ? Response.json({ value: url })
+        : new Response(null, { status: 401 });
     });
     const controller = new AbortController();
-    const discarded = wikiReadHttp("/files/first", PayloadSchema, {}, controller.signal);
+    const discarded = wikiReadHttp(
+      "/files/first",
+      PayloadSchema,
+      {},
+      controller.signal,
+    );
     const discardedResult = discarded.catch((error: unknown) => error);
     const retained = wikiReadHttp("/files/second", PayloadSchema);
     await vi.waitFor(() => {
@@ -273,17 +319,23 @@ describe("authenticated wiki read recovery", () => {
     });
 
     controller.abort();
-    await expect(discardedResult).resolves.toMatchObject({ name: "AbortError" });
+    await expect(discardedResult).resolves.toMatchObject({
+      name: "AbortError",
+    });
     isFresh = true;
     refresh.resolve(new Response(null));
-    await expect(retained).resolves.toEqual({ value: "/api/wiki/files/second" });
+    await expect(retained).resolves.toEqual({
+      value: "/api/wiki/files/second",
+    });
     expect(fetchMock).toHaveBeenCalledTimes(4);
   });
 
   it("does not validate or publish an obsolete response that finishes after cancellation", async () => {
     const body = Promise.withResolvers<unknown>();
     const response = Response.json({ value: "unused" });
-    const responseBody = vi.spyOn(response, "json").mockReturnValue(body.promise);
+    const responseBody = vi
+      .spyOn(response, "json")
+      .mockReturnValue(body.promise);
     fetchMock.mockResolvedValue(response);
     const controller = new AbortController();
     const parse = vi.fn((value: string) => value);
@@ -297,7 +349,9 @@ describe("authenticated wiki read recovery", () => {
     controller.abort();
     body.resolve({ value: "obsolete" });
 
-    await expect(discardedResult).resolves.toMatchObject({ name: "AbortError" });
+    await expect(discardedResult).resolves.toMatchObject({
+      name: "AbortError",
+    });
     expect(parse).not.toHaveBeenCalled();
   });
 });

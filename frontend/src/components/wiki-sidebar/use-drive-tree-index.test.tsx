@@ -3,13 +3,21 @@ import { flushSync } from "react-dom";
 import { createRoot, type Root } from "react-dom/client";
 
 import { wikiKeys } from "@/lib/wiki-keys";
-import type { DocIcon, DriveNode, DriveTree, FolderIcon, SortOrder } from "@/types/wiki";
+import type {
+  DocIcon,
+  DriveNode,
+  DriveTree,
+  FolderIcon,
+  SortOrder,
+} from "@/types/wiki";
 import { MIME_DOC, MIME_FOLDER } from "@/types/wiki";
 
 import { useDriveTreeIndex } from "./use-drive-tree-index";
 
 const READ = vi.hoisted(() => vi.fn<() => Promise<DriveTree>>());
-vi.mock("@/lib/wiki-read-api", () => ({ WIKI_READ_API: { getDriveFolders: READ } }));
+vi.mock("@/lib/wiki-read-api", () => ({
+  WIKI_READ_API: { getDriveFolders: READ },
+}));
 
 describe("collapsed drive cold indexes", () => {
   let root: Root;
@@ -24,12 +32,18 @@ describe("collapsed drive cold indexes", () => {
   beforeEach(() => {
     reads = { parents: 0, overlays: 0 };
     READ.mockReset();
-    client = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: Infinity } } });
+    client = new QueryClient({
+      defaultOptions: { queries: { retry: false, gcTime: Infinity } },
+    });
     tree = {
       driveId: "drive",
       filesComplete: false,
-      folders: Array.from({ length: 10_000 }, (_, index) => node(`folder-${index}`, MIME_FOLDER)),
-      files: Array.from({ length: 10_000 }, (_, index) => node(`file-${index}`, MIME_DOC)),
+      folders: Array.from({ length: 10_000 }, (_, index) =>
+        node(`folder-${index}`, MIME_FOLDER),
+      ),
+      files: Array.from({ length: 10_000 }, (_, index) =>
+        node(`file-${index}`, MIME_DOC),
+      ),
     };
     docIcons = Array.from({ length: 1000 }, (_, index) => ({
       get driveId() {
@@ -81,7 +95,13 @@ describe("collapsed drive cold indexes", () => {
   }
 
   function Probe({ enabled }: { enabled: boolean }) {
-    result = useDriveTreeIndex("drive", docIcons, folderIcons, sortOrders, enabled);
+    result = useDriveTreeIndex(
+      "drive",
+      docIcons,
+      folderIcons,
+      sortOrders,
+      enabled,
+    );
     return null;
   }
 

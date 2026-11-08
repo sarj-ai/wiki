@@ -21,7 +21,11 @@ const WIRE_FIELDS = {
 
 const BOOTSTRAP_WIRE = {
   [WIRE_FIELDS.docIcons]: [
-    { [WIRE_FIELDS.driveId]: "document", icon: "📖", [WIRE_FIELDS.coverUrl]: null },
+    {
+      [WIRE_FIELDS.driveId]: "document",
+      icon: "📖",
+      [WIRE_FIELDS.coverUrl]: null,
+    },
   ],
   drives: [{ id: "drive", name: "Engineering" }],
   [WIRE_FIELDS.firstDriveTree]: {
@@ -38,7 +42,9 @@ const BOOTSTRAP_WIRE = {
     [WIRE_FIELDS.filesComplete]: true,
     folders: [],
   },
-  [WIRE_FIELDS.folderIcons]: [{ [WIRE_FIELDS.folderDriveId]: "folder", icon: null }],
+  [WIRE_FIELDS.folderIcons]: [
+    { [WIRE_FIELDS.folderDriveId]: "folder", icon: null },
+  ],
   me: {
     id: "user",
     email: "qa@sarj.ai",
@@ -49,7 +55,9 @@ const BOOTSTRAP_WIRE = {
     [WIRE_FIELDS.hiddenWorkspaceIds]: ["hidden-drive"],
     [WIRE_FIELDS.showNonDocFiles]: false,
   },
-  [WIRE_FIELDS.sortOrders]: [{ [WIRE_FIELDS.driveId]: "file", [WIRE_FIELDS.sortOrder]: 2 }],
+  [WIRE_FIELDS.sortOrders]: [
+    { [WIRE_FIELDS.driveId]: "file", [WIRE_FIELDS.sortOrder]: 2 },
+  ],
 };
 
 describe("bootstrap wire validation and shared key transforms", () => {
@@ -77,8 +85,16 @@ describe("bootstrap wire validation and shared key transforms", () => {
         folders: [],
       },
       folderIcons: [{ folderDriveId: "folder", icon: undefined }],
-      me: { id: "user", email: "qa@sarj.ai", displayName: undefined, avatarUrl: undefined },
-      preferences: { hiddenWorkspaceIds: ["hidden-drive"], showNonDocFiles: false },
+      me: {
+        id: "user",
+        email: "qa@sarj.ai",
+        displayName: undefined,
+        avatarUrl: undefined,
+      },
+      preferences: {
+        hiddenWorkspaceIds: ["hidden-drive"],
+        showNonDocFiles: false,
+      },
       sortOrders: [{ driveId: "file", sortOrder: 2 }],
     });
   });
@@ -86,19 +102,37 @@ describe("bootstrap wire validation and shared key transforms", () => {
   it.each([
     {
       [WIRE_FIELDS.docIcons]: [
-        { [WIRE_FIELDS.driveId]: 123, icon: null, [WIRE_FIELDS.coverUrl]: null },
+        {
+          [WIRE_FIELDS.driveId]: 123,
+          icon: null,
+          [WIRE_FIELDS.coverUrl]: null,
+        },
       ],
     },
     { drives: [{ id: "drive", name: 123 }] },
-    { [WIRE_FIELDS.folderIcons]: [{ [WIRE_FIELDS.folderDriveId]: null, icon: null }] },
+    {
+      [WIRE_FIELDS.folderIcons]: [
+        { [WIRE_FIELDS.folderDriveId]: null, icon: null },
+      ],
+    },
     { me: { ...BOOTSTRAP_WIRE.me, email: "invalid-email" } },
-    { preferences: { ...BOOTSTRAP_WIRE.preferences, [WIRE_FIELDS.hiddenWorkspaceIds]: [123] } },
+    {
+      preferences: {
+        ...BOOTSTRAP_WIRE.preferences,
+        [WIRE_FIELDS.hiddenWorkspaceIds]: [123],
+      },
+    },
     {
       [WIRE_FIELDS.sortOrders]: [
         { [WIRE_FIELDS.driveId]: "file", [WIRE_FIELDS.sortOrder]: "invalid" },
       ],
     },
-  ])("rejects malformed nested metadata at the single wire-validation boundary: %j", (invalid) => {
-    expect(bootstrapRead.safeParse({ ...BOOTSTRAP_WIRE, ...invalid }).success).toBe(false);
-  });
+  ])(
+    "rejects malformed nested metadata at the single wire-validation boundary: %j",
+    (invalid) => {
+      expect(
+        bootstrapRead.safeParse({ ...BOOTSTRAP_WIRE, ...invalid }).success,
+      ).toBe(false);
+    },
+  );
 });

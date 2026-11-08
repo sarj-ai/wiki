@@ -21,7 +21,8 @@ export function DocumentPolishReceipt({
   const retryLatch = useRef(false);
   const informationalFindings = uniqueFindingDetails(result, "informational");
   const reviewFindings = uniqueFindingDetails(result, "review");
-  const alias = result.shortLinkStatus === "ready" ? result.shortLinkAlias : null;
+  const alias =
+    result.shortLinkStatus === "ready" ? result.shortLinkAlias : null;
   const retryAllowed =
     result.shortLinkStatus === "unavailable" &&
     result.validation.protectedContentPreserved &&
@@ -39,8 +40,16 @@ export function DocumentPolishReceipt({
           ; label wording is unchanged.
         </p>
       ) : null}
-      <FindingList details={informationalFindings} label="Preserved safely" noun="coverage note" />
-      <FindingList details={reviewFindings} label="Review notes" noun="review note" />
+      <FindingList
+        details={informationalFindings}
+        label="Preserved safely"
+        noun="coverage note"
+      />
+      <FindingList
+        details={reviewFindings}
+        label="Review notes"
+        noun="review note"
+      />
       {alias ? (
         <div className="flex flex-wrap items-center gap-3">
           <Button
@@ -102,7 +111,8 @@ export function DocumentPolishReceipt({
             </Button>
           ) : (
             <p className="text-muted-foreground text-sm">
-              Open the document and choose Short link to create one without polishing again.
+              Open the document and choose Short link to create one without
+              polishing again.
             </p>
           )}
         </div>
@@ -128,7 +138,15 @@ function uniqueFindingDetails(
   ];
 }
 
-function FindingList({ details, label, noun }: { details: string[]; label: string; noun: string }) {
+function FindingList({
+  details,
+  label,
+  noun,
+}: {
+  details: string[];
+  label: string;
+  noun: string;
+}) {
   if (details.length === 0) return null;
   const remaining = details.slice(VISIBLE_FINDINGS);
   return (

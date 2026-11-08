@@ -1,7 +1,12 @@
-import { AST_NODE_TYPES, ASTUtils, type TSESTree } from "@typescript-eslint/utils";
+import type { ESTree as TSESTree } from "@oxlint/plugins";
 import { z } from "zod";
 
-import { children, isFunction, unwrap } from "../shared/ast.ts";
+import {
+  children,
+  isFunction,
+  unwrap,
+  type Identifier,
+} from "../shared/ast.ts";
 import {
   hasDynamicEnvironment,
   initializedLexicalRead,
@@ -10,9 +15,18 @@ import {
   variable,
 } from "../shared/bindings.ts";
 import { createRule } from "../shared/create-rule.ts";
-import { builtinConstructor, primitiveType, typedServices } from "../shared/types.ts";
+import { propertyName as staticPropertyName } from "../shared/property-name.ts";
+import {
+  builtinConstructor,
+  primitiveType,
+  typedServices,
+} from "../shared/types.ts";
 
-const NumberLiteralSchema = z.union([z.number(), z.nan(), z.literal([Infinity, -Infinity])]);
+const NumberLiteralSchema = z.union([
+  z.number(),
+  z.nan(),
+  z.literal([Infinity, -Infinity]),
+]);
 const NegatableLiteralSchema = z.union([NumberLiteralSchema, z.bigint()]);
 const StorageKeySchema = z.union([
   z.string().transform((value) => `string:${value}`),
@@ -30,15 +44,18 @@ interface Storage {
 }
 
 function propertyName(node: TSESTree.MemberExpression): null | string {
-  if (!node.computed && node.property.type === AST_NODE_TYPES.Identifier) return node.property.name;
+  if (!node.computed && node.property.type === "Identifier")
+    return node.property.name;
   const value = literalValue(node.property);
   return value === undefined ? null : String(value);
 }
 
-function literalValue(input: TSESTree.Node): bigint | boolean | null | number | string | undefined {
+function literalValue(
+  input: TSESTree.Node,
+): bigint | boolean | null | number | string | undefined {
   const node = unwrap(input);
-  if (node.type === AST_NODE_TYPES.Literal && !("regex" in node)) return node.value;
-  if (node.type === AST_NODE_TYPES.UnaryExpression && node.operator === "-") {
+  if (node.type === "Literal" && !("regex" in node)) return node.value;
+  if (node.type === "UnaryExpression" && node.operator === "-") {
     const value = literalValue(node.argument);
     const parsed = NegatableLiteralSchema.safeParse(value);
     if (parsed.success) return -parsed.data;
@@ -48,7 +65,9 @@ function literalValue(input: TSESTree.Node): bigint | boolean | null | number | 
 
 function executionOwner(node: TSESTree.Node): TSESTree.Node {
   let current = node;
-  while (current.type !== AST_NODE_TYPES.Program && !isFunction(current)) current = current.parent;
+  while (current.type !== "Program" && !isFunction(current)) {
+    current = current.parent;
+  }
   return current;
 }
 
@@ -58,7 +77,8 @@ export default createRule({
     defaultOptions: [],
     type: "problem",
     docs: {
-      description: "Report an unobserved repeated write to proven local data storage.",
+      description:
+        "Report an unobserved repeated write to proven local data storage.",
       requiresTypeChecking: false,
     },
     schema: [],
@@ -77,11 +97,15 @@ export default createRule({
     const blocks: TSESTree.BlockStatement[] = [];
     const globalReceivers = new WeakMap<TSESTree.Node, boolean>();
     const valueReferences = new WeakSet<TSESTree.Node>();
-    const sourceScopes = source.scopeManager?.scopes;
-    if (sourceScopes !== undefined) {
+    const sourceScopes = source.scopeManager.scopes;
+    {
       for (const scope of sourceScopes) {
         for (const reference of scope.references)
-          if (reference.isValueReference) valueReferences.add(reference.identifier);
+          if (
+            "isValueReference" in reference &&
+            reference.isValueReference === true
+          )
+            valueReferences.add(reference.identifier);
       }
     }
 
@@ -90,29 +114,36 @@ export default createRule({
       while (stack.length > 0) {
         const node = stack.pop();
         if (node === undefined) break;
-        if (node.type !== AST_NODE_TYPES.Program) inspectNativeUse(node, node.parent);
+        if (node.type !== "Program") inspectNativeUse(node, node.parent);
         stack.push(...children(node, source));
       }
     }
 
-    function inspectNativeUse(node: TSESTree.Node, parent: TSESTree.Node): void {
+    function inspectNativeUse(
+      node: TSESTree.Node,
+      parent: TSESTree.Node,
+    ): void {
       const typeOnly =
-        parent.type === AST_NODE_TYPES.TSTypeReference ||
-        parent.type === AST_NODE_TYPES.TSTypeQuery ||
-        parent.type === AST_NODE_TYPES.TSQualifiedName;
-      inspectNamespaceUse(node, parent, typeOnly ? null : nativeNamespace(node));
+        parent.type === "TSTypeReference" ||
+        parent.type === "TSTypeQuery" ||
+        parent.type === "TSQualifiedName";
+      inspectNamespaceUse(
+        node,
+        parent,
+        typeOnly ? null : nativeNamespace(node),
+      );
       if (
         !typeOnly &&
         globalReceiver(node) &&
-        (parent.type !== AST_NODE_TYPES.MemberExpression ||
+        (parent.type !== "MemberExpression" ||
           parent.object !== node ||
-          ASTUtils.getPropertyName(parent, source.getScope(parent)) === null)
+          staticPropertyName(parent, source.getScope(parent)) === null)
       )
         invalidateAllNative();
       if (
-        node.type === AST_NODE_TYPES.MemberExpression &&
+        node.type === "MemberExpression" &&
         ["getPrototypeOf", "setPrototypeOf", "__proto__"].includes(
-          ASTUtils.getPropertyName(node, source.getScope(node)) ?? "",
+          staticPropertyName(node, source.getScope(node)) ?? "",
         )
       ) {
         invalidateAllNative();
@@ -125,28 +156,35 @@ export default createRule({
       name: ReturnType<typeof nativeNamespace>,
     ): void {
       if (name === "Map" || name === "Set") {
-        if (parent.type !== AST_NODE_TYPES.NewExpression || parent.callee !== node)
+        if (parent.type !== "NewExpression" || parent.callee !== node)
           invalidNative.add(name);
       } else if (name !== null) {
-        if (parent.type !== AST_NODE_TYPES.MemberExpression || parent.object !== node)
+        if (parent.type !== "MemberExpression" || parent.object !== node)
           nativeDataPrototypeEscaped = true;
         else {
-          const key = ASTUtils.getPropertyName(parent, source.getScope(parent));
+          const key = staticPropertyName(parent, source.getScope(parent));
           if (key === null) invalidateAllNative();
           else if (key === "prototype") nativeDataPrototypeEscaped = true;
         }
       }
     }
 
-    function nativeNamespace(input: TSESTree.Node): "Array" | "Map" | "Object" | "Set" | null {
+    function nativeNamespace(
+      input: TSESTree.Node,
+    ): "Array" | "Map" | "Object" | "Set" | null {
       const node = unwrap(input);
-
-      if (node.type === AST_NODE_TYPES.MemberExpression && globalReceiver(node.object)) {
-        const key = ASTUtils.getPropertyName(node, source.getScope(node));
-        if (key === "Map" || key === "Set" || key === "Object" || key === "Array") return key;
+      if (node.type === "MemberExpression" && globalReceiver(node.object)) {
+        const key = staticPropertyName(node, source.getScope(node));
+        if (
+          key === "Map" ||
+          key === "Set" ||
+          key === "Object" ||
+          key === "Array"
+        )
+          return key;
       }
       if (
-        node.type !== AST_NODE_TYPES.Identifier ||
+        node.type !== "Identifier" ||
         !valueReferences.has(node) ||
         (node.name !== "Map" &&
           node.name !== "Set" &&
@@ -158,8 +196,6 @@ export default createRule({
       return binding === null || binding.defs.length === 0 ? node.name : null;
     }
 
-    // Adapted lexical global-receiver proof from MIT Code Standards
-    // no-invalid-typed-mutation.ts; this is a guard, never a diagnostic by name.
     function globalReceiver(input: TSESTree.Node): boolean {
       let node = input;
       const visited: TSESTree.Node[] = [];
@@ -176,21 +212,27 @@ export default createRule({
           node = value;
           continue;
         }
-        if (node.type === AST_NODE_TYPES.ChainExpression) {
+        if (node.type === "ChainExpression") {
           node = node.expression;
           continue;
         }
         if (
-          node.type === AST_NODE_TYPES.MemberExpression &&
-          ["globalThis", "window", "self", "global", "top", "parent", "frames"].includes(
-            ASTUtils.getPropertyName(node, source.getScope(node)) ?? "",
-          )
+          node.type === "MemberExpression" &&
+          [
+            "globalThis",
+            "window",
+            "self",
+            "global",
+            "top",
+            "parent",
+            "frames",
+          ].includes(staticPropertyName(node, source.getScope(node)) ?? "")
         ) {
           node = node.object;
           continue;
         }
         if (
-          node.type === AST_NODE_TYPES.Identifier &&
+          node.type === "Identifier" &&
           valueReferences.has(node) &&
           ["globalThis", "window", "self", "global"].includes(node.name)
         ) {
@@ -212,56 +254,62 @@ export default createRule({
     function pureValue(input: TSESTree.Node): boolean {
       const node = unwrap(input);
       if (literalValue(node) !== undefined) return true;
-      if (node.type === AST_NODE_TYPES.Identifier) {
+      if (node.type === "Identifier") {
         const binding = variable(node, source);
-        if (binding === null || !initializedLexicalRead(node, binding)) return false;
+        if (binding === null || !initializedLexicalRead(node, binding))
+          return false;
         if (services !== null && checker !== undefined) {
-          return primitiveType(checker.getTypeAtLocation(services.esTreeNodeToTSNodeMap.get(node)));
+          return primitiveType(
+            checker.getTypeAtLocation(services.esTreeNodeToTSNodeMap.get(node)),
+          );
         }
         const definition = binding.defs[0]?.node;
         return (
           noLaterVariableWrites(binding) &&
-          definition?.type === AST_NODE_TYPES.VariableDeclarator &&
+          definition?.type === "VariableDeclarator" &&
           definition.init !== null &&
           literalValue(definition.init) !== undefined
         );
       }
-
       return false;
     }
 
     function allocation(input: TSESTree.Node): Kind | null {
       const node = unwrap(input);
       if (
-        node.type === AST_NODE_TYPES.ArrayExpression &&
+        node.type === "ArrayExpression" &&
         !nativeDataPrototypeEscaped &&
         node.elements.every((element) => element === null || pureValue(element))
       )
         return "array";
       if (
-        node.type === AST_NODE_TYPES.ObjectExpression &&
+        node.type === "ObjectExpression" &&
         !nativeDataPrototypeEscaped &&
         node.properties.every(
           (property) =>
-            property.type === AST_NODE_TYPES.Property &&
+            property.type === "Property" &&
             property.kind === "init" &&
             !property.method &&
             !property.computed &&
-            (property.key.type !== AST_NODE_TYPES.Identifier ||
+            (property.key.type !== "Identifier" ||
               property.key.name !== "__proto__") &&
-            (property.key.type !== AST_NODE_TYPES.Literal || property.key.value !== "__proto__") &&
+            (property.key.type !== "Literal" ||
+              property.key.value !== "__proto__") &&
             pureValue(property.value),
         )
       )
         return "object";
       if (
-        node.type === AST_NODE_TYPES.NewExpression &&
-        node.callee.type === AST_NODE_TYPES.Identifier &&
+        node.type === "NewExpression" &&
+        node.callee.type === "Identifier" &&
         node.arguments.length === 0 &&
         services !== null
       ) {
         for (const name of ["Map", "Set"] as const) {
-          if (!invalidNative.has(name) && builtinConstructor(node.callee, name, services))
+          if (
+            !invalidNative.has(name) &&
+            builtinConstructor(node.callee, name, services)
+          )
             return name;
         }
       }
@@ -271,17 +319,23 @@ export default createRule({
     function scan(block: TSESTree.BlockStatement | TSESTree.Program): void {
       const state = new Map<Variable, Storage>();
       for (const statement of block.body) {
-        if (statement.type === AST_NODE_TYPES.VariableDeclaration && statement.kind === "const") {
+        if (
+          statement.type === "VariableDeclaration" &&
+          statement.kind === "const"
+        ) {
           recordDeclarations(statement, block, state);
           continue;
         }
-        if (statement.type !== AST_NODE_TYPES.ExpressionStatement) {
+        if (statement.type !== "ExpressionStatement") {
           state.clear();
           continue;
         }
         const expression = statement.expression;
-        if (writeAssignment(expression, state) || writeCollectionCall(expression, state)) continue;
-
+        if (
+          writeAssignment(expression, state) ||
+          writeCollectionCall(expression, state)
+        )
+          continue;
         state.clear();
       }
     }
@@ -294,7 +348,7 @@ export default createRule({
       if (
         statement.declarations.some(
           (entry) =>
-            entry.id.type !== AST_NODE_TYPES.Identifier ||
+            entry.id.type !== "Identifier" ||
             entry.init === null ||
             (allocation(entry.init) === null && !pureValue(entry.init)),
         )
@@ -303,7 +357,7 @@ export default createRule({
         return;
       }
       for (const entry of statement.declarations) {
-        if (entry.id.type !== AST_NODE_TYPES.Identifier || entry.init === null) continue;
+        if (entry.id.type !== "Identifier" || entry.init === null) continue;
         const kind = allocation(entry.init);
         const binding = stableLocal(entry.id, block);
         if (kind !== null && binding !== null)
@@ -311,11 +365,19 @@ export default createRule({
       }
     }
 
-    function stableLocal(id: TSESTree.Identifier, block: TSESTree.Node): null | Variable {
+    function stableLocal(
+      id: Identifier,
+      block: TSESTree.Node,
+    ): null | Variable {
       const binding = variable(id, source);
-      if (binding?.defs.length !== 1 || !noLaterVariableWrites(binding)) return null;
+      if (binding?.defs.length !== 1 || !noLaterVariableWrites(binding))
+        return null;
       const owner = executionOwner(block);
-      if (binding.references.some((reference) => executionOwner(reference.identifier) !== owner))
+      if (
+        binding.references.some(
+          (reference) => executionOwner(reference.identifier) !== owner,
+        )
+      )
         return null;
       return binding;
     }
@@ -325,11 +387,11 @@ export default createRule({
       state: Map<Variable, Storage>,
     ): boolean {
       if (
-        expression.type !== AST_NODE_TYPES.AssignmentExpression ||
+        expression.type !== "AssignmentExpression" ||
         expression.operator !== "=" ||
-        expression.left.type !== AST_NODE_TYPES.MemberExpression ||
+        expression.left.type !== "MemberExpression" ||
         expression.left.optional ||
-        expression.left.object.type !== AST_NODE_TYPES.Identifier ||
+        expression.left.object.type !== "Identifier" ||
         !pureValue(expression.right)
       )
         return false;
@@ -353,11 +415,11 @@ export default createRule({
       state: Map<Variable, Storage>,
     ): boolean {
       if (
-        expression.type !== AST_NODE_TYPES.CallExpression ||
+        expression.type !== "CallExpression" ||
         expression.optional ||
-        expression.callee.type !== AST_NODE_TYPES.MemberExpression ||
+        expression.callee.type !== "MemberExpression" ||
         expression.callee.optional ||
-        expression.callee.object.type !== AST_NODE_TYPES.Identifier
+        expression.callee.object.type !== "Identifier"
       )
         return false;
       const binding = variable(expression.callee.object, source);
@@ -368,8 +430,12 @@ export default createRule({
         storage === undefined ||
         keyNode === undefined ||
         !(
-          (storage.kind === "Map" && method === "set" && expression.arguments.length === 2) ||
-          (storage.kind === "Set" && method === "add" && expression.arguments.length === 1)
+          (storage.kind === "Map" &&
+            method === "set" &&
+            expression.arguments.length === 2) ||
+          (storage.kind === "Set" &&
+            method === "add" &&
+            expression.arguments.length === 1)
         ) ||
         !expression.arguments.every(pureValue)
       )
@@ -383,13 +449,12 @@ export default createRule({
     function write(storage: Storage, key: string, node: TSESTree.Node): void {
       if (storage.key === key && storage.previous !== null)
         context.report({ node: storage.previous, messageId: "overwritten" });
-
       storage.key = key;
       storage.previous = node;
     }
 
     return {
-      [AST_NODE_TYPES.BlockStatement](node) {
+      BlockStatement(node) {
         blocks.push(node);
       },
       "Program:exit"(program) {

@@ -11,9 +11,21 @@ describe("recent document warmup metadata", () => {
   });
 
   it("is isolated by user and deduplicated in most-recent-first order", () => {
-    saveLastDoc("user-a", { fileId: "file-1", mimeType: "text/plain", title: "First" });
-    saveLastDoc("user-a", { fileId: "file-2", mimeType: "text/plain", title: "Second" });
-    saveLastDoc("user-a", { fileId: "file-1", mimeType: "text/plain", title: "Renamed" });
+    saveLastDoc("user-a", {
+      fileId: "file-1",
+      mimeType: "text/plain",
+      title: "First",
+    });
+    saveLastDoc("user-a", {
+      fileId: "file-2",
+      mimeType: "text/plain",
+      title: "Second",
+    });
+    saveLastDoc("user-a", {
+      fileId: "file-1",
+      mimeType: "text/plain",
+      title: "Renamed",
+    });
 
     expect(readRecentDocs("user-a")).toEqual([
       { fileId: "file-1", mimeType: "text/plain", title: "Renamed" },
@@ -25,7 +37,9 @@ describe("recent document warmup metadata", () => {
   it("never inherits the unscoped legacy key", () => {
     window.localStorage.setItem(
       "sarj-wiki:recent-docs",
-      JSON.stringify([{ fileId: "legacy-file", mimeType: "text/plain", title: "Legacy" }]),
+      JSON.stringify([
+        { fileId: "legacy-file", mimeType: "text/plain", title: "Legacy" },
+      ]),
     );
 
     expect(readRecentDocs("user-a")).toEqual([]);
@@ -79,9 +93,11 @@ describe("recent document warmup metadata", () => {
 
   it("keeps a write available when storage reads fail", () => {
     const doc = { fileId: "file-1", mimeType: "text/plain", title: "Page" };
-    const read = vi.spyOn(window.localStorage, "getItem").mockImplementation(() => {
-      throw new Error("Storage read unavailable");
-    });
+    const read = vi
+      .spyOn(window.localStorage, "getItem")
+      .mockImplementation(() => {
+        throw new Error("Storage read unavailable");
+      });
     const write = vi.spyOn(window.localStorage, "setItem");
     saveLastDoc("user-a", doc);
     expect(write).toHaveBeenCalledExactlyOnceWith(
@@ -93,14 +109,28 @@ describe("recent document warmup metadata", () => {
   });
 
   it("owns each invalid-history fallback across reads and users", () => {
-    window.localStorage.setItem(recentDocsStorageKey("user-a"), JSON.stringify([{ fileId: "a" }]));
-    window.localStorage.setItem(recentDocsStorageKey("user-b"), JSON.stringify([{ title: "b" }]));
+    window.localStorage.setItem(
+      recentDocsStorageKey("user-a"),
+      JSON.stringify([{ fileId: "a" }]),
+    );
+    window.localStorage.setItem(
+      recentDocsStorageKey("user-b"),
+      JSON.stringify([{ title: "b" }]),
+    );
     const discarded = readRecentDocs("user-a");
-    discarded.push({ fileId: "poison", mimeType: "text/plain", title: "Private poison" });
+    discarded.push({
+      fileId: "poison",
+      mimeType: "text/plain",
+      title: "Private poison",
+    });
 
     expect(readRecentDocs("user-a")).toEqual([]);
     expect(readRecentDocs("user-b")).toEqual([]);
-    const current = { fileId: "current", mimeType: "text/plain", title: "Current" };
+    const current = {
+      fileId: "current",
+      mimeType: "text/plain",
+      title: "Current",
+    };
     saveLastDoc("user-a", current);
     expect(readRecentDocs("user-a")).toEqual([current]);
     expect(readRecentDocs("user-b")).toEqual([]);

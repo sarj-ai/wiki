@@ -6,17 +6,29 @@ import { createRoot, type Root } from "react-dom/client";
 import { SidebarProvider, useSidebar } from "@/components/ui/sidebar";
 import { DriveSearchBox } from "@/components/wiki-sidebar/drive-search-box";
 import { SidebarNavigationProvider } from "@/components/wiki-sidebar/use-sidebar-navigation";
-import { useCommandPaletteHotkey, useCommandPaletteState } from "@/hooks/use-command-palette";
+import {
+  useCommandPaletteHotkey,
+  useCommandPaletteState,
+} from "@/hooks/use-command-palette";
 import { BrowserUserContext } from "@/lib/browser-user-context";
 import { WIKI_READ_API } from "@/lib/wiki-read-api";
-import { type DriveSearchResult, MIME_DOC, MIME_FOLDER, MIME_FORM } from "@/types/wiki";
+import {
+  type DriveSearchResult,
+  MIME_DOC,
+  MIME_FOLDER,
+  MIME_FORM,
+} from "@/types/wiki";
 
 import { CommandPalette } from "./command-palette";
 
 const ROUTER = vi.hoisted(() => ({ prefetch: vi.fn(), push: vi.fn() }));
 vi.mock("next/navigation", () => ({ useRouter: () => ROUTER }));
 vi.mock("@/lib/wiki-read-api", () => ({
-  WIKI_READ_API: { driveSearch: vi.fn(), driveSearchSnippet: vi.fn(), getFile: vi.fn() },
+  WIKI_READ_API: {
+    driveSearch: vi.fn(),
+    driveSearchSnippet: vi.fn(),
+    getFile: vi.fn(),
+  },
 }));
 
 const RESULT: DriveSearchResult = {
@@ -75,9 +87,14 @@ describe("document selection from a mobile sidebar search opening", () => {
   beforeEach(() => {
     vi.useFakeTimers();
     initialWidth = window.innerWidth;
-    Object.defineProperty(window, "innerWidth", { configurable: true, value: 390 });
+    Object.defineProperty(window, "innerWidth", {
+      configurable: true,
+      value: 390,
+    });
     vi.spyOn(document, "visibilityState", "get").mockReturnValue("visible");
-    vi.mocked(WIKI_READ_API.driveSearch).mockReset().mockResolvedValue([RESULT]);
+    vi.mocked(WIKI_READ_API.driveSearch)
+      .mockReset()
+      .mockResolvedValue([RESULT]);
     vi.mocked(WIKI_READ_API.driveSearchSnippet).mockReset().mockResolvedValue({
       fileId: RESULT.id,
       mimeType: MIME_DOC,
@@ -97,7 +114,9 @@ describe("document selection from a mobile sidebar search opening", () => {
     });
     ROUTER.prefetch.mockReset();
     ROUTER.push.mockReset();
-    client = new QueryClient({ defaultOptions: { queries: { gcTime: Infinity, retry: false } } });
+    client = new QueryClient({
+      defaultOptions: { queries: { gcTime: Infinity, retry: false } },
+    });
     host = document.createElement("div");
     document.body.append(host);
     root = createRoot(host);
@@ -109,18 +128,29 @@ describe("document selection from a mobile sidebar search opening", () => {
     client.clear();
     await vi.advanceTimersByTimeAsync(0);
     host.remove();
-    Object.defineProperty(window, "innerWidth", { configurable: true, value: initialWidth });
+    Object.defineProperty(window, "innerWidth", {
+      configurable: true,
+      value: initialWidth,
+    });
     vi.useRealTimers();
     vi.restoreAllMocks();
   });
 
-  function render({ pathname = "/d/current", showOpener = true, userId = "user-a" } = {}) {
+  function render({
+    pathname = "/d/current",
+    showOpener = true,
+    userId = "user-a",
+  } = {}) {
     flushSync(() =>
       root.render(
         <QueryClientProvider client={client}>
           <BrowserUserContext value={userId}>
             <SidebarProvider>
-              <Controls pathname={pathname} showOpener={showOpener} userId={userId} />
+              <Controls
+                pathname={pathname}
+                showOpener={showOpener}
+                userId={userId}
+              />
             </SidebarProvider>
           </BrowserUserContext>
         </QueryClientProvider>,
@@ -131,7 +161,8 @@ describe("document selection from a mobile sidebar search opening", () => {
   async function openSearch() {
     flushSync(() => button("Open drawer").click());
     const opener = host.querySelector('[aria-label="Open search"]');
-    if (!(opener instanceof HTMLButtonElement)) throw new TypeError("Search opener missing");
+    if (!(opener instanceof HTMLButtonElement))
+      throw new TypeError("Search opener missing");
     flushSync(() => {
       opener.focus();
       opener.click();
@@ -141,7 +172,9 @@ describe("document selection from a mobile sidebar search opening", () => {
     expect(control.onDocumentNavigate).toBeTypeOf("function");
     typeQuery("selected");
     await vi.advanceTimersByTimeAsync(250);
-    await vi.waitFor(() => expect(document.body).toHaveTextContent(RESULT.name));
+    await vi.waitFor(() =>
+      expect(document.body).toHaveTextContent(RESULT.name),
+    );
   }
 
   it("captures the current mobile owner through the real sibling global Mod+K hook and waits for commit", async () => {
@@ -292,7 +325,9 @@ describe("document selection from a mobile sidebar search opening", () => {
   });
 
   it("reveals a selected folder without registering a document destination or adding document reads", async () => {
-    vi.mocked(WIKI_READ_API.driveSearch).mockResolvedValue([{ ...RESULT, mimeType: MIME_FOLDER }]);
+    vi.mocked(WIKI_READ_API.driveSearch).mockResolvedValue([
+      { ...RESULT, mimeType: MIME_FOLDER },
+    ]);
     render();
     await openSearch();
     selectDocument();
@@ -305,7 +340,9 @@ describe("document selection from a mobile sidebar search opening", () => {
   });
 
   it("keeps the drawer open for an external Form selection", async () => {
-    vi.mocked(WIKI_READ_API.driveSearch).mockResolvedValue([{ ...RESULT, mimeType: MIME_FORM }]);
+    vi.mocked(WIKI_READ_API.driveSearch).mockResolvedValue([
+      { ...RESULT, mimeType: MIME_FORM },
+    ]);
     const open = vi.spyOn(window, "open").mockReturnValue(null);
     render();
     await openSearch();
@@ -321,7 +358,12 @@ describe("document selection from a mobile sidebar search opening", () => {
     expect(host).toHaveTextContent("Drawer open");
   });
 
-  it.each([{ ctrlKey: true }, { metaKey: true }, { shiftKey: true }, { altKey: true }])(
+  it.each([
+    { ctrlKey: true },
+    { metaKey: true },
+    { shiftKey: true },
+    { altKey: true },
+  ])(
     "keeps modified selection out of sidebar navigation intent ($ctrlKey $metaKey $shiftKey $altKey)",
     async (modifiers) => {
       render();
@@ -335,7 +377,9 @@ describe("document selection from a mobile sidebar search opening", () => {
   it("preserves a consumer-cancelled Enter selection without closing or navigation", async () => {
     render();
     await openSearch();
-    input().addEventListener("keydown", (event) => event.preventDefault(), { once: true });
+    input().addEventListener("keydown", (event) => event.preventDefault(), {
+      once: true,
+    });
     selectDocument();
     expect(control.open).toBe(true);
     expect(ROUTER.push).not.toHaveBeenCalled();
@@ -363,15 +407,17 @@ function button(text: string): HTMLButtonElement {
 
 function input(): HTMLInputElement {
   const element = document.querySelector('[aria-label="Search Drive"]');
-  if (!(element instanceof HTMLInputElement)) throw new TypeError("Search input missing");
+  if (!(element instanceof HTMLInputElement))
+    throw new TypeError("Search input missing");
   return element;
 }
 
 function typeQuery(value: string): void {
   const element = input();
-  const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set?.bind(
-    element,
-  );
+  const setter = Object.getOwnPropertyDescriptor(
+    HTMLInputElement.prototype,
+    "value",
+  )?.set?.bind(element);
   if (!setter) throw new Error("Native input setter missing");
   flushSync(() => {
     setter(value);

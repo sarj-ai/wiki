@@ -8,7 +8,10 @@ import type { DriveSummary } from "@/types/wiki";
 
 import { DriveAccessSheet } from "./drive-access-sheet";
 
-type AccessState = Pick<ReturnType<typeof useDrivePermissions>, "data" | "isError" | "isPending">;
+type AccessState = Pick<
+  ReturnType<typeof useDrivePermissions>,
+  "data" | "isError" | "isPending"
+>;
 
 const QUERY = vi.hoisted(() => ({
   read: vi.fn(),
@@ -20,7 +23,11 @@ const ACCESS_LISTENERS = new Set<() => void>();
 vi.mock("@/hooks/use-wiki-tree", () => ({
   useDrivePermissions: (driveId: null | string, enabled: boolean) => {
     QUERY.read(driveId, enabled);
-    const state = useSyncExternalStore(subscribeToAccess, getAccessSnapshot, getAccessSnapshot);
+    const state = useSyncExternalStore(
+      subscribeToAccess,
+      getAccessSnapshot,
+      getAccessSnapshot,
+    );
     return {
       ...state,
       fetchNextPage: vi.fn(),
@@ -31,7 +38,11 @@ vi.mock("@/hooks/use-wiki-tree", () => ({
   },
 }));
 
-const DRIVE: DriveSummary = { id: "drive-1", isPersonal: false, name: "Fixture shared drive" };
+const DRIVE: DriveSummary = {
+  id: "drive-1",
+  isPersonal: false,
+  name: "Fixture shared drive",
+};
 
 describe("drive access request feedback", () => {
   let container: HTMLDivElement;
@@ -67,7 +78,9 @@ describe("drive access request feedback", () => {
       for (const listener of ACCESS_LISTENERS) listener();
     });
     expect(description()).toHaveTextContent("2 access entries");
-    expect(document.querySelector('[role="dialog"]')).toHaveTextContent("Fixture person 1");
+    expect(document.querySelector('[role="dialog"]')).toHaveTextContent(
+      "Fixture person 1",
+    );
     expect(description()).not.toHaveTextContent("Loading access…");
   });
 
