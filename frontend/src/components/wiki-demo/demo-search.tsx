@@ -42,12 +42,14 @@ export function DemoSearch({
         <CommandInput aria-label="Search Drive" placeholder="Search files…" />
       </div>
       <CommandList className="max-h-[min(400px,65dvh)]">
-        <CommandEmpty>
-          <p className="font-medium">No files found</p>
-          <p className="text-muted-foreground mt-1 text-xs">
-            {DEMO_SEARCH_SUGGESTION}
-          </p>
-        </CommandEmpty>
+        <div aria-live="polite" role="status">
+          <CommandEmpty>
+            <p className="font-medium">No files found</p>
+            <p className="text-muted-foreground mt-1 text-xs">
+              {DEMO_SEARCH_SUGGESTION}
+            </p>
+          </CommandEmpty>
+        </div>
         <CommandGroup heading={DEMO_WORKSPACE_NAME}>
           {DEMO_FILES.map((file) => (
             <CommandItem
@@ -80,6 +82,9 @@ export function DemoSearch({
         <Button
           aria-label="Close search"
           className="absolute top-1 right-1 z-10"
+          onKeyDown={(event) => {
+            if (event.key === "Enter") event.stopPropagation();
+          }}
           size="icon-lg"
           variant="ghost"
         >

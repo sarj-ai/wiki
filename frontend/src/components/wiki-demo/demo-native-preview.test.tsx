@@ -80,7 +80,7 @@ describe("native public read-only preview lifecycle", () => {
     expect(HTTP).not.toHaveBeenCalled();
     fireEvent.load(frame);
     expect(frame).toHaveAttribute("aria-hidden", "false");
-    expect(screen.queryByRole("status")).toBeNull();
+    expect(screen.getByRole("status")).toHaveTextContent("Preview opened.");
     await act(async () => {
       await vi.advanceTimersByTimeAsync(10_000);
     });
@@ -106,20 +106,30 @@ describe("native public read-only preview lifecycle", () => {
     expect(screen.queryByRole("heading")).toBeNull();
   });
 
-  it("removes a stalled native frame at the visible deadline and ignores its late load", async () => {
+  it("announces a slow preview while allowing the same frame to finish loading", async () => {
     await showPreview();
-    const retired = screen.getByTitle(/read-only preview/);
+    const frame = screen.getByTitle(/read-only preview/);
     await act(async () => {
       await vi.advanceTimersByTimeAsync(10_000);
     });
-    expect(screen.queryByTitle(/read-only preview/)).toBeNull();
+    expect(screen.getByTitle(/read-only preview/)).toBe(frame);
     expect(
       screen.getByRole("heading", {
         name: "The preview is taking a little longer",
       }),
     ).toBeInTheDocument();
-    fireEvent.load(retired);
-    expect(screen.queryByTitle(/read-only preview/)).toBeNull();
+    expect(screen.getByRole("status")).toHaveTextContent(
+      "The preview is still loading.",
+    );
+    expect(frame).toHaveAttribute("aria-hidden", "true");
+    expect(frame).toHaveAttribute("tabindex", "-1");
+    screen.getByRole("button", { name: "Try again" }).focus();
+    fireEvent.load(frame);
+    expect(screen.getByTitle(/read-only preview/)).toBe(frame);
+    expect(frame).toHaveAttribute("aria-hidden", "false");
+    expect(frame).toHaveFocus();
+    expect(screen.queryByRole("heading")).toBeNull();
+    expect(screen.getByRole("status")).toHaveTextContent("Preview opened.");
     expect(HTTP).not.toHaveBeenCalled();
   });
 

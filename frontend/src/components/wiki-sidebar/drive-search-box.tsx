@@ -4,12 +4,14 @@ import { Search } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { useCommandPaletteState } from "@/hooks/use-command-palette";
+import { useSearchShortcut } from "@/hooks/use-search-shortcut";
 
 import { useSidebarNavigationIntent } from "./use-sidebar-navigation";
 
 export function DriveSearchBox() {
   const { setOpen } = useCommandPaletteState();
   const captureNavigation = useSidebarNavigationIntent();
+  const searchShortcut = useSearchShortcut();
   return (
     <Button
       aria-label="Open search"
@@ -23,7 +25,7 @@ export function DriveSearchBox() {
       <Search className="size-3.5 shrink-0" />
       <span className="flex-1 text-left">Search Drive…</span>
       <kbd className="bg-muted text-muted-foreground rounded-sm border px-1 py-0.5 font-mono text-[10px]">
-        ⌘K
+        {searchShortcut}
       </kbd>
     </Button>
   );

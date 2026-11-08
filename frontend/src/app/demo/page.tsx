@@ -18,7 +18,7 @@ export const metadata: Metadata = {
     type: "website",
     url: "https://wiki.sarj.ai/demo",
   },
-  title: DEMO_TITLE,
+  title: { absolute: DEMO_TITLE },
   twitter: {
     card: "summary",
     description: DEMO_DESCRIPTION,
@@ -26,7 +26,12 @@ export const metadata: Metadata = {
   },
 };
 
-export default function DemoPage() {
+export default async function DemoPage({
+  searchParams,
+}: {
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
+}) {
+  await searchParams;
   return (
     <Suspense fallback={<DocumentLoading label="Opening the demo…" />}>
       <DemoWorkspace />

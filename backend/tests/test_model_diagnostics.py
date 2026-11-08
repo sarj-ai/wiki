@@ -1,5 +1,6 @@
 from dataclasses import asdict
 import json
+from typing import Literal
 
 from google.genai import errors, types
 from loguru import logger
@@ -14,7 +15,7 @@ from app.document_transform.model_diagnostics import (
     log_model_response_failure,
     model_failure_details,
 )
-from app.document_transform.schemas import PatchEnvelope
+from app.document_transform.schemas import PatchEnvelope, TransformPhase
 
 
 @pytest.mark.parametrize("reason", ["SERVICE_DISABLED", "PRIVATE RESPONSE"])
@@ -123,8 +124,11 @@ def test_schema_error_locations_and_types_are_bounded_and_private() -> None:
 
 @pytest.mark.parametrize("finish_reason", [types.FinishReason.STOP, types.FinishReason.MAX_TOKENS])
 @pytest.mark.parametrize("count", [0, 1_000_000])
+@pytest.mark.parametrize("operation", ["review", TransformPhase.UNSLOP, TransformPhase.FORMAT])
 def test_response_failure_metadata_logs_only_bounded_counts_and_finite_reason(
-    finish_reason: types.FinishReason, count: int
+    finish_reason: types.FinishReason,
+    count: int,
+    operation: TransformPhase | Literal["review"],
 ) -> None:
     response = types.GenerateContentResponse(
         candidates=[
@@ -146,7 +150,7 @@ def test_response_failure_metadata_logs_only_bounded_counts_and_finite_reason(
     captured: list[str] = []
     sink = logger.add(captured.append, serialize=True)
     try:
-        log_model_response_failure(model="gemini-3.8-flash", response=response)
+        log_model_response_failure(model="gemini-3.8-flash", response=response, operation=operation)
     finally:
         logger.remove(sink)
     extra = {
@@ -155,7 +159,7 @@ def test_response_failure_metadata_logs_only_bounded_counts_and_finite_reason(
         if key.startswith("model_")
     }
     assert extra == {
-        "model_operation": "review",
+        "model_operation": operation,
         "model_id": "gemini-3.8-flash",
         "model_finish_reason": finish_reason,
         "model_prompt_token_count": count,
