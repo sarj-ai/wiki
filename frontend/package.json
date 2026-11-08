@@ -60,7 +60,7 @@
     "@hey-api/openapi-ts": "^0.99.0",
     "@opennextjs/cloudflare": "1.20.13",
     "@oxlint/plugins": "1.91.0",
-    "@sarj/eslint-plugin": "19.0.1",
+    "@sarj/eslint-plugin": "19.0.2",
     "@sarj/tsconfig": "0.2.3",
     "@tailwindcss/postcss": "^4.3.3",
     "@taplo/cli": "^0.7.0",

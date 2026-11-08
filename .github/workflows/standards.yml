@@ -48,7 +48,7 @@ jobs:
       - name: Install the pinned native tool bootstrap
         env:
           UV_PYTHON_DOWNLOADS_JSON_URL: https://raw.githubusercontent.com/astral-sh/uv/4ecd0eff2a81e3ffdcd7cfee10d08936e4747c17/crates/uv-python-managed/download-metadata.json
-        run: uv run --no-config --no-project --python 3.15.0 --with code-standards==9.1.1 python -m sarj_standards.libs.adoption.native_bootstrap
+        run: uv run --no-config --no-project --python 3.15.0 --with code-standards==9.6.1 python -m sarj_standards.libs.adoption.native_bootstrap
       - name: Install and attest applicable native tools
         run: uvx --no-config --isolated --python 3.14 --from sarj-standards-bootstrap code-standards setup --tools-only
       - name: Bootstrap analysis inputs
@@ -63,6 +63,18 @@ jobs:
       - name: Bootstrap analysis inputs (4)
         run: |
           mise --no-config --no-env --no-hooks exec aqua:hashicorp/terraform@1.17.0 -- terraform -chdir=terraform init -backend=false -input=false -lockfile=readonly
+      # Reuse analyzer results whose inputs are unchanged. Only pushes to the
+      # default branch write them; other events only read. A cache problem never
+      # fails the gate. Set the STANDARDS_RESULT_CACHE variable to off to disable.
+      - name: Restore Standards results
+        id: standards-results
+        if: vars.STANDARDS_RESULT_CACHE != 'off'
+        continue-on-error: true
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ runner.temp }}/standards-results
+          key: standards-results-v1-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('.sarj-standards.toml') }}-${{ github.sha }}
+          restore-keys: standards-results-v1-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('.sarj-standards.toml') }}-
       - name: Run standards
         shell: bash
         env:
@@ -71,7 +83,18 @@ jobs:
             github.event.before == '0000000000000000000000000000000000000000') &&
             (github.event.pull_request.base.sha || github.event.merge_group.base_sha ||
             github.event.before) || '' }}
+          SARJ_STANDARDS_RESULT_CACHE: >-
+            ${{ vars.STANDARDS_RESULT_CACHE != 'off' && format('{0}/standards-results', runner.temp) || 'off' }}
+          SARJ_STANDARDS_RESULT_CACHE_WRITE: >-
+            ${{ github.event_name == 'push' && github.ref == format('refs/heads/{0}', github.event.repository.default_branch) && '1' || '' }}
         # Required Backend CI owns the complete Python type check with its 4 GB heap.
         # Run the complete native TypeScript policy, including its Doctor rules.
         # Full scope also avoids React Doctor's fractional baseline timeout.
         run: uvx --no-config --isolated --python 3.14 --from sarj-standards-bootstrap code-standards check --trust-repository-code --skip-python-type-check --format github .
+      - name: Save trusted Standards results
+        if: vars.STANDARDS_RESULT_CACHE != 'off' && github.event_name == 'push' && github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
+        continue-on-error: true
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ runner.temp }}/standards-results
+          key: ${{ steps.standards-results.outputs.cache-primary-key }}

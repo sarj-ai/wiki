@@ -1,9 +1,9 @@
 {
   "schemaVersion": 2,
   "provenance": {
-    "bundleVersion": "9.1.1",
-    "consumerBaseSha": "94f12ab591113255e3ffd3fdfd29fdabba63dcfe",
-    "catalogDigest": "41ba193cffe4cda613ff05dd288ef43f80d117d0c0abcb42536e39f05d3025f0"
+    "bundleVersion": "9.6.1",
+    "consumerBaseSha": "b16fe1f6bd0bd14125f61f013bb9061089ad751e",
+    "catalogDigest": "916f3b0c1fd29720b512c6f46058421b8b20983cc82ae93d550c34befdfb1f1c"
   },
   "diagnostics": [
     {
@@ -397,6 +397,13 @@
       "ruleId": "no-boolean-enable-variable",
       "path": "terraform/variables.tf",
       "count": 1
+    },
+    {
+      "fingerprint": "f71c5c3aabada1ba05e05abfb29057273ec28c6c187b436b53a3ba50e3e21362",
+      "source": "sarj-iac-lint",
+      "ruleId": "no-terraform-guard-blocks",
+      "path": "terraform/variables.tf",
+      "count": 15
     },
     {
       "fingerprint": "585f361f931f2c34335ec054f76633e4ed155c9eeb0078fadce06d5faf26d9fe",
