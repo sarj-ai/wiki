@@ -3,15 +3,15 @@
  * adapted from the MIT Code Standards b4e7f901 helpers identified in the root
  * README.md#mit-helper-provenance.
  */
-import { AST_NODE_TYPES, type TSESLint, type TSESTree } from "@typescript-eslint/utils";
+import type { ESTree as TSESTree, SourceCode } from "@oxlint/plugins";
 
 export function unwrap(node: TSESTree.Node): TSESTree.Node {
   let current = node;
   while (
-    current.type === AST_NODE_TYPES.TSAsExpression ||
-    current.type === AST_NODE_TYPES.TSSatisfiesExpression ||
-    current.type === AST_NODE_TYPES.TSNonNullExpression ||
-    current.type === AST_NODE_TYPES.TSTypeAssertion
+    current.type === "TSAsExpression" ||
+    current.type === "TSSatisfiesExpression" ||
+    current.type === "TSNonNullExpression" ||
+    current.type === "TSTypeAssertion"
   ) {
     current = current.expression;
   }
@@ -31,7 +31,7 @@ export function isNode(value: unknown): value is TSESTree.Node {
 
 export function children(
   node: TSESTree.Node,
-  source: TSESLint.SourceCode,
+  source: SourceCode,
 ): readonly TSESTree.Node[] {
   const result: TSESTree.Node[] = [];
   const keys = source.visitorKeys[node.type];
@@ -52,17 +52,24 @@ export function readField(value: object, key: string): unknown {
 }
 
 function isRecord(value: unknown): value is Readonly<Record<string, unknown>> {
-  return value !== null && (typeof value === "object" || typeof value === "function");
+  return (
+    value !== null && (typeof value === "object" || typeof value === "function")
+  );
 }
 
+export type Identifier = Extract<TSESTree.Node, { type: "Identifier" }>;
 export type FunctionNode =
-  TSESTree.ArrowFunctionExpression | TSESTree.FunctionDeclaration | TSESTree.FunctionExpression;
+  | (TSESTree.Function & {
+      type: "FunctionDeclaration" | "FunctionExpression";
+      body: TSESTree.FunctionBody;
+    })
+  | TSESTree.ArrowFunctionExpression;
 
 export function isFunction(node: TSESTree.Node): node is FunctionNode {
   return (
-    node.type === AST_NODE_TYPES.FunctionDeclaration ||
-    node.type === AST_NODE_TYPES.FunctionExpression ||
-    node.type === AST_NODE_TYPES.ArrowFunctionExpression
+    node.type === "FunctionDeclaration" ||
+    node.type === "FunctionExpression" ||
+    node.type === "ArrowFunctionExpression"
   );
 }
 
@@ -72,7 +79,7 @@ export function contains(root: TSESTree.Node, node: TSESTree.Node): boolean {
 
 export function walkOwnFunction(
   root: TSESTree.Node,
-  source: TSESLint.SourceCode,
+  source: SourceCode,
   visit: (node: TSESTree.Node) => void,
 ): void {
   const stack = [root];
@@ -85,6 +92,8 @@ export function walkOwnFunction(
   }
 }
 
-export function statements(node: TSESTree.Statement): readonly TSESTree.Statement[] {
-  return node.type === AST_NODE_TYPES.BlockStatement ? node.body : [node];
+export function statements(
+  node: TSESTree.Statement,
+): readonly TSESTree.Statement[] {
+  return node.type === "BlockStatement" ? node.body : [node];
 }

@@ -12,8 +12,12 @@ trap 'rm -rf "$temp_dir"' EXIT
 git diff --name-only "$base_sha" >"$temp_dir/changed-files"
 git show "$base_sha:.sarj-standards.toml" >"$temp_dir/base-standards.toml"
 {
-  git show "$base_sha:frontend/eslint.strict.mjs"
-  for config in eslint.config.ts eslint.config.mts eslint.config.cts eslint.config.js eslint.config.mjs eslint.config.cjs; do
+  for managed in oxlint.strict.mts eslint.strict.mjs; do
+    if git cat-file -e "$base_sha:frontend/$managed" 2>/dev/null; then
+      git show "$base_sha:frontend/$managed"
+    fi
+  done
+  for config in oxlint.config.mts eslint.config.ts eslint.config.mts eslint.config.cts eslint.config.js eslint.config.mjs eslint.config.cjs; do
     if git cat-file -e "$base_sha:frontend/$config" 2>/dev/null; then
       git show "$base_sha:frontend/$config"
     fi
@@ -26,16 +30,21 @@ if [[ -f diagnostic-baseline.json ]] &&
   initializing_diagnostic_baselines=true
 fi
 
-for baseline in python-standards-baseline.json frontend/eslint-suppressions.json; do
+for baseline in python-standards-baseline.json frontend/oxlint-suppressions.json; do
   base_file="$temp_dir/$(basename "$baseline")"
   prefix=""
   if [[ "$baseline" == frontend/* ]]; then
     prefix="frontend/"
   fi
+  base_baseline="$baseline"
+  if [[ "$baseline" == frontend/oxlint-suppressions.json ]] &&
+    ! git cat-file -e "$base_sha:$baseline" 2>/dev/null; then
+    base_baseline="frontend/eslint-suppressions.json"
+  fi
   if [[ "$initializing_diagnostic_baselines" == true ]]; then
     uv run --project backend --locked python scripts/standards_checks/check_baseline_growth.py \
       --initial "$baseline" "$temp_dir/changed-files" "$prefix"
-  elif git show "$base_sha:$baseline" >"$base_file" 2>/dev/null; then
+  elif git show "$base_sha:$base_baseline" >"$base_file" 2>/dev/null; then
     if [[ "$baseline" == frontend/* ]]; then
       uv run --project backend --locked python scripts/standards_checks/check_baseline_growth.py \
         --standards-base "$temp_dir/base-standards.toml" \

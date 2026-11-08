@@ -34,11 +34,23 @@ it("blocks cold preference edits through read failure, then preserves saved hidd
   const retry = Promise.withResolvers<Preferences>();
   READ.drives.mockResolvedValue([
     { id: "visible-drive", isPersonal: false, name: "Visible workspace" },
-    { id: "saved-hidden-drive", isPersonal: false, name: "Previously hidden workspace" },
+    {
+      id: "saved-hidden-drive",
+      isPersonal: false,
+      name: "Previously hidden workspace",
+    },
   ]);
-  READ.preferences.mockReturnValueOnce(cold.promise).mockReturnValueOnce(retry.promise);
-  const saved = { hiddenWorkspaceIds: ["saved-hidden-drive"], showNonDocFiles: false };
-  const updated = { ...saved, hiddenWorkspaceIds: [...saved.hiddenWorkspaceIds, "visible-drive"] };
+  READ.preferences
+    .mockReturnValueOnce(cold.promise)
+    .mockReturnValueOnce(retry.promise);
+  const saved = {
+    hiddenWorkspaceIds: ["saved-hidden-drive"],
+    showNonDocFiles: false,
+  };
+  const updated = {
+    ...saved,
+    hiddenWorkspaceIds: [...saved.hiddenWorkspaceIds, "visible-drive"],
+  };
   READ.preferences.mockResolvedValue(updated);
   WRITE.mockResolvedValue({ ok: true, data: updated });
   const container = document.createElement("div");
@@ -61,7 +73,9 @@ it("blocks cold preference edits through read failure, then preserves saved hidd
 
     cold.reject(new Error("Preferences unavailable"));
     await vi.advanceTimersByTimeAsync(0);
-    expect(document.querySelector('[role="alert"]')).toHaveTextContent(/preferences/i);
+    expect(document.querySelector('[role="alert"]')).toHaveTextContent(
+      /preferences/i,
+    );
     expectControlsBlocked();
     const retryButton = [...document.querySelectorAll("button")].find(
       (button) => button.textContent === "Retry preferences",
@@ -79,7 +93,10 @@ it("blocks cold preference edits through read failure, then preserves saved hidd
     expect(display).not.toBeDisabled();
     expect(display).toHaveAttribute("aria-checked", "false");
     expect(visible).not.toBeDisabled();
-    expect(checkbox("pref-drive-saved-hidden-drive")).toHaveAttribute("aria-checked", "false");
+    expect(checkbox("pref-drive-saved-hidden-drive")).toHaveAttribute(
+      "aria-checked",
+      "false",
+    );
     flushSync(() => visible.click());
     await vi.advanceTimersByTimeAsync(0);
     expect(WRITE).toHaveBeenCalledExactlyOnceWith({
@@ -106,6 +123,7 @@ function expectControlsBlocked() {
 
 function checkbox(id: string): HTMLButtonElement {
   const result = document.getElementById(id);
-  if (!(result instanceof HTMLButtonElement)) throw new TypeError(`Checkbox ${id} missing`);
+  if (!(result instanceof HTMLButtonElement))
+    throw new TypeError(`Checkbox ${id} missing`);
   return result;
 }

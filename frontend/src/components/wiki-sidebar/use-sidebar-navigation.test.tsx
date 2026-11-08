@@ -75,7 +75,10 @@ describe("mobile sidebar native accepted navigation", () => {
 
   beforeEach(() => {
     initialWidth = window.innerWidth;
-    Object.defineProperty(window, "innerWidth", { configurable: true, value: 390 });
+    Object.defineProperty(window, "innerWidth", {
+      configurable: true,
+      value: 390,
+    });
     vi.mocked(ROUTER.push).mockClear().mockResolvedValue(true);
     vi.mocked(ROUTER.replace).mockClear().mockResolvedValue(true);
     host = document.createElement("div");
@@ -89,14 +92,20 @@ describe("mobile sidebar native accepted navigation", () => {
   afterEach(() => {
     flushSync(() => root.unmount());
     host.remove();
-    Object.defineProperty(window, "innerWidth", { configurable: true, value: initialWidth });
+    Object.defineProperty(window, "innerWidth", {
+      configurable: true,
+      value: initialWidth,
+    });
   });
 
   function render({
     ownerKey = "user-a",
     pathname = "/d/current",
     ...props
-  }: React.ComponentProps<typeof Links> & { ownerKey?: string; pathname?: string } = {}) {
+  }: React.ComponentProps<typeof Links> & {
+    ownerKey?: string;
+    pathname?: string;
+  } = {}) {
     ROUTER.pathname = pathname;
     ROUTER.asPath = pathname;
     flushSync(() =>
@@ -114,17 +123,24 @@ describe("mobile sidebar native accepted navigation", () => {
 
   function open() {
     const element = host.querySelector("button");
-    if (!(element instanceof HTMLButtonElement)) throw new TypeError("Open control missing");
+    if (!(element instanceof HTMLButtonElement))
+      throw new TypeError("Open control missing");
     flushSync(() => element.click());
     expect(host).toHaveTextContent("Sidebar open");
   }
 
   function select(init: MouseEventInit = {}) {
     const element = host.querySelector("a");
-    if (!(element instanceof HTMLAnchorElement)) throw new TypeError("Destination missing");
+    if (!(element instanceof HTMLAnchorElement))
+      throw new TypeError("Destination missing");
     flushSync(() =>
       element.dispatchEvent(
-        new MouseEvent("click", { bubbles: true, cancelable: true, button: 0, ...init }),
+        new MouseEvent("click", {
+          bubbles: true,
+          cancelable: true,
+          button: 0,
+          ...init,
+        }),
       ),
     );
   }
@@ -171,15 +187,26 @@ describe("mobile sidebar native accepted navigation", () => {
     expect(host).toHaveTextContent("Sidebar open");
   });
 
-  it.each(["click", "navigate"])("preserves a consumer-cancelled %s without closing", (cancel) => {
-    render({ cancelClick: cancel === "click", cancelNavigate: cancel === "navigate" });
-    open();
-    select();
-    expect(ROUTER.push).not.toHaveBeenCalled();
-    expect(host).toHaveTextContent("Sidebar open");
-  });
+  it.each(["click", "navigate"])(
+    "preserves a consumer-cancelled %s without closing",
+    (cancel) => {
+      render({
+        cancelClick: cancel === "click",
+        cancelNavigate: cancel === "navigate",
+      });
+      open();
+      select();
+      expect(ROUTER.push).not.toHaveBeenCalled();
+      expect(host).toHaveTextContent("Sidebar open");
+    },
+  );
 
-  it.each([{ ctrlKey: true }, { metaKey: true }, { shiftKey: true }, { altKey: true }])(
+  it.each([
+    { ctrlKey: true },
+    { metaKey: true },
+    { shiftKey: true },
+    { altKey: true },
+  ])(
     "keeps modified native link activation open ($ctrlKey $metaKey $shiftKey $altKey)",
     (modifiers) => {
       render();
@@ -218,7 +245,10 @@ describe("mobile sidebar native accepted navigation", () => {
   });
 
   it("does not change desktop sidebar state on the same native link contract", () => {
-    Object.defineProperty(window, "innerWidth", { configurable: true, value: 1200 });
+    Object.defineProperty(window, "innerWidth", {
+      configurable: true,
+      value: 1200,
+    });
     render();
     open();
     select();

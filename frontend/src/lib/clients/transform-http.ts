@@ -8,7 +8,10 @@ import { discardStream } from "@/lib/discard-stream";
 
 const GENERIC_ERROR = "Document transform request could not be completed";
 const TransformErrorSchema = z.object({
-  code: z.literal("document_transform_source_changed").optional().catch(undefined),
+  code: z
+    .literal("document_transform_source_changed")
+    .optional()
+    .catch(undefined),
   error: z.string().optional().catch(undefined),
 });
 
@@ -40,7 +43,9 @@ export async function transformHttp(
   });
   // Once headers arrive, a retired owner need not read the mutation's response.
   const responseSignal =
-    body === undefined ? requestSignal : AbortSignal.any([requestSignal, session]);
+    body === undefined
+      ? requestSignal
+      : AbortSignal.any([requestSignal, session]);
   if (responseSignal.aborted) {
     discardStream(response.body);
     responseSignal.throwIfAborted();
@@ -68,7 +73,10 @@ export async function transformHttp(
     };
   }
   const replayHeader = response.headers.get("idempotency-replayed");
-  const responseBody = await boundedTransformText(response.body, responseSignal);
+  const responseBody = await boundedTransformText(
+    response.body,
+    responseSignal,
+  );
   responseSignal.throwIfAborted();
   return {
     ok: true,

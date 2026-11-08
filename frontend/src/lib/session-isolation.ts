@@ -12,7 +12,10 @@ import { retireMutationSession } from "@/lib/mutation-session";
 const SESSION_CLEAR_CHANNEL = "sarj-wiki:session-clear";
 let sharedSessionChannel: BroadcastChannel | null = null;
 
-export function clearAuthenticatedSession(queryClient: QueryClient, userId: null | string): void {
+export function clearAuthenticatedSession(
+  queryClient: QueryClient,
+  userId: null | string,
+): void {
   retireMutationSession(queryClient);
   resetSidebarState();
   resetExpansionState(userId);

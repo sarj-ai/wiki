@@ -15,8 +15,15 @@ interface OwnedVariables<TVariables> {
   session: AbortSignal;
 }
 
-export function useSessionMutation<TData, TVariables = void, TContext = unknown>(
-  options: Omit<UseMutationOptions<TData, Error, TVariables, TContext>, "mutationFn"> & {
+export function useSessionMutation<
+  TData,
+  TVariables = void,
+  TContext = unknown,
+>(
+  options: Omit<
+    UseMutationOptions<TData, Error, TVariables, TContext>,
+    "mutationFn"
+  > & {
     mutationFn: (
       input: TVariables,
       context: MutationFunctionContext,
@@ -26,7 +33,12 @@ export function useSessionMutation<TData, TVariables = void, TContext = unknown>
 ) {
   const queryClient = useQueryClient();
   const { onMutate, ...otherOptions } = options;
-  const ownedOptions: UseMutationOptions<TData, Error, OwnedVariables<TVariables>, TContext> = {
+  const ownedOptions: UseMutationOptions<
+    TData,
+    Error,
+    OwnedVariables<TVariables>,
+    TContext
+  > = {
     ...otherOptions,
     mutationFn: async ({ input, session }, context) => {
       session.throwIfAborted();
@@ -35,11 +47,17 @@ export function useSessionMutation<TData, TVariables = void, TContext = unknown>
       return result;
     },
     onError: (error, { input, session }, result, context) =>
-      session.aborted ? undefined : options.onError?.(error, input, result, context),
+      session.aborted
+        ? undefined
+        : options.onError?.(error, input, result, context),
     onSettled: (data, error, { input, session }, result, context) =>
-      session.aborted ? undefined : options.onSettled?.(data, error, input, result, context),
+      session.aborted
+        ? undefined
+        : options.onSettled?.(data, error, input, result, context),
     onSuccess: (data, { input, session }, result, context) =>
-      session.aborted ? undefined : options.onSuccess?.(data, input, result, context),
+      session.aborted
+        ? undefined
+        : options.onSuccess?.(data, input, result, context),
   };
   if (onMutate) {
     ownedOptions.onMutate = async ({ input, session }, context) => {
@@ -53,7 +71,10 @@ export function useSessionMutation<TData, TVariables = void, TContext = unknown>
 
   return {
     ...mutation,
-    mutate: (input: TVariables, callbacks?: MutateOptions<TData, Error, TVariables, TContext>) => {
+    mutate: (
+      input: TVariables,
+      callbacks?: MutateOptions<TData, Error, TVariables, TContext>,
+    ) => {
       // TanStack can await MutationCache.onMutate before calling this hook's
       // callbacks or mutationFn. Bind ownership before it queues that work.
       const session = captureMutationSession(queryClient);
@@ -65,7 +86,10 @@ export function useSessionMutation<TData, TVariables = void, TContext = unknown>
     ) => {
       const session = captureMutationSession(queryClient);
       try {
-        const result = await mutation.mutateAsync({ input, session }, ownedCallbacks(callbacks));
+        const result = await mutation.mutateAsync(
+          { input, session },
+          ownedCallbacks(callbacks),
+        );
         session.throwIfAborted();
         return result;
       } catch (error: unknown) {
@@ -79,14 +103,17 @@ export function useSessionMutation<TData, TVariables = void, TContext = unknown>
 
 function ownedCallbacks<TData, TVariables, TContext>(
   callbacks: MutateOptions<TData, Error, TVariables, TContext> | undefined,
-): MutateOptions<TData, Error, OwnedVariables<TVariables>, TContext> | undefined {
+):
+  | MutateOptions<TData, Error, OwnedVariables<TVariables>, TContext>
+  | undefined {
   if (!callbacks) return undefined;
   return {
     onError: (error, { input, session }, result, context) => {
       if (!session.aborted) callbacks.onError?.(error, input, result, context);
     },
     onSettled: (data, error, { input, session }, result, context) => {
-      if (!session.aborted) callbacks.onSettled?.(data, error, input, result, context);
+      if (!session.aborted)
+        callbacks.onSettled?.(data, error, input, result, context);
     },
     onSuccess: (data, { input, session }, result, context) => {
       if (!session.aborted) callbacks.onSuccess?.(data, input, result, context);

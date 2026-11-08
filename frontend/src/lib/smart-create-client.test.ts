@@ -1,6 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { claimBrowserSession, retireBrowserSession } from "@/lib/browser-session";
+import {
+  claimBrowserSession,
+  retireBrowserSession,
+} from "@/lib/browser-session";
 import { smartCreateApi } from "@/lib/smart-create-client";
 
 const ACTION_MOCKS = vi.hoisted(() => ({ create: vi.fn(), propose: vi.fn() }));
@@ -131,7 +134,12 @@ describe("smartCreateApi", () => {
     const gate = Promise.withResolvers<undefined>();
     FETCH_MOCK.mockImplementation(async (input) => {
       await gate.promise;
-      const url = typeof input === "string" ? input : "href" in input ? input.href : input.url;
+      const url =
+        typeof input === "string"
+          ? input
+          : "href" in input
+            ? input.href
+            : input.url;
       return Response.json(url.includes("/templates") ? CATALOG : PENDING_TASK);
     });
 
@@ -151,7 +159,10 @@ describe("smartCreateApi", () => {
         await new Promise<Response>((_resolve, reject) => {
           options?.signal?.addEventListener(
             "abort",
-            () => reject(new DOMException("The operation was aborted", "AbortError")),
+            () =>
+              reject(
+                new DOMException("The operation was aborted", "AbortError"),
+              ),
             {
               once: true,
             },
@@ -168,13 +179,18 @@ describe("smartCreateApi", () => {
   });
 
   it("rejects malformed task reads at the transport boundary", async () => {
-    FETCH_MOCK.mockResolvedValue(Response.json({ ...PENDING_TASK, status: "private-status" }));
+    FETCH_MOCK.mockResolvedValue(
+      Response.json({ ...PENDING_TASK, status: "private-status" }),
+    );
 
     await expect(smartCreateApi.getTask(TASK_ID)).rejects.toThrow();
   });
 
   it("sends the idempotency key with the normalized creation plan", async () => {
-    ACTION_MOCKS.create.mockResolvedValue({ data: JSON.stringify(PENDING_TASK), ok: true });
+    ACTION_MOCKS.create.mockResolvedValue({
+      data: JSON.stringify(PENDING_TASK),
+      ok: true,
+    });
 
     await expect(
       smartCreateApi.create(
@@ -228,7 +244,10 @@ describe("smartCreateApi", () => {
     });
 
     await expect(
-      smartCreateApi.propose({ description: "A launch brief", fileType: "document" }),
+      smartCreateApi.propose({
+        description: "A launch brief",
+        fileType: "document",
+      }),
     ).rejects.toThrow("Unrecognized key");
   });
 
@@ -236,7 +255,11 @@ describe("smartCreateApi", () => {
     FETCH_MOCK.mockResolvedValue(Response.json(SUCCEEDED_TASK));
 
     await expect(
-      smartCreateApi.waitForCompletion({ id: TASK_ID, status: "pending" }, undefined, 0),
+      smartCreateApi.waitForCompletion(
+        { id: TASK_ID, status: "pending" },
+        undefined,
+        0,
+      ),
     ).resolves.toMatchObject({ file: { id: "file-1" }, taskId: TASK_ID });
     const [url] = FETCH_MOCK.mock.calls[0] ?? [];
     expect(url).toBe(`/api/wiki/tasks/${TASK_ID}`);

@@ -5,12 +5,17 @@ import { flushSync } from "react-dom";
 import { createRoot, type Root } from "react-dom/client";
 
 import { BrowserSessionBoundary } from "@/components/browser-session-boundary";
-import { recentDocsStorageKey, writeActiveBrowserUser } from "@/lib/browser-storage";
+import {
+  recentDocsStorageKey,
+  writeActiveBrowserUser,
+} from "@/lib/browser-storage";
 import { useBrowserUserId } from "@/lib/browser-user-context";
 import { installLocalStorage } from "@/test-stubs/install-local-storage";
 
 vi.mock("@/lib/wiki-read-api", () => ({
-  WIKI_READ_API: { getMe: vi.fn().mockReturnValue(Promise.withResolvers<never>().promise) },
+  WIKI_READ_API: {
+    getMe: vi.fn().mockReturnValue(Promise.withResolvers<never>().promise),
+  },
 }));
 
 describe("browser session identity boundary", () => {
@@ -53,9 +58,13 @@ describe("browser session identity boundary", () => {
 
     expect(container.textContent).toBe("user-b");
     await vi.waitFor(() => {
-      expect(window.localStorage.getItem(recentDocsStorageKey("user-a"))).toBeNull();
+      expect(
+        window.localStorage.getItem(recentDocsStorageKey("user-a")),
+      ).toBeNull();
     });
-    expect(window.localStorage.getItem(recentDocsStorageKey("user-b"))).toBe("private-b");
+    expect(window.localStorage.getItem(recentDocsStorageKey("user-b"))).toBe(
+      "private-b",
+    );
   });
 
   it("does not invent a persistence identity when bootstrap identity is unavailable", () => {

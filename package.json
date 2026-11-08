@@ -1,0 +1,6 @@
+{
+  "private": true,
+  "scripts": {
+    "lint": "code-standards check --trust-repository-code"
+  }
+}

@@ -1,5 +1,4 @@
-import type { FileResponse } from "@/types/wiki";
-import type { MIME_DOC } from "@/types/wiki";
+import type { FileResponse, MIME_DOC } from "@/types/wiki";
 import { MIME_SLIDE } from "@/types/wiki";
 
 export type SmartFileType = "document" | "presentation";
@@ -88,8 +87,14 @@ export function switchAuthoringMode(
 ): SmartCreateState {
   if (state.mode.kind === kind && state.phase === "compose") return state;
   return kind === "ai"
-    ? { mode: { description: "", fileType: "document", kind: "ai" }, phase: "compose" }
-    : { mode: { kind: "template", selection: { kind: "unselected" } }, phase: "compose" };
+    ? {
+        mode: { description: "", fileType: "document", kind: "ai" },
+        phase: "compose",
+      }
+    : {
+        mode: { kind: "template", selection: { kind: "unselected" } },
+        phase: "compose",
+      };
 }
 
 export function sourceForTemplate(template: DriveTemplate): CreationSource {
@@ -123,7 +128,9 @@ interface AIMode {
   kind: "ai";
 }
 
-type TemplateSelection = { kind: "selected"; template: DriveTemplate } | { kind: "unselected" };
+type TemplateSelection =
+  | { kind: "selected"; template: DriveTemplate }
+  | { kind: "unselected" };
 
 interface TemplateMode {
   kind: "template";

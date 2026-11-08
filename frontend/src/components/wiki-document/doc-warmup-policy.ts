@@ -1,4 +1,7 @@
-import { allowsIframeSpeculation, type NavigatorHints } from "@/lib/speculation-policy";
+import {
+  allowsIframeSpeculation,
+  type NavigatorHints,
+} from "@/lib/speculation-policy";
 
 export { readNavigatorHints } from "@/lib/speculation-policy";
 

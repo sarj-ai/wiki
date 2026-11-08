@@ -9,7 +9,9 @@ function submit(times = 1) {
   if (!form) throw new TypeError("Name prompt form missing");
   flushSync(() => {
     for (let index = 0; index < times; index++) {
-      form.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
+      form.dispatchEvent(
+        new Event("submit", { bubbles: true, cancelable: true }),
+      );
     }
   });
 }
@@ -43,7 +45,12 @@ describe("name prompt work ownership", () => {
     vi.unstubAllGlobals();
   });
 
-  function render(open = true, defaultValue = "  First  ", title = "New document", strict = false) {
+  function render(
+    open = true,
+    defaultValue = "  First  ",
+    title = "New document",
+    strict = false,
+  ) {
     const dialog = (
       <NamePromptDialog
         defaultValue={defaultValue}
@@ -53,7 +60,9 @@ describe("name prompt work ownership", () => {
         title={title}
       />
     );
-    flushSync(() => root.render(strict ? <StrictMode>{dialog}</StrictMode> : dialog));
+    flushSync(() =>
+      root.render(strict ? <StrictMode>{dialog}</StrictMode> : dialog),
+    );
   }
 
   it("admits only one confirmation when two submit events precede a render", async () => {

@@ -82,9 +82,15 @@ describe("document viewer lifecycle", () => {
     store.setPrewarm(doc("a"));
     store.setActive(doc("b"), owner);
     expect(useDocViewerStore.getState().prewarm?.fileId).toBe("a");
-    const publications: { active: string | undefined; prewarm: string | undefined }[] = [];
+    const publications: {
+      active: string | undefined;
+      prewarm: string | undefined;
+    }[] = [];
     const unsubscribe = useDocViewerStore.subscribe((state) => {
-      publications.push({ active: state.active?.fileId, prewarm: state.prewarm?.fileId });
+      publications.push({
+        active: state.active?.fileId,
+        prewarm: state.prewarm?.fileId,
+      });
     });
     store.setActive(doc("a"), owner);
     unsubscribe();
@@ -93,7 +99,9 @@ describe("document viewer lifecycle", () => {
     store.setActive(doc("c"), owner);
     store.setActive(doc("d"), owner);
     store.setActive(doc("e"), owner);
-    expect(useDocViewerStore.getState().pool.map((entry) => entry.fileId)).toEqual(["e", "d", "c"]);
+    expect(
+      useDocViewerStore.getState().pool.map((entry) => entry.fileId),
+    ).toEqual(["e", "d", "c"]);
     expect(useDocViewerStore.getState().prewarm).toBeNull();
   });
 

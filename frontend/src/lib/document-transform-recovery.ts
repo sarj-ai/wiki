@@ -48,13 +48,16 @@ export async function claimTransformRecovery(
   if (!locks) {
     const existing = readShared(owner, source);
     if (existing?.completedAt === null) return existing.operation;
-    throw new Error("Safe cross-tab polish requires a browser with Web Locks enabled.");
+    throw new Error(
+      "Safe cross-tab polish requires a browser with Web Locks enabled.",
+    );
   }
   return locks.request(sharedKey(owner, source), () => {
     const existing = readShared(owner, source);
     if (
       existing &&
-      (existing.completedAt === null || candidate.createdAt <= existing.completedAt)
+      (existing.completedAt === null ||
+        candidate.createdAt <= existing.completedAt)
     ) {
       return existing.operation;
     }
@@ -77,7 +80,8 @@ export async function completeTransformRecovery(
   if (!locks) return;
   await locks.request(sharedKey(owner, source), () => {
     const existing = readShared(owner, source);
-    if (existing?.operation.key !== key || existing.completedAt !== null) return;
+    if (existing?.operation.key !== key || existing.completedAt !== null)
+      return;
     window.localStorage.setItem(
       sharedKey(owner, source),
       JSON.stringify({ ...existing, completedAt: Date.now() }),
@@ -95,9 +99,18 @@ export async function recordTransformTask(
   if (!browser.locks) return;
   await browser.locks.request(sharedKey(owner, source), () => {
     const existing = readShared(owner, source);
-    if (existing?.operation.key !== operation.key || existing.completedAt !== null) return;
-    if (existing.operation.taskId && existing.operation.taskId !== operation.taskId) {
-      throw new Error("The saved polish task does not match the admitted operation.");
+    if (
+      existing?.operation.key !== operation.key ||
+      existing.completedAt !== null
+    )
+      return;
+    if (
+      existing.operation.taskId &&
+      existing.operation.taskId !== operation.taskId
+    ) {
+      throw new Error(
+        "The saved polish task does not match the admitted operation.",
+      );
     }
     window.localStorage.setItem(
       sharedKey(owner, source),

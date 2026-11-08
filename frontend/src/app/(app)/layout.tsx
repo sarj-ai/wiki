@@ -1,4 +1,8 @@
-import { dehydrate, HydrationBoundary, QueryClient } from "@tanstack/react-query";
+import {
+  dehydrate,
+  HydrationBoundary,
+  QueryClient,
+} from "@tanstack/react-query";
 import { cookies } from "next/headers";
 import { type CSSProperties, Suspense } from "react";
 
@@ -38,21 +42,34 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
 
 function WorkspaceSkeleton() {
   return (
-    <main aria-busy="true" className="bg-background flex min-h-svh items-center justify-center p-6">
+    <main
+      aria-busy="true"
+      className="bg-background flex min-h-svh items-center justify-center p-6"
+    >
       <SarjLoader label="Loading workspace…" />
     </main>
   );
 }
 
-async function AuthenticatedLayout({ children }: { children: React.ReactNode }) {
+async function AuthenticatedLayout({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
   const cookieStore = await cookies();
-  const defaultOpen = SidebarStateCookieSchema.parse(cookieStore.get("sidebar_state")?.value);
-  const savedWidth = SidebarWidthCssSchema.parse(cookieStore.get(SIDEBAR_WIDTH_COOKIE)?.value);
+  const defaultOpen = SidebarStateCookieSchema.parse(
+    cookieStore.get("sidebar_state")?.value,
+  );
+  const savedWidth = SidebarWidthCssSchema.parse(
+    cookieStore.get(SIDEBAR_WIDTH_COOKIE)?.value,
+  );
   const sidebarWidth = savedWidth
     ? `${Math.min(576, Math.max(224, Number.parseInt(savedWidth, 10)))}px`
     : undefined;
   const sidebarStyle: SidebarStyle | undefined =
-    sidebarWidth === undefined ? undefined : { "--sidebar-width": sidebarWidth };
+    sidebarWidth === undefined
+      ? undefined
+      : { "--sidebar-width": sidebarWidth };
 
   const queryClient = new QueryClient();
   const { bootstrap, me } = await loadSessionBootstrap(serverWikiApi);

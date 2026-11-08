@@ -40,15 +40,25 @@ interface SearchableQuickLink {
   name: string;
 }
 
-const SEARCHABLE_ALIASES = new WeakMap<QuickLinkItem[], SearchableQuickLink[]>();
+const SEARCHABLE_ALIASES = new WeakMap<
+  QuickLinkItem[],
+  SearchableQuickLink[]
+>();
 
-export function QuickLinks({ aliases, error = false, loading = false }: QuickLinksProps) {
+export function QuickLinks({
+  aliases,
+  error = false,
+  loading = false,
+}: QuickLinksProps) {
   const [query, setQuery] = useState("");
   const [selectedIndex, setSelectedIndex] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
   const normalizedQuery = query.trim().toLocaleLowerCase();
   const filteredAliases = filterQuickLinks(aliases, normalizedQuery);
-  const activeIndex = Math.min(selectedIndex, Math.max(filteredAliases.length - 1, 0));
+  const activeIndex = Math.min(
+    selectedIndex,
+    Math.max(filteredAliases.length - 1, 0),
+  );
 
   useEffect(() => {
     inputRef.current?.focus();
@@ -73,7 +83,9 @@ export function QuickLinks({ aliases, error = false, loading = false }: QuickLin
       }
       case "ArrowUp": {
         event.preventDefault();
-        setSelectedIndex((current) => (current === 0 ? filteredAliases.length - 1 : current - 1));
+        setSelectedIndex((current) =>
+          current === 0 ? filteredAliases.length - 1 : current - 1,
+        );
         break;
       }
       case "Enter": {
@@ -94,7 +106,9 @@ export function QuickLinks({ aliases, error = false, loading = false }: QuickLin
           />
           <Input
             aria-activedescendant={
-              filteredAliases.length > 0 ? `quick-link-${activeIndex}` : undefined
+              filteredAliases.length > 0
+                ? `quick-link-${activeIndex}`
+                : undefined
             }
             aria-controls="quick-links-results"
             aria-expanded={filteredAliases.length > 0}
@@ -120,7 +134,10 @@ export function QuickLinks({ aliases, error = false, loading = false }: QuickLin
           role="listbox"
         >
           {loading ? (
-            <Message detail="Checking your current access…" title="Loading quick links" />
+            <Message
+              detail="Checking your current access…"
+              title="Loading quick links"
+            />
           ) : error ? (
             <Message
               detail="Your accessible quick links could not be loaded. Try refreshing the page."
@@ -160,7 +177,10 @@ export function QuickLinks({ aliases, error = false, loading = false }: QuickLin
   );
 }
 
-function filterQuickLinks(aliases: QuickLinkItem[], query: string): QuickLinkItem[] {
+function filterQuickLinks(
+  aliases: QuickLinkItem[],
+  query: string,
+): QuickLinkItem[] {
   if (query.length === 0) return aliases;
   let searchable = SEARCHABLE_ALIASES.get(aliases);
   if (!searchable) {
@@ -193,7 +213,13 @@ interface QuickLinkRowProps {
   setSelectedIndex: React.Dispatch<React.SetStateAction<number>>;
 }
 
-function QuickLinkRow({ id, index, item, selected, setSelectedIndex }: QuickLinkRowProps) {
+function QuickLinkRow({
+  id,
+  index,
+  item,
+  selected,
+  setSelectedIndex,
+}: QuickLinkRowProps) {
   const intent = useDocumentIntent({
     disabled: false,
     fileId: item.fileId,
@@ -252,7 +278,9 @@ function Message({ detail, title }: { detail: string; title: string }) {
   return (
     <div className="px-5 py-12 text-center">
       <p className="text-foreground text-sm font-medium">{title}</p>
-      <p className="text-muted-foreground mx-auto mt-1 max-w-sm text-sm">{detail}</p>
+      <p className="text-muted-foreground mx-auto mt-1 max-w-sm text-sm">
+        {detail}
+      </p>
     </div>
   );
 }

@@ -1,6 +1,8 @@
 import type { DocumentTransformResult } from "@/lib/document-transform-types";
 
-export function preservedInPlaceOutcome(result: DocumentTransformResult | null | undefined) {
+export function preservedInPlaceOutcome(
+  result: DocumentTransformResult | null | undefined,
+) {
   if (
     !result?.needsReview ||
     result.outputStrategy !== "in_place" ||
@@ -30,6 +32,8 @@ export function preservedInPlaceOutcome(result: DocumentTransformResult | null |
     message: result.changed
       ? "Updated the original document. Preservation checks passed; review the notes for content and formatting kept unchanged."
       : "The original document is unchanged. Preservation checks passed; review the notes for content and formatting kept unchanged.",
-    openLabel: result.changed ? "Open updated document" : "Open original document",
+    openLabel: result.changed
+      ? "Open updated document"
+      : "Open original document",
   };
 }

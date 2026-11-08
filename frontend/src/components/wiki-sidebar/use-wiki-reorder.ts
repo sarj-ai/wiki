@@ -26,7 +26,12 @@ import { EMPTY_NODES, EMPTY_SORT_ORDERS } from "@/lib/wiki-indexes";
 import type { DriveNode, DriveTree, SortOrder } from "@/types/wiki";
 import { MIME_SHORTCUT } from "@/types/wiki";
 
-import { dragScopeData, sortableContainerId, sortableData, sortablePosition } from "./drag-data";
+import {
+  dragScopeData,
+  sortableContainerId,
+  sortableData,
+  sortablePosition,
+} from "./drag-data";
 import { type DropIntent, useDragOverStore } from "./use-drag-over-store";
 import { useInFlightMovesStore } from "./use-in-flight-moves";
 
@@ -59,17 +64,21 @@ export function useWikiReorder(): WikiReorder {
   const userId = useBrowserUserId();
   const bulkSetSortOrders = useBulkSetSortOrders();
   const moveFile = useMoveFile();
-  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
-
-  const [optimisticByContainer, setOptimisticByContainer] = useState<Map<string, string[]>>(
-    () => new Map(),
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
   );
+
+  const [optimisticByContainer, setOptimisticByContainer] = useState<
+    Map<string, string[]>
+  >(() => new Map());
   const [activeNode, setActiveNode] = useState<DriveNode | null>(null);
   const activeDrag = useRef<ActiveDrag | null>(null);
 
   const findNodeById = (driveId: string, id: string): DriveNode | null => {
     const tree = qc.getQueryData<DriveTree>(wikiKeys.driveTree(driveId));
-    const treeHit = tree?.folders.find((n) => n.id === id) ?? tree?.files.find((n) => n.id === id);
+    const treeHit =
+      tree?.folders.find((n) => n.id === id) ??
+      tree?.files.find((n) => n.id === id);
     if (treeHit) return treeHit;
     const folderFilesCaches = qc.getQueriesData<DriveNode[]>({
       queryKey: wikiKeys.folderFilesPrefix,
@@ -133,7 +142,8 @@ export function useWikiReorder(): WikiReorder {
     const overIsOwnParent = dragged.parentFolderId === String(over.id);
     const activeContainer = sortableContainerId(active.data.current);
     const overContainer = sortableContainerId(over.data.current);
-    const sameContainer = activeContainer !== null && activeContainer === overContainer;
+    const sameContainer =
+      activeContainer !== null && activeContainer === overContainer;
 
     let intent: DropIntent | null;
     if (sameContainer) {
@@ -142,11 +152,15 @@ export function useWikiReorder(): WikiReorder {
       const positionsMatch =
         activePosition?.containerId === activeContainer &&
         overPosition?.containerId === overContainer;
-      const sortableItems = positionsMatch ? [] : (sortableData(active.data.current)?.items ?? []);
+      const sortableItems = positionsMatch
+        ? []
+        : (sortableData(active.data.current)?.items ?? []);
       const oldIdx = positionsMatch
         ? activePosition.index
         : sortableItems.indexOf(String(active.id));
-      const overIdx = positionsMatch ? overPosition.index : sortableItems.indexOf(String(over.id));
+      const overIdx = positionsMatch
+        ? overPosition.index
+        : sortableItems.indexOf(String(over.id));
       intent = oldIdx === overIdx ? null : oldIdx < overIdx ? "below" : "above";
     } else {
       const overEligibleForInto = overIsFolder && !overIsOwnParent;
@@ -162,7 +176,10 @@ export function useWikiReorder(): WikiReorder {
     );
   };
 
-  const finishDrag = (): { dragged: ActiveDrag; intent: DropIntent | null } | null => {
+  const finishDrag = (): {
+    dragged: ActiveDrag;
+    intent: DropIntent | null;
+  } | null => {
     const dragged = activeDrag.current;
     activeDrag.current = null;
     setActiveNode(null);
@@ -216,7 +233,12 @@ export function useWikiReorder(): WikiReorder {
           ? { intent, rowId: String(over.id) }
           : null;
       if (newParentFolderId) {
-        handleMoveInto(dragged, destinationScope.driveId, newParentFolderId, positionHint);
+        handleMoveInto(
+          dragged,
+          destinationScope.driveId,
+          newParentFolderId,
+          positionHint,
+        );
       }
       return;
     }
@@ -226,14 +248,21 @@ export function useWikiReorder(): WikiReorder {
     commitReorder(activeContainerId, reordered, dragged.session);
   };
 
-  const commitReorder = (containerId: string, reordered: string[], session: AbortSignal): void => {
+  const commitReorder = (
+    containerId: string,
+    reordered: string[],
+    session: AbortSignal,
+  ): void => {
     setOptimisticByContainer((prev) => {
       const next = new Map(prev);
       next.set(containerId, reordered);
       return next;
     });
 
-    const updates = reordered.map((id, i) => ({ driveId: id, sortOrder: i + 1 }));
+    const updates = reordered.map((id, i) => ({
+      driveId: id,
+      sortOrder: i + 1,
+    }));
     void bulkSetSortOrders
       .mutateAsync(updates)
       .catch((err: unknown) => {
@@ -258,7 +287,12 @@ export function useWikiReorder(): WikiReorder {
     newParentFolderId: string,
     positionHint: { rowId: string; intent: "above" | "below" } | null = null,
   ): void => {
-    const { driveId: sourceDriveId, node, parentFolderId: sourceParentFolderId, session } = dragged;
+    const {
+      driveId: sourceDriveId,
+      node,
+      parentFolderId: sourceParentFolderId,
+      session,
+    } = dragged;
     if (session.aborted || newParentFolderId === node.id) return;
     if (
       destinationDriveId === sourceDriveId &&
@@ -277,9 +311,15 @@ export function useWikiReorder(): WikiReorder {
       return;
     }
 
-    const destinationNode = lookupFolder(qc, destinationDriveId, newParentFolderId);
+    const destinationNode = lookupFolder(
+      qc,
+      destinationDriveId,
+      newParentFolderId,
+    );
     if (destinationNode?.mimeType === MIME_SHORTCUT) {
-      toast.error("Can't drop into a shortcut. Open it and drop into the target's folder instead.");
+      toast.error(
+        "Can't drop into a shortcut. Open it and drop into the target's folder instead.",
+      );
       return;
     }
 
@@ -351,7 +391,10 @@ function validatedSiblingReorder(
 ): null | string[] {
   const activeSortable = sortableData(active.data.current);
   const overSortable = sortableData(over.data.current);
-  if (activeSortable?.containerId !== containerId || overSortable?.containerId !== containerId)
+  if (
+    activeSortable?.containerId !== containerId ||
+    overSortable?.containerId !== containerId
+  )
     return null;
   const items = activeSortable.items ?? [];
   const oldIndex = items.indexOf(String(active.id));
@@ -366,12 +409,16 @@ function parentIdOf(containerId: string): null | string {
     : null;
 }
 
-function isFolderTarget(data: null | Record<string, unknown> | undefined): boolean {
+function isFolderTarget(
+  data: null | Record<string, unknown> | undefined,
+): boolean {
   return data?.["isFolder"] === true;
 }
 
 function computeDropIntent(
-  active: { rect: { current: { initial: { top: number; height: number } | null } } },
+  active: {
+    rect: { current: { initial: { top: number; height: number } | null } };
+  },
   over: { rect: { top: number; height: number } },
   delta: { x: number; y: number },
   overIsFolder: boolean,
@@ -399,11 +446,13 @@ function buildDestinationOrder(
   return buildDestinationSortOrders({
     driveId,
     folderFiles:
-      qc.getQueryData<DriveNode[]>(wikiKeys.folderFiles(newParentFolderId)) ?? EMPTY_NODES,
+      qc.getQueryData<DriveNode[]>(wikiKeys.folderFiles(newParentFolderId)) ??
+      EMPTY_NODES,
     folderId: newParentFolderId,
     movedNode,
     positionHint,
-    sortOrders: qc.getQueryData<SortOrder[]>(wikiKeys.sortOrders) ?? EMPTY_SORT_ORDERS,
+    sortOrders:
+      qc.getQueryData<SortOrder[]>(wikiKeys.sortOrders) ?? EMPTY_SORT_ORDERS,
     tree,
   });
 }

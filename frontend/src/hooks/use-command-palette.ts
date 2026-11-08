@@ -36,7 +36,8 @@ const useCommandPaletteStore = create<CommandPaletteState>((set, get) => {
       let onDocumentNavigate: ((href: string) => void) | null = null;
       if (next) {
         const candidate = opener ?? document.activeElement;
-        get().returnFocusRef.current = candidate instanceof HTMLElement ? candidate : null;
+        get().returnFocusRef.current =
+          candidate instanceof HTMLElement ? candidate : null;
         if (navigation && !navigation.signal.aborted) {
           const retire = () => {
             if (generation !== opening) return;
@@ -45,9 +46,14 @@ const useCommandPaletteStore = create<CommandPaletteState>((set, get) => {
             set({ onDocumentNavigate: null });
           };
           navigation.signal.addEventListener("abort", retire, { once: true });
-          releaseNavigation = () => navigation.signal.removeEventListener("abort", retire);
+          releaseNavigation = () =>
+            navigation.signal.removeEventListener("abort", retire);
           onDocumentNavigate = (href) => {
-            if (generation === opening && get().open && !navigation.signal.aborted)
+            if (
+              generation === opening &&
+              get().open &&
+              !navigation.signal.aborted
+            )
               navigation.onNavigate(href);
           };
         }
@@ -65,16 +71,23 @@ export function useCommandPaletteMounted(): boolean {
   return useCommandPaletteStore((s) => s.mounted);
 }
 
-export function useCommandPaletteState(): Omit<CommandPaletteState, "mounted" | "navigationOwner"> {
+export function useCommandPaletteState(): Omit<
+  CommandPaletteState,
+  "mounted" | "navigationOwner"
+> {
   const open = useCommandPaletteStore((s) => s.open);
   const setOpen = useCommandPaletteStore((s) => s.setOpen);
   const toggle = useCommandPaletteStore((s) => s.toggle);
   const returnFocusRef = useCommandPaletteStore((s) => s.returnFocusRef);
-  const onDocumentNavigate = useCommandPaletteStore((s) => s.onDocumentNavigate);
+  const onDocumentNavigate = useCommandPaletteStore(
+    (s) => s.onDocumentNavigate,
+  );
   return { onDocumentNavigate, open, returnFocusRef, setOpen, toggle };
 }
 
-export function registerCommandPaletteNavigationOwner(owner: SidebarNavigationIntent): () => void {
+export function registerCommandPaletteNavigationOwner(
+  owner: SidebarNavigationIntent,
+): () => void {
   const retire = () => {
     owner.signal.removeEventListener("abort", retire);
     if (useCommandPaletteStore.getState().navigationOwner === owner)

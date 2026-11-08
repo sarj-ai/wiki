@@ -20,7 +20,8 @@ import type {
 
 export const MIME_FOLDER = "application/vnd.google-apps.folder";
 export const MIME_DOC = "application/vnd.google-apps.document";
-export const MIME_DOCX = "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+export const MIME_DOCX =
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
 export const MIME_SHEET = "application/vnd.google-apps.spreadsheet";
 export const MIME_SLIDE = "application/vnd.google-apps.presentation";
 export const MIME_DRAWING = "application/vnd.google-apps.drawing";
@@ -36,7 +37,9 @@ export type DriveSummary = z.output<typeof driveSummary>;
 export type DriveNode = z.output<typeof driveNode>;
 export type DrivePermissionsPage = z.output<typeof drivePermissionsPage>;
 export type DrivePermission = DrivePermissionsPage["permissions"][number];
-export type DrivePrincipalType = z.output<typeof DrivePrincipalTypeSchemaSchema>;
+export type DrivePrincipalType = z.output<
+  typeof DrivePrincipalTypeSchemaSchema
+>;
 export type DriveTree = z.output<typeof driveTree>;
 export type DriveSearchResult = z.output<typeof searchResult>;
 export type SnippetResult = z.output<typeof snippetResult>;

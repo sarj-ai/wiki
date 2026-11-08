@@ -6,7 +6,9 @@ import { Sidebar, SidebarProvider, SidebarTrigger } from "./sidebar";
 
 const viewport = vi.hoisted(() => ({ mobile: true }));
 const COOKIE_WRITE = vi.fn().mockResolvedValue(undefined);
-vi.mock("@/hooks/use-is-mobile", () => ({ useIsMobile: () => viewport.mobile }));
+vi.mock("@/hooks/use-is-mobile", () => ({
+  useIsMobile: () => viewport.mobile,
+}));
 
 describe("responsive sidebar ownership", () => {
   let host: HTMLDivElement;
@@ -45,7 +47,9 @@ describe("responsive sidebar ownership", () => {
   }
 
   function trigger() {
-    const element = host.querySelector<HTMLButtonElement>('[data-sidebar="trigger"]');
+    const element = host.querySelector<HTMLButtonElement>(
+      '[data-sidebar="trigger"]',
+    );
     if (!element) throw new Error("Sidebar trigger missing");
     return element;
   }
@@ -102,11 +106,15 @@ describe("responsive sidebar ownership", () => {
     flushSync(() => trigger().click());
     expect(trigger()).toHaveAttribute("aria-expanded", "false");
     flushSync(() =>
-      window.dispatchEvent(new KeyboardEvent("keydown", { ctrlKey: true, key: "b" })),
+      window.dispatchEvent(
+        new KeyboardEvent("keydown", { ctrlKey: true, key: "b" }),
+      ),
     );
     expect(trigger()).toHaveAttribute("aria-expanded", "true");
     flushSync(() =>
-      window.dispatchEvent(new KeyboardEvent("keydown", { key: "b", metaKey: true })),
+      window.dispatchEvent(
+        new KeyboardEvent("keydown", { key: "b", metaKey: true }),
+      ),
     );
     expect(trigger()).toHaveAttribute("aria-expanded", "false");
     expect(COOKIE_WRITE).not.toHaveBeenCalled();

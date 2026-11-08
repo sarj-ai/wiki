@@ -73,7 +73,10 @@ export function createRecentPagesScope({
   };
 }
 
-export function recentPagesQueryOptions(scope: RecentPagesScope, fileIds: readonly string[]) {
+export function recentPagesQueryOptions(
+  scope: RecentPagesScope,
+  fileIds: readonly string[],
+) {
   const ids = [...fileIds];
   const authority = scope.capture();
   // A new authority key cannot reuse an initial read that started before a denial.
@@ -83,9 +86,16 @@ export function recentPagesQueryOptions(scope: RecentPagesScope, fileIds: readon
     gcTime: RECENT_PAGES_GC_MS,
     queryFn: async ({ signal }) => {
       const session = captureMutationSession(scope.queryClient);
-      const requestSignal = AbortSignal.any([authority.signal, session, signal]);
+      const requestSignal = AbortSignal.any([
+        authority.signal,
+        session,
+        signal,
+      ]);
       requestSignal.throwIfAborted();
-      const pages = ids.length === 0 ? [] : await WIKI_READ_API.getRecentFiles(ids, requestSignal);
+      const pages =
+        ids.length === 0
+          ? []
+          : await WIKI_READ_API.getRecentFiles(ids, requestSignal);
       requestSignal.throwIfAborted();
       return pages;
     },
@@ -96,18 +106,31 @@ export function recentPagesQueryOptions(scope: RecentPagesScope, fileIds: readon
   });
 }
 
-export function subscribeRecentPagesInvalidation(scope: RecentPagesScope): () => void {
+export function subscribeRecentPagesInvalidation(
+  scope: RecentPagesScope,
+): () => void {
   const { queryClient, queryKey } = scope;
   const stopQueries = queryClient.getQueryCache().subscribe((event) => {
     if (!scope.isActive()) return;
     const rawKey: unknown = event.query.queryKey;
     if (!Array.isArray(rawKey)) return;
     const key: readonly unknown[] = rawKey;
-    if (key[0] === "wiki" && key[1] === "recent-pages" && key[2] === queryKey[2]) {
-      if (event.type === "added") pruneRecentPages(scope, event.query.queryHash);
+    if (
+      key[0] === "wiki" &&
+      key[1] === "recent-pages" &&
+      key[2] === queryKey[2]
+    ) {
+      if (event.type === "added")
+        pruneRecentPages(scope, event.query.queryHash);
       return;
     }
-    if (isFileAuthorityChange(event.type, key, event.type === "updated" ? event.action.type : "")) {
+    if (
+      isFileAuthorityChange(
+        event.type,
+        key,
+        event.type === "updated" ? event.action.type : "",
+      )
+    ) {
       const affected = queryClient
         .getQueryCache()
         .findAll({ queryKey })
@@ -117,13 +140,21 @@ export function subscribeRecentPagesInvalidation(scope: RecentPagesScope): () =>
             (event.type !== "updated" ||
               event.action.type !== "success" ||
               query.state.fetchStatus !== "idle" ||
-              !hasMatchingRecentFile(query.state.data, event.query.state.data, key[2])),
+              !hasMatchingRecentFile(
+                query.state.data,
+                event.query.state.data,
+                key[2],
+              )),
         );
       if (affected) scope.retireAuthority();
     }
   });
   const stopMutations = queryClient.getMutationCache().subscribe((event) => {
-    if (scope.isActive() && event.type === "updated" && event.action.type === "success") {
+    if (
+      scope.isActive() &&
+      event.type === "updated" &&
+      event.action.type === "success"
+    ) {
       scope.retireAuthority();
     }
   });
@@ -133,17 +164,27 @@ export function subscribeRecentPagesInvalidation(scope: RecentPagesScope): () =>
   };
 }
 
-function isFileAuthorityChange(type: string, key: readonly unknown[], action: string): boolean {
+function isFileAuthorityChange(
+  type: string,
+  key: readonly unknown[],
+  action: string,
+): boolean {
   return (
     key[0] === "wiki" &&
     key[1] === "file" &&
     (type === "removed" ||
       (type === "updated" &&
-        (action === "success" || action === "invalidate" || action === "error")))
+        (action === "success" ||
+          action === "invalidate" ||
+          action === "error")))
   );
 }
 
-function hasMatchingRecentFile(data: unknown, file: unknown, fileId: unknown): boolean {
+function hasMatchingRecentFile(
+  data: unknown,
+  file: unknown,
+  fileId: unknown,
+): boolean {
   if (!Array.isArray(data) || !isMetadataRecord(file)) return false;
   const pages: readonly unknown[] = data;
   return pages.some(
@@ -162,11 +203,16 @@ function isMetadataRecord(value: unknown): value is Record<string, unknown> {
 }
 
 function pruneRecentPages(scope: RecentPagesScope, currentHash: string): void {
-  const queries = scope.queryClient.getQueryCache().findAll({ queryKey: scope.queryKey });
+  const queries = scope.queryClient
+    .getQueryCache()
+    .findAll({ queryKey: scope.queryKey });
   let excess = queries.length - MAX_RECENT_QUERIES;
   if (excess <= 0) return;
   const removable = queries
-    .filter((query) => query.queryHash !== currentHash && query.getObserversCount() === 0)
+    .filter(
+      (query) =>
+        query.queryHash !== currentHash && query.getObserversCount() === 0,
+    )
     .toSorted((a, b) => a.state.dataUpdatedAt - b.state.dataUpdatedAt);
   for (const query of removable) {
     if (excess-- <= 0) break;

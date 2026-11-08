@@ -15,8 +15,8 @@ export const wikiKeys = {
   driveTreePrefix: DRIVE_TREE_PREFIX,
   // eslint-disable-next-line @sarj/no-positional-tuple-return -- TanStack Query requires query keys to be readonly arrays.
   file: (fileId: string) => ["wiki", "file", fileId] as const,
-  // eslint-disable-next-line @sarj/no-positional-tuple-return -- TanStack Query requires query keys to be readonly arrays.
-  folderFiles: (folderId: string) => [...FOLDER_FILES_PREFIX, folderId] as const,
+  folderFiles: (folderId: string) =>
+    [...FOLDER_FILES_PREFIX, folderId] as const,
   folderFilesPrefix: FOLDER_FILES_PREFIX,
   folderIcons: ["wiki", "folder-icons"] as const,
   preferences: ["wiki", "preferences"] as const,

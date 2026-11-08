@@ -26,18 +26,28 @@ const RESPONSE_HEADERS = {
 } as const;
 const EXPIRED_BODY = JSON.stringify({ detail: "Your session has expired" });
 const RATE_LIMIT_BODY = JSON.stringify({ detail: RATE_LIMIT_MESSAGE });
-const FAILURE_BODY = JSON.stringify({ detail: "The request could not be completed" });
+const FAILURE_BODY = JSON.stringify({
+  detail: "The request could not be completed",
+});
 
 async function get(request: Request, context: RouteContext): Promise<Response> {
   const site = request.headers.get("sec-fetch-site");
-  if (request.headers.get("x-wiki-read") !== "1" || (site !== null && site !== "same-origin")) {
+  if (
+    request.headers.get("x-wiki-read") !== "1" ||
+    (site !== null && site !== "same-origin")
+  ) {
     return failure(403);
   }
   const { path } = await context.params;
   if (!withinReadPathLimit(path)) return failure(404);
   const pathname = path.join("/");
-  if (!READ_PATHS.some((pattern) => pattern.test(pathname))) return failure(404);
-  return await wikiReadResponse(request, `/${pathname}${new URL(request.url).search}`, failure);
+  if (!READ_PATHS.some((pattern) => pattern.test(pathname)))
+    return failure(404);
+  return await wikiReadResponse(
+    request,
+    `/${pathname}${new URL(request.url).search}`,
+    failure,
+  );
 }
 
 function withinReadPathLimit(path: string[]): boolean {
@@ -52,7 +62,11 @@ function withinReadPathLimit(path: string[]): boolean {
 
 function failure(status: number): Response {
   return new Response(
-    status === 401 ? EXPIRED_BODY : status === 429 ? RATE_LIMIT_BODY : FAILURE_BODY,
+    status === 401
+      ? EXPIRED_BODY
+      : status === 429
+        ? RATE_LIMIT_BODY
+        : FAILURE_BODY,
     { status, headers: RESPONSE_HEADERS },
   );
 }

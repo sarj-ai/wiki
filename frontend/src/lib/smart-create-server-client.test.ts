@@ -5,7 +5,8 @@ import { smartCreateServerClient } from "@/lib/smart-create-server-client";
 function timeoutSignal(milliseconds: number): AbortSignal {
   const controller = new AbortController();
   setTimeout(
-    () => controller.abort(new DOMException("Deadline exceeded", "TimeoutError")),
+    () =>
+      controller.abort(new DOMException("Deadline exceeded", "TimeoutError")),
     milliseconds,
   );
   return controller.signal;
@@ -31,9 +32,13 @@ describe("smartCreateServerClient", () => {
       },
       { highWaterMark: 0 },
     );
-    const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(new Response(body, { status: 503 }));
+    const fetchMock = vi
+      .fn<typeof fetch>()
+      .mockResolvedValue(new Response(body, { status: 503 }));
     vi.stubGlobal("fetch", fetchMock);
-    await expect(smartCreateServerClient("/files/smart", "{}", "token", "key")).resolves.toEqual({
+    await expect(
+      smartCreateServerClient("/files/smart", "{}", "token", "key"),
+    ).resolves.toEqual({
       body: "",
       error: "Smart Create could not reach the API",
       ok: false,
@@ -48,9 +53,13 @@ describe("smartCreateServerClient", () => {
     const body = JSON.stringify({ result: "x".repeat(64 * 1024) });
     vi.stubGlobal(
       "fetch",
-      vi.fn<typeof fetch>().mockResolvedValue(new Response(body, { status: 202 })),
+      vi
+        .fn<typeof fetch>()
+        .mockResolvedValue(new Response(body, { status: 202 })),
     );
-    await expect(smartCreateServerClient("/files/smart", "{}", "token", "key")).resolves.toEqual({
+    await expect(
+      smartCreateServerClient("/files/smart", "{}", "token", "key"),
+    ).resolves.toEqual({
       body,
       ok: true,
       status: 202,
@@ -61,14 +70,18 @@ describe("smartCreateServerClient", () => {
     vi.useFakeTimers();
     vi.spyOn(AbortSignal, "timeout").mockImplementation(timeoutSignal);
     const cleanup = Promise.withResolvers<undefined>();
-    const cancel = vi.fn<() => Promise<undefined>>().mockReturnValue(cleanup.promise);
+    const cancel = vi
+      .fn<() => Promise<undefined>>()
+      .mockReturnValue(cleanup.promise);
     const body = new ReadableStream<Uint8Array>({
       start(controller) {
         controller.enqueue(new TextEncoder().encode("{"));
       },
       cancel,
     });
-    const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(new Response(body, { status: 202 }));
+    const fetchMock = vi
+      .fn<typeof fetch>()
+      .mockResolvedValue(new Response(body, { status: 202 }));
     vi.stubGlobal("fetch", fetchMock);
     const pending = smartCreateServerClient(
       "/document-transforms",
@@ -90,9 +103,11 @@ describe("smartCreateServerClient", () => {
       expect(cancel).toHaveBeenCalledOnce();
       expect(fetchMock).toHaveBeenCalledOnce();
       expect(fetchMock.mock.calls[0]?.[1]?.signal?.aborted).toBe(true);
-      expect(new Headers(fetchMock.mock.calls[0]?.[1]?.headers).get("idempotency-key")).toBe(
-        "same-key",
-      );
+      expect(
+        new Headers(fetchMock.mock.calls[0]?.[1]?.headers).get(
+          "idempotency-key",
+        ),
+      ).toBe("same-key");
     } finally {
       cleanup.resolve(undefined);
     }
@@ -107,7 +122,9 @@ describe("smartCreateServerClient", () => {
         stream = controller;
       },
     });
-    const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(new Response(body, { status: 202 }));
+    const fetchMock = vi
+      .fn<typeof fetch>()
+      .mockResolvedValue(new Response(body, { status: 202 }));
     vi.stubGlobal("fetch", fetchMock);
     const pending = smartCreateServerClient(
       "/document-transforms",
@@ -118,7 +135,11 @@ describe("smartCreateServerClient", () => {
     await vi.advanceTimersByTimeAsync(25_000);
     stream?.enqueue(new TextEncoder().encode('{"id":"task"}'));
     stream?.close();
-    await expect(pending).resolves.toEqual({ body: '{"id":"task"}', ok: true, status: 202 });
+    await expect(pending).resolves.toEqual({
+      body: '{"id":"task"}',
+      ok: true,
+      status: 202,
+    });
     expect(fetchMock).toHaveBeenCalledOnce();
   });
 
@@ -135,29 +156,34 @@ describe("smartCreateServerClient", () => {
     ).resolves.toEqual({ body: "", ok: false, status: 502 });
     expect(fetchMock).toHaveBeenCalledOnce();
     expect(fetchMock.mock.calls[0]?.[1]?.redirect).toBe("manual");
-    expect(new Headers(fetchMock.mock.calls[0]?.[1]?.headers).get("idempotency-key")).toBe("key");
+    expect(
+      new Headers(fetchMock.mock.calls[0]?.[1]?.headers).get("idempotency-key"),
+    ).toBe("key");
   });
 
-  it.each(["true", "false"])("captures an exact idempotency replay header: %s", async (value) => {
-    vi.stubGlobal(
-      "fetch",
-      vi.fn().mockResolvedValue(
-        new Response('{"id":"task"}', {
-          headers: { "Idempotency-Replayed": value },
-          status: 202,
-        }),
-      ),
-    );
+  it.each(["true", "false"])(
+    "captures an exact idempotency replay header: %s",
+    async (value) => {
+      vi.stubGlobal(
+        "fetch",
+        vi.fn().mockResolvedValue(
+          new Response('{"id":"task"}', {
+            headers: { "Idempotency-Replayed": value },
+            status: 202,
+          }),
+        ),
+      );
 
-    await expect(
-      smartCreateServerClient("/document-transforms", "{}", "token", "key"),
-    ).resolves.toEqual({
-      body: '{"id":"task"}',
-      idempotencyReplayed: value === "true",
-      ok: true,
-      status: 202,
-    });
-  });
+      await expect(
+        smartCreateServerClient("/document-transforms", "{}", "token", "key"),
+      ).resolves.toEqual({
+        body: '{"id":"task"}',
+        idempotencyReplayed: value === "true",
+        ok: true,
+        status: 202,
+      });
+    },
+  );
 
   it("ignores an invalid replay header", async () => {
     vi.stubGlobal(
@@ -188,7 +214,9 @@ describe("smartCreateServerClient", () => {
           Response.json(
             { detail: "safe" },
             {
-              headers: { "X-Wiki-Error-Code": "document_transform_source_changed" },
+              headers: {
+                "X-Wiki-Error-Code": "document_transform_source_changed",
+              },
               status: 409,
             },
           ),
@@ -196,7 +224,10 @@ describe("smartCreateServerClient", () => {
         .mockResolvedValueOnce(
           Response.json(
             { detail: "private" },
-            { headers: { "X-Wiki-Error-Code": "task_idempotency_conflict" }, status: 409 },
+            {
+              headers: { "X-Wiki-Error-Code": "task_idempotency_conflict" },
+              status: 409,
+            },
           ),
         ),
     );
@@ -227,7 +258,9 @@ describe("smartCreateServerClient", () => {
         Response.json(
           { detail: "upstream unavailable" },
           {
-            headers: { "X-Wiki-Error-Code": "document_transform_source_changed" },
+            headers: {
+              "X-Wiki-Error-Code": "document_transform_source_changed",
+            },
             status: 503,
           },
         ),

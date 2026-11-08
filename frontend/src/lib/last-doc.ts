@@ -14,10 +14,10 @@ export function saveLastDoc(userId: string, doc: LastDoc): void {
     const key = recentDocsStorageKey(userId);
     const stored = readStoredRecentDocs(key);
     const raw = stored.ok ? stored.raw : null;
-    const next = [doc, ...decodeRecentDocs(raw).filter((d) => d.fileId !== doc.fileId)].slice(
-      0,
-      MAX_RECENT,
-    );
+    const next = [
+      doc,
+      ...decodeRecentDocs(raw).filter((d) => d.fileId !== doc.fileId),
+    ].slice(0, MAX_RECENT);
     const serialized = JSON.stringify(next);
     if (raw !== serialized) localStorage.setItem(key, serialized);
   } catch {

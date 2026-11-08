@@ -1,8 +1,8 @@
 "use client";
 
 import { HardDrive, LockKeyhole, Moon, Search, Sun } from "lucide-react";
-import Link from "next/link";
 import { useTheme } from "next-themes";
+import Link from "next/link";
 
 import { SarjLogo } from "@/components/sarj-logo";
 import { Button } from "@/components/ui/button";
@@ -21,7 +21,12 @@ import {
 import { useIsClient } from "@/hooks/use-is-client";
 import { renderMimeIcon } from "@/lib/file-icons";
 
-import { DEMO_FILES, DEMO_WORKSPACE_NAME, type DemoFile, demoHref } from "./demo-data";
+import {
+  DEMO_FILES,
+  DEMO_WORKSPACE_NAME,
+  type DemoFile,
+  demoHref,
+} from "./demo-data";
 
 export function DemoSidebar({
   file,
@@ -65,7 +70,9 @@ export function DemoSidebar({
             >
               <Search aria-hidden className="size-3.5" />
               <span className="flex-1 text-left">Search Drive…</span>
-              <kbd className="bg-muted rounded-sm border px-1 py-0.5 font-mono text-xs">⌘K</kbd>
+              <kbd className="bg-muted rounded-sm border px-1 py-0.5 font-mono text-xs">
+                ⌘K
+              </kbd>
             </Button>
           </div>
         </SidebarHeader>
@@ -110,11 +117,18 @@ export function DemoSidebar({
           <SidebarFooter>
             <div className="flex items-center gap-2 rounded-md px-2 py-1">
               <div className="bg-sidebar-accent flex size-8 shrink-0 items-center justify-center rounded-full">
-                <LockKeyhole aria-hidden className="text-muted-foreground size-3.5" />
+                <LockKeyhole
+                  aria-hidden
+                  className="text-muted-foreground size-3.5"
+                />
               </div>
-              <p className="min-w-0 flex-1 text-xs font-medium">Read-only workspace</p>
+              <p className="min-w-0 flex-1 text-xs font-medium">
+                Read-only workspace
+              </p>
               <Button
-                aria-label={dark ? "Switch to light theme" : "Switch to dark theme"}
+                aria-label={
+                  dark ? "Switch to light theme" : "Switch to dark theme"
+                }
                 onClick={() => setTheme(dark ? "light" : "dark")}
                 size="icon-sm"
                 title="Toggle theme"

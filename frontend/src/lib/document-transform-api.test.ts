@@ -1,11 +1,15 @@
 // @vitest-environment happy-dom
 
 import type { ActionResult } from "@/lib/action-result";
-import { claimBrowserSession, retireBrowserSession } from "@/lib/browser-session";
+import {
+  claimBrowserSession,
+  retireBrowserSession,
+} from "@/lib/browser-session";
 
 const ACTION_MOCKS = vi.hoisted(() => ({
   capabilities: vi.fn<() => Promise<ActionResult<string>>>(),
-  create: vi.fn<(body?: string, key?: string) => Promise<ActionResult<string>>>(),
+  create:
+    vi.fn<(body?: string, key?: string) => Promise<ActionResult<string>>>(),
   current: vi.fn<(path: string) => Promise<ActionResult<string>>>(),
   getTask: vi.fn<(id: string) => Promise<ActionResult<string>>>(),
 }));
@@ -14,7 +18,8 @@ vi.mock("@/lib/clients/transform-http", () => ({
   transformHttp: async (path: string, body?: string, key?: string) => {
     if (path === "/capabilities") return ACTION_MOCKS.capabilities();
     if (path.startsWith("/current?")) return ACTION_MOCKS.current(path);
-    if (path.startsWith("/tasks/")) return ACTION_MOCKS.getTask(path.slice("/tasks/".length));
+    if (path.startsWith("/tasks/"))
+      return ACTION_MOCKS.getTask(path.slice("/tasks/".length));
     return ACTION_MOCKS.create(body, key);
   },
 }));
@@ -22,7 +27,10 @@ vi.mock("@/lib/clients/transform-http", () => ({
 import { DOCUMENT_TRANSFORM_API } from "@/lib/document-transform-api";
 import { DocumentTransformNeedsReviewError } from "@/lib/document-transform-types";
 const TASK_ID = "55555555-5555-4555-8555-555555555555";
-const UPLOAD_FIELDS = { expiresInSeconds: "expires_in_seconds", id: "upload_id" } as const;
+const UPLOAD_FIELDS = {
+  expiresInSeconds: "expires_in_seconds",
+  id: "upload_id",
+} as const;
 
 describe("documentTransformApi", () => {
   it("does not poll as the replacement session after the original owner retires during sleep", async () => {
@@ -68,7 +76,11 @@ describe("documentTransformApi", () => {
       ok: true,
     });
     await expect(
-      DOCUMENT_TRANSFORM_API.waitForCompletion({ id: TASK_ID, status: "running" }, undefined, 0),
+      DOCUMENT_TRANSFORM_API.waitForCompletion(
+        { id: TASK_ID, status: "running" },
+        undefined,
+        0,
+      ),
     ).rejects.toMatchObject({
       name: "DocumentTransformTerminalError",
       unverifiedOutputId: "known-copy",
@@ -99,19 +111,28 @@ describe("documentTransformApi", () => {
       ok: true,
     });
 
-    await expect(DOCUMENT_TRANSFORM_API.current("document 1", "format")).resolves.toMatchObject({
+    await expect(
+      DOCUMENT_TRANSFORM_API.current("document 1", "format"),
+    ).resolves.toMatchObject({
       mode: "format",
       operationId: TASK_ID,
       outputRevisionId: "revision-current",
       outputStrategy: "in_place",
     });
-    expect(ACTION_MOCKS.current).toHaveBeenCalledWith("/current?file_id=document%201&mode=format");
+    expect(ACTION_MOCKS.current).toHaveBeenCalledWith(
+      "/current?file_id=document%201&mode=format",
+    );
   });
 
   it("returns null when the current revision has not been polished", async () => {
-    ACTION_MOCKS.current.mockResolvedValue({ data: JSON.stringify({ result: null }), ok: true });
+    ACTION_MOCKS.current.mockResolvedValue({
+      data: JSON.stringify({ result: null }),
+      ok: true,
+    });
 
-    await expect(DOCUMENT_TRANSFORM_API.current("document-1", "both")).resolves.toBeNull();
+    await expect(
+      DOCUMENT_TRANSFORM_API.current("document-1", "both"),
+    ).resolves.toBeNull();
   });
 
   it("serializes a revision-locked Drive source and creates no in-place output", async () => {
@@ -170,7 +191,10 @@ describe("documentTransformApi", () => {
   });
 
   it("sends the explicit copy name without changing the source", async () => {
-    ACTION_MOCKS.create.mockResolvedValue({ data: JSON.stringify(task("pending")), ok: true });
+    ACTION_MOCKS.create.mockResolvedValue({
+      data: JSON.stringify(task("pending")),
+      ok: true,
+    });
     await DOCUMENT_TRANSFORM_API.create(
       {
         kind: "drive_file",
@@ -183,7 +207,9 @@ describe("documentTransformApi", () => {
       "copy",
       "Architecture decisions",
     );
-    expect(JSON.parse(ACTION_MOCKS.create.mock.calls[0]?.[0] ?? "")).toMatchObject({
+    expect(
+      JSON.parse(ACTION_MOCKS.create.mock.calls[0]?.[0] ?? ""),
+    ).toMatchObject({
       output_name: "Architecture decisions",
       output_strategy: "copy",
       source: { file_id: "doc-1" },
@@ -207,7 +233,9 @@ describe("documentTransformApi", () => {
       "77777777-7777-4777-8777-777777777777",
     );
 
-    expect(JSON.parse(ACTION_MOCKS.create.mock.calls[0]?.[0] ?? "")).toMatchObject({
+    expect(
+      JSON.parse(ACTION_MOCKS.create.mock.calls[0]?.[0] ?? ""),
+    ).toMatchObject({
       mode: "format",
       output_name: null,
       output_strategy: "copy",
@@ -227,20 +255,33 @@ describe("documentTransformApi", () => {
         upload_id: uploadId,
         url: "https://storage.googleapis.com/bucket/object?signature=secret",
         method: "PUT",
-        headers: { "Content-Type": "text/markdown", "x-goog-if-generation-match": "0" },
+        headers: {
+          "Content-Type": "text/markdown",
+          "x-goog-if-generation-match": "0",
+        },
         expires_in_seconds: 600,
       }),
       ok: true,
     });
-    ACTION_MOCKS.create.mockResolvedValueOnce({ data: JSON.stringify(task("pending")), ok: true });
+    ACTION_MOCKS.create.mockResolvedValueOnce({
+      data: JSON.stringify(task("pending")),
+      ok: true,
+    });
     const put = vi
       .spyOn(globalThis, "fetch")
       .mockResolvedValueOnce(new Response(null, { status: 200 }));
     const file = new File(["# Launch"], "launch.md", { type: "text/markdown" });
 
-    await expect(DOCUMENT_TRANSFORM_API.uploadMarkdown(file)).resolves.toBe(uploadId);
+    await expect(DOCUMENT_TRANSFORM_API.uploadMarkdown(file)).resolves.toBe(
+      uploadId,
+    );
     await DOCUMENT_TRANSFORM_API.create(
-      { kind: "uploaded_markdown", uploadId, name: "Launch", destinationFolderId: "folder" },
+      {
+        kind: "uploaded_markdown",
+        uploadId,
+        name: "Launch",
+        destinationFolderId: "folder",
+      },
       "format",
       TASK_ID,
     );
@@ -249,7 +290,9 @@ describe("documentTransformApi", () => {
       "https://storage.googleapis.com/bucket/object?signature=secret",
       expect.objectContaining({ body: file, method: "PUT" }),
     );
-    expect(JSON.parse(ACTION_MOCKS.create.mock.calls[1]?.[0] ?? "")).toMatchObject({
+    expect(
+      JSON.parse(ACTION_MOCKS.create.mock.calls[1]?.[0] ?? ""),
+    ).toMatchObject({
       source: {
         kind: "uploaded_markdown",
         upload_id: uploadId,
@@ -262,38 +305,52 @@ describe("documentTransformApi", () => {
 
   it.each([
     { status: 200, expected: "77777777-7777-4777-8777-777777777777" },
-    { status: 503, expected: "Markdown upload failed. Choose the file again to retry." },
-  ])("releases the unused Markdown PUT body on HTTP $status", async ({ status, expected }) => {
-    const uploadId = "77777777-7777-4777-8777-777777777777";
-    ACTION_MOCKS.create.mockResolvedValueOnce({
-      data: JSON.stringify({
-        [UPLOAD_FIELDS.id]: uploadId,
-        url: "https://storage.googleapis.com/bucket/object?signature=fixture",
-        method: "PUT",
-        headers: { "Content-Type": "text/markdown" },
-        [UPLOAD_FIELDS.expiresInSeconds]: 600,
-      }),
-      ok: true,
-    });
-    const cleanup = Promise.withResolvers<undefined>();
-    const cancel = vi.fn<() => Promise<undefined>>().mockReturnValue(cleanup.promise);
-    const put = vi
-      .spyOn(globalThis, "fetch")
-      .mockResolvedValueOnce(new Response(new ReadableStream<Uint8Array>({ cancel }), { status }));
-    const file = new File(["# Launch"], "launch.md", { type: "text/markdown" });
-    try {
-      const pending = DOCUMENT_TRANSFORM_API.uploadMarkdown(file).catch((error: unknown) => {
-        if (!(error instanceof Error)) throw error;
-        return error.message;
+    {
+      status: 503,
+      expected: "Markdown upload failed. Choose the file again to retry.",
+    },
+  ])(
+    "releases the unused Markdown PUT body on HTTP $status",
+    async ({ status, expected }) => {
+      const uploadId = "77777777-7777-4777-8777-777777777777";
+      ACTION_MOCKS.create.mockResolvedValueOnce({
+        data: JSON.stringify({
+          [UPLOAD_FIELDS.id]: uploadId,
+          url: "https://storage.googleapis.com/bucket/object?signature=fixture",
+          method: "PUT",
+          headers: { "Content-Type": "text/markdown" },
+          [UPLOAD_FIELDS.expiresInSeconds]: 600,
+        }),
+        ok: true,
       });
-      await expect(pending).resolves.toBe(expected);
-      expect(cancel).toHaveBeenCalledOnce();
-      expect(put).toHaveBeenCalledOnce();
-    } finally {
-      cleanup.resolve(undefined);
-      put.mockRestore();
-    }
-  });
+      const cleanup = Promise.withResolvers<undefined>();
+      const cancel = vi
+        .fn<() => Promise<undefined>>()
+        .mockReturnValue(cleanup.promise);
+      const put = vi
+        .spyOn(globalThis, "fetch")
+        .mockResolvedValueOnce(
+          new Response(new ReadableStream<Uint8Array>({ cancel }), { status }),
+        );
+      const file = new File(["# Launch"], "launch.md", {
+        type: "text/markdown",
+      });
+      try {
+        const pending = DOCUMENT_TRANSFORM_API.uploadMarkdown(file).catch(
+          (error: unknown) => {
+            if (!(error instanceof Error)) throw error;
+            return error.message;
+          },
+        );
+        await expect(pending).resolves.toBe(expected);
+        expect(cancel).toHaveBeenCalledOnce();
+        expect(put).toHaveBeenCalledOnce();
+      } finally {
+        cleanup.resolve(undefined);
+        put.mockRestore();
+      }
+    },
+  );
 
   it("sends in-place as an explicit request strategy", async () => {
     ACTION_MOCKS.create.mockResolvedValue({
@@ -313,79 +370,88 @@ describe("documentTransformApi", () => {
       "in_place",
     );
 
-    expect(JSON.parse(ACTION_MOCKS.create.mock.calls[0]?.[0] ?? "")).toMatchObject({
+    expect(
+      JSON.parse(ACTION_MOCKS.create.mock.calls[0]?.[0] ?? ""),
+    ).toMatchObject({
       output_name: null,
       output_strategy: "in_place",
     });
   });
 
-  it.each([undefined, 0, 1, 20])("parses heading count %s while polling", async (count) => {
-    ACTION_MOCKS.getTask.mockResolvedValue({
-      data: JSON.stringify({
-        ...task("succeeded"),
-        result: {
-          access_scope: "inherited",
-          applied_patch_count: 1,
-          promoted_heading_count: count,
-          artifact_kind: "presentation",
-          findings: [
-            {
-              block_id: "paragraph-1",
-              code: "native_rich_text_preserved",
-              detail: "Rich text was preserved",
-              severity: "informational",
+  it.each([undefined, 0, 1, 20])(
+    "parses heading count %s while polling",
+    async (count) => {
+      ACTION_MOCKS.getTask.mockResolvedValue({
+        data: JSON.stringify({
+          ...task("succeeded"),
+          result: {
+            access_scope: "inherited",
+            applied_patch_count: 1,
+            promoted_heading_count: count,
+            artifact_kind: "presentation",
+            findings: [
+              {
+                block_id: "paragraph-1",
+                code: "native_rich_text_preserved",
+                detail: "Rich text was preserved",
+                severity: "informational",
+              },
+            ],
+            mode: "unslop",
+            model_ids: ["gemini-flash"],
+            needs_review: false,
+            operation_id: TASK_ID,
+            output: {
+              file_id: "output-1",
+              media_type: "application/vnd.google-apps.presentation",
+              name: "Source — Unslopped",
+              parent_folder_id: "folder-1",
+              web_url: "https://docs.google.com/document/d/output-1/edit",
             },
-          ],
-          mode: "unslop",
-          model_ids: ["gemini-flash"],
-          needs_review: false,
-          operation_id: TASK_ID,
-          output: {
-            file_id: "output-1",
-            media_type: "application/vnd.google-apps.presentation",
-            name: "Source — Unslopped",
-            parent_folder_id: "folder-1",
-            web_url: "https://docs.google.com/document/d/output-1/edit",
+            pipeline_version: "sarj-v1",
+            source_sha256: "a".repeat(64),
+            tool_versions: { unslop: "d81f519" },
+            validation: {
+              protected_content_preserved: true,
+              source_unchanged: true,
+              structure_preserved: true,
+              unsafe_patch_count: 0,
+            },
           },
-          pipeline_version: "sarj-v1",
-          source_sha256: "a".repeat(64),
-          tool_versions: { unslop: "d81f519" },
-          validation: {
-            protected_content_preserved: true,
-            source_unchanged: true,
-            structure_preserved: true,
-            unsafe_patch_count: 0,
-          },
-        },
-      }),
-      ok: true,
-    });
+        }),
+        ok: true,
+      });
 
-    await expect(
-      DOCUMENT_TRANSFORM_API.waitForCompletion({ id: TASK_ID, status: "running" }, undefined, 0),
-    ).resolves.toMatchObject({
-      mode: "unslop",
-      promotedHeadingCount: count ?? 0,
-      accessScope: "inherited",
-      artifactKind: "presentation",
-      findings: [
-        {
-          blockId: "paragraph-1",
-          code: "native_rich_text_preserved",
-          detail: "Rich text was preserved",
-          severity: "informational",
+      await expect(
+        DOCUMENT_TRANSFORM_API.waitForCompletion(
+          { id: TASK_ID, status: "running" },
+          undefined,
+          0,
+        ),
+      ).resolves.toMatchObject({
+        mode: "unslop",
+        promotedHeadingCount: count ?? 0,
+        accessScope: "inherited",
+        artifactKind: "presentation",
+        findings: [
+          {
+            blockId: "paragraph-1",
+            code: "native_rich_text_preserved",
+            detail: "Rich text was preserved",
+            severity: "informational",
+          },
+        ],
+        outputFile: {
+          id: "output-1",
+          mimeType: "application/vnd.google-apps.presentation",
+          name: "Source — Unslopped",
         },
-      ],
-      outputFile: {
-        id: "output-1",
-        mimeType: "application/vnd.google-apps.presentation",
-        name: "Source — Unslopped",
-      },
-      sourceSha256: "a".repeat(64),
-      validation: { sourceUnchanged: true },
-    });
-    expect(ACTION_MOCKS.getTask).toHaveBeenCalledWith(TASK_ID);
-  });
+        sourceSha256: "a".repeat(64),
+        validation: { sourceUnchanged: true },
+      });
+      expect(ACTION_MOCKS.getTask).toHaveBeenCalledWith(TASK_ID);
+    },
+  );
 
   it("fails closed when a legacy review finding contradicts needs_review", async () => {
     ACTION_MOCKS.getTask.mockResolvedValue({
@@ -426,7 +492,11 @@ describe("documentTransformApi", () => {
     });
 
     await expect(
-      DOCUMENT_TRANSFORM_API.waitForCompletion({ id: TASK_ID, status: "running" }, undefined, 0),
+      DOCUMENT_TRANSFORM_API.waitForCompletion(
+        { id: TASK_ID, status: "running" },
+        undefined,
+        0,
+      ),
     ).rejects.toMatchObject({
       name: "DocumentTransformNeedsReviewError",
       result: {
@@ -445,7 +515,9 @@ describe("documentTransformApi", () => {
         status: "failed",
       }),
     ).rejects.toEqual(
-      new DocumentTransformNeedsReviewError("A table could not be preserved safely."),
+      new DocumentTransformNeedsReviewError(
+        "A table could not be preserved safely.",
+      ),
     );
   });
 
@@ -502,14 +574,25 @@ describe("documentTransformApi", () => {
     });
 
     await expect(
-      DOCUMENT_TRANSFORM_API.waitForCompletion({ id: TASK_ID, status: "running" }, undefined, 0, 1),
-    ).rejects.toThrow("Document polish timed out; check its task status before retrying");
+      DOCUMENT_TRANSFORM_API.waitForCompletion(
+        { id: TASK_ID, status: "running" },
+        undefined,
+        0,
+        1,
+      ),
+    ).rejects.toThrow(
+      "Document polish timed out; check its task status before retrying",
+    );
     expect(ACTION_MOCKS.getTask).toHaveBeenCalledOnce();
   });
 
   it("retries transient task reads without starting a second transform", async () => {
     ACTION_MOCKS.getTask
-      .mockResolvedValueOnce({ error: "temporarily unavailable", ok: false, status: 503 })
+      .mockResolvedValueOnce({
+        error: "temporarily unavailable",
+        ok: false,
+        status: 503,
+      })
       .mockResolvedValueOnce({
         data: JSON.stringify({
           ...task("succeeded"),
@@ -555,7 +638,12 @@ describe("documentTransformApi", () => {
       });
 
     await expect(
-      DOCUMENT_TRANSFORM_API.waitForCompletion({ id: TASK_ID, status: "running" }, undefined, 0, 3),
+      DOCUMENT_TRANSFORM_API.waitForCompletion(
+        { id: TASK_ID, status: "running" },
+        undefined,
+        0,
+        3,
+      ),
     ).resolves.toMatchObject({
       outputStrategy: "in_place",
       outputFile: { id: "doc-1" },

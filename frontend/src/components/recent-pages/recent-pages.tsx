@@ -46,7 +46,9 @@ export function RecentPages({
         >
           Recent pages
         </h1>
-        <p className="text-muted-foreground mt-1 text-sm">Pick up where you left off.</p>
+        <p className="text-muted-foreground mt-1 text-sm">
+          Pick up where you left off.
+        </p>
         <div
           aria-busy={loading}
           className="bg-card mt-6 overflow-hidden rounded-xl border shadow-xs"
@@ -64,7 +66,9 @@ export function RecentPages({
             </div>
           ) : pages.length === 0 ? (
             <div className="p-6">
-              <p className="text-sm font-medium">Your recent pages will appear here</p>
+              <p className="text-sm font-medium">
+                Your recent pages will appear here
+              </p>
               <p className="text-muted-foreground mt-1 text-sm">
                 Open a page from the sidebar or search to get started.
               </p>
@@ -86,7 +90,10 @@ function RecentPagesSkeleton({ count }: { count: number }) {
   const rows = Math.max(0, Math.min(5, count));
   return (
     <>
-      <p className={rows > 0 ? "sr-only" : "text-muted-foreground p-6 text-sm"} role="status">
+      <p
+        className={rows > 0 ? "sr-only" : "text-muted-foreground p-6 text-sm"}
+        role="status"
+      >
         Loading recent pages…
       </p>
       <div aria-hidden="true">

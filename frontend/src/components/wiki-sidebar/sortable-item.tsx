@@ -23,8 +23,20 @@ const DRAG_CLICK_SUPPRESS_PX = 5;
 const NO_LAYOUT_ANIMATION = () => false;
 const EMPTY_DATA: Record<string, unknown> = {};
 
-export function SortableItem({ children, data = EMPTY_DATA, id, variant }: SortableItemProps) {
-  const { attributes, isDragging, listeners, setNodeRef, transform, transition } = useSortable({
+export function SortableItem({
+  children,
+  data = EMPTY_DATA,
+  id,
+  variant,
+}: SortableItemProps) {
+  const {
+    attributes,
+    isDragging,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+  } = useSortable({
     animateLayoutChanges: NO_LAYOUT_ANIMATION,
     data,
     id,

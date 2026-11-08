@@ -10,7 +10,12 @@ interface PerformanceEvent {
 
 export function sendPerformanceEvent(event: PerformanceEvent): void {
   const payload = JSON.stringify(event);
-  if (navigator.sendBeacon("/api/perf", new Blob([payload], { type: "application/json" }))) {
+  if (
+    navigator.sendBeacon(
+      "/api/perf",
+      new Blob([payload], { type: "application/json" }),
+    )
+  ) {
     return;
   }
   void (async () => {

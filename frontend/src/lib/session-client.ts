@@ -16,9 +16,11 @@ export async function deduplicatedRefresh(
   signal?.throwIfAborted();
   let pendingRefresh = REFRESHES.get(session);
   if (!pendingRefresh) {
-    pendingRefresh = waitForRefresh(rawRefresh(session), session).finally(() => {
-      REFRESHES.delete(session);
-    });
+    pendingRefresh = waitForRefresh(rawRefresh(session), session).finally(
+      () => {
+        REFRESHES.delete(session);
+      },
+    );
     REFRESHES.set(session, pendingRefresh);
   }
   // A discarded read can stop waiting without cancelling the shared refresh
@@ -73,7 +75,10 @@ async function rawRefresh(session: AbortSignal): Promise<SessionRefreshResult> {
       cache: "no-store",
       redirect: "error",
       method: "POST",
-      signal: AbortSignal.any([session, AbortSignal.timeout(REFRESH_TIMEOUT_MS)]),
+      signal: AbortSignal.any([
+        session,
+        AbortSignal.timeout(REFRESH_TIMEOUT_MS),
+      ]),
     });
     discardStream(response.body);
     session.throwIfAborted();

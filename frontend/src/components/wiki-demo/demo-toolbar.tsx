@@ -1,6 +1,13 @@
 "use client";
 
-import { Check, ChevronRight, Copy, Download, ExternalLink, RefreshCw } from "lucide-react";
+import {
+  Check,
+  ChevronRight,
+  Copy,
+  Download,
+  ExternalLink,
+  RefreshCw,
+} from "lucide-react";
 import { useEffect, useState } from "react";
 
 import { Button } from "@/components/ui/button";
@@ -9,10 +16,18 @@ import { renderMimeIcon } from "@/lib/file-icons";
 import { DEMO_WORKSPACE_NAME, type DemoFile, demoHref } from "./demo-data";
 import { demoDownloadUrl, demoViewUrl } from "./demo-file-urls";
 
-export function DemoToolbar({ file, onReload }: { file: DemoFile; onReload: () => void }) {
+export function DemoToolbar({
+  file,
+  onReload,
+}: {
+  file: DemoFile;
+  onReload: () => void;
+}) {
   const downloadUrl = demoDownloadUrl(file);
   const viewUrl = demoViewUrl(file);
-  const [copyStatus, setCopyStatus] = useState<"copied" | "failed" | "idle">("idle");
+  const [copyStatus, setCopyStatus] = useState<"copied" | "failed" | "idle">(
+    "idle",
+  );
   useEffect(() => {
     if (copyStatus === "idle") return;
     const timer = window.setTimeout(() => setCopyStatus("idle"), 4_000);
@@ -21,7 +36,9 @@ export function DemoToolbar({ file, onReload }: { file: DemoFile; onReload: () =
 
   const copyLink = () => {
     (async () => {
-      await navigator.clipboard.writeText(new URL(demoHref(file), window.location.origin).href);
+      await navigator.clipboard.writeText(
+        new URL(demoHref(file), window.location.origin).href,
+      );
       setCopyStatus("copied");
     })().catch(() => setCopyStatus("failed"));
   };
@@ -79,7 +96,9 @@ export function DemoToolbar({ file, onReload }: { file: DemoFile; onReload: () =
               target="_blank"
             >
               <Download aria-hidden className="size-3.5" />
-              <span className="hidden @min-[30rem]/toolbar:inline">Download</span>
+              <span className="hidden @min-[30rem]/toolbar:inline">
+                Download
+              </span>
             </a>
           </Button>
         )}
@@ -93,7 +112,9 @@ export function DemoToolbar({ file, onReload }: { file: DemoFile; onReload: () =
               target="_blank"
             >
               <ExternalLink aria-hidden className="size-3.5" />
-              <span className="hidden @min-[40rem]/toolbar:inline">Open in Drive</span>
+              <span className="hidden @min-[40rem]/toolbar:inline">
+                Open in Drive
+              </span>
             </a>
           </Button>
         )}
@@ -101,7 +122,9 @@ export function DemoToolbar({ file, onReload }: { file: DemoFile; onReload: () =
       <p
         aria-live="polite"
         className={
-          copyStatus === "failed" ? "bg-muted shrink-0 border-b px-4 py-2 text-xs" : "sr-only"
+          copyStatus === "failed"
+            ? "bg-muted shrink-0 border-b px-4 py-2 text-xs"
+            : "sr-only"
         }
         role="status"
       >

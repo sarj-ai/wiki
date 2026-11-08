@@ -1,7 +1,10 @@
 import * as z from "zod";
 
 import type { TransformRecovery } from "@/lib/document-transform-recovery";
-import { MARKDOWN_LIMIT_BYTES, markdownByteLength } from "@/lib/markdown-import";
+import {
+  MARKDOWN_LIMIT_BYTES,
+  markdownByteLength,
+} from "@/lib/markdown-import";
 import { TransformModeSchema } from "@/lib/transform-mode-schema";
 
 export const REPLAY_MAX_AGE_MS = 6 * 24 * 60 * 60 * 1000;
@@ -28,7 +31,10 @@ const BundleSchema = z.strictObject({
   createdAt: z.number().nonnegative(),
   mode: TransformModeSchema,
   outputName: z.string().nullable(),
-  source: z.discriminatedUnion("kind", [MarkdownSourceSchema, UploadedMarkdownSourceSchema]),
+  source: z.discriminatedUnion("kind", [
+    MarkdownSourceSchema,
+    UploadedMarkdownSourceSchema,
+  ]),
 });
 export type MarkdownRecoveryBundle = z.infer<typeof BundleSchema>;
 
@@ -41,7 +47,8 @@ export function validateMarkdownRecovery(
   owner: string,
   operation: TransformRecovery,
 ): MarkdownRecoveryBundle {
-  if (raw.length > 4 * 1024 * 1024) throw new Error("Recovery draft exceeds the safe limit");
+  if (raw.length > 4 * 1024 * 1024)
+    throw new Error("Recovery draft exceeds the safe limit");
   const parsed = BundleSchema.safeParse(JSON.parse(raw));
   if (!parsed.success) throw new Error("Recovery draft is invalid");
   const bundle = parsed.data;
@@ -56,7 +63,9 @@ export function validateMarkdownRecovery(
     Date.now() - bundle.createdAt >= REPLAY_MAX_AGE_MS ||
     bundle.createdAt > Date.now()
   ) {
-    throw new Error("Recovery draft does not match this reserved operation or has expired");
+    throw new Error(
+      "Recovery draft does not match this reserved operation or has expired",
+    );
   }
   return bundle;
 }

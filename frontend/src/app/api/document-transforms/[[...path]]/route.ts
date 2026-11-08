@@ -24,7 +24,8 @@ const SOURCE_CHANGED_MESSAGE =
 const UPSTREAM_TIMEOUT_MS = 30_000;
 
 function failure(status: number, code?: ActionErrorCode): Response {
-  const sourceChanged = status === 409 && code === "document_transform_source_changed";
+  const sourceChanged =
+    status === 409 && code === "document_transform_source_changed";
   return Response.json(
     {
       ...(sourceChanged && { code }),
@@ -41,22 +42,32 @@ function trustedRequest(request: Request): boolean {
   return (
     request.headers.get("x-wiki-transform") === "1" &&
     (site === null || site === "same-origin") &&
-    (request.method === "GET" || request.headers.get("origin") === new URL(request.url).origin)
+    (request.method === "GET" ||
+      request.headers.get("origin") === new URL(request.url).origin)
   );
 }
 
-async function post(request: Request, context: RouteContext): Promise<Response> {
+async function post(
+  request: Request,
+  context: RouteContext,
+): Promise<Response> {
   if (!trustedRequest(request)) return failure(403);
   const { path = [] } = await context.params;
   if (request.signal.aborted) return failure(502);
   if (path.length === 1 && path[0] === "uploads") {
-    if (request.headers.get("content-type")?.split(";", 1)[0]?.trim() !== "application/json")
+    if (
+      request.headers.get("content-type")?.split(";", 1)[0]?.trim() !==
+      "application/json"
+    )
       return failure(415);
     return resultResponse(await createDocumentTransformUploadAction());
   }
   const key = UuidSchema.safeParse(request.headers.get("idempotency-key"));
   if (path.length !== 0 || !key.success) return failure(400);
-  if (request.headers.get("content-type")?.split(";", 1)[0]?.trim() !== "application/json")
+  if (
+    request.headers.get("content-type")?.split(";", 1)[0]?.trim() !==
+    "application/json"
+  )
     return failure(415);
   try {
     const ingressSignal = AbortSignal.any([
@@ -67,7 +78,10 @@ async function post(request: Request, context: RouteContext): Promise<Response> 
     ingressSignal.throwIfAborted();
     // Invoke the existing server-side auth and fail-closed edge limiter directly;
     // the browser references this stable route, not a deployment-specific action ID.
-    return resultResponse(await createDocumentTransformAction(body, key.data), true);
+    return resultResponse(
+      await createDocumentTransformAction(body, key.data),
+      true,
+    );
   } catch (error: unknown) {
     return failure(error instanceof RangeError ? 413 : 502);
   }
@@ -83,7 +97,10 @@ async function get(request: Request, context: RouteContext): Promise<Response> {
   }
 }
 
-function resultResponse(result: ActionResult<string>, exposeReplay = false): Response {
+function resultResponse(
+  result: ActionResult<string>,
+  exposeReplay = false,
+): Response {
   if (!result.ok) return failure(result.status, result.code);
   const headers = new Headers(RESPONSE_HEADERS);
   if (exposeReplay && result.replayed !== undefined) {
@@ -116,7 +133,12 @@ async function readPath(path: string[], request: Request): Promise<Response> {
   const id = UuidSchema.safeParse(path[1]);
   if (path.length !== 2 || !id.success) return failure(400);
   if (path[0] === "tasks")
-    return await wikiReadResponse(request, `/tasks/${id.data}`, failure, UPSTREAM_TIMEOUT_MS);
+    return await wikiReadResponse(
+      request,
+      `/tasks/${id.data}`,
+      failure,
+      UPSTREAM_TIMEOUT_MS,
+    );
   if (path[0] !== "admissions") return failure(404);
   return await wikiReadResponse(
     request,

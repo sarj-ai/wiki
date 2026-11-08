@@ -10,7 +10,9 @@ interface SessionBootstrap {
   me: null | UserProfile;
 }
 
-export async function loadSessionBootstrap(api: BootstrapApi): Promise<SessionBootstrap> {
+export async function loadSessionBootstrap(
+  api: BootstrapApi,
+): Promise<SessionBootstrap> {
   try {
     const bootstrap = await api.getBootstrap(AbortSignal.timeout(1_500));
     return { bootstrap, me: bootstrap.me };

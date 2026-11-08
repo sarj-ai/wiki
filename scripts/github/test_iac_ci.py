@@ -297,3 +297,59 @@ else:
         "Total churn: 18 lines (+13/-5, 3 files)\n"
         "```\n"
     )
+
+
+@pytest.mark.parametrize(
+    ("workflow", "job_name"),
+    [
+        ("standards", "standards"),
+        ("ci-frontend", "lint-and-typecheck"),
+        ("ci-quality", "repository-quality"),
+    ],
+)
+def test_root_lint_ci_has_complete_comparison_history(workflow: str, job_name: str) -> None:
+    document = yaml.safe_load((ROOT / f".github/workflows/{workflow}.yml").read_text())
+    steps = document["jobs"][job_name]["steps"]
+    checkout = next(step for step in steps if step.get("uses", "").startswith("actions/checkout@"))
+    assert checkout["with"]["fetch-depth"] == 0
+    assert checkout["with"]["persist-credentials"] is False
+    assert "sparse-checkout" not in checkout["with"]
+
+
+@pytest.mark.parametrize(
+    ("workflow", "job_name", "gate_name"),
+    [
+        ("standards", "standards", "Run standards"),
+        ("ci-frontend", "lint-and-typecheck", "Standards TypeScript gate"),
+    ],
+)
+def test_direct_root_lint_ci_attests_native_tools_before_analysis(
+    workflow: str, job_name: str, gate_name: str
+) -> None:
+    document = yaml.safe_load((ROOT / f".github/workflows/{workflow}.yml").read_text())
+    steps = document["jobs"][job_name]["steps"]
+    bootstrap = next(
+        step for step in steps if step.get("name") == "Install the pinned native tool bootstrap"
+    )
+    setup = next(
+        step for step in steps if step.get("name") == "Install and attest applicable native tools"
+    )
+    gate = next(step for step in steps if step.get("name") == gate_name)
+    assert "--with code-standards==9.1.1" in bootstrap["run"]
+    assert bootstrap["run"].endswith("python -m sarj_standards.libs.adoption.native_bootstrap")
+    assert setup["run"].endswith("code-standards setup --tools-only")
+    assert steps.index(bootstrap) < steps.index(setup) < steps.index(gate)
+    for step in [bootstrap, setup, gate]:
+        assert "if" not in step
+        assert "continue-on-error" not in step
+    for step in [bootstrap, setup]:
+        assert step.get("working-directory", ".") == "."
+    comparison = gate["env"]["SARJ_STANDARDS_BASE"]
+    for base in [
+        "github.event.pull_request.base.sha",
+        "github.event.merge_group.base_sha",
+        "github.event.before",
+    ]:
+        assert base in comparison
+    assert "--from sarj-standards-bootstrap" in gate["run"]
+    assert "--trust-repository-code" in gate["run"]

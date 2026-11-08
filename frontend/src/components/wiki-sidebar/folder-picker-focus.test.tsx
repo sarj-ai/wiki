@@ -3,7 +3,12 @@ import { StrictMode, useRef, useState } from "react";
 import { flushSync } from "react-dom";
 import { createRoot, type Root } from "react-dom/client";
 
-import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { FocusReturnProvider } from "@/components/ui/focus-return";
 import { wikiKeys } from "@/lib/wiki-keys";
 import type { DriveSummary } from "@/types/wiki";
@@ -62,7 +67,9 @@ describe("native conditional destination-picker focus", () => {
   beforeEach(() => {
     vi.useFakeTimers();
     vi.clearAllMocks();
-    client = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: Infinity } } });
+    client = new QueryClient({
+      defaultOptions: { queries: { retry: false, gcTime: Infinity } },
+    });
     client.setQueryData<DriveSummary[]>(wikiKeys.drives, [
       { id: "my-drive", isPersonal: true, name: "My Drive" },
     ]);
@@ -120,6 +127,7 @@ function button(text: string): HTMLButtonElement {
   const result = [...document.querySelectorAll("button")].find(
     (element) => element.textContent === text,
   );
-  if (!(result instanceof HTMLButtonElement)) throw new TypeError(`Missing ${text}`);
+  if (!(result instanceof HTMLButtonElement))
+    throw new TypeError(`Missing ${text}`);
   return result;
 }

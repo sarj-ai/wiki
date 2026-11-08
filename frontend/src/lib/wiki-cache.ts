@@ -19,15 +19,23 @@ const NODE_META_CACHE = new WeakMap<
   { fileId: string; meta: CachedNodeMeta | null }
 >();
 
-export function findCachedNodeMeta(qc: QueryClient, fileId: string): CachedNodeMeta | null {
+export function findCachedNodeMeta(
+  qc: QueryClient,
+  fileId: string,
+): CachedNodeMeta | null {
   for (const [, nodes] of qc.getQueriesData<DriveNode[]>({
     queryKey: wikiKeys.folderFilesPrefix,
   })) {
     const meta = metaFromNodes(nodes, fileId);
     if (meta) return meta;
   }
-  for (const [, tree] of qc.getQueriesData<DriveTree>({ queryKey: wikiKeys.driveTreePrefix })) {
-    const meta = tree && (metaFromNodes(tree.folders, fileId) ?? metaFromNodes(tree.files, fileId));
+  for (const [, tree] of qc.getQueriesData<DriveTree>({
+    queryKey: wikiKeys.driveTreePrefix,
+  })) {
+    const meta =
+      tree &&
+      (metaFromNodes(tree.folders, fileId) ??
+        metaFromNodes(tree.files, fileId));
     if (meta) return meta;
   }
   return null;
@@ -48,30 +56,39 @@ export function fileToNode(file: FileResponse): DriveNode {
   };
 }
 
-export function injectNewFileIntoCaches(qc: QueryClient, file: FileResponse): void {
+export function injectNewFileIntoCaches(
+  qc: QueryClient,
+  file: FileResponse,
+): void {
   const node = fileToNode(file);
 
   const parentKey = file.parentFolderId ?? file.driveId;
 
   if (parentKey) {
-    qc.setQueryData<DriveNode[] | undefined>(wikiKeys.folderFiles(parentKey), (prev) => {
-      if (!prev) return prev;
-      return upsertConfirmedNode(prev, node);
-    });
+    qc.setQueryData<DriveNode[] | undefined>(
+      wikiKeys.folderFiles(parentKey),
+      (prev) => {
+        if (!prev) return prev;
+        return upsertConfirmedNode(prev, node);
+      },
+    );
   }
 
   if (file.driveId) {
     const treeNode: DriveNode =
       node.parentId === file.driveId ? { ...node, parentId: undefined } : node;
-    qc.setQueryData<DriveTree | undefined>(wikiKeys.driveTree(file.driveId), (prev) => {
-      if (!prev) return prev;
-      if (file.mimeType === MIME_FOLDER) {
-        const folders = upsertConfirmedNode(prev.folders, treeNode);
-        return folders === prev.folders ? prev : { ...prev, folders };
-      }
-      const files = upsertConfirmedNode(prev.files, treeNode);
-      return files === prev.files ? prev : { ...prev, files };
-    });
+    qc.setQueryData<DriveTree | undefined>(
+      wikiKeys.driveTree(file.driveId),
+      (prev) => {
+        if (!prev) return prev;
+        if (file.mimeType === MIME_FOLDER) {
+          const folders = upsertConfirmedNode(prev.folders, treeNode);
+          return folders === prev.folders ? prev : { ...prev, folders };
+        }
+        const files = upsertConfirmedNode(prev.files, treeNode);
+        return files === prev.files ? prev : { ...prev, files };
+      },
+    );
   }
 }
 
@@ -98,7 +115,9 @@ export function optimisticMoveFile(
     node;
   const moved = { ...movingNode, parentId: destination.parentFolderId };
   const treeNode =
-    destination.parentFolderId === destination.driveId ? { ...moved, parentId: undefined } : moved;
+    destination.parentFolderId === destination.driveId
+      ? { ...moved, parentId: undefined }
+      : moved;
   const treeKind = movingNode.mimeType === MIME_FOLDER ? "folders" : "files";
   if (!session.aborted) {
     if (sourceParent && sourceParent !== destination.parentFolderId) {
@@ -120,7 +139,14 @@ export function optimisticMoveFile(
       patches,
     );
     if (source.driveId && source.driveId !== destination.driveId) {
-      patchMoveCache(qc, wikiKeys.driveTree(source.driveId), treeKind, node.id, undefined, patches);
+      patchMoveCache(
+        qc,
+        wikiKeys.driveTree(source.driveId),
+        treeKind,
+        node.id,
+        undefined,
+        patches,
+      );
     }
     patchMoveCache(
       qc,
@@ -136,7 +162,9 @@ export function optimisticMoveFile(
       if (patch.query !== event.query || !patch.owned) continue;
       if (
         event.type === "removed" ||
-        (event.type === "updated" && event.action.type === "success" && !event.action.manual)
+        (event.type === "updated" &&
+          event.action.type === "success" &&
+          !event.action.manual)
       ) {
         patch.owned = false;
       } else if (event.type === "updated" && event.action.type === "success") {
@@ -195,7 +223,10 @@ function patchMoveCache(
 ): void {
   // Reads are cancellable independently of an already admitted move action.
   void qc.cancelQueries({ exact: true, queryKey }).catch((error: unknown) => {
-    console.warn("Cache read cancellation failed", error instanceof Error ? "Error" : typeof error);
+    console.warn(
+      "Cache read cancellation failed",
+      error instanceof Error ? "Error" : typeof error,
+    );
   });
   const query = qc.getQueryCache().find({ exact: true, queryKey });
   const previous = qc.getQueryData<DriveNode[] | DriveTree>(queryKey);
@@ -220,7 +251,11 @@ function patchMoveCache(
   });
 }
 
-function relocateNodes(nodes: DriveNode[], fileId: string, moved: DriveNode | undefined) {
+function relocateNodes(
+  nodes: DriveNode[],
+  fileId: string,
+  moved: DriveNode | undefined,
+) {
   const before: IndexedNode[] = [];
   const next: DriveNode[] = [];
   let movedIndex: number | undefined;
@@ -241,10 +276,15 @@ function relocateNodes(nodes: DriveNode[], fileId: string, moved: DriveNode | un
   return { before, movedIndex, next };
 }
 
-function restoreMoveCache(qc: QueryClient, fileId: string, patch: MoveCachePatch): void {
+function restoreMoveCache(
+  qc: QueryClient,
+  fileId: string,
+  patch: MoveCachePatch,
+): void {
   if (
     !patch.owned ||
-    qc.getQueryCache().find({ exact: true, queryKey: patch.queryKey }) !== patch.query
+    qc.getQueryCache().find({ exact: true, queryKey: patch.queryKey }) !==
+      patch.query
   )
     return;
   const current = qc.getQueryData<DriveNode[] | DriveTree>(patch.queryKey);
@@ -254,13 +294,21 @@ function restoreMoveCache(qc: QueryClient, fileId: string, patch: MoveCachePatch
   const restored = [...removeNode(nodes, fileId)];
   for (const { index, node } of patch.before)
     restored.splice(Math.min(index, restored.length), 0, node);
-  qc.setQueryData(patch.queryKey, cacheWithNodes(current, patch.kind, restored));
+  qc.setQueryData(
+    patch.queryKey,
+    cacheWithNodes(current, patch.kind, restored),
+  );
 }
 
-function ownsMoveNode(nodes: DriveNode[], fileId: string, expected: DriveNode[]): boolean {
+function ownsMoveNode(
+  nodes: DriveNode[],
+  fileId: string,
+  expected: DriveNode[],
+): boolean {
   const matches = nodes.filter((item) => item.id === fileId);
   return (
-    matches.length === expected.length && matches.every((item, index) => item === expected[index])
+    matches.length === expected.length &&
+    matches.every((item, index) => item === expected[index])
   );
 }
 
@@ -268,7 +316,10 @@ function isNodeArray(data: DriveNode[] | DriveTree): data is DriveNode[] {
   return Array.isArray(data);
 }
 
-function cacheNodes(data: DriveNode[] | DriveTree, kind: MoveCachePatch["kind"]): DriveNode[] {
+function cacheNodes(
+  data: DriveNode[] | DriveTree,
+  kind: MoveCachePatch["kind"],
+): DriveNode[] {
   return isNodeArray(data) ? data : data[kind === "listing" ? "files" : kind];
 }
 
@@ -289,23 +340,29 @@ export function removeFileFromCaches(
 ): void {
   const parentKey = parentFolderId ?? driveId;
   if (parentKey) {
-    qc.setQueryData<DriveNode[] | undefined>(wikiKeys.folderFiles(parentKey), (prev) => {
-      if (!prev) return prev;
-      return removeNode(prev, fileId);
-    });
+    qc.setQueryData<DriveNode[] | undefined>(
+      wikiKeys.folderFiles(parentKey),
+      (prev) => {
+        if (!prev) return prev;
+        return removeNode(prev, fileId);
+      },
+    );
   }
   if (driveId && options.removeDriveTree !== false) {
-    qc.setQueryData<DriveTree | undefined>(wikiKeys.driveTree(driveId), (prev) => {
-      if (!prev) return prev;
-      const files = removeNode(prev.files, fileId);
-      const folders = removeNode(prev.folders, fileId);
-      if (files === prev.files && folders === prev.folders) return prev;
-      return {
-        ...prev,
-        files,
-        folders,
-      };
-    });
+    qc.setQueryData<DriveTree | undefined>(
+      wikiKeys.driveTree(driveId),
+      (prev) => {
+        if (!prev) return prev;
+        const files = removeNode(prev.files, fileId);
+        const folders = removeNode(prev.folders, fileId);
+        if (files === prev.files && folders === prev.folders) return prev;
+        return {
+          ...prev,
+          files,
+          folders,
+        };
+      },
+    );
   }
 
   if (options.removeFileQuery !== false) {
@@ -318,7 +375,9 @@ function upsertConfirmedNode(nodes: DriveNode[], node: DriveNode): DriveNode[] {
   if (index === -1) return [...nodes, node];
   const existing = nodes[index];
   if (!existing) return nodes;
-  const duplicate = nodes.some((item, itemIndex) => itemIndex > index && item.id === node.id);
+  const duplicate = nodes.some(
+    (item, itemIndex) => itemIndex > index && item.id === node.id,
+  );
   // FileResponse confirms these fields only; it carries no shortcut metadata.
   if (
     !duplicate &&
@@ -329,7 +388,9 @@ function upsertConfirmedNode(nodes: DriveNode[], node: DriveNode): DriveNode[] {
   )
     return nodes;
   const next = duplicate
-    ? nodes.filter((item, itemIndex) => itemIndex === index || item.id !== node.id)
+    ? nodes.filter(
+        (item, itemIndex) => itemIndex === index || item.id !== node.id,
+      )
     : [...nodes];
   next[index] = {
     ...existing,
@@ -364,12 +425,17 @@ function metaFromNodes(
   return meta;
 }
 
-function lookupNodeMeta(nodes: readonly DriveNode[], fileId: string): CachedNodeMeta | null {
+function lookupNodeMeta(
+  nodes: readonly DriveNode[],
+  fileId: string,
+): CachedNodeMeta | null {
   for (const node of nodes) {
     if (node.id === fileId && node.mimeType !== MIME_SHORTCUT) {
       return {
         mimeType: node.mimeType,
-        ...(!(node.modifiedTime === undefined) && { modifiedTime: node.modifiedTime }),
+        ...(!(node.modifiedTime === undefined) && {
+          modifiedTime: node.modifiedTime,
+        }),
         name: node.name,
       };
     }

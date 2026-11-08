@@ -3,7 +3,10 @@ import "server-only";
 import { fetchBackend } from "@/lib/clients/fetch-backend";
 import { discardStream } from "@/lib/discard-stream";
 import { API_URL } from "@/lib/env";
-import { zDocumentAliasRead, zRecentDocumentAlias } from "@/lib/generated/zod.gen";
+import {
+  zDocumentAliasRead,
+  zRecentDocumentAlias,
+} from "@/lib/generated/zod.gen";
 
 const RecentDocumentAliasesSchema = zRecentDocumentAlias.array();
 
@@ -30,11 +33,14 @@ export async function resolveDocumentAlias(
   alias: string,
   accessToken: string,
 ): Promise<AliasResolution> {
-  const upstream = await fetchBackend(`${API_URL}/aliases/${encodeURIComponent(alias)}`, {
-    cache: "no-store",
-    headers: { Authorization: `Bearer ${accessToken}` },
-    signal: AbortSignal.timeout(10_000),
-  });
+  const upstream = await fetchBackend(
+    `${API_URL}/aliases/${encodeURIComponent(alias)}`,
+    {
+      cache: "no-store",
+      headers: { Authorization: `Bearer ${accessToken}` },
+      signal: AbortSignal.timeout(10_000),
+    },
+  );
   if (!upstream.ok) {
     discardStream(upstream.body);
     if (upstream.status === 401) return { status: "unauthorized" };

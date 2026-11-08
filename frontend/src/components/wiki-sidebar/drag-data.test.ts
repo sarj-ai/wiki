@@ -1,12 +1,20 @@
-import { dragScopeData, sortableContainerId, sortableData, sortablePosition } from "./drag-data";
+import {
+  dragScopeData,
+  sortableContainerId,
+  sortableData,
+  sortablePosition,
+} from "./drag-data";
 
 describe("drag metadata validation", () => {
-  it.each([null, undefined, {}, { sortable: null }, { sortable: { containerId: 123 } }])(
-    "does not accept an invalid container: %j",
-    (data) => {
-      expect(sortableContainerId(data)).toBeNull();
-    },
-  );
+  it.each([
+    null,
+    undefined,
+    {},
+    { sortable: null },
+    { sortable: { containerId: 123 } },
+  ])("does not accept an invalid container: %j", (data) => {
+    expect(sortableContainerId(data)).toBeNull();
+  });
 
   it("validates only the container for hover without reading the sibling list", () => {
     const readItems = vi.fn(() => ["one", "two"]);
@@ -26,10 +34,14 @@ describe("drag metadata validation", () => {
   });
 
   it("rejects invalid full commit metadata and invalid destination scope", () => {
-    expect(sortableData({ sortable: { containerId: "parent:folder", items: [1] } })).toBeNull();
+    expect(
+      sortableData({ sortable: { containerId: "parent:folder", items: [1] } }),
+    ).toBeNull();
     expect(dragScopeData({ driveId: 1 })).toBeNull();
     expect(dragScopeData({ driveId: "drive", parentFolderId: 1 })).toBeNull();
-    expect(dragScopeData({ driveId: "drive", parentFolderId: "folder" })).toEqual({
+    expect(
+      dragScopeData({ driveId: "drive", parentFolderId: "folder" }),
+    ).toEqual({
       driveId: "drive",
       parentFolderId: "folder",
     });
@@ -44,7 +56,10 @@ describe("drag metadata validation", () => {
         return readItems();
       },
     };
-    expect(sortablePosition({ sortable })).toEqual({ containerId: "parent:folder", index: 123 });
+    expect(sortablePosition({ sortable })).toEqual({
+      containerId: "parent:folder",
+      index: 123,
+    });
     expect(readItems).not.toHaveBeenCalled();
     expect(sortableData({ sortable })).toBeNull();
     expect(readItems).toHaveBeenCalledOnce();
@@ -53,7 +68,9 @@ describe("drag metadata validation", () => {
   it.each([-1, 1.5, NaN, Infinity, "2", undefined])(
     "rejects invalid native hover index %s",
     (index) => {
-      expect(sortablePosition({ sortable: { containerId: "parent:folder", index } })).toBeNull();
+      expect(
+        sortablePosition({ sortable: { containerId: "parent:folder", index } }),
+      ).toBeNull();
     },
   );
 });

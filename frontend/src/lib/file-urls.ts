@@ -1,4 +1,10 @@
-import { MIME_DOC, MIME_DRAWING, MIME_FORM, MIME_SHEET, MIME_SLIDE } from "@/types/wiki";
+import {
+  MIME_DOC,
+  MIME_DRAWING,
+  MIME_FORM,
+  MIME_SHEET,
+  MIME_SLIDE,
+} from "@/types/wiki";
 
 const EDITOR_PATHS: Record<string, string> = {
   [MIME_DOC]: "document",
@@ -17,7 +23,9 @@ export function openUrlFor(mimeType: string, id: string): string {
 }
 
 export function mobileReadUrlFor(mimeType: string, id: string): null | string {
-  return mimeType === MIME_DOC ? workspaceUrl(mimeType, id, "view", "mobilebasic") : null;
+  return mimeType === MIME_DOC
+    ? workspaceUrl(mimeType, id, "view", "mobilebasic")
+    : null;
 }
 
 export function folderUrlFor(id: string): string {

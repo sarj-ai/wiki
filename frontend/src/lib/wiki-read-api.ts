@@ -38,7 +38,11 @@ const QUERY_FIELDS = {
 
 /** Concurrent reads through a restricted, authenticated same-origin route. */
 export const WIKI_READ_API = Object.freeze({
-  driveSearch: async (query: string, limitPerDrive?: number, signal?: AbortSignal) =>
+  driveSearch: async (
+    query: string,
+    limitPerDrive?: number,
+    signal?: AbortSignal,
+  ) =>
     await wikiReadHttp(
       "/drive-search",
       SearchResultsSchema,
@@ -54,7 +58,11 @@ export const WIKI_READ_API = Object.freeze({
     await wikiReadHttp(
       "/drive-search/snippet",
       snippetResult,
-      { [QUERY_FIELDS.fileId]: fileId, q: query, [QUERY_FIELDS.mimeType]: mimeType },
+      {
+        [QUERY_FIELDS.fileId]: fileId,
+        q: query,
+        [QUERY_FIELDS.mimeType]: mimeType,
+      },
       signal,
     ),
   getDocumentAlias: async (fileId: string, signal?: AbortSignal) =>
@@ -71,7 +79,11 @@ export const WIKI_READ_API = Object.freeze({
       {},
       signal,
     ),
-  getDrivePermissions: async (driveId: string, pageToken?: string, signal?: AbortSignal) =>
+  getDrivePermissions: async (
+    driveId: string,
+    pageToken?: string,
+    signal?: AbortSignal,
+  ) =>
     await wikiReadHttp(
       `/sidebar/drives/${encodeURIComponent(driveId)}/permissions`,
       drivePermissionsPage,
@@ -81,7 +93,12 @@ export const WIKI_READ_API = Object.freeze({
   getDrives: async (signal?: AbortSignal) =>
     await wikiReadHttp("/sidebar/drives", DriveSummariesSchema, {}, signal),
   getFile: async (fileId: string, signal?: AbortSignal) =>
-    await wikiReadHttp(`/files/${encodeURIComponent(fileId)}`, fileDetail, {}, signal),
+    await wikiReadHttp(
+      `/files/${encodeURIComponent(fileId)}`,
+      fileDetail,
+      {},
+      signal,
+    ),
   getFolderFiles: async (folderId: string, signal?: AbortSignal) =>
     await wikiReadHttp(
       `/sidebar/folders/${encodeURIComponent(folderId)}/files`,
@@ -89,12 +106,18 @@ export const WIKI_READ_API = Object.freeze({
       {},
       signal,
     ),
-  getMe: async (signal?: AbortSignal) => await wikiReadHttp("/auth/me", userProfile, {}, signal),
+  getMe: async (signal?: AbortSignal) =>
+    await wikiReadHttp("/auth/me", userProfile, {}, signal),
   getPreferences: async (signal?: AbortSignal) =>
     await wikiReadHttp("/extras/preferences", preferences, {}, signal),
   getRecentFiles: async (fileIds: string[], signal?: AbortSignal) => {
     const params = new URLSearchParams(fileIds.map((id) => ["file_ids", id]));
-    return await wikiReadHttp(`/files/recent?${params.toString()}`, RecentFilesSchema, {}, signal);
+    return await wikiReadHttp(
+      `/files/recent?${params.toString()}`,
+      RecentFilesSchema,
+      {},
+      signal,
+    );
   },
   listDocIcons: async (signal?: AbortSignal) =>
     await wikiReadHttp("/extras/doc-icons", DocIconsSchema, {}, signal),

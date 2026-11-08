@@ -114,7 +114,11 @@ def _repository_checks() -> tuple[Command, ...]:
         _project("python", "backend/scripts/generate_sarj_loader.py", "--check"),
         _project("python", "scripts/repository_checks.py", "all"),
         _project(
-            "python", "-m", "pytest", "-q", *(f"scripts/github/{name}" for name in REPOSITORY_TESTS)
+            "python",
+            "-m",
+            "pytest",
+            "-q",
+            *(f"scripts/github/{name}" for name in REPOSITORY_TESTS),
         ),
     )
 
@@ -123,7 +127,13 @@ def checks(scope: Check) -> tuple[Command, ...]:
     if scope is Check.ALL:
         return tuple(
             command
-            for part in (Check.NODE, Check.QUALITY, Check.BACKEND, Check.FRONTEND, Check.IAC)
+            for part in (
+                Check.NODE,
+                Check.QUALITY,
+                Check.BACKEND,
+                Check.FRONTEND,
+                Check.IAC,
+            )
             for command in checks(part)
         )
     if scope is Check.NODE:
@@ -144,7 +154,12 @@ def checks(scope: Check) -> tuple[Command, ...]:
             _backend("ty", "check", "app"),
             _backend("vulture"),
             _backend("lint-imports"),
-            _backend("pytest", "--cov=app", "--cov-report=term-missing", "--cov-fail-under=70"),
+            _backend(
+                "pytest",
+                "--cov=app",
+                "--cov-report=term-missing",
+                "--cov-fail-under=70",
+            ),
         )
     return (
         *(
@@ -153,7 +168,7 @@ def checks(scope: Check) -> tuple[Command, ...]:
                 "generate:api",
                 "format:check",
                 "typecheck",
-                "lint:baseline-check",
+                "lint",
                 "check:dependencies",
                 "knip",
                 "type-coverage",
@@ -175,7 +190,6 @@ def _quality_checks() -> tuple[Command, ...]:
             "check",
             "--trust-repository-code",
             "--skip-python-type-check",
-            "--skip-eslint",
             ".",
         ),
         _project(
@@ -235,13 +249,17 @@ CLI = typer.Typer(
 
 
 @CLI.command("check", help="Run all qualification gates or selected subsystems in order.")
-def check_command(scopes: Annotated[list[Check] | None, typer.Argument()] = None) -> None:
+def check_command(
+    scopes: Annotated[list[Check] | None, typer.Argument()] = None,
+) -> None:
     commands = (command for scope in scopes or [Check.ALL] for command in checks(scope))
     run(tuple(dict.fromkeys(commands)))
 
 
 @CLI.command("standards", help="Maintain the pinned source and repository standards.")
-def standards_command(action: Annotated[Standards, typer.Argument()] = Standards.CHECK) -> None:
+def standards_command(
+    action: Annotated[Standards, typer.Argument()] = Standards.CHECK,
+) -> None:
     if action is Standards.SYNC:
         run((_standards("update", "--offline", "--no-install"),))
         return
@@ -309,21 +327,7 @@ def fix_command() -> None:
             _backend("ruff", "check", "--fix", "."),
             _backend("ruff", "format", "."),
             _frontend("format"),
-            Command(
-                arguments=(
-                    "uv",
-                    "--directory",
-                    "frontend",
-                    "run",
-                    "--no-project",
-                    "node_modules/.bin/eslint",
-                    "--fix",
-                    "--suppressions-location",
-                    "eslint-suppressions.json",
-                    ".",
-                ),
-                allow_failure=True,
-            ),
+            _standards("check", "--fix", "--trust-repository-code"),
         )
     )
 
@@ -334,7 +338,8 @@ def fix_command() -> None:
     help="Inspect or apply a reviewed policy with the native confirmation guards.",
 )
 def protection_command(
-    context: typer.Context, action: Annotated[Protection, typer.Argument()] = Protection.CHECK
+    context: typer.Context,
+    action: Annotated[Protection, typer.Argument()] = Protection.CHECK,
 ) -> None:
     run(
         (

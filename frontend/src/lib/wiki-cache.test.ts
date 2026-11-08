@@ -12,7 +12,10 @@ import {
 import type { DriveNode, DriveTree, FileResponse } from "@/types/wiki";
 import { MIME_DOC, MIME_FOLDER, MIME_SHEET, MIME_SHORTCUT } from "@/types/wiki";
 
-import { activateMutationSession, retireMutationSession } from "./mutation-session";
+import {
+  activateMutationSession,
+  retireMutationSession,
+} from "./mutation-session";
 
 function makeFile(overrides: Partial<FileResponse> = {}): FileResponse {
   return {
@@ -44,7 +47,9 @@ function makeNode(overrides: Partial<DriveNode> = {}): DriveNode {
 }
 
 it("keeps unrelated cached arrays intact when removing a missing item", () => {
-  const qc = new QueryClient({ defaultOptions: { queries: { structuralSharing: false } } });
+  const qc = new QueryClient({
+    defaultOptions: { queries: { structuralSharing: false } },
+  });
   const tree: DriveTree = {
     driveId: "drive-1",
     files: [makeNode({ id: "other" })],
@@ -62,7 +67,9 @@ it("keeps unrelated cached arrays intact when removing a missing item", () => {
 
 describe("fileToNode", () => {
   it("projects FileResponse fields onto DriveNode shape", () => {
-    const node = fileToNode(makeFile({ id: "f", name: "Doc", parentFolderId: "p" }));
+    const node = fileToNode(
+      makeFile({ id: "f", name: "Doc", parentFolderId: "p" }),
+    );
     expect(node).toEqual({
       id: "f",
       mimeType: MIME_DOC,
@@ -78,7 +85,9 @@ describe("fileToNode", () => {
   });
 
   it("leaves parentId absent when parentFolderId is missing", () => {
-    expect(fileToNode(makeFile({ parentFolderId: undefined })).parentId).toBeUndefined();
+    expect(
+      fileToNode(makeFile({ parentFolderId: undefined })).parentId,
+    ).toBeUndefined();
   });
 });
 
@@ -90,7 +99,9 @@ describe("injectNewFileIntoCaches", () => {
 
     injectNewFileIntoCaches(qc, makeFile({ id: "new", name: "New" }));
 
-    const updated = qc.getQueryData<DriveNode[]>(wikiKeys.folderFiles("folder-a"));
+    const updated = qc.getQueryData<DriveNode[]>(
+      wikiKeys.folderFiles("folder-a"),
+    );
     expect(updated).toHaveLength(2);
     expect(updated?.[1]?.id).toBe("new");
   });
@@ -101,7 +112,9 @@ describe("injectNewFileIntoCaches", () => {
 
     injectNewFileIntoCaches(qc, makeFile({ parentFolderId: undefined }));
 
-    expect(qc.getQueryData<DriveNode[]>(wikiKeys.folderFiles("drive-1"))).toHaveLength(1);
+    expect(
+      qc.getQueryData<DriveNode[]>(wikiKeys.folderFiles("drive-1")),
+    ).toHaveLength(1);
   });
 
   it("skips folder-files cache when no entry exists for the parent", () => {
@@ -117,7 +130,9 @@ describe("injectNewFileIntoCaches", () => {
 
     injectNewFileIntoCaches(qc, makeFile({ id: "dup" }));
 
-    expect(qc.getQueryData<DriveNode[]>(wikiKeys.folderFiles("folder-a"))).toHaveLength(1);
+    expect(
+      qc.getQueryData<DriveNode[]>(wikiKeys.folderFiles("folder-a")),
+    ).toHaveLength(1);
   });
 
   it("reconciles duplicate physical IDs in place without discarding shortcut metadata", () => {
@@ -149,51 +164,87 @@ describe("injectNewFileIntoCaches", () => {
       qc.getQueryData<DriveTree>(wikiKeys.driveTree("drive-1"))?.files,
     ]) {
       expect(updated?.map((item) => item.id)).toEqual(["dup", "sibling"]);
-      expect(updated?.[0]).toMatchObject({ name: "Confirmed", shortcutTargetId: "target" });
+      expect(updated?.[0]).toMatchObject({
+        name: "Confirmed",
+        shortcutTargetId: "target",
+      });
       expect(updated?.[1]).toBe(sibling);
     }
-    expect(qc.getQueryData<DriveTree>(wikiKeys.driveTree("drive-1"))?.filesComplete).toBe(false);
+    expect(
+      qc.getQueryData<DriveTree>(wikiKeys.driveTree("drive-1"))?.filesComplete,
+    ).toBe(false);
     qc.clear();
   });
 
   it("splices nested files into tree.files with their parent retained", () => {
     const qc = new QueryClient();
-    const tree: DriveTree = { driveId: "drive-1", files: [], filesComplete: true, folders: [] };
+    const tree: DriveTree = {
+      driveId: "drive-1",
+      files: [],
+      filesComplete: true,
+      folders: [],
+    };
     qc.setQueryData(wikiKeys.driveTree("drive-1"), tree);
 
-    injectNewFileIntoCaches(qc, makeFile({ mimeType: MIME_DOC, parentFolderId: "folder-a" }));
+    injectNewFileIntoCaches(
+      qc,
+      makeFile({ mimeType: MIME_DOC, parentFolderId: "folder-a" }),
+    );
     const after = qc.getQueryData<DriveTree>(wikiKeys.driveTree("drive-1"));
     expect(after?.folders).toHaveLength(0);
     expect(after?.files.map((f) => f.parentId)).toEqual(["folder-a"]);
 
-    injectNewFileIntoCaches(qc, makeFile({ id: "newfolder", mimeType: MIME_FOLDER }));
-    const folder = qc.getQueryData<DriveTree>(wikiKeys.driveTree("drive-1"))?.folders[0];
+    injectNewFileIntoCaches(
+      qc,
+      makeFile({ id: "newfolder", mimeType: MIME_FOLDER }),
+    );
+    const folder = qc.getQueryData<DriveTree>(wikiKeys.driveTree("drive-1"))
+      ?.folders[0];
     expect(folder?.parentId).toBe("folder-a");
   });
 
   it("normalizes a newly-created root folder into the tree root", () => {
     const qc = new QueryClient();
-    const tree: DriveTree = { driveId: "drive-1", files: [], filesComplete: true, folders: [] };
+    const tree: DriveTree = {
+      driveId: "drive-1",
+      files: [],
+      filesComplete: true,
+      folders: [],
+    };
     qc.setQueryData(wikiKeys.driveTree("drive-1"), tree);
 
     injectNewFileIntoCaches(
       qc,
-      makeFile({ id: "root-folder", mimeType: MIME_FOLDER, parentFolderId: "drive-1" }),
+      makeFile({
+        id: "root-folder",
+        mimeType: MIME_FOLDER,
+        parentFolderId: "drive-1",
+      }),
     );
 
-    const folder = qc.getQueryData<DriveTree>(wikiKeys.driveTree("drive-1"))?.folders[0];
+    const folder = qc.getQueryData<DriveTree>(wikiKeys.driveTree("drive-1"))
+      ?.folders[0];
     expect(folder?.id).toBe("root-folder");
     expect(folder?.parentId).toBeUndefined();
   });
 
   it("splices root-level files into the drive tree's files list", () => {
     const qc = new QueryClient();
-    const tree: DriveTree = { driveId: "drive-1", files: [], filesComplete: true, folders: [] };
+    const tree: DriveTree = {
+      driveId: "drive-1",
+      files: [],
+      filesComplete: true,
+      folders: [],
+    };
     qc.setQueryData(wikiKeys.driveTree("drive-1"), tree);
 
     injectNewFileIntoCaches(
       qc,
-      makeFile({ id: "rootdoc", mimeType: MIME_DOC, parentFolderId: "drive-1" }),
+      makeFile({
+        id: "rootdoc",
+        mimeType: MIME_DOC,
+        parentFolderId: "drive-1",
+      }),
     );
 
     const updated = qc.getQueryData<DriveTree>(wikiKeys.driveTree("drive-1"));
@@ -201,7 +252,9 @@ describe("injectNewFileIntoCaches", () => {
     expect(updated?.files[0]?.parentId).toBeUndefined();
 
     removeFileFromCaches(qc, "rootdoc", "drive-1", "drive-1");
-    expect(qc.getQueryData<DriveTree>(wikiKeys.driveTree("drive-1"))?.files).toHaveLength(0);
+    expect(
+      qc.getQueryData<DriveTree>(wikiKeys.driveTree("drive-1"))?.files,
+    ).toHaveLength(0);
   });
 });
 
@@ -212,7 +265,10 @@ describe("findCachedNodeMeta", () => {
       makeNode({ id: "doc-1", mimeType: MIME_DOC, name: "Roadmap" }),
     ]);
 
-    expect(findCachedNodeMeta(qc, "doc-1")).toEqual({ mimeType: MIME_DOC, name: "Roadmap" });
+    expect(findCachedNodeMeta(qc, "doc-1")).toEqual({
+      mimeType: MIME_DOC,
+      name: "Roadmap",
+    });
   });
 
   it("includes the cached content version needed to mount HTML once", () => {
@@ -239,11 +295,16 @@ describe("findCachedNodeMeta", () => {
       driveId: "drive-1",
       files: [],
       filesComplete: true,
-      folders: [makeNode({ id: "folder-x", mimeType: MIME_FOLDER, name: "Specs" })],
+      folders: [
+        makeNode({ id: "folder-x", mimeType: MIME_FOLDER, name: "Specs" }),
+      ],
     };
     qc.setQueryData(wikiKeys.driveTree("drive-1"), tree);
 
-    expect(findCachedNodeMeta(qc, "folder-x")).toEqual({ mimeType: MIME_FOLDER, name: "Specs" });
+    expect(findCachedNodeMeta(qc, "folder-x")).toEqual({
+      mimeType: MIME_FOLDER,
+      name: "Specs",
+    });
   });
 
   it("resolves a shortcut by its target id with the target's mime type", () => {
@@ -299,7 +360,9 @@ describe("findCachedNodeMeta", () => {
 
   it("returns null when nothing cached matches", () => {
     const qc = new QueryClient();
-    qc.setQueryData<DriveNode[]>(wikiKeys.folderFiles("folder-a"), [makeNode({ id: "other" })]);
+    qc.setQueryData<DriveNode[]>(wikiKeys.folderFiles("folder-a"), [
+      makeNode({ id: "other" }),
+    ]);
 
     expect(findCachedNodeMeta(qc, "missing")).toBeNull();
   });
@@ -317,7 +380,9 @@ describe("removeFileFromCaches", () => {
 
     removeFileFromCaches(qc, "drop", "folder-a", "drive-1");
 
-    const remaining = qc.getQueryData<DriveNode[]>(wikiKeys.folderFiles("folder-a"));
+    const remaining = qc.getQueryData<DriveNode[]>(
+      wikiKeys.folderFiles("folder-a"),
+    );
     expect(remaining?.map((n) => n.id)).toEqual(["before", "after"]);
   });
 
@@ -348,10 +413,15 @@ describe("removeFileFromCaches", () => {
 
   it("can preserve active file metadata while moving between tree caches", () => {
     const qc = new QueryClient();
-    const detail = { breadcrumb: [{ id: "drive-1", name: "My Drive" }], id: "x" };
+    const detail = {
+      breadcrumb: [{ id: "drive-1", name: "My Drive" }],
+      id: "x",
+    };
     qc.setQueryData(wikiKeys.file("x"), detail);
 
-    removeFileFromCaches(qc, "x", "folder-a", "drive-1", { removeFileQuery: false });
+    removeFileFromCaches(qc, "x", "folder-a", "drive-1", {
+      removeFileQuery: false,
+    });
 
     expect(qc.getQueryData(wikiKeys.file("x"))).toEqual(detail);
   });
@@ -364,8 +434,12 @@ describe("optimisticMoveFile", () => {
     const key = wikiKeys.folderFiles("folder-b");
     qc.setQueryData<DriveNode[]>(key, []);
     const providerError = new Error("private provider response body");
-    const cancel = vi.spyOn(qc, "cancelQueries").mockRejectedValue(providerError);
-    const warning = vi.spyOn(console, "warn").mockImplementation(vi.fn<() => void>());
+    const cancel = vi
+      .spyOn(qc, "cancelQueries")
+      .mockRejectedValue(providerError);
+    const warning = vi
+      .spyOn(console, "warn")
+      .mockImplementation(vi.fn<() => void>());
     try {
       const rollback = optimisticMoveFile(
         qc,
@@ -375,7 +449,10 @@ describe("optimisticMoveFile", () => {
       );
       await Promise.resolve();
       expect(qc.getQueryData<DriveNode[]>(key)?.[0]?.id).toBe("moving");
-      expect(warning).toHaveBeenCalledWith("Cache read cancellation failed", "Error");
+      expect(warning).toHaveBeenCalledWith(
+        "Cache read cancellation failed",
+        "Error",
+      );
       expect(warning.mock.calls.flat()).not.toContain(providerError);
       expect(warning.mock.calls.flat()).not.toContain(providerError.message);
       rollback.commit();
@@ -405,7 +482,9 @@ describe("optimisticMoveFile", () => {
     const current = qc.getQueryData<DriveTree>(key);
     qc.setQueryData(key, structuredClone(current));
     rollback();
-    expect(qc.getQueryData<DriveTree>(key)?.files[0]?.parentId).toBe("folder-b");
+    expect(qc.getQueryData<DriveTree>(key)?.files[0]?.parentId).toBe(
+      "folder-b",
+    );
     qc.clear();
   });
 
@@ -450,7 +529,8 @@ describe("optimisticMoveFile", () => {
     const release = qc.getQueryCache().subscribe((event) => {
       if (
         event.type === "updated" &&
-        event.query.queryHash === JSON.stringify(wikiKeys.driveTree("drive-1")) &&
+        event.query.queryHash ===
+          JSON.stringify(wikiKeys.driveTree("drive-1")) &&
         event.action.type === "success"
       )
         treeUpdates++;
@@ -463,18 +543,24 @@ describe("optimisticMoveFile", () => {
     );
     expect(treeUpdates).toBe(1);
     const moved = qc.getQueryData<DriveTree>(wikiKeys.driveTree("drive-1"));
-    expect(moved?.files[0]).toMatchObject({ ...shortcut, parentId: "folder-b" });
+    expect(moved?.files[0]).toMatchObject({
+      ...shortcut,
+      parentId: "folder-b",
+    });
     expect(moved?.filesComplete).toBe(false);
     qc.setQueryData<DriveTree>(wikiKeys.driveTree("drive-1"), (tree) =>
-      tree ? { ...tree, files: [...tree.files, makeNode({ id: "newer" })] } : tree,
+      tree
+        ? { ...tree, files: [...tree.files, makeNode({ id: "newer" })] }
+        : tree,
     );
     rollback();
-    expect(qc.getQueryData<DriveTree>(wikiKeys.driveTree("drive-1"))?.files).toEqual([
+    expect(
+      qc.getQueryData<DriveTree>(wikiKeys.driveTree("drive-1"))?.files,
+    ).toEqual([shortcut, sibling, makeNode({ id: "newer" })]);
+    expect(qc.getQueryData(wikiKeys.folderFiles("folder-a"))).toEqual([
       shortcut,
       sibling,
-      makeNode({ id: "newer" }),
     ]);
-    expect(qc.getQueryData(wikiKeys.folderFiles("folder-a"))).toEqual([shortcut, sibling]);
     expect(qc.getQueryData(wikiKeys.folderFiles("folder-b"))).toEqual([]);
     release();
     qc.clear();
@@ -510,7 +596,9 @@ describe("optimisticMoveFile", () => {
       }),
     );
     rollback.commit();
-    expect(qc.getQueryData<DriveTree>(wikiKeys.driveTree("drive-1"))?.files[0]).toMatchObject({
+    expect(
+      qc.getQueryData<DriveTree>(wikiKeys.driveTree("drive-1"))?.files[0],
+    ).toMatchObject({
       name: "Provider name",
       shortcutTargetId: "target",
       shortcutTargetMimeType: MIME_DOC,
@@ -534,9 +622,14 @@ describe("optimisticMoveFile", () => {
       { driveId: "drive-1", parentFolderId: "folder-b" },
       { driveId: "drive-1", parentFolderId: undefined },
     );
-    await qc.query({ queryKey: key, queryFn: () => qc.getQueryData<DriveTree>(key) });
+    await qc.query({
+      queryKey: key,
+      queryFn: () => qc.getQueryData<DriveTree>(key),
+    });
     old();
-    expect(qc.getQueryData<DriveTree>(key)?.files[0]?.parentId).toBe("folder-b");
+    expect(qc.getQueryData<DriveTree>(key)?.files[0]?.parentId).toBe(
+      "folder-b",
+    );
     const retired = optimisticMoveFile(
       qc,
       node,
@@ -563,7 +656,9 @@ describe("optimisticMoveFile", () => {
       driveId: "drive-2",
       files: [],
       filesComplete: true,
-      folders: [makeNode({ id: "folder-b", mimeType: MIME_FOLDER, name: "Folder B" })],
+      folders: [
+        makeNode({ id: "folder-b", mimeType: MIME_FOLDER, name: "Folder B" }),
+      ],
     });
 
     const rollback = optimisticMoveFile(
@@ -573,16 +668,24 @@ describe("optimisticMoveFile", () => {
       { driveId: "drive-1", parentFolderId: undefined },
     );
 
-    expect(qc.getQueryData<DriveTree>(wikiKeys.driveTree("drive-1"))?.files).toHaveLength(0);
-    expect(qc.getQueryData<DriveTree>(wikiKeys.driveTree("drive-2"))?.files[0]).toMatchObject({
+    expect(
+      qc.getQueryData<DriveTree>(wikiKeys.driveTree("drive-1"))?.files,
+    ).toHaveLength(0);
+    expect(
+      qc.getQueryData<DriveTree>(wikiKeys.driveTree("drive-2"))?.files[0],
+    ).toMatchObject({
       id: "moving",
       parentId: "folder-b",
     });
 
     rollback();
 
-    expect(qc.getQueryData<DriveTree>(wikiKeys.driveTree("drive-2"))?.files).toHaveLength(0);
-    expect(qc.getQueryData<DriveTree>(wikiKeys.driveTree("drive-1"))?.files[0]).toMatchObject({
+    expect(
+      qc.getQueryData<DriveTree>(wikiKeys.driveTree("drive-2"))?.files,
+    ).toHaveLength(0);
+    expect(
+      qc.getQueryData<DriveTree>(wikiKeys.driveTree("drive-1"))?.files[0],
+    ).toMatchObject({
       id: "moving",
       parentId: undefined,
     });

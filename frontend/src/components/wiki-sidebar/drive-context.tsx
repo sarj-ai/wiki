@@ -25,7 +25,9 @@ export const DriveSectionProvider = DriveSectionContext.Provider;
 export function useDriveSectionContext(): DriveSectionValue {
   const value = useContext(DriveSectionContext);
   if (value === null) {
-    throw new Error("useDriveSectionContext must be used inside <DriveSectionProvider>");
+    throw new Error(
+      "useDriveSectionContext must be used inside <DriveSectionProvider>",
+    );
   }
   return value;
 }

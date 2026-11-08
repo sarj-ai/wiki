@@ -15,7 +15,9 @@ export function WikiNotFound({
         </div>
         <div className="space-y-1.5">
           <h1 className="text-lg font-semibold tracking-tight">{title}</h1>
-          <p className="text-muted-foreground text-sm leading-relaxed">{description}</p>
+          <p className="text-muted-foreground text-sm leading-relaxed">
+            {description}
+          </p>
         </div>
         <div className="flex flex-wrap items-center justify-center gap-2 pt-1">
           <Button asChild>

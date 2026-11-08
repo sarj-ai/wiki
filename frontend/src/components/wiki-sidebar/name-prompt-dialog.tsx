@@ -1,7 +1,13 @@
 "use client";
 
 import { Loader2 } from "lucide-react";
-import { useEffect, useLayoutEffect, useRef, useState, useTransition } from "react";
+import {
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+  useTransition,
+} from "react";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -41,7 +47,7 @@ export function NamePromptDialog({
   }, [open]);
 
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- Prop changes intentionally reset controlled input state.
+    // eslint-disable-next-line react/set-state-in-effect -- Prop changes intentionally reset controlled input state.
     if (open) setValue(defaultValue);
   }, [open, defaultValue]);
 
@@ -69,7 +75,8 @@ export function NamePromptDialog({
           e.preventDefault();
           const owner = promptOwner.current;
           if (!owner) return;
-          if (focusFrame.current !== null) cancelAnimationFrame(focusFrame.current);
+          if (focusFrame.current !== null)
+            cancelAnimationFrame(focusFrame.current);
           focusFrame.current = requestAnimationFrame(() => {
             focusFrame.current = null;
             if (promptOwner.current !== owner) return;
@@ -82,7 +89,9 @@ export function NamePromptDialog({
       >
         <DialogHeader>
           <DialogTitle>{title}</DialogTitle>
-          {description ? <DialogDescription>{description}</DialogDescription> : null}
+          {description ? (
+            <DialogDescription>{description}</DialogDescription>
+          ) : null}
         </DialogHeader>
         <form
           className="space-y-3"

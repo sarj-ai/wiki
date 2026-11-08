@@ -78,13 +78,18 @@ function Overlay({
       </button>
       <Parts.Root onOpenChange={changeOpen} open={open}>
         {nativeTrigger ? <Parts.Trigger>Native opener</Parts.Trigger> : null}
-        <Parts.Content onCloseAutoFocus={onCloseAutoFocus} onOpenAutoFocus={onOpenAutoFocus}>
+        <Parts.Content
+          onCloseAutoFocus={onCloseAutoFocus}
+          onOpenAutoFocus={onOpenAutoFocus}
+        >
           <Parts.Title>Owned overlay</Parts.Title>
           <Parts.Description>Focus ownership control.</Parts.Description>
           <input aria-label="First field" />
           <input aria-label="Consumer field" />
           {kind === "alert" ? (
-            <AlertDialogCancel onClick={() => changeOpen(false)}>Cancel overlay</AlertDialogCancel>
+            <AlertDialogCancel onClick={() => changeOpen(false)}>
+              Cancel overlay
+            </AlertDialogCancel>
           ) : (
             <button onClick={() => changeOpen(false)} type="button">
               Cancel overlay
@@ -159,10 +164,15 @@ describe("native overlay focus return", () => {
         if (dismissal === "Escape") {
           document
             .querySelector('[role="dialog"]')
-            ?.dispatchEvent(new KeyboardEvent("keydown", { bubbles: true, key: "Escape" }));
+            ?.dispatchEvent(
+              new KeyboardEvent("keydown", { bubbles: true, key: "Escape" }),
+            );
         } else {
-          const overlay = document.querySelector('[data-slot="dialog-overlay"]');
-          if (!(overlay instanceof HTMLElement)) throw new TypeError("Dialog backdrop missing");
+          const overlay = document.querySelector(
+            '[data-slot="dialog-overlay"]',
+          );
+          if (!(overlay instanceof HTMLElement))
+            throw new TypeError("Dialog backdrop missing");
           overlay.dispatchEvent(
             new PointerEvent("pointerdown", {
               bubbles: true,
@@ -172,7 +182,11 @@ describe("native overlay focus return", () => {
             }),
           );
           overlay.dispatchEvent(
-            new PointerEvent("pointerup", { bubbles: true, pointerType: "mouse", button: 0 }),
+            new PointerEvent("pointerup", {
+              bubbles: true,
+              pointerType: "mouse",
+              button: 0,
+            }),
           );
           overlay.click();
         }
@@ -187,7 +201,9 @@ describe("native overlay focus return", () => {
     const outside = outsideButton();
     const onOpenAutoFocus = vi.fn((event: Event) => {
       event.preventDefault();
-      document.querySelector<HTMLInputElement>('[aria-label="Consumer field"]')?.focus();
+      document
+        .querySelector<HTMLInputElement>('[aria-label="Consumer field"]')
+        ?.focus();
     });
     const onCloseAutoFocus = vi.fn((event: Event) => {
       event.preventDefault();
@@ -197,7 +213,9 @@ describe("native overlay focus return", () => {
     flushSync(() => button("Native opener").click());
     await vi.advanceTimersByTimeAsync(0);
     expect(onOpenAutoFocus).toHaveBeenCalledOnce();
-    expect(document.querySelector('[aria-label="Consumer field"]')).toHaveFocus();
+    expect(
+      document.querySelector('[aria-label="Consumer field"]'),
+    ).toHaveFocus();
     await close();
     expect(onCloseAutoFocus).toHaveBeenCalledOnce();
     expect(outside).toHaveFocus();
@@ -261,7 +279,10 @@ describe("native overlay focus return", () => {
       const originalRef = useRef(original);
       const fallbackRef = useRef(fallback);
       return (
-        <FocusReturnProvider fallbackTargetRef={fallbackRef} targetRef={originalRef}>
+        <FocusReturnProvider
+          fallbackTargetRef={fallbackRef}
+          targetRef={originalRef}
+        >
           <Dialog onOpenChange={changeOpen} open={open}>
             <DialogContent>
               <DialogTitle>Fallback dialog</DialogTitle>
@@ -334,7 +355,8 @@ function button(label: string): HTMLButtonElement {
   const found = [...document.querySelectorAll("button")].find(
     (element) => element.textContent === label,
   );
-  if (!(found instanceof HTMLButtonElement)) throw new TypeError(`Missing ${label}`);
+  if (!(found instanceof HTMLButtonElement))
+    throw new TypeError(`Missing ${label}`);
   return found;
 }
 

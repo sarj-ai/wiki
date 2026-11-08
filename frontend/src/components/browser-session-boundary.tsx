@@ -4,7 +4,10 @@ import { type QueryClient, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState, useSyncExternalStore } from "react";
 
 import { RecentPagesSessionProvider } from "@/components/recent-pages/recent-pages-session";
-import { currentUserQueryOptions, useCurrentUser } from "@/hooks/use-current-user";
+import {
+  currentUserQueryOptions,
+  useCurrentUser,
+} from "@/hooks/use-current-user";
 import { resetExpansionState } from "@/hooks/use-expanded-folders";
 import {
   clearUserBrowserStorage,
@@ -19,7 +22,10 @@ import {
   resetDocumentViewer,
   resetSidebarState,
 } from "@/lib/session-isolation";
-import { claimVerifiedBrowserUser, readVerifiedBrowserUser } from "@/lib/verified-browser-user";
+import {
+  claimVerifiedBrowserUser,
+  readVerifiedBrowserUser,
+} from "@/lib/verified-browser-user";
 
 export function BrowserSessionBoundary({
   children,
@@ -29,7 +35,9 @@ export function BrowserSessionBoundary({
   initialUserId: null | string;
 }) {
   if (initialUserId === null) {
-    return <RecoverBrowserSessionBoundary>{children}</RecoverBrowserSessionBoundary>;
+    return (
+      <RecoverBrowserSessionBoundary>{children}</RecoverBrowserSessionBoundary>
+    );
   }
   return (
     <IdentifiedBrowserSessionBoundary currentUserId={initialUserId}>
@@ -38,7 +46,11 @@ export function BrowserSessionBoundary({
   );
 }
 
-function RecoverBrowserSessionBoundary({ children }: { children: React.ReactNode }) {
+function RecoverBrowserSessionBoundary({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
   const queryClient = useQueryClient();
   const [currentUserId, setCurrentUserId] = useState<null | string>(null);
   const profile = useCurrentUser();
@@ -50,8 +62,14 @@ function RecoverBrowserSessionBoundary({ children }: { children: React.ReactNode
     void (async () => {
       // A fresh read may share the account menu's in-flight query. Cached
       // profiles alone cannot establish a browser persistence namespace.
-      const user = await queryClient.query({ ...currentUserQueryOptions(), staleTime: 0 });
-      if (lifetime.signal.aborted || !claimVerifiedBrowserUser(queryClient, user.id, session))
+      const user = await queryClient.query({
+        ...currentUserQueryOptions(),
+        staleTime: 0,
+      });
+      if (
+        lifetime.signal.aborted ||
+        !claimVerifiedBrowserUser(queryClient, user.id, session)
+      )
         return;
       setCurrentUserId(user.id);
     })().catch(() => {
@@ -116,7 +134,9 @@ function IdentifiedBrowserSessionBoundary({
 
   return (
     <BrowserUserContext value={currentUserId}>
-      <RecentPagesSessionProvider userId={currentUserId}>{children}</RecentPagesSessionProvider>
+      <RecentPagesSessionProvider userId={currentUserId}>
+        {children}
+      </RecentPagesSessionProvider>
     </BrowserUserContext>
   );
 }

@@ -37,7 +37,9 @@ export function McpConnections() {
     void load()
       .catch((error: unknown) => {
         if (current) {
-          setSignin(error instanceof McpConsentRequestError && error.status === 401);
+          setSignin(
+            error instanceof McpConsentRequestError && error.status === 401,
+          );
           setMessage(
             "Wiki connections are unavailable. Sign in if needed, or try again when the integration is enabled.",
           );
@@ -64,7 +66,8 @@ export function McpConnections() {
   async function refresh(): Promise<void> {
     const controller = reads.current;
     if (locked.current || !controller) return;
-    const current = () => reads.current === controller && !controller.signal.aborted;
+    const current = () =>
+      reads.current === controller && !controller.signal.aborted;
     if (!current()) return;
     locked.current = true;
     setBusy(true);
@@ -96,7 +99,9 @@ export function McpConnections() {
       );
     } catch {
       setConnections(null);
-      setMessage("The disconnect result is uncertain. Refresh status before trying again.");
+      setMessage(
+        "The disconnect result is uncertain. Refresh status before trying again.",
+      );
     } finally {
       unlock();
     }
@@ -122,7 +127,12 @@ export function McpConnections() {
       </p>
       {signin ? (
         <Button asChild>
-          <Link href={{ pathname: "/login", query: { redirect: "/mcp/connections" } }}>
+          <Link
+            href={{
+              pathname: "/login",
+              query: { redirect: "/mcp/connections" },
+            }}
+          >
             Sign in to Wiki
           </Link>
         </Button>
@@ -132,8 +142,8 @@ export function McpConnections() {
           <section className="bg-card space-y-3 rounded-xl border p-6">
             <h2 className="text-lg font-semibold">Connect Codex</h2>
             <p className="text-muted-foreground text-sm">
-              Run this in your terminal, then review access in Wiki. Reading is the default;
-              document changes need your separate approval.
+              Run this in your terminal, then review access in Wiki. Reading is
+              the default; document changes need your separate approval.
             </p>
             <pre className="bg-muted overflow-x-auto rounded-md p-3 text-sm">
               <code>{command}</code>
@@ -142,8 +152,8 @@ export function McpConnections() {
               {copyMessage}
             </Button>
             <p className="text-muted-foreground text-sm">
-              If sarj-wiki is already configured, inspect that entry before replacing it. No API key
-              or Google token needs to be copied.
+              If sarj-wiki is already configured, inspect that entry before
+              replacing it. No API key or Google token needs to be copied.
             </p>
           </section>
           <h2 className="text-lg font-semibold">Your active connections</h2>

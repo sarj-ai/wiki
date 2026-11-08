@@ -15,7 +15,12 @@ import { ErrorBoundary } from "@/components/error-boundary";
 import { RecentPagesLink } from "@/components/recent-pages/recent-pages-link";
 import { SarjLogo } from "@/components/sarj-logo";
 import { Button } from "@/components/ui/button";
-import { Sidebar, SidebarContent, SidebarHeader, SidebarSeparator } from "@/components/ui/sidebar";
+import {
+  Sidebar,
+  SidebarContent,
+  SidebarHeader,
+  SidebarSeparator,
+} from "@/components/ui/sidebar";
 import { consumeRevealFor, expandPath } from "@/hooks/use-expanded-folders";
 import {
   useDocIcons,
@@ -27,14 +32,21 @@ import {
 } from "@/hooks/use-wiki-tree";
 import { useBrowserUserId } from "@/lib/browser-user-context";
 import { renderNodeIcon } from "@/lib/file-icons";
-import { EMPTY_DOC_ICONS, EMPTY_FOLDER_ICONS, EMPTY_SORT_ORDERS } from "@/lib/wiki-indexes";
+import {
+  EMPTY_DOC_ICONS,
+  EMPTY_FOLDER_ICONS,
+  EMPTY_SORT_ORDERS,
+} from "@/lib/wiki-indexes";
 
 import { DriveSearchBox } from "./drive-search-box";
 import { DriveSection } from "./drive-section";
 import { MoveDialogOutletProvider } from "./move-dialog-outlet";
 import { PreferencesDialogOutletProvider } from "./preferences-dialog-outlet";
 import { SidebarResizeHandle } from "./sidebar-resize-handle";
-import { SidebarNavigationProvider, useSidebarNavigation } from "./use-sidebar-navigation";
+import {
+  SidebarNavigationProvider,
+  useSidebarNavigation,
+} from "./use-sidebar-navigation";
 import { useWikiReorder } from "./use-wiki-reorder";
 import { WikiFooter } from "./wiki-footer";
 
@@ -67,7 +79,9 @@ export function WikiSidebar() {
 
   const showNonDocFiles = prefsQuery.data?.showNonDocFiles ?? true;
   const hiddenWorkspaceIds = new Set(prefsQuery.data?.hiddenWorkspaceIds);
-  const visibleDrives = (drivesQuery.data ?? []).filter((d) => !hiddenWorkspaceIds.has(d.id));
+  const visibleDrives = (drivesQuery.data ?? []).filter(
+    (d) => !hiddenWorkspaceIds.has(d.id),
+  );
   const docIconsQuery = useDocIcons(visibleDrives.length > 0);
 
   const activeFileQuery = useFile(activeDriveId);
@@ -92,7 +106,9 @@ export function WikiSidebar() {
     let pulseTimer: number | undefined;
     let revealed: HTMLElement | null = null;
     const handle = requestAnimationFrame(() => {
-      const el = document.querySelector<HTMLElement>(`[data-file-id="${CSS.escape(targetId)}"]`);
+      const el = document.querySelector<HTMLElement>(
+        `[data-file-id="${CSS.escape(targetId)}"]`,
+      );
       if (!el) return;
       el.scrollIntoView({ block: "nearest" });
       revealed = el;
@@ -132,7 +148,9 @@ export function WikiSidebar() {
                 <ErrorBoundary>
                   {drivesQuery.isLoading ? (
                     <div className="space-y-2 px-3 py-2" role="status">
-                      <span className="text-muted-foreground text-xs">Loading drives…</span>
+                      <span className="text-muted-foreground text-xs">
+                        Loading drives…
+                      </span>
                       <div aria-hidden="true" className="space-y-2">
                         <div className="bg-muted h-7 w-full rounded-sm" />
                         <div className="bg-muted h-7 w-4/5 rounded-sm" />
@@ -142,13 +160,17 @@ export function WikiSidebar() {
                   ) : null}
                   {drivesQuery.isError ? (
                     <div className="space-y-2 px-3 py-2" role="alert">
-                      <p className="text-destructive text-xs">Failed to load drives</p>
+                      <p className="text-destructive text-xs">
+                        Failed to load drives
+                      </p>
                       <Button
                         disabled={drivesQuery.isFetching}
                         onClick={() => {
                           void drivesQuery
                             .refetch()
-                            .catch(() => console.warn("Drive retry could not finish"));
+                            .catch(() =>
+                              console.warn("Drive retry could not finish"),
+                            );
                         }}
                         size="sm"
                         variant="outline"
@@ -164,7 +186,9 @@ export function WikiSidebar() {
                         defaultExpanded={index === 0}
                         docIcons={docIconsQuery.data ?? EMPTY_DOC_ICONS}
                         drive={drive}
-                        folderIcons={folderIconsQuery.data ?? EMPTY_FOLDER_ICONS}
+                        folderIcons={
+                          folderIconsQuery.data ?? EMPTY_FOLDER_ICONS
+                        }
                         optimisticByContainer={reorder.optimisticByContainer}
                         pathname={pathname}
                         showNonDocFiles={showNonDocFiles}
@@ -173,11 +197,13 @@ export function WikiSidebar() {
                       {index < visibleDrives.length - 1 && <SidebarSeparator />}
                     </div>
                   ))}
-                  {!drivesQuery.isLoading && !drivesQuery.isError && visibleDrives.length === 0 && (
-                    <div className="text-muted-foreground px-3 py-2 text-xs">
-                      No accessible drives
-                    </div>
-                  )}
+                  {!drivesQuery.isLoading &&
+                    !drivesQuery.isError &&
+                    visibleDrives.length === 0 && (
+                      <div className="text-muted-foreground px-3 py-2 text-xs">
+                        No accessible drives
+                      </div>
+                    )}
                 </ErrorBoundary>
               </SidebarContent>
               <DragOverlay dropAnimation={null}>

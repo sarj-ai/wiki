@@ -39,7 +39,11 @@ describe("document transform recovery", () => {
     expect(readTransformRecovery("owner", "drive:doc")).toEqual(first);
     expect(readTransformRecovery("other", "drive:doc")).toBeNull();
     await expect(
-      claimTransformRecovery("owner", "drive:doc", candidate(secondKey, Date.now())),
+      claimTransformRecovery(
+        "owner",
+        "drive:doc",
+        candidate(secondKey, Date.now()),
+      ),
     ).resolves.toEqual(first);
   });
 
@@ -49,7 +53,11 @@ describe("document transform recovery", () => {
     expect(readTransformRecovery("owner", "drive:doc")?.key).toBe(firstKey);
     await completeTransformRecovery("owner", "drive:doc", firstKey);
     expect(readTransformRecovery("owner", "drive:doc")).toBeNull();
-    const delayed = await claimTransformRecovery("owner", "drive:doc", candidate(secondKey));
+    const delayed = await claimTransformRecovery(
+      "owner",
+      "drive:doc",
+      candidate(secondKey),
+    );
     expect(delayed.key).toBe(firstKey);
     const deliberate = await claimTransformRecovery(
       "owner",
@@ -62,15 +70,26 @@ describe("document transform recovery", () => {
   });
 
   it("shares the admitted task handle without overwriting another operation or terminal state", async () => {
-    const operation = await claimTransformRecovery("owner", "drive:doc", candidate(firstKey));
+    const operation = await claimTransformRecovery(
+      "owner",
+      "drive:doc",
+      candidate(firstKey),
+    );
     const taskId = "55555555-5555-4555-8555-555555555555";
-    await recordTransformTask("owner", "drive:doc", { ...operation, key: secondKey, taskId });
+    await recordTransformTask("owner", "drive:doc", {
+      ...operation,
+      key: secondKey,
+      taskId,
+    });
     expect(readTransformRecovery("owner", "drive:doc")?.taskId).toBeNull();
     await recordTransformTask("owner", "drive:doc", { ...operation, taskId });
     window.sessionStorage.clear();
     expect(readTransformRecovery("owner", "drive:doc")?.taskId).toBe(taskId);
     await expect(
-      recordTransformTask("owner", "drive:doc", { ...operation, taskId: secondKey }),
+      recordTransformTask("owner", "drive:doc", {
+        ...operation,
+        taskId: secondKey,
+      }),
     ).rejects.toThrow("does not match");
     await completeTransformRecovery("owner", "drive:doc", firstKey);
     await recordTransformTask("owner", "drive:doc", { ...operation, taskId });
@@ -78,21 +97,31 @@ describe("document transform recovery", () => {
   });
 
   it("fails closed without atomic coordination but permits recovery", async () => {
-    const existing = await claimTransformRecovery("owner", "drive:existing", candidate(firstKey));
-    Object.defineProperty(navigator, "locks", { configurable: true, value: undefined });
+    const existing = await claimTransformRecovery(
+      "owner",
+      "drive:existing",
+      candidate(firstKey),
+    );
+    Object.defineProperty(navigator, "locks", {
+      configurable: true,
+      value: undefined,
+    });
     await expect(
       claimTransformRecovery("owner", "drive:existing", candidate(secondKey)),
     ).resolves.toEqual(existing);
-    await expect(claimTransformRecovery("owner", "drive:doc", candidate(firstKey))).rejects.toThrow(
-      "Web Locks",
-    );
-    await expect(claimTransformRecovery(null, "drive:doc", candidate(firstKey))).rejects.toThrow(
-      "Sign in",
-    );
+    await expect(
+      claimTransformRecovery("owner", "drive:doc", candidate(firstKey)),
+    ).rejects.toThrow("Web Locks");
+    await expect(
+      claimTransformRecovery(null, "drive:doc", candidate(firstKey)),
+    ).rejects.toThrow("Sign in");
   });
 
   it("does not overwrite corrupt shared state or bypass unavailable storage", async () => {
-    window.localStorage.setItem("sarj-wiki:transform:owner:drive%3Adoc:shared", "{invalid");
+    window.localStorage.setItem(
+      "sarj-wiki:transform:owner:drive%3Adoc:shared",
+      "{invalid",
+    );
     await expect(
       claimTransformRecovery("owner", "drive:doc", candidate(firstKey)),
     ).rejects.toThrow();
@@ -125,7 +154,10 @@ describe("document transform recovery", () => {
   });
 
   it("fails closed when stored state is corrupted", () => {
-    window.sessionStorage.setItem("sarj-wiki:transform:first:markdown", "{invalid");
+    window.sessionStorage.setItem(
+      "sarj-wiki:transform:first:markdown",
+      "{invalid",
+    );
     expect(() => readTransformRecovery("first", "markdown")).toThrow();
   });
 });

@@ -27,9 +27,13 @@ it("counts unique synchronous JavaScript chunks from a Next manifest", async () 
       path.join(root, "server/app/page_client-reference-manifest.js"),
       `globalThis.__RSC_MANIFEST = ${JSON.stringify(manifest)};`,
     );
-    const output = execFileSync(process.execPath, [BENCHMARK_PATH, root, "page"], {
-      encoding: "utf8",
-    });
+    const output = execFileSync(
+      process.execPath,
+      [BENCHMARK_PATH, root, "page"],
+      {
+        encoding: "utf8",
+      },
+    );
     assert.deepEqual(JSON.parse(output), {
       files: [{ file: chunk, bytes: 5, gzipBytes: 25 }],
       bytes: 5,
@@ -49,7 +53,10 @@ it("rejects a changed Next manifest shape before reading chunk files", async () 
       'globalThis.__RSC_MANIFEST = { page: { clientModules: { bad: { chunks: "missing.js" } } } };',
     );
     assert.throws(
-      () => execFileSync(process.execPath, [BENCHMARK_PATH, root, "page"], { stdio: "pipe" }),
+      () =>
+        execFileSync(process.execPath, [BENCHMARK_PATH, root, "page"], {
+          stdio: "pipe",
+        }),
       /ZodError/u,
     );
   } finally {

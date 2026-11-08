@@ -2,14 +2,19 @@ import { StrictMode } from "react";
 import { flushSync } from "react-dom";
 import { createRoot, type Root } from "react-dom/client";
 
-import { deduplicatedRefresh, type SessionRefreshResult } from "@/lib/session-client";
+import {
+  deduplicatedRefresh,
+  type SessionRefreshResult,
+} from "@/lib/session-client";
 import { notifyTerminalUnauthorized } from "@/lib/session-events";
 import { installLocalStorage } from "@/test-stubs/install-local-storage";
 
 import { SessionRefresh } from "./session-refresh";
 
 vi.mock("@/lib/session-client", () => ({ deduplicatedRefresh: vi.fn() }));
-vi.mock("@/lib/session-events", () => ({ notifyTerminalUnauthorized: vi.fn() }));
+vi.mock("@/lib/session-events", () => ({
+  notifyTerminalUnauthorized: vi.fn(),
+}));
 
 describe("background session refresh ownership", () => {
   let root: Root;
@@ -37,12 +42,17 @@ describe("background session refresh ownership", () => {
     const signal = vi.mocked(deduplicatedRefresh).mock.calls[0]?.[0];
     expect(signal?.aborted).toBe(false);
     flushSync(() => root.render(null));
-    localStorage.setItem("sarj-wiki:last-session-refresh", "replacement-marker");
+    localStorage.setItem(
+      "sarj-wiki:last-session-refresh",
+      "replacement-marker",
+    );
     expect(signal?.aborted).toBe(true);
     pending.resolve("unauthorized");
     await vi.advanceTimersByTimeAsync(0);
     expect(notifyTerminalUnauthorized).not.toHaveBeenCalled();
-    expect(localStorage.getItem("sarj-wiki:last-session-refresh")).toBe("replacement-marker");
+    expect(localStorage.getItem("sarj-wiki:last-session-refresh")).toBe(
+      "replacement-marker",
+    );
   });
 
   it("releases an abandoned marker so Strict Mode remounts can observe failure and retry", async () => {
@@ -54,21 +64,30 @@ describe("background session refresh ownership", () => {
       ),
     );
     expect(deduplicatedRefresh).toHaveBeenCalledTimes(2);
-    expect(vi.mocked(deduplicatedRefresh).mock.calls[0]?.[0]?.aborted).toBe(true);
+    expect(vi.mocked(deduplicatedRefresh).mock.calls[0]?.[0]?.aborted).toBe(
+      true,
+    );
     pending.resolve("unavailable");
     await vi.advanceTimersByTimeAsync(0);
     expect(localStorage.getItem("sarj-wiki:last-session-refresh")).toBeNull();
     vi.mocked(deduplicatedRefresh).mockResolvedValue("refreshed");
     await vi.advanceTimersByTimeAsync(60 * 1_000);
     expect(deduplicatedRefresh).toHaveBeenCalledTimes(3);
-    expect(localStorage.getItem("sarj-wiki:last-session-refresh")).not.toBeNull();
+    expect(
+      localStorage.getItem("sarj-wiki:last-session-refresh"),
+    ).not.toBeNull();
   });
 
   it("preserves a later owner's marker during unmount", () => {
     flushSync(() => root.render(<SessionRefresh />));
-    localStorage.setItem("sarj-wiki:last-session-refresh", "replacement-marker");
+    localStorage.setItem(
+      "sarj-wiki:last-session-refresh",
+      "replacement-marker",
+    );
     flushSync(() => root.render(null));
-    expect(localStorage.getItem("sarj-wiki:last-session-refresh")).toBe("replacement-marker");
+    expect(localStorage.getItem("sarj-wiki:last-session-refresh")).toBe(
+      "replacement-marker",
+    );
   });
 
   it("keeps terminal unauthorized handling for the current owner", async () => {
@@ -88,7 +107,9 @@ describe("background session refresh ownership", () => {
   });
 
   it("suspends hidden-tab checks and immediately refreshes on return after expiry", async () => {
-    const visibility = vi.spyOn(document, "visibilityState", "get").mockReturnValue("visible");
+    const visibility = vi
+      .spyOn(document, "visibilityState", "get")
+      .mockReturnValue("visible");
     const readMarker = vi.spyOn(localStorage, "getItem");
     flushSync(() => root.render(<SessionRefresh />));
     pending.resolve("refreshed");
@@ -154,13 +175,17 @@ describe("background session refresh ownership", () => {
   });
 
   it("retries an own failed refresh even when its marker cannot be removed", async () => {
-    const remove = vi.spyOn(localStorage, "removeItem").mockImplementation(() => {
-      throw new DOMException("Storage denied", "SecurityError");
-    });
+    const remove = vi
+      .spyOn(localStorage, "removeItem")
+      .mockImplementation(() => {
+        throw new DOMException("Storage denied", "SecurityError");
+      });
     flushSync(() => root.render(<SessionRefresh />));
     pending.resolve("unavailable");
     await vi.advanceTimersByTimeAsync(0);
-    expect(localStorage.getItem("sarj-wiki:last-session-refresh")).not.toBeNull();
+    expect(
+      localStorage.getItem("sarj-wiki:last-session-refresh"),
+    ).not.toBeNull();
     expect(remove).toHaveBeenCalledOnce();
     vi.mocked(deduplicatedRefresh).mockResolvedValue("refreshed");
     await vi.advanceTimersByTimeAsync(60 * 1000);
@@ -174,7 +199,10 @@ describe("background session refresh ownership", () => {
     flushSync(() => root.render(<SessionRefresh />));
     pending.resolve("unavailable");
     await vi.advanceTimersByTimeAsync(0);
-    localStorage.setItem("sarj-wiki:last-session-refresh", String(Date.now() + 1000));
+    localStorage.setItem(
+      "sarj-wiki:last-session-refresh",
+      String(Date.now() + 1000),
+    );
     await vi.advanceTimersByTimeAsync(60 * 1000);
     expect(deduplicatedRefresh).toHaveBeenCalledOnce();
   });
@@ -191,10 +219,11 @@ describe("background session refresh ownership", () => {
       ),
     );
     expect(deduplicatedRefresh).toHaveBeenCalledTimes(2);
-    expect(vi.mocked(deduplicatedRefresh).mock.calls.map(([signal]) => signal?.aborted)).toEqual([
-      true,
-      false,
-    ]);
+    expect(
+      vi
+        .mocked(deduplicatedRefresh)
+        .mock.calls.map(([signal]) => signal?.aborted),
+    ).toEqual([true, false]);
     pending.resolve("unavailable");
     await vi.advanceTimersByTimeAsync(0);
     vi.mocked(deduplicatedRefresh).mockResolvedValue("refreshed");
@@ -205,11 +234,18 @@ describe("background session refresh ownership", () => {
   it("preserves a replacement marker written during a denied owned-marker removal", () => {
     flushSync(() => root.render(<SessionRefresh />));
     vi.spyOn(localStorage, "removeItem").mockImplementation(() => {
-      localStorage.setItem("sarj-wiki:last-session-refresh", "replacement-marker");
+      localStorage.setItem(
+        "sarj-wiki:last-session-refresh",
+        "replacement-marker",
+      );
       throw new DOMException("Storage denied", "SecurityError");
     });
     flushSync(() => root.render(null));
-    expect(localStorage.getItem("sarj-wiki:last-session-refresh")).toBe("replacement-marker");
-    expect(vi.mocked(deduplicatedRefresh).mock.calls[0]?.[0]?.aborted).toBe(true);
+    expect(localStorage.getItem("sarj-wiki:last-session-refresh")).toBe(
+      "replacement-marker",
+    );
+    expect(vi.mocked(deduplicatedRefresh).mock.calls[0]?.[0]?.aborted).toBe(
+      true,
+    );
   });
 });

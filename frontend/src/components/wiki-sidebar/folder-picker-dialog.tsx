@@ -36,7 +36,9 @@ export function FolderPickerDialog({
       <DialogContent className="max-w-md">
         <DialogHeader>
           <DialogTitle>Choose destination</DialogTitle>
-          <DialogDescription>Select a workspace or folder for the new file.</DialogDescription>
+          <DialogDescription>
+            Select a workspace or folder for the new file.
+          </DialogDescription>
         </DialogHeader>
         <ScrollArea className="h-[min(20rem,50dvh)] rounded-md border">
           <div className="space-y-0.5 p-1.5">
@@ -86,7 +88,9 @@ function DriveFolderRow({ driveId, driveName, onSelect }: DriveFolderRowProps) {
     <>
       <div className="flex items-center gap-1">
         <Button
-          aria-label={expanded ? `Collapse ${driveName}` : `Expand ${driveName}`}
+          aria-label={
+            expanded ? `Collapse ${driveName}` : `Expand ${driveName}`
+          }
           className="size-6 shrink-0"
           onClick={() => {
             setExpanded((current) => !current);
@@ -95,7 +99,12 @@ function DriveFolderRow({ driveId, driveName, onSelect }: DriveFolderRowProps) {
           type="button"
           variant="ghost"
         >
-          <ChevronRight className={cn("size-3.5 transition-transform", expanded && "rotate-90")} />
+          <ChevronRight
+            className={cn(
+              "size-3.5 transition-transform",
+              expanded && "rotate-90",
+            )}
+          />
         </Button>
         <Button
           className="h-8 min-w-0 flex-1 justify-start gap-2 px-2"
@@ -121,7 +130,9 @@ function DriveFolderRow({ driveId, driveName, onSelect }: DriveFolderRowProps) {
           <Button
             disabled={tree.isFetching}
             onClick={() => {
-              void tree.refetch().catch(() => console.warn("Folder retry could not finish"));
+              void tree
+                .refetch()
+                .catch(() => console.warn("Folder retry could not finish"));
             }}
             size="sm"
             type="button"
@@ -169,7 +180,9 @@ function FolderRow({
     <>
       <div className="flex items-center gap-1">
         <Button
-          aria-label={expanded ? `Collapse ${folder.name}` : `Expand ${folder.name}`}
+          aria-label={
+            expanded ? `Collapse ${folder.name}` : `Expand ${folder.name}`
+          }
           className="size-6 shrink-0"
           disabled={descendants.length === 0}
           onClick={() => {
@@ -181,7 +194,10 @@ function FolderRow({
         >
           {descendants.length > 0 ? (
             <ChevronRight
-              className={cn("size-3.5 transition-transform", expanded && "rotate-90")}
+              className={cn(
+                "size-3.5 transition-transform",
+                expanded && "rotate-90",
+              )}
             />
           ) : null}
         </Button>

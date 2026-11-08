@@ -85,8 +85,14 @@ describe("compareNodeOrder", () => {
   });
 
   it("falls back to alphabetical inside the same kind", () => {
-    const a = { node: folder("zzz", undefined, "Zebra"), type: "folder" as const };
-    const b = { node: folder("aaa", undefined, "Apple"), type: "folder" as const };
+    const a = {
+      node: folder("zzz", undefined, "Zebra"),
+      type: "folder" as const,
+    };
+    const b = {
+      node: folder("aaa", undefined, "Apple"),
+      type: "folder" as const,
+    };
     expect(compareNodeOrder(a, b, orders)).toBeGreaterThan(0);
   });
 });
@@ -140,7 +146,9 @@ describe("sibling construction and root optimistic order", () => {
     const compare = vi.spyOn(String.prototype, "localeCompare");
     try {
       expect(
-        orderSiblingItems(items, new Map(), ["a", "z", "b"]).map((item) => item.node.id),
+        orderSiblingItems(items, new Map(), ["a", "z", "b"]).map(
+          (item) => item.node.id,
+        ),
       ).toEqual(["a", "z", "b"]);
       expect(compare).not.toHaveBeenCalled();
     } finally {
@@ -151,11 +159,15 @@ describe("sibling construction and root optimistic order", () => {
   it("keeps the sorted fallback for a partial or stale optimistic root order", () => {
     const items = buildSiblingItems([folder("z")], [file("b"), file("a")]);
     expect(
-      orderSiblingItems(items, new Map(), ["missing", "b"]).map((item) => item.node.id),
+      orderSiblingItems(items, new Map(), ["missing", "b"]).map(
+        (item) => item.node.id,
+      ),
     ).toEqual(["b", "z", "a"]);
     const ranked = buildSiblingItems([folder("z")], [file("b"), file("a")]);
     expect(
-      orderSiblingItems(ranked, new Map([["a", 1]]), ["b"]).map((item) => item.node.id),
+      orderSiblingItems(ranked, new Map([["a", 1]]), ["b"]).map(
+        (item) => item.node.id,
+      ),
     ).toEqual(["b", "a", "z"]);
   });
 });

@@ -3,7 +3,9 @@ import { ZodError } from "zod";
 
 import { ServerApiError, serverWikiApi } from "@/lib/server-api";
 
-const cookieValue = vi.hoisted<{ token: string | undefined }>(() => ({ token: undefined }));
+const cookieValue = vi.hoisted<{ token: string | undefined }>(() => ({
+  token: undefined,
+}));
 
 vi.mock("next/headers", () => ({
   cookies: () => ({
@@ -37,7 +39,9 @@ describe("serverWikiApi", () => {
       }),
     );
     vi.stubGlobal("fetch", fetchMock);
-    await expect(serverWikiApi.getDrives()).rejects.toMatchObject({ status: 502 });
+    await expect(serverWikiApi.getDrives()).rejects.toMatchObject({
+      status: 502,
+    });
     expect(fetchMock).toHaveBeenCalledOnce();
     expect(fetchMock.mock.calls[0]?.[1]?.redirect).toBe("manual");
   });
@@ -45,14 +49,20 @@ describe("serverWikiApi", () => {
   it("releases an unused HTTP error body without waiting for cleanup", async () => {
     cookieValue.token = "jwt-token";
     const cleanup = Promise.withResolvers<undefined>();
-    const cancel = vi.fn<() => Promise<undefined>>().mockReturnValue(cleanup.promise);
+    const cancel = vi
+      .fn<() => Promise<undefined>>()
+      .mockReturnValue(cleanup.promise);
     const body = new ReadableStream<Uint8Array>({ cancel });
     vi.stubGlobal(
       "fetch",
-      vi.fn<typeof fetch>().mockResolvedValue(new Response(body, { status: 403 })),
+      vi
+        .fn<typeof fetch>()
+        .mockResolvedValue(new Response(body, { status: 403 })),
     );
     try {
-      await expect(serverWikiApi.getFile("file-1")).rejects.toMatchObject({ status: 403 });
+      await expect(serverWikiApi.getFile("file-1")).rejects.toMatchObject({
+        status: 403,
+      });
       expect(cancel).toHaveBeenCalledOnce();
     } finally {
       cleanup.resolve(undefined);
@@ -78,16 +88,25 @@ describe("serverWikiApi", () => {
     const out = await serverWikiApi.listFolderIcons().catch((e: unknown) => e);
     expect(out).toBeInstanceOf(ZodError);
 
-    fetchMock.mockResolvedValue(jsonResponse([{ folder_drive_id: "fd1", icon: null }]));
+    fetchMock.mockResolvedValue(
+      jsonResponse([{ folder_drive_id: "fd1", icon: null }]),
+    );
     const icons = await serverWikiApi.listFolderIcons();
     expect(icons).toEqual([{ folderDriveId: "fd1", icon: undefined }]);
   });
 
   it("throws ServerApiError with the upstream status on non-OK", async () => {
     cookieValue.token = "jwt-token";
-    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response("nope", { status: 404 })));
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(new Response("nope", { status: 404 })),
+    );
 
-    await expect(serverWikiApi.getFile("gone")).rejects.toBeInstanceOf(ServerApiError);
-    await expect(serverWikiApi.getFile("gone")).rejects.toMatchObject({ status: 404 });
+    await expect(serverWikiApi.getFile("gone")).rejects.toBeInstanceOf(
+      ServerApiError,
+    );
+    await expect(serverWikiApi.getFile("gone")).rejects.toMatchObject({
+      status: 404,
+    });
   });
 });

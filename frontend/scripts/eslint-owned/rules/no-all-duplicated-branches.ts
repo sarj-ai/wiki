@@ -1,4 +1,4 @@
-import { AST_NODE_TYPES, type TSESTree } from "@typescript-eslint/utils";
+import type { ESTree as TSESTree } from "@oxlint/plugins";
 
 import { statements } from "../shared/ast.ts";
 import { jumpDestination } from "../shared/completion.ts";
@@ -21,14 +21,18 @@ export default createRule({
     const source = context.sourceCode;
     return {
       "IfStatement:exit"(node) {
-        if (node.parent.type === AST_NODE_TYPES.IfStatement && node.parent.alternate === node)
+        if (
+          node.parent.type === "IfStatement" &&
+          node.parent.alternate === node
+        )
           return;
         const branches: TSESTree.Statement[] = [];
         let current: TSESTree.IfStatement = node;
         for (;;) {
           branches.push(current.consequent);
           if (current.alternate === null) return;
-          if (current.alternate.type === AST_NODE_TYPES.IfStatement) current = current.alternate;
+          if (current.alternate.type === "IfStatement")
+            current = current.alternate;
           else {
             branches.push(current.alternate);
             break;
@@ -40,7 +44,10 @@ export default createRule({
           branches
             .slice(1)
             .every((branch) =>
-              equivalent(statements(first), statements(branch), source, [first, branch]),
+              equivalent(statements(first), statements(branch), source, [
+                first,
+                branch,
+              ]),
             )
         ) {
           context.report({ node: node.test, messageId: "duplicated" });
@@ -55,15 +62,20 @@ export default createRule({
         // Empty labels may share the next implementation; an empty final case
         // is a genuine empty alternative and must never disappear from the proof.
         if (!complete || node.cases.at(-1)?.consequent.length === 0) return;
-        const branches = node.cases.filter((branch) => branch.consequent.length > 0);
+        const branches = node.cases.filter(
+          (branch) => branch.consequent.length > 0,
+        );
         if (
           branches.length < 2 ||
           branches.slice(0, -1).some((branch) => {
             const last = branch.consequent.at(-1);
             return (
-              last?.type !== AST_NODE_TYPES.ReturnStatement &&
-              last?.type !== AST_NODE_TYPES.ThrowStatement &&
-              !(last?.type === AST_NODE_TYPES.BreakStatement && jumpDestination(last) === node)
+              last?.type !== "ReturnStatement" &&
+              last?.type !== "ThrowStatement" &&
+              !(
+                last?.type === "BreakStatement" &&
+                jumpDestination(last) === node
+              )
             );
           })
         )
@@ -71,7 +83,7 @@ export default createRule({
         const bodies = branches.map((branch) => {
           const body = branch.consequent;
           const last = body.at(-1);
-          return last?.type === AST_NODE_TYPES.BreakStatement &&
+          return last?.type === "BreakStatement" &&
             last.label === null &&
             jumpDestination(last) === node
             ? body.slice(0, -1)
@@ -79,11 +91,19 @@ export default createRule({
         });
         const first = bodies[0];
         const firstBranch = branches[0];
-        if (first === undefined || firstBranch === undefined || first.length === 0) return;
+        if (
+          first === undefined ||
+          firstBranch === undefined ||
+          first.length === 0
+        )
+          return;
         if (
           bodies.slice(1).every((body, i) => {
             const branch = branches[i + 1];
-            return branch !== undefined && equivalent(first, body, source, [firstBranch, branch]);
+            return (
+              branch !== undefined &&
+              equivalent(first, body, source, [firstBranch, branch])
+            );
           })
         )
           context.report({ node: node.discriminant, messageId: "duplicated" });

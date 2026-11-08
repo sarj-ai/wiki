@@ -1,5 +1,5 @@
+from pathlib import Path
 import sys
-from typing import TYPE_CHECKING
 
 from pydantic import BaseModel
 import pytest
@@ -8,9 +8,6 @@ from typer.testing import CliRunner
 
 from scripts import wiki
 
-
-if TYPE_CHECKING:
-    from pathlib import Path
 
 _USAGE_ERROR = 2
 _NATIVE_FAILURE = 7
@@ -67,7 +64,9 @@ def test_unknown_check_scope_fails_before_starting_a_tool(native_tool: Path) -> 
     assert not native_tool.exists()
 
 
-def test_failed_native_command_preserves_exit_code_and_stops_later_steps(native_tool: Path) -> None:
+def test_failed_native_command_preserves_exit_code_and_stops_later_steps(
+    native_tool: Path,
+) -> None:
     commands = tuple(
         wiki.Command(arguments=("fixture-tool", argument))
         for argument in ("first", "fail", "unreachable")
@@ -77,7 +76,10 @@ def test_failed_native_command_preserves_exit_code_and_stops_later_steps(native_
         wiki.run(commands)
 
     assert failed.value.exit_code == _NATIVE_FAILURE
-    assert [call.arguments for call in _invocations(native_tool)] == [["first"], ["fail"]]
+    assert [call.arguments for call in _invocations(native_tool)] == [
+        ["first"],
+        ["fail"],
+    ]
 
 
 def test_command_environment_does_not_leak_to_the_next_tool(
@@ -116,7 +118,14 @@ def test_multiple_scopes_preserve_order_without_repeating_native_commands(
     assert result.exit_code == 0
     calls = _invocations(native_tool)
     assert len(calls) == expected_count
-    assert calls[0].arguments == ["--directory", "backend", "run", "--locked", "deptry", "."]
+    assert calls[0].arguments == [
+        "--directory",
+        "backend",
+        "run",
+        "--locked",
+        "deptry",
+        ".",
+    ]
     if "frontend" in scopes:
         assert calls[-1].arguments == ["--prefix", "frontend", "run", "build"]
 
@@ -151,7 +160,7 @@ def test_frontend_contract_checks_generated_api_and_types_before_the_production_
         "generate:api",
         "format:check",
         "typecheck",
-        "lint:baseline-check",
+        "lint",
         "check:dependencies",
         "knip",
         "type-coverage",
@@ -184,7 +193,8 @@ def test_explicit_branch_policy_arguments_reach_the_original_guard(
     executable.rename(native_tool.parent / "uv")
 
     result = CliRunner().invoke(
-        wiki.CLI, ["branch-protection", "apply", "--reviewed-fingerprint", "fixture-fingerprint"]
+        wiki.CLI,
+        ["branch-protection", "apply", "--reviewed-fingerprint", "fixture-fingerprint"],
     )
 
     assert result.exit_code == 0
@@ -213,10 +223,62 @@ def test_setup_initializes_locked_local_providers_after_packages_and_preserves_d
     assert result.exit_code == 0
     calls = _invocations(native_tool)
     assert calls[0].arguments == ["scripts/github/install-hooks.sh"]
-    assert calls[1].arguments[-4:] == ["code-standards", "update", "--offline", "--no-install"]
+    assert calls[1].arguments[-4:] == [
+        "code-standards",
+        "update",
+        "--offline",
+        "--no-install",
+    ]
     assert [call.arguments for call in calls[2:]] == [
         ["sync", "--project", "backend", "--locked"],
         ["ci", "--prefix", "frontend"],
-        ["-chdir=terraform", "init", "-backend=false", "-input=false", "-lockfile=readonly"],
+        [
+            "-chdir=terraform",
+            "init",
+            "-backend=false",
+            "-input=false",
+            "-lockfile=readonly",
+        ],
     ]
     assert all(call.terraform_data_directory == selected_directory for call in calls)
+
+
+@pytest.mark.parametrize("review", ["missing", "matching", "tampered"])
+def test_migration_allowance_requires_the_exact_reviewed_changed_source(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, review: str
+) -> None:
+    from hashlib import sha256
+
+    from scripts.standards_checks.check_baseline_growth import (
+        _BootstrapGrowth,
+        _validated_allowances,
+    )
+
+    monkeypatch.chdir(tmp_path)
+    source = Path("frontend/sample.ts")
+    source.parent.mkdir()
+    source.write_text("export const value = 1;\n", encoding="utf-8")
+    digest = sha256(source.read_bytes()).hexdigest()
+    hashes = {} if review == "missing" else {str(source): digest}
+    if review == "tampered":
+        source.write_text("export const value = 2;\n", encoding="utf-8")
+
+    allowances = {"sample.ts": {"rule": _BootstrapGrowth(before=0, after=1)}}
+
+    def verify() -> bool:
+        return bool(
+            _validated_allowances(
+                allowances,
+                bootstrap="review.json",
+                changed={str(source)},
+                changed_prefix="frontend/",
+                reviewed_source_hashes=hashes,
+            )
+        )
+
+    if review == "matching":
+        assert verify()
+    else:
+        with pytest.raises(SystemExit) as failure:
+            verify()
+        assert failure.value.code == _USAGE_ERROR

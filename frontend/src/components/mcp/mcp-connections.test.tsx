@@ -86,11 +86,19 @@ describe("McpConnections", () => {
     render();
     expect(container.querySelector("code")).toBeNull();
     pending.resolve({ csrf: INITIAL.csrf, connections: [] });
-    await vi.waitFor(() => expect(container).toHaveTextContent("No active app connections."));
-    expect(container.querySelector("code")).toHaveTextContent("codex mcp add sarj-wiki");
+    await vi.waitFor(() =>
+      expect(container).toHaveTextContent("No active app connections."),
+    );
+    expect(container.querySelector("code")).toHaveTextContent(
+      "codex mcp add sarj-wiki",
+    );
     expect(container.querySelector("code")).toHaveTextContent("--url");
-    expect(container.querySelector("code")).toHaveTextContent("codex mcp login sarj-wiki");
-    expect(container.querySelector("code")).not.toHaveTextContent("--oauth-client-registration");
+    expect(container.querySelector("code")).toHaveTextContent(
+      "codex mcp login sarj-wiki",
+    );
+    expect(container.querySelector("code")).not.toHaveTextContent(
+      "--oauth-client-registration",
+    );
     expect(buttons("Disconnect")).toHaveLength(0);
   });
 
@@ -99,7 +107,10 @@ describe("McpConnections", () => {
     async (kind) => {
       const pending = deferred<ConnectionData>();
       if (kind === "initial") read.mockReturnValueOnce(pending.promise);
-      else read.mockResolvedValueOnce(INITIAL).mockReturnValueOnce(pending.promise);
+      else
+        read
+          .mockResolvedValueOnce(INITIAL)
+          .mockReturnValueOnce(pending.promise);
       render();
       if (kind === "refresh") {
         await loaded();
@@ -151,7 +162,9 @@ describe("McpConnections", () => {
   it("offers sign-in on 401 without exposing the setup command", async () => {
     read.mockRejectedValueOnce(new McpConsentRequestError(401));
     render();
-    await vi.waitFor(() => expect(container).toHaveTextContent("Sign in to Wiki"));
+    await vi.waitFor(() =>
+      expect(container).toHaveTextContent("Sign in to Wiki"),
+    );
     expect(container.querySelector("code")).toBeNull();
     expect(container.querySelector("a")).toHaveAttribute(
       "href",
@@ -162,7 +175,9 @@ describe("McpConnections", () => {
   it("does not show setup or imply sign-in repairs a disabled integration", async () => {
     read.mockRejectedValueOnce(new McpConsentRequestError(503));
     render();
-    await vi.waitFor(() => expect(container).toHaveTextContent("connections are unavailable"));
+    await vi.waitFor(() =>
+      expect(container).toHaveTextContent("connections are unavailable"),
+    );
     expect(container.querySelector("code")).toBeNull();
     expect(container.querySelector("a")).toBeNull();
   });
@@ -170,11 +185,15 @@ describe("McpConnections", () => {
   it("clears a stale sign-in prompt after authenticated recovery", async () => {
     read.mockRejectedValueOnce(new McpConsentRequestError(401));
     render();
-    await vi.waitFor(() => expect(container).toHaveTextContent("Sign in to Wiki"));
+    await vi.waitFor(() =>
+      expect(container).toHaveTextContent("Sign in to Wiki"),
+    );
     button("Refresh status").click();
     await loaded();
     expect(container.querySelector("a")).toBeNull();
-    expect(container.querySelector("code")).toHaveTextContent("codex mcp add sarj-wiki");
+    expect(container.querySelector("code")).toHaveTextContent(
+      "codex mcp add sarj-wiki",
+    );
   });
 
   it("latches duplicate and competing disconnects before rerender", async () => {
@@ -199,23 +218,31 @@ describe("McpConnections", () => {
     render();
     await loaded();
     button("Disconnect").click();
-    await vi.waitFor(() => expect(container).toHaveTextContent("result is uncertain"));
+    await vi.waitFor(() =>
+      expect(container).toHaveTextContent("result is uncertain"),
+    );
     expect(buttons("Disconnect")).toHaveLength(0);
     expect(container.querySelector("code")).toBeNull();
     read.mockRejectedValueOnce(new TypeError("network"));
     button("Refresh status").click();
-    await vi.waitFor(() => expect(container).toHaveTextContent("Could not confirm"));
+    await vi.waitFor(() =>
+      expect(container).toHaveTextContent("Could not confirm"),
+    );
     expect(buttons("Disconnect")).toHaveLength(0);
     read.mockResolvedValueOnce({
       csrf: "b".repeat(64),
-      connections: INITIAL.connections.filter((connection) => connection.grant_id === WRITE_ID),
+      connections: INITIAL.connections.filter(
+        (connection) => connection.grant_id === WRITE_ID,
+      ),
     });
     button("Refresh status").click();
     await vi.waitFor(() => expect(buttons("Disconnect")).toHaveLength(1));
     expect(container).not.toHaveTextContent("read-client");
     expect(container).toHaveTextContent("write-client");
     button("Disconnect").click();
-    await vi.waitFor(() => expect(disconnect).toHaveBeenLastCalledWith(WRITE_ID, "b".repeat(64)));
+    await vi.waitFor(() =>
+      expect(disconnect).toHaveBeenLastCalledWith(WRITE_ID, "b".repeat(64)),
+    );
   });
 
   it("does not optimistically keep grants after successful deletion and requires readback", async () => {
@@ -223,12 +250,16 @@ describe("McpConnections", () => {
     await loaded();
     button("Disconnect").click();
     await vi.waitFor(() =>
-      expect(container).toHaveTextContent("Existing admitted document jobs may still finish"),
+      expect(container).toHaveTextContent(
+        "Existing admitted document jobs may still finish",
+      ),
     );
     expect(buttons("Disconnect")).toHaveLength(0);
     read.mockResolvedValueOnce({ csrf: INITIAL.csrf, connections: [] });
     button("Refresh status").click();
-    await vi.waitFor(() => expect(container).toHaveTextContent("No active app connections."));
+    await vi.waitFor(() =>
+      expect(container).toHaveTextContent("No active app connections."),
+    );
     expect(disconnect).toHaveBeenCalledOnce();
   });
 
@@ -243,7 +274,9 @@ describe("McpConnections", () => {
     initial.resolve(INITIAL);
     await loaded();
     button("Disconnect").click();
-    await vi.waitFor(() => expect(container).toHaveTextContent("result is uncertain"));
+    await vi.waitFor(() =>
+      expect(container).toHaveTextContent("result is uncertain"),
+    );
     initial.resolve(INITIAL);
     await vi.waitFor(() => expect(button("Refresh status")).toBeEnabled());
     await Promise.resolve();

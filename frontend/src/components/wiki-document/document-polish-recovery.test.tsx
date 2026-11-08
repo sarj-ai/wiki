@@ -55,66 +55,92 @@ function renderPanel(source: null | typeof Source = Source) {
   );
 }
 function click(label: string) {
-  const button = [...host.querySelectorAll("button")].find((item) => item.textContent === label);
+  const button = [...host.querySelectorAll("button")].find(
+    (item) => item.textContent === label,
+  );
   if (!button) throw new Error("Missing recovery control");
   flushSync(() => button.click());
 }
 
 it("saves exact private payload before an explicit reload without submitting", async () => {
-  const reload = vi.spyOn(window.location, "reload").mockImplementation(vi.fn<() => void>());
+  const reload = vi
+    .spyOn(window.location, "reload")
+    .mockImplementation(vi.fn<() => void>());
   const create = vi.spyOn(DOCUMENT_TRANSFORM_API, "create");
   renderPanel();
-  expect(window.sessionStorage.getItem(markdownRecoveryStorageKey("owner"))).toBeNull();
+  expect(
+    window.sessionStorage.getItem(markdownRecoveryStorageKey("owner")),
+  ).toBeNull();
   click("Save recovery draft and reload");
   await vi.waitFor(() => expect(reload).toHaveBeenCalledOnce());
   expect(
-    JSON.parse(window.sessionStorage.getItem(markdownRecoveryStorageKey("owner")) ?? "null"),
+    JSON.parse(
+      window.sessionStorage.getItem(markdownRecoveryStorageKey("owner")) ??
+        "null",
+    ),
   ).toMatchObject({ key: Operation.key, source: Source });
   expect(create).not.toHaveBeenCalled();
 });
 
 it("does not reload when storage cannot preserve the draft", async () => {
-  const reload = vi.spyOn(window.location, "reload").mockImplementation(vi.fn<() => void>());
+  const reload = vi
+    .spyOn(window.location, "reload")
+    .mockImplementation(vi.fn<() => void>());
   vi.spyOn(window, "sessionStorage", "get").mockImplementation(() => {
     throw new Error("quota");
   });
   renderPanel();
   click("Save recovery draft and reload");
-  await vi.waitFor(() => expect(host).toHaveTextContent("Recovery could not complete"));
+  await vi.waitFor(() =>
+    expect(host).toHaveTextContent("Recovery could not complete"),
+  );
   expect(reload).not.toHaveBeenCalled();
 });
 
-it.each([false, true])("restores same-key recovery after reload, admitted=%s", async (admitted) => {
-  const taskId = "66666666-6666-4666-8666-666666666666";
-  const lookup = vi
-    .spyOn(DOCUMENT_TRANSFORM_API, "admission")
-    .mockResolvedValue(admitted ? { task_id: taskId, status: "pending" } : null);
-  const create = vi.spyOn(DOCUMENT_TRANSFORM_API, "create");
-  saveMarkdownRecovery(makeMarkdownRecovery("owner", Operation, Source));
-  renderPanel(null);
-  click("Restore saved recovery draft");
-  await vi.waitFor(() =>
-    expect(Restore).toHaveBeenCalledExactlyOnceWith(
-      admitted ? { ...Operation, taskId } : Operation,
-      admitted ? null : Source,
-    ),
-  );
-  expect(lookup).toHaveBeenCalledExactlyOnceWith(Operation.key);
-  expect(create).not.toHaveBeenCalled();
-});
+it.each([false, true])(
+  "restores same-key recovery after reload, admitted=%s",
+  async (admitted) => {
+    const taskId = "66666666-6666-4666-8666-666666666666";
+    const lookup = vi
+      .spyOn(DOCUMENT_TRANSFORM_API, "admission")
+      .mockResolvedValue(
+        admitted ? { task_id: taskId, status: "pending" } : null,
+      );
+    const create = vi.spyOn(DOCUMENT_TRANSFORM_API, "create");
+    saveMarkdownRecovery(makeMarkdownRecovery("owner", Operation, Source));
+    renderPanel(null);
+    click("Restore saved recovery draft");
+    await vi.waitFor(() =>
+      expect(Restore).toHaveBeenCalledExactlyOnceWith(
+        admitted ? { ...Operation, taskId } : Operation,
+        admitted ? null : Source,
+      ),
+    );
+    expect(lookup).toHaveBeenCalledExactlyOnceWith(Operation.key);
+    expect(create).not.toHaveBeenCalled();
+  },
+);
 
 it("keeps the lock when lookup fails instead of replaying", async () => {
-  vi.spyOn(DOCUMENT_TRANSFORM_API, "admission").mockRejectedValue(new Error("offline"));
+  vi.spyOn(DOCUMENT_TRANSFORM_API, "admission").mockRejectedValue(
+    new Error("offline"),
+  );
   renderPanel();
   click("Check original admission");
-  await vi.waitFor(() => expect(host).toHaveTextContent("Recovery could not complete"));
+  await vi.waitFor(() =>
+    expect(host).toHaveTextContent("Recovery could not complete"),
+  );
   expect(Restore).not.toHaveBeenCalled();
 });
 
 it("locks recovery synchronously across duplicate clicks", async () => {
   const pending =
-    Promise.withResolvers<Awaited<ReturnType<typeof DOCUMENT_TRANSFORM_API.admission>>>();
-  const lookup = vi.spyOn(DOCUMENT_TRANSFORM_API, "admission").mockReturnValue(pending.promise);
+    Promise.withResolvers<
+      Awaited<ReturnType<typeof DOCUMENT_TRANSFORM_API.admission>>
+    >();
+  const lookup = vi
+    .spyOn(DOCUMENT_TRANSFORM_API, "admission")
+    .mockReturnValue(pending.promise);
   renderPanel();
   const button = [...host.querySelectorAll("button")].find(
     (item) => item.textContent === "Check original admission",
@@ -126,7 +152,9 @@ it("locks recovery synchronously across duplicate clicks", async () => {
   });
   expect(lookup).toHaveBeenCalledExactlyOnceWith(Operation.key);
   pending.resolve(null);
-  await vi.waitFor(() => expect(host).toHaveTextContent("No task was found yet"));
+  await vi.waitFor(() =>
+    expect(host).toHaveTextContent("No task was found yet"),
+  );
   expect(Restore).not.toHaveBeenCalled();
 });
 
@@ -143,8 +171,11 @@ it("rescues an older tab using exact original values and the existing reservatio
       (candidate) => candidate.textContent.trim() === label,
     )?.control;
     if (!field) throw new Error("Missing labeled original-value control");
-    // eslint-disable-next-line @typescript-eslint/unbound-method -- The native setter is immediately rebound to this exact test control.
-    const setter = Object.getOwnPropertyDescriptor(Object.getPrototypeOf(field), "value")?.set;
+    // eslint-disable-next-line typescript/unbound-method -- The native setter is immediately rebound to this exact test control.
+    const setter = Object.getOwnPropertyDescriptor(
+      Object.getPrototypeOf(field),
+      "value",
+    )?.set;
     if (!setter) throw new Error("Missing native setter");
     flushSync(() => {
       setter.call(field, value);
@@ -152,7 +183,11 @@ it("rescues an older tab using exact original values and the existing reservatio
     });
   }
   click("Restore original values with reserved key");
-  await vi.waitFor(() => expect(Restore).toHaveBeenCalledExactlyOnceWith(Operation, Source));
+  await vi.waitFor(() =>
+    expect(Restore).toHaveBeenCalledExactlyOnceWith(Operation, Source),
+  );
   expect(create).not.toHaveBeenCalled();
-  expect(window.sessionStorage.getItem(markdownRecoveryStorageKey("owner"))).toBeNull();
+  expect(
+    window.sessionStorage.getItem(markdownRecoveryStorageKey("owner")),
+  ).toBeNull();
 });

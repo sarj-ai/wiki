@@ -16,14 +16,16 @@ describe("frontend environment", () => {
     expect(frontendReleaseSha()).toBe(releaseSha);
   });
 
-  it.each(["", "dev", "ABCDEF0123456789ABCDEF0123456789ABCDEF01", "a".repeat(39)])(
-    "rejects an invalid release identity: %s",
-    async (revision) => {
-      vi.stubEnv("NEXT_PUBLIC_RELEASE_SHA", revision);
+  it.each([
+    "",
+    "dev",
+    "ABCDEF0123456789ABCDEF0123456789ABCDEF01",
+    "a".repeat(39),
+  ])("rejects an invalid release identity: %s", async (revision) => {
+    vi.stubEnv("NEXT_PUBLIC_RELEASE_SHA", revision);
 
-      const { frontendReleaseSha } = await import("@/lib/env");
+    const { frontendReleaseSha } = await import("@/lib/env");
 
-      expect(frontendReleaseSha()).toBeUndefined();
-    },
-  );
+    expect(frontendReleaseSha()).toBeUndefined();
+  });
 });

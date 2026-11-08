@@ -2,7 +2,11 @@ import { z } from "zod";
 
 const ExpansionMapSchema = z.record(z.string(), z.literal(true));
 
-export const LastRefreshMsSchema = z.coerce.number().int().nonnegative().catch(0);
+export const LastRefreshMsSchema = z.coerce
+  .number()
+  .int()
+  .nonnegative()
+  .catch(0);
 
 const DocRefSchema = z.object({
   fileId: z.string().min(1),
@@ -42,7 +46,11 @@ export const SidebarStateCookieSchema = z
   .catch("true")
   .transform((v) => v === "true");
 
-export const AuthErrorParamSchema = z.enum(["domain_restricted", "auth_failed", "server_error"]);
+export const AuthErrorParamSchema = z.enum([
+  "domain_restricted",
+  "auth_failed",
+  "server_error",
+]);
 
 export const PersistedExpansionSchema = z.object({
   state: z.record(z.string(), ExpansionMapSchema),

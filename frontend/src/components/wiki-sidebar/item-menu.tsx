@@ -5,7 +5,10 @@ import dynamic from "next/dynamic";
 import { useLayoutEffect, useRef, useState } from "react";
 
 import { Button } from "@/components/ui/button";
-import { DropdownMenu, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import {
+  DropdownMenu,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { FocusReturnProvider } from "@/components/ui/focus-return";
 
 import { useMoveDialogOutlet } from "./move-dialog-outlet";
@@ -29,7 +32,9 @@ export function ItemMenu(props: ItemMenuProps) {
     <FocusReturnProvider targetRef={triggerRef}>
       <DropdownMenu
         onOpenChange={(open) => {
-          setMenu((previous) => (previous.open === open ? previous : { mounted: true, open }));
+          setMenu((previous) =>
+            previous.open === open ? previous : { mounted: true, open },
+          );
         }}
         open={menu.open}
       >
@@ -60,7 +65,9 @@ export function ItemMenu(props: ItemMenuProps) {
             moveInOutlet={moveOutlet?.isOpenFor(props) ?? false}
             onIdle={() => {
               setMenu((previous) =>
-                previous.open || !previous.mounted ? previous : { mounted: false, open: false },
+                previous.open || !previous.mounted
+                  ? previous
+                  : { mounted: false, open: false },
               );
             }}
           />

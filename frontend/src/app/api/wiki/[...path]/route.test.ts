@@ -13,10 +13,15 @@ vi.mock("next/headers", () => ({ cookies: cookiesMock }));
 
 function request(path: string, headers: Record<string, string> = {}): Request {
   const value = new Request(`https://wiki.sarj.ai/api/wiki/${path}`, {
-    headers: { "x-wiki-read": "1", "sec-fetch-site": "same-origin", ...headers },
+    headers: {
+      "x-wiki-read": "1",
+      "sec-fetch-site": "same-origin",
+      ...headers,
+    },
   });
   // happy-dom's Request constructor drops browser-controlled Sec-Fetch fields.
-  for (const [key, header] of Object.entries(headers)) value.headers.set(key, header);
+  for (const [key, header] of Object.entries(headers))
+    value.headers.set(key, header);
   return value;
 }
 
@@ -26,7 +31,9 @@ function context(path: string) {
 
 beforeEach(() => {
   MOCKS.token = "private-session-token";
-  cookiesMock.mockResolvedValue({ get: () => (MOCKS.token ? { value: MOCKS.token } : undefined) });
+  cookiesMock.mockResolvedValue({
+    get: () => (MOCKS.token ? { value: MOCKS.token } : undefined),
+  });
   fetchMock.mockReset();
   vi.stubGlobal("fetch", fetchMock);
 });
@@ -48,12 +55,16 @@ describe("authenticated parallel wiki reads", () => {
     expect(fetchMock).toHaveBeenCalledOnce();
     fetchMock.mockClear();
     const rejected = await Promise.all(
-      ["a".repeat(129), "💼".repeat(128), "\u{D800}".repeat(128)].map(async (id) => {
-        const path = template.replace("{id}", () => id);
-        return await GET(request(path), context(path));
-      }),
+      ["a".repeat(129), "💼".repeat(128), "\u{D800}".repeat(128)].map(
+        async (id) => {
+          const path = template.replace("{id}", () => id);
+          return await GET(request(path), context(path));
+        },
+      ),
     );
-    expect(rejected.map((rejectedResponse) => rejectedResponse.status)).toEqual([404, 404, 404]);
+    expect(rejected.map((rejectedResponse) => rejectedResponse.status)).toEqual(
+      [404, 404, 404],
+    );
     expect(fetchMock).not.toHaveBeenCalled();
   });
   it("accepts the longest allowlisted path and preserves authenticated streaming", async () => {
@@ -86,18 +97,26 @@ describe("authenticated parallel wiki reads", () => {
       fetchMock.mockResolvedValue(
         Response.json({ detail: "private provider error" }, { status: 401 }),
       );
-      const response = await GET(request(path, { "x-request-id": requestId }), context(path));
+      const response = await GET(
+        request(path, { "x-request-id": requestId }),
+        context(path),
+      );
       expect(response.status).toBe(401);
       expect(response.headers.get("cache-control")).toBe("private, no-store");
       expect(response.headers.get("x-request-id")).toBe(requestId);
       expect(response.headers.get("location")).toBeNull();
-      await expect(response.json()).resolves.toEqual({ detail: "Your session has expired" });
+      await expect(response.json()).resolves.toEqual({
+        detail: "Your session has expired",
+      });
     },
   );
 
   it("traces an unauthenticated read without sending a backend request", async () => {
     MOCKS.token = "";
-    const response = await GET(request("sidebar/drives"), context("sidebar/drives"));
+    const response = await GET(
+      request("sidebar/drives"),
+      context("sidebar/drives"),
+    );
     expect(response.status).toBe(401);
     expect(response.headers.get("x-request-id")).toMatch(/^[0-9a-f-]{36}$/u);
     expect(fetchMock).not.toHaveBeenCalled();
@@ -139,7 +158,9 @@ describe("authenticated parallel wiki reads", () => {
       vi.spyOn(AbortSignal, "timeout").mockReturnValue(deadline.signal);
       const headers = Promise.withResolvers<Response>();
       const cleanup = Promise.withResolvers<undefined>();
-      const cancelled = vi.fn<() => Promise<undefined>>().mockReturnValue(cleanup.promise);
+      const cancelled = vi
+        .fn<() => Promise<undefined>>()
+        .mockReturnValue(cleanup.promise);
       fetchMock.mockReturnValue(headers.promise);
       const result = GET(
         new Request("https://wiki.sarj.ai/api/wiki/files/doc-1", {
@@ -150,8 +171,13 @@ describe("authenticated parallel wiki reads", () => {
       );
       await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledOnce());
       if (reason === "disconnect") caller.abort();
-      else deadline.abort(new DOMException("The operation timed out", "TimeoutError"));
-      headers.resolve(new Response(new ReadableStream<Uint8Array>({ cancel: cancelled })));
+      else
+        deadline.abort(
+          new DOMException("The operation timed out", "TimeoutError"),
+        );
+      headers.resolve(
+        new Response(new ReadableStream<Uint8Array>({ cancel: cancelled })),
+      );
       try {
         const response = await result;
         expect(response.status).toBe(502);
@@ -171,12 +197,18 @@ describe("authenticated parallel wiki reads", () => {
       Response.json({ detail: "private provider error" }, { status: 401 }),
     );
     fetchMock.mockImplementation(async (_input, init) => {
-      if (init?.redirect === "error") throw new TypeError("Invalid redirect value");
+      if (init?.redirect === "error")
+        throw new TypeError("Invalid redirect value");
       return await unauthorized;
     });
-    const response = await GET(request("sidebar/drives"), context("sidebar/drives"));
+    const response = await GET(
+      request("sidebar/drives"),
+      context("sidebar/drives"),
+    );
     expect(response.status).toBe(401);
-    await expect(response.json()).resolves.toEqual({ detail: "Your session has expired" });
+    await expect(response.json()).resolves.toEqual({
+      detail: "Your session has expired",
+    });
   });
 
   it("redacts an upstream redirect instead of following it", async () => {
@@ -186,7 +218,10 @@ describe("authenticated parallel wiki reads", () => {
         status: 302,
       }),
     );
-    const response = await GET(request("sidebar/drives"), context("sidebar/drives"));
+    const response = await GET(
+      request("sidebar/drives"),
+      context("sidebar/drives"),
+    );
     expect(response.status).toBe(502);
     expect(response.headers.get("location")).toBeNull();
     await expect(response.json()).resolves.toEqual({
@@ -197,10 +232,15 @@ describe("authenticated parallel wiki reads", () => {
 
   it("preserves the HTTP failure without waiting for stream cleanup", async () => {
     const cleanup = Promise.withResolvers<undefined>();
-    const body = new ReadableStream<Uint8Array>({ cancel: async () => await cleanup.promise });
+    const body = new ReadableStream<Uint8Array>({
+      cancel: async () => await cleanup.promise,
+    });
     fetchMock.mockResolvedValue(new Response(body, { status: 429 }));
     try {
-      const response = await GET(request("files/doc-1"), context("files/doc-1"));
+      const response = await GET(
+        request("files/doc-1"),
+        context("files/doc-1"),
+      );
       expect(response.status).toBe(429);
       await expect(response.json()).resolves.toEqual({
         detail: "Too many requests. Try again in a minute.",
@@ -226,10 +266,16 @@ describe("authenticated parallel wiki reads", () => {
   it("streams authorized JSON and timing without exposing credentials or provider headers", async () => {
     fetchMock.mockResolvedValue(
       new Response('[{"id":"drive-1"}]', {
-        headers: { "server-timing": "db;dur=2.1", "set-cookie": "provider=secret" },
+        headers: {
+          "server-timing": "db;dur=2.1",
+          "set-cookie": "provider=secret",
+        },
       }),
     );
-    const response = await GET(request("sidebar/drives"), context("sidebar/drives"));
+    const response = await GET(
+      request("sidebar/drives"),
+      context("sidebar/drives"),
+    );
     await expect(response.json()).resolves.toEqual([{ id: "drive-1" }]);
     expect(response.headers.get("server-timing")).toBe("db;dur=2.1");
     expect(response.headers.get("cache-control")).toBe("private, no-store");
@@ -237,7 +283,9 @@ describe("authenticated parallel wiki reads", () => {
     const [url, options] = fetchMock.mock.calls[0] ?? [];
     expect(url).toContain("/sidebar/drives");
     expect(options?.redirect).toBe("manual");
-    expect(options?.headers).toMatchObject({ authorization: "Bearer private-session-token" });
+    expect(options?.headers).toMatchObject({
+      authorization: "Bearer private-session-token",
+    });
   });
 
   it("forwards recent-page IDs in order through one private authenticated read", async () => {
@@ -252,8 +300,12 @@ describe("authenticated parallel wiki reads", () => {
     expect(response.headers.get("cache-control")).toBe("private, no-store");
     expect(fetchMock).toHaveBeenCalledOnce();
     const [url, options] = fetchMock.mock.calls[0] ?? [];
-    expect(url).toContain("/files/recent?file_ids=doc-2&file_ids=doc-1&file_ids=doc-2");
-    expect(options?.headers).toMatchObject({ authorization: "Bearer private-session-token" });
+    expect(url).toContain(
+      "/files/recent?file_ids=doc-2&file_ids=doc-1&file_ids=doc-2",
+    );
+    expect(options?.headers).toMatchObject({
+      authorization: "Bearer private-session-token",
+    });
     await expect(response.json()).resolves.toEqual({ pages: [] });
   });
 
@@ -279,14 +331,20 @@ describe("authenticated parallel wiki reads", () => {
     );
     expect(crossSite.status).toBe(403);
     MOCKS.token = "";
-    const unauthorized = await GET(request("sidebar/drives"), context("sidebar/drives"));
+    const unauthorized = await GET(
+      request("sidebar/drives"),
+      context("sidebar/drives"),
+    );
     expect(unauthorized.status).toBe(401);
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
   it("redacts provider errors", async () => {
     fetchMock.mockResolvedValue(
-      Response.json({ detail: "private-token-and-document-name" }, { status: 403 }),
+      Response.json(
+        { detail: "private-token-and-document-name" },
+        { status: 403 },
+      ),
     );
     const response = await GET(request("files/doc-1"), context("files/doc-1"));
     expect(response.status).toBe(403);
@@ -306,7 +364,10 @@ describe("authenticated parallel wiki reads", () => {
     });
     fetchMock.mockResolvedValue(new Response(body));
 
-    const response = await GET(request("sidebar/drives"), context("sidebar/drives"));
+    const response = await GET(
+      request("sidebar/drives"),
+      context("sidebar/drives"),
+    );
 
     expect(response.status).toBe(200);
     expect(response.body).not.toBeNull();
@@ -332,7 +393,9 @@ describe("authenticated parallel wiki reads", () => {
     controller.abort();
 
     expect(fetchMock.mock.calls[0]?.[1]?.signal?.aborted).toBe(true);
-    pendingFetch.reject(new DOMException("The operation was aborted", "AbortError"));
+    pendingFetch.reject(
+      new DOMException("The operation was aborted", "AbortError"),
+    );
     const response = await pendingResponse;
     expect(response.status).toBe(502);
   });

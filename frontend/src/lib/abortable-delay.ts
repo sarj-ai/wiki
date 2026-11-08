@@ -1,5 +1,8 @@
 // Polling waits remove their cancellation listener when the timer settles.
-export async function abortableDelay(milliseconds: number, signal?: AbortSignal): Promise<void> {
+export async function abortableDelay(
+  milliseconds: number,
+  signal?: AbortSignal,
+): Promise<void> {
   signal?.throwIfAborted();
   await new Promise<void>((resolve, reject) => {
     const onAbort = () => {

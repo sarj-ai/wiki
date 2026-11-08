@@ -1,6 +1,10 @@
 import { z } from "zod";
 
-import { ApiError, RATE_LIMIT_MESSAGE, SESSION_REFRESH_UNAVAILABLE_MESSAGE } from "@/lib/api-error";
+import {
+  ApiError,
+  RATE_LIMIT_MESSAGE,
+  SESSION_REFRESH_UNAVAILABLE_MESSAGE,
+} from "@/lib/api-error";
 import { boundedErrorText } from "@/lib/bounded-error-text";
 import { captureBrowserSession } from "@/lib/browser-session";
 import { discardStream } from "@/lib/discard-stream";
@@ -50,7 +54,9 @@ client.interceptors.request.use(async (request, options) => {
   // finish, while its retired owner is prevented from refreshing or replaying.
   const ownedRequest =
     request.method === "GET" || request.method === "HEAD"
-      ? new Request(request, { signal: AbortSignal.any([request.signal, session]) })
+      ? new Request(request, {
+          signal: AbortSignal.any([request.signal, session]),
+        })
       : request;
   REQUEST_SESSIONS.set(ownedRequest, session);
   if (!request.headers.has("X-Request-ID")) {
@@ -110,10 +116,16 @@ client.interceptors.response.use(async (response, request) => {
       discardStream(settled.body);
       throw new ApiError(429, RATE_LIMIT_MESSAGE);
     }
-    const message = await readErrorMessage(settled, AbortSignal.any([session, request.signal]));
+    const message = await readErrorMessage(
+      settled,
+      AbortSignal.any([session, request.signal]),
+    );
     session.throwIfAborted();
     request.signal.throwIfAborted();
-    throw new ApiError(settled.status, message ?? `API error: ${settled.status}`);
+    throw new ApiError(
+      settled.status,
+      message ?? `API error: ${settled.status}`,
+    );
   }
   return settled;
 });
@@ -135,14 +147,16 @@ export function makeCall(clientOverride?: Client) {
   ): Promise<void | z.output<S>> {
     // SDK validation/auth can yield before request interceptors run. Carry the
     // calling session through SDK metadata, never through an HTTP header.
-    const session = clientOverride === undefined ? captureBrowserSession() : undefined;
+    const session =
+      clientOverride === undefined ? captureBrowserSession() : undefined;
     session?.throwIfAborted();
     const merged: Record<PropertyKey, unknown> = {
       ...options,
       throwOnError: true,
     };
     if (session !== undefined) {
-      const previousMeta: unknown = "meta" in options ? options["meta"] : undefined;
+      const previousMeta: unknown =
+        "meta" in options ? options["meta"] : undefined;
       const meta: Record<PropertyKey, unknown> = {};
       if (typeof previousMeta === "object" && previousMeta !== null) {
         Object.assign(meta, previousMeta);
@@ -180,7 +194,10 @@ function requestSession(options: object): AbortSignal {
   return captureBrowserSession();
 }
 
-async function readErrorMessage(response: Response, signal: AbortSignal): Promise<null | string> {
+async function readErrorMessage(
+  response: Response,
+  signal: AbortSignal,
+): Promise<null | string> {
   try {
     const text = await boundedErrorText(response.body, signal);
     if (!text) return null;

@@ -5,7 +5,10 @@ import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
 import { useDocumentAlias } from "@/hooks/use-document-alias";
-import { documentShortLink, SHORT_LINK_DISPLAY_PREFIX } from "@/lib/document-short-link";
+import {
+  documentShortLink,
+  SHORT_LINK_DISPLAY_PREFIX,
+} from "@/lib/document-short-link";
 
 import { useCopyFeedback } from "./use-copy-feedback";
 
@@ -18,7 +21,9 @@ export function ReadOnlyShortLink({ fileId }: ReadOnlyShortLinkProps) {
 
   const handleCopy = (): void => {
     void (async () => {
-      await navigator.clipboard.writeText(documentShortLink(window.location.origin, alias));
+      await navigator.clipboard.writeText(
+        documentShortLink(window.location.origin, alias),
+      );
       showCopied();
     })().catch(() => {
       toast.error("Couldn't copy short link");
@@ -39,7 +44,9 @@ export function ReadOnlyShortLink({ fileId }: ReadOnlyShortLinkProps) {
       <span className="hidden min-w-0 truncate @min-[40rem]/toolbar:inline">
         {copied ? "Copied" : `go/${alias}`}
       </span>
-      {!copied ? <Copy className="hidden size-3.5 @min-[40rem]/toolbar:block" /> : null}
+      {!copied ? (
+        <Copy className="hidden size-3.5 @min-[40rem]/toolbar:block" />
+      ) : null}
     </Button>
   );
 }

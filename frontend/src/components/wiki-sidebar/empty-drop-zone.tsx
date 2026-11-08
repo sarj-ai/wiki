@@ -5,10 +5,18 @@ import { useDroppable } from "@dnd-kit/core";
 import { SidebarMenuItem, SidebarMenuSubItem } from "@/components/ui/sidebar";
 import { cn } from "@/lib/utils";
 
-export function EmptyDropZone({ driveId, label, parentId, variant }: EmptyDropZoneProps) {
+export function EmptyDropZone({
+  driveId,
+  label,
+  parentId,
+  variant,
+}: EmptyDropZoneProps) {
   const containerId = `parent:${parentId}`;
   const { isOver, setNodeRef } = useDroppable({
-    data: { driveId, parentFolderId: parentId === driveId ? undefined : parentId },
+    data: {
+      driveId,
+      parentFolderId: parentId === driveId ? undefined : parentId,
+    },
     id: containerId,
   });
 

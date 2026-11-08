@@ -18,7 +18,11 @@ describe("QuickLinkVisitRecorder", () => {
   beforeEach(() => {
     installLocalStorage();
     window.localStorage.clear();
-    window.history.replaceState(null, "", "/d/file-id?go=team-handbook&view=outline");
+    window.history.replaceState(
+      null,
+      "",
+      "/d/file-id?go=team-handbook&view=outline",
+    );
     host = document.createElement("div");
     document.body.append(host);
     root = createRoot(host);
@@ -40,7 +44,9 @@ describe("QuickLinkVisitRecorder", () => {
       expect(readRecentAliases("user-1")).toHaveLength(1);
     });
 
-    expect(window.location.pathname + window.location.search).toBe("/d/file-id?view=outline");
+    expect(window.location.pathname + window.location.search).toBe(
+      "/d/file-id?view=outline",
+    );
   });
 
   it("writes a visit once across Strict Mode replay and profile-object updates", () => {
@@ -48,7 +54,9 @@ describe("QuickLinkVisitRecorder", () => {
     renderVisit(root);
     renderVisit(root);
     expect(
-      write.mock.calls.filter(([key]) => key === recentAliasesStorageKey("user-1")),
+      write.mock.calls.filter(
+        ([key]) => key === recentAliasesStorageKey("user-1"),
+      ),
     ).toHaveLength(1);
     expect(readRecentAliases("user-1")).toHaveLength(1);
   });

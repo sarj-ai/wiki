@@ -11,7 +11,8 @@ export function fetchAuthorizedFile(
   fileId: string,
 ): Promise<FileDetail | null> {
   const options = fileQueryOptions(fileId);
-  const failed = queryClient.getQueryState(options.queryKey)?.status === "error";
+  const failed =
+    queryClient.getQueryState(options.queryKey)?.status === "error";
   return queryClient
     .query(failed ? { ...options, staleTime: 0 } : options)
     .catch((error: unknown) => {

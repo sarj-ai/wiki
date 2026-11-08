@@ -15,7 +15,8 @@ export function readNavigatorHints(value: Navigator): NavigatorHints {
   const saveData: unknown = readObjectValue(connection, "saveData");
   return {
     ...(typeof deviceMemory === "number" && { deviceMemory }),
-    ...((typeof effectiveType === "string" || typeof saveData === "boolean") && {
+    ...((typeof effectiveType === "string" ||
+      typeof saveData === "boolean") && {
       connection: {
         ...(typeof effectiveType === "string" && { effectiveType }),
         ...(typeof saveData === "boolean" && { saveData }),
@@ -40,5 +41,7 @@ export function allowsIframeSpeculation(hints: NavigatorHints): boolean {
 }
 
 function readObjectValue(value: unknown, key: string): unknown {
-  return typeof value === "object" && value !== null ? Reflect.get(value, key) : undefined;
+  return typeof value === "object" && value !== null
+    ? Reflect.get(value, key)
+    : undefined;
 }

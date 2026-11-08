@@ -6,7 +6,12 @@ import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 
 type ConsentStatus = "approved" | "denied" | "expired" | "pending";
-type DisplayStatus = "approved-recovered" | "checking" | "submitting" | "unknown" | ConsentStatus;
+type DisplayStatus =
+  | "approved-recovered"
+  | "checking"
+  | "submitting"
+  | "unknown"
+  | ConsentStatus;
 
 interface McpConsentProps {
   accountEmail: string;
@@ -30,7 +35,8 @@ const STATUS_COPY: Record<DisplayStatus, string> = {
   expired: "This request expired. Start a new connection from your app.",
   pending: "You can disconnect this app later without signing out of Wiki.",
   submitting: "Saving your decision…",
-  unknown: "We could not confirm your decision. Check its status before trying again.",
+  unknown:
+    "We could not confirm your decision. Check its status before trying again.",
 };
 
 export function McpConsent({
@@ -110,13 +116,14 @@ export function McpConsent({
         </div>
       </dl>
       <p className="text-muted-foreground mt-3 text-sm">
-        The app supplies its name. Only continue if you started this connection and trust the app.
+        The app supplies its name. Only continue if you started this connection
+        and trust the app.
       </p>
       <div className="my-6 border-y py-6">
         <h2 className="font-semibold">Read documents you can access</h2>
         <p className="text-muted-foreground mt-2 text-sm">
-          Find and read your accessible Wiki documents and existing short links. This does not give
-          the app access to documents you cannot open.
+          Find and read your accessible Wiki documents and existing short links.
+          This does not give the app access to documents you cannot open.
         </p>
         {requestsTransform ? (
           <div className="mt-6 flex items-start gap-3">
@@ -126,22 +133,32 @@ export function McpConsent({
               className="mt-1"
               disabled={disabled}
               id={editingId}
-              onCheckedChange={(checked) => setTransformApproved(checked === true)}
+              onCheckedChange={(checked) =>
+                setTransformApproved(checked === true)
+              }
             />
             <div>
               <label className="font-semibold" htmlFor={editingId}>
                 Also allow document changes
               </label>
-              <p className="text-muted-foreground mt-2 text-sm" id={editingDescriptionId}>
-                The app can request polishing and reorganization, including editing original
-                documents in place. Leave this unchecked for read-only access.
+              <p
+                className="text-muted-foreground mt-2 text-sm"
+                id={editingDescriptionId}
+              >
+                The app can request polishing and reorganization, including
+                editing original documents in place. Leave this unchecked for
+                read-only access.
               </p>
             </div>
           </div>
         ) : null}
       </div>
       <div className="flex flex-wrap justify-end gap-3">
-        <Button disabled={disabled} onClick={() => void decide(false)} variant="outline">
+        <Button
+          disabled={disabled}
+          onClick={() => void decide(false)}
+          variant="outline"
+        >
           Deny
         </Button>
         <Button disabled={disabled} onClick={() => void decide(true)}>

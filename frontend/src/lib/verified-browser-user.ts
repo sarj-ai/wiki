@@ -14,14 +14,17 @@ export function claimVerifiedBrowserUser(
   userId: string,
   session: AbortSignal,
 ): boolean {
-  if (session.aborted || session !== captureMutationSession(queryClient)) return false;
+  if (session.aborted || session !== captureMutationSession(queryClient))
+    return false;
   const existing = readVerifiedBrowserUser(queryClient);
   if (existing !== null && existing !== userId) return false;
   VERIFIED_IDENTITIES.set(queryClient, { session, userId });
   return true;
 }
 
-export function readVerifiedBrowserUser(queryClient: QueryClient): null | string {
+export function readVerifiedBrowserUser(
+  queryClient: QueryClient,
+): null | string {
   const identity = VERIFIED_IDENTITIES.get(queryClient);
   return identity &&
     !identity.session.aborted &&

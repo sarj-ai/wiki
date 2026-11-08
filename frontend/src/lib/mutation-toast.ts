@@ -8,7 +8,11 @@ export async function runWithErrorToast(
     await fn();
   } catch (err) {
     if (isAbortError(err)) return;
-    toast.error(typeof fallback === "function" ? fallback(err) : toErrorMessage(err, fallback));
+    toast.error(
+      typeof fallback === "function"
+        ? fallback(err)
+        : toErrorMessage(err, fallback),
+    );
   }
 }
 

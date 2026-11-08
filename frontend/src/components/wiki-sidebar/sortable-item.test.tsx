@@ -47,7 +47,9 @@ it.each(["item", "subitem"] as const)(
       group.focus();
       expect(document.activeElement).toBe(group);
       flushSync(() =>
-        group.dispatchEvent(new KeyboardEvent("keydown", { key: " ", bubbles: true })),
+        group.dispatchEvent(
+          new KeyboardEvent("keydown", { key: " ", bubbles: true }),
+        ),
       );
       expect(dragKey).toHaveBeenCalledOnce();
     } finally {

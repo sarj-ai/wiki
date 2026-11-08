@@ -7,7 +7,11 @@ import { SidebarProvider } from "@/components/ui/sidebar";
 import { resetExpansionState } from "@/hooks/use-expanded-folders";
 import { folderFilesQueryOptions, useFolderFiles } from "@/hooks/use-wiki-tree";
 import { injectNewFileIntoCaches, optimisticMoveFile } from "@/lib/wiki-cache";
-import { EMPTY_DOC_ICONS, EMPTY_FOLDER_ICONS, EMPTY_SORT_ORDERS } from "@/lib/wiki-indexes";
+import {
+  EMPTY_DOC_ICONS,
+  EMPTY_FOLDER_ICONS,
+  EMPTY_SORT_ORDERS,
+} from "@/lib/wiki-indexes";
 import { wikiKeys } from "@/lib/wiki-keys";
 import type { DriveNode, DriveTree } from "@/types/wiki";
 import { MIME_DOC, MIME_FOLDER } from "@/types/wiki";
@@ -19,12 +23,16 @@ import { useDriveTreeIndex } from "./use-drive-tree-index";
 const READ = vi.hoisted(() =>
   vi.fn<(folderId: string, signal: AbortSignal) => Promise<DriveNode[]>>(),
 );
-vi.mock("@/lib/wiki-read-api", () => ({ WIKI_READ_API: { getFolderFiles: READ } }));
+vi.mock("@/lib/wiki-read-api", () => ({
+  WIKI_READ_API: { getFolderFiles: READ },
+}));
 vi.mock("./item-menu", () => ({ ItemMenu: vi.fn(() => null) }));
 vi.mock("./create-file-menu", () => ({ CreateFileMenu: vi.fn(() => null) }));
 vi.mock("./pickable-icon", () => ({ PickableIcon: vi.fn(() => null) }));
 vi.mock("./file-row", () => ({
-  FileRow: vi.fn(({ node: rowNode }: { node: DriveNode }) => <span>{rowNode.name}</span>),
+  FileRow: vi.fn(({ node: rowNode }: { node: DriveNode }) => (
+    <span>{rowNode.name}</span>
+  )),
 }));
 
 describe("folder listing observer ownership", () => {
@@ -35,7 +43,9 @@ describe("folder listing observer ownership", () => {
   beforeEach(() => {
     READ.mockReset().mockResolvedValue([]);
     resetExpansionState(null);
-    queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
     host = document.createElement("div");
     document.body.append(host);
     root = createRoot(host);
@@ -79,7 +89,8 @@ describe("folder listing observer ownership", () => {
 
   function toggle() {
     const button = host.querySelector('[data-file-id="folder-0"]');
-    if (!(button instanceof HTMLButtonElement)) throw new TypeError("Folder trigger missing");
+    if (!(button instanceof HTMLButtonElement))
+      throw new TypeError("Folder trigger missing");
     flushSync(() => button.click());
   }
 
@@ -108,7 +119,9 @@ describe("folder listing observer ownership", () => {
         .findAll({ queryKey: wikiKeys.folderFilesPrefix })
         .reduce((count, query) => count + query.getObserversCount(), 0);
       expect(observers).toBe(0);
-      expect(host.querySelector('[data-file-id="folder-0"]')).toHaveTextContent("1");
+      expect(host.querySelector('[data-file-id="folder-0"]')).toHaveTextContent(
+        "1",
+      );
       expect(READ).not.toHaveBeenCalled();
       toggle();
       expect(host).toHaveTextContent("doc");
@@ -140,7 +153,9 @@ describe("folder listing observer ownership", () => {
       ),
     );
     expect(readBucket).not.toHaveBeenCalled();
-    queryClient.setQueryData(wikiKeys.folderFiles("folder-0"), [node("lazy-doc", MIME_DOC)]);
+    queryClient.setQueryData(wikiKeys.folderFiles("folder-0"), [
+      node("lazy-doc", MIME_DOC),
+    ]);
     toggle();
     expect(host).toHaveTextContent("lazy-doc");
     expect(readBucket).toHaveBeenCalledOnce();
@@ -167,13 +182,18 @@ describe("folder listing observer ownership", () => {
     const schedule = vi.spyOn(window, "setTimeout");
     for (const trigger of host.querySelectorAll("[data-file-id]")) {
       trigger.dispatchEvent(
-        new PointerEvent("pointerover", { bubbles: true, pointerType: "mouse" }),
+        new PointerEvent("pointerover", {
+          bubbles: true,
+          pointerType: "mouse",
+        }),
       );
       trigger.dispatchEvent(
         new PointerEvent("pointerout", { bubbles: true, pointerType: "mouse" }),
       );
     }
-    expect(schedule.mock.calls.filter(([, delay]) => delay === 80)).toHaveLength(0);
+    expect(
+      schedule.mock.calls.filter(([, delay]) => delay === 80),
+    ).toHaveLength(0);
     expect(READ).not.toHaveBeenCalled();
   });
 
@@ -182,7 +202,9 @@ describe("folder listing observer ownership", () => {
     READ.mockReturnValue(pending.promise);
     flushSync(() => root.render(wrap(folder(), false)));
     expect(
-      queryClient.getQueryCache().findAll({ queryKey: wikiKeys.folderFilesPrefix }),
+      queryClient
+        .getQueryCache()
+        .findAll({ queryKey: wikiKeys.folderFilesPrefix }),
     ).toHaveLength(0);
     toggle();
     await vi.waitFor(() => expect(READ).toHaveBeenCalledOnce());
@@ -220,9 +242,9 @@ describe("folder listing observer ownership", () => {
     expect(READ.mock.calls.at(-1)?.[1].aborted).toBe(false);
     pending.resolve([node("loaded-doc", MIME_DOC)]);
     await vi.waitFor(() =>
-      expect(queryClient.getQueryData(folderFilesQueryOptions("folder-0").queryKey)).toHaveLength(
-        1,
-      ),
+      expect(
+        queryClient.getQueryData(folderFilesQueryOptions("folder-0").queryKey),
+      ).toHaveLength(1),
     );
     toggle();
     await vi.waitFor(() => expect(host).toHaveTextContent("loaded-doc"));
@@ -231,7 +253,10 @@ describe("folder listing observer ownership", () => {
 
   it("renders optimistic creations, moves and cached children across complete/incomplete transitions", async () => {
     const cached = { ...node("cached-doc", MIME_DOC), parentId: "folder-0" };
-    const moving = { ...node("moving-doc", MIME_DOC), parentId: "source-folder" };
+    const moving = {
+      ...node("moving-doc", MIME_DOC),
+      parentId: "source-folder",
+    };
     queryClient.setQueryData<DriveTree>(wikiKeys.driveTree("drive"), {
       driveId: "drive",
       files: [moving],
@@ -275,7 +300,9 @@ describe("folder listing observer ownership", () => {
     await vi.waitFor(() => expect(host).toHaveTextContent("moving-doc"));
     rollback();
     await vi.waitFor(() => expect(host).not.toHaveTextContent("moving-doc"));
-    const tree = queryClient.getQueryData<DriveTree>(wikiKeys.driveTree("drive"));
+    const tree = queryClient.getQueryData<DriveTree>(
+      wikiKeys.driveTree("drive"),
+    );
     if (!tree) throw new TypeError("Tree fixture missing");
     queryClient.setQueryData<DriveTree>(wikiKeys.driveTree("drive"), {
       ...tree,
@@ -283,11 +310,15 @@ describe("folder listing observer ownership", () => {
       filesComplete: true,
     });
     await vi.waitFor(() =>
-      expect(host.querySelector('[data-file-id="folder-0"]')).toHaveTextContent("2"),
+      expect(host.querySelector('[data-file-id="folder-0"]')).toHaveTextContent(
+        "2",
+      ),
     );
     expect(host).toHaveTextContent("cached-doc");
     expect(host).toHaveTextContent("created-doc");
-    const currentTree = queryClient.getQueryData<DriveTree>(wikiKeys.driveTree("drive"));
+    const currentTree = queryClient.getQueryData<DriveTree>(
+      wikiKeys.driveTree("drive"),
+    );
     if (!currentTree) throw new TypeError("Current tree fixture missing");
     queryClient.setQueryData(wikiKeys.folderFiles("folder-0"), [
       { ...cached, id: "replacement-doc", name: "replacement-doc" },
@@ -318,7 +349,13 @@ function node(id: string, mimeType: string): DriveNode {
 }
 
 function folder(id = "folder-0") {
-  return <TreeNode depth={0} node={node(id, MIME_FOLDER)} parentFolderId={undefined} />;
+  return (
+    <TreeNode
+      depth={0}
+      node={node(id, MIME_FOLDER)}
+      parentFolderId={undefined}
+    />
+  );
 }
 
 function RetainedReader() {

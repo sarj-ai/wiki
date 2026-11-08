@@ -12,24 +12,19 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { after, describe, it } from "node:test";
 
-import { RuleTester } from "@typescript-eslint/rule-tester";
-import tseslint from "typescript-eslint";
+import { RuleTester } from "oxlint/plugins-dev";
 
-import compatiblePlugin, { rawPlugin as plugin } from "./eslint-owned/index.ts";
+import { rawPlugin as plugin } from "./eslint-owned/index.ts";
 
 function reportRegistrationError(error: unknown): never {
   throw new Error("Node test registration failed", { cause: error });
 }
 
-RuleTester.afterAll = after;
 RuleTester.describe = (name, callback) => {
   describe(name, callback).catch(reportRegistrationError);
 };
 RuleTester.it = (name, callback) => {
   it(name, callback).catch(reportRegistrationError);
-};
-RuleTester.itOnly = (name, callback) => {
-  it.only(name, callback).catch(reportRegistrationError);
 };
 
 type RuleName = keyof typeof plugin.rules;
@@ -60,7 +55,8 @@ const REQUIREMENTS: readonly Requirement[] = [
     id: "no-all-duplicated-branches/conditional",
     rule: "no-all-duplicated-branches",
     code: "const choice = active ? readToken() : readToken();",
-    prefix: "declare const active: boolean; declare function readToken(): string;",
+    prefix:
+      "declare const active: boolean; declare function readToken(): string;",
     diagnostics: 1,
     typed: true,
   },
@@ -68,7 +64,8 @@ const REQUIREMENTS: readonly Requirement[] = [
     id: "no-all-duplicated-branches/different-branches",
     rule: "no-all-duplicated-branches",
     code: 'if (active) emit("active"); else emit("idle");',
-    prefix: "declare const active: boolean; declare function emit(value: unknown): void;",
+    prefix:
+      "declare const active: boolean; declare function emit(value: unknown): void;",
     diagnostics: 0,
     typed: true,
   },
@@ -76,7 +73,8 @@ const REQUIREMENTS: readonly Requirement[] = [
     id: "no-all-duplicated-branches/incomplete-switch",
     rule: "no-all-duplicated-branches",
     code: 'switch (kind) { case "a": emit("same"); break; case "b": emit("same"); break; }',
-    prefix: "declare const kind: string; declare function emit(value: unknown): void;",
+    prefix:
+      "declare const kind: string; declare function emit(value: unknown): void;",
     diagnostics: 0,
     typed: true,
   },
@@ -136,7 +134,8 @@ const REQUIREMENTS: readonly Requirement[] = [
     id: "no-element-overwrite/observed-between",
     rule: "no-element-overwrite",
     code: 'slots[2] = "draft"; display(slots[2]); slots[2] = "ready";',
-    prefix: "declare function display(value: unknown): void; const slots: string[] = [];",
+    prefix:
+      "declare function display(value: unknown): void; const slots: string[] = [];",
     diagnostics: 0,
     typed: true,
   },
@@ -201,7 +200,8 @@ const REQUIREMENTS: readonly Requirement[] = [
     id: "no-identical-functions/binding-shadow",
     rule: "no-identical-functions",
     code: "const load = sourceA; function first() { return load(); } { const load = sourceB; function second() { return load(); } }",
-    prefix: "declare const sourceA: () => string; declare const sourceB: () => string;",
+    prefix:
+      "declare const sourceA: () => string; declare const sourceB: () => string;",
     diagnostics: 0,
     typed: true,
   },
@@ -225,7 +225,8 @@ const REQUIREMENTS: readonly Requirement[] = [
     id: "no-redundant-jump/continue-end",
     rule: "no-redundant-jump",
     code: "for (const item of items) { emit(item); continue; }",
-    prefix: "declare const items: readonly number[]; declare function emit(value: unknown): void;",
+    prefix:
+      "declare const items: readonly number[]; declare function emit(value: unknown): void;",
     diagnostics: 1,
     typed: true,
   },
@@ -241,7 +242,8 @@ const REQUIREMENTS: readonly Requirement[] = [
     id: "no-redundant-jump/label-and-finally",
     rule: "no-redundant-jump",
     code: "outer: for (const item of items) { try { if (item) continue outer; } finally { finish(); } }",
-    prefix: "declare const items: readonly number[]; declare function finish(): void;",
+    prefix:
+      "declare const items: readonly number[]; declare function finish(): void;",
     diagnostics: 0,
     typed: true,
   },
@@ -257,7 +259,8 @@ const REQUIREMENTS: readonly Requirement[] = [
     id: "no-use-of-empty-return-value/void-argument",
     rule: "no-use-of-empty-return-value",
     code: "function notify(): void { emit(); } accept(notify());",
-    prefix: "declare function emit(): void; declare function accept(value: unknown): void;",
+    prefix:
+      "declare function emit(): void; declare function accept(value: unknown): void;",
     diagnostics: 1,
     typed: true,
   },
@@ -297,7 +300,8 @@ const REQUIREMENTS: readonly Requirement[] = [
     id: "prefer-immediate-return/used-before-return",
     rule: "prefer-immediate-return",
     code: "function read() { const result = fetchValue(); log(result); return result; }",
-    prefix: "declare function fetchValue(): string; declare function log(value: unknown): void;",
+    prefix:
+      "declare function fetchValue(): string; declare function log(value: unknown): void;",
     diagnostics: 0,
     typed: true,
   },
@@ -346,7 +350,8 @@ const REQUIREMENTS: readonly Requirement[] = [
     id: "no-all-duplicated-branches/local-binding-alpha",
     rule: "no-all-duplicated-branches",
     code: "if (flag) { const first = 1; emit(first); } else { const second = 1; emit(second); }",
-    prefix: "declare const flag: boolean; declare function emit(value: unknown): void;",
+    prefix:
+      "declare const flag: boolean; declare function emit(value: unknown): void;",
     diagnostics: 1,
     typed: true,
   },
@@ -354,7 +359,8 @@ const REQUIREMENTS: readonly Requirement[] = [
     id: "no-all-duplicated-branches/inferred-name-observer",
     rule: "no-all-duplicated-branches",
     code: "if (flag) { const first = () => 1; emit(first.name); } else { const second = () => 1; emit(second.name); }",
-    prefix: "declare const flag: boolean; declare function emit(value: unknown): void;",
+    prefix:
+      "declare const flag: boolean; declare function emit(value: unknown): void;",
     diagnostics: 0,
     typed: true,
   },
@@ -774,7 +780,8 @@ const REQUIREMENTS: readonly Requirement[] = [
     id: "prefer-immediate-return/finalizer-lifetime",
     rule: "prefer-immediate-return",
     code: "function read() { try { const result = getValue(); return result; } finally { finish(); } }",
-    prefix: "declare function getValue(): string; declare function finish(): void;",
+    prefix:
+      "declare function getValue(): string; declare function finish(): void;",
     diagnostics: 0,
     typed: true,
   },
@@ -1218,7 +1225,7 @@ const REQUIREMENTS: readonly Requirement[] = [
   {
     id: "no-element-overwrite/shadowed-optional-global-namespace",
     rule: "no-element-overwrite",
-    code: 'class Local { set() { return this; } } const globalThis = { Map: Local }; globalThis?.Map.prototype.set = function () { observe(); return this; }; const entries = new Map<string, number>(); entries.set("item", 1); entries.set("item", 2);',
+    code: 'class Local { set() { return this; } } const globalThis = { Map: Local }; (globalThis?.Map).prototype.set = function () { observe(); return this; }; const entries = new Map<string, number>(); entries.set("item", 1); entries.set("item", 2);',
     prefix: "declare function observe(): void;",
     diagnostics: 1,
     typed: true,
@@ -1271,7 +1278,11 @@ const TEMPORARY_BASE = realpathSync(tmpdir());
 if (process.env["TMPDIR"] !== undefined)
   assert.equal(realpathSync(process.env["TMPDIR"]), TEMPORARY_BASE);
 for (let directory = TEMPORARY_BASE; ; directory = dirname(directory)) {
-  assert.equal(existsSync(join(directory, ".git")), false, `Unexpected Git marker in ${directory}`);
+  assert.equal(
+    existsSync(join(directory, ".git")),
+    false,
+    `Unexpected Git marker in ${directory}`,
+  );
   assert.equal(
     existsSync(join(directory, "pyproject.toml")),
     false,
@@ -1311,21 +1322,23 @@ function fixtureCase(requirement: Requirement) {
   writeFileSync(filename, code, { flag: "wx", mode: 0o600 });
   return {
     code,
-    filename: requirement.typed ? name : filename,
-    languageOptions: {
-      parserOptions: {
-        project: requirement.typed ? "./tsconfig.json" : false,
-        tsconfigRootDir: FIXTURE_ROOT,
-      },
-    },
+    filename,
+    settings: { "wiki-owned/untyped": !requirement.typed },
   };
 }
 
 function casesFor<M extends string>(name: RuleName, messageId: M) {
-  const selected = REQUIREMENTS.filter((requirement) => requirement.rule === name);
-  assert.ok(selected.length >= 4, `Missing independent requirements for ${name}`);
+  const selected = REQUIREMENTS.filter(
+    (requirement) => requirement.rule === name,
+  );
+  assert.ok(
+    selected.length >= 4,
+    `Missing independent requirements for ${name}`,
+  );
   return {
-    valid: selected.filter((requirement) => requirement.diagnostics === 0).map(fixtureCase),
+    valid: selected
+      .filter((requirement) => requirement.diagnostics === 0)
+      .map(fixtureCase),
     invalid: selected
       .filter((requirement) => requirement.diagnostics > 0)
       .map((requirement) => ({
@@ -1333,7 +1346,10 @@ function casesFor<M extends string>(name: RuleName, messageId: M) {
         errors: Array.from({ length: requirement.diagnostics }, () => {
           if (requirement.focus === undefined) return { messageId };
           const start = requirement.code.indexOf(requirement.focus);
-          assert.ok(start >= 0 && !requirement.code.includes(requirement.focus, start + 1));
+          assert.ok(
+            start >= 0 &&
+              !requirement.code.includes(requirement.focus, start + 1),
+          );
           const before = requirement.code.slice(0, start).split("\n");
           return {
             messageId,
@@ -1347,10 +1363,8 @@ function casesFor<M extends string>(name: RuleName, messageId: M) {
 }
 
 const TESTER = new RuleTester({
-  languageOptions: {
-    parser: tseslint.parser,
-    parserOptions: { ecmaVersion: 2025, sourceType: "module" },
-  },
+  eslintCompat: true,
+  cwd: FIXTURE_ROOT,
 });
 TESTER.run(
   "no-all-duplicated-branches",
@@ -1404,11 +1418,17 @@ it("exports only the eight explicit Wiki rules without autofixes", () => {
     "no-use-of-empty-return-value",
     "prefer-immediate-return",
   ]);
-  assert.equal(REQUIREMENTS.length, new Set(REQUIREMENTS.map((entry) => entry.id)).size);
+  assert.equal(
+    REQUIREMENTS.length,
+    new Set(REQUIREMENTS.map((entry) => entry.id)).size,
+  );
   for (const [name, rule] of Object.entries(plugin.rules)) {
     assert.equal(rule.meta.fixable, undefined);
     assert.notEqual(rule.meta.hasSuggestions, true);
-    assert.deepEqual(rule.meta.defaultOptions, name === "no-identical-functions" ? [3] : []);
+    assert.deepEqual(
+      rule.meta.defaultOptions,
+      name === "no-identical-functions" ? [3] : [],
+    );
   }
   assert.deepEqual(plugin.rules["no-identical-functions"].meta.schema, [
     { type: "integer", minimum: 3 },
@@ -1422,18 +1442,52 @@ after(() => {
   rmSync(FIXTURE_ROOT, { recursive: true });
 });
 
-it("adapts every typed rule without changing its metadata", () => {
-  const adaptedRules = compatiblePlugin.rules;
-  assert.ok(adaptedRules);
-  assert.deepEqual(Object.keys(adaptedRules).toSorted(), Object.keys(plugin.rules).toSorted());
-  for (const [name, rule] of Object.entries(plugin.rules)) {
-    const adapted: (typeof adaptedRules)[string] | undefined = adaptedRules[name];
-    assert.ok(adapted);
-    assert.equal(adapted.meta, rule.meta);
-    const adaptedCreate: unknown = Object.getOwnPropertyDescriptor(adapted, "create")?.value;
-    const originalCreate: unknown = Object.getOwnPropertyDescriptor(rule, "create")?.value;
-    assert.equal(typeof adaptedCreate, "function");
-    assert.equal(typeof originalCreate, "function");
-    assert.notEqual(adaptedCreate, originalCreate);
-  }
+it("exports native createOnce visitors", () => {
+  for (const rule of Object.values(plugin.rules))
+    assert.equal(typeof rule.createOnce, "function");
 });
+
+writeFileSync(
+  join(FIXTURE_ROOT, "current-buffer.ts"),
+  "export {}; declare function read(): any;",
+  { flag: "wx", mode: 0o600 },
+);
+TESTER.run(
+  "current-source-and-native-function-ranges",
+  plugin.rules["prefer-immediate-return"],
+  {
+    valid: [
+      {
+        filename: join(FIXTURE_ROOT, "current-buffer.ts"),
+        code: "export {}; declare function read(): unknown; function run() { const result = read(); return result; }",
+      },
+    ],
+    invalid: [
+      {
+        filename: join(FIXTURE_ROOT, "current-buffer.ts"),
+        code: "export {}; declare function read(): number; function run() { const result = read(); return result; }",
+        errors: [{ messageId: "immediate" }],
+      },
+      {
+        filename: join(FIXTURE_ROOT, "current-buffer.ts"),
+        code: "export function run() { const result = 1; return result; }",
+        errors: [{ messageId: "immediate" }],
+      },
+      {
+        filename: join(FIXTURE_ROOT, "current-buffer.ts"),
+        code: "export async function run() { const result = 1; return result; }",
+        errors: [{ messageId: "immediate" }],
+      },
+      {
+        filename: join(FIXTURE_ROOT, "current-buffer.ts"),
+        code: "export {}; class C { run() { const result = 1; return result; } }",
+        errors: [{ messageId: "immediate" }],
+      },
+      {
+        filename: join(FIXTURE_ROOT, "current-buffer.ts"),
+        code: "export {}; const text = '🦊'; const c = { run<T>() { const result = 1; return result; } };",
+        errors: [{ messageId: "immediate" }],
+      },
+    ],
+  },
+);

@@ -21,7 +21,9 @@ describe("destination path admission", () => {
     client = new QueryClient({
       defaultOptions: { queries: { retry: false, staleTime: Infinity } },
     });
-    client.setQueryData(wikiKeys.drives, [{ id: "drive", isPersonal: false, name: "Workspace" }]);
+    client.setQueryData(wikiKeys.drives, [
+      { id: "drive", isPersonal: false, name: "Workspace" },
+    ]);
     host = document.createElement("div");
     document.body.append(host);
     root = createRoot(host);
@@ -63,7 +65,9 @@ describe("destination path admission", () => {
         },
       }));
       render(folders);
-      expect(document.querySelectorAll('button[aria-label^="Expand Folder"]')).toHaveLength(1_000);
+      expect(
+        document.querySelectorAll('button[aria-label^="Expand Folder"]'),
+      ).toHaveLength(1_000);
       expect(reads).toBe(2_000);
       flushSync(() => button("Folder 999").click());
       expect(select).toHaveBeenCalledWith({
@@ -93,7 +97,11 @@ describe("destination path admission", () => {
     flushSync(() =>
       root.render(
         <QueryClientProvider client={client}>
-          <FolderPickerDialog onOpenChange={close} onSelect={select} open={false} />
+          <FolderPickerDialog
+            onOpenChange={close}
+            onSelect={select}
+            open={false}
+          />
         </QueryClientProvider>,
       ),
     );
@@ -103,7 +111,11 @@ describe("destination path admission", () => {
   });
 
   it("preserves root and nested path selection as branches expand and collapse", () => {
-    render([node("root", "Root"), node("child", "Child", "root"), node("leaf", "Leaf", "child")]);
+    render([
+      node("root", "Root"),
+      node("child", "Child", "root"),
+      node("leaf", "Leaf", "child"),
+    ]);
     flushSync(() => button("Expand Root").click());
     flushSync(() => button("Expand Child").click());
     flushSync(() => button("Leaf").click());
@@ -133,9 +145,11 @@ describe("destination path admission", () => {
 
 function button(text: string): HTMLButtonElement {
   const result = [...document.querySelectorAll("button")].find(
-    (item) => item.getAttribute("aria-label") === text || item.textContent === text,
+    (item) =>
+      item.getAttribute("aria-label") === text || item.textContent === text,
   );
-  if (!(result instanceof HTMLButtonElement)) throw new TypeError(`Button ${text} missing`);
+  if (!(result instanceof HTMLButtonElement))
+    throw new TypeError(`Button ${text} missing`);
   return result;
 }
 

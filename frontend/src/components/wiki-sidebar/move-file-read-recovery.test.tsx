@@ -10,12 +10,16 @@ import { MoveFileDialog } from "./move-file-dialog";
 
 const MOVE = vi.hoisted(() => vi.fn());
 vi.mock("@/app/actions/wiki-actions", () => ({ moveFileAction: MOVE }));
-vi.mock("@/lib/wiki-read-api", () => ({ WIKI_READ_API: { getDriveFolders: vi.fn() } }));
+vi.mock("@/lib/wiki-read-api", () => ({
+  WIKI_READ_API: { getDriveFolders: vi.fn() },
+}));
 
 it("recovers an expanded drive's failed folder read without issuing a move", async () => {
   vi.useFakeTimers();
   const client = new QueryClient({
-    defaultOptions: { queries: { gcTime: Infinity, retry: false, staleTime: Infinity } },
+    defaultOptions: {
+      queries: { gcTime: Infinity, retry: false, staleTime: Infinity },
+    },
   });
   client.setQueryData(wikiKeys.drives, [
     { id: "destination", isPersonal: false, name: "Destination" },

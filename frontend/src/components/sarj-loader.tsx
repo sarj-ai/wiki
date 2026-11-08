@@ -10,7 +10,10 @@ export function SarjLoader({
   return (
     <div
       aria-label={label}
-      className={cn("flex flex-col items-center justify-center gap-4", className)}
+      className={cn(
+        "flex flex-col items-center justify-center gap-4",
+        className,
+      )}
       role="status"
     >
       <picture className="block aspect-544/182 w-32 max-w-full">
@@ -27,7 +30,9 @@ export function SarjLoader({
           width={544}
         />
       </picture>
-      <span className="text-muted-foreground text-center text-xs font-medium">{label}</span>
+      <span className="text-muted-foreground text-center text-xs font-medium">
+        {label}
+      </span>
     </div>
   );
 }

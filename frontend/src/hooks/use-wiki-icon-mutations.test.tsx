@@ -34,7 +34,9 @@ describe("icon optimistic overlay work", () => {
     vi.useFakeTimers();
     ACTIONS.doc.mockReset();
     ACTIONS.folder.mockReset();
-    client = new QueryClient({ defaultOptions: { mutations: { retry: false, gcTime: Infinity } } });
+    client = new QueryClient({
+      defaultOptions: { mutations: { retry: false, gcTime: Infinity } },
+    });
     root = createRoot(document.createElement("div"));
   });
 
@@ -74,7 +76,11 @@ describe("icon optimistic overlay work", () => {
     expect(idReads).toBe(10_001);
     const current = client.getQueryData<DocIcon[]>(wikiKeys.docIcons);
     expect(current).toHaveLength(10_000);
-    expect(current?.at(-1)).toEqual({ driveId: "file-9999", icon: "🌟", coverUrl: "cover-9999" });
+    expect(current?.at(-1)).toEqual({
+      driveId: "file-9999",
+      icon: "🌟",
+      coverUrl: "cover-9999",
+    });
     expect(current?.[0]).toBe(previous[0]);
     pending.resolve({ ok: true, data: {} });
     await operation;
@@ -101,10 +107,14 @@ describe("icon optimistic overlay work", () => {
     render();
     const previous: FolderIcon[] = [{ folderDriveId: "folder", icon: "📂" }];
     client.setQueryData(wikiKeys.folderIcons, previous);
-    ACTIONS.folder.mockResolvedValueOnce({ ok: false, error: "Denied", status: 403 });
-    await expect(folder.mutateAsync({ folderDriveId: "folder", icon: "🌟" })).rejects.toThrow(
-      "Denied",
-    );
+    ACTIONS.folder.mockResolvedValueOnce({
+      ok: false,
+      error: "Denied",
+      status: 403,
+    });
+    await expect(
+      folder.mutateAsync({ folderDriveId: "folder", icon: "🌟" }),
+    ).rejects.toThrow("Denied");
     expect(client.getQueryData(wikiKeys.folderIcons)).toEqual(previous);
 
     const pending = Promise.withResolvers<ActionResult<unknown>>();

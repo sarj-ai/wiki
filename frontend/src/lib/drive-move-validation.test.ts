@@ -32,6 +32,8 @@ describe("validateCrossDriveMove", () => {
         mimeType: MIME_FOLDER,
         sourceDriveId: "my-drive",
       }),
-    ).toBe("Google Drive can’t move folders between drives. Move the folder’s files instead.");
+    ).toBe(
+      "Google Drive can’t move folders between drives. Move the folder’s files instead.",
+    );
   });
 });

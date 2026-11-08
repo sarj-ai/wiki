@@ -53,7 +53,9 @@ describe("MCP consent transport", () => {
       },
       { highWaterMark: 0 },
     );
-    const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(new Response(body));
+    const fetchMock = vi
+      .fn<typeof fetch>()
+      .mockResolvedValue(new Response(body));
     vi.stubGlobal("fetch", fetchMock);
 
     await expect(getMcpConsent(INTENT)).rejects.toMatchObject({
@@ -80,9 +82,14 @@ describe("MCP consent transport", () => {
           [FIELDS.grantId]: `00000000-0000-4000-8000-${String(index).padStart(12, "0")}`,
         })),
       };
-      const bytes = new TextEncoder().encode(JSON.stringify(connections)).byteLength;
+      const bytes = new TextEncoder().encode(
+        JSON.stringify(connections),
+      ).byteLength;
       expect(bytes).toBe(expectedBytes);
-      vi.stubGlobal("fetch", vi.fn().mockResolvedValue(Response.json(connections)));
+      vi.stubGlobal(
+        "fetch",
+        vi.fn().mockResolvedValue(Response.json(connections)),
+      );
 
       await expect(getMcpConnections()).resolves.toEqual(connections);
     },
@@ -108,32 +115,45 @@ describe("MCP consent transport", () => {
 
     await expect(getMcpConsent(INTENT)).resolves.toEqual(view);
     await expect(
-      decideMcpConsent(INTENT, CSRF, { approve: true, transformApproved: true }),
+      decideMcpConsent(INTENT, CSRF, {
+        approve: true,
+        transformApproved: true,
+      }),
     ).resolves.toBe(redirect);
     expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 
-  it.each([0, 1])("enforces the exact response byte bound with %s extra bytes", async (extra) => {
-    const payload = {
-      [FIELDS.accountEmail]: "person@example.com",
-      [FIELDS.clientId]: "app",
-      [FIELDS.clientName]: "App",
-      csrf: CSRF,
-      scopes: ["wiki:read"],
-      status: "pending",
-      ignored: "",
-    };
-    const prefixBytes = new TextEncoder().encode(JSON.stringify(payload)).byteLength;
-    const maximum = 256 * 1024;
-    payload.ignored = "x".repeat(maximum - prefixBytes + extra);
-    const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(Response.json(payload));
-    vi.stubGlobal("fetch", fetchMock);
+  it.each([0, 1])(
+    "enforces the exact response byte bound with %s extra bytes",
+    async (extra) => {
+      const payload = {
+        [FIELDS.accountEmail]: "person@example.com",
+        [FIELDS.clientId]: "app",
+        [FIELDS.clientName]: "App",
+        csrf: CSRF,
+        scopes: ["wiki:read"],
+        status: "pending",
+        ignored: "",
+      };
+      const prefixBytes = new TextEncoder().encode(
+        JSON.stringify(payload),
+      ).byteLength;
+      const maximum = 256 * 1024;
+      payload.ignored = "x".repeat(maximum - prefixBytes + extra);
+      const fetchMock = vi
+        .fn<typeof fetch>()
+        .mockResolvedValue(Response.json(payload));
+      vi.stubGlobal("fetch", fetchMock);
 
-    const result: unknown = await getMcpConsent(INTENT).catch((error: unknown) => error);
-    const expected = extra === 0 ? { [FIELDS.clientName]: "App" } : { status: 502 };
-    expect(result).toMatchObject(expected);
-    expect(fetchMock).toHaveBeenCalledOnce();
-  });
+      const result: unknown = await getMcpConsent(INTENT).catch(
+        (error: unknown) => error,
+      );
+      const expected =
+        extra === 0 ? { [FIELDS.clientName]: "App" } : { status: 502 };
+      expect(result).toMatchObject(expected);
+      expect(fetchMock).toHaveBeenCalledOnce();
+    },
+  );
 
   it.each(["consent", "recovery", "connections"] as const)(
     "does not dispatch an already-abandoned %s read",
@@ -165,7 +185,10 @@ describe("MCP consent transport", () => {
     controller.abort();
     response.resolve(
       new Response(
-        new ReadableStream<Uint8Array>({ cancel: cancelled, pull: pulled }, { highWaterMark: 0 }),
+        new ReadableStream<Uint8Array>(
+          { cancel: cancelled, pull: pulled },
+          { highWaterMark: 0 },
+        ),
       ),
     );
 
@@ -193,7 +216,10 @@ describe("MCP consent transport", () => {
       .mockReturnValueOnce(decision.promise);
     vi.stubGlobal("fetch", fetchMock);
     await getMcpConsent(INTENT, controller.signal);
-    const pending = decideMcpConsent(INTENT, CSRF, { approve: true, transformApproved: false });
+    const pending = decideMcpConsent(INTENT, CSRF, {
+      approve: true,
+      transformApproved: false,
+    });
 
     controller.abort();
 
@@ -211,18 +237,26 @@ describe("MCP consent transport", () => {
       const deadline = new AbortController();
       vi.spyOn(AbortSignal, "timeout").mockReturnValue(deadline.signal);
       const cleanup = Promise.withResolvers<undefined>();
-      const cancelled = vi.fn<() => Promise<undefined>>().mockReturnValue(cleanup.promise);
+      const cancelled = vi
+        .fn<() => Promise<undefined>>()
+        .mockReturnValue(cleanup.promise);
       const body = new ReadableStream<Uint8Array>({
         start(controller) {
           controller.enqueue(new TextEncoder().encode("{"));
         },
         cancel: cancelled,
       });
-      vi.stubGlobal("fetch", vi.fn<typeof fetch>().mockResolvedValue(new Response(body)));
+      vi.stubGlobal(
+        "fetch",
+        vi.fn<typeof fetch>().mockResolvedValue(new Response(body)),
+      );
       const pending = getMcpConsent(INTENT, caller.signal);
       await vi.waitFor(() => expect(body.locked).toBe(true));
       if (reason === "caller") caller.abort();
-      else deadline.abort(new DOMException("The operation timed out", "TimeoutError"));
+      else
+        deadline.abort(
+          new DOMException("The operation timed out", "TimeoutError"),
+        );
       try {
         await expect(pending).rejects.toMatchObject({
           name: reason === "caller" ? "AbortError" : "TimeoutError",
@@ -249,8 +283,13 @@ describe("MCP consent transport", () => {
     "releases unused %s error bodies without waiting for cleanup or retrying",
     async (operation) => {
       const cleanup = Promise.withResolvers<undefined>();
-      const cancel = vi.fn<() => Promise<undefined>>().mockReturnValue(cleanup.promise);
-      const response = new Response(new ReadableStream<Uint8Array>({ cancel }), { status: 503 });
+      const cancel = vi
+        .fn<() => Promise<undefined>>()
+        .mockReturnValue(cleanup.promise);
+      const response = new Response(
+        new ReadableStream<Uint8Array>({ cancel }),
+        { status: 503 },
+      );
       const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(response);
       vi.stubGlobal("fetch", fetchMock);
       try {
@@ -258,8 +297,14 @@ describe("MCP consent transport", () => {
           operation === "read"
             ? getMcpConsent(INTENT)
             : operation === "decision"
-              ? decideMcpConsent(INTENT, CSRF, { approve: true, transformApproved: false })
-              : disconnectMcpConnection("00000000-0000-4000-8000-000000000001", "a".repeat(64));
+              ? decideMcpConsent(INTENT, CSRF, {
+                  approve: true,
+                  transformApproved: false,
+                })
+              : disconnectMcpConnection(
+                  "00000000-0000-4000-8000-000000000001",
+                  "a".repeat(64),
+                );
         await expect(pending).rejects.toMatchObject({
           name: "McpConsentRequestError",
           status: 503,
@@ -273,13 +318,20 @@ describe("MCP consent transport", () => {
   );
 
   it("disconnects with browser credentials and CSRF, accepting only a confirmed 204", async () => {
-    const fetchMock = vi.fn().mockResolvedValue(new Response(null, { status: 204 }));
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue(new Response(null, { status: 204 }));
     vi.stubGlobal("fetch", fetchMock);
     await expect(
-      disconnectMcpConnection("00000000-0000-4000-8000-000000000001", "a".repeat(64)),
+      disconnectMcpConnection(
+        "00000000-0000-4000-8000-000000000001",
+        "a".repeat(64),
+      ),
     ).resolves.toBeUndefined();
     expect(fetchMock).toHaveBeenCalledExactlyOnceWith(
-      expect.stringContaining("/connections/00000000-0000-4000-8000-000000000001"),
+      expect.stringContaining(
+        "/connections/00000000-0000-4000-8000-000000000001",
+      ),
       expect.objectContaining({
         method: "DELETE",
         credentials: "include",
@@ -289,14 +341,22 @@ describe("MCP consent transport", () => {
     );
   });
 
-  it.each([200, 401, 503])("does not confirm or replay a disconnect on HTTP %s", async (status) => {
-    const fetchMock = vi.fn().mockResolvedValue(new Response(null, { status }));
-    vi.stubGlobal("fetch", fetchMock);
-    await expect(
-      disconnectMcpConnection("00000000-0000-4000-8000-000000000001", "a".repeat(64)),
-    ).rejects.toThrow(McpConsentRequestError);
-    expect(fetchMock).toHaveBeenCalledOnce();
-  });
+  it.each([200, 401, 503])(
+    "does not confirm or replay a disconnect on HTTP %s",
+    async (status) => {
+      const fetchMock = vi
+        .fn()
+        .mockResolvedValue(new Response(null, { status }));
+      vi.stubGlobal("fetch", fetchMock);
+      await expect(
+        disconnectMcpConnection(
+          "00000000-0000-4000-8000-000000000001",
+          "a".repeat(64),
+        ),
+      ).rejects.toThrow(McpConsentRequestError);
+      expect(fetchMock).toHaveBeenCalledOnce();
+    },
+  );
 
   it("uses browser credentials, no cache, no referrer, and no redirected reads", async () => {
     const view = {
@@ -326,25 +386,39 @@ describe("MCP consent transport", () => {
     vi.stubGlobal("fetch", fetchMock);
     await expect(getMcpConsent("../../auth")).rejects.toThrow();
     await expect(
-      decideMcpConsent(INTENT, "bad", { approve: true, transformApproved: false }),
+      decideMcpConsent(INTENT, "bad", {
+        approve: true,
+        transformApproved: false,
+      }),
     ).rejects.toThrow();
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
-  it.each([401, 500])("does not replay a decision after HTTP %s", async (status) => {
-    const fetchMock = vi.fn().mockResolvedValue(new Response("private error", { status }));
-    vi.stubGlobal("fetch", fetchMock);
-    await expect(
-      decideMcpConsent(INTENT, CSRF, { approve: true, transformApproved: false }),
-    ).rejects.toThrow(McpConsentRequestError);
-    expect(fetchMock).toHaveBeenCalledOnce();
-  });
+  it.each([401, 500])(
+    "does not replay a decision after HTTP %s",
+    async (status) => {
+      const fetchMock = vi
+        .fn()
+        .mockResolvedValue(new Response("private error", { status }));
+      vi.stubGlobal("fetch", fetchMock);
+      await expect(
+        decideMcpConsent(INTENT, CSRF, {
+          approve: true,
+          transformApproved: false,
+        }),
+      ).rejects.toThrow(McpConsentRequestError);
+      expect(fetchMock).toHaveBeenCalledOnce();
+    },
+  );
 
   it("does not replay a decision after transport failure", async () => {
     const fetchMock = vi.fn().mockRejectedValue(new TypeError("network"));
     vi.stubGlobal("fetch", fetchMock);
     await expect(
-      decideMcpConsent(INTENT, CSRF, { approve: true, transformApproved: false }),
+      decideMcpConsent(INTENT, CSRF, {
+        approve: true,
+        transformApproved: false,
+      }),
     ).rejects.toThrow();
     expect(fetchMock).toHaveBeenCalledOnce();
   });
@@ -352,16 +426,25 @@ describe("MCP consent transport", () => {
   it("sends the explicit decision and accepts the server-validated loopback callback", async () => {
     const redirect =
       "http://127.0.0.1:49152/callback?code=synthetic&iss=https%3A%2F%2Fwiki.example";
-    const fetchMock = vi.fn().mockResolvedValue(Response.json({ redirect_uri: redirect }));
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue(Response.json({ redirect_uri: redirect }));
     vi.stubGlobal("fetch", fetchMock);
     await expect(
-      decideMcpConsent(INTENT, CSRF, { approve: false, transformApproved: true }),
+      decideMcpConsent(INTENT, CSRF, {
+        approve: false,
+        transformApproved: true,
+      }),
     ).resolves.toBe(redirect);
     expect(fetchMock).toHaveBeenCalledExactlyOnceWith(
       expect.any(String),
       expect.objectContaining({
         method: "POST",
-        body: JSON.stringify({ approve: false, csrf: CSRF, transform_approved: false }),
+        body: JSON.stringify({
+          approve: false,
+          csrf: CSRF,
+          transform_approved: false,
+        }),
       }),
     );
   });
@@ -373,16 +456,24 @@ describe("MCP consent transport", () => {
     "http://127.0.0.1/callback",
     "https://app.example/callback#token",
   ])("rejects unsafe callback %s", async (redirect) => {
-    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(Response.json({ redirect_uri: redirect })));
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(Response.json({ redirect_uri: redirect })),
+    );
     await expect(
-      decideMcpConsent(INTENT, CSRF, { approve: true, transformApproved: false }),
+      decideMcpConsent(INTENT, CSRF, {
+        approve: true,
+        transformApproved: false,
+      }),
     ).rejects.toThrow();
   });
 
   it("reads terminal status without submitting a decision", async () => {
     const fetchMock = vi
       .fn()
-      .mockResolvedValue(Response.json({ status: "approved", restart_required: true }));
+      .mockResolvedValue(
+        Response.json({ status: "approved", restart_required: true }),
+      );
     vi.stubGlobal("fetch", fetchMock);
     await expect(recoverMcpConsent(INTENT)).resolves.toEqual({
       status: "approved",

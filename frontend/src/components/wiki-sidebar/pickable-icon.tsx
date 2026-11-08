@@ -18,7 +18,10 @@ export function PickableIcon({
   if (!pickable) {
     return (
       <span
-        className={cn("flex size-6 shrink-0 items-center justify-center", dimmed && "opacity-50")}
+        className={cn(
+          "flex size-6 shrink-0 items-center justify-center",
+          dimmed && "opacity-50",
+        )}
       >
         {children}
       </span>

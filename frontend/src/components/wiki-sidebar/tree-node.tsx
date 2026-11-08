@@ -1,30 +1,55 @@
 "use client";
 
-import { SortableContext, verticalListSortingStrategy } from "@dnd-kit/sortable";
+import {
+  SortableContext,
+  verticalListSortingStrategy,
+} from "@dnd-kit/sortable";
 import { useQueryClient } from "@tanstack/react-query";
 import { ChevronRight, Loader2 } from "lucide-react";
 import { memo, type ReactNode } from "react";
 import { useDebouncedCallback } from "use-debounce";
 
-import { SidebarMenuButton, SidebarMenuSub, SidebarMenuSubItem } from "@/components/ui/sidebar";
+import {
+  SidebarMenuButton,
+  SidebarMenuSub,
+  SidebarMenuSubItem,
+} from "@/components/ui/sidebar";
 import { useExpandedFolder } from "@/hooks/use-expanded-folders";
 import { folderFilesQueryOptions, useFolderFiles } from "@/hooks/use-wiki-tree";
 import { renderNodeIcon } from "@/lib/file-icons";
 import { handlePrefetchError } from "@/lib/handle-prefetch-error";
 import { resolveShortcutTarget } from "@/lib/shortcut-resolver";
-import { allowsReusableSpeculation, readNavigatorHints } from "@/lib/speculation-policy";
+import {
+  allowsReusableSpeculation,
+  readNavigatorHints,
+} from "@/lib/speculation-policy";
 import { cn } from "@/lib/utils";
-import { EMPTY_NODES, indexSidebarNodes, indexVisibleDocuments } from "@/lib/wiki-indexes";
-import { buildSiblingItems, type KindedNode, orderSiblingItems } from "@/lib/wiki-tree";
+import {
+  EMPTY_NODES,
+  indexSidebarNodes,
+  indexVisibleDocuments,
+} from "@/lib/wiki-indexes";
+import {
+  buildSiblingItems,
+  type KindedNode,
+  orderSiblingItems,
+} from "@/lib/wiki-tree";
 import type { DriveNode } from "@/types/wiki";
 import { MIME_FOLDER } from "@/types/wiki";
 
 import { CreateFileMenu } from "./create-file-menu";
-import { type DriveSectionValue, useDriveSectionContext } from "./drive-context";
+import {
+  type DriveSectionValue,
+  useDriveSectionContext,
+} from "./drive-context";
 import { EmptyDropZone } from "./empty-drop-zone";
 import { FileRow } from "./file-row";
 import { ItemMenu } from "./item-menu";
-import { CHEVRON_OFFSET, ICON_COLUMN_WIDTH, rowIndent } from "./layout-constants";
+import {
+  CHEVRON_OFFSET,
+  ICON_COLUMN_WIDTH,
+  rowIndent,
+} from "./layout-constants";
 import { PickableIcon } from "./pickable-icon";
 import { RowActions } from "./row-actions";
 import { SortableItem } from "./sortable-item";
@@ -81,7 +106,9 @@ interface FolderHeaderProps {
 function resolveShortcutMeta(node: DriveNode): ShortcutMeta {
   const s = resolveShortcutTarget(node);
   return {
-    expandFolderId: s.isFolderShortcut ? (node.shortcutTargetId ?? null) : node.id,
+    expandFolderId: s.isFolderShortcut
+      ? (node.shortcutTargetId ?? null)
+      : node.id,
     inaccessible: s.inaccessible,
     isFolder: node.mimeType === MIME_FOLDER || s.isFolderShortcut,
     isFolderShortcut: s.isFolderShortcut,
@@ -108,7 +135,9 @@ function TreeNodeImpl({ depth, node, parentFolderId }: TreeNodeProps) {
     ) {
       return;
     }
-    void queryClient.query(folderFilesQueryOptions(folderId)).catch(handlePrefetchError);
+    void queryClient
+      .query(folderFilesQueryOptions(folderId))
+      .catch(handlePrefetchError);
   }, HOVER_PREFETCH_DELAY_MS);
 
   const isDropIntoFolder = useIsDropIntoFolder(node.id);
@@ -162,7 +191,11 @@ function TreeNodeImpl({ depth, node, parentFolderId }: TreeNodeProps) {
       <FolderHeader
         actions={
           <RowActions>
-            <CreateFileMenu driveId={ctx.driveId} parentFolderId={node.id} parentName={node.name} />
+            <CreateFileMenu
+              driveId={ctx.driveId}
+              parentFolderId={node.id}
+              parentName={node.name}
+            />
             <ItemMenu
               currentName={node.name}
               driveId={ctx.driveId}
@@ -184,14 +217,22 @@ function TreeNodeImpl({ depth, node, parentFolderId }: TreeNodeProps) {
           prefetchChildren.cancel();
         }}
         onHoverStart={() => {
-          if (needsLazyFiles && !expanded && !meta.inaccessible) prefetchChildren();
+          if (needsLazyFiles && !expanded && !meta.inaccessible)
+            prefetchChildren();
         }}
         onToggle={() => {
           if (meta.inaccessible) return;
           setExpanded(!expanded);
         }}
       />
-      {expanded ? <ExpandedFolderContents ctx={ctx} depth={depth} meta={meta} node={node} /> : null}
+      {expanded ? (
+        <ExpandedFolderContents
+          ctx={ctx}
+          depth={depth}
+          meta={meta}
+          node={node}
+        />
+      ) : null}
     </>
   );
 }
@@ -212,7 +253,13 @@ function ExpandedFolderContents({
     needsLazyFiles && !meta.inaccessible ? meta.expandFolderId : null,
     true,
   );
-  const { items: childItems } = buildChildItems(node, meta, ctx, lazyFiles ?? EMPTY_NODES, true);
+  const { items: childItems } = buildChildItems(
+    node,
+    meta,
+    ctx,
+    lazyFiles ?? EMPTY_NODES,
+    true,
+  );
   const sortableItems = childItems.map((child) => child.node.id);
   return (
     <SidebarMenuSub className="mx-0 gap-0.5 border-l-0 px-0">
@@ -233,7 +280,11 @@ function ExpandedFolderContents({
             variant="subitem"
           >
             {type === "folder" ? (
-              <TreeNode depth={depth + 1} node={child} parentFolderId={node.id} />
+              <TreeNode
+                depth={depth + 1}
+                node={child}
+                parentFolderId={node.id}
+              />
             ) : (
               <FileRow
                 activeDriveId={ctx.activeDriveId}
@@ -250,11 +301,18 @@ function ExpandedFolderContents({
       </SortableContext>
       {filesLoading ? (
         <SidebarMenuSubItem>
-          <span className="text-muted-foreground px-2 py-1 text-xs">Loading files…</span>
+          <span className="text-muted-foreground px-2 py-1 text-xs">
+            Loading files…
+          </span>
         </SidebarMenuSubItem>
       ) : null}
       {!filesLoading && childItems.length === 0 && (
-        <EmptyDropZone driveId={ctx.driveId} label="Empty" parentId={node.id} variant="subitem" />
+        <EmptyDropZone
+          driveId={ctx.driveId}
+          label="Empty"
+          parentId={node.id}
+          variant="subitem"
+        />
       )}
     </SidebarMenuSub>
   );
@@ -271,7 +329,9 @@ function buildChildItems(
     meta.isFolderShortcut || !ctx.treeFilesComplete
       ? indexSidebarNodes(lazyAll).files
       : (ctx.filesByParent.get(node.id) ?? EMPTY_NODES);
-  const filteredFiles = ctx.showNonDocFiles ? rawFiles : indexVisibleDocuments(rawFiles);
+  const filteredFiles = ctx.showNonDocFiles
+    ? rawFiles
+    : indexVisibleDocuments(rawFiles);
   const folderChildren = meta.isFolderShortcut
     ? indexSidebarNodes(lazyAll).folders
     : (ctx.childrenByParent.get(node.id) ?? EMPTY_NODES);
@@ -279,7 +339,8 @@ function buildChildItems(
   const count = folderChildren.length + filteredFiles.length;
   if (!expanded) return { count, items: EMPTY_CHILD_ITEMS };
 
-  const optimisticOrder = ctx.optimisticByContainer.get(`parent:${node.id}`) ?? null;
+  const optimisticOrder =
+    ctx.optimisticByContainer.get(`parent:${node.id}`) ?? null;
   return {
     count,
     items: orderSiblingItems(
@@ -344,7 +405,11 @@ function FolderHeader({
             meta.inaccessible && "opacity-30",
           )}
         />
-        <span aria-hidden="true" className="shrink-0" style={{ width: ICON_COLUMN_WIDTH - 4 }} />
+        <span
+          aria-hidden="true"
+          className="shrink-0"
+          style={{ width: ICON_COLUMN_WIDTH - 4 }}
+        />
         <span className="truncate">{node.name}</span>
         {itemCount !== undefined && itemCount > 0 && (
           <span className="text-muted-foreground ml-auto shrink-0 pl-1 text-[10px] tabular-nums group-hover/navitem:opacity-0">
@@ -353,7 +418,10 @@ function FolderHeader({
         )}
       </SidebarMenuButton>
 
-      <div className="absolute top-1/2 z-10 -translate-y-1/2" style={{ left: iconLeft }}>
+      <div
+        className="absolute top-1/2 z-10 -translate-y-1/2"
+        style={{ left: iconLeft }}
+      >
         <PickableIcon
           ariaLabel="Change folder icon"
           dimmed={meta.inaccessible}

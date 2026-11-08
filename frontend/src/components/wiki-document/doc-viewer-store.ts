@@ -32,7 +32,9 @@ export const useDocViewerStore = create<DocViewerState>((set) => ({
   active: null,
   activeOwner: null,
   clearActive: (owner) => {
-    set((state) => (state.activeOwner === owner ? { active: null, activeOwner: null } : state));
+    set((state) =>
+      state.activeOwner === owner ? { active: null, activeOwner: null } : state,
+    );
   },
   pool: [],
   prewarm: null,
@@ -59,8 +61,11 @@ export const useDocViewerStore = create<DocViewerState>((set) => ({
     set((state) => {
       // A shared authorization may finish after navigation already consumed
       // this target. Keep any different pending target rather than reviving it.
-      if (prewarm !== null && state.active?.fileId === prewarm.fileId) return state;
-      return state.prewarm?.fileId === prewarm?.fileId ? state : { ...state, prewarm };
+      if (prewarm !== null && state.active?.fileId === prewarm.fileId)
+        return state;
+      return state.prewarm?.fileId === prewarm?.fileId
+        ? state
+        : { ...state, prewarm };
     });
   },
   setSlot: (slot, owner) => {
@@ -68,7 +73,9 @@ export const useDocViewerStore = create<DocViewerState>((set) => ({
       set({ slot, slotOwner: owner });
       return;
     }
-    set((state) => (state.slotOwner === owner ? { slot: null, slotOwner: null } : state));
+    set((state) =>
+      state.slotOwner === owner ? { slot: null, slotOwner: null } : state,
+    );
   },
   setWarm: (warm) => {
     set({ warm });
@@ -89,5 +96,8 @@ function reconcilePool(pool: ActiveDoc[], active: ActiveDoc): ActiveDoc[] {
   ) {
     return pool;
   }
-  return [active, ...pool.filter((entry) => entry.fileId !== active.fileId)].slice(0, MAX_POOL);
+  return [
+    active,
+    ...pool.filter((entry) => entry.fileId !== active.fileId),
+  ].slice(0, MAX_POOL);
 }

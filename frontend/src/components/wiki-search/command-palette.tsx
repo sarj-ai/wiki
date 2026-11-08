@@ -12,22 +12,37 @@ import { Command, CommandItem, CommandList } from "@/components/ui/command";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { FocusReturnProvider } from "@/components/ui/focus-return";
 import { useCommandPaletteState } from "@/hooks/use-command-palette";
-import { useDriveSearchSnippet, useDriveSearchState } from "@/hooks/use-drive-search";
+import {
+  useDriveSearchSnippet,
+  useDriveSearchState,
+} from "@/hooks/use-drive-search";
 import { expandPath, requestReveal } from "@/hooks/use-expanded-folders";
 import { fileQueryOptions, wikiKeys } from "@/hooks/use-wiki-tree";
 import { ApiError, RATE_LIMIT_MESSAGE } from "@/lib/api-error";
 import { useBrowserUserId } from "@/lib/browser-user-context";
-import { displayFileName, isGoogleWorkspaceType, renderNodeIcon } from "@/lib/file-icons";
+import {
+  displayFileName,
+  isGoogleWorkspaceType,
+  renderNodeIcon,
+} from "@/lib/file-icons";
 import { openUrlFor } from "@/lib/file-urls";
 import { folderAncestorIds } from "@/lib/folder-ancestor-ids";
 import { handlePrefetchError } from "@/lib/handle-prefetch-error";
-import { resolveShortcutTarget, SHORTCUT_INACCESSIBLE_TOOLTIP } from "@/lib/shortcut-resolver";
-import { allowsReusableSpeculation, readNavigatorHints } from "@/lib/speculation-policy";
+import {
+  resolveShortcutTarget,
+  SHORTCUT_INACCESSIBLE_TOOLTIP,
+} from "@/lib/shortcut-resolver";
+import {
+  allowsReusableSpeculation,
+  readNavigatorHints,
+} from "@/lib/speculation-policy";
 import { cn } from "@/lib/utils";
 import type { DriveSearchResult, DriveTree } from "@/types/wiki";
 import { MIME_FOLDER, MIME_FORM } from "@/types/wiki";
 
-const RELATIVE_TIME_FORMAT = new Intl.RelativeTimeFormat("en", { numeric: "always" });
+const RELATIVE_TIME_FORMAT = new Intl.RelativeTimeFormat("en", {
+  numeric: "always",
+});
 
 const RELATIVE_TIME_UNITS: [Intl.RelativeTimeFormatUnit, number][] = [
   ["year", 31536000],
@@ -40,7 +55,8 @@ const RELATIVE_TIME_UNITS: [Intl.RelativeTimeFormatUnit, number][] = [
 ];
 
 export function CommandPalette() {
-  const { onDocumentNavigate, open, returnFocusRef, setOpen } = useCommandPaletteState();
+  const { onDocumentNavigate, open, returnFocusRef, setOpen } =
+    useCommandPaletteState();
   const router = useRouter();
   const qc = useQueryClient();
   const userId = useBrowserUserId();
@@ -61,7 +77,10 @@ export function CommandPalette() {
     };
   }, [open, userId]);
 
-  const { query: searchQuery, isCurrentQuery } = useDriveSearchState(query, open);
+  const { query: searchQuery, isCurrentQuery } = useDriveSearchState(
+    query,
+    open,
+  );
   const hasQuery = query.trim().length >= 2;
   const results = hasQuery && isCurrentQuery ? (searchQuery.data ?? []) : [];
 
@@ -71,26 +90,36 @@ export function CommandPalette() {
       : (results[0]?.id ?? "");
   const selectedResult = results.find((r) => r.id === selectedId) ?? null;
   const selectedIsFolder =
-    selectedResult !== null && resolveShortcutTarget(selectedResult).targetMimeType === MIME_FOLDER;
+    selectedResult !== null &&
+    resolveShortcutTarget(selectedResult).targetMimeType === MIME_FOLDER;
   const searching =
     hasQuery &&
-    (!isCurrentQuery || searchQuery.isPending || (searchQuery.isFetching && results.length === 0));
+    (!isCurrentQuery ||
+      searchQuery.isPending ||
+      (searchQuery.isFetching && results.length === 0));
 
   const prepareResult = (result: DriveSearchResult): void => {
     if (result.shortcutInaccessible) return;
     const target = resolveShortcutTarget(result);
-    if (target.targetMimeType === MIME_FORM || target.targetMimeType === MIME_FOLDER) return;
+    if (
+      target.targetMimeType === MIME_FORM ||
+      target.targetMimeType === MIME_FOLDER
+    )
+      return;
     void qc.query(fileQueryOptions(target.targetId)).catch(handlePrefetchError);
     router.prefetch(`/d/${encodeURIComponent(target.targetId)}`);
   };
-  const schedulePrepareResult = useDebouncedCallback((result: DriveSearchResult) => {
-    if (
-      document.visibilityState !== "visible" ||
-      !allowsReusableSpeculation(readNavigatorHints(navigator))
-    )
-      return;
-    prepareResult(result);
-  }, 150);
+  const schedulePrepareResult = useDebouncedCallback(
+    (result: DriveSearchResult) => {
+      if (
+        document.visibilityState !== "visible" ||
+        !allowsReusableSpeculation(readNavigatorHints(navigator))
+      )
+        return;
+      prepareResult(result);
+    },
+    150,
+  );
 
   useEffect(() => {
     schedulePrepareResult.cancel();
@@ -149,9 +178,15 @@ export function CommandPalette() {
   };
 
   const handleInputKeyDown = (event: React.KeyboardEvent<HTMLInputElement>) => {
-    if (event.key !== "Enter" || event.nativeEvent.isComposing || event.defaultPrevented) return;
+    if (
+      event.key !== "Enter" ||
+      event.nativeEvent.isComposing ||
+      event.defaultPrevented
+    )
+      return;
     event.preventDefault();
-    if (selectedResult) openResult(selectedResult, isUnmodifiedActivation(event));
+    if (selectedResult)
+      openResult(selectedResult, isUnmodifiedActivation(event));
   };
 
   return (
@@ -163,7 +198,8 @@ export function CommandPalette() {
             e.preventDefault();
             const owner = focusOwner.current;
             if (!owner) return;
-            if (focusFrame.current !== null) cancelAnimationFrame(focusFrame.current);
+            if (focusFrame.current !== null)
+              cancelAnimationFrame(focusFrame.current);
             focusFrame.current = requestAnimationFrame(() => {
               focusFrame.current = null;
               if (focusOwner.current === owner) inputRef.current?.focus();
@@ -214,7 +250,8 @@ export function CommandPalette() {
                 <div className="space-y-0.5 p-3">
                   {!hasQuery && (
                     <div className="text-muted-foreground px-3 py-4 text-xs">
-                      Type at least 2 characters to search. Press ↑↓ to navigate, ⏎ to open.
+                      Type at least 2 characters to search. Press ↑↓ to
+                      navigate, ⏎ to open.
                     </div>
                   )}
                   {searching ? (
@@ -239,10 +276,16 @@ export function CommandPalette() {
                   searchQuery.isSuccess &&
                   !searchQuery.isFetching &&
                   results.length === 0 ? (
-                    <div className="text-muted-foreground px-3 py-4 text-xs">No results</div>
+                    <div className="text-muted-foreground px-3 py-4 text-xs">
+                      No results
+                    </div>
                   ) : null}
                   {results.map((result) => (
-                    <ResultRow driveName={result.driveName} key={result.id} result={result} />
+                    <ResultRow
+                      driveName={result.driveName}
+                      key={result.id}
+                      result={result}
+                    />
                   ))}
                 </div>
               </CommandList>
@@ -260,8 +303,12 @@ export function CommandPalette() {
 
           <div className="border-border text-muted-foreground flex shrink-0 flex-wrap items-center justify-between gap-2 border-t px-3 py-2.5 text-[11px] sm:px-5">
             <span className="hidden sm:inline">
-              <kbd className="bg-muted rounded-sm border px-1 py-0.5 font-mono text-[10px]">↑</kbd>{" "}
-              <kbd className="bg-muted rounded-sm border px-1 py-0.5 font-mono text-[10px]">↓</kbd>{" "}
+              <kbd className="bg-muted rounded-sm border px-1 py-0.5 font-mono text-[10px]">
+                ↑
+              </kbd>{" "}
+              <kbd className="bg-muted rounded-sm border px-1 py-0.5 font-mono text-[10px]">
+                ↓
+              </kbd>{" "}
               navigate
               <span className="mx-2">·</span>
               <kbd className="bg-muted rounded-sm border px-1 py-0.5 font-mono text-[10px]">
@@ -274,7 +321,12 @@ export function CommandPalette() {
               </kbd>{" "}
               close
             </span>
-            <Button aria-label="Close search" onClick={closePalette} size="sm" variant="ghost">
+            <Button
+              aria-label="Close search"
+              onClick={closePalette}
+              size="sm"
+              variant="ghost"
+            >
               Close
             </Button>
           </div>
@@ -284,7 +336,11 @@ export function CommandPalette() {
   );
 }
 
-function ancestorChain(qc: QueryClient, driveId: string, nodeId: string): string[] {
+function ancestorChain(
+  qc: QueryClient,
+  driveId: string,
+  nodeId: string,
+): string[] {
   const tree = qc.getQueryData<DriveTree>(wikiKeys.driveTree(driveId));
   return tree ? folderAncestorIds(tree.folders, nodeId) : [];
 }
@@ -303,7 +359,10 @@ function Highlighted({ term, text }: { text: string; term: null | string }) {
     }
     if (idx > cursor) parts.push(text.slice(cursor, idx));
     parts.push(
-      <mark className="bg-primary/20 text-foreground rounded-sm p-0.5" key={`m-${idx}`}>
+      <mark
+        className="bg-primary/20 text-foreground rounded-sm p-0.5"
+        key={`m-${idx}`}
+      >
         {text.slice(idx, idx + needle.length)}
       </mark>,
     );
@@ -320,7 +379,10 @@ function relativeTime(iso: null | string): string {
   const abs = Math.abs(deltaSeconds);
   for (const [unit, secondsPerUnit] of RELATIVE_TIME_UNITS) {
     if (abs >= secondsPerUnit || unit === "second") {
-      return RELATIVE_TIME_FORMAT.format(Math.round(deltaSeconds / secondsPerUnit), unit);
+      return RELATIVE_TIME_FORMAT.format(
+        Math.round(deltaSeconds / secondsPerUnit),
+        unit,
+      );
     }
   }
   return "";
@@ -363,7 +425,9 @@ function ResultRow({
           ) : null}
         </div>
         {driveName ? (
-          <div className="text-muted-foreground text-xs wrap-anywhere">{driveName}</div>
+          <div className="text-muted-foreground text-xs wrap-anywhere">
+            {driveName}
+          </div>
         ) : null}
       </div>
     </CommandItem>
@@ -387,7 +451,9 @@ function PreviewPanel({
     target && !inaccessible ? target.targetId : null,
     query,
     target !== null && !inaccessible,
-    target !== null && target.targetMimeType !== "" ? target.targetMimeType : undefined,
+    target !== null && target.targetMimeType !== ""
+      ? target.targetMimeType
+      : undefined,
   );
 
   if (!result || !target) {
@@ -406,10 +472,16 @@ function PreviewPanel({
     <div className="flex h-full min-h-0 flex-col">
       <div className="min-h-0 flex-1 space-y-3 overflow-auto p-3 sm:space-y-4 sm:p-5">
         <div className="flex items-start gap-3">
-          <span className="mt-1 shrink-0">{renderNodeIcon(result, "size-6")}</span>
+          <span className="mt-1 shrink-0">
+            {renderNodeIcon(result, "size-6")}
+          </span>
           <div className="min-w-0 flex-1">
-            <div className="text-base font-semibold break-words">{displayName}</div>
-            {driveName ? <div className="text-muted-foreground text-xs">{driveName}</div> : null}
+            <div className="text-base font-semibold break-words">
+              {displayName}
+            </div>
+            {driveName ? (
+              <div className="text-muted-foreground text-xs">{driveName}</div>
+            ) : null}
           </div>
         </div>
 
@@ -471,8 +543,8 @@ function MatchPreview({
   if (inaccessible)
     return (
       <div className="text-muted-foreground text-sm text-pretty">
-        This is a shortcut, but you don&apos;t have access to its target. Contact your admin if you
-        need access.
+        This is a shortcut, but you don&apos;t have access to its target.
+        Contact your admin if you need access.
       </div>
     );
   if (snippetQuery.isLoading)
@@ -519,14 +591,23 @@ function QueryError({
   onRetry: () => void;
   retrying: boolean;
 }) {
-  const message = error instanceof ApiError && error.status === 429 ? RATE_LIMIT_MESSAGE : fallback;
+  const message =
+    error instanceof ApiError && error.status === 429
+      ? RATE_LIMIT_MESSAGE
+      : fallback;
   return (
     <div
       className="text-muted-foreground flex flex-col items-start gap-2 px-3 py-4 text-xs"
       role="alert"
     >
       <span>{message}</span>
-      <Button disabled={retrying} onClick={onRetry} size="xs" type="button" variant="outline">
+      <Button
+        disabled={retrying}
+        onClick={onRetry}
+        size="xs"
+        type="button"
+        variant="outline"
+      >
         {label}
       </Button>
     </div>

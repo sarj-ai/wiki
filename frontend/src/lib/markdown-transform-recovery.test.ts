@@ -38,13 +38,21 @@ afterEach(() => {
 it("persists exact payload only on explicit save and clears it on signout", () => {
   const localWrite = vi.spyOn(window.localStorage, "setItem");
   const bundle = makeMarkdownRecovery("owner", OPERATION, SOURCE);
-  expect(window.sessionStorage.getItem(markdownRecoveryStorageKey("owner"))).toBeNull();
+  expect(
+    window.sessionStorage.getItem(markdownRecoveryStorageKey("owner")),
+  ).toBeNull();
   saveMarkdownRecovery(bundle);
-  const raw = window.sessionStorage.getItem(markdownRecoveryStorageKey("owner"));
-  expect(validateMarkdownRecovery(raw ?? "", "owner", OPERATION).source).toEqual(SOURCE);
+  const raw = window.sessionStorage.getItem(
+    markdownRecoveryStorageKey("owner"),
+  );
+  expect(
+    validateMarkdownRecovery(raw ?? "", "owner", OPERATION).source,
+  ).toEqual(SOURCE);
   expect(localWrite).not.toHaveBeenCalled();
   clearUserBrowserStorage("owner");
-  expect(window.sessionStorage.getItem(markdownRecoveryStorageKey("owner"))).toBeNull();
+  expect(
+    window.sessionStorage.getItem(markdownRecoveryStorageKey("owner")),
+  ).toBeNull();
 });
 
 it.each([
@@ -54,22 +62,29 @@ it.each([
   { outputName: "Changed" },
   { createdAt: OPERATION.createdAt - REPLAY_MAX_AGE_MS },
 ])("rejects mismatched recovery metadata %j", (change) => {
-  const raw = JSON.stringify({ ...makeMarkdownRecovery("owner", OPERATION, SOURCE), ...change });
-  expect(() => validateMarkdownRecovery(raw, "owner", OPERATION)).toThrow("does not match");
+  const raw = JSON.stringify({
+    ...makeMarkdownRecovery("owner", OPERATION, SOURCE),
+    ...change,
+  });
+  expect(() => validateMarkdownRecovery(raw, "owner", OPERATION)).toThrow(
+    "does not match",
+  );
 });
 
 it("rejects expired recovery even with matching operation metadata", () => {
   const expired = { ...OPERATION, createdAt: Date.now() - REPLAY_MAX_AGE_MS };
-  expect(() => makeMarkdownRecovery("owner", expired, SOURCE)).toThrow("expired");
+  expect(() => makeMarkdownRecovery("owner", expired, SOURCE)).toThrow(
+    "expired",
+  );
 });
 
 it("fails closed on quota failure", () => {
   vi.spyOn(window, "sessionStorage", "get").mockImplementation(() => {
     throw new DOMException("quota", "QuotaExceededError");
   });
-  expect(() => saveMarkdownRecovery(makeMarkdownRecovery("owner", OPERATION, SOURCE))).toThrow(
-    "quota",
-  );
+  expect(() =>
+    saveMarkdownRecovery(makeMarkdownRecovery("owner", OPERATION, SOURCE)),
+  ).toThrow("quota");
 });
 
 it.each(["bad json", "{}", '{"secret":"never echo"}'])(

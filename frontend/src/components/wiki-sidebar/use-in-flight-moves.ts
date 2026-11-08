@@ -65,7 +65,10 @@ export const useInFlightMovesStore = create<InFlightMovesState>((set) => ({
         });
       };
       session.addEventListener("abort", onAbort, { once: true });
-      moves = { files, release: () => session.removeEventListener("abort", onAbort) };
+      moves = {
+        files,
+        release: () => session.removeEventListener("abort", onAbort),
+      };
       SESSIONS.set(session, moves);
     }
     moves.files.set(fileId, owner);

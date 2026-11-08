@@ -35,7 +35,9 @@ describe("performance ingestion", () => {
     };
     let settled: Response | undefined;
     const pending = (async () => {
-      const response = await POST(new Request("https://wiki.sarj.ai/api/perf", options));
+      const response = await POST(
+        new Request("https://wiki.sarj.ai/api/perf", options),
+      );
       settled = response;
       return response;
     })();
@@ -63,7 +65,9 @@ describe("performance ingestion", () => {
       duplex: "half",
       headers: { cookie: "access_token=test-session", "content-length": "1" },
     };
-    const response = await POST(new Request("https://wiki.sarj.ai/api/perf", options));
+    const response = await POST(
+      new Request("https://wiki.sarj.ai/api/perf", options),
+    );
     expect(response.status).toBe(413);
     expect(cancel).toHaveBeenCalledOnce();
   });
@@ -83,7 +87,12 @@ describe("performance ingestion", () => {
   });
 
   it.each([
-    { durationMs: 1, fileId: "secret", navigationId: crypto.randomUUID(), phase: "click" },
+    {
+      durationMs: 1,
+      fileId: "secret",
+      navigationId: crypto.randomUUID(),
+      phase: "click",
+    },
     { durationMs: -1, navigationId: crypto.randomUUID(), phase: "click" },
     { durationMs: 1, navigationId: "not-a-uuid", phase: "click" },
   ])("rejects unsafe or invalid payloads", async (payload) => {

@@ -38,7 +38,9 @@ describe("polling waits", () => {
     const controller = new AbortController();
     controller.abort();
 
-    await expect(abortableDelay(1_000, controller.signal)).rejects.toMatchObject({
+    await expect(
+      abortableDelay(1_000, controller.signal),
+    ).rejects.toMatchObject({
       name: "AbortError",
     });
   });

@@ -95,7 +95,8 @@ describe("SmartCreateDialog", () => {
   });
 
   it("keeps catalog loading independent from authoring-mode changes", async () => {
-    const catalog = deferred<Awaited<ReturnType<typeof smartCreateApi.listTemplates>>>();
+    const catalog =
+      deferred<Awaited<ReturnType<typeof smartCreateApi.listTemplates>>>();
     vi.spyOn(smartCreateApi, "listTemplates").mockReturnValue(catalog.promise);
 
     renderDialog(root);
@@ -108,8 +109,11 @@ describe("SmartCreateDialog", () => {
   });
 
   it("cancels pending template discovery when its dialog closes", async () => {
-    const catalog = deferred<Awaited<ReturnType<typeof smartCreateApi.listTemplates>>>();
-    const loadCatalog = vi.spyOn(smartCreateApi, "listTemplates").mockReturnValue(catalog.promise);
+    const catalog =
+      deferred<Awaited<ReturnType<typeof smartCreateApi.listTemplates>>>();
+    const loadCatalog = vi
+      .spyOn(smartCreateApi, "listTemplates")
+      .mockReturnValue(catalog.promise);
     renderDialog(root);
     const signal = loadCatalog.mock.calls[0]?.[1];
     expect(signal?.aborted).toBe(false);
@@ -129,7 +133,9 @@ describe("SmartCreateDialog", () => {
     clickButton(await findButton("Template"));
 
     await vi.waitFor(() => {
-      expect(document.body).toHaveTextContent("Too many requests. Try again in a minute.");
+      expect(document.body).toHaveTextContent(
+        "Too many requests. Try again in a minute.",
+      );
       expect(document.body).not.toHaveTextContent("No templates available");
       expect(findButtonNow("Refresh")).toBeEnabled();
     });
@@ -137,7 +143,8 @@ describe("SmartCreateDialog", () => {
 
   it("locks compose inputs only while the owned proposal is pending", async () => {
     vi.spyOn(smartCreateApi, "listTemplates").mockResolvedValue([]);
-    const proposal = deferred<Awaited<ReturnType<typeof smartCreateApi.propose>>>();
+    const proposal =
+      deferred<Awaited<ReturnType<typeof smartCreateApi.propose>>>();
     vi.spyOn(smartCreateApi, "propose").mockReturnValue(proposal.promise);
 
     renderDialog(root);
@@ -185,8 +192,12 @@ describe("SmartCreateDialog", () => {
   it("enqueues once and shows progress while polling the typed task", async () => {
     vi.spyOn(smartCreateApi, "listTemplates").mockResolvedValue([template]);
     const taskId = "55555555-5555-4555-8555-555555555555";
-    vi.spyOn(smartCreateApi, "create").mockResolvedValue({ id: taskId, status: "pending" });
-    const completion = deferred<Awaited<ReturnType<typeof smartCreateApi.waitForCompletion>>>();
+    vi.spyOn(smartCreateApi, "create").mockResolvedValue({
+      id: taskId,
+      status: "pending",
+    });
+    const completion =
+      deferred<Awaited<ReturnType<typeof smartCreateApi.waitForCompletion>>>();
     const waitForCompletion = vi
       .spyOn(smartCreateApi, "waitForCompletion")
       .mockReturnValue(completion.promise);
@@ -226,7 +237,9 @@ describe("SmartCreateDialog", () => {
 });
 
 function renderDialog(root: Root) {
-  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  const queryClient = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  });
   flushSync(() => {
     root.render(
       <QueryClientProvider client={queryClient}>
@@ -250,18 +263,18 @@ function clickButton(button: HTMLButtonElement) {
 
 async function findButton(text: string): Promise<HTMLButtonElement> {
   return vi.waitFor(() => {
-    const button = [...document.body.querySelectorAll<HTMLButtonElement>("button")].find(
-      (candidate) => candidate.textContent.includes(text),
-    );
+    const button = [
+      ...document.body.querySelectorAll<HTMLButtonElement>("button"),
+    ].find((candidate) => candidate.textContent.includes(text));
     if (button === undefined) throw new Error(`Button not found: ${text}`);
     return button;
   });
 }
 
 function findButtonNow(text: string): HTMLButtonElement {
-  const button = [...document.body.querySelectorAll<HTMLButtonElement>("button")].find(
-    (candidate) => candidate.textContent.includes(text),
-  );
+  const button = [
+    ...document.body.querySelectorAll<HTMLButtonElement>("button"),
+  ].find((candidate) => candidate.textContent.includes(text));
   if (button === undefined) throw new Error(`Button not found: ${text}`);
   return button;
 }
@@ -269,8 +282,11 @@ function findButtonNow(text: string): HTMLButtonElement {
 function typeDescription(value: string) {
   const textarea = document.body.querySelector("textarea");
   if (textarea === null) throw new Error("Description textarea not found");
-  // eslint-disable-next-line @typescript-eslint/unbound-method -- The native setter is immediately rebound to the test element.
-  const setter = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value")?.set;
+  // eslint-disable-next-line typescript/unbound-method -- The native setter is immediately rebound to the test element.
+  const setter = Object.getOwnPropertyDescriptor(
+    HTMLTextAreaElement.prototype,
+    "value",
+  )?.set;
   if (setter === undefined) throw new Error("Textarea value setter not found");
   flushSync(() => {
     setter.call(textarea, value);

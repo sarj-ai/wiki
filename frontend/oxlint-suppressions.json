@@ -20,7 +20,7 @@
   },
   "scripts/eslint-owned.test.ts": {
     "@sarj/no-runtime-typeof": {
-      "count": 2
+      "count": 1
     },
     "@sarj/no-test-comments": {
       "count": 3
@@ -88,11 +88,6 @@
       "count": 2
     }
   },
-  "src/app/actions/smart-create-actions.test.ts": {
-    "@typescript-eslint/naming-convention": {
-      "count": 1
-    }
-  },
   "src/app/actions/wiki-actions.ts": {
     "@sarj/no-frontend-comments": {
       "count": 1
@@ -117,9 +112,6 @@
   "src/app/api/files/[fileId]/content/route.test.ts": {
     "@sarj/no-test-comments": {
       "count": 1
-    },
-    "@typescript-eslint/naming-convention": {
-      "count": 2
     }
   },
   "src/app/api/perf/route.test.ts": {
@@ -140,9 +132,6 @@
   "src/app/go/[alias]/route.test.ts": {
     "@sarj/require-camelcase-properties": {
       "count": 1
-    },
-    "@typescript-eslint/naming-convention": {
-      "count": 2
     }
   },
   "src/app/go/[alias]/route.ts": {
@@ -150,19 +139,11 @@
       "count": 1
     }
   },
-  "src/app/health/route.test.ts": {
-    "@typescript-eslint/naming-convention": {
-      "count": 2
-    }
-  },
   "src/app/layout.tsx": {
     "@sarj/no-frontend-comments": {
       "count": 1
     },
     "@sarj/prefer-immutable-module-constant": {
-      "count": 1
-    },
-    "@typescript-eslint/naming-convention": {
       "count": 1
     }
   },
@@ -203,8 +184,8 @@
     "@sarj/require-camelcase-properties": {
       "count": 5
     },
-    "@typescript-eslint/no-floating-promises": {
-      "count": 3
+    "react/immutability": {
+      "count": 1
     }
   },
   "src/components/mcp/mcp-consent-loader.test.tsx": {
@@ -220,9 +201,6 @@
   "src/components/mcp/mcp-consent.tsx": {
     "@sarj/stepdown": {
       "count": 1
-    },
-    "@typescript-eslint/no-floating-promises": {
-      "count": 3
     }
   },
   "src/components/mcp/mcp-pages.test.tsx": {
@@ -239,7 +217,7 @@
     "@sarj/no-frontend-comments": {
       "count": 2
     },
-    "unicorn/no-unnecessary-array-flat-map": {
+    "unicorn-js/no-unnecessary-array-flat-map": {
       "count": 1
     }
   },
@@ -266,6 +244,9 @@
   "src/components/session-refresh.tsx": {
     "@sarj/no-frontend-comments": {
       "count": 7
+    },
+    "react/immutability": {
+      "count": 1
     }
   },
   "src/components/ui/focus-return.tsx": {
@@ -277,7 +258,7 @@
     "@sarj/no-runtime-typeof": {
       "count": 6
     },
-    "@typescript-eslint/no-floating-promises": {
+    "typescript/no-floating-promises": {
       "count": 1
     }
   },
@@ -285,11 +266,19 @@
     "@sarj/sole-export-matches-filename": {
       "count": 1
     },
-    "@typescript-eslint/consistent-type-assertions": {
+    "typescript/consistent-type-assertions": {
       "count": 2
     },
-    "@typescript-eslint/no-unsafe-type-assertion": {
+    "typescript/no-unsafe-type-assertion": {
       "count": 2
+    }
+  },
+  "src/components/wiki-demo/demo-preview.tsx": {
+    "@eslint-react/dom-no-unsafe-iframe-sandbox": {
+      "count": 1
+    },
+    "react/iframe-missing-sandbox": {
+      "count": 1
     }
   },
   "src/components/wiki-document/doc-viewer-host.test.tsx": {
@@ -301,12 +290,12 @@
     "@sarj/no-frontend-comments": {
       "count": 1
     },
-    "unicorn/prefer-default-parameters": {
+    "react/iframe-missing-sandbox": {
       "count": 1
     }
   },
   "src/components/wiki-document/doc-viewer-store.test.ts": {
-    "unicorn/no-unnecessary-parameters": {
+    "unicorn-js/no-unnecessary-parameters": {
       "count": 1
     }
   },
@@ -319,7 +308,7 @@
     }
   },
   "src/components/wiki-document/doc-warmup-lifecycle.test.tsx": {
-    "unicorn/no-unnecessary-default-arguments": {
+    "unicorn-js/no-unnecessary-default-arguments": {
       "count": 1
     }
   },
@@ -327,15 +316,18 @@
     "@sarj/no-frontend-comments": {
       "count": 4
     },
-    "@typescript-eslint/no-floating-promises": {
+    "react/immutability": {
+      "count": 1
+    },
+    "typescript/no-floating-promises": {
       "count": 1
     }
   },
   "src/components/wiki-document/document-polish-dialog.test.tsx": {
     "@sarj/no-test-comments": {
-      "count": 2
+      "count": 1
     },
-    "unicorn/no-unnecessary-default-arguments": {
+    "unicorn-js/no-unnecessary-default-arguments": {
       "count": 4
     }
   },
@@ -349,7 +341,10 @@
     "@sarj/stepdown": {
       "count": 2
     },
-    "@typescript-eslint/no-floating-promises": {
+    "react/immutability": {
+      "count": 1
+    },
+    "typescript/no-floating-promises": {
       "count": 9
     }
   },
@@ -368,32 +363,30 @@
     "@sarj/stepdown": {
       "count": 2
     },
-    "@typescript-eslint/no-floating-promises": {
+    "typescript/no-floating-promises": {
       "count": 6
     }
   },
   "src/components/wiki-document/file-page-client.tsx": {
-    "@typescript-eslint/no-floating-promises": {
+    "typescript/no-floating-promises": {
       "count": 1
     }
   },
   "src/components/wiki-document/reorganize-document.tsx": {
-    "@typescript-eslint/no-floating-promises": {
+    "typescript/no-floating-promises": {
       "count": 2
     }
   },
   "src/components/wiki-document/short-link-dialog.test.tsx": {
     "@sarj/no-test-comments": {
       "count": 1
-    }
-  },
-  "src/components/wiki-document/wiki-toolbar.test.tsx": {
-    "@sarj/no-test-comments": {
-      "count": 4
+    },
+    "react/iframe-missing-sandbox": {
+      "count": 1
     }
   },
   "src/components/wiki-search/command-palette-navigation.test.tsx": {
-    "unicorn/no-unnecessary-parameters": {
+    "unicorn-js/no-unnecessary-parameters": {
       "count": 1
     }
   },
@@ -402,9 +395,6 @@
       "count": 1
     },
     "@sarj/no-test-comments": {
-      "count": 1
-    },
-    "@typescript-eslint/naming-convention": {
       "count": 1
     }
   },
@@ -417,16 +407,13 @@
     },
     "@sarj/stepdown": {
       "count": 1
-    },
-    "@typescript-eslint/no-floating-promises": {
-      "count": 2
     }
   },
   "src/components/wiki-sidebar/drive-access-sheet-state.test.tsx": {
     "@sarj/require-camelcase-properties": {
       "count": 9
     },
-    "unicorn/no-unnecessary-parameters": {
+    "unicorn-js/no-unnecessary-parameters": {
       "count": 1
     }
   },
@@ -442,7 +429,7 @@
     "@sarj/prefer-immutable-module-constant": {
       "count": 1
     },
-    "@typescript-eslint/no-floating-promises": {
+    "typescript/no-floating-promises": {
       "count": 2
     }
   },
@@ -452,7 +439,7 @@
     }
   },
   "src/components/wiki-sidebar/move-dialog-outlet.test.tsx": {
-    "unicorn/no-unnecessary-default-arguments": {
+    "unicorn-js/no-unnecessary-default-arguments": {
       "count": 1
     }
   },
@@ -477,6 +464,9 @@
   "src/components/wiki-sidebar/sidebar-resize-handle.test.tsx": {
     "@sarj/no-test-comments": {
       "count": 2
+    },
+    "unicorn/consistent-function-scoping": {
+      "count": 1
     }
   },
   "src/components/wiki-sidebar/sidebar-resize-handle.tsx": {
@@ -486,9 +476,6 @@
   },
   "src/components/wiki-sidebar/smart-create-dialog.test.tsx": {
     "@sarj/no-test-comments": {
-      "count": 1
-    },
-    "@typescript-eslint/naming-convention": {
       "count": 1
     }
   },
@@ -502,12 +489,12 @@
     "@sarj/stepdown": {
       "count": 2
     },
-    "@typescript-eslint/no-floating-promises": {
-      "count": 2
+    "typescript/no-floating-promises": {
+      "count": 1
     }
   },
   "src/components/wiki-sidebar/tree-node-observers.test.tsx": {
-    "unicorn/no-unnecessary-parameters": {
+    "unicorn-js/no-unnecessary-parameters": {
       "count": 1
     }
   },
@@ -517,7 +504,7 @@
     }
   },
   "src/components/wiki-sidebar/use-document-intent.ts": {
-    "@typescript-eslint/no-floating-promises": {
+    "typescript/no-floating-promises": {
       "count": 3
     }
   },
@@ -527,12 +514,12 @@
     }
   },
   "src/components/wiki-sidebar/use-drive-predictive-loading.ts": {
-    "@typescript-eslint/no-floating-promises": {
+    "typescript/no-floating-promises": {
       "count": 2
     }
   },
   "src/components/wiki-sidebar/use-drive-tree-index.test.tsx": {
-    "unicorn/no-unnecessary-parameters": {
+    "unicorn-js/no-unnecessary-parameters": {
       "count": 1
     }
   },
@@ -564,8 +551,13 @@
       "count": 1
     }
   },
+  "src/components/wiki-sidebar/wiki-footer.test.tsx": {
+    "wiki-owned/no-identical-functions": {
+      "count": 1
+    }
+  },
   "src/components/wiki-sidebar/wiki-footer.tsx": {
-    "@typescript-eslint/no-floating-promises": {
+    "typescript/no-floating-promises": {
       "count": 1
     }
   },
@@ -575,7 +567,7 @@
     }
   },
   "src/hooks/use-document-alias.ts": {
-    "@sarj/no-frontend-comments": {
+    "@sarj/no-positional-tuple-return": {
       "count": 1
     }
   },
@@ -584,8 +576,18 @@
       "count": 1
     }
   },
+  "src/hooks/use-drive-search.ts": {
+    "@tanstack/query/exhaustive-deps": {
+      "count": 1
+    }
+  },
   "src/hooks/use-expanded-drives.test.ts": {
     "@sarj/no-test-comments": {
+      "count": 1
+    }
+  },
+  "src/hooks/use-expanded-folder-subscriptions.test.tsx": {
+    "unicorn/consistent-function-scoping": {
       "count": 1
     }
   },
@@ -600,9 +602,6 @@
     },
     "@sarj/prefer-nominal-id-types": {
       "count": 3
-    },
-    "@typescript-eslint/naming-convention": {
-      "count": 2
     }
   },
   "src/hooks/use-session-mutation.ts": {
@@ -614,7 +613,7 @@
     "@sarj/no-frontend-comments": {
       "count": 2
     },
-    "@typescript-eslint/no-floating-promises": {
+    "typescript/no-floating-promises": {
       "count": 8
     }
   },
@@ -644,9 +643,6 @@
     },
     "@sarj/require-camelcase-properties": {
       "count": 15
-    },
-    "@typescript-eslint/naming-convention": {
-      "count": 1
     }
   },
   "src/lib/api-client.ts": {
@@ -695,11 +691,6 @@
   "src/lib/browser-storage.ts": {
     "@sarj/no-frontend-comments": {
       "count": 5
-    }
-  },
-  "src/lib/browser-transport-boundary.test.ts": {
-    "unicorn/no-unnecessary-array-flat-map": {
-      "count": 2
     }
   },
   "src/lib/build-destination-sort-orders.test.ts": {
@@ -771,11 +762,6 @@
       "count": 2
     }
   },
-  "src/lib/env.test.ts": {
-    "@typescript-eslint/naming-convention": {
-      "count": 1
-    }
-  },
   "src/lib/fetch-authorized-file.ts": {
     "@sarj/no-frontend-comments": {
       "count": 2
@@ -785,7 +771,7 @@
     "@sarj/no-frontend-comments": {
       "count": 1
     },
-    "jsdoc/no-restricted-syntax": {
+    "jsdoc-js/no-restricted-syntax": {
       "count": 1
     }
   },
@@ -833,9 +819,6 @@
     }
   },
   "src/lib/perf-marks.ts": {
-    "@sarj/no-frontend-comments": {
-      "count": 1
-    },
     "@sarj/no-runtime-typeof": {
       "count": 2
     },
@@ -867,6 +850,9 @@
     },
     "@sarj/no-runtime-typeof": {
       "count": 1
+    },
+    "@tanstack/query/exhaustive-deps": {
+      "count": 1
     }
   },
   "src/lib/reorganize-client.test.ts": {
@@ -886,16 +872,8 @@
     "@sarj/require-camelcase-properties": {
       "count": 1
     },
-    "@typescript-eslint/naming-convention": {
+    "unicorn-js/no-unnecessary-parameters": {
       "count": 1
-    },
-    "unicorn/no-unnecessary-parameters": {
-      "count": 1
-    }
-  },
-  "src/lib/server-api.ts": {
-    "@typescript-eslint/naming-convention": {
-      "count": 2
     }
   },
   "src/lib/session-client.test.ts": {
@@ -917,7 +895,10 @@
     }
   },
   "src/lib/session-isolation.ts": {
-    "@typescript-eslint/no-floating-promises": {
+    "typescript/no-floating-promises": {
+      "count": 1
+    },
+    "unicorn/require-post-message-target-origin": {
       "count": 1
     }
   },
@@ -948,9 +929,6 @@
   "src/lib/smart-create-types.test.ts": {
     "@sarj/no-test-comments": {
       "count": 2
-    },
-    "@typescript-eslint/naming-convention": {
-      "count": 1
     }
   },
   "src/lib/speculation-policy.ts": {
@@ -987,12 +965,12 @@
   },
   "src/lib/wiki-keys.ts": {
     "@sarj/no-frontend-comments": {
-      "count": 5
+      "count": 4
+    },
+    "@sarj/no-positional-tuple-return": {
+      "count": 1
     },
     "@sarj/prefer-immutable-module-constant": {
-      "count": 2
-    },
-    "@typescript-eslint/naming-convention": {
       "count": 2
     }
   },
@@ -1009,18 +987,20 @@
   "src/lib/wiki-schemas.ts": {
     "@sarj/no-frontend-comments": {
       "count": 1
-    },
-    "@typescript-eslint/naming-convention": {
-      "count": 17
     }
   },
   "src/lib/wiki-tree.test.ts": {
-    "unicorn/no-unnecessary-parameters": {
+    "unicorn-js/no-unnecessary-parameters": {
       "count": 1
     }
   },
   "src/middleware.ts": {
     "@sarj/no-frontend-comments": {
+      "count": 1
+    }
+  },
+  "src/test-stubs/empty.ts": {
+    "unicorn/require-module-specifiers": {
       "count": 1
     }
   },

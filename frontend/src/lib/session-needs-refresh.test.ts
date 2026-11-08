@@ -15,8 +15,13 @@ describe("session expiry hint", () => {
     expect(sessionNeedsRefresh()).toBe(true);
   });
 
-  it.each(["", "not-a-time"])("does not refresh without a valid expiry hint: %s", (expiry) => {
-    vi.spyOn(document, "cookie", "get").mockReturnValue(`session_exp=${expiry}`);
-    expect(sessionNeedsRefresh()).toBe(false);
-  });
+  it.each(["", "not-a-time"])(
+    "does not refresh without a valid expiry hint: %s",
+    (expiry) => {
+      vi.spyOn(document, "cookie", "get").mockReturnValue(
+        `session_exp=${expiry}`,
+      );
+      expect(sessionNeedsRefresh()).toBe(false);
+    },
+  );
 });

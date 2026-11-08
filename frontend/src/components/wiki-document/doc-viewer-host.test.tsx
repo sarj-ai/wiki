@@ -16,7 +16,10 @@ import {
   htmlContentUrl,
   viewerKey,
 } from "@/components/wiki-document/doc-viewer-host";
-import { type ActiveDoc, useDocViewerStore } from "@/components/wiki-document/doc-viewer-store";
+import {
+  type ActiveDoc,
+  useDocViewerStore,
+} from "@/components/wiki-document/doc-viewer-store";
 import { MIME_DOC, MIME_HTML } from "@/types/wiki";
 
 vi.mock("@/lib/file-urls", () => ({ embedUrlFor: () => "about:blank" }));
@@ -24,8 +27,10 @@ vi.mock("@/lib/file-urls", () => ({ embedUrlFor: () => "about:blank" }));
 let nextFrameId = 0;
 let reducedMotion = false;
 const ANIMATION_FRAMES = new Map<number, FrameRequestCallback>();
-const subscribeToMotion = vi.fn<(event: string, callback: () => void) => void>();
-const unsubscribeFromMotion = vi.fn<(event: string, callback: () => void) => void>();
+const subscribeToMotion =
+  vi.fn<(event: string, callback: () => void) => void>();
+const unsubscribeFromMotion =
+  vi.fn<(event: string, callback: () => void) => void>();
 const readMotionPreference = vi.fn(() => ({
   addEventListener: subscribeToMotion,
   get matches() {
@@ -64,11 +69,15 @@ afterEach(() => {
 
 describe("isolated Drive HTML viewer", () => {
   it("grants scripts and external popups without trusted-origin access", () => {
-    expect(HTML_IFRAME_SANDBOX).toBe("allow-popups allow-popups-to-escape-sandbox allow-scripts");
+    expect(HTML_IFRAME_SANDBOX).toBe(
+      "allow-popups allow-popups-to-escape-sandbox allow-scripts",
+    );
     expect(HTML_IFRAME_SANDBOX).not.toContain("allow-same-origin");
     expect(HTML_IFRAME_SANDBOX).not.toContain("allow-top-navigation");
     expect(HTML_IFRAME_CLASS_NAME).toContain("html-theme-frame");
-    expect(htmlContentUrl("file/id", "v1")).toBe("/api/files/file%2Fid/content?version=v1");
+    expect(htmlContentUrl("file/id", "v1")).toBe(
+      "/api/files/file%2Fid/content?version=v1",
+    );
   });
 });
 
@@ -132,7 +141,11 @@ describe("pooled viewer identity", () => {
     runFrame();
     runFrame();
 
-    expect(iframe("c")?.parentElement?.querySelector("[data-document-loading-overlay]")).toBeNull();
+    expect(
+      iframe("c")?.parentElement?.querySelector(
+        "[data-document-loading-overlay]",
+      ),
+    ).toBeNull();
     expect(readMotionPreference).toHaveBeenCalledOnce();
     expect(subscribeToMotion).toHaveBeenCalledOnce();
     view.unmount();
@@ -150,12 +163,9 @@ describe("pooled viewer identity", () => {
       useDocViewerStore.getState().setWarm([doc("a"), doc("e"), doc("f")]);
     });
 
-    expect([...document.querySelectorAll("iframe")].map((entry) => entry.title)).toEqual([
-      "c",
-      "a",
-      "b",
-      "e",
-    ]);
+    expect(
+      [...document.querySelectorAll("iframe")].map((entry) => entry.title),
+    ).toEqual(["c", "a", "b", "e"]);
     view.unmount();
   });
 
@@ -167,11 +177,9 @@ describe("pooled viewer identity", () => {
       useDocViewerStore.getState().setWarm([doc("c")]);
     });
 
-    expect([...document.querySelectorAll("iframe")].map((entry) => entry.title)).toEqual([
-      "a",
-      "b",
-      "c",
-    ]);
+    expect(
+      [...document.querySelectorAll("iframe")].map((entry) => entry.title),
+    ).toEqual(["a", "b", "c"]);
     view.unmount();
   });
 
@@ -184,7 +192,8 @@ describe("pooled viewer identity", () => {
   it("coalesces a window resize burst into one geometry read before the next paint", () => {
     const view = renderViewer(doc("a"));
     const initialReads = view.readRect.mock.calls.length;
-    for (let index = 0; index < 100; index += 1) window.dispatchEvent(new Event("resize"));
+    for (let index = 0; index < 100; index += 1)
+      window.dispatchEvent(new Event("resize"));
     expect(view.readRect).toHaveBeenCalledTimes(initialReads);
     runFrame();
     expect(view.readRect).toHaveBeenCalledTimes(initialReads + 1);
@@ -358,7 +367,11 @@ function overlay(): HTMLElement | null {
   return document.querySelector('[data-document-loading-overlay="true"]');
 }
 
-function renderViewer(active: ActiveDoc | null, prewarm: ActiveDoc | null = null, strict = false) {
+function renderViewer(
+  active: ActiveDoc | null,
+  prewarm: ActiveDoc | null = null,
+  strict = false,
+) {
   const container = document.createElement("div");
   const slot = document.createElement("div");
   document.body.append(container, slot);

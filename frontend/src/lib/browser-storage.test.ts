@@ -23,11 +23,21 @@ describe("browser metadata storage", () => {
   });
 
   it("uses disjoint keys for every immutable user id", () => {
-    expect(recentDocsStorageKey("user-a")).not.toBe(recentDocsStorageKey("user-b"));
-    expect(expandedFoldersStorageKey("user-a")).not.toBe(expandedFoldersStorageKey("user-b"));
-    expect(expandedDrivesStorageKey("user-a")).not.toBe(expandedDrivesStorageKey("user-b"));
-    expect(collapsedDrivesStorageKey("user-a")).not.toBe(collapsedDrivesStorageKey("user-b"));
-    expect(recentAliasesStorageKey("user-a")).not.toBe(recentAliasesStorageKey("user-b"));
+    expect(recentDocsStorageKey("user-a")).not.toBe(
+      recentDocsStorageKey("user-b"),
+    );
+    expect(expandedFoldersStorageKey("user-a")).not.toBe(
+      expandedFoldersStorageKey("user-b"),
+    );
+    expect(expandedDrivesStorageKey("user-a")).not.toBe(
+      expandedDrivesStorageKey("user-b"),
+    );
+    expect(collapsedDrivesStorageKey("user-a")).not.toBe(
+      collapsedDrivesStorageKey("user-b"),
+    );
+    expect(recentAliasesStorageKey("user-a")).not.toBe(
+      recentAliasesStorageKey("user-b"),
+    );
   });
 
   it("clears only the active user's metadata and preserves presentation settings", () => {
@@ -46,8 +56,11 @@ describe("browser metadata storage", () => {
 
     clearUserBrowserStorage("user-a");
 
-    for (const key of userAKeys) expect(window.localStorage.getItem(key)).toBeNull();
-    expect(window.localStorage.getItem(recentDocsStorageKey("user-b"))).toBe("private-b");
+    for (const key of userAKeys)
+      expect(window.localStorage.getItem(key)).toBeNull();
+    expect(window.localStorage.getItem(recentDocsStorageKey("user-b"))).toBe(
+      "private-b",
+    );
     expect(window.localStorage.getItem("theme")).toBe("dark");
     expect(readActiveBrowserUser()).toBeNull();
     expect(takeLoginRedirect()).toBeNull();
@@ -67,7 +80,9 @@ describe("browser metadata storage", () => {
     purgeLegacyBrowserStorage();
 
     expect(window.localStorage.length).toBe(1);
-    expect(window.localStorage.getItem("sarj-wiki:sidebar-width")).toBe("320px");
+    expect(window.localStorage.getItem("sarj-wiki:sidebar-width")).toBe(
+      "320px",
+    );
   });
 
   it("stores the one-shot login destination in session storage", () => {

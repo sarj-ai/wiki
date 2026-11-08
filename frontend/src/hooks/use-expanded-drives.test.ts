@@ -33,12 +33,18 @@ describe("explicit Drive expansion", () => {
     const collapsed = readPersistedState();
     expect(collapsed.state.expanded).toEqual({});
     expect(collapsed.state.initialized).toBe(true);
-    expect(resolveDriveExpanded({ expanded: false, initialized: true }, true)).toBe(false);
+    expect(
+      resolveDriveExpanded({ expanded: false, initialized: true }, true),
+    ).toBe(false);
   });
 
   it("uses the supplied default only before explicit state is initialized", () => {
-    expect(resolveDriveExpanded({ expanded: false, initialized: false }, true)).toBe(true);
-    expect(resolveDriveExpanded({ expanded: false, initialized: false }, false)).toBe(false);
+    expect(
+      resolveDriveExpanded({ expanded: false, initialized: false }, true),
+    ).toBe(true);
+    expect(
+      resolveDriveExpanded({ expanded: false, initialized: false }, false),
+    ).toBe(false);
   });
 });
 

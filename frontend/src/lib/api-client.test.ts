@@ -1,7 +1,10 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { ZodError } from "zod";
 
-import { claimBrowserSession, retireBrowserSession } from "@/lib/browser-session";
+import {
+  claimBrowserSession,
+  retireBrowserSession,
+} from "@/lib/browser-session";
 import { TERMINAL_UNAUTHORIZED_EVENT } from "@/lib/session-events";
 import { ApiError, makeWikiApi } from "@/lib/wiki-api";
 
@@ -69,7 +72,10 @@ describe("response parsing through the transform schemas", () => {
   });
 
   it("rejects with ZodError when the payload drifts from the contract", async () => {
-    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse([{ id: 123, name: "Eng" }])));
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(jsonResponse([{ id: 123, name: "Eng" }])),
+    );
 
     await expect(wikiApi.getDrives()).rejects.toBeInstanceOf(ZodError);
   });
@@ -101,7 +107,10 @@ describe("request bodies", () => {
     });
 
     expect(fetchMock).toHaveBeenCalledOnce();
-    expect(out).toMatchObject({ parentFolderId: "1kl4", modifiedTime: undefined });
+    expect(out).toMatchObject({
+      parentFolderId: "1kl4",
+      modifiedTime: undefined,
+    });
   });
 });
 
@@ -116,9 +125,13 @@ describe("error mapping", () => {
       },
       cancel,
     });
-    const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(new Response(body, { status: 502 }));
+    const fetchMock = vi
+      .fn<typeof fetch>()
+      .mockResolvedValue(new Response(body, { status: 502 }));
     vi.stubGlobal("fetch", fetchMock);
-    const pending = wikiApi.renameFile("file-1", "Retired title").catch((error: unknown) => error);
+    const pending = wikiApi
+      .renameFile("file-1", "Retired title")
+      .catch((error: unknown) => error);
     await vi.waitFor(() => {
       expect(body.locked).toBe(true);
     });
@@ -133,7 +146,9 @@ describe("error mapping", () => {
   });
 
   it("stops reading oversized API errors and preserves the HTTP fallback", async () => {
-    const encoded = new TextEncoder().encode(JSON.stringify({ detail: "x".repeat(1024 * 1024) }));
+    const encoded = new TextEncoder().encode(
+      JSON.stringify({ detail: "x".repeat(1024 * 1024) }),
+    );
     let received = 0;
     const cancel = vi.fn();
     const body = new ReadableStream<Uint8Array>(
@@ -153,9 +168,13 @@ describe("error mapping", () => {
     );
     vi.stubGlobal(
       "fetch",
-      vi.fn<typeof fetch>().mockResolvedValue(new Response(body, { status: 502 })),
+      vi
+        .fn<typeof fetch>()
+        .mockResolvedValue(new Response(body, { status: 502 })),
     );
-    const failure = await wikiApi.getFile("error-body").catch((error: unknown) => error);
+    const failure = await wikiApi
+      .getFile("error-body")
+      .catch((error: unknown) => error);
     expect(failure).toBeInstanceOf(ApiError);
     if (!(failure instanceof ApiError)) throw new Error("Expected ApiError");
     expect(failure.message.length).toBe("API error: 502".length);
@@ -166,7 +185,9 @@ describe("error mapping", () => {
   it("surfaces the backend detail string as the ApiError message", async () => {
     vi.stubGlobal(
       "fetch",
-      vi.fn().mockResolvedValue(jsonResponse({ detail: "File not found" }, 404)),
+      vi
+        .fn()
+        .mockResolvedValue(jsonResponse({ detail: "File not found" }, 404)),
     );
 
     await expect(wikiApi.getFile("gone")).rejects.toMatchObject({
@@ -181,14 +202,21 @@ describe("error mapping", () => {
       "fetch",
       vi
         .fn()
-        .mockResolvedValue(jsonResponse({ detail: [{ loc: [], msg: "field required" }] }, 422)),
+        .mockResolvedValue(
+          jsonResponse({ detail: [{ loc: [], msg: "field required" }] }, 422),
+        ),
     );
 
-    await expect(wikiApi.getDrives()).rejects.toMatchObject({ message: "field required" });
+    await expect(wikiApi.getDrives()).rejects.toMatchObject({
+      message: "field required",
+    });
   });
 
   it("falls back to the status code when the body has no detail", async () => {
-    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response("boom", { status: 502 })));
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(new Response("boom", { status: 502 })),
+    );
 
     const failure = await wikiApi.getDrives().catch((e: unknown) => e);
     expect(failure).toBeInstanceOf(ApiError);
@@ -197,7 +225,10 @@ describe("error mapping", () => {
   });
 
   it("uses stable copy for a bodyless perimeter rate limit", async () => {
-    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(null, { status: 429 })));
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(new Response(null, { status: 429 })),
+    );
 
     await expect(wikiApi.getDrives()).rejects.toMatchObject({
       message: "Too many requests. Try again in a minute.",
@@ -210,7 +241,11 @@ describe("error mapping", () => {
     const cancel = vi.fn(async () => await cleanup.promise);
     vi.stubGlobal(
       "fetch",
-      vi.fn().mockResolvedValue(new Response(new ReadableStream({ cancel }), { status: 429 })),
+      vi
+        .fn()
+        .mockResolvedValue(
+          new Response(new ReadableStream({ cancel }), { status: 429 }),
+        ),
     );
 
     await expect(wikiApi.getDrives()).rejects.toMatchObject({
@@ -229,7 +264,9 @@ describe("401 refresh-and-replay", () => {
     claimBrowserSession(previous);
     const fetchMock = vi.fn<typeof fetch>();
     vi.stubGlobal("fetch", fetchMock);
-    const pending = wikiApi.renameFile("file-1", "Old draft").catch((error: unknown) => error);
+    const pending = wikiApi
+      .renameFile("file-1", "Old draft")
+      .catch((error: unknown) => error);
     retireBrowserSession(previous);
     claimBrowserSession(replacement);
     try {
@@ -250,7 +287,9 @@ describe("401 refresh-and-replay", () => {
     const listener = vi.fn<() => void>();
     window.addEventListener(TERMINAL_UNAUTHORIZED_EVENT, listener);
     try {
-      const pending = wikiApi.renameFile("file-1", "Old draft").catch((error: unknown) => error);
+      const pending = wikiApi
+        .renameFile("file-1", "Old draft")
+        .catch((error: unknown) => error);
       await vi.waitFor(() => {
         expect(fetchMock).toHaveBeenCalledOnce();
       });
@@ -282,7 +321,8 @@ describe("401 refresh-and-replay", () => {
       expect(fetchMock).toHaveBeenCalledOnce();
     });
     const request = fetchMock.mock.calls[0]?.[0];
-    if (!(request instanceof Request)) throw new TypeError("Expected the generated read request");
+    if (!(request instanceof Request))
+      throw new TypeError("Expected the generated read request");
     retireBrowserSession(owner);
     expect(request.signal.aborted).toBe(true);
     response.resolve(jsonResponse({ detail: "old session expired" }, 401));
@@ -297,10 +337,14 @@ describe("401 refresh-and-replay", () => {
     const refresh = Promise.withResolvers<Response>();
     const fetchMock = vi
       .fn<typeof fetch>()
-      .mockResolvedValueOnce(jsonResponse({ detail: "old session expired" }, 401))
+      .mockResolvedValueOnce(
+        jsonResponse({ detail: "old session expired" }, 401),
+      )
       .mockReturnValueOnce(refresh.promise);
     vi.stubGlobal("fetch", fetchMock);
-    const pending = wikiApi.renameFile("file-1", "Old draft").catch((error: unknown) => error);
+    const pending = wikiApi
+      .renameFile("file-1", "Old draft")
+      .catch((error: unknown) => error);
     await vi.waitFor(() => {
       expect(fetchMock).toHaveBeenCalledTimes(2);
     });
@@ -318,11 +362,20 @@ describe("401 refresh-and-replay", () => {
   it("cancels a discarded generated read waiting for refresh without replaying it", async () => {
     const refresh = Promise.withResolvers<Response>();
     const cancel = vi.fn();
-    const expired = new Response(new ReadableStream({ cancel }), { status: 401 });
-    const fetchMock = vi.fn<typeof fetch>().mockImplementation(async (input) => {
-      const url = typeof input === "string" ? input : "href" in input ? input.href : input.url;
-      return url.endsWith("/auth/refresh") ? await refresh.promise : expired;
+    const expired = new Response(new ReadableStream({ cancel }), {
+      status: 401,
     });
+    const fetchMock = vi
+      .fn<typeof fetch>()
+      .mockImplementation(async (input) => {
+        const url =
+          typeof input === "string"
+            ? input
+            : "href" in input
+              ? input.href
+              : input.url;
+        return url.endsWith("/auth/refresh") ? await refresh.promise : expired;
+      });
     vi.stubGlobal("fetch", fetchMock);
     const controller = new AbortController();
     const pending = wikiApi.getFile("file-1", controller.signal);
@@ -353,7 +406,9 @@ describe("401 refresh-and-replay", () => {
     const listener = vi.fn<() => void>();
     window.addEventListener(TERMINAL_UNAUTHORIZED_EVENT, listener);
     try {
-      const pending = wikiApi.renameFile("file-1", "Old draft").catch((error: unknown) => error);
+      const pending = wikiApi
+        .renameFile("file-1", "Old draft")
+        .catch((error: unknown) => error);
       await vi.waitFor(() => {
         expect(fetchMock).toHaveBeenCalledTimes(3);
       });
@@ -382,7 +437,8 @@ describe("401 refresh-and-replay", () => {
       const url = input instanceof Request ? input.url : String(input);
       calls.push(url);
       if (calls.length === 1) return jsonResponse({ detail: "expired" }, 401);
-      if (url.endsWith("/auth/refresh")) return new Response(null, { status: 200 });
+      if (url.endsWith("/auth/refresh"))
+        return new Response(null, { status: 200 });
       return jsonResponse([{ id: "d1", name: "Engineering" }]);
     });
     vi.stubGlobal("fetch", fetchMock);
@@ -401,8 +457,10 @@ describe("401 refresh-and-replay", () => {
       if (input instanceof Request && !url.endsWith("/auth/refresh")) {
         bodies.push(await input.text());
       }
-      if (fetchMock.mock.calls.length === 1) return jsonResponse({ detail: "expired" }, 401);
-      if (url.endsWith("/auth/refresh")) return new Response(null, { status: 200 });
+      if (fetchMock.mock.calls.length === 1)
+        return jsonResponse({ detail: "expired" }, 401);
+      if (url.endsWith("/auth/refresh"))
+        return new Response(null, { status: 200 });
       return jsonResponse({
         drive_id: null,
         id: "f1",
@@ -432,7 +490,10 @@ describe("401 refresh-and-replay", () => {
     fetchMock.mockResolvedValueOnce(new Response(null, { status: 401 }));
     vi.stubGlobal("fetch", fetchMock);
 
-    await expect(wikiApi.getDrives()).rejects.toMatchObject({ message: "expired", status: 401 });
+    await expect(wikiApi.getDrives()).rejects.toMatchObject({
+      message: "expired",
+      status: 401,
+    });
     expect(fetchMock).toHaveBeenCalledTimes(2);
     expect(listener).toHaveBeenCalledOnce();
     window.removeEventListener(TERMINAL_UNAUTHORIZED_EVENT, listener);
@@ -443,7 +504,8 @@ describe("401 refresh-and-replay", () => {
     window.addEventListener(TERMINAL_UNAUTHORIZED_EVENT, listener);
     const fetchMock = vi.fn((input: Request | string | URL) => {
       const url = input instanceof Request ? input.url : String(input);
-      if (url.endsWith("/auth/refresh")) return new Response(null, { status: 429 });
+      if (url.endsWith("/auth/refresh"))
+        return new Response(null, { status: 429 });
       return jsonResponse({ detail: "expired" }, 401);
     });
     vi.stubGlobal("fetch", fetchMock);

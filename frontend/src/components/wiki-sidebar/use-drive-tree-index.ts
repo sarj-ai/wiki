@@ -28,9 +28,13 @@ export function useDriveTreeIndex(
   const filesByParent = indexChildren(
     enabled ? (treeQuery.data?.files ?? EMPTY_NODES) : EMPTY_NODES,
   );
-  const iconOverrides = indexFolderIcons(enabled ? folderIcons : EMPTY_FOLDER_ICONS);
+  const iconOverrides = indexFolderIcons(
+    enabled ? folderIcons : EMPTY_FOLDER_ICONS,
+  );
   const docIconOverrides = indexDocIcons(enabled ? docIcons : EMPTY_DOC_ICONS);
-  const sortOrderMap = indexSortOrders(enabled ? sortOrders : EMPTY_SORT_ORDERS);
+  const sortOrderMap = indexSortOrders(
+    enabled ? sortOrders : EMPTY_SORT_ORDERS,
+  );
 
   const filesComplete = treeQuery.data?.filesComplete ?? true;
 

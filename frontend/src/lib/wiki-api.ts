@@ -97,19 +97,28 @@ const SortOrdersSchema = z.array(sortOrder);
 export function makeWikiApi(client?: Client) {
   const call = makeCall(client);
   return {
-    bulkSetSortOrders: async (items: SortOrder[]): Promise<{ updated: number }> =>
+    bulkSetSortOrders: async (
+      items: SortOrder[],
+    ): Promise<{ updated: number }> =>
       call(
         setSortOrders,
         {
           body: {
-            items: items.map((item) => ({ drive_id: item.driveId, sort_order: item.sortOrder })),
+            items: items.map((item) => ({
+              drive_id: item.driveId,
+              sort_order: item.sortOrder,
+            })),
           },
         },
         sortOrderBulkResult,
       ),
 
     copyFile: async (fileId: string, name: string): Promise<FileResponse> =>
-      call(copyFileRequest, { body: { name }, path: { file_id: fileId } }, fileResponse),
+      call(
+        copyFileRequest,
+        { body: { name }, path: { file_id: fileId } },
+        fileResponse,
+      ),
 
     createFile: async (input: CreateFileInput): Promise<FileResponse> =>
       call(
@@ -127,13 +136,18 @@ export function makeWikiApi(client?: Client) {
     deleteFile: async (fileId: string): Promise<void> =>
       call(deleteFileRequest, { path: { file_id: fileId } }),
 
-    driveSearch: async (query: string, limitPerDrive?: number): Promise<DriveSearchResult[]> =>
+    driveSearch: async (
+      query: string,
+      limitPerDrive?: number,
+    ): Promise<DriveSearchResult[]> =>
       call(
         searchDrive,
         {
           query: {
             q: query,
-            ...(!(limitPerDrive === undefined) && { limit_per_drive: limitPerDrive }),
+            ...(!(limitPerDrive === undefined) && {
+              limit_per_drive: limitPerDrive,
+            }),
           },
         },
         SearchResultsSchema,
@@ -185,32 +199,53 @@ export function makeWikiApi(client?: Client) {
         drivePermissionsPage,
       ),
 
-    getDrives: async (): Promise<DriveSummary[]> => call(listDrives, {}, DriveSummariesSchema),
+    getDrives: async (): Promise<DriveSummary[]> =>
+      call(listDrives, {}, DriveSummariesSchema),
 
-    getFile: async (fileId: string, signal?: AbortSignal): Promise<FileDetail> =>
-      call(readFile, { path: { file_id: fileId }, ...optionalSignal(signal) }, fileDetail),
+    getFile: async (
+      fileId: string,
+      signal?: AbortSignal,
+    ): Promise<FileDetail> =>
+      call(
+        readFile,
+        { path: { file_id: fileId }, ...optionalSignal(signal) },
+        fileDetail,
+      ),
 
     getFolderFiles: async (folderId: string): Promise<DriveNode[]> =>
-      call(listFolderFiles, { path: { folder_id: folderId } }, DriveNodesSchema),
+      call(
+        listFolderFiles,
+        { path: { folder_id: folderId } },
+        DriveNodesSchema,
+      ),
 
     getMe: async (signal?: AbortSignal): Promise<UserProfile> =>
       call(getCurrentUser, optionalSignal(signal), userProfile),
 
-    getPreferences: async (): Promise<Preferences> => call(readPreferences, {}, preferences),
+    getPreferences: async (): Promise<Preferences> =>
+      call(readPreferences, {}, preferences),
 
-    listDocIcons: async (): Promise<DocIcon[]> => call(listDocIcons, {}, DocIconsSchema),
+    listDocIcons: async (): Promise<DocIcon[]> =>
+      call(listDocIcons, {}, DocIconsSchema),
 
     listFolderIcons: async (): Promise<FolderIcon[]> =>
       call(listFolderIcons, {}, FolderIconsSchema),
 
-    listSortOrders: async (): Promise<SortOrder[]> => call(listSortOrders, {}, SortOrdersSchema),
+    listSortOrders: async (): Promise<SortOrder[]> =>
+      call(listSortOrders, {}, SortOrdersSchema),
 
     logout: async (): Promise<void> => call(logoutRequest, {}),
 
-    moveFile: async (fileId: string, newParentFolderId: string): Promise<FileResponse> =>
+    moveFile: async (
+      fileId: string,
+      newParentFolderId: string,
+    ): Promise<FileResponse> =>
       call(
         moveFileRequest,
-        { body: { new_parent_folder_id: newParentFolderId }, path: { file_id: fileId } },
+        {
+          body: { new_parent_folder_id: newParentFolderId },
+          path: { file_id: fileId },
+        },
         fileResponse,
       ),
 
@@ -218,26 +253,50 @@ export function makeWikiApi(client?: Client) {
       call(refreshDriveTree, { path: { drive_id: driveId } }, driveTree),
 
     renameFile: async (fileId: string, name: string): Promise<FileResponse> =>
-      call(renameFileRequest, { body: { name }, path: { file_id: fileId } }, fileResponse),
+      call(
+        renameFileRequest,
+        { body: { name }, path: { file_id: fileId } },
+        fileResponse,
+      ),
 
     retireDocumentAlias: async (fileId: string): Promise<void> =>
       call(retireFileAlias, { path: { file_id: fileId } }),
 
-    saveDocumentAlias: async (fileId: string, alias: string): Promise<DocumentAlias> =>
-      call(saveFileAlias, { body: { alias }, path: { file_id: fileId } }, documentAlias),
+    saveDocumentAlias: async (
+      fileId: string,
+      alias: string,
+    ): Promise<DocumentAlias> =>
+      call(
+        saveFileAlias,
+        { body: { alias }, path: { file_id: fileId } },
+        documentAlias,
+      ),
 
-    setDocIcon: async (driveId: string, payload: DocIconInput): Promise<DocIcon> =>
+    setDocIcon: async (
+      driveId: string,
+      payload: DocIconInput,
+    ): Promise<DocIcon> =>
       call(
         setDocIcon,
         {
-          body: { cover_url: payload.coverUrl ?? null, icon: payload.icon ?? null },
+          body: {
+            cover_url: payload.coverUrl ?? null,
+            icon: payload.icon ?? null,
+          },
           path: { drive_id: driveId },
         },
         docIcon,
       ),
 
-    setFolderIcon: async (folderDriveId: string, icon: null | string): Promise<FolderIcon> =>
-      call(setFolderIcon, { body: { icon }, path: { folder_drive_id: folderDriveId } }, folderIcon),
+    setFolderIcon: async (
+      folderDriveId: string,
+      icon: null | string,
+    ): Promise<FolderIcon> =>
+      call(
+        setFolderIcon,
+        { body: { icon }, path: { folder_drive_id: folderDriveId } },
+        folderIcon,
+      ),
 
     setPreferences: async (payload: PreferencesInput): Promise<Preferences> =>
       call(

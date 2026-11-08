@@ -9,13 +9,20 @@ import { SidebarMenuButton } from "@/components/ui/sidebar";
 import { displayFileName, renderNodeIcon } from "@/lib/file-icons";
 import { openUrlFor } from "@/lib/file-urls";
 import { markNav } from "@/lib/perf-marks";
-import { type ResolvedShortcut, resolveShortcutTarget } from "@/lib/shortcut-resolver";
+import {
+  type ResolvedShortcut,
+  resolveShortcutTarget,
+} from "@/lib/shortcut-resolver";
 import { cn } from "@/lib/utils";
 import type { DriveNode } from "@/types/wiki";
 import { MIME_DOC, MIME_FORM } from "@/types/wiki";
 
 import { ItemMenu } from "./item-menu";
-import { CHEVRON_OFFSET, ICON_COLUMN_WIDTH, rowIndent } from "./layout-constants";
+import {
+  CHEVRON_OFFSET,
+  ICON_COLUMN_WIDTH,
+  rowIndent,
+} from "./layout-constants";
 import { PickableIcon } from "./pickable-icon";
 import { RowActions } from "./row-actions";
 import { useDocumentIntent } from "./use-document-intent";
@@ -77,8 +84,11 @@ function FileRowContent({
   const isForm = route.targetMimeType === MIME_FORM;
   const isDoc = !route.isShortcut && node.mimeType === MIME_DOC;
   const documentHref: `/d/${string}` = `/d/${encodeURIComponent(route.targetId)}`;
-  const href = isForm ? openUrlFor(route.targetMimeType, route.targetId) : documentHref;
-  const isActive = !isForm && (activeDriveId === route.targetId || pathname === href);
+  const href = isForm
+    ? openUrlFor(route.targetMimeType, route.targetId)
+    : documentHref;
+  const isActive =
+    !isForm && (activeDriveId === route.targetId || pathname === href);
   const isMoving = useIsMovingFile(node.id);
   const displayName = displayFileName(node.name, route.targetMimeType);
 
@@ -104,7 +114,10 @@ function FileRowContent({
       ? ` — edited ${MODIFIED_DATE_FORMAT.format(new Date(node.modifiedTime))}`
       : "";
   const titleAttr =
-    route.tooltip ?? (isForm ? `${displayName} — opens in a new tab` : `${displayName}${edited}`);
+    route.tooltip ??
+    (isForm
+      ? `${displayName} — opens in a new tab`
+      : `${displayName}${edited}`);
 
   return (
     <>
@@ -177,7 +190,10 @@ function RowButton({
   if (route.inaccessible) {
     return (
       <SidebarMenuButton
-        className={cn("text-muted-foreground/60 cursor-not-allowed pr-8", isMoving && "opacity-60")}
+        className={cn(
+          "text-muted-foreground/60 cursor-not-allowed pr-8",
+          isMoving && "opacity-60",
+        )}
         data-sidebar-row="file"
         disabled
         style={{ paddingLeft: linkPadding }}
