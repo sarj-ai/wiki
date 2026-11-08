@@ -620,6 +620,7 @@ MESSAGE_PREFIXES = (
     "document spacer eligibility",
     "document copy verification failed checks=",
     "document brand verification failed checks=",
+    "presentation output verification failed",
     "in-place verification failed content_preserved=",
     "document transform started task_id=",
     "document transform interrupted task_id=",

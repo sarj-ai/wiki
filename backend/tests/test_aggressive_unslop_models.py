@@ -7,10 +7,15 @@ from http import HTTPStatus
 import json
 from typing import Literal
 
+from google import genai
 from google.genai import errors, types
-from pydantic import BaseModel, ConfigDict, RootModel
+from google.oauth2.credentials import Credentials
+import httpx
+from pydantic import BaseModel, ConfigDict, Field, RootModel
 import pytest
 
+from app.document_settings import DocumentSettings
+from app.document_transform.dependencies import document_model_policy
 from app.document_transform.errors import ConcisionTargetUnmetError, ModelUnavailableError
 from app.document_transform.ir import BlockKind, parse_google_document, parse_markdown
 from app.document_transform.models import GeminiModelPolicy, VertexGeminiPatchGenerator
@@ -101,6 +106,11 @@ class _RewriteInputs(RootModel[list[_RewriteInput]]):
 
 class _RejectedInputs(RootModel[list[_RejectedInput]]):
     """Earlier unsafe proposals and their observed constraints."""
+
+
+class _WriterRequest(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    generation_config: types.GenerateContentConfig = Field(alias="generationConfig")
 
 
 class _ModelResponse:
@@ -209,6 +219,84 @@ def _generator(
 
 async def _yield_writer_sleep(_delay: float) -> None:
     await asyncio.sleep(0)
+
+
+@pytest.mark.parametrize(
+    ("model_override", "expected_model", "thinking_level"),
+    [
+        pytest.param(None, "gemini-3.7-flash", None, id="normal-default"),
+        pytest.param(
+            "gemini-3.8-flash",
+            "gemini-3.8-flash",
+            types.ThinkingLevel.LOW,
+            id="explicit-3.8-override",
+        ),
+    ],
+)
+async def test_normal_model_settings_reach_the_real_sdk_without_overriding_explicit_models(
+    model_override: str | None,
+    expected_model: str,
+    thinking_level: types.ThinkingLevel | None,
+) -> None:
+    settings = (
+        DocumentSettings()
+        if model_override is None
+        else DocumentSettings(TRANSFORM_UNSLOP_MODEL=model_override)
+    )
+    policy = document_model_policy(project="offline-fixture", document=settings)
+    document = parse_markdown(SOURCE, title="Bird")
+    block = document.blocks[0]
+    patch = TextPatch(block_id=block.id, expected_sha256=block.sha256, replacement=REPLACEMENT)
+    models: list[str] = []
+    configurations: list[types.GenerateContentConfig] = []
+
+    def respond(request: httpx.Request) -> httpx.Response:
+        models.append(request.url.path.rsplit("/", 1)[-1].removesuffix(":generateContent"))
+        configurations.append(_WriterRequest.model_validate_json(request.content).generation_config)
+        assert request.headers["X-Server-Timeout"] == "90"
+        assert request.extensions["timeout"] == dict.fromkeys(
+            ("connect", "read", "write", "pool"), 90
+        )
+        return httpx.Response(
+            HTTPStatus.OK,
+            json={
+                "candidates": [
+                    {
+                        "content": {
+                            "role": "model",
+                            "parts": [{"text": PatchEnvelope(patches=[patch]).model_dump_json()}],
+                        },
+                        "finishReason": "STOP",
+                    }
+                ]
+            },
+        )
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(respond)) as http:
+        client = genai.Client(
+            vertexai=True,
+            project=policy.project,
+            location=policy.location,
+            credentials=Credentials(token="offline-fixture-not-a-real-token"),
+            http_options=types.HttpOptions(
+                base_url="http://127.0.0.1:9",
+                httpx_async_client=http,
+            ),
+        )
+        generator = VertexGeminiPatchGenerator(policy=policy, client=client)
+        try:
+            assert await generator.generate(document, phase=TransformPhase.UNSLOP) == [patch]
+        finally:
+            await client.aio.aclose()
+
+    assert models == [expected_model]
+    (config,) = configurations
+    assert config.max_output_tokens == 16_384
+    if thinking_level is None:
+        assert config.thinking_config is None
+    else:
+        assert config.thinking_config is not None
+        assert config.thinking_config.thinking_level == thinking_level
 
 
 async def test_aggressive_generation_uses_structured_output_and_supported_thinking() -> None:
