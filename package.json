@@ -1,6 +1,6 @@
 {
   "private": true,
   "scripts": {
-    "lint": "uvx --no-config --isolated --python 3.14 --from sarj-standards-bootstrap code-standards check --trust-repository-code"
+    "lint": "uv run scripts/wiki.py lint"
   }
 }

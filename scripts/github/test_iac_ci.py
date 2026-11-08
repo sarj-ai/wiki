@@ -335,7 +335,7 @@ def test_direct_root_lint_ci_attests_native_tools_before_analysis(
         step for step in steps if step.get("name") == "Install and attest applicable native tools"
     )
     gate = next(step for step in steps if step.get("name") == gate_name)
-    assert "--with code-standards==9.2.3" in bootstrap["run"]
+    assert "--with code-standards==9.4.5" in bootstrap["run"]
     assert bootstrap["run"].endswith("python -m sarj_standards.libs.adoption.native_bootstrap")
     assert setup["run"].endswith("code-standards setup --tools-only")
     assert steps.index(bootstrap) < steps.index(setup) < steps.index(gate)
@@ -359,11 +359,10 @@ def test_direct_root_lint_ci_attests_native_tools_before_analysis(
     if workflow == "ci-frontend":
         assert gate["run"] == "npm run lint"
         package = json.loads((ROOT / "package.json").read_text())
-        command = package["scripts"]["lint"]
+        assert package["scripts"]["lint"] == "uv run scripts/wiki.py lint"
     else:
-        command = gate["run"]
-    assert "--from sarj-standards-bootstrap" in command
-    assert "--trust-repository-code" in command
+        assert "--from sarj-standards-bootstrap" in gate["run"]
+        assert "--trust-repository-code" in gate["run"]
 
 
 @pytest.mark.parametrize("workflow", ["ci-iac", "ci-quality"])

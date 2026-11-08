@@ -34,7 +34,7 @@ jobs:
           cache-dependency-glob: .sarj-standards.toml
       - name: Measure pull-request size
         env:
-          REPOSITORY_STANDARDS_VERSION: 6.21.1
+          REPOSITORY_STANDARDS_VERSION: 6.22.0
           PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
           PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: |

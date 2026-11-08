@@ -21,7 +21,7 @@ import typer
 
 ROOT = Path(__file__).resolve().parents[1]
 # Audit the latest repository engine independently of the immutable Standards bundle.
-REPOSITORY_STANDARDS_VERSION = "6.21.1"
+REPOSITORY_STANDARDS_VERSION = "6.22.0"
 REPOSITORY_TESTS = (
     "test_release_gate.py",
     "test_wiki_cli.py",
@@ -237,6 +237,15 @@ CLI = typer.Typer(
 def check_command(scopes: Annotated[list[Check] | None, typer.Argument()] = None) -> None:
     commands = (command for scope in scopes or [Check.ALL] for command in checks(scope))
     run(tuple(dict.fromkeys(commands)))
+
+
+@CLI.command(
+    "lint",
+    context_settings={"allow_extra_args": True, "ignore_unknown_options": True},
+    help="Run source standards with forwarded paths and options.",
+)
+def lint_command(context: typer.Context) -> None:
+    run((_standards("check", "--trust-repository-code", *context.args),))
 
 
 @CLI.command("standards", help="Maintain the pinned source and repository standards.")
