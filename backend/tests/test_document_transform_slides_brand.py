@@ -836,6 +836,73 @@ def test_inherited_placeholder_style_is_preserved_for_review() -> None:
     assert "slide_text_style_inherited_unresolved" in {finding.code for finding in plan.findings}
 
 
+@pytest.mark.parametrize(
+    "parent_text",
+    ["absent", "grandparent", "null", "empty", "malformed", "missing_child_font"],
+)
+def test_native_slide_number_inherits_only_existing_ancestor_text(parent_text: str) -> None:
+    presentation = _presentation()
+    number = _text_shape(
+        "number-1", "01 / 07", placeholder_type="SLIDE_NUMBER", left=600, top=340, width=90
+    )
+    number["shape"]["placeholder"]["parentObjectId"] = "layout-number"
+    number["shape"]["text"]["textElements"][1]["textRun"]["style"]["bold"] = False
+    layout_number = deepcopy(number)
+    layout_number["objectId"] = "layout-number"
+    layout_number["shape"]["placeholder"]["parentObjectId"] = "master-number"
+    layout_number["shape"].pop("text")
+    master_number = deepcopy(layout_number)
+    master_number["objectId"] = "master-number"
+    master_number["shape"]["placeholder"].pop("parentObjectId")
+    match parent_text:
+        case "grandparent":
+            master_number["shape"]["text"] = deepcopy(number["shape"]["text"])
+            number["shape"]["text"]["textElements"][1]["textRun"]["style"] = {}
+        case "null":
+            layout_number["shape"]["text"] = None
+        case "empty":
+            layout_number["shape"]["text"] = {}
+        case "malformed":
+            layout_number["shape"]["text"] = {"textElements": []}
+        case "missing_child_font":
+            number["shape"]["text"]["textElements"][1]["textRun"]["style"].pop("weightedFontFamily")
+        case _:
+            pass
+    presentation["slides"][0]["pageElements"].append(number)
+    presentation["slides"][0]["slideProperties"] = {"layoutObjectId": "layout-1"}
+    presentation["layouts"] = [
+        {
+            "objectId": "layout-1",
+            "layoutProperties": {"masterObjectId": "master-1"},
+            "pageElements": [layout_number],
+        }
+    ]
+    presentation["masters"] = [
+        {"objectId": "master-1", "masterProperties": {}, "pageElements": [master_number]}
+    ]
+    parsed = parse_google_presentation(presentation, title="Review")
+    plan = _format_plan(presentation, parsed=parsed)
+    styled = any(
+        request.get("updateTextStyle", {}).get("objectId") == "number-1"
+        for request in plan.requests
+    )
+    if parent_text in {"absent", "grandparent"}:
+        assert styled
+        assert "slide_text_style_inherited_unresolved" not in {
+            finding.code for finding in plan.findings
+        }
+        branded = deepcopy(presentation)
+        _apply_brand_requests(branded, plan.requests)
+        observed = presentation_fingerprint(branded, "Review")
+        assert observed.brand_sha256 == plan.expected_brand_sha256
+        assert observed.protected_structure_sha256 == parsed.protected_sha256
+    else:
+        assert not styled
+        assert "slide_text_style_inherited_unresolved" in {
+            finding.code for finding in plan.findings
+        }
+
+
 def test_autofit_text_is_preserved_for_review() -> None:
     presentation = _presentation()
     body = presentation["slides"][0]["pageElements"][1]
@@ -1342,6 +1409,41 @@ def test_font_weight_is_preserved_and_verified() -> None:
     branded["slides"][0]["pageElements"][0]["shape"]["text"]["textElements"][1]["textRun"]["style"][
         "weightedFontFamily"
     ]["weight"] = 400
+    assert presentation_fingerprint(branded, "Review").brand_sha256 != plan.expected_brand_sha256
+
+
+@pytest.mark.parametrize("source_weight", [400, 700])
+@pytest.mark.parametrize("provider_weight", [None, 400])
+def test_native_bold_weight_representation_preserves_the_brand_fingerprint(
+    source_weight: int, provider_weight: int | None
+) -> None:
+    presentation = _presentation()
+    style = presentation["slides"][0]["pageElements"][0]["shape"]["text"]["textElements"][1][
+        "textRun"
+    ]["style"]
+    style["weightedFontFamily"]["weight"] = source_weight
+    style["bold"] = True
+    parsed = parse_google_presentation(presentation, title="Review")
+    plan = _format_plan(presentation, parsed=parsed)
+    branded = deepcopy(presentation)
+    _apply_brand_requests(branded, plan.requests)
+    output_style = branded["slides"][0]["pageElements"][0]["shape"]["text"]["textElements"][1][
+        "textRun"
+    ]["style"]
+    if provider_weight is None:
+        output_style["weightedFontFamily"].pop("weight")
+    else:
+        output_style["weightedFontFamily"]["weight"] = provider_weight
+
+    observed = presentation_fingerprint(branded, "Review")
+    assert observed.brand_sha256 == plan.expected_brand_sha256
+    assert observed.semantic_sha256 == parsed.document.semantic_sha256
+    assert observed.protected_structure_sha256 == parsed.protected_sha256
+
+    output_style["bold"] = False
+    assert presentation_fingerprint(branded, "Review").brand_sha256 != plan.expected_brand_sha256
+    output_style["bold"] = True
+    output_style["weightedFontFamily"]["weight"] = 800
     assert presentation_fingerprint(branded, "Review").brand_sha256 != plan.expected_brand_sha256
 
 

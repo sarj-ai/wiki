@@ -576,7 +576,7 @@ async def test_unmet_document_concision_is_terminal_without_provider_retry_or_re
     assert result.error_code == ConcisionTargetUnmetError.code == DocumentTransformError.code
     assert result.error_detail == ConcisionTargetUnmetError.public_detail
     assert result.error_detail is not None
-    assert "concision target while preserving all content" in result.error_detail
+    assert "word limit safely" in result.error_detail
     assert result.resource_id is result.result is None
     assert tasks.failed == 1
     assert tasks.deferred == 0

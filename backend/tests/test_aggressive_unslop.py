@@ -612,7 +612,7 @@ async def test_failed_quality_repair_is_bounded_and_preserves_original(
     assert document.blocks[0].text == CONCISION_SOURCE
     assert editor.phases == [TransformPhase.UNSLOP]
     assert failure_info.value.code == "document_transform_failed"
-    assert "no transformed output" in failure_info.value.public_detail
+    assert "The source was not changed." in failure_info.value.public_detail
     assert [finding.code for finding in editor.feedback] == ["concision_target_unmet"]
 
 

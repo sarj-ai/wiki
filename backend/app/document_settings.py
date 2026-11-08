@@ -12,7 +12,7 @@ class DocumentSettings(BaseSettings):
     model_config = SettingsConfigDict(extra="ignore")
 
     TRANSFORM_UNSLOP_MODEL: NonEmptyStr = "gemini-3.8-flash"
-    TRANSFORM_FALLBACK_MODEL: NonEmptyStr = "gemini-4-argon"
+    TRANSFORM_FALLBACK_MODEL: NonEmptyStr = "gemini-3.7-flash"
     TRANSFORM_RESTYLE_MODEL: NonEmptyStr = "gemini-4-argon"
     TRANSFORM_LOGO_URI: HttpUrl = HttpUrl("https://wiki.sarj.ai/brand/sarj-logo-light.png")
     TRANSFORM_IN_PLACE_ENABLED: bool = False
