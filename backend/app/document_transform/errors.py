@@ -51,11 +51,7 @@ class ModelUnavailableError(DocumentTransformError):
 
 
 class ConcisionTargetUnmetError(DocumentTransformError):
-    public_detail = (
-        "A rewrite meeting the document's concision target while preserving all content "
-        "was not available; "
-        "no transformed output was created and the source was not changed"
-    )
+    public_detail = "Unslop couldn't meet the word limit safely. The source was not changed."
 
 
 class DocumentGatewayError(DocumentTransformError):

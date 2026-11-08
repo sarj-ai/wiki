@@ -10,7 +10,7 @@ from operator import itemgetter
 import re
 from typing import Any, NamedTuple
 
-from pydantic import JsonValue
+from pydantic import AliasPath, BaseModel, Field, JsonValue, ValidationError
 
 from app.document_transform.brand_manifest import CURRENT_BRAND_MANIFEST
 from app.document_transform.errors import SourceTooLargeError, UnsupportedSourceError
@@ -32,6 +32,8 @@ from app.document_transform.slides_ir import (
 MAX_SLIDES_MUTATION_REQUESTS = 1_000
 MAX_SLIDES_MUTATION_BYTES = 1_000_000
 _EMU_PER_POINT = 12_700
+_NORMAL_FONT_WEIGHT = 400
+_BOLD_FONT_WEIGHT = 700
 _PRESERVED_TEXT_STYLE_FIELDS = (
     "backgroundColor",
     "baselineOffset",
@@ -71,6 +73,14 @@ _NUMERIC_METRIC_PATTERN = re.compile(
 _ASCII_CONTROL_LIMIT = 0x20
 _BMP_PRIVATE_USE_START = 0xE000
 _BMP_PRIVATE_USE_END = 0xF8FF
+
+
+class _CanonicalFontWeight(BaseModel):
+    weight: JsonValue = Field(
+        default=_NORMAL_FONT_WEIGHT,
+        validation_alias=AliasPath("weightedFontFamily", "weight"),
+    )
+    bold: JsonValue = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -844,7 +854,11 @@ def _inherited_text_styles(
     styles: list[dict[str, Any]] = []
     for ancestor in ancestors:
         shape = ancestor.get("shape")
-        text = shape.get("text") if isinstance(shape, dict) else None
+        if not isinstance(shape, dict):
+            return None
+        if "text" not in shape:
+            continue
+        text = shape["text"]
         elements = text.get("textElements") if isinstance(text, dict) else None
         style = _inherited_level_zero_style(elements)
         if style is None:
@@ -1910,9 +1924,19 @@ def _canonical_style(
     foreground = style.get("foregroundColor")
     opaque = foreground.get("opaqueColor") if isinstance(foreground, dict) else None
     font_size = _dimension_points(size)
+    weight: JsonValue = None
+    if isinstance(family, dict):
+        try:
+            canonical_weight = _CanonicalFontWeight.model_validate(style, strict=True)
+        except ValidationError as error:
+            raise UnsupportedSourceError from error
+        weight = canonical_weight.weight
+        # Google can represent bold text as normal weight plus an explicit bold flag.
+        if weight == _NORMAL_FONT_WEIGHT and canonical_weight.bold is True:
+            weight = _BOLD_FONT_WEIGHT
     result: dict[str, Any] = {
         "fontFamily": family.get("fontFamily") if isinstance(family, dict) else None,
-        "fontWeight": family.get("weight", 400) if isinstance(family, dict) else None,
+        "fontWeight": weight,
         "fontSizePt": None if font_size is None else round(font_size, 3),
         "color": _hex_from_opaque_color(opaque, theme_colors=theme_colors),
     }

@@ -90,7 +90,7 @@ def test_baseline_parses_with_typed_defaults(monkeypatch: pytest.MonkeyPatch) ->
     assert timedelta(minutes=10) == s.SIDEBAR_CACHE_TTL
     assert s.DOCUMENT.TRANSFORM_UNSLOP_MODEL == "gemini-3.8-flash"
     assert s.DOCUMENT.TRANSFORM_RESTYLE_MODEL == "gemini-4-argon"
-    assert s.DOCUMENT.TRANSFORM_FALLBACK_MODEL == "gemini-4-argon"
+    assert s.DOCUMENT.TRANSFORM_FALLBACK_MODEL == "gemini-3.7-flash"
 
 
 def test_document_models_load_from_existing_environment_names(
