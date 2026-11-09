@@ -51,7 +51,7 @@ dev = [
     "google-api-python-client-stubs>=1.40.0",
     "types-defusedxml>=0.7.0.20260504",
     "sarj-iac-lint==0.40.0",
-    "sarj-python-lint==1.124.0",
+    "sarj-python-lint==1.125.0",
     "sarj-sql-lint==0.45.1",
     "import-linter>=2.15",
     "pip-audit>=2.10.1",
