@@ -4,9 +4,14 @@ from typing import Any, TypeIs
 
 from pydantic import BaseModel, ConfigDict, Field, JsonValue, RootModel, StrictInt
 
+from app.document_transform.brand_manifest import CURRENT_BRAND_MANIFEST
 from app.document_transform.errors import InPlaceNeedsReviewError
 from app.document_transform.ir import MAX_DOC_TABS, BlockKind, DocumentIR
 from app.document_transform.native_font_context import native_normal_text_style
+
+
+_NORMAL_FONT_WEIGHT = 400
+_BODY_RGB_TOLERANCE = 1e-6
 
 
 class _VisualRecord(BaseModel):
@@ -14,8 +19,18 @@ class _VisualRecord(BaseModel):
 
 
 class _VisualTextStyle(_VisualRecord):
+    model_config = ConfigDict(strict=True, extra="allow")
+
     font_size: JsonValue = Field(default=None, alias="fontSize")
     foreground_color: JsonValue = Field(default=None, alias="foregroundColor")
+    weighted_font_family: JsonValue = Field(default=None, alias="weightedFontFamily")
+    bold: JsonValue = None
+    italic: JsonValue = None
+    underline: JsonValue = None
+    strikethrough: JsonValue = None
+    small_caps: JsonValue = Field(default=None, alias="smallCaps")
+    baseline_offset: JsonValue = Field(default=None, alias="baselineOffset")
+    background_color: JsonValue = Field(default=None, alias="backgroundColor")
     link: JsonValue = None
 
 
@@ -30,6 +45,7 @@ class _VisualRun(_VisualRecord):
 
 class _VisualParagraphStyle(_VisualRecord):
     named_style_type: str = Field(default="NORMAL_TEXT", alias="namedStyleType")
+    alignment: JsonValue = None
 
 
 class _VisualParagraph(_VisualRecord):
@@ -129,6 +145,8 @@ def _has_authored_presentation(
     parent: dict[str, JsonValue] | None,
     protected_suffix: str | None,
 ) -> bool:
+    if _has_current_body_presentation(paragraph, parent=parent, protected_suffix=protected_suffix):
+        return False
     for part in paragraph.elements:
         run = part.text_run
         if run is None or not run.content.removesuffix("\n"):
@@ -141,6 +159,70 @@ def _has_authored_presentation(
         if parent is None or _differs(style.model_dump(by_alias=True, exclude_unset=True), parent):
             return True
     return False
+
+
+def _has_current_body_presentation(
+    paragraph: _VisualParagraph,
+    *,
+    parent: dict[str, JsonValue] | None,
+    protected_suffix: str | None,
+) -> bool:
+    # Format writes explicit body tokens without replacing the source Normal
+    # named style. Those overrides are ordinary prose, not an authored title.
+    if parent is None or paragraph.paragraph_style.alignment != "START":
+        return False
+    if _VisualTextStyle.model_validate(parent).model_extra:
+        return False
+    styles = [
+        part.text_run.text_style
+        for part in paragraph.elements
+        if part.text_run is not None
+        and part.text_run.content.removesuffix("\n")
+        and not (protected_suffix is not None and part.text_run.text_style.link is not None)
+    ]
+    return bool(styles) and all(_is_current_body_style(style, parent) for style in styles)
+
+
+def _is_current_body_style(style: _VisualTextStyle, parent: dict[str, JsonValue]) -> bool:
+    if style.model_extra:
+        return False
+    effective = parent | style.model_dump(by_alias=True, exclude_unset=True)
+    family = effective.get("weightedFontFamily")
+    if (
+        not isinstance(family, dict)
+        or set(family) - {"fontFamily", "weight"}
+        or family.get("fontFamily") != CURRENT_BRAND_MANIFEST.document.font_family
+    ):
+        return False
+    if "weight" in family and (
+        type(family["weight"]) is not int or family["weight"] != _NORMAL_FONT_WEIGHT
+    ):
+        return False
+    if any(
+        effective.get(key, False) is not False
+        for key in ("bold", "italic", "underline", "strikethrough", "smallCaps")
+    ):
+        return False
+    if (
+        effective.get("baselineOffset", "NONE") != "NONE"
+        or effective.get("backgroundColor", {}) != {}
+        or effective.get("link") is not None
+    ):
+        return False
+    return _presentation("fontSize", effective.get("fontSize")) == (
+        CURRENT_BRAND_MANIFEST.document.body_size_pt,
+    ) and _is_current_body_color(effective.get("foregroundColor"))
+
+
+def _is_current_body_color(value: object) -> bool:
+    observed = _presentation("foregroundColor", value)
+    expected = tuple(
+        int(CURRENT_BRAND_MANIFEST.colors.ink[index : index + 2], 16) / 255 for index in (1, 3, 5)
+    )
+    return observed is not None and all(
+        math.isclose(actual, target, rel_tol=0, abs_tol=_BODY_RGB_TOLERANCE)
+        for actual, target in zip(observed, expected, strict=True)
+    )
 
 
 def _differs(style: dict[str, Any], parent: dict[str, Any]) -> bool:

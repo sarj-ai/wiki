@@ -14,7 +14,10 @@ from app.aliases.schemas import DocumentAliasRead
 from app.document_transform import task_executor as task_executor_module
 from app.document_transform.brand_manifest import CURRENT_BRAND_MANIFEST
 from app.document_transform.errors import (
+    ConcisionTargetUnmetError,
     DocumentGatewayError,
+    DocumentTransformError,
+    ModelUnavailableError,
     OutputVerificationError,
     UnsupportedSourceError,
 )
@@ -66,6 +69,7 @@ class _RetryTasks:
         payload: DocumentTransformRequest | None = None,
     ) -> None:
         self.deferred = 0
+        self.deferred_task_ids: list[TaskId] = []
         self.failed = 0
         self.attempt_count = attempt_count
         self.payload = payload or _payload()
@@ -73,6 +77,7 @@ class _RetryTasks:
 
     async def defer(self, task_id: TaskId, *, lease_token: uuid.UUID) -> TaskRead:
         self.deferred += 1
+        self.deferred_task_ids.append(task_id)
         return _claim(task_id, attempt_count=1).task
 
     async def fail(
@@ -200,6 +205,26 @@ class _VerificationFailureTransform:
     ) -> Never:
         del operation_id, request
         raise OutputVerificationError
+
+
+class _ConcisionFailureTransform:
+    async def execute(
+        self,
+        *,
+        operation_id: uuid.UUID,
+        request: DocumentTransformRequest,
+    ) -> Never:
+        raise ConcisionTargetUnmetError
+
+
+class _ModelUnavailableTransform:
+    async def execute(
+        self,
+        *,
+        operation_id: uuid.UUID,
+        request: DocumentTransformRequest,
+    ) -> Never:
+        raise ModelUnavailableError
 
 
 class _SuccessTransform:
@@ -511,6 +536,50 @@ async def test_retryable_failure_defers_before_attempt_limit() -> None:
 
     assert tasks.deferred == 1
     assert tasks.failed == 0
+
+
+@pytest.mark.parametrize("attempt_count", [1, 9], ids=["first-attempt", "last-retry"])
+async def test_model_unavailability_defers_the_same_task_without_recording_output(
+    attempt_count: int,
+) -> None:
+    tasks = _RetryTasks()
+    task_id = TaskId(uuid.uuid7())
+
+    with pytest.raises(TaskExecutionDeferredError) as failure_info:
+        await task_executor_module._execute_claimed(
+            task_id,
+            tasks=tasks,
+            transform=_ModelUnavailableTransform(),
+            claim=_claim(task_id, attempt_count=attempt_count),
+            payload=tasks.payload,
+        )
+
+    assert isinstance(failure_info.value.__cause__, ModelUnavailableError)
+    assert tasks.deferred == 1
+    assert tasks.deferred_task_ids == [task_id]
+    assert tasks.failed == 0
+
+
+async def test_unmet_document_concision_is_terminal_without_provider_retry_or_resource() -> None:
+    tasks = _RetryTasks()
+    task_id = TaskId(uuid.uuid7())
+
+    result = await task_executor_module._execute_claimed(
+        task_id,
+        tasks=tasks,
+        transform=_ConcisionFailureTransform(),
+        claim=_claim(task_id, attempt_count=1),
+        payload=tasks.payload,
+    )
+
+    assert isinstance(result, FailedTaskRead)
+    assert result.error_code == ConcisionTargetUnmetError.code == DocumentTransformError.code
+    assert result.error_detail == ConcisionTargetUnmetError.public_detail
+    assert result.error_detail is not None
+    assert "word limit safely" in result.error_detail
+    assert result.resource_id is result.result is None
+    assert tasks.failed == 1
+    assert tasks.deferred == 0
 
 
 async def test_retryable_failure_becomes_terminal_at_attempt_limit() -> None:

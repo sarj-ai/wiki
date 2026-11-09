@@ -28,6 +28,7 @@ from app.document_transform.errors import (
     DocumentGatewayError,
     IncompatiblePendingOutputError,
     OutputConflictError,
+    OutputVerificationError,
     SourceChangedError,
     SourceTooLargeError,
     UnsupportedSourceError,
@@ -673,7 +674,7 @@ class GooglePresentationGateway(PresentationGateway):
             expected_brand_sha256=expected_brand_sha256,
         )
         if not _verification_passed(verification):
-            raise DocumentGatewayError
+            raise OutputVerificationError
         self._update_properties_sync(draft.file_id, {_PROP_MUTATION: mutation_sha256})
         return self._read_draft(draft)
 

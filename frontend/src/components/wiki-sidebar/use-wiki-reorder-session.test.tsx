@@ -4,6 +4,7 @@ import { StrictMode, useEffect, useLayoutEffect, useRef } from "react";
 import { flushSync } from "react-dom";
 import { createRoot, type Root } from "react-dom/client";
 import { toast } from "sonner";
+import { z } from "zod";
 
 import { QueryProvider } from "@/components/query-provider";
 import {
@@ -29,6 +30,8 @@ import { MIME_DOC, MIME_FOLDER } from "@/types/wiki";
 import { useDragOverStore } from "./use-drag-over-store";
 import { useInFlightMovesStore } from "./use-in-flight-moves";
 import { useWikiReorder } from "./use-wiki-reorder";
+
+const ArrayIndexKeySchema = z.string().regex(/^\d+$/);
 
 const ACTIONS = vi.hoisted(() => ({
   aliasRetire: vi.fn<() => Promise<ActionResult<unknown>>>(),
@@ -173,7 +176,7 @@ describe("sidebar mutation session ownership", () => {
       ),
       {
         get(target, key, receiver) {
-          if (typeof key === "string" && /^\d+$/.test(key)) itemReads += 1;
+          if (ArrayIndexKeySchema.safeParse(key).success) itemReads += 1;
           const value: unknown = Reflect.get(target, key, receiver);
           return value;
         },
@@ -250,7 +253,7 @@ describe("sidebar mutation session ownership", () => {
       Array.from({ length: 1_000 }, (_, index) => `id-${index}`),
       {
         get(target, key, receiver) {
-          if (typeof key === "string" && /^\d+$/.test(key)) itemReads += 1;
+          if (ArrayIndexKeySchema.safeParse(key).success) itemReads += 1;
           const value: unknown = Reflect.get(target, key, receiver);
           return value;
         },

@@ -1,9 +1,9 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 from typing import Literal
 
-from google.genai import errors as genai_errors
+from google.genai import errors as genai_errors, types as genai_types
 from loguru import logger
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
@@ -26,6 +26,83 @@ _KNOWN_REASONS = frozenset(
 )
 _HTTP_STATUS_MIN = 100
 _HTTP_STATUS_MAX = 599
+_MAX_VALIDATION_ISSUES = 5
+_MAX_VALIDATION_LOCATION_PARTS = 4
+_MAX_MODEL_TOKEN_COUNT = 1_000_000
+_SAFE_FINISH_REASONS = frozenset(
+    {
+        "FINISH_REASON_UNSPECIFIED",
+        "STOP",
+        "MAX_TOKENS",
+        "SAFETY",
+        "RECITATION",
+        "LANGUAGE",
+        "OTHER",
+        "BLOCKLIST",
+        "PROHIBITED_CONTENT",
+        "SPII",
+        "MALFORMED_FUNCTION_CALL",
+        "IMAGE_SAFETY",
+        "UNEXPECTED_TOOL_CALL",
+        "TOO_MANY_TOOL_CALLS",
+        "IMAGE_PROHIBITED_CONTENT",
+        "NO_IMAGE",
+        "IMAGE_RECITATION",
+        "IMAGE_OTHER",
+        "CONTINUATION",
+        "MALFORMED_RESPONSE",
+    }
+)
+_SAFE_VALIDATION_FIELDS = frozenset(
+    {
+        "patches",
+        "reviews",
+        "block_id",
+        "expected_sha256",
+        "replacement_sha256",
+        "replacement",
+        "rationale",
+        "equivalent",
+        "reason",
+    }
+)
+_SAFE_VALIDATION_TYPES = frozenset(
+    {
+        "missing",
+        "extra_forbidden",
+        "string_type",
+        "string_too_short",
+        "string_too_long",
+        "string_pattern_mismatch",
+        "bool_type",
+        "bool_parsing",
+        "list_type",
+        "too_long",
+        "literal_error",
+        "json_invalid",
+        "value_error",
+        "model_type",
+        "int_type",
+    }
+)
+
+
+class ModelEmptyResponseError(ValueError):
+    pass
+
+
+class ModelCoverageError(ValueError):
+    pass
+
+
+class ModelBindingError(ValueError):
+    pass
+
+
+@dataclass(frozen=True, slots=True)
+class ModelValidationIssue:
+    error_type: str
+    location: tuple[str | int, ...]
 
 
 class _ProviderDetail(BaseModel):
@@ -49,6 +126,8 @@ class ModelFailureDetails:
     kind: Literal["api_error", "timeout", "invalid_payload"]
     http_status: int
     reason: str
+    payload_category: Literal["none", "unknown", "empty", "coverage", "binding", "schema"] = "none"
+    validation_issues: tuple[ModelValidationIssue, ...] = ()
 
 
 def model_failure_details(
@@ -57,10 +136,43 @@ def model_failure_details(
     if isinstance(error, genai_errors.APIError):
         status = error.code if _HTTP_STATUS_MIN <= error.code <= _HTTP_STATUS_MAX else 0
         return ModelFailureDetails("api_error", status, _provider_reason(error))
-    kind: Literal["timeout", "invalid_payload"] = (
-        "timeout" if isinstance(error, TimeoutError) else "invalid_payload"
-    )
-    return ModelFailureDetails(kind, 0, "unknown")
+    if isinstance(error, TimeoutError):
+        return ModelFailureDetails("timeout", 0, "unknown")
+    if isinstance(error, ModelEmptyResponseError):
+        return ModelFailureDetails("invalid_payload", 0, "unknown", "empty")
+    if isinstance(error, ModelCoverageError):
+        return ModelFailureDetails("invalid_payload", 0, "unknown", "coverage")
+    if isinstance(error, ModelBindingError):
+        return ModelFailureDetails("invalid_payload", 0, "unknown", "binding")
+    if isinstance(error, ValidationError):
+        return ModelFailureDetails(
+            "invalid_payload", 0, "unknown", "schema", _safe_validation_issues(error)
+        )
+    return ModelFailureDetails("invalid_payload", 0, "unknown", "unknown")
+
+
+def _safe_validation_issues(error: ValidationError) -> tuple[ModelValidationIssue, ...]:
+    issues: list[ModelValidationIssue] = []
+    for issue in error.errors(include_url=False, include_context=False, include_input=False)[
+        :_MAX_VALIDATION_ISSUES
+    ]:
+        error_type = issue["type"]
+        issues.append(
+            ModelValidationIssue(
+                error_type if error_type in _SAFE_VALIDATION_TYPES else "unknown",
+                tuple(
+                    _safe_location_part(part)
+                    for part in issue["loc"][:_MAX_VALIDATION_LOCATION_PARTS]
+                ),
+            )
+        )
+    return tuple(issues)
+
+
+def _safe_location_part(part: str | int) -> str | int:
+    if isinstance(part, int) or part in _SAFE_VALIDATION_FIELDS:
+        return part
+    return "unknown"
 
 
 def _provider_reason(error: genai_errors.APIError) -> str:
@@ -84,6 +196,7 @@ def log_model_failure(
     *,
     operation: TransformPhase | Literal["review"],
     attempt: int,
+    model: str,
     error: TimeoutError | ValueError | genai_errors.APIError,
 ) -> None:
     failure = model_failure_details(error)
@@ -91,8 +204,47 @@ def log_model_failure(
         "document model attempt failed operation={model_operation} attempt={model_attempt} "
         "kind={model_error_kind} http_status={model_http_status} reason={model_error_reason}",
         model_operation=operation.value if isinstance(operation, TransformPhase) else operation,
+        model_id=model,
+        model_payload_category=failure.payload_category,
+        model_validation_issues=[asdict(issue) for issue in failure.validation_issues],
         model_attempt=attempt,
         model_error_kind=failure.kind,
         model_http_status=failure.http_status,
         model_error_reason=failure.reason,
+    )
+
+
+def log_model_response_failure(
+    *,
+    model: str,
+    response: genai_types.GenerateContentResponse,
+    operation: TransformPhase | Literal["review"] = "review",
+) -> None:
+    finish_reason = response.candidates[0].finish_reason if response.candidates else None
+    metadata: dict[str, str | int] = {
+        "model_finish_reason": (
+            finish_reason
+            if isinstance(finish_reason, str) and finish_reason in _SAFE_FINISH_REASONS
+            else "unknown"
+        )
+    }
+    usage = response.usage_metadata
+    if usage is not None:
+        metadata.update(
+            {
+                field: value
+                for field, value in (
+                    ("model_prompt_token_count", usage.prompt_token_count),
+                    ("model_candidate_token_count", usage.candidates_token_count),
+                    ("model_thought_token_count", usage.thoughts_token_count),
+                    ("model_total_token_count", usage.total_token_count),
+                )
+                if type(value) is int and 0 <= value <= _MAX_MODEL_TOKEN_COUNT
+            }
+        )
+    logger.warning(
+        "document model response payload invalid operation={model_operation}",
+        model_operation=operation.value if isinstance(operation, TransformPhase) else operation,
+        model_id=model,
+        **metadata,
     )

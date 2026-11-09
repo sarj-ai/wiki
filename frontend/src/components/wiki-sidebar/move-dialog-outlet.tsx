@@ -171,8 +171,7 @@ function MoveDialogOwner({
               contentRef.current = null;
               if (closeTimer.current !== null)
                 window.clearTimeout(closeTimer.current);
-              // Radix emits this after the real exit animation. Keep the
-              // focus owner alive through the shared return-focus microtask.
+
               closeTimer.current = window.setTimeout(() => {
                 closeTimer.current = null;
                 setMove((current) =>

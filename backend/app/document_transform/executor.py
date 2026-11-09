@@ -2353,7 +2353,7 @@ class DocumentTransformExecutor(DocumentTransformRunner):
                         else "post_write_brand_mismatch"
                     ),
                     detail=(
-                        "Supported body formatting was applied; existing custom headers, footers, and page geometry were preserved. Complete Sarj branding was not applied."
+                        "Supported formatting was applied while preserved authored visual treatment or custom furniture was retained. Complete Sarj branding was not applied."
                         if verification.supported_brand_applied
                         else "Output did not contain the complete pinned Sarj brand treatment"
                     ),

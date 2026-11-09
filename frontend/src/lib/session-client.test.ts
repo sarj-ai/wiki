@@ -39,7 +39,7 @@ describe("session refresh classification", () => {
     try {
       for (const controller of controllers) controller.abort();
       await expect(Promise.all(discarded)).resolves.toHaveLength(100);
-      // Happy DOM also exposes AbortSignal.any's one shared network listener.
+
       expect(added).toHaveBeenCalledTimes(2);
       expect(removed).not.toHaveBeenCalled();
       expect(

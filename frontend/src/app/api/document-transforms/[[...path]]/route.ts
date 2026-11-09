@@ -76,8 +76,7 @@ async function post(
     ]);
     const body = await boundedTransformText(request.body, ingressSignal);
     ingressSignal.throwIfAborted();
-    // Invoke the existing server-side auth and fail-closed edge limiter directly;
-    // the browser references this stable route, not a deployment-specific action ID.
+
     return resultResponse(
       await createDocumentTransformAction(body, key.data),
       true,

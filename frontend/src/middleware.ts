@@ -2,7 +2,6 @@ import { type NextRequest, NextResponse } from "next/server";
 
 import { demoHrefForDocumentPath } from "@/components/wiki-demo/demo-file-urls";
 
-// Return only static content to spoofable link-preview user agents.
 const UNFURL_CRAWLERS =
   /slackbot|discordbot|twitterbot|facebookexternalhit|telegrambot|whatsapp|linkedinbot|skypeuripreview|google-pagerenderer/i;
 

@@ -4,6 +4,7 @@ import { cva, type VariantProps } from "class-variance-authority";
 import { PanelLeftIcon, XIcon } from "lucide-react";
 import { Slot } from "radix-ui";
 import * as React from "react";
+import { z } from "zod";
 
 import { Button } from "@/components/ui/button";
 import { FocusReturnProvider } from "@/components/ui/focus-return";
@@ -33,6 +34,27 @@ const SIDEBAR_WIDTH = "18rem";
 const SIDEBAR_WIDTH_MOBILE = "18rem";
 const SIDEBAR_WIDTH_ICON = "3rem";
 const SIDEBAR_KEYBOARD_SHORTCUT = "b";
+
+const SidebarCallbackSchema = z.function();
+const SidebarTextSchema = z.string();
+
+function isOpenUpdater(
+  value: React.SetStateAction<boolean>,
+): value is (value: boolean) => boolean {
+  return SidebarCallbackSchema.safeParse(value).success;
+}
+
+function isSidebarRefCallback(
+  value: React.ComponentProps<typeof Button>["ref"],
+): value is React.RefCallback<HTMLButtonElement> {
+  return SidebarCallbackSchema.safeParse(value).success;
+}
+
+function isSidebarRefCleanup(
+  value: ReturnType<React.RefCallback<HTMLButtonElement>>,
+): value is Exclude<ReturnType<React.RefCallback<HTMLButtonElement>>, void> {
+  return SidebarCallbackSchema.safeParse(value).success;
+}
 
 interface SidebarContextProps {
   isMobile: boolean;
@@ -95,7 +117,7 @@ function SidebarProvider({
   const open = openProp ?? _open;
   const setOpen = React.useCallback(
     (value: ((value: boolean) => boolean) | boolean) => {
-      const openState = typeof value === "function" ? value(open) : value;
+      const openState = isOpenUpdater(value) ? value(open) : value;
       if (setOpenProp) {
         setOpenProp(openState);
       } else {
@@ -165,7 +187,7 @@ function SidebarProvider({
       <TooltipProvider delayDuration={0}>
         <div
           className={cn(
-            "group/sidebar-wrapper has-data-[variant=inset]:bg-sidebar flex min-h-svh w-full",
+            "group/sidebar-wrapper has-data-[variant=inset]:bg-sidebar flex min-h-dvh w-full",
             className,
           )}
           data-slot="sidebar-wrapper"
@@ -217,7 +239,7 @@ function Sidebar({
       <FocusReturnProvider targetRef={mobileTriggerRef}>
         <Sheet onOpenChange={setOpenMobile} open={openMobile} {...props}>
           <SheetContent
-            className="bg-sidebar text-sidebar-foreground w-(--sidebar-width) p-0"
+            className="bg-sidebar text-sidebar-foreground w-(--sidebar-width) max-w-full p-0"
             data-mobile="true"
             data-sidebar="sidebar"
             data-slot="sidebar"
@@ -268,7 +290,7 @@ function Sidebar({
       />
       <div
         className={cn(
-          "fixed inset-y-0 z-20 hidden h-svh w-(--sidebar-width) transition-[left,right,width] duration-200 ease-linear md:flex",
+          "fixed inset-y-0 z-20 hidden h-dvh w-(--sidebar-width) transition-[left,right,width] duration-200 ease-linear md:flex",
           side === "left"
             ? "left-0 group-data-[collapsible=offcanvas]:left-[calc(var(--sidebar-width)*-1)]"
             : "right-0 group-data-[collapsible=offcanvas]:right-[calc(var(--sidebar-width)*-1)]",
@@ -315,13 +337,13 @@ function SidebarTrigger({
       }}
       ref={(element) => {
         mobileTriggerRef.current = element;
-        const cleanup = typeof ref === "function" ? ref(element) : undefined;
-        if (ref && typeof ref !== "function") ref.current = element;
+        const cleanup = isSidebarRefCallback(ref) ? ref(element) : undefined;
+        if (ref && !isSidebarRefCallback(ref)) ref.current = element;
         return () => {
           if (mobileTriggerRef.current === element)
             mobileTriggerRef.current = null;
-          if (typeof cleanup === "function") cleanup();
-          else if (typeof ref === "function") ref(null);
+          if (isSidebarRefCleanup(cleanup)) cleanup();
+          else if (isSidebarRefCallback(ref)) ref(null);
           else if (ref?.current === element) ref.current = null;
         };
       }}
@@ -534,7 +556,7 @@ function SidebarMenuItem({ className, ...props }: React.ComponentProps<"li">) {
 }
 
 const sidebarMenuButtonVariants = cva(
-  "peer/menu-button flex w-full items-center gap-2 overflow-hidden rounded-md p-2 text-left text-sm ring-sidebar-ring outline-hidden transition-[width,height,padding] group-has-data-[sidebar=menu-action]/menu-item:pr-8 group-data-[collapsible=icon]:size-8! group-data-[collapsible=icon]:p-2! hover:bg-sidebar-accent/40 focus-visible:ring-2 active:bg-sidebar-accent active:text-sidebar-accent-foreground disabled:pointer-events-none disabled:opacity-50 aria-disabled:pointer-events-none aria-disabled:opacity-50 data-[active=true]:bg-sidebar-accent data-[active=true]:font-medium data-[active=true]:text-sidebar-accent-foreground data-[state=open]:hover:bg-sidebar-accent/40 [&>span:last-child]:truncate [&>svg]:size-4 [&>svg]:shrink-0",
+  "peer/menu-button flex w-full items-center gap-2 overflow-hidden pointer-coarse:min-h-11 rounded-md p-2 text-left text-sm ring-sidebar-ring outline-hidden transition-[width,height,padding] group-has-data-[sidebar=menu-action]/menu-item:pr-8 group-data-[collapsible=icon]:size-8! group-data-[collapsible=icon]:p-2! hover:bg-sidebar-accent/40 focus-visible:ring-2 active:bg-sidebar-accent active:text-sidebar-accent-foreground disabled:pointer-events-none disabled:opacity-50 aria-disabled:pointer-events-none aria-disabled:opacity-50 data-[active=true]:bg-sidebar-accent data-[active=true]:font-medium data-[active=true]:text-sidebar-accent-foreground data-[state=open]:hover:bg-sidebar-accent/40 [&>span:last-child]:truncate [&>svg]:size-4 [&>svg]:shrink-0",
   {
     defaultVariants: {
       size: "default",
@@ -586,8 +608,7 @@ function SidebarMenuButton({
     return button;
   }
 
-  const tooltipProps =
-    typeof tooltip === "string" ? { children: tooltip } : tooltip;
+  const tooltipProps = isTooltipText(tooltip) ? { children: tooltip } : tooltip;
 
   return (
     <Tooltip>
@@ -600,6 +621,12 @@ function SidebarMenuButton({
       />
     </Tooltip>
   );
+}
+
+function isTooltipText(
+  value: React.ComponentProps<typeof TooltipContent> | string,
+): value is string {
+  return SidebarTextSchema.safeParse(value).success;
 }
 
 function SidebarMenuAction({

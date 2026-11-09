@@ -19,7 +19,7 @@ function request(path: string, headers: Record<string, string> = {}): Request {
       ...headers,
     },
   });
-  // happy-dom's Request constructor drops browser-controlled Sec-Fetch fields.
+
   for (const [key, header] of Object.entries(headers))
     value.headers.set(key, header);
   return value;

@@ -50,6 +50,10 @@ class ModelUnavailableError(DocumentTransformError):
     public_detail = "The document transformation model is temporarily unavailable"
 
 
+class ConcisionTargetUnmetError(DocumentTransformError):
+    public_detail = "Unslop couldn't meet the word limit safely. The source was not changed."
+
+
 class DocumentGatewayError(DocumentTransformError):
     code = "document_provider_unavailable"
     public_detail = "Google Drive or Docs could not complete the transformation"

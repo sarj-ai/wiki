@@ -10,14 +10,6 @@
       "count": 1
     }
   },
-  "scripts/benchmark-bundle.ts": {
-    "@sarj/no-frontend-comments": {
-      "count": 1
-    },
-    "@sarj/no-runtime-typeof": {
-      "count": 1
-    }
-  },
   "scripts/eslint-owned.test.ts": {
     "@sarj/no-runtime-typeof": {
       "count": 1
@@ -29,14 +21,6 @@
   "scripts/eslint-owned/rules/no-all-duplicated-branches.ts": {
     "@sarj/no-frontend-comments": {
       "count": 2
-    }
-  },
-  "scripts/eslint-owned/rules/no-element-overwrite.ts": {
-    "@sarj/no-frontend-comments": {
-      "count": 11
-    },
-    "@sarj/no-runtime-typeof": {
-      "count": 3
     }
   },
   "scripts/eslint-owned/rules/no-identical-expressions.ts": {
@@ -78,14 +62,6 @@
   "src/app/(app)/d/[driveId]/page.tsx": {
     "@sarj/no-frontend-comments": {
       "count": 3
-    },
-    "@sarj/no-runtime-typeof": {
-      "count": 1
-    }
-  },
-  "src/app/(app)/layout.tsx": {
-    "@sarj/no-frontend-comments": {
-      "count": 2
     }
   },
   "src/app/actions/wiki-actions.ts": {
@@ -104,11 +80,6 @@
       "count": 1
     }
   },
-  "src/app/api/document-transforms/[[...path]]/route.ts": {
-    "@sarj/no-frontend-comments": {
-      "count": 2
-    }
-  },
   "src/app/api/files/[fileId]/content/route.test.ts": {
     "@sarj/no-test-comments": {
       "count": 1
@@ -121,11 +92,6 @@
   },
   "src/app/api/wiki/[...path]/route.test.ts": {
     "@sarj/no-test-comments": {
-      "count": 2
-    }
-  },
-  "src/app/api/wiki/[...path]/route.ts": {
-    "@sarj/no-frontend-comments": {
       "count": 1
     }
   },
@@ -148,26 +114,13 @@
     }
   },
   "src/app/login/page.tsx": {
-    "@sarj/no-runtime-typeof": {
-      "count": 1
-    },
     "@sarj/require-camelcase-properties": {
       "count": 3
-    }
-  },
-  "src/app/mcp/consent/page.tsx": {
-    "@sarj/no-runtime-typeof": {
-      "count": 1
     }
   },
   "src/components/browser-session-boundary.test.tsx": {
     "@sarj/no-test-comments": {
       "count": 1
-    }
-  },
-  "src/components/browser-session-boundary.tsx": {
-    "@sarj/no-frontend-comments": {
-      "count": 3
     }
   },
   "src/components/error-boundary.tsx": {
@@ -210,13 +163,10 @@
   },
   "src/components/query-provider.tsx": {
     "@sarj/no-frontend-comments": {
-      "count": 4
+      "count": 3
     }
   },
   "src/components/quick-links/quick-links-loader.tsx": {
-    "@sarj/no-frontend-comments": {
-      "count": 2
-    },
     "unicorn-js/no-unnecessary-array-flat-map": {
       "count": 1
     }
@@ -224,11 +174,6 @@
   "src/components/quick-links/quick-links.test.tsx": {
     "@sarj/no-test-comments": {
       "count": 1
-    }
-  },
-  "src/components/recent-pages/recent-pages-loader.test.tsx": {
-    "@sarj/no-test-comments": {
-      "count": 2
     }
   },
   "src/components/recent-pages/recent-pages-session.tsx": {
@@ -243,21 +188,13 @@
   },
   "src/components/session-refresh.tsx": {
     "@sarj/no-frontend-comments": {
-      "count": 7
+      "count": 2
     },
     "react/immutability": {
       "count": 1
     }
   },
-  "src/components/ui/focus-return.tsx": {
-    "@sarj/no-frontend-comments": {
-      "count": 7
-    }
-  },
   "src/components/ui/sidebar.tsx": {
-    "@sarj/no-runtime-typeof": {
-      "count": 6
-    },
     "typescript/no-floating-promises": {
       "count": 1
     }
@@ -300,9 +237,6 @@
     }
   },
   "src/components/wiki-document/doc-viewer-store.ts": {
-    "@sarj/no-frontend-comments": {
-      "count": 2
-    },
     "@sarj/sole-export-matches-filename": {
       "count": 1
     }
@@ -313,9 +247,6 @@
     }
   },
   "src/components/wiki-document/doc-warmup.tsx": {
-    "@sarj/no-frontend-comments": {
-      "count": 4
-    },
     "react/immutability": {
       "count": 1
     },
@@ -334,9 +265,6 @@
   "src/components/wiki-document/document-polish-dialog.tsx": {
     "@sarj/no-excessive-cognitive-complexity": {
       "count": 3
-    },
-    "@sarj/no-frontend-comments": {
-      "count": 9
     },
     "@sarj/stepdown": {
       "count": 2
@@ -375,14 +303,6 @@
   "src/components/wiki-document/reorganize-document.tsx": {
     "typescript/no-floating-promises": {
       "count": 2
-    }
-  },
-  "src/components/wiki-document/short-link-dialog.test.tsx": {
-    "@sarj/no-test-comments": {
-      "count": 1
-    },
-    "react/iframe-missing-sandbox": {
-      "count": 1
     }
   },
   "src/components/wiki-search/command-palette-navigation.test.tsx": {
@@ -433,20 +353,12 @@
       "count": 2
     }
   },
-  "src/components/wiki-sidebar/item-menu-actions.tsx": {
-    "@sarj/no-frontend-comments": {
-      "count": 2
-    }
-  },
   "src/components/wiki-sidebar/move-dialog-outlet.test.tsx": {
     "unicorn-js/no-unnecessary-default-arguments": {
       "count": 1
     }
   },
   "src/components/wiki-sidebar/move-dialog-outlet.tsx": {
-    "@sarj/no-frontend-comments": {
-      "count": 2
-    },
     "@sarj/prefer-nominal-id-types": {
       "count": 1
     }
@@ -456,16 +368,8 @@
       "count": 1
     }
   },
-  "src/components/wiki-sidebar/preferences-dialog-outlet.tsx": {
-    "@sarj/no-frontend-comments": {
-      "count": 2
-    }
-  },
   "src/components/wiki-sidebar/sidebar-resize-handle.test.tsx": {
     "@sarj/no-test-comments": {
-      "count": 2
-    },
-    "unicorn/consistent-function-scoping": {
       "count": 1
     }
   },
@@ -523,24 +427,9 @@
       "count": 1
     }
   },
-  "src/components/wiki-sidebar/use-in-flight-moves.ts": {
-    "@sarj/no-frontend-comments": {
-      "count": 2
-    }
-  },
-  "src/components/wiki-sidebar/use-sidebar-navigation.test.tsx": {
-    "@sarj/no-test-comments": {
-      "count": 2
-    }
-  },
   "src/components/wiki-sidebar/use-sidebar-navigation.tsx": {
     "@sarj/no-frontend-comments": {
       "count": 1
-    }
-  },
-  "src/components/wiki-sidebar/use-wiki-reorder-session.test.tsx": {
-    "@sarj/no-runtime-typeof": {
-      "count": 2
     }
   },
   "src/components/wiki-sidebar/use-wiki-reorder.ts": {
@@ -551,23 +440,8 @@
       "count": 1
     }
   },
-  "src/components/wiki-sidebar/wiki-footer.test.tsx": {
-    "wiki-owned/no-identical-functions": {
-      "count": 1
-    }
-  },
   "src/components/wiki-sidebar/wiki-footer.tsx": {
     "typescript/no-floating-promises": {
-      "count": 1
-    }
-  },
-  "src/hooks/use-deferred-dialog.ts": {
-    "@sarj/no-frontend-comments": {
-      "count": 1
-    }
-  },
-  "src/hooks/use-document-alias.ts": {
-    "@sarj/no-positional-tuple-return": {
       "count": 1
     }
   },
@@ -586,11 +460,6 @@
       "count": 1
     }
   },
-  "src/hooks/use-expanded-folder-subscriptions.test.tsx": {
-    "unicorn/consistent-function-scoping": {
-      "count": 1
-    }
-  },
   "src/hooks/use-expanded-folders.test.ts": {
     "@sarj/no-test-comments": {
       "count": 1
@@ -604,22 +473,9 @@
       "count": 3
     }
   },
-  "src/hooks/use-session-mutation.ts": {
-    "@sarj/no-frontend-comments": {
-      "count": 2
-    }
-  },
   "src/hooks/use-wiki-mutations.ts": {
-    "@sarj/no-frontend-comments": {
-      "count": 2
-    },
     "typescript/no-floating-promises": {
       "count": 8
-    }
-  },
-  "src/lib/abortable-delay.ts": {
-    "@sarj/no-frontend-comments": {
-      "count": 1
     }
   },
   "src/lib/action-client.test.ts": {
@@ -638,27 +494,11 @@
     }
   },
   "src/lib/api-client.test.ts": {
-    "@sarj/no-runtime-typeof": {
-      "count": 1
-    },
     "@sarj/require-camelcase-properties": {
       "count": 15
     }
   },
-  "src/lib/api-client.ts": {
-    "@sarj/no-frontend-comments": {
-      "count": 4
-    },
-    "@sarj/no-runtime-typeof": {
-      "count": 4
-    }
-  },
   "src/lib/auth.ts": {
-    "@sarj/no-frontend-comments": {
-      "count": 1
-    }
-  },
-  "src/lib/bounded-error-text.ts": {
     "@sarj/no-frontend-comments": {
       "count": 1
     }
@@ -668,19 +508,9 @@
       "count": 1
     }
   },
-  "src/lib/bounded-text.ts": {
-    "@sarj/no-frontend-comments": {
-      "count": 1
-    }
-  },
   "src/lib/bounded-transform-text.test.ts": {
     "@sarj/no-test-comments": {
       "count": 1
-    }
-  },
-  "src/lib/browser-session.ts": {
-    "@sarj/no-frontend-comments": {
-      "count": 2
     }
   },
   "src/lib/browser-storage.test.ts": {
@@ -703,37 +533,12 @@
       "count": 1
     }
   },
-  "src/lib/clients/fetch-backend.ts": {
-    "@sarj/no-frontend-comments": {
-      "count": 2
-    }
-  },
   "src/lib/clients/transform-http.test.ts": {
     "@sarj/no-test-comments": {
       "count": 1
     }
   },
   "src/lib/clients/transform-http.ts": {
-    "@sarj/no-frontend-comments": {
-      "count": 3
-    }
-  },
-  "src/lib/clients/wiki-read-http.test.ts": {
-    "@sarj/no-runtime-typeof": {
-      "count": 1
-    }
-  },
-  "src/lib/clients/wiki-read-http.ts": {
-    "@sarj/no-frontend-comments": {
-      "count": 1
-    }
-  },
-  "src/lib/clients/wiki-read-response.ts": {
-    "@sarj/no-frontend-comments": {
-      "count": 1
-    }
-  },
-  "src/lib/discard-stream.ts": {
     "@sarj/no-frontend-comments": {
       "count": 1
     }
@@ -755,24 +560,6 @@
     },
     "@sarj/require-camelcase-properties": {
       "count": 95
-    }
-  },
-  "src/lib/document-transform-recovery.ts": {
-    "@sarj/no-frontend-comments": {
-      "count": 2
-    }
-  },
-  "src/lib/fetch-authorized-file.ts": {
-    "@sarj/no-frontend-comments": {
-      "count": 2
-    }
-  },
-  "src/lib/file-icons.tsx": {
-    "@sarj/no-frontend-comments": {
-      "count": 1
-    },
-    "jsdoc-js/no-restricted-syntax": {
-      "count": 1
     }
   },
   "src/lib/last-doc.test.ts": {
@@ -801,27 +588,11 @@
     }
   },
   "src/lib/mcp-consent-client.ts": {
-    "@sarj/no-frontend-comments": {
-      "count": 4
-    },
     "@sarj/require-camelcase-properties": {
       "count": 11
     }
   },
-  "src/lib/mutation-toast.ts": {
-    "@sarj/no-runtime-typeof": {
-      "count": 1
-    }
-  },
-  "src/lib/optimistic-cache.ts": {
-    "@sarj/no-frontend-comments": {
-      "count": 7
-    }
-  },
   "src/lib/perf-marks.ts": {
-    "@sarj/no-runtime-typeof": {
-      "count": 2
-    },
     "@sarj/prefer-typed-reflection": {
       "count": 1
     }
@@ -845,12 +616,6 @@
     }
   },
   "src/lib/recent-pages-query.ts": {
-    "@sarj/no-frontend-comments": {
-      "count": 1
-    },
-    "@sarj/no-runtime-typeof": {
-      "count": 1
-    },
     "@tanstack/query/exhaustive-deps": {
       "count": 1
     }
@@ -878,13 +643,10 @@
   },
   "src/lib/session-client.test.ts": {
     "@sarj/no-test-comments": {
-      "count": 2
+      "count": 1
     }
   },
   "src/lib/session-client.ts": {
-    "@sarj/no-frontend-comments": {
-      "count": 2
-    },
     "@sarj/sole-export-matches-filename": {
       "count": 1
     }
@@ -903,9 +665,6 @@
     }
   },
   "src/lib/smart-create-client.test.ts": {
-    "@sarj/no-runtime-typeof": {
-      "count": 1
-    },
     "@sarj/require-camelcase-properties": {
       "count": 34
     }
@@ -932,9 +691,6 @@
     }
   },
   "src/lib/speculation-policy.ts": {
-    "@sarj/no-runtime-typeof": {
-      "count": 6
-    },
     "@sarj/prefer-typed-reflection": {
       "count": 2
     }
@@ -948,34 +704,12 @@
     }
   },
   "src/lib/wiki-cache.ts": {
-    "@sarj/no-frontend-comments": {
-      "count": 5
-    },
-    "@sarj/no-runtime-typeof": {
-      "count": 1
-    },
     "@sarj/prefer-nominal-id-types": {
       "count": 1
     }
   },
-  "src/lib/wiki-indexes.ts": {
-    "@sarj/no-frontend-comments": {
-      "count": 2
-    }
-  },
   "src/lib/wiki-keys.ts": {
-    "@sarj/no-frontend-comments": {
-      "count": 4
-    },
-    "@sarj/no-positional-tuple-return": {
-      "count": 1
-    },
     "@sarj/prefer-immutable-module-constant": {
-      "count": 2
-    }
-  },
-  "src/lib/wiki-read-api.ts": {
-    "@sarj/no-frontend-comments": {
       "count": 1
     }
   },
@@ -984,18 +718,8 @@
       "count": 9
     }
   },
-  "src/lib/wiki-schemas.ts": {
-    "@sarj/no-frontend-comments": {
-      "count": 1
-    }
-  },
   "src/lib/wiki-tree.test.ts": {
     "unicorn-js/no-unnecessary-parameters": {
-      "count": 1
-    }
-  },
-  "src/middleware.ts": {
-    "@sarj/no-frontend-comments": {
       "count": 1
     }
   },

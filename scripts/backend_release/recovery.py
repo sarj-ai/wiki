@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 import re
 import sys
-from typing import TYPE_CHECKING, Annotated, NewType
+from typing import TYPE_CHECKING, Annotated, Final, NewType
 
 import typer
 
@@ -20,6 +20,7 @@ from scripts.github.release_gate import (
     positive_id,
     read_json,
     require,
+    require_ci_gates,
     require_current_main,
     validate_repository,
 )
@@ -48,6 +49,25 @@ REQUIRED_VERIFICATION_JOBS = (
     "ci-quality / OpenAPI spec in sync",
     "ci-quality / gitleaks (full history)",
 )
+_RUNTIME_HEADERS: Final[dict[str, str]] = {
+    "ci-backend / Backend / required": "backend",
+    "ci-frontend / Frontend / required": "frontend",
+}
+_RUNTIME_JOBS: Final[dict[str, dict[str, str]]] = {
+    "backend": {
+        "ROUTING_RESULT": "ci-backend / changes",
+        "LINT_RESULT": "ci-backend / Backend / Lint + typecheck",
+        "TEST_RESULT": "ci-backend / Backend / Unit tests",
+        "POSTGRES_RESULT": "ci-backend / Backend / PostgreSQL concurrency",
+        "IMAGE_RESULT": "ci-backend / Backend / Image build + Trivy scan",
+    },
+    "frontend": {
+        "ROUTING_RESULT": "ci-frontend / changes",
+        "LINT_RESULT": "ci-frontend / Frontend / Lint + typecheck + format",
+        "TEST_RESULT": "ci-frontend / Frontend / Unit tests",
+        "BUILD_RESULT": "ci-frontend / Frontend / Next.js build",
+    },
+}
 MAX_JOBS = 100
 FULL_TRAFFIC = 100
 
@@ -113,18 +133,44 @@ def verify_prerequisite_jobs(
     jobs: list[JsonObject], source_sha: str, run_id: RunId, run_attempt: int
 ) -> None:
     for name in REQUIRED_VERIFICATION_JOBS:
-        matches = [job for job in jobs if job.get("name") == name]
-        require(len(matches) == 1, "Missing or ambiguous source verification receipt")
-        verification_job = matches[0]
-        require(
-            verification_job.get("run_id") == run_id
-            and type(verification_job.get("run_attempt")) is int
-            and verification_job.get("run_attempt") == run_attempt
-            and verification_job.get("head_sha") == source_sha
-            and verification_job.get("status") == "completed"
-            and verification_job.get("conclusion") == "success",
-            "Source verification did not complete successfully",
-        )
+        result = prerequisite_result(jobs, name, source_sha, run_id, run_attempt)
+        component = _RUNTIME_HEADERS.get(name)
+        if result == "skipped" and component is not None:
+            verify_skipped_runtime(jobs, component, source_sha, run_id, run_attempt)
+        else:
+            require(result == "success", "Source verification did not complete successfully")
+
+
+def verify_skipped_runtime(
+    jobs: list[JsonObject], component: str, source_sha: str, run_id: RunId, run_attempt: int
+) -> None:
+    environment = {
+        field: prerequisite_result(jobs, name, source_sha, run_id, run_attempt)
+        for field, name in _RUNTIME_JOBS[component].items()
+    }
+    environment.update(FORCE_FULL="true", RUNTIME_SELECTED="true")
+    require_ci_gates(environment, component)
+
+
+def prerequisite_result(
+    jobs: list[JsonObject], name: str, source_sha: str, run_id: RunId, run_attempt: int
+) -> str:
+    matches = [job for job in jobs if job.get("name") == name]
+    require(len(matches) == 1, "Missing or ambiguous source verification receipt")
+    verification_job = matches[0]
+    require(
+        verification_job.get("run_id") == run_id
+        and type(verification_job.get("run_attempt")) is int
+        and verification_job.get("run_attempt") == run_attempt
+        and verification_job.get("head_sha") == source_sha
+        and verification_job.get("status") == "completed",
+        "Source verification did not complete successfully",
+    )
+    result = verification_job.get("conclusion")
+    if not isinstance(result, str):
+        msg = "Missing source verification conclusion"
+        raise ReleaseBlockedError(msg)
+    return result
 
 
 def verify_deploy_job(

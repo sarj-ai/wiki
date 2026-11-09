@@ -19,6 +19,7 @@ import {
   SidebarTrigger,
 } from "@/components/ui/sidebar";
 import { useIsClient } from "@/hooks/use-is-client";
+import { useSearchShortcut } from "@/hooks/use-search-shortcut";
 import { renderMimeIcon } from "@/lib/file-icons";
 
 import {
@@ -40,6 +41,7 @@ export function DemoSidebar({
   const { resolvedTheme, setTheme } = useTheme();
   const mounted = useIsClient();
   const dark = mounted && resolvedTheme === "dark";
+  const searchShortcut = useSearchShortcut();
 
   return (
     <Sidebar>
@@ -71,7 +73,7 @@ export function DemoSidebar({
               <Search aria-hidden className="size-3.5" />
               <span className="flex-1 text-left">Search Drive…</span>
               <kbd className="bg-muted rounded-sm border px-1 py-0.5 font-mono text-xs">
-                ⌘K
+                {searchShortcut}
               </kbd>
             </Button>
           </div>

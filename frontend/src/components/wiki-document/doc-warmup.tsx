@@ -32,8 +32,7 @@ export function DocWarmup() {
       warmedUser.current = userId;
       const limit = warmCountFor(readNavigatorHints(navigator));
       if (limit === 0) return;
-      // The host mounts HTML only while active; its sandboxed content cannot
-      // benefit from idle authorization or an invisible warmed viewer.
+
       const recents = readRecentDocs(userId).filter(
         (doc) => doc.mimeType !== MIME_HTML,
       );
@@ -45,8 +44,7 @@ export function DocWarmup() {
       unsubscribe = useDocViewerStore.subscribe((state) => {
         if (state.active !== null) cancelled = true;
       });
-      // A foreground query may share this authorization request. Let it finish,
-      // but never publish idle iframe work after its owner has moved on.
+
       void authorizeAndWarm(
         queryClient,
         targets,

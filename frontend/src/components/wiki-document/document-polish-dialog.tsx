@@ -2,12 +2,9 @@
 
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
-  ArrowRight,
   BrushCleaning,
   Copy,
-  FileCheck2,
   FilePenLine,
-  FileText,
   FileUp,
   Loader2,
   Paintbrush,
@@ -73,21 +70,19 @@ import { DocumentPolishRecovery } from "./document-polish-recovery";
 
 const MODES = [
   {
-    description:
-      "Shorten the writing, then apply Sarj typography and page formatting.",
+    description: "Shorten the writing and refine the layout.",
     icon: Sparkles,
     label: "Both",
     value: "both",
   },
   {
-    description: "Apply Sarj typography, spacing, logo, and page styles.",
+    description: "Refine the layout; keep wording unchanged.",
     icon: Paintbrush,
-    label: "Formatting",
+    label: "Format",
     value: "format",
   },
   {
-    description:
-      "Aggressively cut repetition and filler while preserving facts, links, citations, and code.",
+    description: "Cut filler and repetition; preserve meaning.",
     icon: BrushCleaning,
     label: "Unslop",
     value: "unslop",
@@ -97,6 +92,26 @@ const MODES = [
   icon: typeof Sparkles;
   label: string;
   value: DocumentTransformMode;
+}[];
+
+const SAVE_OPTIONS = [
+  {
+    description: "Keep the original unchanged.",
+    icon: Copy,
+    label: "New copy",
+    value: "copy",
+  },
+  {
+    description: "Updates this file; Drive history stays available.",
+    icon: FilePenLine,
+    label: "Edit original",
+    value: "in_place",
+  },
+] as const satisfies readonly {
+  description: string;
+  icon: typeof Copy;
+  label: string;
+  value: DocumentTransformOutputStrategy;
 }[];
 
 export type DocumentPolishSource =
@@ -146,7 +161,6 @@ export function DocumentPolishDialog({
   const [markdownError, setMarkdownError] = useState<null | string>(null);
   const [loadingMarkdownFile, setLoadingMarkdownFile] = useState(false);
   const [name, setName] = useState("Untitled document");
-  const [copyName, setCopyName] = useState("");
   const [completedResult, setCompletedResult] =
     useState<DocumentTransformResult | null>(null);
   const [destination, setDestination] = useState<null | SmartDestination>(
@@ -288,6 +302,7 @@ export function DocumentPolishDialog({
   const sessionIdentityUnavailable = !owner;
   const optionsLocked =
     submitting || unresolved !== null || completedResult !== null;
+  const closeLocked = submitting && stage !== "transforming";
   const saveRecovery = (operation: null | TransformRecovery) => {
     writeTransformRecovery(owner, sourceIdentity, operation);
     queryClient.setQueryData(recoveryKey, operation);
@@ -363,11 +378,14 @@ export function DocumentPolishDialog({
   };
 
   const close = () => {
+    if (closeLocked) return;
     setRetryMessage(null);
     abortRef.current?.abort();
     abortRef.current = null;
     submitLatch.current = false;
     if (unresolved) {
+      if (stage === "transforming")
+        toast.info("Check progress by reopening Polish.");
       setSubmitting(false);
       setStage("idle");
       onOpenChange(false);
@@ -384,7 +402,6 @@ export function DocumentPolishDialog({
     setUploadedMarkdownId(null);
     setMarkdownError(null);
     setName("Untitled document");
-    setCopyName("");
     setCompletedResult(null);
     setDestination(
       source.kind === "markdown" ? source.initialDestination : null,
@@ -487,7 +504,6 @@ export function DocumentPolishDialog({
     const startedAt = Date.now();
     let transformSource = unresolved?.source ?? inputSource();
     if (!transformSource && unresolved?.taskId) {
-      // A known task needs no source content; this placeholder is never submitted.
       transformSource = {
         kind: "markdown",
         content: "",
@@ -518,7 +534,6 @@ export function DocumentPolishDialog({
     abortRef.current?.abort();
     abortRef.current = controller;
     if (unresolved) {
-      // Replay the exact admitted payload, never refreshed metadata under the same key.
     } else if (
       transformSource.kind === "drive_file" &&
       refreshedDriveSource.current
@@ -560,8 +575,6 @@ export function DocumentPolishDialog({
       key: requestIdempotencyKey,
       mode: requestedMode,
       outputStrategy: effectiveOutputStrategy,
-      outputName:
-        effectiveOutputStrategy === "copy" ? copyName.trim() || null : null,
       source: transformSource.kind === "drive_file" ? transformSource : null,
       taskId: null,
     };
@@ -589,6 +602,7 @@ export function DocumentPolishDialog({
     };
     const clearRecovery = async () => {
       await completeTransformRecovery(owner, sourceIdentity, operation.key);
+      if (!isCurrent()) return;
       saveRecovery(null);
     };
     const submitTask = async () => {
@@ -601,9 +615,6 @@ export function DocumentPolishDialog({
           ...(operation.outputName ? [operation.outputName] : []),
         );
       } catch (error: unknown) {
-        // Only a fresh, definitively rejected submission can release its claim.
-        // An adopted/replayed operation may already have been admitted by an
-        // earlier request, even if today's validation rejects its payload.
         if (
           error instanceof ApiError &&
           ((error.status === 409 &&
@@ -614,7 +625,7 @@ export function DocumentPolishDialog({
           operation.taskId === null
         ) {
           await clearRecovery();
-          resetRequest();
+          if (isCurrent()) resetRequest();
         }
         throw error;
       }
@@ -642,9 +653,7 @@ export function DocumentPolishDialog({
       controller.signal.throwIfAborted();
       if (!isCurrent()) return;
       setStage("transforming");
-      // POST replay can return a terminal task without its permission-checked
-      // incomplete-copy descriptor. Persist the task ID before this extra read
-      // so a failed read remains safely resumable without another submission.
+
       const currentTask =
         !operation.taskId && task.status === "failed"
           ? await DOCUMENT_TRANSFORM_API.getTask(task.id, controller.signal)
@@ -655,6 +664,7 @@ export function DocumentPolishDialog({
       );
       if (!isCurrent()) return;
       await clearRecovery();
+      if (!isCurrent()) return;
       if (result.shortLinkStatus === "ready" && result.shortLinkAlias) {
         queryClient.setQueryData(["document-alias", result.outputFile.id], {
           alias: result.shortLinkAlias,
@@ -693,6 +703,7 @@ export function DocumentPolishDialog({
       if (error instanceof DocumentTransformNeedsReviewError) {
         if (!isCurrent()) return;
         await completeTransformRecovery(owner, sourceIdentity, operation.key);
+        if (!isCurrent()) return;
         saveRecovery(null);
         setReviewMessage(error.message);
         setTerminalTaskId(knownTaskId);
@@ -716,6 +727,7 @@ export function DocumentPolishDialog({
         if (!isCurrent()) return;
         if (error instanceof DocumentTransformTerminalError) {
           await completeTransformRecovery(owner, sourceIdentity, operation.key);
+          if (!isCurrent()) return;
           saveRecovery(null);
           setTerminalMessage(error.message);
           setTerminalTaskId(knownTaskId);
@@ -742,6 +754,10 @@ export function DocumentPolishDialog({
       : markdown;
   const displayedMode =
     completedResult?.mode ?? unresolved?.mode ?? requestedMode;
+  const modeDescription =
+    isWord && displayedMode === "format"
+      ? "Supported font updates; wording and structure stay unchanged."
+      : MODES.find((option) => option.value === displayedMode)?.description;
   const destinationLabel = destination
     ? destination.folderPath.length > 0
       ? destination.folderPath.join(" / ")
@@ -752,17 +768,17 @@ export function DocumentPolishDialog({
     <>
       <Dialog
         onOpenChange={(next) => {
-          if (!next && !submitting) close();
+          if (!next) close();
         }}
         open={open}
       >
         <DialogContent
           aria-busy={submitting}
-          className="max-h-[calc(100dvh-1rem)] grid-rows-[auto_minmax(0,1fr)_auto] gap-0 overflow-hidden p-0 sm:max-w-xl"
+          className="max-h-[calc(100dvh-1rem)] grid-cols-1 grid-rows-[auto_minmax(0,1fr)_auto] gap-0 overflow-hidden p-0 sm:max-w-xl"
           onEscapeKeyDown={(event) => {
-            if (submitting) event.preventDefault();
+            if (closeLocked) event.preventDefault();
           }}
-          showCloseButton={!submitting}
+          showCloseButton={!closeLocked}
         >
           <div className="border-b px-5 pt-5 pb-4 sm:px-6 sm:pt-6">
             <DialogHeader>
@@ -771,12 +787,12 @@ export function DocumentPolishDialog({
                   ? "Import Markdown"
                   : `Polish ${artifactNoun}`}
               </DialogTitle>
-              <DialogDescription>
+              <DialogDescription className="line-clamp-2 break-words">
                 {source.kind === "markdown"
-                  ? "Create a native Google Doc from pasted Markdown or a local .md file."
+                  ? "Paste Markdown or choose a .md file."
                   : isWord
-                    ? "Create a Word review copy with supported font updates. Wording and document structure stay unchanged; review pagination and fields in Word."
-                    : `Choose how Sarj Wiki should refine this ${artifactNoun}.`}
+                    ? "Word copy · review pagination and fields in Word."
+                    : source.name}
               </DialogDescription>
             </DialogHeader>
           </div>
@@ -1130,32 +1146,11 @@ export function DocumentPolishDialog({
               </div>
             ) : null}
 
-            {source.kind === "drive_file" &&
-            effectiveOutputStrategy === "copy" ? (
-              <div className="space-y-1.5">
-                <Label htmlFor="polish-copy-name">Copy name (optional)</Label>
-                <Input
-                  disabled={optionsLocked}
-                  id="polish-copy-name"
-                  maxLength={255}
-                  onChange={(event) => {
-                    setCopyName(event.target.value);
-                    resetRequest();
-                  }}
-                  placeholder="Use the automatic name"
-                  value={copyName}
-                />
-                <p className="text-muted-foreground text-xs">
-                  Leave blank for an automatic name. Editing the original keeps
-                  its current name.
-                </p>
-              </div>
-            ) : null}
-
-            <fieldset className="space-y-2">
-              <legend className="mb-2 text-sm font-medium">
-                Transform method
-              </legend>
+            <fieldset
+              aria-describedby={`${saveDescriptionId}-method`}
+              className="space-y-2"
+            >
+              <legend className="mb-2 text-sm font-medium">Transform</legend>
               {isWord &&
               unresolved &&
               (unresolved.mode !== "format" ||
@@ -1166,7 +1161,12 @@ export function DocumentPolishDialog({
                   Word formatting.
                 </p>
               ) : null}
-              <div className="grid gap-2 sm:grid-cols-3">
+              <div
+                className={cn(
+                  "bg-muted/40 grid gap-1 rounded-xl p-1",
+                  isWord && !unresolved ? "grid-cols-1" : "grid-cols-3",
+                )}
+              >
                 {MODES.filter(
                   (option) =>
                     !isWord || unresolved !== null || option.value === "format",
@@ -1175,12 +1175,13 @@ export function DocumentPolishDialog({
                   const selected = displayedMode === option.value;
                   return (
                     <Button
+                      aria-label={option.label}
                       aria-pressed={selected}
                       className={cn(
-                        "focus-visible:ring-ring/50 relative block h-auto rounded-lg border p-3 text-left font-normal whitespace-normal transition-[border-color,background-color,box-shadow] outline-none focus-visible:ring-[3px] disabled:opacity-50",
+                        "h-11 min-h-11 min-w-0 gap-1.5 rounded-lg px-2 text-xs font-medium has-[>svg]:px-2 sm:text-sm",
                         selected
-                          ? "border-primary bg-primary/5 hover:bg-primary/5 dark:hover:bg-primary/5 shadow-sm"
-                          : "border-border hover:bg-muted/50",
+                          ? "bg-background text-foreground hover:bg-background dark:hover:bg-background shadow-sm"
+                          : "text-muted-foreground hover:text-foreground",
                       )}
                       disabled={optionsLocked}
                       key={option.value}
@@ -1191,28 +1192,24 @@ export function DocumentPolishDialog({
                       type="button"
                       variant="ghost"
                     >
-                      <span className="flex items-center gap-2">
-                        <Icon
-                          className={cn("size-4", selected && "text-primary")}
-                        />
-                        <span className="text-sm font-semibold">
-                          {option.label}
-                        </span>
-                      </span>
-                      <span className="text-muted-foreground mt-2 block text-xs leading-relaxed">
-                        {isWord && option.value === "format"
-                          ? "Update supported Latin fonts only. Preserve sizes, emphasis, tables, headers, footers, and fields."
-                          : option.description}
-                      </span>
-                      {option.value === "both" ? (
-                        <span className="text-primary mt-2 block text-[10px] font-semibold tracking-wide uppercase">
-                          Recommended
-                        </span>
-                      ) : null}
+                      <Icon
+                        aria-hidden="true"
+                        className={cn(
+                          "size-3.5 sm:size-4",
+                          selected && "text-primary",
+                        )}
+                      />
+                      {option.label}
                     </Button>
                   );
                 })}
               </div>
+              <p
+                className="text-muted-foreground text-xs"
+                id={`${saveDescriptionId}-method`}
+              >
+                {modeDescription}
+              </p>
             </fieldset>
 
             {source.kind === "drive_file" &&
@@ -1220,76 +1217,63 @@ export function DocumentPolishDialog({
             !isWord &&
             capabilities.data?.inPlace === true ? (
               <fieldset className="space-y-2">
-                <legend className="mb-2 text-sm font-medium">
-                  Save result
-                </legend>
-                <div className="grid gap-2 sm:grid-cols-2">
-                  <Button
-                    aria-describedby={`${saveDescriptionId}-copy`}
-                    aria-label="Create review copy"
-                    aria-pressed={outputStrategy === "copy"}
-                    className={cn(
-                      "focus-visible:ring-ring/50 block h-auto rounded-lg border p-3 text-left font-normal whitespace-normal outline-none focus-visible:ring-[3px] disabled:opacity-50",
-                      outputStrategy === "copy"
-                        ? "border-primary bg-primary/5 hover:bg-primary/5 dark:hover:bg-primary/5 shadow-sm"
-                        : "border-border hover:bg-muted/50",
-                    )}
-                    disabled={optionsLocked}
-                    onClick={() => {
-                      setOutputStrategy("copy");
-                      resetRequest();
-                    }}
-                    type="button"
-                    variant="ghost"
-                  >
-                    <span className="flex items-center gap-2 text-sm font-semibold">
-                      <Copy aria-hidden="true" className="size-4" />
-                      Create review copy
-                    </span>
-                    <span
-                      className="text-muted-foreground mt-2 block text-xs leading-relaxed"
-                      id={`${saveDescriptionId}-copy`}
-                    >
-                      Keep the original untouched and create a sibling{" "}
-                      {outputNoun}.
-                    </span>
-                    <span className="text-primary mt-2 block text-[10px] font-semibold tracking-wide uppercase">
-                      Recommended
-                    </span>
-                  </Button>
-                  <Button
-                    aria-describedby={`${saveDescriptionId}-original`}
-                    aria-label="Edit original"
-                    aria-pressed={outputStrategy === "in_place"}
-                    className={cn(
-                      "focus-visible:ring-ring/50 block h-auto rounded-lg border p-3 text-left font-normal whitespace-normal outline-none focus-visible:ring-[3px] disabled:opacity-50",
-                      outputStrategy === "in_place"
-                        ? "border-primary bg-primary/5 hover:bg-primary/5 dark:hover:bg-primary/5 shadow-sm"
-                        : "border-border hover:bg-muted/50",
-                    )}
-                    disabled={optionsLocked}
-                    onClick={() => {
-                      setOutputStrategy("in_place");
-                      resetRequest();
-                    }}
-                    type="button"
-                    variant="ghost"
-                  >
-                    <span className="flex items-center gap-2 text-sm font-semibold">
-                      <FilePenLine aria-hidden="true" className="size-4" />
-                      Edit original
-                    </span>
-                    <span
-                      className="text-muted-foreground mt-2 block text-xs leading-relaxed"
-                      id={`${saveDescriptionId}-original`}
-                    >
-                      Amend this Google Doc; Drive version history remains
-                      available.
-                    </span>
-                  </Button>
+                <legend className="mb-2 text-sm font-medium">Save</legend>
+                <div className="bg-muted/40 grid grid-cols-2 gap-1 rounded-xl p-1">
+                  {SAVE_OPTIONS.map((option) => {
+                    const Icon = option.icon;
+                    const selected = outputStrategy === option.value;
+                    return (
+                      <Button
+                        aria-describedby={`${saveDescriptionId}-${option.value}`}
+                        aria-label={option.label}
+                        aria-pressed={selected}
+                        className={cn(
+                          "h-11 min-h-11 min-w-0 gap-1.5 rounded-lg px-2 text-xs font-medium has-[>svg]:px-2 sm:text-sm",
+                          selected
+                            ? "bg-background text-foreground hover:bg-background dark:hover:bg-background shadow-sm"
+                            : "text-muted-foreground hover:text-foreground",
+                        )}
+                        disabled={optionsLocked}
+                        key={option.value}
+                        onClick={() => {
+                          setOutputStrategy(option.value);
+                          resetRequest();
+                        }}
+                        type="button"
+                        variant="ghost"
+                      >
+                        <Icon
+                          aria-hidden="true"
+                          className={cn(
+                            "size-3.5 sm:size-4",
+                            selected && "text-primary",
+                          )}
+                        />
+                        {option.label}
+                      </Button>
+                    );
+                  })}
                 </div>
+                {SAVE_OPTIONS.map((option) => (
+                  <p
+                    className={cn(
+                      "text-muted-foreground text-xs",
+                      outputStrategy !== option.value && "sr-only",
+                    )}
+                    id={`${saveDescriptionId}-${option.value}`}
+                    key={option.value}
+                  >
+                    {option.description}
+                  </p>
+                ))}
               </fieldset>
-            ) : null}
+            ) : (
+              <p className="text-muted-foreground text-xs">
+                {source.kind === "markdown"
+                  ? "Creates a Google Doc in the selected folder."
+                  : `A new ${outputNoun} beside the original. The original stays unchanged.`}
+              </p>
+            )}
 
             {capabilityPending ? (
               <div aria-live="polite" className="text-muted-foreground text-xs">
@@ -1366,21 +1350,6 @@ export function DocumentPolishDialog({
               </div>
             ) : null}
 
-            <div className="bg-muted/45 flex items-center gap-3 rounded-lg border p-3">
-              <span aria-hidden className="flex shrink-0 items-center gap-1.5">
-                <FileText className="text-muted-foreground size-4" />
-                <ArrowRight className="text-muted-foreground size-3.5" />
-                <FileCheck2 className="text-primary size-4" />
-              </span>
-              <p className="text-muted-foreground text-xs leading-relaxed">
-                {source.kind === "drive_file"
-                  ? effectiveOutputStrategy === "in_place"
-                    ? `“${source.name}” will be amended only after revision and safety checks pass.`
-                    : `“${source.name}” stays unchanged. A new ${outputNoun} will be created next to it.`
-                  : "Your local file and pasted Markdown stay unchanged. A new Google Doc will be created in the selected folder."}
-              </p>
-            </div>
-
             {submitting ? (
               <div
                 aria-live="polite"
@@ -1446,12 +1415,12 @@ export function DocumentPolishDialog({
           <DialogFooter className="bg-background border-t px-5 py-4 sm:flex sm:px-6">
             <Button
               className="w-full sm:w-auto"
-              disabled={submitting}
+              disabled={closeLocked}
               onClick={close}
               type="button"
               variant="ghost"
             >
-              {completedResult ? "Done" : "Cancel"}
+              {completedResult ? "Done" : submitting ? "Close" : "Cancel"}
             </Button>
             <Button
               className="w-full sm:w-auto"
@@ -1530,7 +1499,6 @@ function assertRecoveryReplaySafe(
   recovering: boolean,
   markdown: string,
 ): void {
-  // Backend replay retention is seven days; leave a one-day safety margin.
   if (
     !operation.taskId &&
     Date.now() - operation.createdAt >= 6 * 24 * 60 * 60 * 1000

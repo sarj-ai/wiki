@@ -43,7 +43,6 @@ export interface OptimisticFieldsChange<TData> {
 
 const FIELDS_OWNERS = new WeakMap<object, FieldsOwner>();
 
-// Stage reversible display settings; caller serializes their provider writes.
 export function updateOptimisticFields<TData extends object>(
   qc: QueryClient,
   queryKey: QueryKey,
@@ -139,7 +138,6 @@ function writePendingFields(
   }
 }
 
-// Own only changed entries, rather than a complete array snapshot.
 export function updateOptimisticList<TItem>(
   qc: QueryClient,
   queryKey: QueryKey,
@@ -290,7 +288,6 @@ function listOwner<TItem>(
   itemId: (item: TItem) => string,
   previous: TItem[],
 ): ListOwner {
-  // Each query key is used with one immutable element type for its lifetime.
   const existing = LIST_OWNERS.get(query);
   if (existing) return existing;
   const owner: ListOwner = {
@@ -305,8 +302,7 @@ function listOwner<TItem>(
   };
   const releaseCache = qc.getQueryCache().subscribe((event) => {
     if (event.query !== query || owner.writing) return;
-    // A fresh read or eviction supersedes local rollback authority, even if
-    // structural sharing retains an equal optimistic value or absent entry.
+
     if (
       event.type === "removed" ||
       (event.type === "updated" &&
@@ -316,8 +312,7 @@ function listOwner<TItem>(
       owner.items.clear();
     } else if (event.type === "updated" && event.action.type === "success") {
       const data = qc.getQueryData<TItem[]>(queryKey);
-      // An equal whole-array external publication has no per-item provenance;
-      // conservatively accept it as an authoritative confirmation.
+
       if (data === owner.data) owner.items.clear();
       else discardReplacedItems(data, owner, itemId);
       owner.data = data;

@@ -7,7 +7,10 @@ import * as wikiActions from "@/app/actions/wiki-actions";
 import { ApiError } from "@/lib/api-error";
 import { BrowserUserContext } from "@/lib/browser-user-context";
 import { DOCUMENT_TRANSFORM_API } from "@/lib/document-transform-api";
-import { writeTransformRecovery } from "@/lib/document-transform-recovery";
+import {
+  readTransformRecovery,
+  writeTransformRecovery,
+} from "@/lib/document-transform-recovery";
 import {
   DocumentTransformNeedsReviewError,
   type DocumentTransformResult,
@@ -108,7 +111,10 @@ describe("DocumentPolishDialog", () => {
     await vi.waitFor(() => expect(create).toHaveBeenCalledOnce());
   });
 
-  it("always asks for a mode and discloses the untouched source copy", () => {
+  it("defaults to Both and an automatically named copy", async () => {
+    const create = vi
+      .spyOn(DOCUMENT_TRANSFORM_API, "create")
+      .mockRejectedValue(new Error("offline"));
     renderDialog(root, {
       allowInPlace: true,
       expectedModifiedTime: "2026-09-03T12:00:00Z",
@@ -118,15 +124,30 @@ describe("DocumentPolishDialog", () => {
       name: "Architecture review",
     });
 
-    expect(document.body).toHaveTextContent("Formatting");
+    expect(document.body).toHaveTextContent("Format");
     expect(document.body).toHaveTextContent("Unslop");
     expect(document.body).toHaveTextContent("Both");
+    expect(findButtonNow("Both")).toHaveAccessibleName("Both");
     expect(findButtonNow("Both")).toHaveAttribute("aria-pressed", "true");
-    expect(document.body).toHaveTextContent(
-      "“Architecture review” stays unchanged",
+    expect(document.body).toHaveTextContent("Architecture review");
+    expect(document.body).toHaveTextContent("The original stays unchanged.");
+    expect(document.querySelector("#polish-copy-name")).toBeNull();
+    await vi.waitFor(() =>
+      expect(findButtonNow("Create polished copy")).toBeEnabled(),
     );
-    expect(document.body).toHaveTextContent(
-      "A new Google Doc will be created next to it",
+    clickButton(findButtonNow("Create polished copy"));
+    await vi.waitFor(() =>
+      expect(create).toHaveBeenCalledExactlyOnceWith(
+        {
+          expectedModifiedTime: "2026-09-03T12:00:00Z",
+          fileId: "source-1",
+          kind: "drive_file",
+          name: "Architecture review",
+        },
+        "both",
+        expect.any(String),
+        "copy",
+      ),
     );
   });
 
@@ -202,6 +223,295 @@ describe("DocumentPolishDialog", () => {
     expect(document.body).toHaveTextContent("choose Short link");
     clickButton(findButtonNow("Open polished document"));
     expect(NavigationMock.push).toHaveBeenCalledWith("/d/output-1");
+  });
+
+  it.each(["button", "Escape"] as const)(
+    "closes an accepted task with %s and resumes the same task without another POST",
+    async (dismissal) => {
+      const pending = {
+        id: "55555555-5555-4555-8555-555555555555",
+        status: "pending",
+      } as const;
+      const firstCompletion = deferred<DocumentTransformResult>();
+      const resumedCompletion = deferred<DocumentTransformResult>();
+      const create = vi
+        .spyOn(DOCUMENT_TRANSFORM_API, "create")
+        .mockResolvedValue(pending);
+      const getTask = vi
+        .spyOn(DOCUMENT_TRANSFORM_API, "getTask")
+        .mockResolvedValue(pending);
+      const wait = vi
+        .spyOn(DOCUMENT_TRANSFORM_API, "waitForCompletion")
+        .mockReturnValueOnce(firstCompletion.promise)
+        .mockReturnValue(resumedCompletion.promise);
+      const onOpenChange = vi.fn();
+      const info = vi.spyOn(toast, "info");
+      const { rerender } = renderDialog(
+        root,
+        {
+          allowInPlace: false,
+          expectedModifiedTime: "revision",
+          fileId: "source-1",
+          kind: "drive_file",
+          mimeType: MIME_DOC,
+          name: "Architecture review",
+        },
+        undefined,
+        "owner-1",
+        onOpenChange,
+      );
+      await vi.waitFor(() =>
+        expect(findButtonNow("Create polished copy")).toBeEnabled(),
+      );
+      clickButton(findButtonNow("Create polished copy"));
+      await vi.waitFor(() => expect(findButtonNow("Close")).toBeEnabled());
+      const key = create.mock.calls[0]?.[2];
+      expect(
+        document.querySelector('[data-slot="dialog-footer"]'),
+      ).toHaveTextContent("Close");
+
+      if (dismissal === "button") clickButton(findButtonNow("Close"));
+      else pressEscape();
+
+      expect(onOpenChange).toHaveBeenCalledExactlyOnceWith(false);
+      expect(wait.mock.calls[0]?.[1]?.aborted).toBe(true);
+      expect(readTransformRecovery("owner-1", "drive:source-1")).toMatchObject({
+        key,
+        taskId: pending.id,
+      });
+      expect(info).toHaveBeenCalledWith("Check progress by reopening Polish.");
+      rerender(false);
+      rerender(true);
+      await vi.waitFor(() =>
+        expect(findButtonNow("Resume checking")).toBeEnabled(),
+      );
+      clickButton(findButtonNow("Resume checking"));
+      await vi.waitFor(() => expect(wait).toHaveBeenCalledTimes(2));
+      expect(getTask).toHaveBeenCalledExactlyOnceWith(
+        pending.id,
+        expect.any(AbortSignal),
+      );
+      expect(create).toHaveBeenCalledOnce();
+      expect(readTransformRecovery("owner-1", "drive:source-1")?.key).toBe(key);
+
+      resumedCompletion.resolve(transformResult());
+      await vi.waitFor(() =>
+        expect(document.body).toHaveTextContent("Polish complete"),
+      );
+      firstCompletion.resolve(
+        transformResult({ outputFileId: "discarded-output" }),
+      );
+      await vi.waitFor(() =>
+        expect(wait.mock.settledResults[0]?.type).toBe("fulfilled"),
+      );
+      expect(create).toHaveBeenCalledOnce();
+    },
+  );
+
+  it.each(["metadata", "submission"] as const)(
+    "keeps dismissal locked while %s is unacknowledged",
+    async (pendingStage) => {
+      const pending = {
+        id: "55555555-5555-4555-8555-555555555555",
+        status: "pending",
+      } as const;
+      const metadata = deferred<string>();
+      const admission =
+        deferred<Awaited<ReturnType<typeof DOCUMENT_TRANSFORM_API.create>>>();
+      const completion = deferred<DocumentTransformResult>();
+      const create = vi
+        .spyOn(DOCUMENT_TRANSFORM_API, "create")
+        .mockReturnValue(admission.promise);
+      vi.spyOn(DOCUMENT_TRANSFORM_API, "waitForCompletion").mockReturnValue(
+        completion.promise,
+      );
+      const onOpenChange = vi.fn();
+      renderDialog(
+        root,
+        {
+          allowInPlace: false,
+          expectedModifiedTime: "revision",
+          fileId: "source-1",
+          kind: "drive_file",
+          mimeType: MIME_DOC,
+          name: "Architecture review",
+          refreshExpectedModifiedTime: async () =>
+            pendingStage === "metadata" ? await metadata.promise : "revision",
+        },
+        undefined,
+        "owner-1",
+        onOpenChange,
+      );
+      await vi.waitFor(() =>
+        expect(findButtonNow("Create polished copy")).toBeEnabled(),
+      );
+      clickButton(findButtonNow("Create polished copy"));
+      await vi.waitFor(() =>
+        expect(create).toHaveBeenCalledTimes(
+          pendingStage === "submission" ? 1 : 0,
+        ),
+      );
+      expect(findButtonNow("Close")).toBeDisabled();
+      expect(document.querySelector('[data-slot="dialog-close"]')).toBeNull();
+      clickButton(findButtonNow("Close"));
+      pressEscape();
+      expect(onOpenChange).not.toHaveBeenCalled();
+
+      metadata.resolve("revision");
+      admission.resolve(pending);
+      await vi.waitFor(() => expect(findButtonNow("Close")).toBeEnabled());
+      clickButton(findButtonNow("Close"));
+      expect(onOpenChange).toHaveBeenCalledExactlyOnceWith(false);
+      completion.resolve(transformResult());
+    },
+  );
+
+  it("keeps dismissal locked until the accepted task is durably recorded", async () => {
+    const pending = {
+      id: "55555555-5555-4555-8555-555555555555",
+      status: "pending",
+    } as const;
+    const recording = deferred<undefined>();
+    const completion = deferred<DocumentTransformResult>();
+    const create = vi
+      .spyOn(DOCUMENT_TRANSFORM_API, "create")
+      .mockResolvedValue(pending);
+    const wait = vi
+      .spyOn(DOCUMENT_TRANSFORM_API, "waitForCompletion")
+      .mockReturnValue(completion.promise);
+    Object.defineProperty(navigator, "locks", {
+      configurable: true,
+      value: {
+        request: async (_name: string, callback: () => unknown) => {
+          if (create.mock.calls.length > 0) await recording.promise;
+          return callback();
+        },
+      },
+    });
+    const onOpenChange = vi.fn();
+    renderDialog(
+      root,
+      {
+        allowInPlace: false,
+        expectedModifiedTime: "revision",
+        fileId: "source-1",
+        kind: "drive_file",
+        mimeType: MIME_DOC,
+        name: "Architecture review",
+      },
+      undefined,
+      "owner-1",
+      onOpenChange,
+    );
+    await vi.waitFor(() =>
+      expect(findButtonNow("Create polished copy")).toBeEnabled(),
+    );
+    clickButton(findButtonNow("Create polished copy"));
+    await vi.waitFor(() =>
+      expect(document.body).toHaveTextContent(`Task: ${pending.id}`),
+    );
+    expect(
+      readTransformRecovery("owner-1", "drive:source-1")?.taskId,
+    ).toBeNull();
+    expect(wait).not.toHaveBeenCalled();
+    expect(findButtonNow("Close")).toBeDisabled();
+    pressEscape();
+    expect(onOpenChange).not.toHaveBeenCalled();
+
+    recording.resolve(undefined);
+    await vi.waitFor(() => expect(findButtonNow("Close")).toBeEnabled());
+    expect(readTransformRecovery("owner-1", "drive:source-1")?.taskId).toBe(
+      pending.id,
+    );
+    clickButton(findButtonNow("Close"));
+    expect(onOpenChange).toHaveBeenCalledExactlyOnceWith(false);
+    completion.resolve(transformResult());
+  });
+
+  it("ignores a discarded poll completion while closed", async () => {
+    const {
+      create,
+      current,
+      discarded,
+      key,
+      pending,
+      rerender,
+      success,
+      wait,
+    } = await startClosedPolish(root);
+
+    discarded.resolve(transformResult({ outputFileId: "discarded-output" }));
+    await vi.waitFor(() =>
+      expect(wait.mock.settledResults[0]?.type).toBe("fulfilled"),
+    );
+    rerender(false);
+    expect(success).not.toHaveBeenCalled();
+    expect(NavigationMock.push).not.toHaveBeenCalled();
+    expect(readTransformRecovery("owner-1", "drive:source-1")).toMatchObject({
+      key,
+      taskId: pending.id,
+    });
+    expect(document.querySelector('[role="dialog"]')).toBeNull();
+
+    rerender(true);
+    await vi.waitFor(() =>
+      expect(findButtonNow("Resume checking")).toBeEnabled(),
+    );
+    clickButton(findButtonNow("Resume checking"));
+    await vi.waitFor(() => expect(wait).toHaveBeenCalledTimes(2));
+    expect(findButtonNow("Polishing…")).toBeDisabled();
+    expect(document.body).not.toHaveTextContent("Polish complete");
+    current.resolve(transformResult({ outputFileName: "Current result" }));
+    await vi.waitFor(() =>
+      expect(document.body).toHaveTextContent("Polish complete"),
+    );
+    expect(document.body).toHaveTextContent("Current result");
+    expect(success).toHaveBeenCalledExactlyOnceWith(
+      "Resumed the existing polish",
+    );
+    expect(create).toHaveBeenCalledOnce();
+  });
+
+  it("ignores a discarded poll completion after reopening", async () => {
+    const {
+      create,
+      current,
+      discarded,
+      key,
+      pending,
+      rerender,
+      success,
+      wait,
+    } = await startClosedPolish(root);
+    rerender(true);
+    await vi.waitFor(() =>
+      expect(findButtonNow("Resume checking")).toBeEnabled(),
+    );
+    clickButton(findButtonNow("Resume checking"));
+    await vi.waitFor(() => expect(wait).toHaveBeenCalledTimes(2));
+
+    discarded.resolve(transformResult({ outputFileId: "discarded-output" }));
+    await vi.waitFor(() =>
+      expect(wait.mock.settledResults[0]?.type).toBe("fulfilled"),
+    );
+    rerender(true);
+    expect(success).not.toHaveBeenCalled();
+    expect(NavigationMock.push).not.toHaveBeenCalled();
+    expect(readTransformRecovery("owner-1", "drive:source-1")).toMatchObject({
+      key,
+      taskId: pending.id,
+    });
+    expect(findButtonNow("Polishing…")).toBeDisabled();
+    expect(document.body).not.toHaveTextContent("Polish complete");
+    current.resolve(transformResult({ outputFileName: "Current result" }));
+    await vi.waitFor(() =>
+      expect(document.body).toHaveTextContent("Polish complete"),
+    );
+    expect(document.body).toHaveTextContent("Current result");
+    expect(success).toHaveBeenCalledExactlyOnceWith(
+      "Resumed the existing polish",
+    );
+    expect(create).toHaveBeenCalledOnce();
   });
 
   it("completes once and shows verified preservation details without a review alert", async () => {
@@ -435,7 +745,7 @@ describe("DocumentPolishDialog", () => {
         await vi.waitFor(() =>
           expect(document.body).toHaveTextContent("No changes needed"),
         );
-        expect(findButtonNow("Formatting")).toBeDisabled();
+        expect(findButtonNow("Format")).toBeDisabled();
         expect(document.body).toHaveTextContent("do not change who can access");
         let retryWasDisabled = false;
         if (shortLinkStatus === "ready") {
@@ -591,8 +901,8 @@ describe("DocumentPolishDialog", () => {
     expect(document.querySelector('[role="alert"]')).toHaveTextContent(
       "Couldn’t verify the latest revision",
     );
-    expect(findButtonNow("Formatting")).toBeEnabled();
-    clickButton(findButtonNow("Formatting"));
+    expect(findButtonNow("Format")).toBeEnabled();
+    clickButton(findButtonNow("Format"));
     expect(document.body).not.toHaveTextContent("Polish interrupted");
     clickButton(findButtonNow("Create polished copy"));
     await vi.waitFor(() => {
@@ -637,7 +947,7 @@ describe("DocumentPolishDialog", () => {
     await vi.waitFor(() => {
       expect(create).toHaveBeenCalledOnce();
       expect(findButtonNow("Resume checking")).toBeEnabled();
-      expect(findButtonNow("Formatting")).toBeDisabled();
+      expect(findButtonNow("Format")).toBeDisabled();
       expect(document.querySelector('[role="alert"]')).toHaveTextContent(
         "Response was lost",
       );
@@ -712,7 +1022,7 @@ describe("DocumentPolishDialog", () => {
       expect(findButtonNow("Resume checking")).toBeEnabled(),
     );
     expect(create).not.toHaveBeenCalled();
-    expect(findButtonNow("Formatting")).toBeDisabled();
+    expect(findButtonNow("Format")).toBeDisabled();
     expect(document.body).toHaveTextContent(pending.id);
   });
 
@@ -992,18 +1302,14 @@ describe("DocumentPolishDialog", () => {
       name: "Notes",
     });
     await vi.waitFor(() => {
-      expect(findButtonNow("Create review copy")).toHaveAccessibleName(
-        "Create review copy",
-      );
+      expect(findButtonNow("New copy")).toHaveAccessibleName("New copy");
     });
-    const copy = findButtonNow("Create review copy");
+    const copy = findButtonNow("New copy");
     const original = findButtonNow("Edit original");
     expect(original).toHaveAccessibleName("Edit original");
-    expect(copy).toHaveAccessibleDescription(
-      "Keep the original untouched and create a sibling Google Doc.",
-    );
+    expect(copy).toHaveAccessibleDescription("Keep the original unchanged.");
     expect(original).toHaveAccessibleDescription(
-      "Amend this Google Doc; Drive version history remains available.",
+      "Updates this file; Drive history stays available.",
     );
     expect(copy).toHaveAttribute("aria-pressed", "true");
     expect(original).toHaveAttribute("aria-pressed", "false");
@@ -1012,7 +1318,7 @@ describe("DocumentPolishDialog", () => {
     expect(original).toHaveAttribute("aria-pressed", "true");
     expect(copy).toHaveAttribute("aria-pressed", "false");
     clickButton(copy);
-    expect(copy).toHaveAccessibleName("Create review copy");
+    expect(copy).toHaveAccessibleName("New copy");
     expect(copy).toHaveAttribute("aria-pressed", "true");
     expect(original).toHaveAttribute("aria-pressed", "false");
     expect(create).not.toHaveBeenCalled();
@@ -1087,7 +1393,7 @@ describe("DocumentPolishDialog", () => {
     clickButton(findButtonNow("Already polished"));
     expect(create).not.toHaveBeenCalled();
 
-    clickButton(findButtonNow("Create review copy"));
+    clickButton(findButtonNow("New copy"));
     await vi.waitFor(() =>
       expect(findButtonNow("Create polished copy")).toBeEnabled(),
     );
@@ -1134,7 +1440,7 @@ describe("DocumentPolishDialog", () => {
       expect(findButtonNow("Already polished")).toBeDisabled(),
     );
 
-    clickButton(findButtonNow("Formatting"));
+    clickButton(findButtonNow("Format"));
 
     await vi.waitFor(() =>
       expect(findButtonNow("Polish original")).toBeEnabled(),
@@ -1223,14 +1529,15 @@ describe("DocumentPolishDialog", () => {
       const invalidate = vi.spyOn(queryClient, "invalidateQueries");
 
       await vi.waitFor(() => {
-        expect(findButtonNow("Create review copy")).toHaveAttribute(
+        expect(findButtonNow("New copy")).toHaveAttribute(
           "aria-pressed",
           "true",
         );
       });
       clickButton(findButtonNow("Edit original"));
-      expect(document.body).toHaveTextContent(
-        "will be amended only after revision and safety checks",
+      expect(findButtonNow("Edit original")).toHaveAttribute(
+        "aria-pressed",
+        "true",
       );
       await vi.waitFor(() =>
         expect(findButtonNow("Polish original")).toBeEnabled(),
@@ -1434,7 +1741,7 @@ describe("DocumentPolishDialog", () => {
         expect(
           findButtonNow(released ? "Create polished copy" : "Resume checking"),
         ).toBeEnabled();
-        expect(findButtonNow("Formatting").disabled).toBe(!released);
+        expect(findButtonNow("Format").disabled).toBe(!released);
       });
     },
   );
@@ -1471,7 +1778,7 @@ describe("DocumentPolishDialog", () => {
       const receipt = document.querySelector('[role="alert"]');
       expect(receipt?.parentElement?.firstElementChild).toBe(receipt);
       expect(
-        receipt?.compareDocumentPosition(findButtonNow("Formatting")) ?? 0,
+        receipt?.compareDocumentPosition(findButtonNow("Format")) ?? 0,
       ).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
       expect(document.body).toHaveTextContent(
         "has not passed safety verification",
@@ -1483,7 +1790,7 @@ describe("DocumentPolishDialog", () => {
     });
     clickButton(findButtonNow("Create polished copy"));
     expect(DOCUMENT_TRANSFORM_API.create).toHaveBeenCalledOnce();
-    clickButton(findButtonNow("Formatting"));
+    clickButton(findButtonNow("Format"));
     await vi.waitFor(() => {
       expect(document.body).not.toHaveTextContent("Task reference:");
       expect(findButtonNow("Create polished copy")).toBeEnabled();
@@ -1631,7 +1938,7 @@ describe("DocumentPolishDialog", () => {
       const receipt = document.querySelector('[role="alert"]');
       expect(receipt?.parentElement?.firstElementChild).toBe(receipt);
       expect(
-        receipt?.compareDocumentPosition(findButtonNow("Formatting")) ?? 0,
+        receipt?.compareDocumentPosition(findButtonNow("Format")) ?? 0,
       ).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
       expect(findButtonNow("Create polished copy")).toBeDisabled();
     });
@@ -2070,7 +2377,7 @@ describe("DocumentPolishDialog", () => {
     );
   });
 
-  it("never rewrites an older Word BOTH recovery into FORMAT", async () => {
+  it("preserves an older Word recovery mode and copy name", async () => {
     const savedSource = {
       expectedModifiedTime: "revision",
       fileId: "word-1",
@@ -2083,6 +2390,7 @@ describe("DocumentPolishDialog", () => {
       key,
       mode: "both",
       outputStrategy: "copy",
+      outputName: "Policy — review copy",
       source: savedSource,
       taskId: null,
     });
@@ -2102,7 +2410,13 @@ describe("DocumentPolishDialog", () => {
     expect(findButtonNow("Both")).toBeDisabled();
     clickButton(findButtonNow("Resume checking"));
     await vi.waitFor(() =>
-      expect(create).toHaveBeenCalledWith(savedSource, "both", key, "copy"),
+      expect(create).toHaveBeenCalledExactlyOnceWith(
+        savedSource,
+        "both",
+        key,
+        "copy",
+        "Policy — review copy",
+      ),
     );
     await vi.waitFor(() =>
       expect(findButtonNow("Resume checking")).toBeEnabled(),
@@ -2283,7 +2597,7 @@ describe("DocumentPolishDialog", () => {
     await vi.waitFor(() =>
       expect(findButtonNow("Import Google Doc")).toBeEnabled(),
     );
-    clickButton(findButtonNow("Formatting"));
+    clickButton(findButtonNow("Format"));
     clickButton(findButtonNow("Import Google Doc"));
 
     await vi.waitFor(() => {
@@ -2477,6 +2791,7 @@ function renderDialog(
   source: DialogTestSource,
   onInPlaceComplete?: () => void,
   owner: null | string = "owner-1",
+  onOpenChange: (open: boolean) => void = vi.fn(),
 ) {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
@@ -2497,21 +2812,72 @@ function renderDialog(
   } else {
     normalizedSource = source;
   }
+  const rerender = (open: boolean) =>
+    flushSync(() => {
+      root.render(
+        <QueryClientProvider client={queryClient}>
+          <BrowserUserContext value={owner}>
+            <DocumentPolishDialog
+              onOpenChange={onOpenChange}
+              open={open}
+              source={normalizedSource}
+              {...(onInPlaceComplete === undefined
+                ? {}
+                : { onInPlaceComplete })}
+            />
+          </BrowserUserContext>
+        </QueryClientProvider>,
+      );
+    });
+  rerender(true);
+  return { queryClient, rerender };
+}
+
+async function startClosedPolish(root: Root) {
+  const pending = {
+    id: "55555555-5555-4555-8555-555555555555",
+    status: "pending",
+  } as const;
+  const discarded = deferred<DocumentTransformResult>();
+  const current = deferred<DocumentTransformResult>();
+  const create = vi
+    .spyOn(DOCUMENT_TRANSFORM_API, "create")
+    .mockResolvedValue(pending);
+  vi.spyOn(DOCUMENT_TRANSFORM_API, "getTask").mockResolvedValue(pending);
+  const wait = vi
+    .spyOn(DOCUMENT_TRANSFORM_API, "waitForCompletion")
+    .mockReturnValueOnce(discarded.promise)
+    .mockReturnValue(current.promise);
+  const success = vi.spyOn(toast, "success");
+  const { rerender } = renderDialog(root, {
+    allowInPlace: false,
+    expectedModifiedTime: "revision",
+    fileId: "source-1",
+    kind: "drive_file",
+    mimeType: MIME_DOC,
+    name: "Architecture review",
+  });
+  await vi.waitFor(() =>
+    expect(findButtonNow("Create polished copy")).toBeEnabled(),
+  );
+  clickButton(findButtonNow("Create polished copy"));
+  await vi.waitFor(() => expect(findButtonNow("Close")).toBeEnabled());
+  const key = create.mock.calls[0]?.[2];
+  clickButton(findButtonNow("Close"));
+  rerender(false);
+  return { create, current, discarded, key, pending, rerender, success, wait };
+}
+
+function pressEscape() {
   flushSync(() => {
-    root.render(
-      <QueryClientProvider client={queryClient}>
-        <BrowserUserContext value={owner}>
-          <DocumentPolishDialog
-            onOpenChange={vi.fn()}
-            open
-            source={normalizedSource}
-            {...(onInPlaceComplete === undefined ? {} : { onInPlaceComplete })}
-          />
-        </BrowserUserContext>
-      </QueryClientProvider>,
+    document.dispatchEvent(
+      new KeyboardEvent("keydown", {
+        bubbles: true,
+        cancelable: true,
+        key: "Escape",
+      }),
     );
   });
-  return { queryClient };
 }
 
 function clickButton(button: HTMLButtonElement) {

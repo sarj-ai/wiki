@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import timedelta
 from functools import cache
 from typing import Annotated
 
@@ -18,6 +19,7 @@ from app.cache.dependencies import cache_service_dep
 from app.cache.service import CacheService
 from app.config import settings
 from app.database import get_db
+from app.document_settings import DocumentSettings
 from app.document_transform.application import CurrentDocumentRevisionReader, DestinationFileReader
 from app.document_transform.google_gateway import (
     GoogleDocumentRevisionReader,
@@ -102,18 +104,24 @@ async def current_polish_context_dep(
     )
 
 
-@cache
-def document_patch_generator_dep() -> PatchGenerator:
-    project = settings.GOOGLE_CLOUD_PROJECT
+def document_model_policy(*, project: str | None, document: DocumentSettings) -> GeminiModelPolicy:
     if project is None:
         msg = "GOOGLE_CLOUD_PROJECT is required for Document Transform"
         raise RuntimeError(msg)
-    policy = GeminiModelPolicy(
+    return GeminiModelPolicy(
         project=project,
         location="global",
-        unslop_model=settings.DOCUMENT.TRANSFORM_UNSLOP_MODEL,
-        fallback_model=settings.DOCUMENT.TRANSFORM_FALLBACK_MODEL,
-        restyle_model=settings.DOCUMENT.TRANSFORM_RESTYLE_MODEL,
+        unslop_model=document.TRANSFORM_UNSLOP_MODEL,
+        fallback_model=document.TRANSFORM_FALLBACK_MODEL,
+        restyle_model=document.TRANSFORM_RESTYLE_MODEL,
+        review_timeout=timedelta(seconds=120),
+    )
+
+
+@cache
+def document_patch_generator_dep() -> PatchGenerator:
+    policy = document_model_policy(
+        project=settings.GOOGLE_CLOUD_PROJECT, document=settings.DOCUMENT
     )
     return VertexGeminiPatchGenerator(policy=policy)
 

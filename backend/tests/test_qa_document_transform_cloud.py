@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import asyncio
+from collections.abc import Awaitable, Callable
 from copy import deepcopy
+from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 import json
 from pathlib import Path
@@ -40,6 +42,29 @@ _STARTED = (_NOW - timedelta(seconds=2)).isoformat()
 _FINISHED = (_NOW - timedelta(seconds=1)).isoformat()
 _CAPABILITY_EXPIRES = (_NOW + timedelta(minutes=30)).isoformat()
 _JOB_EXPIRES = (_NOW + timedelta(hours=2)).isoformat()
+
+
+type _WorkerTiming = Callable[[Callable[[float], Awaitable[None]], Callable[[], float]], None]
+
+
+@dataclass(frozen=True, slots=True)
+class _WorkerAsyncio:
+    sleep: Callable[[float], Awaitable[None]]
+    timeout: Callable[[float | None], asyncio.Timeout]
+
+
+@dataclass(frozen=True, slots=True)
+class _WorkerTime:
+    monotonic: Callable[[], float]
+
+
+@pytest.fixture
+def worker_timing(monkeypatch: pytest.MonkeyPatch) -> _WorkerTiming:
+    def replace(sleep: Callable[[float], Awaitable[None]], monotonic: Callable[[], float]) -> None:
+        monkeypatch.setattr(worker, "asyncio", _WorkerAsyncio(sleep, asyncio.timeout))
+        monkeypatch.setattr(worker, "time", _WorkerTime(monotonic))
+
+    return replace
 
 
 def _runtime(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -246,6 +271,7 @@ async def _run(monkeypatch: pytest.MonkeyPatch, handler: Any) -> None:
 
 async def test_worker_reaches_terminal_verified_evidence_with_rotated_capability(
     monkeypatch: pytest.MonkeyPatch,
+    worker_timing: _WorkerTiming,
 ) -> None:
     requests: list[httpx.Request] = []
     task_states = iter(("pending", "running", "succeeded"))
@@ -259,7 +285,7 @@ async def test_worker_reaches_terminal_verified_evidence_with_rotated_capability
             return _response_for(request, task_status=next(task_states))
         return _response_for(request)
 
-    monkeypatch.setattr(worker.asyncio, "sleep", no_wait)
+    worker_timing(no_wait, time.monotonic)
     await _run(monkeypatch, handler)
 
     urls = [str(request.url) for request in requests]
@@ -325,6 +351,7 @@ def test_cloud_entrypoint_bounds_exhausted_request_failure(
 
 async def test_worker_retries_only_bootstrap_conflict_before_planning(
     monkeypatch: pytest.MonkeyPatch,
+    worker_timing: _WorkerTiming,
 ) -> None:
     bootstrap_calls = 0
 
@@ -339,7 +366,7 @@ async def test_worker_retries_only_bootstrap_conflict_before_planning(
                 return httpx.Response(409)
         return _response_for(request)
 
-    monkeypatch.setattr(worker.asyncio, "sleep", no_wait)
+    worker_timing(no_wait, time.monotonic)
     await _run(monkeypatch, handler)
 
     assert bootstrap_calls == 2
@@ -560,7 +587,9 @@ async def test_worker_rejects_oversized_response_before_json_validation(
 
 @pytest.mark.parametrize("transient_status", [429, 502, 503, 504])
 async def test_worker_retries_only_allowlisted_transient_statuses(
-    monkeypatch: pytest.MonkeyPatch, transient_status: int
+    monkeypatch: pytest.MonkeyPatch,
+    transient_status: int,
+    worker_timing: _WorkerTiming,
 ) -> None:
     task_calls = 0
 
@@ -575,13 +604,14 @@ async def test_worker_retries_only_allowlisted_transient_statuses(
                 return httpx.Response(transient_status)
         return _response_for(request)
 
-    monkeypatch.setattr(worker.asyncio, "sleep", no_wait)
+    worker_timing(no_wait, time.monotonic)
     await _run(monkeypatch, handler)
     assert task_calls == 2
 
 
 async def test_worker_retries_transport_failure(
     monkeypatch: pytest.MonkeyPatch,
+    worker_timing: _WorkerTiming,
 ) -> None:
     task_calls = 0
 
@@ -597,13 +627,14 @@ async def test_worker_retries_transport_failure(
                 raise httpx.ConnectError(message, request=request)
         return _response_for(request)
 
-    monkeypatch.setattr(worker.asyncio, "sleep", no_wait)
+    worker_timing(no_wait, time.monotonic)
     await _run(monkeypatch, handler)
     assert task_calls == 2
 
 
 async def test_worker_refreshes_oidc_and_rotates_capability_during_long_poll(
     monkeypatch: pytest.MonkeyPatch,
+    worker_timing: _WorkerTiming,
 ) -> None:
     clock = 0.0
     task_calls = 0
@@ -629,8 +660,7 @@ async def test_worker_refreshes_oidc_and_rotates_capability_during_long_poll(
             return _response_for(request, task_status="pending" if task_calls == 1 else "succeeded")
         return _response_for(request)
 
-    monkeypatch.setattr(worker.time, "monotonic", monotonic)
-    monkeypatch.setattr(worker.asyncio, "sleep", advance)
+    worker_timing(advance, monotonic)
     refresh_checks = iter((False, True))
     monkeypatch.setattr(
         worker, "_capability_needs_refresh", lambda _capability: next(refresh_checks)
@@ -711,7 +741,7 @@ def test_capability_refresh_is_driven_by_signed_expiry() -> None:
 
 
 async def test_request_enforces_total_wall_clock_timeout(
-    monkeypatch: pytest.MonkeyPatch,
+    worker_timing: _WorkerTiming,
 ) -> None:
     attempts = 0
 
@@ -724,7 +754,7 @@ async def test_request_enforces_total_wall_clock_timeout(
         await asyncio.Event().wait()
         return httpx.Response(200)
 
-    monkeypatch.setattr(worker.asyncio, "sleep", no_wait)
+    worker_timing(no_wait, time.monotonic)
     async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as http:
         with pytest.raises(worker.QaWorkerError):
             await worker._request(

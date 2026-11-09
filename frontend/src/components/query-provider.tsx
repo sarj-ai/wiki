@@ -78,6 +78,7 @@ export function QueryProvider({
       queryClient: client,
       retire: () => {
         ownership.active = false;
+
         // Abort reads before a replacement provider can observe their terminal
         // auth events. Strict Mode immediately restores this owner's effect,
         // so defer clearing its cache until cancellation has finished.
@@ -90,7 +91,6 @@ export function QueryProvider({
   });
 
   useLayoutEffect(() => {
-    // Restore the epoch before child passive effects replay in Strict Mode.
     activateMutationSession(queryClient);
     return () => retireMutationSession(queryClient);
   }, [queryClient]);

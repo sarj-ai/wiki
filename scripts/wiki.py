@@ -1,7 +1,7 @@
 #!/usr/bin/env -S uv run --script
 # /// script
-# requires-python = "==3.14.8"
-# dependencies = ["typer==0.27.3"]
+# requires-python = "==3.15.2"
+# dependencies = ["typer==0.28.0"]
 # ///
 """Set up, verify and maintain Sarj Wiki using its native tools."""
 
@@ -256,6 +256,15 @@ def check_command(
     run(tuple(dict.fromkeys(commands)))
 
 
+@CLI.command(
+    "lint",
+    context_settings={"allow_extra_args": True, "ignore_unknown_options": True},
+    help="Run source standards with forwarded paths and options.",
+)
+def lint_command(context: typer.Context) -> None:
+    run((_standards("check", "--trust-repository-code", *context.args),))
+
+
 @CLI.command("standards", help="Maintain the pinned source and repository standards.")
 def standards_command(
     action: Annotated[Standards, typer.Argument()] = Standards.CHECK,
@@ -349,7 +358,7 @@ def protection_command(
                     "run",
                     "--no-project",
                     "--with",
-                    "typer==0.27.3",
+                    "typer==0.28.0",
                     "--python",
                     "3.14",
                     "python",

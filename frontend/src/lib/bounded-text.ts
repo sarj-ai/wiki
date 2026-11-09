@@ -14,7 +14,7 @@ export async function boundedText(
   const discard = () => {
     if (discarded) return;
     discarded = true;
-    // Cancelling closes pending reads immediately even when source cleanup stalls.
+
     void reader.cancel().catch(() => null);
   };
   const chunks: AsyncIterable<Uint8Array> = {

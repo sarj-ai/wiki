@@ -1,6 +1,6 @@
 {
   "private": true,
   "scripts": {
-    "lint": "code-standards check --trust-repository-code"
+    "lint": "uv run scripts/wiki.py lint"
   }
 }

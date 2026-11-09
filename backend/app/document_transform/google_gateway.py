@@ -141,7 +141,12 @@ from app.document_transform.native_paragraph_layout import (
     paragraph_layout_sha256,
 )
 from app.document_transform.native_prose import linked_prose_tail
-from app.document_transform.native_safety_diagnostics import SafetyStage, native_safety_error
+from app.document_transform.native_safety_diagnostics import (
+    SafetyStage,
+    log_footer_created_reply,
+    log_footer_snapshot,
+    native_safety_error,
+)
 from app.document_transform.native_table_font import TableFontPlan, project_table_fonts
 from app.document_transform.native_visual_authority import (
     apply_visual_authority,
@@ -668,6 +673,8 @@ class GoogleDocumentGateway(DocumentGateway):
             if checkpoint.stage is NativeFooterStage.COMPLETE:
                 return _advance_footer_coverage(document, checkpoint, coverage)
         creating = checkpoint.stage is NativeFooterStage.CREATE
+        if creating:
+            log_footer_snapshot(document, checkpoint.tab_id, "create_input")
         marker = checkpoint.create_marker if creating else checkpoint.populate_marker
         if not _has_exact_named_range(document, marker, checkpoint.marker_range):
             plan = _plan_copy_footer_write(document, checkpoint)
@@ -679,6 +686,8 @@ class GoogleDocumentGateway(DocumentGateway):
                 requests=list(plan.requests),
             )
             document = result.document
+        if creating:
+            log_footer_snapshot(document, checkpoint.tab_id, "projection_empty")
         _, footer_id = verified_footer_projection(document, checkpoint, populated=not creating)
         return checkpoint.model_copy(
             update={
@@ -1239,7 +1248,7 @@ class GoogleDocumentGateway(DocumentGateway):
             *requests,
         ]
         try:
-            self._execute_mutation_dict(
+            mutation_response = self._execute_mutation_dict(
                 _google_http_request(
                     _member(self._docs().documents(), "batchUpdate"),
                     documentId=document_id,
@@ -1274,6 +1283,7 @@ class GoogleDocumentGateway(DocumentGateway):
                 raise
             raise SourceChangedError from exc
         document = self._get_document_sync(document_id)
+        log_footer_created_reply(document, requests, mutation_response)
         if not _has_exact_named_range(document, marker_name, expected_marker_range):
             logger.warning(
                 "document stage marker verification failed revision_unchanged={revision_unchanged} "
@@ -1730,6 +1740,7 @@ class GoogleDocumentGateway(DocumentGateway):
             header_title=header_title,
             brand_warnings=draft.brand_warnings,
             verify_brand=verify_brand,
+            structure_preserved=structure_preserved,
         )
         if not content_preserved or not structure_preserved:
             logger.warning(
@@ -3312,6 +3323,7 @@ def _copy_brand_verification(
     header_title: str | None,
     brand_warnings: tuple[str, ...],
     verify_brand: bool,
+    structure_preserved: bool,
 ) -> _CopyBrandVerification:
     if not verify_brand:
         return _CopyBrandVerification(brand_applied=True, supported_brand_applied=False)
@@ -3324,7 +3336,8 @@ def _copy_brand_verification(
     if brand_warnings and all(warning.startswith("header_conflict:") for warning in brand_warnings):
         return _CopyBrandVerification(
             brand_applied=False,
-            supported_brand_applied=original is not None
+            supported_brand_applied=structure_preserved
+            and original is not None
             and _copy_supported_brand_applied(
                 original,
                 actual,
@@ -3340,7 +3353,16 @@ def _copy_brand_verification(
     )
     return _CopyBrandVerification(
         brand_applied=brand_applied,
-        supported_brand_applied=False,
+        supported_brand_applied=not brand_applied
+        and structure_preserved
+        and not brand_warnings
+        and any(block.preserved_visual_authority for block in parsed.blocks)
+        and verify_brand_application(
+            actual,
+            parsed,
+            expected_header_title=expected_header_title,
+            allow_preserved_visual_authority=True,
+        ),
     )
 
 
@@ -3375,6 +3397,7 @@ def _copy_supported_brand_applied(
         expected_header_title=expected_header_title,
         preserved_furniture_tabs=frozenset(binding.tab_id for binding in evidence),
         preserved_header_tabs=frozenset(binding.tab_id for binding in evidence),
+        allow_preserved_visual_authority=True,
     )
 
 

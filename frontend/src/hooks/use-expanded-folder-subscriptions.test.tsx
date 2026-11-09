@@ -34,11 +34,10 @@ function instrument(initialize: StateCreator<unknown>): StateCreator<unknown> {
 
 vi.mock("zustand", async (importOriginal) => {
   const actual = await importOriginal<typeof Zustand>();
-  const create = (initialize?: StateCreator<unknown>) => {
-    const bound = (stateCreator: StateCreator<unknown>) =>
-      actual.create(instrument(stateCreator));
-    return initialize ? bound(initialize) : bound;
-  };
+  const bound = (stateCreator: StateCreator<unknown>) =>
+    actual.create(instrument(stateCreator));
+  const create = (initialize?: StateCreator<unknown>) =>
+    initialize ? bound(initialize) : bound;
   return { ...actual, create };
 });
 

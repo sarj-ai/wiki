@@ -2,7 +2,7 @@
 
 import { LockKeyhole } from "lucide-react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { SidebarProvider, useSidebar } from "@/components/ui/sidebar";
 import { WorkspaceFrame } from "@/components/workspace-frame";
@@ -28,6 +28,7 @@ function DemoWorkspaceContent() {
   const { setOpenMobile } = useSidebar();
   const [searchOpen, setSearchOpen] = useState(false);
   const [reloadKey, setReloadKey] = useState(0);
+  const reloadButton = useRef<HTMLButtonElement | null>(null);
 
   useEffect(() => {
     document.title = `${file.name} · Wiki demo`;
@@ -36,7 +37,12 @@ function DemoWorkspaceContent() {
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.defaultPrevented || event.repeat) return;
-      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
+      if (
+        (event.metaKey || event.ctrlKey) &&
+        !event.altKey &&
+        !event.shiftKey &&
+        event.key.toLowerCase() === "k"
+      ) {
         event.preventDefault();
         setSearchOpen((open) => !open);
       }
@@ -51,7 +57,10 @@ function DemoWorkspaceContent() {
     closeMobile();
     router.push(demoHref(selected));
   };
-  const reload = () => setReloadKey((current) => current + 1);
+  const reload = () => {
+    reloadButton.current?.focus();
+    setReloadKey((current) => current + 1);
+  };
 
   return (
     <>
@@ -68,11 +77,16 @@ function DemoWorkspaceContent() {
       />
       <WorkspaceFrame>
         <div
-          className="flex size-full min-h-0 flex-col"
+          className="focus-visible:outline-ring flex size-full min-h-0 flex-col focus-visible:outline-2 focus-visible:-outline-offset-2"
           id="demo-document"
           tabIndex={-1}
         >
-          <DemoToolbar file={file} key={file.id} onReload={reload} />
+          <DemoToolbar
+            file={file}
+            key={file.id}
+            onReload={reload}
+            reloadButtonRef={reloadButton}
+          />
           <DemoPreview
             file={file}
             key={`${file.id}:${reloadKey}`}

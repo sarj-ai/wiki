@@ -45,13 +45,19 @@ const ErrorDetailSchema = z.object({
     .optional(),
 });
 const OperationResultSchema = z.object({ data: z.unknown().optional() });
+const SdkMetadataContainerSchema = z
+  .union([z.object({}), z.custom<readonly unknown[]>(Array.isArray)])
+  .nullable();
+
+function isSdkMetadataContainer(value: unknown): value is null | object {
+  return SdkMetadataContainerSchema.safeParse(value).success;
+}
 
 client.interceptors.request.use(async (request, options) => {
   const session = requestSession(options);
   session.throwIfAborted();
   request.signal.throwIfAborted();
-  // Reads belong to the mounted session. An already-dispatched mutation can
-  // finish, while its retired owner is prevented from refreshing or replaying.
+
   const ownedRequest =
     request.method === "GET" || request.method === "HEAD"
       ? new Request(request, {
@@ -145,8 +151,6 @@ export function makeCall(clientOverride?: Client) {
     options: OperationOptions<Op>,
     schema?: S,
   ): Promise<void | z.output<S>> {
-    // SDK validation/auth can yield before request interceptors run. Carry the
-    // calling session through SDK metadata, never through an HTTP header.
     const session =
       clientOverride === undefined ? captureBrowserSession() : undefined;
     session?.throwIfAborted();
@@ -158,7 +162,7 @@ export function makeCall(clientOverride?: Client) {
       const previousMeta: unknown =
         "meta" in options ? options["meta"] : undefined;
       const meta: Record<PropertyKey, unknown> = {};
-      if (typeof previousMeta === "object" && previousMeta !== null) {
+      if (isSdkMetadataContainer(previousMeta) && previousMeta !== null) {
         Object.assign(meta, previousMeta);
       }
       meta[SESSION_META] = session;
@@ -184,7 +188,7 @@ export { ApiError } from "@/lib/api-error";
 function requestSession(options: object): AbortSignal {
   if (
     "meta" in options &&
-    typeof options.meta === "object" &&
+    isSdkMetadataContainer(options.meta) &&
     options.meta !== null &&
     Object.hasOwn(options.meta, SESSION_META)
   ) {
@@ -205,10 +209,15 @@ async function readErrorMessage(
     const payload = ErrorDetailSchema.safeParse(parsed);
     if (!payload.success) return null;
     const { detail } = payload.data;
-    if (typeof detail === "string" && detail.trim().length > 0) return detail;
+    if (
+      detail !== undefined &&
+      !Array.isArray(detail) &&
+      detail.trim().length > 0
+    )
+      return detail;
     if (Array.isArray(detail) && detail.length > 0) {
       const first = detail[0];
-      if (first && typeof first.msg === "string") return first.msg;
+      if (first?.msg !== undefined) return first.msg;
     }
     return null;
   } catch {

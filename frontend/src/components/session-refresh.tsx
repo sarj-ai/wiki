@@ -30,8 +30,6 @@ export function SessionRefresh() {
           try {
             localStorage.removeItem(LAST_REFRESH_KEY);
           } catch {
-            // Some storage policies deny deletion but still allow writes. An
-            // expired owned marker keeps remounts from suppressing failed work.
             if (localStorage.getItem(LAST_REFRESH_KEY) === marker)
               localStorage.setItem(LAST_REFRESH_KEY, "0");
           }
@@ -63,7 +61,6 @@ export function SessionRefresh() {
         ownsUnstoredRefresh = false;
       } catch {
         ownsUnstoredRefresh = true;
-        // Background refresh still works without cross-tab coordination.
       }
       void (async () => {
         const result = await deduplicatedRefresh(controller.signal);
@@ -72,8 +69,6 @@ export function SessionRefresh() {
         else releaseMarker(marker);
         if (result === "unauthorized") notifyTerminalUnauthorized();
       })().catch(() => {
-        // Unmount only releases this waiter; the shared refresh remains usable
-        // by foreground reads and the replacement session owner.
         if (!controller.signal.aborted) releaseMarker(marker);
       });
     };

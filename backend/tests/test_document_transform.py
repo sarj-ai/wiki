@@ -32,12 +32,14 @@ from app.document_transform.errors import (
     ActiveSuggestionsNeedsReviewError,
     BrandAssetUnavailableError,
     CheckpointTooLargeError,
+    ConcisionTargetUnmetError,
     CustomHeaderNeedsReviewError,
     DestinationAccessChangedError,
     DocumentGatewayError,
     IncompatiblePendingOutputError,
     InPlaceNeedsReviewError,
     InPlacePostMutationVerificationError,
+    ModelUnavailableError,
     OutputConflictError,
     OutputVerificationError,
     SourceChangedError,
@@ -305,6 +307,35 @@ class _Generator(PatchGenerator):
                 expected_sha256=block.sha256,
                 replacement=replacement,
                 rationale="focused edit",
+            )
+        ]
+
+
+class _UnmetQualityGenerator(_Generator):
+    supports_semantic_rewrite = True
+
+    def __init__(self, source: str, failure: str) -> None:
+        super().__init__({TransformPhase.UNSLOP: source})
+        self.failure = failure
+        self.repair_calls = 0
+
+    @override
+    async def repair(
+        self, document: DocumentIR, patches: list[TextPatch], findings: tuple[TransformFinding, ...]
+    ) -> list[TextPatch]:
+        self.repair_calls += 1
+        assert len(patches) == 1
+        assert [finding.code for finding in findings] == ["concision_target_unmet"]
+        if self.failure == "unavailable":
+            raise ModelUnavailableError
+        block = document.blocks[0]
+        return [
+            TextPatch(
+                block_id=block.id,
+                expected_sha256=block.sha256,
+                replacement=block.text.replace(" may ", " will ")
+                if self.failure == "unsafe"
+                else block.text,
             )
         ]
 
@@ -1303,6 +1334,62 @@ async def test_unslop_clean_document_is_exact_content_noop_without_model_call() 
     assert gateway.brand_prepares == 0
     assert "updateDocumentStyle" not in str(gateway.requests)
     assert "insertInlineImage" not in str(gateway.requests)
+
+
+@pytest.mark.parametrize("failure", ["unavailable", "unsafe", "over-budget"])
+@pytest.mark.parametrize("in_place", [False, True], ids=["copy", "in-place"])
+async def test_unmet_document_quality_stops_before_checkpoint_and_provider_writes(
+    failure: str, *, in_place: bool
+) -> None:
+    source = (
+        "The sensor may record temperature at night."
+        + " The account restates this description in extended and repetitive wording." * 4
+    )
+    gateway: _Gateway
+    if in_place:
+        gateway = _InPlaceGateway(source)
+        request = _in_place_request(TransformMode.UNSLOP)
+    else:
+        gateway = _Gateway()
+        request = DocumentTransformRequest(
+            source=MarkdownSource(
+                kind="markdown",
+                content=source,
+                name="Sensor",
+                destination_folder_id=FileId("folder"),
+            ),
+            mode=TransformMode.BOTH,
+        )
+    store = _CopyCheckpointStore()
+    generator = _UnmetQualityGenerator(source, failure)
+    task_id = TaskId(uuid.uuid7())
+    executor = DocumentTransformExecutor(
+        gateway=gateway,
+        generator=generator,
+        allow_format_text_edits=True,
+        checkpoint_store=store,
+        task_id=task_id,
+        lease_token=uuid.uuid7(),
+    )
+
+    with pytest.raises(
+        ModelUnavailableError if failure == "unavailable" else ConcisionTargetUnmetError
+    ):
+        await executor.execute(operation_id=task_id, request=request)
+
+    assert generator.repair_calls == 1
+    assert generator.calls == [TransformPhase.UNSLOP]
+    assert gateway.draft is None
+    assert gateway.imported_docx is None
+    assert gateway.requests == []
+    assert gateway.applies == gateway.brand_prepares == 0
+    assert store.checkpoints == store.resources == store.events == []
+    if isinstance(gateway, _InPlaceGateway):
+        assert gateway.events == []
+        assert gateway.document == _in_place_document(source)
+    else:
+        assert isinstance(request.source, MarkdownSource)
+        assert request.source.content == source
 
 
 async def test_completed_output_recovery_never_reruns_model_or_mutations() -> None:

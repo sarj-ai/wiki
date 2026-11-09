@@ -1,14 +1,17 @@
+from collections.abc import Callable
 from copy import deepcopy
 from dataclasses import replace
-from typing import Any, NamedTuple
+from typing import Any, NamedTuple, override
 import uuid
 
+from pydantic import JsonValue
 import pytest
 
 from app.document_transform.authored_labels import plan_authored_labels
 from app.document_transform.copy_visual_authority import verify_copy_visual_authority
 from app.document_transform.errors import OutputConflictError, OutputVerificationError
 from app.document_transform.gateway import OutputVerification, SourceSnapshot
+from app.document_transform.google_gateway import GoogleDocumentGateway
 from app.document_transform.ir import DocumentIR, parse_google_document
 from app.document_transform.native_visual_authority import (
     apply_visual_authority,
@@ -23,14 +26,16 @@ from app.document_transform.tab_structure_execution import (
     prepare_tab_creation,
     verify_structure_content,
 )
-from app.identifiers import DocsRevisionId, DocsTabId, TaskId
+from app.identifiers import DocsRevisionId, DocsTabId, FileId, TaskId
 from tests.test_authored_labels import _document as _label_document
 from tests.test_copy_font_preservation import _verify
 from tests.test_document_transform import (
+    _branded_google_document,
     _copy_executor,
     _CopyCheckpointStore,
     _Gateway,
     _in_place_request,
+    _pending_output_draft,
 )
 from tests.test_document_transform_header_provenance import _snapshot
 from tests.test_document_transform_tab_structure import _document as _sectioned_document
@@ -235,3 +240,72 @@ async def test_visual_authority_survives_verified_move_to_new_tab(monkeypatch: p
             gateway=gateway, store=store, task_id=operation, checkpoint=checkpoint
         ).execute(operation_id=operation, request=request)
     assert checks[-1] is False
+
+
+class _CopyVerificationGateway(GoogleDocumentGateway):
+    def __init__(self, file_id: FileId, document: dict[str, JsonValue]) -> None:
+        self._documents = {file_id: deepcopy(document)}
+
+    @override
+    def _get_document_sync(self, file_id: FileId) -> dict[str, JsonValue]:
+        return deepcopy(self._documents[file_id])
+
+
+@pytest.fixture
+def copy_verification_gateway_factory() -> Callable[
+    [FileId, dict[str, JsonValue]], GoogleDocumentGateway
+]:
+    return _CopyVerificationGateway
+
+
+@pytest.mark.parametrize("change", ["none", "visual", "nonexempt", "body", "structure"])
+async def test_copy_supported_brand_requires_real_visual_and_structure_proof(
+    change: str,
+    copy_verification_gateway_factory: Callable[
+        [FileId, dict[str, JsonValue]], GoogleDocumentGateway
+    ],
+) -> None:
+    source = _branded_google_document()
+    tab = source["tabs"][0]["documentTab"]
+    ordinary = deepcopy(tab["body"]["content"][0])
+    ordinary["startIndex"], ordinary["endIndex"] = 11, 21
+    ordinary["paragraph"]["elements"][0]["startIndex"] = 11
+    ordinary["paragraph"]["elements"][0]["endIndex"] = 21
+    tab["body"]["content"].append(ordinary)
+    authored = deepcopy(_paragraph(_document()))
+    paragraph = tab["body"]["content"][0]["paragraph"]
+    paragraph["paragraphStyle"] = authored["paragraphStyle"]
+    paragraph["elements"][0]["textRun"]["textStyle"] = authored["elements"][0]["textRun"][
+        "textStyle"
+    ]
+    actual = deepcopy(source)
+    actual_tab = actual["tabs"][0]["documentTab"]
+    if change == "visual":
+        actual_tab["body"]["content"][0]["paragraph"]["elements"][0]["textRun"]["textStyle"][
+            "fontSize"
+        ]["magnitude"] = 11
+    elif change == "nonexempt":
+        actual_tab["body"]["content"][1]["paragraph"]["paragraphStyle"]["alignment"] = "CENTER"
+    elif change == "body":
+        actual_tab["body"]["content"].append({"table": {"tableRows": []}})
+    elif change == "structure":
+        actual["tabs"][0]["tabProperties"]["tabId"] = "unproved-copy-tab"
+    expected = apply_visual_authority(parse_google_document(source, title="Decision"), ("b0",))
+    assert tuple(block.id for block in expected.blocks if block.preserved_visual_authority) == (
+        "b0",
+    )
+    draft = _pending_output_draft(
+        pending_mutation_sha256="hash", mutation_base_revision_sha256="hash"
+    )
+    gateway = copy_verification_gateway_factory(draft.document_id, actual)
+    result = await gateway.verify_output(
+        draft=draft,
+        source=_snapshot(source),
+        expected=expected,
+        verify_brand=True,
+        header_title="Decision",
+    )
+    assert result.content_preserved
+    assert not result.brand_applied
+    assert result.supported_brand_applied is (change == "none")
+    assert result.structure_preserved is (change in {"none", "nonexempt"})

@@ -1,3 +1,4 @@
+from hashlib import sha256
 from pathlib import Path
 import sys
 
@@ -7,6 +8,10 @@ import typer
 from typer.testing import CliRunner
 
 from scripts import wiki
+from scripts.standards_checks.check_baseline_growth import (
+    _BootstrapGrowth,
+    _validated_allowances,
+)
 
 
 _USAGE_ERROR = 2
@@ -55,6 +60,41 @@ def test_help_requires_no_application_or_native_tools(
     assert "check" in result.stdout
     assert "standards" in result.stdout
     assert "setup" in result.stdout
+
+
+@pytest.mark.parametrize(
+    "forwarded",
+    [
+        [],
+        ["frontend"],
+        ["--staged", "--format", "json", "frontend/path with spaces.ts"],
+        ["frontend/path with spaces.ts", "--format=json", "--unknown-option"],
+        ["fail"],
+    ],
+    ids=["root", "frontend", "flags-before-path", "flags-after-path", "nonzero"],
+)
+def test_lint_launches_original_bootstrap_with_exact_forwarded_arguments(
+    native_tool: Path, forwarded: list[str]
+) -> None:
+    executable = native_tool.parent / "fixture-tool"
+    executable.rename(native_tool.parent / "uvx")
+
+    result = CliRunner().invoke(wiki.CLI, ["lint", *forwarded])
+
+    assert result.exit_code == (_NATIVE_FAILURE if "fail" in forwarded else 0)
+    (call,) = _invocations(native_tool)
+    assert call.arguments == [
+        "--no-config",
+        "--isolated",
+        "--python",
+        "3.14",
+        "--from",
+        "sarj-standards-bootstrap",
+        "code-standards",
+        "check",
+        "--trust-repository-code",
+        *forwarded,
+    ]
 
 
 def test_unknown_check_scope_fails_before_starting_a_tool(native_tool: Path) -> None:
@@ -247,13 +287,6 @@ def test_setup_initializes_locked_local_providers_after_packages_and_preserves_d
 def test_migration_allowance_requires_the_exact_reviewed_changed_source(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, review: str
 ) -> None:
-    from hashlib import sha256
-
-    from scripts.standards_checks.check_baseline_growth import (
-        _BootstrapGrowth,
-        _validated_allowances,
-    )
-
     monkeypatch.chdir(tmp_path)
     source = Path("frontend/sample.ts")
     source.parent.mkdir()

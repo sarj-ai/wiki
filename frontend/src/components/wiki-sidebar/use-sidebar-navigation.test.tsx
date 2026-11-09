@@ -84,8 +84,7 @@ describe("mobile sidebar native accepted navigation", () => {
     host = document.createElement("div");
     document.body.append(host);
     root = createRoot(host);
-    // Suppress the test DOM's native anchor action after React/Next handles
-    // eligibility, so external and modified controls do not navigate the fixture.
+
     host.addEventListener("click", (event) => event.preventDefault());
   });
 

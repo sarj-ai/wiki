@@ -44,6 +44,14 @@ vi.mock("@/lib/wiki-read-api", () => ({
   WIKI_READ_API: { getPreferences: ACTIONS.readPreferences },
 }));
 
+function openAccountMenu(trigger: HTMLButtonElement) {
+  flushSync(() => {
+    trigger.dispatchEvent(
+      new KeyboardEvent("keydown", { bubbles: true, key: "Enter" }),
+    );
+  });
+}
+
 describe("account menu preferences transition", () => {
   let client: QueryClient;
   let container: HTMLDivElement;
@@ -108,11 +116,7 @@ describe("account menu preferences transition", () => {
       backgroundFrame.focus();
       expect(document.activeElement).toBe(backgroundFrame);
       trigger.focus();
-      flushSync(() => {
-        trigger.dispatchEvent(
-          new KeyboardEvent("keydown", { bubbles: true, key: "Enter" }),
-        );
-      });
+      openAccountMenu(trigger);
       await vi.waitFor(() =>
         expect(document.querySelector('[role="menu"]')).not.toBeNull(),
       );
@@ -153,11 +157,7 @@ describe("account menu preferences transition", () => {
       expect(ACTIONS.theme).not.toHaveBeenCalled();
       expect(ACTIONS.logout).not.toHaveBeenCalled();
 
-      flushSync(() => {
-        trigger.dispatchEvent(
-          new KeyboardEvent("keydown", { bubbles: true, key: "Enter" }),
-        );
-      });
+      openAccountMenu(trigger);
       await vi.waitFor(() =>
         expect(document.querySelector('[role="menu"]')).not.toBeNull(),
       );

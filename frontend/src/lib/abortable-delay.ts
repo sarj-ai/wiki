@@ -1,4 +1,3 @@
-// Polling waits remove their cancellation listener when the timer settles.
 export async function abortableDelay(
   milliseconds: number,
   signal?: AbortSignal,

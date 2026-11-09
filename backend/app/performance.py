@@ -1,12 +1,16 @@
 from __future__ import annotations
 
-from collections.abc import Generator
+from collections.abc import Callable, Generator
 from contextlib import contextmanager
 from contextvars import ContextVar, Token
 from dataclasses import dataclass, field
-from datetime import timedelta
 from threading import Lock
 from time import perf_counter
+from typing import TYPE_CHECKING
+
+
+if TYPE_CHECKING:
+    from datetime import timedelta
 
 
 @dataclass(slots=True)
@@ -41,8 +45,14 @@ class RequestMetrics:
         return ", ".join(parts) or None
 
 
+@dataclass(frozen=True, slots=True)
+class _ProviderRetryBudget:
+    deadline: float
+    clock: Callable[[], float] | None = None
+
+
 _metrics_var: ContextVar[RequestMetrics | None] = ContextVar("request_metrics", default=None)
-_provider_retry_deadline_var: ContextVar[float | None] = ContextVar(
+_provider_retry_deadline_var: ContextVar[_ProviderRetryBudget | None] = ContextVar(
     "provider_retry_deadline", default=None
 )
 
@@ -50,13 +60,13 @@ _provider_retry_deadline_var: ContextVar[float | None] = ContextVar(
 @dataclass(frozen=True, slots=True)
 class RequestPerformanceTokens:
     metrics: Token[RequestMetrics | None]
-    provider_deadline: Token[float | None]
+    provider_deadline: Token[_ProviderRetryBudget | None]
 
 
 def begin_request_metrics() -> RequestPerformanceTokens:
     return RequestPerformanceTokens(
         metrics=_metrics_var.set(RequestMetrics()),
-        provider_deadline=_provider_retry_deadline_var.set(perf_counter() + 20.0),
+        provider_deadline=_provider_retry_deadline_var.set(_new_provider_retry_budget(20.0)),
     )
 
 
@@ -105,18 +115,33 @@ def server_timing_value() -> str | None:
 
 
 def provider_retry_remaining_seconds() -> float | None:
-    deadline = _provider_retry_deadline_var.get()
-    return None if deadline is None else max(deadline - perf_counter(), 0.0)
+    budget = _provider_retry_deadline_var.get()
+    if budget is None:
+        return None
+    clock = perf_counter if budget.clock is None else budget.clock
+    return max(budget.deadline - clock(), 0.0)
 
 
 @contextmanager
-def provider_retry_budget(duration: timedelta) -> Generator[None]:
+def provider_retry_budget(
+    duration: timedelta, *, clock: Callable[[], float] | None = None
+) -> Generator[None]:
     seconds = duration.total_seconds()
     if seconds < 1:
         msg = "Provider retry budget must allow at least one request attempt"
         raise ValueError(msg)
-    token = _provider_retry_deadline_var.set(perf_counter() + seconds)
+    token = _provider_retry_deadline_var.set(_new_provider_retry_budget(seconds, clock=clock))
     try:
         yield
     finally:
         _provider_retry_deadline_var.reset(token)
+
+
+def _new_provider_retry_budget(
+    seconds: float, *, clock: Callable[[], float] | None = None
+) -> _ProviderRetryBudget:
+    active = _provider_retry_deadline_var.get()
+    if clock is None and active is not None:
+        clock = active.clock
+    read_clock = perf_counter if clock is None else clock
+    return _ProviderRetryBudget(deadline=read_clock() + seconds, clock=clock)

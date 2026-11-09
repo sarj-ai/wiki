@@ -6,7 +6,7 @@ import { DocumentLoading } from "@/components/wiki-document/document-loading";
 
 const DEMO_TITLE = "Sarj Wiki · Public demo";
 const DEMO_DESCRIPTION =
-  "Explore a Notion-like interface for Google Workspace. Browse an overview, a spreadsheet and a presentation in a read-only Sarj Wiki demo.";
+  "Google SRE latency estimates in a read-only Wiki demo. No sign-in required.";
 
 export const metadata: Metadata = {
   alternates: { canonical: "https://wiki.sarj.ai/demo" },
@@ -18,7 +18,7 @@ export const metadata: Metadata = {
     type: "website",
     url: "https://wiki.sarj.ai/demo",
   },
-  title: DEMO_TITLE,
+  title: { absolute: DEMO_TITLE },
   twitter: {
     card: "summary",
     description: DEMO_DESCRIPTION,
@@ -26,7 +26,12 @@ export const metadata: Metadata = {
   },
 };
 
-export default function DemoPage() {
+export default async function DemoPage({
+  searchParams,
+}: {
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
+}) {
+  await searchParams;
   return (
     <Suspense fallback={<DocumentLoading label="Opening the demo…" />}>
       <DemoWorkspace />

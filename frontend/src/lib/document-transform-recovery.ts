@@ -42,7 +42,7 @@ export async function claimTransformRecovery(
 ): Promise<TransformRecovery> {
   if (!source.startsWith("drive:")) return candidate;
   if (!owner) throw new Error("Sign in before polishing a document.");
-  // Never use a racy localStorage lease or expire an operation with an unknown outcome.
+
   const browser: Partial<Navigator> = navigator;
   const locks = browser.locks;
   if (!locks) {
@@ -133,7 +133,7 @@ export function readTransformRecovery(
   }
   const raw = window.sessionStorage.getItem(recoveryKey(owner, source));
   if (!raw) return null;
-  // Invalid persisted state must fail closed instead of silently allowing a duplicate.
+
   return TransformRecoverySchema.parse(JSON.parse(raw));
 }
 

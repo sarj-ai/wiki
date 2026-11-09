@@ -60,8 +60,6 @@ function RecoverBrowserSessionBoundary({
     const lifetime = new AbortController();
     const session = captureMutationSession(queryClient);
     void (async () => {
-      // A fresh read may share the account menu's in-flight query. Cached
-      // profiles alone cannot establish a browser persistence namespace.
       const user = await queryClient.query({
         ...currentUserQueryOptions(),
         staleTime: 0,
@@ -76,7 +74,6 @@ function RecoverBrowserSessionBoundary({
       if (!lifetime.signal.aborted) setCurrentUserId(null);
     });
     return () => {
-      // The QueryProvider owns query cancellation; other observers may need it.
       lifetime.abort();
     };
   }, [queryClient]);

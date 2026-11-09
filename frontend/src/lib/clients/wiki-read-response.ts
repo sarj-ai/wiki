@@ -13,7 +13,6 @@ const RESPONSE_HEADERS = {
   "x-content-type-options": "nosniff",
 } as const;
 
-// Routes validate their own read allowlist and own the redacted error policy.
 export async function wikiReadResponse(
   request: Request,
   path: string,

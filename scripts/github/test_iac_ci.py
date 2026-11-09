@@ -320,7 +320,7 @@ def test_root_lint_ci_has_complete_comparison_history(workflow: str, job_name: s
     ("workflow", "job_name", "gate_name"),
     [
         ("standards", "standards", "Run standards"),
-        ("ci-frontend", "lint-and-typecheck", "Standards TypeScript gate"),
+        ("ci-frontend", "lint-and-typecheck", "Native lint with exact baseline"),
     ],
 )
 def test_direct_root_lint_ci_attests_native_tools_before_analysis(
@@ -351,5 +351,29 @@ def test_direct_root_lint_ci_attests_native_tools_before_analysis(
         "github.event.before",
     ]:
         assert base in comparison
-    assert "--from sarj-standards-bootstrap" in gate["run"]
-    assert "--trust-repository-code" in gate["run"]
+    uv_setup = next(
+        step for step in steps if step.get("uses", "").startswith("astral-sh/setup-uv@")
+    )
+    assert uv_setup["with"]["version-file"] == "backend/uv.toml"
+    assert steps.index(uv_setup) < steps.index(bootstrap)
+    if workflow == "ci-frontend":
+        assert gate["run"] == "npm run lint"
+        package = json.loads((ROOT / "package.json").read_text())
+        assert package["scripts"]["lint"] == "uv run scripts/wiki.py lint"
+    else:
+        assert "--from sarj-standards-bootstrap" in gate["run"]
+        assert "--trust-repository-code" in gate["run"]
+
+
+@pytest.mark.parametrize("workflow", ["ci-iac", "ci-quality"])
+def test_ci_terraform_matches_repository_pin(workflow: str) -> None:
+    manifest = tomllib.loads((ROOT / ".mise.toml").read_text())
+    document = yaml.safe_load((ROOT / f".github/workflows/{workflow}.yml").read_text())
+    job = "required" if workflow == "ci-iac" else "repository-quality"
+    setup = next(
+        step
+        for step in document["jobs"][job]["steps"]
+        if step.get("uses", "").startswith("hashicorp/setup-terraform@")
+    )
+    assert setup["with"]["terraform_version"] == manifest["tools"]["terraform"]
+    assert setup["with"]["terraform_wrapper"] is False

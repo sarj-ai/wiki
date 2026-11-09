@@ -1,4 +1,5 @@
 import type { ESTree as TSESTree } from "@oxlint/plugins";
+import { z } from "zod";
 
 import {
   children,
@@ -21,6 +22,20 @@ import {
   typedServices,
 } from "../shared/types.ts";
 
+const NumberLiteralSchema = z.union([
+  z.number(),
+  z.nan(),
+  z.literal([Infinity, -Infinity]),
+]);
+const NegatableLiteralSchema = z.union([NumberLiteralSchema, z.bigint()]);
+const StorageKeySchema = z.union([
+  z.string().transform((value) => `string:${value}`),
+  NumberLiteralSchema.transform((value) => `number:${String(value)}`),
+  z.bigint().transform((value) => `bigint:${String(value)}`),
+  z.boolean().transform((value) => `boolean:${String(value)}`),
+  z.null().transform(() => "object:null"),
+]);
+
 type Kind = "array" | "Map" | "object" | "Set";
 interface Storage {
   key: null | string;
@@ -42,7 +57,8 @@ function literalValue(
   if (node.type === "Literal" && !("regex" in node)) return node.value;
   if (node.type === "UnaryExpression" && node.operator === "-") {
     const value = literalValue(node.argument);
-    if (typeof value === "number" || typeof value === "bigint") return -value;
+    const parsed = NegatableLiteralSchema.safeParse(value);
+    if (parsed.success) return -parsed.data;
   }
   return undefined;
 }
@@ -130,8 +146,6 @@ export default createRule({
           staticPropertyName(node, source) ?? "",
         )
       ) {
-        // Prototype reflection can expose an intrinsic without spelling its
-        // constructor; do not retain a native-storage premise after escape.
         invalidateAllNative();
       }
     }
@@ -159,8 +173,6 @@ export default createRule({
       input: TSESTree.Node,
     ): "Array" | "Map" | "Object" | "Set" | null {
       const node = unwrap(input);
-      // Optional access can still expose the real namespace. This is a
-      // conservative escape guard, not evidence that a native call is valid.
       if (node.type === "MemberExpression" && globalReceiver(node.object)) {
         const key = staticPropertyName(node, source);
         if (
@@ -184,8 +196,6 @@ export default createRule({
       return binding === null || binding.defs.length === 0 ? node.name : null;
     }
 
-    // Adapted lexical global-receiver proof from MIT Code Standards
-    // no-invalid-typed-mutation.ts; this is a guard, never a diagnostic by name.
     function globalReceiver(input: TSESTree.Node): boolean {
       let node = input;
       const visited: TSESTree.Node[] = [];
@@ -261,8 +271,6 @@ export default createRule({
           literalValue(definition.init) !== undefined
         );
       }
-      // Primitive result types alone do not prove completion: bigint division,
-      // mixed arithmetic and TDZ reads can throw before the write occurs.
       return false;
     }
 
@@ -328,8 +336,6 @@ export default createRule({
           writeCollectionCall(expression, state)
         )
           continue;
-        // Reads, aliases, escapes, calls, deletes, compound writes and unknown
-        // statements end this straight-line proof; no fact is resurrected.
         state.clear();
       }
     }
@@ -436,14 +442,13 @@ export default createRule({
         return false;
       const value = literalValue(keyNode);
       if (value === undefined) return false;
-      write(storage, `${typeof value}:${String(value)}`, expression);
+      write(storage, StorageKeySchema.parse(value), expression);
       return true;
     }
 
     function write(storage: Storage, key: string, node: TSESTree.Node): void {
       if (storage.key === key && storage.previous !== null)
         context.report({ node: storage.previous, messageId: "overwritten" });
-      // A different key can make the first insertion's ordering observable.
       storage.key = key;
       storage.previous = node;
     }

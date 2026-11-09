@@ -1,6 +1,6 @@
 # /// script
-# requires-python = "==3.14.8"
-# dependencies = ["typer==0.27.3"]
+# requires-python = "==3.15.2"
+# dependencies = ["typer==0.28.0"]
 # ///
 
 from __future__ import annotations
@@ -12,7 +12,7 @@ import re
 import subprocess  # ruff: ignore[suspicious-subprocess-import] -- fixed read-only gcloud CLI without shell
 import sys
 from types import MappingProxyType
-from typing import Annotated, NamedTuple
+from typing import Annotated, NamedTuple, TypedDict
 import uuid
 
 import typer
@@ -22,11 +22,32 @@ MAX_COUNT = 1_000_000
 MAX_ROWS = 200
 MAX_CORRELATED_REQUESTS = 3
 MAX_MODEL_ATTEMPTS = 3
+MAX_MODEL_VALIDATION_ISSUES = 5
+MAX_MODEL_VALIDATION_LOCATION_PARTS = 4
 MIN_HTTP_ERROR_STATUS = 100
 MAX_HTTP_ERROR_STATUS = 599
 MAX_BYTES = 4 * 1024 * 1024
 MAX_BULLET_SNAPSHOT_COUNT = 50_000
 MAX_FONT_PROOF_COUNT = 750
+MAX_FOOTER_SNAPSHOT_ITEMS = 64
+MAX_FOOTER_SNAPSHOT_ELEMENTS = MAX_FOOTER_SNAPSHOT_ITEMS**2
+FOOTER_SNAPSHOT_STATES = frozenset(
+    {"unavailable", "missing", "null", "empty", "nonempty", "present", "malformed"}
+)
+FOOTER_SNAPSHOT_COUNTS = frozenset(
+    {
+        "footer_snapshot_tab_matches",
+        "footer_snapshot_created_reply_count",
+        *(
+            f"footer_snapshot_{scope}_{field}"
+            for scope in ("document", "tab")
+            for field in ("map_count", "paragraph_count")
+        ),
+    }
+)
+FOOTER_SNAPSHOT_ELEMENT_COUNTS = frozenset(
+    f"footer_snapshot_{scope}_element_count" for scope in ("document", "tab")
+)
 FONT_PROOF_COUNT_FIELDS = frozenset({"font_proof_count", "font_proof_verified_count"})
 BULLET_SNAPSHOT_FIELDS = frozenset(
     f"bullet_snapshot_{field}_{state}"
@@ -34,12 +55,94 @@ BULLET_SNAPSHOT_FIELDS = frozenset(
     for state in ("true", "false", "missing", "malformed")
 )
 MAX_PROVIDER_ORDINAL = 200
+type JsonValue = bool | int | float | str | list[JsonValue] | dict[str, JsonValue] | None
 type DiagnosticScalar = str | int | bool
+MODEL_IDS = frozenset(
+    {
+        "gemini-3.1-flash-lite",
+        "gemini-3.1-pro-preview",
+        "gemini-3.7-flash",
+        "gemini-3.8-flash",
+        "gemini-4-argon",
+    }
+)
+MODEL_VALIDATION_FIELDS = frozenset(
+    {
+        "block_id",
+        "equivalent",
+        "expected_sha256",
+        "patches",
+        "rationale",
+        "reason",
+        "replacement",
+        "replacement_sha256",
+        "reviews",
+        "unknown",
+    }
+)
+MODEL_VALIDATION_ERROR_TYPES = frozenset(
+    {
+        "bool_parsing",
+        "bool_type",
+        "extra_forbidden",
+        "int_type",
+        "json_invalid",
+        "list_type",
+        "literal_error",
+        "missing",
+        "model_type",
+        "string_pattern_mismatch",
+        "string_too_long",
+        "string_too_short",
+        "string_type",
+        "too_long",
+        "unknown",
+        "value_error",
+    }
+)
+
+
+class ModelValidationIssue(TypedDict):
+    error_type: str
+    location: list[str | int]
+
+
+type DiagnosticValue = DiagnosticScalar | list[ModelValidationIssue]
+
+
 CLI = typer.Typer(add_completion=False, add_help_option=False, pretty_exceptions_enable=False)
 PROVIDER_FIELDS = MappingProxyType(
     {
         "model_operation": frozenset({"unslop", "format", "review"}),
         "model_error_kind": frozenset({"api_error", "timeout", "invalid_payload"}),
+        "model_payload_category": frozenset(
+            {"none", "unknown", "empty", "coverage", "binding", "schema"}
+        ),
+        "model_finish_reason": frozenset(
+            {
+                "unknown",
+                "FINISH_REASON_UNSPECIFIED",
+                "STOP",
+                "MAX_TOKENS",
+                "SAFETY",
+                "RECITATION",
+                "LANGUAGE",
+                "OTHER",
+                "BLOCKLIST",
+                "PROHIBITED_CONTENT",
+                "SPII",
+                "MALFORMED_FUNCTION_CALL",
+                "IMAGE_SAFETY",
+                "UNEXPECTED_TOOL_CALL",
+                "TOO_MANY_TOOL_CALLS",
+                "IMAGE_PROHIBITED_CONTENT",
+                "NO_IMAGE",
+                "IMAGE_RECITATION",
+                "IMAGE_OTHER",
+                "CONTINUATION",
+                "MALFORMED_RESPONSE",
+            }
+        ),
         "model_error_reason": frozenset(
             {
                 "unknown",
@@ -161,6 +264,13 @@ PROVIDER_FIELDS = MappingProxyType(
             }
         ),
         "footer_shape_reason": frozenset({"missing", "mismatch"}),
+        "footer_snapshot_phase": frozenset({"create_input", "projection_empty", "create_reply"}),
+        "footer_snapshot_created_id_state": FOOTER_SNAPSHOT_STATES,
+        **{
+            f"footer_snapshot_{scope}_{field}_state": FOOTER_SNAPSHOT_STATES
+            for scope in ("document", "tab")
+            for field in ("map", "ref", "content")
+        },
         "provider_message_topic": frozenset(
             {
                 "unknown",
@@ -215,6 +325,13 @@ READ_FAILURES = (ValueError, TypeError, KeyError, OSError, subprocess.TimeoutExp
 _FAILURE_MESSAGE = "Diagnostic read rejected or unavailable; no raw logs emitted.\n"
 BOOLEAN_FIELDS = frozenset(
     [
+        "footer_snapshot_tabs_complete",
+        "footer_snapshot_reply_complete",
+        *[
+            f"footer_snapshot_{scope}_{field}"
+            for scope in ("document", "tab")
+            for field in ("ref_in_map", "created_in_map", "created_matches_ref", "complete")
+        ],
         "header_recovery_paragraph_mapping",
         "header_recovery_paragraph_direction_present",
         "header_recovery_paragraph_direction_ltr",
@@ -383,6 +500,10 @@ BOOLEAN_FIELDS = frozenset(
 )
 COUNT_FIELDS = frozenset(
     [
+        "model_prompt_token_count",
+        "model_candidate_token_count",
+        "model_thought_token_count",
+        "model_total_token_count",
         "spacer_planned_above_count",
         "spacer_planned_below_count",
         "spacer_examined_count",
@@ -455,6 +576,14 @@ EMPHASIS_COUNT_FIELDS = frozenset(
         "request_expected_false",
     )
 )
+COUNT_FIELD_LIMITS = (
+    (FOOTER_SNAPSHOT_COUNTS, MAX_FOOTER_SNAPSHOT_ITEMS),
+    (FOOTER_SNAPSHOT_ELEMENT_COUNTS, MAX_FOOTER_SNAPSHOT_ELEMENTS),
+    (BULLET_SNAPSHOT_FIELDS, MAX_BULLET_SNAPSHOT_COUNT),
+    (FONT_PROOF_COUNT_FIELDS, MAX_FONT_PROOF_COUNT),
+    (COUNT_FIELDS, MAX_COUNT),
+    (EMPHASIS_COUNT_FIELDS, MAX_COUNT),
+)
 ERROR_CODES = frozenset(
     [
         "document_transform_failed",
@@ -478,10 +607,12 @@ ERROR_CODES = frozenset(
 )
 MESSAGE_PREFIXES = (
     "document model attempt failed operation=",
+    "document model response payload invalid operation=review",
     "document native font proof checks=",
     "document header recovery checks=",
     "document markdown import verification checks=",
     "document native safety stop stage=",
+    "document footer shape snapshot phase=",
     "document in-place preflight",
     "document bullet stage snapshot stage=",
     "document stage provider boundary http_status=",
@@ -489,6 +620,7 @@ MESSAGE_PREFIXES = (
     "document spacer eligibility",
     "document copy verification failed checks=",
     "document brand verification failed checks=",
+    "presentation output verification failed",
     "in-place verification failed content_preserved=",
     "document transform started task_id=",
     "document transform interrupted task_id=",
@@ -504,95 +636,163 @@ def validate_task_id(value: str) -> str:
 
 def sanitize(
     records: object, task_id: str, request_ids: frozenset[str] = frozenset()
-) -> list[dict[str, DiagnosticScalar]]:
+) -> list[dict[str, DiagnosticValue]]:
     validate_task_id(task_id)
     if not isinstance(records, list) or len(records) > MAX_ROWS:
         raise ValueError
-    output: list[dict[str, DiagnosticScalar]] = []
-    for entry in records:
-        if not isinstance(entry, dict):
-            raise TypeError
-        payload = entry.get("jsonPayload", {})
-        if not isinstance(payload, dict) or not isinstance(payload.get("record"), dict):
-            continue
-        record = payload["record"]
-        message = record.get("message")
-        extra = record.get("extra", {})
-        if not isinstance(message, str) or not message.startswith(MESSAGE_PREFIXES):
-            continue
-        if not isinstance(extra, dict) or (
-            extra.get("task_id") != task_id
-            and not ("task_id" not in extra and extra.get("request_id") in request_ids)
-        ):
+    return [
+        row
+        for entry in records
+        if (row := _sanitize_record(entry, task_id, request_ids)) is not None
+    ]
+
+
+def _sanitize_record(
+    entry: object, task_id: str, request_ids: frozenset[str]
+) -> dict[str, DiagnosticValue] | None:
+    if not isinstance(entry, dict):
+        raise TypeError
+    payload = entry.get("jsonPayload", {})
+    if not isinstance(payload, dict) or not isinstance(payload.get("record"), dict):
+        return None
+    record = payload["record"]
+    message = record.get("message")
+    extra = record.get("extra", {})
+    if not isinstance(message, str) or not message.startswith(MESSAGE_PREFIXES):
+        return None
+    if not isinstance(extra, dict) or (
+        extra.get("task_id") != task_id
+        and not ("task_id" not in extra and extra.get("request_id") in request_ids)
+    ):
+        raise ValueError
+    if request_ids and extra.get("request_id") not in request_ids:
+        raise ValueError
+    row = _diagnostic_row(entry.get("timestamp"), message, extra, task_id)
+    for group in (
+        extra,
+        *(extra.get(key, {}) for key in ("checks", "diagnostics", "marker_checks")),
+    ):
+        _overlay_diagnostic_fields(row, group)
+    return row
+
+
+def _diagnostic_row(
+    timestamp: object, message: str, extra: dict[str, JsonValue], task_id: str
+) -> dict[str, DiagnosticValue]:
+    if not isinstance(timestamp, str) or not re.fullmatch(r"[0-9T:.+Z-]{20,40}", timestamp):
+        raise ValueError
+    parsed = datetime.fromisoformat(timestamp)
+    if parsed.tzinfo is None:
+        raise ValueError
+    row: dict[str, DiagnosticValue] = {
+        "timestamp": parsed.isoformat(),
+        "task_id": task_id,
+    }
+    for status in ("started", "succeeded", "interrupted"):
+        if message.startswith(f"document transform {status} task_id="):
+            row["status"] = status
+    if "request_id" in extra:
+        request_id = extra["request_id"]
+        if not isinstance(request_id, str) or not re.fullmatch(r"[0-9a-f]{12,32}", request_id):
             raise ValueError
-        if request_ids and extra.get("request_id") not in request_ids:
-            raise ValueError
-        timestamp = entry.get("timestamp")
-        if not isinstance(timestamp, str) or not re.fullmatch(r"[0-9T:.+Z-]{20,40}", timestamp):
-            raise ValueError
-        parsed = datetime.fromisoformat(timestamp)
-        if parsed.tzinfo is None:
-            raise ValueError
-        row: dict[str, DiagnosticScalar] = {
-            "timestamp": parsed.isoformat(),
-            "task_id": task_id,
-        }
-        for status in ("started", "succeeded", "interrupted"):
-            if message.startswith(f"document transform {status} task_id="):
-                row["status"] = status
-        if "request_id" in extra:
-            request_id = extra["request_id"]
-            if not isinstance(request_id, str) or not re.fullmatch(r"[0-9a-f]{12,32}", request_id):
-                raise ValueError
-            row["request_id"] = request_id
-        if "error_code" in extra:
-            error_code = extra["error_code"]
-            if not isinstance(error_code, str) or error_code not in ERROR_CODES:
-                raise ValueError
-            row["error_code"] = error_code
-        for group in (
-            extra,
-            *(extra.get(key, {}) for key in ("checks", "diagnostics", "marker_checks")),
-        ):
-            if not isinstance(group, dict):
-                raise TypeError
-            for key, value in group.items():
-                if key in PROVIDER_FIELDS:
-                    if not isinstance(value, str) or value not in PROVIDER_FIELDS[key]:
-                        raise ValueError
-                    row[key] = value
-                elif key == "model_attempt":
-                    if type(value) is not int or not 1 <= value <= MAX_MODEL_ATTEMPTS:
-                        raise ValueError
-                    row[key] = value
-                elif key == "model_http_status":
-                    if type(value) is not int or not (
-                        value == 0 or MIN_HTTP_ERROR_STATUS <= value <= MAX_HTTP_ERROR_STATUS
-                    ):
-                        raise ValueError
-                    row[key] = value
-                elif key == "provider_request_ordinal":
-                    if type(value) is not int or not 0 <= value <= MAX_PROVIDER_ORDINAL:
-                        raise ValueError
-                    row[key] = value
-                elif key in BOOLEAN_FIELDS:
-                    if type(value) is not bool:
-                        raise ValueError
-                    row[key] = value
-                elif key in BULLET_SNAPSHOT_FIELDS:
-                    if type(value) is not int or not 0 <= value <= MAX_BULLET_SNAPSHOT_COUNT:
-                        raise ValueError
-                    row[key] = value
-                elif key in FONT_PROOF_COUNT_FIELDS:
-                    if type(value) is not int or not 0 <= value <= MAX_FONT_PROOF_COUNT:
-                        raise ValueError
-                    row[key] = value
-                elif key in COUNT_FIELDS or key in EMPHASIS_COUNT_FIELDS:
-                    if type(value) is not int or not 0 <= value <= MAX_COUNT:
-                        raise ValueError
-                    row[key] = value
-        output.append(row)
-    return output
+        row["request_id"] = request_id
+    if "error_code" in extra:
+        row["error_code"] = _safe_enum(extra["error_code"], ERROR_CODES)
+    return row
+
+
+def _overlay_diagnostic_fields(row: dict[str, DiagnosticValue], group: object) -> None:
+    if not isinstance(group, dict):
+        raise TypeError
+    for key, value in group.items():
+        if key in PROVIDER_FIELDS:
+            row[key] = _safe_enum(value, PROVIDER_FIELDS[key])
+        elif key == "model_id":
+            row[key] = _safe_model_id(value)
+        elif key == "model_validation_issues":
+            row[key] = _safe_model_validation_issues(value)
+        elif key == "model_attempt":
+            row[key] = _safe_integer(value, 1, MAX_MODEL_ATTEMPTS)
+        elif key == "model_http_status":
+            row[key] = _safe_http_status(value)
+        elif key == "provider_request_ordinal":
+            row[key] = _safe_integer(value, 0, MAX_PROVIDER_ORDINAL)
+        elif key in BOOLEAN_FIELDS:
+            row[key] = _safe_boolean(value)
+        else:
+            limit = _count_limit(key)
+            if limit is not None:
+                row[key] = _safe_integer(value, 0, limit)
+
+
+def _count_limit(key: str) -> int | None:
+    for fields, limit in COUNT_FIELD_LIMITS:
+        if key in fields:
+            return limit
+    return None
+
+
+def _safe_enum(value: object, allowed: frozenset[str]) -> str:
+    if not isinstance(value, str) or value not in allowed:
+        raise ValueError
+    return value
+
+
+def _safe_integer(value: object, minimum: int, maximum: int) -> int:
+    if type(value) is not int or not minimum <= value <= maximum:
+        raise ValueError
+    return value
+
+
+def _safe_http_status(value: object) -> int:
+    if type(value) is not int or not (
+        value == 0 or MIN_HTTP_ERROR_STATUS <= value <= MAX_HTTP_ERROR_STATUS
+    ):
+        raise ValueError
+    return value
+
+
+def _safe_boolean(value: object) -> bool:
+    if type(value) is not bool:
+        raise ValueError
+    return value
+
+
+def _safe_model_id(value: object) -> str:
+    if not isinstance(value, str):
+        raise TypeError
+    return value if value in MODEL_IDS else "unknown"
+
+
+def _safe_model_validation_issues(value: object) -> list[ModelValidationIssue]:
+    if not isinstance(value, list) or len(value) > MAX_MODEL_VALIDATION_ISSUES:
+        raise ValueError
+    return [_safe_model_validation_issue(issue) for issue in value]
+
+
+def _safe_model_validation_issue(value: object) -> ModelValidationIssue:
+    if not isinstance(value, dict) or set(value) != {"error_type", "location"}:
+        raise ValueError
+    error_type = value["error_type"]
+    location = value["location"]
+    if (
+        not isinstance(error_type, str)
+        or not isinstance(location, list)
+        or len(location) > MAX_MODEL_VALIDATION_LOCATION_PARTS
+    ):
+        raise ValueError
+    return {
+        "error_type": error_type if error_type in MODEL_VALIDATION_ERROR_TYPES else "unknown",
+        "location": [_safe_model_validation_location(part) for part in location],
+    }
+
+
+def _safe_model_validation_location(value: object) -> str | int:
+    if type(value) is int and 0 <= value <= MAX_COUNT:
+        return value
+    if isinstance(value, str):
+        return value if value in MODEL_VALIDATION_FIELDS else "unknown"
+    raise ValueError
 
 
 def read_records(clause: str, limit: int) -> object:
@@ -624,7 +824,7 @@ class _TimedRequest(NamedTuple):
 
 
 def select_correlated_request_ids(
-    rows: list[dict[str, DiagnosticScalar]],
+    rows: list[dict[str, DiagnosticValue]],
 ) -> frozenset[str]:
     timeline: list[_TimedRequest] = []
     for row in rows:

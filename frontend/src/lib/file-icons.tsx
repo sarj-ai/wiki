@@ -77,7 +77,6 @@ export function renderMimeIcon(
   return <Icon className={cn(entry.tint, className)} />;
 }
 
-/** Keeps storage names intact while removing redundant format suffixes in UI labels. */
 export function displayFileName(name: string, mimeType: string): string {
   if (mimeType !== MIME_HTML) return name;
   return name.replace(/\.html?$/iu, "");

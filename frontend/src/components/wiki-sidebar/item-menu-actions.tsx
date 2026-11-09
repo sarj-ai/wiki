@@ -91,8 +91,7 @@ export function ItemMenuActions({
       deleteFile.isPending
     )
       return;
-    // Keep the native dropdown's dismissal/focus work mounted, then retire
-    // used action observers only after all descendant tasks have settled.
+
     const timer = window.setTimeout(onIdle, 200);
     return () => {
       window.clearTimeout(timer);

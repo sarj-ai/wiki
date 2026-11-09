@@ -1,10 +1,17 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { z } from "zod";
 
 import {
   claimBrowserSession,
   retireBrowserSession,
 } from "@/lib/browser-session";
 import { smartCreateApi } from "@/lib/smart-create-client";
+
+const RequestTextSchema = z.string();
+
+function isRequestText(input: Parameters<typeof fetch>[0]): input is string {
+  return RequestTextSchema.safeParse(input).success;
+}
 
 const ACTION_MOCKS = vi.hoisted(() => ({ create: vi.fn(), propose: vi.fn() }));
 const FETCH_MOCK = vi.fn<typeof fetch>();
@@ -134,12 +141,11 @@ describe("smartCreateApi", () => {
     const gate = Promise.withResolvers<undefined>();
     FETCH_MOCK.mockImplementation(async (input) => {
       await gate.promise;
-      const url =
-        typeof input === "string"
-          ? input
-          : "href" in input
-            ? input.href
-            : input.url;
+      const url = isRequestText(input)
+        ? input
+        : "href" in input
+          ? input.href
+          : input.url;
       return Response.json(url.includes("/templates") ? CATALOG : PENDING_TASK);
     });
 

@@ -261,6 +261,7 @@ describe("admitted Move ownership above the responsive sidebar", () => {
     if (!(action instanceof HTMLElement))
       throw new TypeError("Move action missing");
     flushSync(() => action.click());
+    await vi.dynamicImportSettled();
     await vi.waitFor(() =>
       expect(document.body).toHaveTextContent(`Move “${ITEM.currentName}”`),
     );

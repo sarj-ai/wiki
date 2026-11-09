@@ -13,6 +13,12 @@ function clearWidthCookie() {
   document.cookie = `${SIDEBAR_WIDTH_COOKIE}=; Max-Age=0; Expires=Thu, 01 Jan 1970 00:00:00 GMT; Path=/`;
 }
 
+function send(type: string, clientX: number, pointerId = 1) {
+  flushSync(() =>
+    window.dispatchEvent(new PointerEvent(type, { clientX, pointerId })),
+  );
+}
+
 describe("sidebar resize ownership", () => {
   let root: Root;
   let host: HTMLDivElement;
@@ -94,7 +100,7 @@ describe("sidebar resize ownership", () => {
 
   afterEach(() => {
     flushSync(() => root.unmount());
-    // Keep a broken baseline test from leaking its global handlers into later tests.
+
     for (const [type, listener, options] of add.mock.calls) {
       if (type.startsWith("pointer"))
         window.removeEventListener(type, listener, options);
@@ -120,12 +126,6 @@ describe("sidebar resize ownership", () => {
           pointerId,
         }),
       ),
-    );
-  }
-
-  function send(type: string, clientX: number, pointerId = 1) {
-    flushSync(() =>
-      window.dispatchEvent(new PointerEvent(type, { clientX, pointerId })),
     );
   }
 

@@ -18,7 +18,6 @@ const EDITOR_CHUNK = vi.hoisted(() => ({
   started: false,
 }));
 
-// The App Router bundles this implementation; Node otherwise resolves the Pages Router version.
 vi.mock("next/dynamic", async () => ({
   default: await vi.importActual("next/dist/shared/lib/app-dynamic"),
 }));
@@ -75,7 +74,7 @@ describe("deferred short-link editor", () => {
       root.render(
         <QueryClientProvider client={client}>
           <Suspense fallback={<p role="status">Loading file</p>}>
-            <iframe title="Settled document" />
+            <iframe sandbox="" title="Settled document" />
             <ShortLinkDialog fileId={fileId} />
           </Suspense>
         </QueryClientProvider>,

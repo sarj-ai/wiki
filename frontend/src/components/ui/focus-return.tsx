@@ -82,9 +82,6 @@ export function useFocusReturn({
   const [localOwner] = useState(createFocusOwner);
   const opening = useRef<FocusOpening | null>(null);
   useLayoutEffect(() => {
-    // A conditionally mounted controlled dialog still receives Radix's
-    // deferred close callback after Content unmounts. Its connected opener
-    // owns that normal return; an explicit provider owns retirement instead.
     localOwner.activate(null);
   }, [localOwner]);
   useEffect(() => {
@@ -147,8 +144,7 @@ export function useFocusReturn({
       }
       const canRestore = lease.claim.release();
       if (!canRestore) return;
-      // Radix first restores a standard trigger. Supply a fallback only when
-      // a controlled overlay has no surviving trigger or consumer focus.
+
       queueMicrotask(() => {
         if (opening.current !== lease) return;
         opening.current = null;
@@ -178,8 +174,7 @@ function captureReturnTarget(
     previous instanceof HTMLElement
       ? previous.closest('[role="dialog"], [role="alertdialog"]')
       : null;
-  // A sibling controlled dialog can open from a parent dialog without a
-  // native trigger. Its return target belongs to that parent scope.
+
   if (
     parentDialog &&
     parentDialog !== content &&

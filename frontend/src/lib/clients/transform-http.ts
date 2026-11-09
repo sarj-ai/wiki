@@ -22,7 +22,7 @@ export async function transformHttp(
   signal?: AbortSignal,
 ): Promise<ActionResult<string>> {
   const session = captureBrowserSession();
-  // Reads retire with their session; a POST that reached admission can finish.
+
   const requestSignal = AbortSignal.any([
     AbortSignal.timeout(35_000),
     ...(body === undefined ? [session] : []),
@@ -41,7 +41,7 @@ export async function transformHttp(
     ...(!(body === undefined) && { body }),
     signal: requestSignal,
   });
-  // Once headers arrive, a retired owner need not read the mutation's response.
+
   const responseSignal =
     body === undefined
       ? requestSignal

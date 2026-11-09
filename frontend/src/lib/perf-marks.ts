@@ -1,3 +1,5 @@
+import { z } from "zod";
+
 import { sendPerformanceEvent } from "@/lib/clients/send-performance-event";
 
 type PerfExtra = Record<string, boolean | number | string>;
@@ -14,6 +16,13 @@ declare global {
     __sarjPerf?: PerfRecord[];
   }
 }
+
+const ConnectionValueSchema = z.union([
+  z.object({}),
+  z.custom<readonly unknown[]>(Array.isArray),
+]);
+
+const SaveDataSchema = z.boolean();
 
 const PERF_FLAG_KEY = "sarj-perf";
 
@@ -127,11 +136,13 @@ function isReportablePhase(phase: string): phase is ReportablePhase {
 
 function readSaveData(): boolean | undefined {
   const connection: unknown = Reflect.get(navigator, "connection");
-  const saveData: unknown =
-    typeof connection === "object" && connection !== null
-      ? Reflect.get(connection, "saveData")
-      : null;
-  let result: boolean | undefined;
-  if (typeof saveData === "boolean") result = saveData;
-  return result;
+  const saveData: unknown = isBrowserConnectionValue(connection)
+    ? Reflect.get(connection, "saveData")
+    : null;
+  const parsed = SaveDataSchema.safeParse(saveData);
+  return parsed.success ? parsed.data : undefined;
+}
+
+function isBrowserConnectionValue(value: unknown): value is object {
+  return ConnectionValueSchema.safeParse(value).success;
 }

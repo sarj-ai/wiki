@@ -2,8 +2,6 @@ import "server-only";
 
 import { discardStream } from "@/lib/discard-stream";
 
-// Cloudflare fetch supports manual redirects but rejects redirect: "error".
-// Inspect the response ourselves so authenticated backend calls never follow one.
 export async function fetchBackend(
   input: RequestInfo | URL,
   init?: RequestInit,

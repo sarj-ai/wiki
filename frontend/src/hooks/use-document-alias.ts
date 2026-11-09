@@ -10,8 +10,12 @@ import { useSessionMutation } from "@/hooks/use-session-mutation";
 import { runAction } from "@/lib/action-client";
 import { WIKI_READ_API } from "@/lib/wiki-read-api";
 
-export const documentAliasKey = (fileId: string) =>
-  ["document-alias", fileId] as const;
+const documentAliasKeys = {
+  all: ["document-alias"] as const,
+  file: (fileId: string) => ["document-alias", fileId] as const,
+} as const;
+
+export const documentAliasKey = documentAliasKeys.file;
 
 export function useDocumentAlias(fileId: string, enabled: boolean) {
   return useQuery({
