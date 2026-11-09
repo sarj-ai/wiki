@@ -987,3 +987,103 @@ async def test_failed_document_target_stops_before_the_format_phase(
     assert editor.phases == [TransformPhase.UNSLOP]
     assert editor.repair_calls == 1
     assert document.blocks[0].text == CONCISION_SOURCE
+
+
+class _RetainedRepairEditor(_DocumentBudgetEditor):
+    def __init__(
+        self, initial: dict[str, str], repaired: dict[str, str], rejected_id: str | None
+    ) -> None:
+        super().__init__(initial, repaired)
+        self.rejected_id = rejected_id
+
+    @override
+    async def review(self, document: DocumentIR, patches: list[TextPatch]) -> RewriteReview:
+        if self.repair_calls and self.rejected_id is not None:
+            self.rejected = {self.rejected_id}
+        return await super().review(document, patches)
+
+
+@pytest.fixture
+def retained_repair_editor_factory() -> Callable[
+    [dict[str, str], dict[str, str], str | None], _RetainedRepairEditor
+]:
+    return _RetainedRepairEditor
+
+
+@pytest.fixture
+def document_budget_editor_factory() -> Callable[
+    [dict[str, str], dict[str, str]], _DocumentBudgetEditor
+]:
+    return _DocumentBudgetEditor
+
+
+@pytest.mark.parametrize("failure", ["quoted", "protected", "semantic"])
+async def test_failed_repair_does_not_flag_retained_independently_approved_text(
+    failure: str,
+    retained_repair_editor_factory: Callable[
+        [dict[str, str], dict[str, str], str | None], _RetainedRepairEditor
+    ],
+) -> None:
+    fact = 'The sensor logs "ready" at 30 ms and stores each reading.'
+    other = "The logger sends records to the laboratory."
+    document = parse_markdown(
+        fact + CONCISION_PADDING * 8 + "\n\n" + other + CONCISION_PADDING * 8,
+        title="Sensor",
+    )
+    first, _, last = document.blocks
+    retained = fact + CONCISION_PADDING * 2
+    initial = {first.id: retained, last.id: other + CONCISION_PADDING * 6}
+    replacement = {
+        "quoted": retained.replace('"ready"', "ready"),
+        "protected": retained.replace("30 ms", "31 ms"),
+        "semantic": fact + " The reading is archived.",
+    }[failure]
+    editor = retained_repair_editor_factory(
+        initial,
+        {first.id: replacement, last.id: other},
+        first.id if failure == "semantic" else None,
+    )
+    result = await TextTransformPlanner(generator=editor, allow_unslop_model=True).transform(
+        document, _request()
+    )
+    assert editor.repair_calls == 1
+    assert any(
+        patch.block_id == first.id and patch.replacement == retained for patch in editor.reviewed
+    )
+    assert result.document == document.replace_blocks({first.id: retained, last.id: other})
+    assert not result.findings
+    assert document.blocks[0].text == fact + CONCISION_PADDING * 8
+
+
+@pytest.mark.parametrize("failure", ["quoted", "protected", "semantic"])
+async def test_failed_repair_keeps_findings_without_a_retained_approved_edit(
+    failure: str,
+    document_budget_editor_factory: Callable[
+        [dict[str, str], dict[str, str]], _DocumentBudgetEditor
+    ],
+) -> None:
+    fact = 'The sensor logs "ready" at 30 ms and stores each reading.'
+    document = parse_markdown(fact + "\n\n" + CONCISION_SOURCE, title="Sensor")
+    first, _, last = document.blocks
+    replacement = {
+        "quoted": fact.replace('"ready"', "ready"),
+        "protected": fact.replace("30 ms", "31 ms"),
+        "semantic": fact.replace("stores", "discards"),
+    }[failure]
+    editor = document_budget_editor_factory(
+        {first.id: replacement, last.id: CONCISION_FACT}, {first.id: replacement}
+    )
+    if failure == "semantic":
+        editor.rejected = {first.id}
+    result = await TextTransformPlanner(generator=editor, allow_unslop_model=True).transform(
+        document, _request()
+    )
+    assert editor.repair_calls == 1
+    assert result.document.blocks[0].text == fact
+    assert result.document.blocks[-1].text == CONCISION_FACT
+    assert {finding.block_id for finding in result.findings} == {first.id}
+    assert {
+        "quoted": "quoted_content_changed",
+        "protected": "protected_content_changed",
+        "semantic": "semantic_review_rejected",
+    }[failure] in {finding.code for finding in result.findings}

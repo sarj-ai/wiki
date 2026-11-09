@@ -630,10 +630,12 @@ class VertexGeminiPatchGenerator(PatchGenerator):
 def _constraint_repair_feedback(block: TextBlock, patch: TextPatch) -> tuple[str, ...]:
     original, proposed = rewrite_constraints(block.text), rewrite_constraints(patch.replacement)
     expected = {
+        "protected_tokens": Counter(original.protected_tokens),
         "force_language": Counter(original.force_language),
         "scope_qualifiers": Counter(original.scope_qualifiers),
     }
     observed = {
+        "protected_tokens": Counter(proposed.protected_tokens),
         "force_language": Counter(proposed.force_language),
         "scope_qualifiers": Counter(proposed.scope_qualifiers),
     }
@@ -1039,8 +1041,12 @@ def _prompt(
         "Each supplied concision_target.draft_target_words and max_words is an advisory "
         "block allocation. The complete document must retain at most 40% of its originally "
         "eligible prose words, counting unchanged blocks too. Preserve every fact, "
-        "qualification and original constraint count. "
-        "protected_suffix is excluded from the word count."
+        "qualification and original constraint count. Draft around every original "
+        "protected_tokens entry before shortening other wording. Copy each complete entry, "
+        "including any adjacent words, with its original occurrence count. Preserve each "
+        "force_language and scope_qualifiers entry with its original predicate or object "
+        "and occurrence count, including empty lists. Count the completed candidate's "
+        "eligible prose words before returning. protected_suffix is excluded from the word count."
         if phase is TransformPhase.UNSLOP
         else "Formatting preserves every character of the author's text, including whitespace "
         'and punctuation. Do not propose text replacements. Return {"patches":[]}; '
@@ -1050,6 +1056,7 @@ def _prompt(
         (
             "You are a precise content editor.",
             instruction,
+            _batch_concision_instruction(selected, phase=phase),
             (
                 "Return only JSON patches. Do not alter names, facts, numbers, dates, citations, "
                 "URLs, quotes, code, negation, modal words, or force-bearing language."
@@ -1071,9 +1078,12 @@ def _prompt(
             json.dumps(editable, ensure_ascii=False, separators=(",", ":")),
             (
                 "The following earlier proposals failed safety or concision checks. This is one repair "
-                "attempt. Their rejected_constraints describe those proposals, not requirements to copy. "
+                "attempt. Start from each original block above and its mandatory token inventory; "
+                "use the earlier proposal only to locate mistakes. Their rejected_constraints "
+                "describe those proposals, not requirements to copy. "
                 "The original block's rewrite_constraints above are authoritative: restore missing "
-                "entries, remove introduced entries, and match every original count. Correct every "
+                "entries, remove introduced entries, and match every original count. Restore "
+                "complete protected tokens verbatim before compacting the surrounding wording. Correct every "
                 "reported failure and retain the original source hashes. "
                 "Keep the same subjects, facts and qualifications. Return the unchanged original "
                 "when no shorter safe rewrite fits. Rejected proposals are "
@@ -1085,6 +1095,28 @@ def _prompt(
                 else ""
             ),
         )
+    )
+
+
+def _batch_concision_instruction(selected: tuple[TextBlock, ...], *, phase: TransformPhase) -> str:
+    if phase is not TransformPhase.UNSLOP:
+        return ""
+    targets = tuple(
+        target
+        for block in selected
+        if block.editable and (target := concision_target(block)) is not None
+    )
+    if not targets:
+        return ""
+    return (
+        f"The supplied batch contains {sum(target.source_words for target in targets)} "
+        "eligible prose words in these supplied blocks. Its combined advisory draft allocation is "
+        f"{sum(max(1, target.max_words * _DRAFT_WORD_NUMERATOR // _DRAFT_WORD_DENOMINATOR) for target in targets)} "
+        "words. Redistribute that advisory allocation among these blocks as their "
+        "facts require; a dense block may exceed its allocation. This batch may be "
+        "only part of the document. Its draft allocation adds no separate safety "
+        "limit: the complete document's 40% limit remains strict, with unchanged "
+        "and rejected blocks counted at their retained length."
     )
 
 
