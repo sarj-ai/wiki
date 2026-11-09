@@ -62,7 +62,7 @@ pre-push:
   parallel: true
   commands:
     check:
-      run: uv run scripts/wiki.py check
+      run: mise --no-config --no-env --no-hooks exec uv@0.13.7 -- uv run scripts/wiki.py check
       fail_text: "AGENT: 'uv run scripts/wiki.py check' (the exact CI mirror) failed. Fix: rerun 'uv run scripts/wiki.py check', repair the first failing step ('uv run scripts/wiki.py fix' applies the autofixable lint/format part), and push again. NEVER use --no-verify."
 
 commit-msg:

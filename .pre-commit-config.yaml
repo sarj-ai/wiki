@@ -47,7 +47,7 @@ repos:
         types: [yaml]
       - id: sarj-current-registries
         name: "sarj-standards: Python registry with exact native baseline"
-        entry: uv run --project backend --locked python scripts/standards_checks/check_standards.py
+        entry: uvx --from uv==0.13.7 uv run --project backend --locked python scripts/standards_checks/check_standards.py
         language: system
         files: '(?i)\.py$'
       - id: sarj-current-text-config-registries
