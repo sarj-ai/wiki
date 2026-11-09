@@ -380,7 +380,7 @@ async def test_real_postgres_concurrent_missing_terminal_output_creates_one_repl
         await engine.dispose()
 
 
-@pytest.mark.parametrize("terminal_change", ["expiry", "status"])
+@pytest.mark.parametrize("terminal_change", ["expiry", "status", "needs_review"])
 async def test_real_postgres_terminal_change_during_output_admission_creates_replacement(
     terminal_change: str,
 ) -> None:
@@ -420,15 +420,22 @@ async def test_real_postgres_terminal_change_during_output_admission_creates_rep
 
         async def change_terminal(_task: object) -> bool:
             async with sessions() as session:
-                values = (
-                    {"expires_at": func.now()}
-                    if terminal_change == "expiry"
-                    else {
-                        "error_code": "qa_terminal_changed",
-                        "result": null(),
-                        "status": TaskStatus.FAILED,
-                    }
-                )
+                values: dict[str, object]
+                match terminal_change:
+                    case "expiry":
+                        values = {"expires_at": func.now()}
+                    case "needs_review":
+                        values = {
+                            "result": _completed_result(canonical.task.id, payload.mode)
+                            .model_copy(update={"needs_review": True})
+                            .model_dump(mode="json")
+                        }
+                    case _:
+                        values = {
+                            "error_code": "qa_terminal_changed",
+                            "result": null(),
+                            "status": TaskStatus.FAILED,
+                        }
                 await session.execute(
                     update(Task).where(Task.id == canonical.task.id).values(**values)
                 )
@@ -542,7 +549,7 @@ async def test_real_postgres_active_change_during_source_admission_creates_repla
 
 @pytest.mark.parametrize(
     "terminal_case",
-    ["cancelled", "failed", "stale_pipeline", "stale_brand"],
+    ["cancelled", "failed", "stale_pipeline", "stale_brand", "needs_review"],
 )
 async def test_real_postgres_unverified_terminal_never_semantically_replays(
     terminal_case: str,
@@ -588,10 +595,13 @@ async def test_real_postgres_unverified_terminal_never_semantically_replays(
                 case _:
                     result = _completed_result(canonical.task.id, payload.mode)
                     finished_at = datetime.now(UTC)
-                    if terminal_case == "stale_pipeline":
-                        result = result.model_copy(update={"pipeline_version": "legacy"})
-                    else:
-                        result = result.model_copy(update={"brand_profile_sha256": "0" * 64})
+                    match terminal_case:
+                        case "stale_pipeline":
+                            result = result.model_copy(update={"pipeline_version": "legacy"})
+                        case "needs_review":
+                            result = result.model_copy(update={"needs_review": True})
+                        case _:
+                            result = result.model_copy(update={"brand_profile_sha256": "0" * 64})
                     await session.execute(
                         update(Task)
                         .where(Task.id == canonical.task.id)
@@ -605,17 +615,27 @@ async def test_real_postgres_unverified_terminal_never_semantically_replays(
                     )
                     await session.commit()
 
+        fresh_key = IdempotencyKey(uuid.uuid7())
         async with sessions() as session:
             replacement = await PostgresTaskService(db=session).create_or_replay(
                 kind=TaskKind.FILE_DOCUMENT_TRANSFORM,
                 owner_user_id=owner,
-                idempotency_key=IdempotencyKey(uuid.uuid7()),
+                idempotency_key=fresh_key,
                 payload=payload,
                 admit=admit,
             )
             assert replacement.created
             assert replacement.task.id != canonical.task.id
             assert admissions == [True]
+            assert (
+                await session.scalar(
+                    select(TaskReplayKey.task_id).where(
+                        TaskReplayKey.owner_user_id == owner,
+                        TaskReplayKey.idempotency_key == fresh_key,
+                    )
+                )
+                is None
+            )
             assert (
                 await session.scalar(
                     select(func.count()).select_from(Task).where(Task.owner_user_id == owner)
@@ -915,6 +935,27 @@ async def test_real_postgres_terminal_replay_requires_current_editor_catalog(
                 )
             )
             assert alias == (canonical if expect_replay else None)
+            if expect_replay:
+                review_needed = retried.task.result.model_copy(update={"needs_review": True})
+                await session.execute(
+                    update(Task)
+                    .where(Task.id == canonical)
+                    .values(result=review_needed.model_dump(mode="json"))
+                )
+                await session.commit()
+                for retained_key in (original_key, fresh_key):
+                    async with sessions() as replay_session:
+                        historical = await PostgresTaskService(db=replay_session).create_or_replay(
+                            kind=TaskKind.FILE_DOCUMENT_TRANSFORM,
+                            owner_user_id=owner,
+                            idempotency_key=retained_key,
+                            payload=payload,
+                        )
+                        assert not historical.created
+                        assert historical.task.id == canonical
+                        assert isinstance(historical.task, SucceededTaskRead)
+                        assert isinstance(historical.task.result, DocumentTransformResult)
+                        assert historical.task.result.needs_review is True
     finally:
         await engine.dispose()
 

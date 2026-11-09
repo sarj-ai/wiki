@@ -2,13 +2,13 @@ from __future__ import annotations
 
 import asyncio
 from contextlib import asynccontextmanager, nullcontext
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import timedelta
 import hashlib
 from http import HTTPStatus
 import json
 import re
-from typing import TYPE_CHECKING, Literal
+from typing import TYPE_CHECKING, Literal, Self
 
 from google import genai
 from google.genai import types
@@ -48,6 +48,7 @@ from app.performance import (
     provider_retry_remaining_seconds,
     reset_request_metrics,
 )
+from tests.support import dependency
 
 
 if TYPE_CHECKING:
@@ -832,7 +833,7 @@ async def test_concurrent_review_calls_share_capacity_and_keep_their_own_results
 
 
 @pytest.fixture
-def sdk_client_factory() -> Callable[[httpx.AsyncClient], genai.Client]:
+def normal_sdk_client_factory() -> Callable[[httpx.AsyncClient], genai.Client]:
     def create(http: httpx.AsyncClient) -> genai.Client:
         return genai.Client(
             vertexai=True,
@@ -845,6 +846,46 @@ def sdk_client_factory() -> Callable[[httpx.AsyncClient], genai.Client]:
                 retry_options=types.HttpRetryOptions(attempts=1),
             ),
         )
+
+    return create
+
+
+class _SingleAttemptSdkClient:
+    def __init__(self, client: genai.Client) -> None:
+        self._client = client
+
+    @property
+    def aio(self) -> Self:
+        return self
+
+    @property
+    def models(self) -> Self:
+        return self
+
+    async def generate_content(
+        self, *, model: str, contents: str, config: types.GenerateContentConfig
+    ) -> types.GenerateContentResponse:
+        options = config.http_options
+        assert isinstance(options, types.HttpOptions)
+        single_attempt = options.model_copy(
+            update={"retry_options": types.HttpRetryOptions(attempts=1)}
+        )
+        return await self._client.aio.models.generate_content(
+            model=model,
+            contents=contents,
+            config=config.model_copy(update={"http_options": single_attempt}),
+        )
+
+    async def aclose(self) -> None:
+        await self._client.aio.aclose()
+
+
+@pytest.fixture
+def sdk_client_factory(
+    normal_sdk_client_factory: Callable[[httpx.AsyncClient], genai.Client],
+) -> Callable[[httpx.AsyncClient], genai.Client]:
+    def create(http: httpx.AsyncClient) -> genai.Client:
+        return dependency(_SingleAttemptSdkClient(normal_sdk_client_factory(http)))
 
     return create
 
@@ -1060,6 +1101,97 @@ async def test_queued_review_batches_share_forbidden_models_only_within_one_invo
                     audit.block_id for wire in submitted for audit in wire.sentence_audits
                 ) == sorted([patch.block_id for patch in patches] * invocation)
                 assert all(0 < len(wire.sentence_audits) <= 12 for wire in submitted)
+        finally:
+            await client.aio.aclose()
+
+
+@pytest.mark.parametrize("phase_count", [1, 2], ids=["initial-and-repair", "concurrent-isolation"])
+async def test_model_phase_shares_forbidden_reviewer_only_with_its_own_repair(
+    normal_sdk_client_factory: Callable[[httpx.AsyncClient], genai.Client], phase_count: int
+) -> None:
+    source = "The hidden bird can sing from dense scrub beside the path while remaining unseen by observers."
+    replacement = "The hidden bird can sing unseen from scrub beside the path."
+    first_fallback = asyncio.Event()
+    review_models: dict[str, list[str]] = {"bird": [], "robin": []}
+
+    async def respond(request: httpx.Request) -> httpx.Response:
+        prompt = _WireReviewRequest.model_validate_json(request.content).contents[0].parts[0].text
+        model = request.url.path.rsplit("/", 1)[-1].removesuffix(":generateContent")
+        if prompt.startswith("{"):
+            payload = _WireReview.model_validate_json(prompt)
+            subject = "robin" if "robin" in payload.document_contexts[0].source_block else "bird"
+            review_models[subject].append(model)
+            if model == "gemini-4-argon":
+                return httpx.Response(HTTPStatus.FORBIDDEN, json={"error": {"code": 403}})
+            assert model == "gemini-3.7-flash"
+            if subject == "bird":
+                first_fallback.set()
+            return _deadline_response(request)
+        batch = _WireRewriteBlocks.model_validate_json(
+            next(line for line in prompt.splitlines() if line.startswith("["))
+        ).root
+        subject = "robin" if "robin" in batch[0].text else "bird"
+        if subject == "robin":
+            await first_fallback.wait()
+        proposed = replacement.replace("bird", subject)
+        return _review_response(
+            PatchEnvelope(
+                patches=[
+                    TextPatch(
+                        block_id=block.block_id,
+                        expected_sha256=block.sha256,
+                        replacement=proposed.replace(" can ", " will ")
+                        if len(batch) == 2 and index == 1
+                        else proposed,
+                    )
+                    for index, block in enumerate(batch)
+                ]
+            )
+        )
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(respond)) as http:
+        client = normal_sdk_client_factory(http)
+        generator = VertexGeminiPatchGenerator(
+            policy=GeminiModelPolicy(
+                project="offline-fixture",
+                location="global",
+                unslop_model="gemini-3.7-flash",
+                fallback_model="gemini-3.7-flash",
+                restyle_model="gemini-4-argon",
+            ),
+            client=client,
+            writer_sleep=_yield_writer_sleep,
+        )
+        planner = TextTransformPlanner(generator=generator, allow_unslop_model=True)
+
+        async def transform(subject: str) -> None:
+            text = "\n\n".join([source.replace("bird", subject)] * 2)
+            document = parse_markdown(text, title=subject)
+            outcome = await planner.transform(
+                document,
+                DocumentTransformRequest(
+                    source=MarkdownSource(
+                        kind="markdown",
+                        content=text,
+                        name=subject,
+                        destination_folder_id=FileId("folder"),
+                    ),
+                    mode=TransformMode.UNSLOP,
+                ),
+            )
+            assert outcome.model_count == 2
+            assert not outcome.findings
+            assert review_models[subject] == [
+                "gemini-4-argon",
+                "gemini-3.7-flash",
+                "gemini-3.7-flash",
+            ]
+
+        try:
+            async with asyncio.timeout(5):
+                await asyncio.gather(
+                    *(transform(subject) for subject in ("bird", "robin")[:phase_count])
+                )
         finally:
             await client.aio.aclose()
 
@@ -3153,6 +3285,111 @@ async def test_review_sdk_deadline_preserves_custom_limits_and_remaining_budget(
     assert timeouts == ([] if case.expected is None else [str(case.expected)])
     assert model_budget_clock.now == case.elapsed
     assert provider_retry_remaining_seconds() is None
+
+
+@pytest.mark.parametrize(
+    ("operation", "recover"),
+    [("writer", True), ("review", True), ("writer", False)],
+    ids=["writer-recovers", "review-recovers", "writer-exhausts-three-attempts"],
+)
+async def test_real_sdk_retries429_within_same_model_request_deadline(
+    normal_sdk_client_factory: Callable[[httpx.AsyncClient], genai.Client],
+    deadline_document: _DeadlineDocument,
+    operation: Literal["writer", "review"],
+    *,
+    recover: bool,
+) -> None:
+    requests: list[httpx.Request] = []
+    seconds = 90 if operation == "writer" else 120
+
+    def respond(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        assert request.extensions["timeout"] == dict.fromkeys(
+            ("connect", "read", "write", "pool"), seconds
+        )
+        if not recover or len(requests) == 1:
+            return httpx.Response(HTTPStatus.TOO_MANY_REQUESTS, json={"error": {"code": 429}})
+        return _deadline_response(request)
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(respond)) as http:
+        client = normal_sdk_client_factory(http)
+        generator = VertexGeminiPatchGenerator(
+            policy=GeminiModelPolicy(
+                project="offline-fixture",
+                location="global",
+                unslop_model="gemini-3.7-flash",
+                fallback_model="gemini-4-argon" if recover else "gemini-3.7-flash",
+                restyle_model="gemini-3.7-flash",
+                review_timeout=timedelta(seconds=120),
+            ),
+            client=client,
+            writer_sleep=_yield_writer_sleep,
+        )
+        try:
+            async with asyncio.timeout(20):
+                if not recover:
+                    with pytest.raises(ModelUnavailableError):
+                        await generator.generate(
+                            deadline_document.document, phase=TransformPhase.UNSLOP
+                        )
+                elif operation == "writer":
+                    assert await generator.generate(
+                        deadline_document.document, phase=TransformPhase.UNSLOP
+                    ) == [deadline_document.patch]
+                else:
+                    decision = await generator.review(
+                        deadline_document.document, [deadline_document.patch]
+                    )
+                    assert decision.approved == {deadline_document.patch.block_id}
+                    assert not decision.rejected
+        finally:
+            await client.aio.aclose()
+    assert len(requests) == (2 if recover else 3)
+    assert len({str(request.url) for request in requests}) == 1
+
+
+@pytest.mark.parametrize("operation", ["writer", "review"])
+async def test_real_sdk_backoff_is_cancelled_by_the_unchanged_per_call_timeout(
+    normal_sdk_client_factory: Callable[[httpx.AsyncClient], genai.Client],
+    deadline_document: _DeadlineDocument,
+    normal_model_policy: GeminiModelPolicy,
+    operation: Literal["writer", "review"],
+) -> None:
+    requests: list[httpx.Request] = []
+    timeout = timedelta(milliseconds=50)
+
+    def respond(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        assert request.extensions["timeout"] == dict.fromkeys(
+            ("connect", "read", "write", "pool"), timeout.total_seconds()
+        )
+        return httpx.Response(HTTPStatus.TOO_MANY_REQUESTS, json={"error": {"code": 429}})
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(respond)) as http:
+        client = normal_sdk_client_factory(http)
+        generator = VertexGeminiPatchGenerator(
+            policy=replace(
+                normal_model_policy,
+                fallback_model="gemini-3.7-flash",
+                restyle_model="gemini-3.7-flash",
+                timeout=timeout,
+                review_timeout=timeout,
+            ),
+            client=client,
+            writer_sleep=_yield_writer_sleep,
+        )
+        try:
+            async with asyncio.timeout(5):
+                call = (
+                    generator.generate(deadline_document.document, phase=TransformPhase.UNSLOP)
+                    if operation == "writer"
+                    else generator.review(deadline_document.document, [deadline_document.patch])
+                )
+                with pytest.raises(ModelUnavailableError):
+                    await call
+        finally:
+            await client.aio.aclose()
+    assert len(requests) == (1 if operation == "writer" else 3)
 
 
 @pytest.mark.parametrize("phase", [TransformPhase.UNSLOP, TransformPhase.FORMAT])

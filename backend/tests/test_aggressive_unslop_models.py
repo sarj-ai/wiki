@@ -15,6 +15,7 @@ from pydantic import BaseModel, ConfigDict, Field, RootModel
 import pytest
 
 from app.document_settings import DocumentSettings
+from app.document_transform import models as transform_models
 from app.document_transform.dependencies import document_model_policy
 from app.document_transform.errors import ConcisionTargetUnmetError, ModelUnavailableError
 from app.document_transform.ir import BlockKind, parse_google_document, parse_markdown
@@ -48,6 +49,53 @@ SOURCE = (
     "The hidden bird can sing from dense scrub beside the path while remaining unseen by observers."
 )
 REPLACEMENT = "The hidden bird can sing unseen from scrub beside the path."
+
+
+_SRE_REVIEW_PARAGRAPHS = (
+    (
+        "At a broad and overall level, this working note is intended to bring together the "
+        "latency estimates in the Google SRE reference so that the same reference information "
+        "can be read in one place. The figures are rules of thumb, and it is useful to say that "
+        "point explicitly rather than leave the point implicit. They are reference estimates "
+        "rather than a new set of measurements of current hardware. A modern presentation of the "
+        "figures does not turn the figures into modern benchmarks. In the table, the original "
+        "nanosecond values remain the basis for comparison. The millisecond column is a "
+        "calculated unit conversion, including the first five entries for which the source "
+        "leaves that column blank. The distinction between a source value and a calculated "
+        "conversion is worth keeping clear throughout this note. This draft takes a slow walk "
+        "into the theme and lets the prose linger in its own warm glow. The text spends time on "
+        "a soft lead in and a broad sweep of scene setting. A long, calm flow of words gives the "
+        "page an air of care and a sense of ease. The voice pauses to greet the reader, then "
+        "drifts through a gentle turn of phrase. A few words of pure scene setting lead into a "
+        "fresh burst of verbal flair. The prose seems keen to dwell on the act of writing and "
+        "the feel of the page. It rests in a calm mood, adds a soft verbal bow, and takes its "
+        "time with the next turn. This is a stretch of draft stage chatter, rich in warm tones "
+        "and slow, smooth prose. A long lead in gives way to a brief pause, then to a broad wash "
+        "of soft prose. The close adds a calm nod and a light sweep of the pen. A last soft note "
+        "of pure prose rounds off this long and warm lead in."
+    ),
+    (
+        "When looking across the smaller operations, the reference gives 1 ns for an L1 cache "
+        "lookup, 3 ns for a branch prediction miss, 4 ns for L2, 17 ns for a mutex lock and "
+        "unlock, and 100 ns for a main-memory reference. These are different operations, so the "
+        "intention is to preserve the differences rather than describe them as the same "
+        "operation. Moving beyond these entries, the reference includes Zippy compression, "
+        "sequential memory reading, a small network send, and an SSD random read. Each entry "
+        "keeps its stated amount of data and, where relevant, its stated network rate. A value "
+        "without that surrounding description would lose part of the reference, so the "
+        "surrounding description is retained here as well as in the table. The draft wraps this "
+        "part in a soft layer of prose and takes a long route through its own lead in. A calm "
+        "voice drifts across the page, with a broad smile in the phrasing and a warm tone in the "
+        "flow. The text makes a small turn, rests for a beat, then adds a fresh line of scene "
+        "setting. This is prose that likes a slow stroll and a wide view of its own style. A "
+        "gentle pause leads to a light verbal bow, followed by a long sweep of draft stage "
+        "chatter. The words keep the mood soft and the pace calm as the page moves through its "
+        "lead in. A warm air of care hangs over the text, while the voice spends time on the "
+        "feel of the phrasing. The prose takes a scenic path through this small bit of scene "
+        "setting and dwells on the art of the lead in. A calm close adds a soft nod, a warm "
+        "glow, and a last sweep of the pen. A light verbal nod lends the close a soft glow."
+    ),
+)
 
 
 class _ReviewInputPair(BaseModel):
@@ -719,11 +767,57 @@ async def test_review_batches_bound_paired_text_without_losing_or_duplicating_ve
     submitted = [_ReviewInput.model_validate_json(prompt) for prompt in harness.call.prompts]
     assert len(submitted) > 1
     assert all(len(batch.sentence_audits) <= 12 for batch in submitted)
-    assert all(len(prompt) <= 8_000 for prompt in harness.call.prompts)
+    assert all(len(prompt) <= 12_000 for prompt in harness.call.prompts)
     assert [pair.block_id for batch in submitted for pair in batch.sentence_audits] == [
         patch.block_id for patch in patches
     ]
     assert harness.call.models == ["gemini-3.1-pro-preview"] * len(submitted)
+
+
+async def test_sre_review_batching_reduces_requests_with_identical_complete_audits() -> None:
+    document = parse_markdown("\n\n".join(_SRE_REVIEW_PARAGRAPHS), title="Latency reference")
+    patches = [
+        TextPatch(block_id=block.id, expected_sha256=block.sha256, replacement=block.text)
+        for block in model_editable_blocks(document)
+    ]
+    plan = transform_models._review_plan(document, {patch.block_id: patch for patch in patches})
+    pairs = [unit.pair for unit in plan.units]
+    wide = transform_models._review_batches(pairs)
+    narrow = transform_models._review_batches(pairs, maximum_characters=8_000)
+    wide_prompts = [transform_models._review_prompt(batch) for batch in wide]
+    narrow_prompts = [transform_models._review_prompt(batch) for batch in narrow]
+
+    def bindings(prompts: list[str]) -> list[str]:
+        result: list[str] = []
+        for prompt in prompts:
+            payload = _ReviewInput.model_validate_json(prompt)
+            contexts = {context.context_id: context for context in payload.document_contexts}
+            result.extend(
+                json.dumps(
+                    {
+                        "audit": audit.model_dump(exclude={"context_id"}),
+                        "context": contexts[audit.context_id].model_dump(
+                            mode="json", exclude={"context_id"}
+                        ),
+                    },
+                    sort_keys=True,
+                )
+                for audit in payload.sentence_audits
+            )
+        return result
+
+    assert len(wide) < len(narrow)
+    assert bindings(wide_prompts) == bindings(narrow_prompts)
+    assert len(bindings(wide_prompts)) == len(set(bindings(wide_prompts)))
+    assert all(len(prompt) <= 12_000 for prompt in wide_prompts)
+    assert all(len(batch) <= 12 for batch in wide)
+
+    harness = _generator(types.GenerateContentResponse())
+    harness.call.review_input = True
+    decision = await harness.generator.review(document, patches)
+    assert harness.call.prompts == wide_prompts
+    assert decision.approved | decision.rejected.keys() == {patch.block_id for patch in patches}
+    assert all(config.max_output_tokens == 32_768 for config in harness.call.configurations)
 
 
 @pytest.mark.parametrize("verdict", ["approve", "reject", "omit"])
@@ -804,7 +898,7 @@ async def test_sentence_checks_share_paragraph_context_without_losing_full_cover
     assert sum(len(payload.sentence_audits) for payload in payloads) == 60
     assert len(payloads) <= 6
     assert all(0 < len(payload.sentence_audits) <= 12 for payload in payloads)
-    assert all(len(prompt) <= 8_000 for prompt in harness.call.prompts)
+    assert all(len(prompt) <= 12_000 for prompt in harness.call.prompts)
     for payload in payloads:
         contexts = {context.context_id: context for context in payload.document_contexts}
         assert len(contexts) == len(payload.document_contexts)

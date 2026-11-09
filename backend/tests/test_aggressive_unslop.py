@@ -2,15 +2,17 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass, replace
+import json
 from typing import override
 
 import pytest
 
+from app.document_transform import models as transform_models
 from app.document_transform.errors import ConcisionTargetUnmetError, ModelUnavailableError
 from app.document_transform.ir import BlockKind, DocumentIR, parse_markdown
 from app.document_transform.models import PatchGenerator, RewriteReview
 from app.document_transform.planner import TextTransformPlanner
-from app.document_transform.safety import validate_patches
+from app.document_transform.safety import rewrite_constraints, validate_patches
 from app.document_transform.schemas import (
     DocumentTransformRequest,
     MarkdownSource,
@@ -37,6 +39,75 @@ CONCISE = "The common nightingale can sing unseen from dense scrub."
 CONCISION_FACT = "The sensor may record temperature at night."
 CONCISION_PADDING = " The explanation describes the discussion in expanded wording before returning to the description."
 CONCISION_SOURCE = CONCISION_FACT + CONCISION_PADDING * 4
+
+
+@pytest.mark.parametrize(
+    ("faithful", "achieved", "expression"),
+    [
+        (
+            "The note is intended to bring together latency estimates from the reference.",
+            "The note brings together latency estimates from the reference.",
+            "intended to",
+        ),
+        (
+            "The guide aims to collect latency estimates from the reference.",
+            "The guide collects latency estimates from the reference.",
+            "aims to",
+        ),
+    ],
+)
+def test_intention_reaches_literal_gate_writer_inventory_and_repair_feedback(
+    faithful: str, achieved: str, expression: str
+) -> None:
+    source = faithful + " This explanation repeats the point at length without adding information."
+    document = parse_markdown(source, title="Goal qualification")
+    block = document.blocks[0]
+    bad = TextPatch(block_id=block.id, expected_sha256=block.sha256, replacement=achieved)
+    good = bad.model_copy(update={"replacement": faithful})
+
+    rejected = validate_patches(
+        document, [bad], phase=TransformPhase.UNSLOP, aggressive_unslop=True
+    )
+    assert not rejected.accepted
+    assert [finding.code for finding in rejected.findings] == ["force_language_changed"]
+    accepted = validate_patches(
+        document, [good], phase=TransformPhase.UNSLOP, aggressive_unslop=True
+    )
+    assert accepted.accepted == {block.id: faithful}
+    assert not accepted.findings
+
+    assert rewrite_constraints(source).force_language == (expression,)
+    prompt = transform_models._prompt(document, phase=TransformPhase.UNSLOP)
+    assert json.dumps(source) in prompt
+    assert f'"sha256":"{block.sha256}"' in prompt
+    assert f'"force_language":{json.dumps([expression])}' in prompt
+    expected_counts = json.dumps(
+        {"expected": {expression: 1}, "proposed": {}},
+        sort_keys=True,
+        separators=(",", ":"),
+    )
+    assert transform_models._constraint_repair_feedback(block, bad) == (
+        f"Exact original constraint counts for force_language: {expected_counts}",
+    )
+
+
+@pytest.mark.parametrize(
+    ("source", "expression"),
+    [
+        (
+            "The note is INTENDED   TO collect estimates and is intended to preserve units.",
+            "intended to",
+        ),
+        (
+            "The guide AIMS   TO collect estimates and aims to preserve units.",
+            "aims to",
+        ),
+    ],
+)
+def test_intention_inventory_preserves_multiplicity_and_normalizes_spacing(
+    source: str, expression: str
+) -> None:
+    assert rewrite_constraints(source).force_language == (expression, expression)
 
 
 class _Editor(PatchGenerator):

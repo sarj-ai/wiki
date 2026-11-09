@@ -7,7 +7,12 @@ import {
 } from "@testing-library/react";
 import { act } from "react";
 
-import { DEMO_FILES, demoFileFor, demoHref } from "./demo-data";
+import {
+  DEMO_FILES,
+  DEMO_SEARCH_SUGGESTION,
+  demoFileFor,
+  demoHref,
+} from "./demo-data";
 import { DemoWorkspace } from "./demo-workspace";
 
 const ROUTING = vi.hoisted(() => ({ push: vi.fn(), search: "" }));
@@ -57,11 +62,11 @@ describe("public read-only Wiki demo", () => {
     });
   }
 
-  it("opens the overview without authentication, private requests or a context banner", async () => {
+  it("opens Latency guide without authentication, private requests or a context banner", async () => {
     await mount();
     expect(screen.getByText("Read-only workspace")).toBeInTheDocument();
     expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent(
-      "Overview",
+      "Latency guide",
     );
     expect(screen.getByTitle(/read-only preview/)).toHaveAttribute(
       "src",
@@ -96,16 +101,17 @@ describe("public read-only Wiki demo", () => {
     }
   });
 
-  it("shows one Drive with exactly three direct file rows and no folder controls", async () => {
+  it("shows one Drive with exactly four direct file rows and no folder controls", async () => {
     await mount();
     const drive = screen.getByRole("navigation", { name: "Demo Drive" });
     const files = within(drive)
       .getAllByRole("link")
       .filter((link) => link.getAttribute("href")?.startsWith("/demo?file="));
     expect(files.map((link) => link.textContent)).toEqual([
-      "Overview",
-      "Wiki stats",
-      "How Wiki works",
+      "Latency guide",
+      "AI draft",
+      "Latency workbook",
+      "Latency slides",
     ]);
     expect(files[0]).toHaveAttribute("aria-current", "page");
     expect(within(drive).getByText("Sarj Wiki")).toBeInTheDocument();
@@ -136,7 +142,7 @@ describe("public read-only Wiki demo", () => {
     "../d/private",
     "<script>alert(1)</script>",
   ])(
-    "uses only the trusted overview for an unknown selector: %s",
+    "uses only the trusted Latency guide for an unknown selector: %s",
     async (selector) => {
       ROUTING.search = new URLSearchParams({ file: selector }).toString();
       await mount();
@@ -203,7 +209,9 @@ describe("public read-only Wiki demo", () => {
     await act(async () => {
       await vi.advanceTimersByTimeAsync(0);
     });
-    const result = within(dialog).getByRole("option", { name: /Wiki stats/u });
+    const result = within(dialog).getByRole("option", {
+      name: /Latency workbook/u,
+    });
     expect(result).toBeVisible();
     expect(within(dialog).getAllByRole("option")).toHaveLength(1);
     fireEvent.keyDown(input, { key: "ArrowDown" });
@@ -212,7 +220,7 @@ describe("public read-only Wiki demo", () => {
       await vi.advanceTimersByTimeAsync(0);
     });
     expect(ROUTING.push).toHaveBeenCalledExactlyOnceWith(
-      demoHref(demoFileFor("wiki-statistics")),
+      demoHref(demoFileFor("latency-workbook")),
     );
     expect(screen.queryByRole("dialog")).toBeNull();
     expect(HTTP).not.toHaveBeenCalled();
@@ -264,6 +272,7 @@ describe("public read-only Wiki demo", () => {
     });
     expect(within(dialog).getByRole("status")).toBe(announcement);
     expect(announcement).toHaveTextContent("No files found");
+    expect(announcement).toHaveTextContent(DEMO_SEARCH_SUGGESTION);
     expect(announcement).toHaveAttribute("aria-live", "polite");
   });
 

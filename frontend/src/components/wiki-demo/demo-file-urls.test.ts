@@ -21,6 +21,7 @@ describe("public Google preview URL boundary", () => {
     "https://docs.google.com/document/d/public-doc/preview",
     "https://docs.google.com/spreadsheets/d/public-sheet/preview",
     "https://docs.google.com/spreadsheets/d/public-sheet/preview#gid=552737644",
+    "https://docs.google.com/spreadsheets/d/public-sheet/preview#gid=1174504614",
     "https://docs.google.com/spreadsheets/d/public-sheet/preview#gid=0",
     "https://docs.google.com/presentation/d/public-slides/preview",
     "https://drive.google.com/file/d/public-office-file/preview",
@@ -30,6 +31,7 @@ describe("public Google preview URL boundary", () => {
 
   it.each([
     "https://docs.google.com/document/d/public-doc/edit",
+    "https://docs.google.com/document/d/<UNRESOLVED_FILE_ID>/preview",
     "https://docs.google.com/document/d/public-doc/view",
     "https://docs.google.com/document/d/public-doc/preview?edit=true",
     "https://docs.google.com/document/d/public-doc/preview#edit",
@@ -81,6 +83,24 @@ describe("public sample document links", () => {
 });
 
 describe("public sample download URL boundary", () => {
+  it("uses native Docs and Sheets sources with their Office exports", () => {
+    const draft = demoFileFor("ai-draft");
+    const workbook = demoFileFor("latency-workbook");
+    expect(demoPreviewUrl(draft)).toBe(
+      "https://docs.google.com/document/d/1at-tDSuHIho4SsnetRaOz7_SZj54FEd4WZym51wmZIs/preview",
+    );
+    expect(demoDownloadUrl(draft)).toBe(
+      "https://docs.google.com/document/d/1at-tDSuHIho4SsnetRaOz7_SZj54FEd4WZym51wmZIs/export?format=docx",
+    );
+    expect(demoPreviewUrl(workbook)).toBe(
+      "https://docs.google.com/spreadsheets/d/1y9828lQc8IsOPVIxibb7pkFan5Tw2vUwurHhdhriGGc/preview#gid=1174504614",
+    );
+    expect(demoViewUrl(workbook)).toBe(workbook.previewUrl);
+    expect(demoDownloadUrl(workbook)).toBe(
+      "https://docs.google.com/spreadsheets/d/1y9828lQc8IsOPVIxibb7pkFan5Tw2vUwurHhdhriGGc/export?format=xlsx",
+    );
+  });
+
   it.each([
     "https://docs.google.com/document/d/public-doc/export?format=docx",
     "https://docs.google.com/spreadsheets/d/public-sheet/export?format=xlsx",
@@ -94,6 +114,8 @@ describe("public sample download URL boundary", () => {
   it.each([
     "https://docs.google.com/document/d/public-doc/edit",
     "https://docs.google.com/document/d/public-doc/export?format=docx&redirect=https://evil.example",
+    "https://docs.google.com/document/d/<UNRESOLVED_FILE_ID>/export?format=docx",
+    "https://docs.google.com/presentation/d/<UNRESOLVED_FILE_ID>/export/pptx",
     "https://evil.example/public.docx",
     "https://drive.google.com/uc?export=download&id=../private",
     "/api/wiki/files/private-id",
@@ -124,6 +146,7 @@ describe("public Drive link boundary", () => {
   it.each([
     "",
     "https://docs.google.com/document/d/public-doc/edit",
+    "https://docs.google.com/presentation/d/<UNRESOLVED_FILE_ID>/preview",
     "https://drive.google.com/file/d/public-doc/view?redirect=https://evil.example",
     "https://drive.google.com.evil.example/file/d/public-doc/view",
     "https://drive.google.com@evil.example/file/d/public-doc/view",
