@@ -11,7 +11,7 @@ variable "dammam_region" {
 }
 
 variable "enable_dammam_stack" {
-  description = "Create the canonical Dammam production stack"
+  description = "Create the canonical Dammam production stack\nRetire by: 2026-12-09\nRemove when: Dammam cutover is accepted; remove the rollout switch while preserving production resources and their state addresses."
   type        = bool
   default     = true
 }
@@ -24,7 +24,7 @@ variable "dammam_image" {
 }
 
 variable "maintenance_mode" {
-  description = "Return 503 for application routes while keeping /health available during cutover"
+  description = "Return 503 for application routes while keeping /health available during cutover\nPermanent: Operators need both normal service and deliberate maintenance responses while health checks remain available."
   type        = bool
   default     = false
 }
@@ -82,7 +82,7 @@ variable "cache_fernet_key_generation" {
 }
 
 variable "provision_mcp_native_secrets" {
-  description = "Provision the native MCP secrets and attach them to the backend while MCP remains disabled"
+  description = "Provision the native MCP secrets and attach them to the backend while MCP remains disabled\nRetire by: 2026-12-09\nRemove when: Native MCP secret provisioning and route rollout are accepted; remove the staging switch while preserving secret resources and their state addresses."
   type        = bool
   default     = false
 
@@ -96,7 +96,7 @@ variable "provision_mcp_native_secrets" {
 }
 
 variable "enable_mcp_native" {
-  description = "Expose the native MCP and OAuth routes after secrets are explicitly provisioned"
+  description = "Expose the native MCP and OAuth routes after secrets are explicitly provisioned\nRetire by: 2026-12-09\nRemove when: Native MCP and OAuth acceptance checks pass with independent secrets provisioned; remove the temporary route rollout switch."
   type        = bool
   default     = false
 
@@ -184,7 +184,7 @@ variable "github_repository_owner_id" {
 }
 
 variable "enable_document_transform_qa_job" {
-  description = "Provision the private, manually invoked document-transform corpus QA job"
+  description = "Provision the private, manually invoked document-transform corpus QA job\nPermanent: Environments may opt into the private corpus QA job independently of production service deployment and its costs."
   type        = bool
   default     = false
 }
