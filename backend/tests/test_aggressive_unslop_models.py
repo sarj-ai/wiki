@@ -37,6 +37,7 @@ from app.document_transform.unslop import (
     UNSLOP_REVIEW_INSTRUCTION,
     UNSLOP_REWRITE_INSTRUCTION,
     concision_target,
+    model_editable_blocks,
     without_editorial_framing,
 )
 from app.identifiers import FileId
@@ -1714,3 +1715,88 @@ def test_stock_opening_preserves_a_concrete_fast_moving_topic() -> None:
     assert projected[len(prefix) :] == topic + fact
     assert constraints.force_language == ("each", "may")
     assert constraints.scope_qualifiers == ("fast-moving",)
+
+
+@pytest.mark.parametrize(
+    ("source", "rejected", "expected_tokens", "proposed_tokens"),
+    [
+        pytest.param(
+            "Multiply 15 by 11.28 gives 169.2 ms; record 30 requests and 30 requests.",
+            "Multiply 15 times 11.28 yields 169.2 ms; record 30 requests.",
+            {"15 by": 1, "11.28 gives": 1, "169.2 ms": 1, "30": 2},
+            {"15 times": 1, "11.28": 1, "169.2 ms": 1, "30": 1},
+            id="whole-quantity-tokens-and-repeated-occurrences",
+        ),
+        pytest.param(
+            "The sensor records readings from the control unit at night.",
+            "The sensor records readings for 15 ms at night.",
+            {},
+            {"15 ms": 1},
+            id="empty-original-protected-counter",
+        ),
+    ],
+)
+async def test_repair_reports_exact_original_and_proposed_protected_token_counts(
+    source: str,
+    rejected: str,
+    expected_tokens: dict[str, int],
+    proposed_tokens: dict[str, int],
+) -> None:
+    document = parse_markdown(source, title="Protected token repair")
+    block = document.blocks[0]
+    bad = TextPatch(block_id=block.id, expected_sha256=block.sha256, replacement=rejected)
+    good = bad.model_copy(update={"replacement": source})
+    unsafe = validate_patches(document, [bad], phase=TransformPhase.UNSLOP, aggressive_unslop=True)
+    assert [finding.code for finding in unsafe.findings] == ["protected_content_changed"]
+    harness = _generator(types.GenerateContentResponse(parsed=PatchEnvelope(patches=[good])))
+
+    assert await harness.generator.repair(document, [bad], unsafe.findings) == [good]
+
+    current, previous = _rewrite_payload_lines(harness.call.prompts[0])
+    original = _RewriteInputs.model_validate_json(current).root[0]
+    failed = _RejectedInputs.model_validate_json(previous).root[0]
+    prefix = "Exact original constraint counts for protected_tokens: "
+    token_feedback = [
+        json.loads(note.removeprefix(prefix))
+        for note in failed.review_feedback
+        if note.startswith(prefix)
+    ]
+    assert token_feedback == [{"expected": expected_tokens, "proposed": proposed_tokens}]
+    assert original.text == source
+    assert original.sha256 == good.expected_sha256 == block.sha256
+    assert failed.proposed == rejected
+    assert not validate_patches(
+        document, [good], phase=TransformPhase.UNSLOP, aggressive_unslop=True
+    ).findings
+    assert document.blocks[0].text == source
+
+
+async def test_writer_supplies_numeric_advisory_batch_draft_without_relaxing_global_limit() -> None:
+    paragraph = " ".join("reading" for _ in range(60))
+    source = paragraph + "\n\n" + paragraph
+    document = parse_markdown(source, title="Batch word allocation")
+    patches = [
+        TextPatch(block_id=block.id, expected_sha256=block.sha256, replacement=block.text)
+        for block in model_editable_blocks(document)
+    ]
+    harness = _generator(types.GenerateContentResponse(parsed=PatchEnvelope(patches=patches)))
+
+    assert await harness.generator.generate(document, phase=TransformPhase.UNSLOP) == patches
+
+    prompt = harness.call.prompts[0]
+    assert "120 eligible prose words in these supplied blocks" in prompt
+    assert "combined advisory draft allocation is 38 words" in prompt
+    assert "a dense block may exceed its allocation" in prompt
+    with pytest.raises(ConcisionTargetUnmetError):
+        await TextTransformPlanner(generator=harness.generator, allow_unslop_model=True).transform(
+            document,
+            DocumentTransformRequest(
+                source=MarkdownSource(
+                    kind="markdown",
+                    content=source,
+                    name="Batch word allocation",
+                    destination_folder_id=FileId("folder"),
+                ),
+                mode=TransformMode.UNSLOP,
+            ),
+        )

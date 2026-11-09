@@ -1740,6 +1740,7 @@ class GoogleDocumentGateway(DocumentGateway):
             header_title=header_title,
             brand_warnings=draft.brand_warnings,
             verify_brand=verify_brand,
+            structure_preserved=structure_preserved,
         )
         if not content_preserved or not structure_preserved:
             logger.warning(
@@ -3322,6 +3323,7 @@ def _copy_brand_verification(
     header_title: str | None,
     brand_warnings: tuple[str, ...],
     verify_brand: bool,
+    structure_preserved: bool,
 ) -> _CopyBrandVerification:
     if not verify_brand:
         return _CopyBrandVerification(brand_applied=True, supported_brand_applied=False)
@@ -3334,7 +3336,8 @@ def _copy_brand_verification(
     if brand_warnings and all(warning.startswith("header_conflict:") for warning in brand_warnings):
         return _CopyBrandVerification(
             brand_applied=False,
-            supported_brand_applied=original is not None
+            supported_brand_applied=structure_preserved
+            and original is not None
             and _copy_supported_brand_applied(
                 original,
                 actual,
@@ -3350,7 +3353,16 @@ def _copy_brand_verification(
     )
     return _CopyBrandVerification(
         brand_applied=brand_applied,
-        supported_brand_applied=False,
+        supported_brand_applied=not brand_applied
+        and structure_preserved
+        and not brand_warnings
+        and any(block.preserved_visual_authority for block in parsed.blocks)
+        and verify_brand_application(
+            actual,
+            parsed,
+            expected_header_title=expected_header_title,
+            allow_preserved_visual_authority=True,
+        ),
     )
 
 
@@ -3385,6 +3397,7 @@ def _copy_supported_brand_applied(
         expected_header_title=expected_header_title,
         preserved_furniture_tabs=frozenset(binding.tab_id for binding in evidence),
         preserved_header_tabs=frozenset(binding.tab_id for binding in evidence),
+        allow_preserved_visual_authority=True,
     )
 
 

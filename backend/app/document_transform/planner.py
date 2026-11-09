@@ -43,6 +43,28 @@ class _ReviewedRepair:
     validated_ids: frozenset[str]
 
 
+def _retained_approved_ids(
+    document: DocumentIR, approved: PatchDecision, repaired: PatchDecision
+) -> frozenset[str]:
+    # A failed optional repair keeps an independently reviewed edit. Recheck its
+    # literal constraints before discarding findings about the failed attempt.
+    retained = validate_patches(
+        document,
+        [
+            TextPatch(
+                block_id=block.id,
+                expected_sha256=block.sha256,
+                replacement=approved.accepted[block.id],
+            )
+            for block in document.blocks
+            if block.id in approved.accepted and block.id not in repaired.accepted
+        ],
+        phase=TransformPhase.UNSLOP,
+        aggressive_unslop=True,
+    )
+    return frozenset(retained.accepted)
+
+
 def _deterministic_unslop_patches(
     document: DocumentIR,
     candidates: tuple[UnslopCandidate, ...],
@@ -184,6 +206,7 @@ class TextTransformPlanner:
         )
         repair = await self._attempt_repair(document, patches, feedback, restricted=restricted)
         repaired = repair.decision
+        retained_ids = _retained_approved_ids(document, decision, repaired)
         remaining = tuple(
             finding
             for finding in decision.findings
@@ -197,7 +220,8 @@ class TextTransformPlanner:
             + tuple(
                 finding
                 for finding in repaired.findings
-                if (finding.code, finding.block_id) not in previous
+                if finding.block_id not in retained_ids
+                and (finding.code, finding.block_id) not in previous
             ),
         )
 
