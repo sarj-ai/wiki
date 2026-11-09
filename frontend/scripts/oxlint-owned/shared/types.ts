@@ -56,6 +56,9 @@ function loadProject(configPath: string): Project {
       ts.sys,
       dirname(configPath),
     );
+    const error = config.errors[0];
+    if (error !== undefined)
+      throw new Error(ts.flattenDiagnosticMessageText(error.messageText, "\n"));
     const sources = new Map<string, string>();
     project = {
       config,

@@ -4,7 +4,7 @@ from dataclasses import dataclass, replace
 
 from app.document_transform.errors import ConcisionTargetUnmetError, ModelUnavailableError
 from app.document_transform.ir import BlockKind, DocumentIR
-from app.document_transform.models import PatchGenerator
+from app.document_transform.models import PatchGenerator, model_phase_review_scope
 from app.document_transform.safety import REPAIRABLE_REWRITE_CODES, PatchDecision, validate_patches
 from app.document_transform.schemas import (
     DocumentTransformRequest,
@@ -149,6 +149,7 @@ class TextTransformPlanner:
             )
         return outcome
 
+    @model_phase_review_scope()
     async def _model_phase(
         self,
         document: DocumentIR,

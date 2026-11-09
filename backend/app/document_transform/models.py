@@ -4,6 +4,7 @@ from abc import ABC, abstractmethod
 import asyncio
 from collections import Counter
 from contextlib import asynccontextmanager
+from contextvars import ContextVar
 from dataclasses import asdict, dataclass, replace
 from datetime import timedelta
 import hashlib
@@ -77,8 +78,11 @@ _TRANSIENT_MODEL_STATUSES = frozenset(
     }
 )
 _REVIEW_FALLBACK_STATUSES = _TRANSIENT_MODEL_STATUSES | {HTTPStatus.FORBIDDEN}
-_MAX_REVIEW_BATCH_CHARACTERS = 8_000
+_MAX_REVIEW_BATCH_CHARACTERS = 12_000
 _MAX_REVIEW_BATCH_PAIRS = 12
+_phase_denied_review_models_var: ContextVar[set[str] | None] = ContextVar(
+    "document_phase_denied_review_models", default=None
+)
 _MAX_CONCURRENT_MODEL_BATCHES = 2
 _INITIAL_WRITER_START_INTERVAL = timedelta(seconds=1)
 _WRITER_JITTER_MILLISECONDS = 250
@@ -218,6 +222,15 @@ class _RepairProposal:
 class RewriteReview:
     approved: frozenset[str]
     rejected: dict[str, str]
+
+
+@asynccontextmanager
+async def model_phase_review_scope() -> AsyncGenerator[None]:
+    token = _phase_denied_review_models_var.set(set())
+    try:
+        yield
+    finally:
+        _phase_denied_review_models_var.reset(token)
 
 
 @dataclass(frozen=True, slots=True)
@@ -491,7 +504,7 @@ class VertexGeminiPatchGenerator(PatchGenerator):
                     response_json_schema=_response_json_schema(PatchEnvelope),
                     max_output_tokens=_STRUCTURED_RESPONSE_TOKEN_LIMIT,
                     thinking_config=thinking_config,
-                    http_options=genai_types.HttpOptions(timeout=int(timeout_seconds * 1000)),
+                    http_options=_model_http_options(timeout_seconds),
                 ),
             )
         try:
@@ -534,8 +547,11 @@ class VertexGeminiPatchGenerator(PatchGenerator):
         )
 
     async def _review_all_batches(self, pairs: list[_ReviewPair]) -> tuple[RewriteReview, ...]:
-        # Permission failures are shared only by this invocation's queued batches.
-        denied_models: set[str] = set()
+        # Initial and repaired proposals share access denials within one model phase.
+        # Direct review calls still have independent, invocation-local state.
+        denied_models = _phase_denied_review_models_var.get()
+        if denied_models is None:
+            denied_models = set()
         try:
             async with asyncio.TaskGroup() as group:
                 tasks = [
@@ -612,7 +628,7 @@ class VertexGeminiPatchGenerator(PatchGenerator):
                         if model == "gemini-3.8-flash"
                         else genai_types.ThinkingLevel.HIGH
                     ),
-                    http_options=genai_types.HttpOptions(timeout=int(seconds * 1000)),
+                    http_options=_model_http_options(seconds),
                 ),
             )
         try:
@@ -662,6 +678,20 @@ async def _model_batch_slot(semaphore: asyncio.Semaphore) -> AsyncGenerator[None
                 yield
     except TimeoutError as exc:
         raise ModelUnavailableError from exc
+
+
+def _model_http_options(seconds: float) -> genai_types.HttpOptions:
+    return genai_types.HttpOptions(
+        timeout=int(seconds * 1000),
+        retry_options=genai_types.HttpRetryOptions(
+            attempts=3,
+            initial_delay=4,
+            max_delay=16,
+            exp_base=2,
+            jitter=1,
+            http_status_codes=[int(status) for status in sorted(_TRANSIENT_MODEL_STATUSES)],
+        ),
+    )
 
 
 def _model_request_timeout_seconds(
@@ -942,14 +972,16 @@ def _aggregate_review_units(units: list[_ReviewUnit], decision: RewriteReview) -
     )
 
 
-def _review_batches(pairs: list[_ReviewPair]) -> tuple[list[_ReviewPair], ...]:
+def _review_batches(
+    pairs: list[_ReviewPair], *, maximum_characters: int = _MAX_REVIEW_BATCH_CHARACTERS
+) -> tuple[list[_ReviewPair], ...]:
     batches: list[list[_ReviewPair]] = []
     current: list[_ReviewPair] = []
     for pair in pairs:
         candidate = [*current, pair]
         if current and (
             len(candidate) > _MAX_REVIEW_BATCH_PAIRS
-            or len(_review_prompt(candidate)) > _MAX_REVIEW_BATCH_CHARACTERS
+            or len(_review_prompt(candidate)) > maximum_characters
         ):
             batches.append(current)
             current = []

@@ -30,7 +30,7 @@ _PROTECTED_TOKEN = re.compile(
     re.MULTILINE,
 )
 _FORCE_WORD = re.compile(
-    r"\b(?:opportunit(?:y|ies)\s+to|"
+    r"\b(?:intended\s+to|aims\s+to|opportunit(?:y|ies)\s+to|"
     r"must|shall|should|may|might|could|would|cannot|can't|can|will|won't|not|never|no|"
     r"each|every|all|only|both|neither|either|per)\b",
     re.IGNORECASE,

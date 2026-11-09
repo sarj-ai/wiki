@@ -1,3 +1,4 @@
+from hashlib import sha256
 import sys
 from typing import TYPE_CHECKING
 
@@ -7,6 +8,10 @@ import typer
 from typer.testing import CliRunner
 
 from scripts import wiki
+from scripts.standards_checks.check_baseline_growth import (
+    _BootstrapGrowth,
+    _validated_allowances,
+)
 
 
 if TYPE_CHECKING:
@@ -261,13 +266,6 @@ def test_setup_initializes_locked_local_providers_after_packages_and_preserves_d
 def test_migration_allowance_requires_the_exact_reviewed_changed_source(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, review: str
 ) -> None:
-    from hashlib import sha256
-
-    from scripts.standards_checks.check_baseline_growth import (
-        _BootstrapGrowth,
-        _validated_allowances,
-    )
-
     monkeypatch.chdir(tmp_path)
     source = tmp_path / "frontend/sample.ts"
     source.parent.mkdir()

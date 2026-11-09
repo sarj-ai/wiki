@@ -6,7 +6,7 @@ import { DocumentLoading } from "@/components/wiki-document/document-loading";
 
 const DEMO_TITLE = "Sarj Wiki · Public demo";
 const DEMO_DESCRIPTION =
-  "Explore a Notion-like interface for Google Workspace. Browse an overview, a spreadsheet and a presentation in a read-only Sarj Wiki demo.";
+  "Google SRE latency estimates in a read-only Wiki demo. No sign-in required.";
 
 export const metadata: Metadata = {
   alternates: { canonical: "https://wiki.sarj.ai/demo" },

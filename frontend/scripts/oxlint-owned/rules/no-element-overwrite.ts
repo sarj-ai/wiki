@@ -137,13 +137,13 @@ export default createRule({
         globalReceiver(node) &&
         (parent.type !== "MemberExpression" ||
           parent.object !== node ||
-          staticPropertyName(parent, source.getScope(parent)) === null)
+          staticPropertyName(parent, source) === null)
       )
         invalidateAllNative();
       if (
         node.type === "MemberExpression" &&
         ["getPrototypeOf", "setPrototypeOf", "__proto__"].includes(
-          staticPropertyName(node, source.getScope(node)) ?? "",
+          staticPropertyName(node, source) ?? "",
         )
       ) {
         invalidateAllNative();
@@ -162,7 +162,7 @@ export default createRule({
         if (parent.type !== "MemberExpression" || parent.object !== node)
           nativeDataPrototypeEscaped = true;
         else {
-          const key = staticPropertyName(parent, source.getScope(parent));
+          const key = staticPropertyName(parent, source);
           if (key === null) invalidateAllNative();
           else if (key === "prototype") nativeDataPrototypeEscaped = true;
         }
@@ -174,7 +174,7 @@ export default createRule({
     ): "Array" | "Map" | "Object" | "Set" | null {
       const node = unwrap(input);
       if (node.type === "MemberExpression" && globalReceiver(node.object)) {
-        const key = staticPropertyName(node, source.getScope(node));
+        const key = staticPropertyName(node, source);
         if (
           key === "Map" ||
           key === "Set" ||
@@ -226,7 +226,7 @@ export default createRule({
             "top",
             "parent",
             "frames",
-          ].includes(staticPropertyName(node, source.getScope(node)) ?? "")
+          ].includes(staticPropertyName(node, source) ?? "")
         ) {
           node = node.object;
           continue;
