@@ -1,17 +1,17 @@
-import type { ESTree, Scope } from "@oxlint/plugins";
+import type { ESTree, Scope, SourceCode } from "@oxlint/plugins";
 
 export function propertyName(
   node: ESTree.MemberExpression,
-  scope: Scope,
+  source: SourceCode,
 ): string | null {
   if (!node.computed)
     return node.property.type === "Identifier" ? node.property.name : null;
-  return constant(node.property, scope, new Set());
+  return constant(node.property, source, new Set());
 }
 
 function constant(
   node: ESTree.Node,
-  scope: Scope,
+  source: SourceCode,
   seen: Set<ESTree.Node>,
 ): string | null {
   if (seen.has(node)) return null;
@@ -20,7 +20,7 @@ function constant(
   if (node.type === "TemplateLiteral" && node.expressions.length === 0)
     return node.quasis[0]?.value.cooked ?? null;
   if (node.type === "Identifier") {
-    let current: Scope | null = scope;
+    let current: Scope | null = source.getScope(node);
     while (current !== null) {
       const binding = current.set.get(node.name);
       if (binding !== undefined) {
@@ -34,7 +34,7 @@ function constant(
         const definition = binding.defs[0];
         return definition?.node.type === "VariableDeclarator" &&
           definition.node.init !== null
-          ? constant(definition.node.init, scope, seen)
+          ? constant(definition.node.init, source, seen)
           : null;
       }
       current = current.upper;

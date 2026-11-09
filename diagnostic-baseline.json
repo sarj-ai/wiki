@@ -1,9 +1,9 @@
 {
   "schemaVersion": 2,
   "provenance": {
-    "bundleVersion": "9.6.2",
-    "consumerBaseSha": "72698975aead273fb4222df3ea79e9f59cde8d96",
-    "catalogDigest": "b1b5c2d10d97f19a6abb2b1aee4dd1925c00c0d6172099bcf97acff345e18dff"
+    "bundleVersion": "9.7.0",
+    "consumerBaseSha": "f6a54002c64f11d506a99d7ea79a4f95d8fb3cea",
+    "catalogDigest": "f49051f8e8ea0c12e340bd2d31931f4119f5322903eff4930720cec770c2776f"
   },
   "diagnostics": [
     {

@@ -44,8 +44,18 @@ interface OwnedRule {
 export function createRule(
   definition: OwnedRule,
 ): CreateOnceRule & { meta: OwnedRule["meta"] } {
+  const meta =
+    definition.meta.docs === undefined
+      ? definition.meta
+      : {
+          ...definition.meta,
+          docs: {
+            ...definition.meta.docs,
+            url: `https://github.com/sarj-ai/wiki/blob/main/frontend/scripts/eslint-owned/rules/${definition.name}.ts`,
+          },
+        };
   return {
-    meta: definition.meta,
+    meta,
     createOnce(context) {
       let visitor: Visitor = {};
 

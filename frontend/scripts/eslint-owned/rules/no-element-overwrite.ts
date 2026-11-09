@@ -121,13 +121,13 @@ export default createRule({
         globalReceiver(node) &&
         (parent.type !== "MemberExpression" ||
           parent.object !== node ||
-          staticPropertyName(parent, source.getScope(parent)) === null)
+          staticPropertyName(parent, source) === null)
       )
         invalidateAllNative();
       if (
         node.type === "MemberExpression" &&
         ["getPrototypeOf", "setPrototypeOf", "__proto__"].includes(
-          staticPropertyName(node, source.getScope(node)) ?? "",
+          staticPropertyName(node, source) ?? "",
         )
       ) {
         // Prototype reflection can expose an intrinsic without spelling its
@@ -148,7 +148,7 @@ export default createRule({
         if (parent.type !== "MemberExpression" || parent.object !== node)
           nativeDataPrototypeEscaped = true;
         else {
-          const key = staticPropertyName(parent, source.getScope(parent));
+          const key = staticPropertyName(parent, source);
           if (key === null) invalidateAllNative();
           else if (key === "prototype") nativeDataPrototypeEscaped = true;
         }
@@ -162,7 +162,7 @@ export default createRule({
       // Optional access can still expose the real namespace. This is a
       // conservative escape guard, not evidence that a native call is valid.
       if (node.type === "MemberExpression" && globalReceiver(node.object)) {
-        const key = staticPropertyName(node, source.getScope(node));
+        const key = staticPropertyName(node, source);
         if (
           key === "Map" ||
           key === "Set" ||
@@ -216,7 +216,7 @@ export default createRule({
             "top",
             "parent",
             "frames",
-          ].includes(staticPropertyName(node, source.getScope(node)) ?? "")
+          ].includes(staticPropertyName(node, source) ?? "")
         ) {
           node = node.object;
           continue;
