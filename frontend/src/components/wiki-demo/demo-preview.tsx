@@ -1,10 +1,11 @@
 "use client";
 
 import { FileWarning, RefreshCw } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useEffectEvent, useRef, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { DocumentLoading } from "@/components/wiki-document/document-loading";
+import { useIsClient } from "@/hooks/use-is-client";
 
 import type { DemoFile } from "./demo-data";
 import { demoDownloadUrl, demoPreviewUrl } from "./demo-file-urls";
@@ -25,6 +26,8 @@ export function DemoPreview({ file, onReload }: DemoPreviewProps) {
 }
 
 function PreviewFrame({ file, onReload }: DemoPreviewProps) {
+  const isClient = useIsClient();
+  const initialServerFrame = useRef(!isClient);
   const [loadStatus, setLoadStatus] = useState<"loading" | "ready" | "slow">(
     "loading",
   );
@@ -38,7 +41,7 @@ function PreviewFrame({ file, onReload }: DemoPreviewProps) {
   useEffect(() => {
     if (invalidPreview) return;
     const timer = window.setTimeout(() => {
-      setLoadStatus("slow");
+      setLoadStatus((current) => (current === "loading" ? "slow" : current));
     }, 10_000);
     timeout.current = timer;
     return () => {
@@ -62,6 +65,22 @@ function PreviewFrame({ file, onReload }: DemoPreviewProps) {
     timeout.current = null;
     setLoadStatus("ready");
   };
+
+  const initialLoad = useEffectEvent(loaded);
+
+  useEffect(() => {
+    if (!initialServerFrame.current || invalidPreview) return;
+    const windowLoaded = () => {
+      initialServerFrame.current = false;
+      initialLoad();
+    };
+    if (document.readyState === "complete") {
+      windowLoaded();
+      return;
+    }
+    window.addEventListener("load", windowLoaded, { once: true });
+    return () => window.removeEventListener("load", windowLoaded);
+  }, [invalidPreview]);
 
   return (
     <>
