@@ -99,6 +99,49 @@ describe("responsive sidebar ownership", () => {
     expect(document.activeElement).toBe(trigger());
   });
 
+  it.each(["Escape", "Close"])(
+    "restores the outside trigger after %s with an internal mobile trigger",
+    async (dismissal) => {
+      flushSync(() =>
+        root.render(
+          <SidebarProvider persistState={false}>
+            <Sidebar>
+              <SidebarTrigger className="hidden md:inline-flex" hidden />
+              <Link href="/">Recent pages</Link>
+            </Sidebar>
+            <main>
+              <SidebarTrigger />
+            </main>
+          </SidebarProvider>,
+        ),
+      );
+      const outside = trigger();
+      outside.focus();
+      flushSync(() => outside.click());
+      await vi.advanceTimersByTimeAsync(0);
+      const dialog = document.querySelector('[role="dialog"]');
+      if (!dialog) throw new Error("Mobile sidebar missing");
+      expect(dialog.contains(document.activeElement)).toBe(true);
+      flushSync(() => {
+        if (dismissal === "Escape") {
+          dialog.dispatchEvent(
+            new KeyboardEvent("keydown", { bubbles: true, key: "Escape" }),
+          );
+        } else {
+          const close = [...dialog.querySelectorAll("button")].find(
+            (button) => button.textContent === "Close",
+          );
+          if (!close) throw new Error("Mobile sidebar close control missing");
+          close.click();
+        }
+      });
+      await vi.advanceTimersByTimeAsync(0);
+      expect(document.querySelector('[role="dialog"]')).toBeNull();
+      expect(outside).toHaveAttribute("aria-expanded", "false");
+      expect(document.activeElement).toBe(outside);
+    },
+  );
+
   it("does not resurrect the mobile drawer over another dialog after a desktop round trip", async () => {
     mount();
     flushSync(() => trigger().click());
