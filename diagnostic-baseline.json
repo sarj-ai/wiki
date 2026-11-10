@@ -2142,13 +2142,6 @@
       "count": 2
     },
     {
-      "fingerprint": "aa2ad080ee49c64a80e13083a2cc5863a79bd227863a6e84d54862d222033db4",
-      "source": "sarj-python-lint",
-      "ruleId": "no-broad-keyword-capture",
-      "path": "backend/tests/test_qa_markdown_transform_cli.py",
-      "count": 2
-    },
-    {
       "fingerprint": "d7c18d51c764f60d4a020b8797bf3738fd96736f5e11ec3a1805e6ff0ff7b6d8",
       "source": "sarj-python-lint",
       "ruleId": "no-broad-keyword-capture",
@@ -2476,13 +2469,6 @@
       "ruleId": "no-delete-statement",
       "path": "backend/tests/test_presentation_transform.py",
       "count": 7
-    },
-    {
-      "fingerprint": "28cae097c3fd0e44d5a60ec12a01d0a37bf648b3ebf8023dbcdd352fc19684d5",
-      "source": "sarj-python-lint",
-      "ruleId": "no-delete-statement",
-      "path": "backend/tests/test_qa_markdown_transform_cli.py",
-      "count": 1
     },
     {
       "fingerprint": "9b95a14f5ab105009ba37ba2057f99cbe118811365168ef4703d9ed574d847da",
@@ -3668,20 +3654,6 @@
       "count": 2
     },
     {
-      "fingerprint": "a5409c6101e9121f987cdfb2e2c3b0fe32cec6f8e136c29842a9016333885c46",
-      "source": "sarj-python-lint",
-      "ruleId": "prefer-injected-dependency-over-monkeypatch",
-      "path": "backend/tests/test_qa_export_drive_docs.py",
-      "count": 3
-    },
-    {
-      "fingerprint": "ec1708db2d27bcd4298c4051a25bdc1590e700e0dd98c29a189a45471bc8b064",
-      "source": "sarj-python-lint",
-      "ruleId": "prefer-injected-dependency-over-monkeypatch",
-      "path": "backend/tests/test_qa_markdown_transform_cli.py",
-      "count": 10
-    },
-    {
       "fingerprint": "0f7be203bb5705310b4cde8d4f5e4cbc6fa892db4fc951554bc475cd8c8f6bbb",
       "source": "sarj-python-lint",
       "ruleId": "prefer-injected-dependency-over-monkeypatch",
@@ -4057,13 +4029,6 @@
       "source": "sarj-python-lint",
       "ruleId": "prefer-precise-object-contract",
       "path": "backend/scripts/benchmark_performance.py",
-      "count": 1
-    },
-    {
-      "fingerprint": "374b77d282d509e7ebbe56ae4c66f0cc2f6327b48f4b143c745adf4d66a0414d",
-      "source": "sarj-python-lint",
-      "ruleId": "prefer-precise-object-contract",
-      "path": "backend/scripts/qa_markdown_transform.py",
       "count": 1
     },
     {
@@ -4457,20 +4422,6 @@
       "ruleId": "prefer-precise-object-contract",
       "path": "backend/tests/test_provider_round3.py",
       "count": 1
-    },
-    {
-      "fingerprint": "d28fac6c99b6f6a8fbdaa8065398d989d0ee9cb36f3695906c7bc607126d16bb",
-      "source": "sarj-python-lint",
-      "ruleId": "prefer-precise-object-contract",
-      "path": "backend/tests/test_qa_export_drive_docs.py",
-      "count": 2
-    },
-    {
-      "fingerprint": "a1ae9e6f4b2546e8fb257ff4b77d36be50324a2e361666e861e47729348bee86",
-      "source": "sarj-python-lint",
-      "ruleId": "prefer-precise-object-contract",
-      "path": "backend/tests/test_qa_markdown_transform_cli.py",
-      "count": 9
     },
     {
       "fingerprint": "d420412e5eb35c00bcc712bf1ac4f6c2193d17235ac9082a70f3bad4d3a97938",
