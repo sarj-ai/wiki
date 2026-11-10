@@ -155,6 +155,8 @@ from app.document_transform.native_visual_authority import (
     visual_authority_block_ids,
 )
 from app.document_transform.provider_diagnostics import native_provider_diagnostics
+from app.document_transform.readability_provider import ReadabilityProvider
+from app.document_transform.readability_types import ReadabilityCheckpoint
 from app.document_transform.schemas import (
     DocumentOutput,
     DriveFileSource,
@@ -336,6 +338,28 @@ class GoogleDocumentGateway(DocumentGateway):
     _header_identity_proof: HeaderIdentityProof | None = None
     _header_identity: HeaderIdentityEvidence | None = None
 
+    async def _read_readability_document(self, document_id: FileId) -> dict[str, JsonValue]:
+        return await asyncio.to_thread(self._get_document_sync, document_id)
+
+    async def _write_readability(
+        self, document_id: FileId, checkpoint: ReadabilityCheckpoint
+    ) -> None:
+        await asyncio.to_thread(self._write_readability_sync, document_id, checkpoint)
+
+    def _write_readability_sync(
+        self, document_id: FileId, checkpoint: ReadabilityCheckpoint
+    ) -> None:
+        self._execute_dict(
+            _google_http_request(
+                _member(self._docs().documents(), "batchUpdate"),
+                documentId=document_id,
+                body={
+                    "writeControl": {"requiredRevisionId": checkpoint.source_revision_id},
+                    "requests": checkpoint.requests,
+                },
+            )
+        )
+
     @override
     async def plan_copy_dates(
         self, *, draft: OutputDraft, operation_id: uuid.UUID
@@ -396,6 +420,9 @@ class GoogleDocumentGateway(DocumentGateway):
         refresh_handler: GoogleRefreshHandler | None = None,
         header_identity: HeaderIdentityProof | None = None,
     ) -> None:
+        self.readability_provider = ReadabilityProvider(
+            self._read_readability_document, self._write_readability
+        )
         self.structure_provider = StructureProvider(
             self._get_document_sync, self._write_copy_structure_sync, self._comments_absent_sync
         )

@@ -34,6 +34,7 @@ from app.document_transform.native_footer_flow import NativeFooterCheckpoint
 from app.document_transform.native_pagination import MAX_PAGINATION_RULES, NativePaginationRule
 from app.document_transform.native_paragraph_layout import NativeParagraphLayout
 from app.document_transform.native_table_font import TableFontPlan
+from app.document_transform.readability_types import ReadabilityCheckpoint
 from app.document_transform.tab_names import TabNamingPlan
 from app.document_transform.tab_structure_execution import StructureCheckpoint
 from app.identifiers import BrandProfileId, DocsRevisionId, FileId, ModelId
@@ -253,7 +254,7 @@ class DocumentOutput(StrictTransformModel):
 
 
 class DocumentTransformResult(StrictTransformModel):
-    promoted_heading_count: int = Field(default=0, ge=0, le=20)
+    promoted_heading_count: int = Field(default=0, ge=0, le=MAX_DOCUMENT_BLOCKS)
     header_identity: HeaderIdentityEvidence | None = None
     operation_id: uuid.UUID
     source_sha256: str
@@ -305,6 +306,8 @@ class InPlaceCheckpointStage(StrEnum):
 
 
 class InPlaceCheckpoint(StrictTransformModel):
+    readability: ReadabilityCheckpoint | None = None
+    readability_result: DocumentTransformResult | None = None
     visual_authority_block_ids: tuple[
         Annotated[NativeFontBlockId, StringConstraints(pattern=r"^b[0-9]+$", max_length=12)], ...
     ] = Field(default=(), max_length=MAX_DOCUMENT_BLOCKS)
@@ -406,6 +409,8 @@ class CopyCheckpointStage(StrEnum):
 
 
 class CopyCheckpoint(StrictTransformModel):
+    readability: ReadabilityCheckpoint | None = None
+    readability_result: DocumentTransformResult | None = None
     pagination: tuple[NativePaginationRule, ...] = Field(
         default=(), max_length=MAX_PAGINATION_RULES
     )

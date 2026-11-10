@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from typing import Any, Protocol
+from typing import TYPE_CHECKING, Any, Protocol
 import uuid
 
 from app.document_transform.custom_furniture import CustomFurnitureBinding, CustomHeaderTitleTarget
@@ -19,6 +19,10 @@ from app.document_transform.schemas import (
 )
 from app.document_transform.tab_structure_execution import StructureProvider
 from app.identifiers import DocsRevisionId, DocsSegmentId, DocsTabId, DriveId, FileId
+
+
+if TYPE_CHECKING:
+    from app.document_transform.readability_provider import ReadabilityProvider
 
 
 @dataclass(frozen=True, slots=True)
@@ -112,6 +116,7 @@ class HeaderIdentityCapture(Protocol):
 
 
 class DocumentGateway(ABC):
+    readability_provider: ReadabilityProvider | None = None
     supports_native_footer = False
     supports_native_dates = False
     structure_provider: StructureProvider | None = None

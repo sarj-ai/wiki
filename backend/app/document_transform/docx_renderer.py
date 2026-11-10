@@ -52,6 +52,7 @@ from app.document_transform.limits import (
     MAX_DOCX_TABLE_COLUMNS,
     MAX_DOCX_TABLE_ROWS,
 )
+from app.document_transform.table_layout import numeric_columns, table_column_widths
 from app.document_transform.text_direction import first_strong_is_rtl
 
 
@@ -1020,15 +1021,9 @@ def _append_code_block(document: Document, text: str, *, branded: bool) -> None:
 def _append_table(document: Document, block: _Block, *, branded: bool) -> None:
     if not block.rows:
         return
-    column_count = len(block.rows[0])
-    widths = _table_widths(block.rows, column_count)
-    data_rows = block.rows[1:] if block.has_header else block.rows
-    numeric_columns = {
-        index
-        for index in range(column_count)
-        if data_rows and all(_numeric_table_value(row[index]) for row in data_rows)
-    }
-    table = document.add_table(rows=len(block.rows), cols=column_count)
+    widths = table_column_widths(block.rows, total=_CONTENT_WIDTH_DXA, header=block.has_header)
+    numeric = numeric_columns(block.rows, header=block.has_header)
+    table = document.add_table(rows=len(block.rows), cols=len(block.rows[0]))
     table.alignment = WD_TABLE_ALIGNMENT.LEFT
     table.autofit = False
     _configure_table_geometry(table, widths, branded=branded)
@@ -1039,7 +1034,7 @@ def _append_table(document: Document, block: _Block, *, branded: bool) -> None:
             block,
             row_index=row_index,
             widths=widths,
-            numeric_columns=numeric_columns,
+            numeric_columns=numeric,
             branded=branded,
         )
     spacer = document.add_paragraph()
@@ -1053,7 +1048,7 @@ def _append_table_row(
     *,
     row_index: int,
     widths: tuple[int, ...],
-    numeric_columns: set[int],
+    numeric_columns: frozenset[int],
     branded: bool,
 ) -> None:
     header = block.has_header and row_index == 0
@@ -1407,28 +1402,6 @@ def _set_paragraph_bottom_border(paragraph: Paragraph) -> None:
         "w:rPr",
         "w:sectPr",
         "w:pPrChange",
-    )
-
-
-def _table_widths(rows: tuple[tuple[str, ...], ...], columns: int) -> tuple[int, ...]:
-    weights = [max(4.0, max(len(row[index]) for row in rows) ** 0.5) for index in range(columns)]
-    minimum = _CONTENT_WIDTH_DXA * 0.14
-    raw = [max(minimum, _CONTENT_WIDTH_DXA * weight / sum(weights)) for weight in weights]
-    scale = _CONTENT_WIDTH_DXA / sum(raw)
-    widths = [int(value * scale) for value in raw]
-    widths[-1] += _CONTENT_WIDTH_DXA - sum(widths)
-    return tuple(widths)
-
-
-def _numeric_table_value(value: str) -> bool:
-    return (
-        re.fullmatch(
-            r"\s*[<>≤≥~≈]?[+-]?[$€£¥]?\s*\d[\d,.]*(?:\s*[–-]\s*\d[\d,.]*)?"
-            r"(?:\s*(?:%|ns|[µμu]s|ms|s|KB|MB|GB|TB|KiB|MiB|GiB|Kbps|Mbps|Gbps|×|x))?\s*",
-            value,
-            re.IGNORECASE,
-        )
-        is not None
     )
 
 
