@@ -7,13 +7,6 @@
   },
   "diagnostics": [
     {
-      "fingerprint": "e0d0abc229ec7a5c7ea37f920ebc5990c2fbd518dd493c90ed4bf77abef69118",
-      "source": "deptry",
-      "ruleId": "DEP003",
-      "path": "backend/scripts/qa_polish_rounds.py",
-      "count": 1
-    },
-    {
       "fingerprint": "f261e578a6a78104c59609f53c3447eb9c9a7c6dd1fbeada9da6622318c51495",
       "source": "oxlint",
       "ruleId": "@eslint-react/web-api-no-leaked-timeout",
@@ -2814,20 +2807,6 @@
       "count": 1
     },
     {
-      "fingerprint": "b0399b239f238c8f6347dac6ceb7536a7161a3584f6069e1443b3bc6c4631247",
-      "source": "sarj-python-lint",
-      "ruleId": "no-excessive-cognitive-complexity",
-      "path": "backend/scripts/qa_polish_rounds.py",
-      "count": 1
-    },
-    {
-      "fingerprint": "ce39fdf88e81d586ccc83329bb39ebf94f33e2c52a7ddc91447b9f38d87979d7",
-      "source": "sarj-python-lint",
-      "ruleId": "no-excessive-cognitive-complexity",
-      "path": "backend/scripts/qa_polish_rounds.py",
-      "count": 1
-    },
-    {
       "fingerprint": "a9ce2b39230bcb08ea70ae88842c09b577455fc8d078d60b0a0354ce26e807da",
       "source": "sarj-python-lint",
       "ruleId": "no-excessive-cognitive-complexity",
@@ -3141,13 +3120,6 @@
       "ruleId": "no-test-comments",
       "path": "backend/tests/test_provider_round4.py",
       "count": 2
-    },
-    {
-      "fingerprint": "69a3577a073335c2e0f4b6130e502d6ac8d85649b2c515a563d4bcb61a4e536f",
-      "source": "sarj-python-lint",
-      "ruleId": "no-test-comments",
-      "path": "backend/tests/test_qa_polish_folder_binding.py",
-      "count": 1
     },
     {
       "fingerprint": "3e847c34f28da41e2fe7b39c83a25784219ce1c8b90119b89e9808f1f8c41842",

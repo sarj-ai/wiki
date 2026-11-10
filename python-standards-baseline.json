@@ -264,9 +264,6 @@
   "backend/scripts/qa_markdown_transform.py": {
     "SARJ528": 1
   },
-  "backend/scripts/qa_polish_rounds.py": {
-    "SARJ444": 2
-  },
   "backend/tests/advanced_round6_support.py": {
     "SARJ528": 4
   },

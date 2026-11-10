@@ -171,5 +171,9 @@
         "reason": "Seed the pre-migration schema and assert PostgreSQL constraints/data preservation before current ORM columns exist."
       }
     }
+  },
+  "retainedSerializationCompatibility": {
+    "path": "backend/app/tasks/service.py",
+    "reason": "Old encrypted normal copy checkpoints contain null QA metadata. Discard only those null legacy keys when decoding; keep strict rejection of non-null retired QA payloads and every other unknown field. New checkpoints omit the retired keys."
   }
 }
