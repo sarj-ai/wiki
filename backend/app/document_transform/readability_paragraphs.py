@@ -16,11 +16,14 @@ from app.document_transform.ir import (
 from app.document_transform.readability_json import (
     array,
     bodies,
+    canonical_style,
     content,
+    effective_paragraph_style,
     effective_text_style,
     integer,
     obj,
     plain_text,
+    rgb_color,
 )
 from app.document_transform.readability_types import (
     ReadabilityParagraph,
@@ -46,20 +49,7 @@ _STYLE_FIELDS = frozenset(
         "direction",
         "avoidWidowAndOrphan",
         "spacingMode",
-    }
-)
-_MUTATED_FIELDS = frozenset(
-    {
-        "alignment",
-        "lineSpacing",
-        "spaceAbove",
-        "spaceBelow",
-        "keepWithNext",
-        "keepLinesTogether",
-        "namedStyleType",
-        "indentStart",
-        "indentEnd",
-        "indentFirstLine",
+        "pageBreakBefore",
     }
 )
 _SOURCE_SEQUENCE = re.compile(
@@ -112,29 +102,37 @@ def _eligible_element(
     element: dict[str, JsonValue], *, document: dict[str, JsonValue], tab: dict[str, JsonValue]
 ) -> bool:
     try:
-        uniform = _uniform_style(element)
-        style = obj(obj(element["paragraph"]).get("paragraphStyle", {}))
-        effective = effective_text_style(document, tab, style, uniform)
-        if (
-            obj(effective.get("weightedFontFamily", {})).get("fontFamily") != _DOCUMENT.font_family
-            or effective.get("bold")
-            or effective.get("italic")
-            or obj(effective.get("fontSize", {})).get("magnitude", _DOCUMENT.body_size_pt)
-            != _DOCUMENT.body_size_pt
-        ):
-            return False
-        if (
-            set(style) - _STYLE_FIELDS
-            or style.get("namedStyleType") != "NORMAL_TEXT"
-            or style.get("alignment") != "JUSTIFIED"
-        ):
-            return False
-        return not any(
-            obj(style.get(key, {})).get("magnitude", 0)
-            for key in ("indentStart", "indentEnd", "indentFirstLine")
-        )
+        return _managed_prose(element, document=document, tab=tab)
     except KeyError, TypeError, ValueError:
         return False
+
+
+def _managed_prose(
+    element: dict[str, JsonValue], *, document: dict[str, JsonValue], tab: dict[str, JsonValue]
+) -> bool:
+    uniform = _uniform_style(element)
+    style = obj(obj(element["paragraph"]).get("paragraphStyle", {}))
+    effective = effective_text_style(document, tab, style, uniform)
+    if (
+        obj(effective.get("weightedFontFamily", {})).get("fontFamily") != _DOCUMENT.font_family
+        or effective.get("bold")
+        or effective.get("italic")
+        or obj(effective.get("fontSize", {})).get("magnitude", _DOCUMENT.body_size_pt)
+        != _DOCUMENT.body_size_pt
+    ):
+        return False
+    layout = effective_paragraph_style(document, tab, style)
+    if (
+        set(style) - _STYLE_FIELDS
+        or layout.get("namedStyleType") != "NORMAL_TEXT"
+        or layout.get("alignment") != "JUSTIFIED"
+        or layout.get("pageBreakBefore")
+    ):
+        return False
+    return not any(
+        obj(layout.get(key, {})).get("magnitude", 0)
+        for key in ("indentStart", "indentEnd", "indentFirstLine")
+    )
 
 
 def _uniform_style(element: dict[str, JsonValue]) -> dict[str, JsonValue]:
@@ -329,7 +327,6 @@ def readable_paragraph_requests(
 def _paragraph_appearance_requests(target: ReadabilityParagraph) -> list[dict[str, JsonValue]]:
     requests: list[dict[str, JsonValue]] = []
     index = target.start
-    original_style = target.text_style
     for part in target.parts:
         end = index + utf16_length(part.text)
         location: dict[str, JsonValue] = {
@@ -347,15 +344,7 @@ def _paragraph_appearance_requests(target: ReadabilityParagraph) -> list[dict[st
                 }
             }
         )
-        text_style = deepcopy(original_style)
-        if part.role.startswith("heading"):
-            text_style["fontSize"] = {
-                "magnitude": _DOCUMENT.h2_size_pt
-                if part.role == "heading2"
-                else _DOCUMENT.h3_size_pt,
-                "unit": "PT",
-            }
-            text_style["bold"] = True
+        text_style = _part_text_style(target, part)
         requests.append(
             {
                 "updateTextStyle": {
@@ -413,7 +402,8 @@ def project_readable_paragraphs(
                     _verify_bullet(
                         obj(element["paragraph"]), obj(tabs[target.tab_id].get("lists", {})), part
                     )
-                _verify_part(element, part, target=target, start=index)
+                _verify_part(element, part, start=index)
+                _verify_part_layout(document, tabs[target.tab_id], element, part, target=target)
                 _verify_part_text_style(document, tabs[target.tab_id], element, part, target=target)
                 index += utf16_length(part.text) + 1
             values[ordinal : ordinal + len(target.parts)] = [deepcopy(target.source)]
@@ -426,7 +416,6 @@ def _verify_part(
     element: dict[str, JsonValue],
     part: ReadabilityPart,
     *,
-    target: ReadabilityParagraph,
     start: int,
 ) -> None:
     paragraph = obj(element["paragraph"])
@@ -442,25 +431,31 @@ def _verify_part(
     ):
         msg = "Paragraph text or position changed"
         raise ValueError(msg)
-    style = obj(paragraph.get("paragraphStyle", {}))
-    expected = _part_style(part)
-    for key, value in expected.items():
-        observed = style.get(key)
-        if isinstance(value, dict) and isinstance(observed, dict):
-            if observed.get("unit") != "PT" or observed.get("magnitude", 0) != value["magnitude"]:
-                msg = "Paragraph spacing was not applied"
-                raise ValueError(msg)
-        elif observed != value:
-            msg = "Paragraph formatting was not applied"
-            raise ValueError(msg)
 
-    source_style = obj(obj(target.source["paragraph"]).get("paragraphStyle", {}))
-    if {
-        key: value
-        for key, value in style.items()
-        if key not in _MUTATED_FIELDS and key != "headingId"
-    } != {key: value for key, value in source_style.items() if key not in _MUTATED_FIELDS}:
-        msg = "Unplanned paragraph properties changed"
+
+def _verify_part_layout(
+    document: dict[str, JsonValue],
+    tab: dict[str, JsonValue],
+    element: dict[str, JsonValue],
+    part: ReadabilityPart,
+    *,
+    target: ReadabilityParagraph,
+) -> None:
+    observed = dict(obj(obj(element["paragraph"])["paragraphStyle"]))
+    if part.role.startswith("heading"):
+        observed.pop("headingId", None)
+    wanted = {**obj(obj(target.source["paragraph"]).get("paragraphStyle", {})), **_part_style(part)}
+    if part.role in {"bullet", "numbered"}:
+        wanted.update(
+            {
+                "indentStart": {"magnitude": 36, "unit": "PT"},
+                "indentFirstLine": {"magnitude": 18, "unit": "PT"},
+            }
+        )
+    actual = effective_paragraph_style(document, tab, observed)
+    expected = effective_paragraph_style(document, tab, wanted)
+    if canonical_style(actual) != canonical_style(expected):
+        msg = "Paragraph formatting was not applied or unplanned properties changed"
         raise ValueError(msg)
 
 
@@ -473,19 +468,13 @@ def _verify_part_text_style(
     target: ReadabilityParagraph,
 ) -> None:
     paragraph = obj(element["paragraph"])
-    wanted = deepcopy(target.text_style)
-    if part.role.startswith("heading"):
-        wanted["fontSize"] = {
-            "magnitude": _DOCUMENT.h2_size_pt if part.role == "heading2" else _DOCUMENT.h3_size_pt,
-            "unit": "PT",
-        }
-        wanted["bold"] = True
+    wanted = _part_text_style(target, part)
     for value in array(paragraph["elements"]):
         run = obj(obj(value)["textRun"])
         observed = effective_text_style(
             document, tab, obj(paragraph["paragraphStyle"]), obj(run.get("textStyle", {}))
         )
-        if run["content"] != "\n" and observed != wanted:
+        if run["content"] != "\n" and canonical_style(observed) != canonical_style(wanted):
             msg = "Unplanned inline formatting changed"
             raise ValueError(msg)
 
@@ -506,3 +495,23 @@ def _verify_bullet(
         "GLYPH_TYPE_UNSPECIFIED",
     }:
         raise ValueError
+
+
+def _part_text_style(target: ReadabilityParagraph, part: ReadabilityPart) -> dict[str, JsonValue]:
+    style = deepcopy(target.text_style)
+    if part.role.startswith("heading"):
+        style.update(
+            {
+                "fontSize": {
+                    "magnitude": _DOCUMENT.h2_size_pt
+                    if part.role == "heading2"
+                    else _DOCUMENT.h3_size_pt,
+                    "unit": "PT",
+                },
+                "bold": True,
+                "foregroundColor": {
+                    "color": {"rgbColor": rgb_color(CURRENT_BRAND_MANIFEST.colors.primary)}
+                },
+            }
+        )
+    return style

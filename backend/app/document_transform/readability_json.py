@@ -2,6 +2,7 @@ from collections.abc import Iterator
 from copy import deepcopy
 import hashlib
 import json
+from typing import Literal
 
 from pydantic import JsonValue
 
@@ -102,9 +103,26 @@ def effective_text_style(
     paragraph_style: dict[str, JsonValue],
     style: dict[str, JsonValue],
 ) -> dict[str, JsonValue]:
+    return _effective_style(document, tab, paragraph_style, style, field="textStyle")
+
+
+def effective_paragraph_style(
+    document: dict[str, JsonValue], tab: dict[str, JsonValue], style: dict[str, JsonValue]
+) -> dict[str, JsonValue]:
+    return _effective_style(document, tab, style, style, field="paragraphStyle")
+
+
+def _effective_style(
+    document: dict[str, JsonValue],
+    tab: dict[str, JsonValue],
+    paragraph_style: dict[str, JsonValue],
+    style: dict[str, JsonValue],
+    *,
+    field: Literal["textStyle", "paragraphStyle"],
+) -> dict[str, JsonValue]:
     named = obj(tab.get("namedStyles", document.get("namedStyles", {})))
     by_name = {
-        str(obj(item)["namedStyleType"]): obj(obj(item).get("textStyle", {}))
+        str(obj(item)["namedStyleType"]): obj(obj(item).get(field, {}))
         for item in array(named.get("styles", []))
     }
     result: dict[str, JsonValue] = {}
@@ -118,6 +136,31 @@ def effective_text_style(
             **obj(value.get("weightedFontFamily", {})),
         }
         result.update(value)
-        if family:
+        if field == "textStyle" and family:
             result["weightedFontFamily"] = family
     return result
+
+
+def canonical_style(value: JsonValue) -> JsonValue:
+    # Docs omits zero dimensions and serializes colors as float32. Normalize
+    # only style representation; document text and numeric data stay exact.
+    match value:
+        case dict():
+            result = {key: canonical_style(child) for key, child in value.items()}
+            if result.get("unit") == "PT":
+                result.setdefault("magnitude", 0)
+            return result
+        case list():
+            return [canonical_style(child) for child in value]
+        case float():
+            return round(value, 6)
+        case _:
+            return value
+
+
+def rgb_color(value: str) -> dict[str, JsonValue]:
+    color = value.removeprefix("#")
+    return {
+        key: int(color[index : index + 2], 16) / 255
+        for index, key in zip((0, 2, 4), ("red", "green", "blue"), strict=True)
+    }

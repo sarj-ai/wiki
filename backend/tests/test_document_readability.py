@@ -341,25 +341,48 @@ async def test_repeated_formatting_is_a_zero_write_noop_when_the_layout_already_
     )
 
 
-async def test_inherited_nunito_typography_remains_eligible_for_holistic_structure() -> None:
-    document = _fixture("before")
-    tab = next(bodies(document))[1]
-    normal = obj(array(obj(tab["namedStyles"])["styles"])[0])
-    obj(normal["textStyle"])["weightedFontFamily"] = {"fontFamily": "Nunito", "weight": 400}
-    for value in content(tab):
-        element = obj(value)
-        if "paragraph" in element:
-            for run_value in array(obj(element["paragraph"])["elements"]):
-                obj(obj(obj(run_value)["textRun"]).get("textStyle", {})).pop(
-                    "weightedFontFamily", None
-                )
-    plan = await plan_readability(document, title="Readability fixture", generator=_LayoutEditor())
+async def test_inherited_typography_and_paragraph_layout_are_eligible_and_verify() -> None:
+    before, after = _fixture("before"), _fixture("after")
+    for document in (before, after):
+        _inherit_readability_styles(document)
+    plan = await plan_readability(before, title="Readability fixture", generator=_LayoutEditor())
     assert plan is not None
     assert len(plan.paragraphs) == 3
+    assert verify_readability(after, plan)
     assert all(
         obj(item.text_style["weightedFontFamily"])["fontFamily"] == "Nunito"
         for item in plan.paragraphs
     )
+
+
+def _inherit_readability_styles(document: dict[str, JsonValue]) -> None:
+    tab = next(bodies(document))[1]
+    styles = {
+        str(obj(value)["namedStyleType"]): obj(value)
+        for value in array(obj(tab["namedStyles"])["styles"])
+    }
+    normal = styles["NORMAL_TEXT"]
+    obj(normal["textStyle"])["weightedFontFamily"] = {"fontFamily": "Nunito", "weight": 400}
+    obj(normal["paragraphStyle"]).update(
+        {"alignment": "JUSTIFIED", "spaceBelow": {"magnitude": 6, "unit": "PT"}}
+    )
+    obj(styles["HEADING_2"]["paragraphStyle"]).update(
+        {"alignment": "START", "spaceAbove": {"magnitude": 12, "unit": "PT"}}
+    )
+    for value in content(tab):
+        element = obj(value)
+        if "paragraph" not in element:
+            continue
+        paragraph = obj(element["paragraph"])
+        layout = obj(paragraph["paragraphStyle"])
+        parent = obj(styles[str(layout.get("namedStyleType", "NORMAL_TEXT"))]["paragraphStyle"])
+        if layout.get("alignment") == parent.get("alignment"):
+            layout.pop("alignment", None)
+        if layout.get("namedStyleType") == "HEADING_2":
+            for key in ("spaceAbove", "spaceBelow", "keepWithNext", "keepLinesTogether"):
+                layout.pop(key, None)
+        for run_value in array(paragraph["elements"]):
+            obj(obj(obj(run_value)["textRun"]).get("textStyle", {})).pop("weightedFontFamily", None)
 
 
 @pytest.mark.parametrize("kind", ["dateElement", "person", "richLink"])
