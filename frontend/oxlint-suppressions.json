@@ -520,7 +520,7 @@
   },
   "src/lib/browser-storage.ts": {
     "@sarj/no-frontend-comments": {
-      "count": 5
+      "count": 2
     }
   },
   "src/lib/build-destination-sort-orders.test.ts": {

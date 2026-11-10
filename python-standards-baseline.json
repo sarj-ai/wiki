@@ -287,12 +287,6 @@
     "SARJ442": 2,
     "SARJ447": 11
   },
-  "backend/scripts/qa_markdown_transform.py": {
-    "SARJ528": 1
-  },
-  "backend/scripts/qa_polish_rounds.py": {
-    "SARJ444": 2
-  },
   "backend/tests/advanced_round6_support.py": {
     "SARJ528": 4
   },
@@ -804,23 +798,10 @@
     "SARJ477": 7,
     "SARJ528": 15
   },
-  "backend/tests/test_qa_export_drive_docs.py": {
-    "SARJ445": 3,
-    "SARJ528": 2
-  },
-  "backend/tests/test_qa_markdown_transform_cli.py": {
-    "SARJ442": 1,
-    "SARJ445": 10,
-    "SARJ477": 2,
-    "SARJ528": 9
-  },
   "backend/tests/test_qa_pdf_process_safety.py": {
     "SARJ445": 9,
     "SARJ477": 4,
     "SARJ528": 4
-  },
-  "backend/tests/test_qa_polish_rounds_cli.py": {
-    "SARJ445": 1
   },
   "backend/tests/test_request_body.py": {
     "SARJ442": 5,

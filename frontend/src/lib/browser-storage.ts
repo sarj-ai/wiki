@@ -33,7 +33,7 @@ export function collapsedDrivesStorageKey(userId: string): string {
 }
 
 export function clearUserBrowserStorage(userId: string): void {
-  removeLocalStorageKeys([
+  removeStorageKeys("localStorage", [
     recentDocsStorageKey(userId),
     recentAliasesStorageKey(userId),
     expandedFoldersStorageKey(userId),
@@ -41,7 +41,7 @@ export function clearUserBrowserStorage(userId: string): void {
     collapsedDrivesStorageKey(userId),
     LAST_REFRESH_KEY,
   ]);
-  removeSessionStorageKeys([
+  removeStorageKeys("sessionStorage", [
     ACTIVE_USER_KEY,
     REDIRECT_KEY,
     markdownRecoveryStorageKey(userId),
@@ -49,64 +49,51 @@ export function clearUserBrowserStorage(userId: string): void {
 }
 
 export function purgeLegacyBrowserStorage(): void {
-  removeLocalStorageKeys(LEGACY_KEYS);
+  removeStorageKeys("localStorage", LEGACY_KEYS);
 }
 
 export function readActiveBrowserUser(): null | string {
-  const result = readSessionStorage(ACTIVE_USER_KEY);
-  return result.ok ? result.value : null;
+  return readSessionStorage(ACTIVE_USER_KEY);
 }
 
 export function writeActiveBrowserUser(userId: string): void {
-  try {
-    window.sessionStorage.setItem(ACTIVE_USER_KEY, userId);
-  } catch {
-    // Session isolation remains best-effort when browser storage is unavailable.
-  }
+  writeSessionStorage(ACTIVE_USER_KEY, userId);
 }
 
 export function storeLoginRedirect(path: string): void {
-  try {
-    window.sessionStorage.setItem(REDIRECT_KEY, path);
-  } catch {
-    // The login URL query parameter remains available as a fallback.
-  }
+  writeSessionStorage(REDIRECT_KEY, path);
 }
 
 export function takeLoginRedirect(): null | string {
-  const result = readSessionStorage(REDIRECT_KEY);
-  try {
-    window.sessionStorage.removeItem(REDIRECT_KEY);
-  } catch {
-    // A failed removal cannot expose data to a different session namespace.
-  }
-  return result.ok ? result.value : null;
+  const value = readSessionStorage(REDIRECT_KEY);
+  removeStorageKeys("sessionStorage", [REDIRECT_KEY]);
+  return value;
 }
 
-type StorageRead = { ok: false } | { ok: true; value: null | string };
-
-function readSessionStorage(key: string): StorageRead {
+function readSessionStorage(key: string): null | string {
   try {
-    return { ok: true, value: window.sessionStorage.getItem(key) };
+    return window.sessionStorage.getItem(key);
   } catch {
-    return { ok: false };
+    console.warn("Wiki browser storage is unavailable");
+    return null;
   }
 }
 
-function removeLocalStorageKeys(keys: readonly string[]): void {
+function writeSessionStorage(key: string, value: string): void {
+  try {
+    window.sessionStorage.setItem(key, value);
+  } catch {
+    // Browser metadata is best-effort when storage is unavailable.
+  }
+}
+
+function removeStorageKeys(
+  area: "localStorage" | "sessionStorage",
+  keys: readonly string[],
+): void {
   for (const key of keys) {
     try {
-      window.localStorage.removeItem(key);
-    } catch {
-      // Keep clearing independent keys when one browser-storage operation fails.
-    }
-  }
-}
-
-function removeSessionStorageKeys(keys: readonly string[]): void {
-  for (const key of keys) {
-    try {
-      window.sessionStorage.removeItem(key);
+      window[area].removeItem(key);
     } catch {
       // Keep clearing independent keys when one browser-storage operation fails.
     }

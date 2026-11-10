@@ -75,29 +75,9 @@ async def files_error_handler(
     )
 
 
-async def drive_permissions_error_handler(
+async def operation_error_handler(
     _request: Request,
-    exc: DrivePermissionsError,
-) -> JSONResponse:
-    return JSONResponse(
-        status_code=exc.http_status,
-        content={"code": exc.code, "detail": str(exc)},
-    )
-
-
-async def alias_error_handler(
-    _request: Request,
-    exc: AliasError,
-) -> JSONResponse:
-    return JSONResponse(
-        status_code=exc.http_status,
-        content={"code": exc.code, "detail": str(exc)},
-    )
-
-
-async def task_error_handler(
-    _request: Request,
-    exc: TaskError,
+    exc: AliasError | DrivePermissionsError | TaskError,
 ) -> JSONResponse:
     return JSONResponse(
         status_code=exc.http_status,
@@ -207,9 +187,9 @@ def create_app(
 
     application.exception_handler(Exception)(global_exception_handler)
     application.exception_handler(FilesError)(files_error_handler)
-    application.exception_handler(DrivePermissionsError)(drive_permissions_error_handler)
-    application.exception_handler(AliasError)(alias_error_handler)
-    application.exception_handler(TaskError)(task_error_handler)
+    application.exception_handler(DrivePermissionsError)(operation_error_handler)
+    application.exception_handler(AliasError)(operation_error_handler)
+    application.exception_handler(TaskError)(operation_error_handler)
 
     application.include_router(auth_router)
     application.include_router(bootstrap_router)
