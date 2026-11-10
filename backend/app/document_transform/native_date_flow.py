@@ -220,7 +220,7 @@ def versioned_date_invariant_sha256(
 
 def _date_document_payload(
     document: JsonValue, *, version: Literal["stable-images-v2"] | None
-) -> dict[str, Any]:
+) -> dict[str, JsonValue]:
     payload = stable_native_payload(document) if version == "stable-images-v2" else document
     if not isinstance(payload, dict):
         msg = "A date invariant requires a document object"
@@ -448,7 +448,7 @@ def plan_stable_copy_dates(
 
 def verified_versioned_date_projection(
     document: JsonValue, checkpoint: NativeDateCheckpoint
-) -> dict[str, Any]:
+) -> dict[str, JsonValue]:
     return verified_date_projection(
         _date_document_payload(document, version=checkpoint.invariant_version), checkpoint
     )
