@@ -114,7 +114,9 @@ def document_model_policy(*, project: str | None, document: DocumentSettings) ->
         unslop_model=document.TRANSFORM_UNSLOP_MODEL,
         fallback_model=document.TRANSFORM_FALLBACK_MODEL,
         restyle_model=document.TRANSFORM_RESTYLE_MODEL,
+        timeout=timedelta(seconds=180),
         review_timeout=timedelta(seconds=120),
+        writer_review_reserve=timedelta(seconds=60),
     )
 
 

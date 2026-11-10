@@ -3107,21 +3107,21 @@
                     {
                       "widthType": "FIXED_WIDTH",
                       "width": {
-                        "magnitude": 85.85,
+                        "magnitude": 90.35,
                         "unit": "PT"
                       }
                     },
                     {
                       "widthType": "FIXED_WIDTH",
                       "width": {
-                        "magnitude": 83.15,
+                        "magnitude": 87.3,
                         "unit": "PT"
                       }
                     },
                     {
                       "widthType": "FIXED_WIDTH",
                       "width": {
-                        "magnitude": 299,
+                        "magnitude": 290.35,
                         "unit": "PT"
                       }
                     }

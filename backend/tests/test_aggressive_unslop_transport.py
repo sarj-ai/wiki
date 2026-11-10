@@ -3168,15 +3168,34 @@ def test_normal_factory_policy_requires_a_project(document_settings: DocumentSet
         transform_dependencies.document_model_policy(project=None, document=document_settings)
 
 
-async def test_default_models_recover_capacity_and_denied_review_with_full_source_audits(
+@pytest.mark.parametrize(
+    "explicit_flash",
+    [
+        pytest.param(False, id="pinned-pro-default"),
+        pytest.param(True, id="explicit-flash-override"),
+    ],
+)
+async def test_pro_defaults_and_explicit_override_recover_capacity_with_full_source_audits(
     normal_sdk_client_factory: Callable[[httpx.AsyncClient], genai.Client],
     normal_model_policy: GeminiModelPolicy,
+    explicit_flash: bool,
 ) -> None:
+    policy = (
+        replace(
+            normal_model_policy, unslop_model="gemini-3.5-flash", restyle_model="gemini-3.5-flash"
+        )
+        if explicit_flash
+        else normal_model_policy
+    )
     assert (
-        normal_model_policy.unslop_model,
-        normal_model_policy.fallback_model,
-        normal_model_policy.restyle_model,
-    ) == ("gemini-3.5-flash", "gemini-3.1-pro-preview", "gemini-3.5-flash")
+        policy.unslop_model,
+        policy.fallback_model,
+        policy.restyle_model,
+    ) == (
+        ("gemini-3.5-flash", "gemini-3.1-pro-preview", "gemini-3.5-flash")
+        if explicit_flash
+        else ("gemini-3.1-pro-preview",) * 3
+    )
     padding = "The explanation describes the discussion in expanded wording before returning to the description."
     sentences = (
         "Atlas condenses prose for readers.",
@@ -3202,8 +3221,9 @@ async def test_default_models_recover_capacity_and_denied_review_with_full_sourc
             reviews.append(payload)
             assert config.thinking_config is not None
             assert config.thinking_config.thinking_level == types.ThinkingLevel.HIGH
-            if model == "gemini-3.5-flash":
-                return httpx.Response(HTTPStatus.FORBIDDEN, json={"error": {"code": 403}})
+            if len(reviews) == 1:
+                status = HTTPStatus.FORBIDDEN if explicit_flash else HTTPStatus.TOO_MANY_REQUESTS
+                return httpx.Response(status, json={"error": {"code": status.value}})
             assert model == "gemini-3.1-pro-preview"
             return _review_response(_functional_audit_envelope(payload))
         (submitted,) = _WireRewriteBlocks.model_validate_json(
@@ -3220,12 +3240,14 @@ async def test_default_models_recover_capacity_and_denied_review_with_full_sourc
         assert model == "gemini-3.1-pro-preview"
         assert config.thinking_config is not None
         assert config.thinking_config.thinking_level == types.ThinkingLevel.HIGH
+        if not explicit_flash and len(writers) < 3:
+            return httpx.Response(HTTPStatus.TOO_MANY_REQUESTS, json={"error": {"code": 429}})
         return _review_response(PatchEnvelope(patches=[patch]))
 
     async with httpx.AsyncClient(transport=httpx.MockTransport(respond)) as http:
         client = normal_sdk_client_factory(http)
         try:
-            generator = VertexGeminiPatchGenerator(policy=normal_model_policy, client=client)
+            generator = VertexGeminiPatchGenerator(policy=policy, client=client)
             async with asyncio.timeout(30):
                 result = await TextTransformPlanner(
                     max_editorial_passes=1, generator=generator, allow_unslop_model=True
@@ -3233,15 +3255,19 @@ async def test_default_models_recover_capacity_and_denied_review_with_full_sourc
         finally:
             await client.aio.aclose()
 
-    assert models == [
-        ModelId("gemini-3.5-flash"),
-        ModelId("gemini-3.5-flash"),
-        ModelId("gemini-3.5-flash"),
-        ModelId("gemini-3.1-pro-preview"),
-        ModelId("gemini-3.5-flash"),
-        ModelId("gemini-3.1-pro-preview"),
-    ]
-    assert len(writers) == 4
+    assert models == (
+        [
+            ModelId("gemini-3.5-flash"),
+            ModelId("gemini-3.5-flash"),
+            ModelId("gemini-3.5-flash"),
+            ModelId("gemini-3.1-pro-preview"),
+            ModelId("gemini-3.5-flash"),
+            ModelId("gemini-3.1-pro-preview"),
+        ]
+        if explicit_flash
+        else [ModelId("gemini-3.1-pro-preview")] * 5
+    )
+    assert len(writers) == (4 if explicit_flash else 3)
     assert len(reviews) == 2
     assert reviews[0] == reviews[1]
     assert [
@@ -3255,7 +3281,7 @@ async def test_default_models_recover_capacity_and_denied_review_with_full_sourc
     assert not result.findings
 
 
-async def test_normal_factory_policy_extends_only_the_review_sdk_deadline(
+async def test_normal_factory_policy_has_pro_writer_and_independent_review_deadlines(
     sdk_client_factory: Callable[[httpx.AsyncClient], genai.Client],
     deadline_document: _DeadlineDocument,
     normal_model_policy: GeminiModelPolicy,
@@ -3266,7 +3292,7 @@ async def test_normal_factory_policy_extends_only_the_review_sdk_deadline(
     def respond(request: httpx.Request) -> httpx.Response:
         timeouts.append(request.headers.get("X-Server-Timeout"))
         configurations.append(_VendorRequest.model_validate_json(request.content).generation_config)
-        seconds = (90, 120, 90)[len(timeouts) - 1]
+        seconds = (180, 120, 180)[len(timeouts) - 1]
         assert request.extensions["timeout"] == dict.fromkeys(
             ("connect", "read", "write", "pool"), seconds
         )
@@ -3289,10 +3315,57 @@ async def test_normal_factory_policy_extends_only_the_review_sdk_deadline(
             )
         finally:
             await client.aio.aclose()
-    assert timeouts == ["90", "120", "90"]
+    assert timeouts == ["180", "120", "180"]
     assert configurations[1].thinking_config is not None
     assert configurations[1].thinking_config.thinking_level == types.ThinkingLevel.HIGH
     assert [config.max_output_tokens for config in configurations] == [16_384, 32_768, 16_384]
+
+
+def test_model_policy_cannot_allow_a_negative_factual_review_reserve(
+    normal_model_policy: GeminiModelPolicy,
+) -> None:
+    with pytest.raises(ValueError, match="Writer review reserve must not be negative"):
+        replace(normal_model_policy, writer_review_reserve=timedelta(seconds=-1))
+
+
+async def test_long_pro_writer_cannot_spend_the_factual_review_or_completion_reserves(
+    sdk_client_factory: Callable[[httpx.AsyncClient], genai.Client],
+    deadline_document: _DeadlineDocument,
+    normal_model_policy: GeminiModelPolicy,
+    model_budget_clock: _ModelBudgetClock,
+) -> None:
+    timeouts: list[str | None] = []
+
+    def respond(request: httpx.Request) -> httpx.Response:
+        timeouts.append(request.headers.get("X-Server-Timeout"))
+        seconds = (150, 85)[len(timeouts) - 1]
+        assert request.extensions["timeout"] == dict.fromkeys(
+            ("connect", "read", "write", "pool"), seconds
+        )
+        model_budget_clock.advance(125 if len(timeouts) == 1 else 30)
+        return _deadline_response(request)
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(respond)) as http:
+        client = sdk_client_factory(http)
+        generator = VertexGeminiPatchGenerator(policy=normal_model_policy, client=client)
+        try:
+            with provider_retry_budget(timedelta(seconds=240), clock=model_budget_clock.read):
+                assert await generator.generate(
+                    deadline_document.document, phase=TransformPhase.UNSLOP
+                ) == [deadline_document.patch]
+                reviewed = await generator.review(
+                    deadline_document.document, [deadline_document.patch]
+                )
+                assert reviewed.approved == {deadline_document.patch.block_id}
+                with pytest.raises(ModelUnavailableError):
+                    await generator.generate(
+                        deadline_document.document, phase=TransformPhase.UNSLOP
+                    )
+        finally:
+            await client.aio.aclose()
+
+    assert timeouts == ["150", "85"]
+    assert model_budget_clock.now == 155
 
 
 @dataclass(frozen=True, slots=True)

@@ -273,7 +273,7 @@ async def _yield_writer_sleep(_delay: float) -> None:
 @pytest.mark.parametrize(
     ("model_override", "expected_model", "thinking_level"),
     [
-        pytest.param(None, "gemini-3.5-flash", types.ThinkingLevel.MEDIUM, id="normal-default"),
+        pytest.param(None, "gemini-3.1-pro-preview", types.ThinkingLevel.HIGH, id="normal-default"),
         pytest.param(
             "gemini-3.8-flash",
             "gemini-3.8-flash",
@@ -302,9 +302,9 @@ async def test_normal_model_settings_reach_the_real_sdk_without_overriding_expli
     def respond(request: httpx.Request) -> httpx.Response:
         models.append(request.url.path.rsplit("/", 1)[-1].removesuffix(":generateContent"))
         configurations.append(_WriterRequest.model_validate_json(request.content).generation_config)
-        assert request.headers["X-Server-Timeout"] == "90"
+        assert request.headers["X-Server-Timeout"] == "180"
         assert request.extensions["timeout"] == dict.fromkeys(
-            ("connect", "read", "write", "pool"), 90
+            ("connect", "read", "write", "pool"), 180
         )
         return httpx.Response(
             HTTPStatus.OK,
@@ -938,7 +938,7 @@ def test_conventional_framing_can_go_without_relaxing_the_following_obligation(p
     )
     assert decision.accepted == {block.id: proposed}
     assert not decision.findings
-    assert UNSLOP_POLICY_VERSION == "sarj-concise-v20"
+    assert UNSLOP_POLICY_VERSION == "sarj-concise-v21"
 
 
 @pytest.mark.parametrize(

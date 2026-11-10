@@ -111,7 +111,7 @@ async def _plan(editor: _LayoutEditor | None = None) -> ReadabilityCheckpoint:
     return plan
 
 
-async def test_real_google_docs_readback_verifies_native_lists_heading_and_content_fitted_table() -> (
+async def test_google_docs_readback_verifies_native_lists_heading_and_content_fitted_table() -> (
     None
 ):
     editor = _LayoutEditor()
@@ -120,7 +120,7 @@ async def test_real_google_docs_readback_verifies_native_lists_heading_and_conte
     assert len(plan.paragraphs) == 3
     assert len(plan.tables) == 1
     assert plan.tables[0].numeric == {1}
-    assert plan.tables[0].widths == (1717, 1663, 5980)
+    assert plan.tables[0].widths == (1807, 1746, 5807)
     assert verify_readability(_fixture("after"), plan)
     assert not verify_readability(_fixture("before"), plan)
     assert "NUMBERED_DECIMAL_ALPHA_ROMAN" in str(plan.requests)

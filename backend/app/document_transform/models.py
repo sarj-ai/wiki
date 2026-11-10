@@ -270,8 +270,12 @@ class GeminiModelPolicy:
     restyle_model: str
     timeout: timedelta = timedelta(seconds=90)
     review_timeout: timedelta | None = None
+    writer_review_reserve: timedelta = timedelta(0)
 
     def __post_init__(self) -> None:
+        if self.writer_review_reserve < timedelta(0):
+            msg = "Writer review reserve must not be negative"
+            raise ValueError(msg)
         for model in (self.unslop_model, self.fallback_model, self.restyle_model):
             if not model or model.endswith("-latest") or model == "latest":
                 msg = "Exact Gemini model IDs are required"
@@ -591,11 +595,11 @@ class VertexGeminiPatchGenerator(PatchGenerator):
         phase: TransformPhase,
         thinking_config: genai_types.ThinkingConfig | None,
     ) -> list[TextPatch]:
-        review_reserve = (
-            _UNSLOP_REVIEW_RESERVE
-            if phase is TransformPhase.UNSLOP and model != self._policy.unslop_model
-            else None
-        )
+        review_reserve = None
+        if phase is TransformPhase.UNSLOP:
+            review_reserve = self._policy.writer_review_reserve
+            if model != self._policy.unslop_model:
+                review_reserve = max(review_reserve, _UNSLOP_REVIEW_RESERVE)
         timeout_seconds = _model_request_timeout_seconds(
             self._policy.timeout, reserve=review_reserve
         )
