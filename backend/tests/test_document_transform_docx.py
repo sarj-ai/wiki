@@ -883,3 +883,44 @@ def test_escaped_and_unspaced_atx_markers_follow_commonmark() -> None:
         "Heading###",
     ]
     assert [block.kind for block in manifest.blocks] == ["heading", "paragraph", "heading"]
+
+
+@pytest.mark.parametrize("linked", [False, True])
+@pytest.mark.parametrize(
+    ("template", "size"),
+    [
+        ("Body {code} text.", CURRENT_BRAND_MANIFEST.document.body_size_pt),
+        ("# Heading {code}", CURRENT_BRAND_MANIFEST.document.h1_size_pt),
+        ("# Title\n\n## Heading {code}", CURRENT_BRAND_MANIFEST.document.h2_size_pt),
+        ("> Quoted {code} text.", CURRENT_BRAND_MANIFEST.document.body_size_pt),
+        (
+            "| Field | Value |\n| --- | --- |\n| {code} | Ready |",
+            CURRENT_BRAND_MANIFEST.document.table_size_pt,
+        ),
+    ],
+)
+def test_inline_code_inherits_role_size_and_keeps_link_treatment(
+    template: str, size: int, *, linked: bool
+) -> None:
+    inline = "[`lookup`](https://example.test/reference)" if linked else "`lookup`"
+    rendered = render_markdown_docx(template.format(code=inline), title="Reference")
+    with ZipFile(BytesIO(rendered)) as archive:
+        root = fromstring(archive.read("word/document.xml"))
+    runs = [
+        run
+        for run in root.findall(f".//{W}r")
+        if "".join(node.text or "" for node in run.findall(f"{W}t")) == "lookup"
+    ]
+    assert len(runs) == 1
+    run = runs[0]
+    font_size = run.find(f"{W}rPr/{W}sz")
+    fonts = run.find(f"{W}rPr/{W}rFonts")
+    assert font_size is not None
+    assert font_size.get(f"{W}val") == str(size * 2)
+    assert fonts is not None
+    assert fonts.get(f"{W}ascii") == "Courier New"
+    if linked:
+        color = run.find(f"{W}rPr/{W}color")
+        assert color is not None
+        assert color.get(f"{W}val") == "392868"
+        assert run.find(f"{W}rPr/{W}u") is not None

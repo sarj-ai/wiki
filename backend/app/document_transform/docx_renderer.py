@@ -1212,6 +1212,11 @@ def _append_inlines(
 ) -> None:
     text = "".join(inline.text for inline in inlines)
     _set_paragraph_direction(paragraph, text)
+    code_size: float = _DOCUMENT.body_size_pt if branded else 10
+    if branded and paragraph.style is not None:
+        style_size = paragraph.style.font.size
+        if style_size is not None:
+            code_size = style_size.pt
     for inline in inlines:
         run = paragraph.add_run()
         for index, part in enumerate(inline.text.split("\n")):
@@ -1224,12 +1229,15 @@ def _append_inlines(
                 run,
                 inline,
                 force_bold=force_bold,
+                code_size=code_size,
                 hyperlink=True,
                 branded=branded,
             )
             _wrap_run_in_hyperlink(paragraph, run, inline.url)
         else:
-            _format_inline_run(run, inline, force_bold=force_bold, branded=branded)
+            _format_inline_run(
+                run, inline, force_bold=force_bold, code_size=code_size, branded=branded
+            )
 
 
 def _format_inline_run(
@@ -1237,6 +1245,7 @@ def _format_inline_run(
     inline: MarkdownImportInline,
     *,
     force_bold: bool,
+    code_size: float,
     hyperlink: bool = False,
     branded: bool,
 ) -> None:
@@ -1248,7 +1257,7 @@ def _format_inline_run(
         _format_run(
             run,
             font="Courier New",
-            size=_DOCUMENT.body_size_pt if branded else 10,
+            size=code_size,
             color=_INK if branded else "000000",
         )
         shading = OxmlElement("w:shd")
@@ -1256,7 +1265,7 @@ def _format_inline_run(
         shading.set(qn("w:color"), "auto")
         shading.set(qn("w:fill"), _CODE_FILL if branded else "E7E6E6")
         _properties_element(run, "_r", "w:rPr").append(shading)
-    elif hyperlink:
+    if hyperlink:
         run.font.color.rgb = RGBColor.from_string(_SARJ_PURPLE if branded else "0563C1")
         run.underline = True
     _set_run_direction(run, inline.text)
