@@ -273,7 +273,7 @@ async def _yield_writer_sleep(_delay: float) -> None:
 @pytest.mark.parametrize(
     ("model_override", "expected_model", "thinking_level"),
     [
-        pytest.param(None, "gemini-3.5-flash", types.ThinkingLevel.MEDIUM, id="normal-default"),
+        pytest.param(None, "gemini-3.1-pro-preview", types.ThinkingLevel.HIGH, id="normal-default"),
         pytest.param(
             "gemini-3.8-flash",
             "gemini-3.8-flash",
