@@ -18,25 +18,25 @@ export const DEMO_SEARCH_SUGGESTION =
   "Try “guide”, “draft”, “workbook”, or “slides”.";
 
 const GUIDE_BASE =
-  "https://docs.google.com/document/d/15bCeAdgUfl65nQ9OGR1Q-7GhU52lbZZxFwr78dJK0j8";
+  "https://docs.google.com/document/d/1rxCll9Mkf3rI5g1t8TpngFl6s00iOielDpovzQMOox8";
 const DRAFT_BASE =
-  "https://docs.google.com/document/d/1at-tDSuHIho4SsnetRaOz7_SZj54FEd4WZym51wmZIs";
+  "https://docs.google.com/document/d/1Ks_EO_8tzXNgUKLgrXgbcOSSGAXlNWKb8zeiDRqBGEo";
 const WORKBOOK_BASE =
-  "https://docs.google.com/spreadsheets/d/1y9828lQc8IsOPVIxibb7pkFan5Tw2vUwurHhdhriGGc";
+  "https://docs.google.com/spreadsheets/d/1BDbrvpKtmGG57TzGNnCxIChxztmfssUwJNxA44SwSVI";
 const SLIDES_BASE =
-  "https://docs.google.com/presentation/d/18ndeWAssiqogeu9_itNYHTDxOWbb8FplV_QTjX9tH90";
-const WORKBOOK_PREVIEW = `${WORKBOOK_BASE}/preview#gid=1174504614`;
+  "https://docs.google.com/presentation/d/1JEdWZnuH9oIZ3JYv95k6a516hE2w5fzv9fiGhEtGjWY";
+const WORKBOOK_PREVIEW = `${WORKBOOK_BASE}/preview#gid=696566412`;
 
 const GUIDE_FILE: DemoFile = {
-  description: "A guide to Google SRE latency estimates.",
-  downloadFilename: "latency-guide.docx",
-  downloadUrl: `${GUIDE_BASE}/export?format=docx`,
+  description: "A concise guide to the Google SRE reference estimates.",
+  downloadFilename: "numbers-guide.docx",
+  downloadUrl: `${GUIDE_BASE}/export?format=docx&tab=t.0`,
   format: "Document",
   id: "latency-guide",
   keywords:
-    "latency guide Google SRE reference estimates cache memory storage network",
+    "numbers programmer latency guide Google SRE reference estimates cache memory storage network",
   mimeType: MIME_DOC,
-  name: "Latency guide",
+  name: "Numbers Every Programmer Should Know",
   previewUrl: `${GUIDE_BASE}/preview`,
   viewUrl: `${GUIDE_BASE}/preview`,
 };
@@ -44,40 +44,42 @@ const GUIDE_FILE: DemoFile = {
 export const DEMO_FILES: readonly DemoFile[] = [
   GUIDE_FILE,
   {
-    description: "Working notes on Google SRE latency estimates.",
-    downloadFilename: "ai-draft.docx",
-    downloadUrl: `${DRAFT_BASE}/export?format=docx`,
+    description: "A verbose working draft of the Google SRE reference.",
+    downloadFilename: "numbers-ai-draft.docx",
+    downloadUrl: `${DRAFT_BASE}/export?format=docx&tab=t.0`,
     format: "Document",
     id: "ai-draft",
-    keywords: "AI draft notes document prose Google SRE latency reference",
+    keywords:
+      "numbers programmer AI draft document prose Google SRE latency reference",
     mimeType: MIME_DOC,
     name: "AI draft",
     previewUrl: `${DRAFT_BASE}/preview`,
     viewUrl: `${DRAFT_BASE}/preview`,
   },
   {
-    description: "Latency comparisons, conversions, and worked calculations.",
-    downloadFilename: "latency-workbook.xlsx",
+    description:
+      "Google SRE reference values, formulas, and worked calculations.",
+    downloadFilename: "numbers-workbook.xlsx",
     downloadUrl: `${WORKBOOK_BASE}/export?format=xlsx`,
     format: "Spreadsheet",
     id: "latency-workbook",
     keywords:
-      "workbook spreadsheet formulas units conversions comparison calculations",
+      "numbers programmer latency workbook spreadsheet formulas units conversions comparison calculations Google SRE reference",
     mimeType: MIME_SHEET,
-    name: "Latency workbook",
+    name: "Numbers workbook",
     previewUrl: WORKBOOK_PREVIEW,
     viewUrl: WORKBOOK_PREVIEW,
   },
   {
-    description: "A visual introduction to latency and throughput.",
-    downloadFilename: "latency-slides.pptx",
+    description: "A visual reference to the Google SRE estimates.",
+    downloadFilename: "numbers-slides.pptx",
     downloadUrl: `${SLIDES_BASE}/export/pptx`,
     format: "Presentation",
     id: "latency-slides",
     keywords:
-      "slides presentation deck latency throughput Google SRE reference",
+      "numbers programmer slides presentation deck latency throughput Google SRE reference",
     mimeType: MIME_SLIDE,
-    name: "Latency slides",
+    name: "Numbers slides",
     previewUrl: `${SLIDES_BASE}/preview`,
     viewUrl: `${SLIDES_BASE}/preview`,
   },

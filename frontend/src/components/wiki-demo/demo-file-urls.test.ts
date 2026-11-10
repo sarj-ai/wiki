@@ -21,7 +21,7 @@ describe("public Google preview URL boundary", () => {
     "https://docs.google.com/document/d/public-doc/preview",
     "https://docs.google.com/spreadsheets/d/public-sheet/preview",
     "https://docs.google.com/spreadsheets/d/public-sheet/preview#gid=552737644",
-    "https://docs.google.com/spreadsheets/d/public-sheet/preview#gid=1174504614",
+    "https://docs.google.com/spreadsheets/d/public-sheet/preview#gid=696566412",
     "https://docs.google.com/spreadsheets/d/public-sheet/preview#gid=0",
     "https://docs.google.com/presentation/d/public-slides/preview",
     "https://drive.google.com/file/d/public-office-file/preview",
@@ -83,26 +83,41 @@ describe("public sample document links", () => {
 });
 
 describe("public sample download URL boundary", () => {
-  it("uses native Docs and Sheets sources with their Office exports", () => {
+  it("uses native Docs, Sheets and Slides with their Office exports", () => {
+    const guide = demoFileFor("latency-guide");
     const draft = demoFileFor("ai-draft");
     const workbook = demoFileFor("latency-workbook");
+    const slides = demoFileFor("latency-slides");
+    expect(demoPreviewUrl(guide)).toBe(
+      "https://docs.google.com/document/d/1rxCll9Mkf3rI5g1t8TpngFl6s00iOielDpovzQMOox8/preview",
+    );
+    expect(demoDownloadUrl(guide)).toBe(
+      "https://docs.google.com/document/d/1rxCll9Mkf3rI5g1t8TpngFl6s00iOielDpovzQMOox8/export?format=docx&tab=t.0",
+    );
     expect(demoPreviewUrl(draft)).toBe(
-      "https://docs.google.com/document/d/1at-tDSuHIho4SsnetRaOz7_SZj54FEd4WZym51wmZIs/preview",
+      "https://docs.google.com/document/d/1Ks_EO_8tzXNgUKLgrXgbcOSSGAXlNWKb8zeiDRqBGEo/preview",
     );
     expect(demoDownloadUrl(draft)).toBe(
-      "https://docs.google.com/document/d/1at-tDSuHIho4SsnetRaOz7_SZj54FEd4WZym51wmZIs/export?format=docx",
+      "https://docs.google.com/document/d/1Ks_EO_8tzXNgUKLgrXgbcOSSGAXlNWKb8zeiDRqBGEo/export?format=docx&tab=t.0",
     );
     expect(demoPreviewUrl(workbook)).toBe(
-      "https://docs.google.com/spreadsheets/d/1y9828lQc8IsOPVIxibb7pkFan5Tw2vUwurHhdhriGGc/preview#gid=1174504614",
+      "https://docs.google.com/spreadsheets/d/1BDbrvpKtmGG57TzGNnCxIChxztmfssUwJNxA44SwSVI/preview#gid=696566412",
     );
     expect(demoViewUrl(workbook)).toBe(workbook.previewUrl);
     expect(demoDownloadUrl(workbook)).toBe(
-      "https://docs.google.com/spreadsheets/d/1y9828lQc8IsOPVIxibb7pkFan5Tw2vUwurHhdhriGGc/export?format=xlsx",
+      "https://docs.google.com/spreadsheets/d/1BDbrvpKtmGG57TzGNnCxIChxztmfssUwJNxA44SwSVI/export?format=xlsx",
+    );
+    expect(demoPreviewUrl(slides)).toBe(
+      "https://docs.google.com/presentation/d/1JEdWZnuH9oIZ3JYv95k6a516hE2w5fzv9fiGhEtGjWY/preview",
+    );
+    expect(demoDownloadUrl(slides)).toBe(
+      "https://docs.google.com/presentation/d/1JEdWZnuH9oIZ3JYv95k6a516hE2w5fzv9fiGhEtGjWY/export/pptx",
     );
   });
 
   it.each([
     "https://docs.google.com/document/d/public-doc/export?format=docx",
+    "https://docs.google.com/document/d/public-doc/export?format=docx&tab=t.0",
     "https://docs.google.com/spreadsheets/d/public-sheet/export?format=xlsx",
     "https://docs.google.com/presentation/d/public-slides/export/pptx",
     "https://drive.google.com/uc?export=download&id=public-office-file",
@@ -114,6 +129,24 @@ describe("public sample download URL boundary", () => {
   it.each([
     "https://docs.google.com/document/d/public-doc/edit",
     "https://docs.google.com/document/d/public-doc/export?format=docx&redirect=https://evil.example",
+    "https://docs.google.com/document/d/public-doc/export?format=docx&tab=unknown",
+    "https://docs.google.com/document/d/public-doc/export?format=docx&tab=t.1",
+    "https://docs.google.com/document/d/public-doc/export?format=docx&tab=t.00",
+    "https://docs.google.com/document/d/public-doc/export?format=docx&tab=t%2E0",
+    "https://docs.google.com/document/d/public-doc/export?format=docx&tab=t.0&tab=t.0",
+    "https://docs.google.com/document/d/public-doc/export?format=docx&format=docx&tab=t.0",
+    "https://docs.google.com/document/d/public-doc/export?format=docx&tab=t.0&format=docx",
+    "https://docs.google.com/document/d/public-doc/export?tab=t.0&format=docx",
+    "https://docs.google.com/document/d/public-doc/export?format=docx&tab=t.0&redirect=https://evil.example",
+    "https://docs.google.com/document/d/public-doc/export?format=docx&tab=t.0#edit",
+    "https://docs.google.com/document/d/public-doc/edit?format=docx&tab=t.0",
+    "https://docs.google.com/spreadsheets/d/public-sheet/export?format=xlsx&tab=t.0",
+    "https://docs.google.com/presentation/d/public-slides/export/pptx?tab=t.0",
+    "https://drive.google.com/uc?export=download&id=public-office-file&tab=t.0",
+    "https://docs.google.com.evil.example/document/d/public-doc/export?format=docx&tab=t.0",
+    "https://docs.google.com@evil.example/document/d/public-doc/export?format=docx&tab=t.0",
+    "/api/wiki/files/private-id?format=docx&tab=t.0",
+    "javascript:alert(1)?format=docx&tab=t.0",
     "https://docs.google.com/document/d/<UNRESOLVED_FILE_ID>/export?format=docx",
     "https://docs.google.com/presentation/d/<UNRESOLVED_FILE_ID>/export/pptx",
     "https://evil.example/public.docx",
