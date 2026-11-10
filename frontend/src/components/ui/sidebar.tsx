@@ -336,7 +336,12 @@ function SidebarTrigger({
         if (!event.defaultPrevented) toggleSidebar();
       }}
       ref={(element) => {
-        mobileTriggerRef.current = element;
+        if (
+          element &&
+          !element.closest('[data-mobile="true"][data-sidebar="sidebar"]')
+        ) {
+          mobileTriggerRef.current = element;
+        }
         const cleanup = isSidebarRefCallback(ref) ? ref(element) : undefined;
         if (ref && !isSidebarRefCallback(ref)) ref.current = element;
         return () => {
