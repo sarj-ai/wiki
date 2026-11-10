@@ -23,10 +23,31 @@ from app.document_transform.unslop import (
 )
 
 
+_VULGAR_FRACTION = r"[¼½¾⅐⅑⅒⅓⅔⅕⅖⅗⅘⅙⅚⅛⅜⅝⅞]"
+_NUMERIC_POWER = r"(?:[⁰¹²³⁴⁵⁶⁷⁸⁹⁺⁻]+|(?:\^|\*\*)[+−-]?\d+)?"
+_NUMERIC_MAGNITUDE = (
+    rf"(?:(?:\d+(?:[.,:/⁄-]\d+|[\u2009\u202f]\d{{3}})*|[.,]\d+)"
+    rf"(?:{_VULGAR_FRACTION})?|{_VULGAR_FRACTION})"
+    rf"(?:[eE][+−-]?\d+)?{_NUMERIC_POWER}"
+)
+_SIGNED_NUMBER = rf"[+−-]?(?:[$€£¥₹₩₽₺]\s*)?[+−-]?{_NUMERIC_MAGNITUDE}"
+_NUMERIC_UNIT = (
+    rf"(?:%|‰|[A-Za-zµμ°ΩÅ]{{1,5}}{_NUMERIC_POWER})"
+    rf"(?:[/*·][A-Za-zµμ°ΩÅ]{{1,5}}{_NUMERIC_POWER})*"
+)
+_QUANTITY_LITERAL = (
+    rf"(?:(?:[<>]=?|[≤≥~≈≃])\s*)?{_SIGNED_NUMBER}"
+    rf"(?:[^\S\n]*[±∓×÷+−*/⁄:^\-][^\S\n]*{_SIGNED_NUMBER})*"
+    rf"(?:[^\S\n]?{_NUMERIC_UNIT})?"
+)
 _PROTECTED_TOKEN = re.compile(
     r"```[\s\S]*?```|`[^`\n]+`|"
     rf"{RFCISH_EMAIL_PATTERN}|{CUSTOM_URI_PATTERN}|"
-    r"(?<![\w])(?:[$€£¥]\s*)?\d+(?:[.,:/-]\d+)*(?:\s?(?:%|[A-Za-z]{1,5}))?(?![\w])"
+    # Keep the full notation: signs, exponents, uncertainty, powers, and accounting
+    # parentheses can change a value even when every decimal digit survives.
+    rf"(?<![\w.])(?:\({_QUANTITY_LITERAL}\)|{_QUANTITY_LITERAL})(?![\w])"
+    r"|\b(?=\w*\d)\w+(?:[.:-]\w+)*\b"
+    r"|[±∓×÷≤≥≠≈≃]"
     rf"|{HTML_ENTITY_PATTERN}"
     r"|\[[^\]\n]+\]\([^)\n]+\)|\[[0-9,\- ]+\]",
     re.MULTILINE,
