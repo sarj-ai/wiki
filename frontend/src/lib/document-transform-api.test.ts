@@ -378,7 +378,7 @@ describe("documentTransformApi", () => {
     });
   });
 
-  it.each([undefined, 0, 1, 20])(
+  it.each([undefined, 0, 1, 20, 100, 750])(
     "parses heading count %s while polling",
     async (count) => {
       ACTION_MOCKS.getTask.mockResolvedValue({

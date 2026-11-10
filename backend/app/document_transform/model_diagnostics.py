@@ -194,7 +194,7 @@ def _provider_reason(error: genai_errors.APIError) -> str:
 
 def log_model_failure(
     *,
-    operation: TransformPhase | Literal["review"],
+    operation: TransformPhase | Literal["review", "readability"],
     attempt: int,
     model: str,
     error: TimeoutError | ValueError | genai_errors.APIError,

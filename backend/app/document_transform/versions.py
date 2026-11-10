@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 
-DOCUMENT_PIPELINE_VERSION = "document-transform-v4"
+DOCUMENT_PIPELINE_VERSION = "document-transform-v5"
 PRESENTATION_PIPELINE_VERSION = "presentation-transform-v2"
 WORD_PIPELINE_VERSION = "word-format-copy-v1"
 

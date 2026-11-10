@@ -76,7 +76,8 @@ const MODES = [
     value: "both",
   },
   {
-    description: "Justify body text and format headings, lists, and tables.",
+    description:
+      "Improve structure, lists, spacing, and tables; justify body text.",
     icon: Paintbrush,
     label: "Format",
     value: "format",

@@ -128,7 +128,8 @@ def test_render_preserves_native_structure_and_inline_formatting(rendered: bytes
     grid_widths = [int(width) for width in raw_grid_widths if width is not None]
     assert len(grid_widths) == 3
     assert sum(grid_widths) == 9_360
-    assert min(grid_widths) >= 1_300
+    assert min(grid_widths) >= 1_000
+    assert grid_widths[2] > 2 * max(grid_widths[:2])
     assert all(cell.get(f"{W}type") == "dxa" for cell in document.findall(f".//{W}tcW"))
     assert document.find(f".//{W}tblHeader") is not None
     assert document.find(f".//{W}b") is not None

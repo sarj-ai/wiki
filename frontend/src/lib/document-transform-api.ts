@@ -60,7 +60,7 @@ const ResultSchema = z
     mode: TransformModeSchema,
     llm_invoked: z.boolean().default(true),
     model_patch_count: z.int().nonnegative().default(0),
-    promoted_heading_count: z.int().min(0).max(20).default(0),
+    promoted_heading_count: z.int().min(0).max(750).default(0),
     model_ids: z.array(z.string()),
     needs_review: z.boolean(),
     operation_id: UuidSchema,

@@ -110,6 +110,8 @@ from app.document_transform.native_visual_authority import (
     visual_authority_block_ids,
 )
 from app.document_transform.planner import TextTransformPlanner, TransformOutcome
+from app.document_transform.readability import plan_readability
+from app.document_transform.readability_types import ReadabilityCheckpoint
 from app.document_transform.runner import DocumentTransformRunner
 from app.document_transform.schemas import (
     CopyCheckpoint,
@@ -153,7 +155,7 @@ class _TableFontScope(NamedTuple):
 
 
 PIPELINE_VERSION = DOCUMENT_PIPELINE_VERSION
-REQUEST_BUILDER_VERSION = "google-docs-requests-v28"
+REQUEST_BUILDER_VERSION = "google-docs-requests-v29"
 IN_PLACE_REQUEST_BUILDER_VERSION = f"{REQUEST_BUILDER_VERSION}-header-title-v1"
 _COPY_REQUEST_BUILDER_VERSION = f"{REQUEST_BUILDER_VERSION}-visual-v1"
 _MAX_OUTPUT_NAME_LENGTH = 255
@@ -317,9 +319,147 @@ class DocumentTransformExecutor(DocumentTransformRunner):
             or self._brand.sha256 != CURRENT_BRAND_MANIFEST.sha256
         ):
             raise UnsupportedSourceError
-        if request.output_strategy is OutputStrategy.IN_PLACE:
-            return await self._execute_in_place(operation_id=operation_id, request=request)
-        return await self._execute_copy(operation_id=operation_id, request=request)
+        if (
+            isinstance(self._checkpoint, (CopyCheckpoint, InPlaceCheckpoint))
+            and self._checkpoint.readability is not None
+        ):
+            result = self._checkpoint.readability_result
+            if (
+                result is None
+                or result.operation_id != operation_id
+                or result.mode != request.mode
+                or result.output_strategy != request.output_strategy
+            ):
+                raise OutputConflictError
+            await self._verify_readability_source(request, self._checkpoint)
+        elif request.output_strategy is OutputStrategy.IN_PLACE:
+            result = await self._execute_in_place(operation_id=operation_id, request=request)
+        else:
+            result = await self._execute_copy(operation_id=operation_id, request=request)
+        return await self._finish_readability(
+            operation_id=operation_id, request=request, result=result
+        )
+
+    async def _verify_readability_source(
+        self, request: DocumentTransformRequest, checkpoint: CopyCheckpoint | InPlaceCheckpoint
+    ) -> None:
+        if (
+            checkpoint.pipeline_version != PIPELINE_VERSION
+            or checkpoint.brand_profile_sha256 != self._brand.sha256
+        ):
+            raise OutputConflictError
+        match checkpoint:
+            case CopyCheckpoint():
+                snapshot = await self._load_source(request)
+                if (
+                    _source_sha256(snapshot, _copy_original(snapshot, request))
+                    != checkpoint.source_sha256
+                ):
+                    raise OutputConflictError
+                await self._require_unchanged_drive_source(request, snapshot)
+            case InPlaceCheckpoint():
+                if (
+                    not isinstance(request.source, DriveFileSource)
+                    or request.source.file_id != checkpoint.document_id
+                ):
+                    raise OutputConflictError
+
+    async def _finish_readability(
+        self,
+        *,
+        operation_id: uuid.UUID,
+        request: DocumentTransformRequest,
+        result: DocumentTransformResult,
+    ) -> DocumentTransformResult:
+        checkpoint = self._checkpoint
+        if (
+            request.mode is TransformMode.UNSLOP
+            or self._gateway.readability_provider is None
+            or not isinstance(checkpoint, (CopyCheckpoint, InPlaceCheckpoint))
+            or self._checkpoint_store is None
+        ):
+            return result
+        layout = checkpoint.readability
+        if layout is None:
+            document = await self._gateway.readability_provider.read(result.output.file_id)
+            if document.get("revisionId") != result.output_revision_id:
+                raise OutputConflictError
+            layout = await plan_readability(
+                document, title=result.output.name, generator=self._generator
+            )
+            if layout is None:
+                return result
+            checkpoint = await self._save_readability_checkpoint(
+                checkpoint.model_copy(update={"readability": layout, "readability_result": result})
+            )
+        completed = await self._gateway.readability_provider.apply(
+            document_id=result.output.file_id, checkpoint=layout
+        )
+        if layout.complete:
+            return result
+        result = _readability_result(
+            result,
+            completed,
+            model_ids=tuple(ModelId(value) for value in self._generator.model_ids),
+        )
+        match checkpoint:
+            case CopyCheckpoint():
+                await self._finalize_readable_copy(operation_id=operation_id, result=result)
+                checkpoint = checkpoint.model_copy(
+                    update={
+                        "result": result,
+                        "output_revision_id": result.output_revision_id,
+                        "header_finalization": HeaderIdentityFinalization(
+                            result_sha256=_json_sha256(result.model_dump(mode="json")),
+                            verified_revision_sha256=hashlib.sha256(
+                                str(result.output_revision_id).encode()
+                            ).hexdigest(),
+                        )
+                        if result.header_identity is not None
+                        else None,
+                    }
+                )
+            case InPlaceCheckpoint():
+                checkpoint = checkpoint.model_copy(
+                    update={"current_revision_id": result.output_revision_id}
+                )
+        await self._save_readability_checkpoint(
+            checkpoint.model_copy(update={"readability": completed, "readability_result": result})
+        )
+        return result
+
+    async def _save_readability_checkpoint(
+        self, checkpoint: InPlaceCheckpoint | CopyCheckpoint
+    ) -> InPlaceCheckpoint | CopyCheckpoint:
+        match checkpoint:
+            case CopyCheckpoint():
+                return await self._save_copy_checkpoint(checkpoint)
+            case InPlaceCheckpoint():
+                return await self._save_checkpoint(checkpoint)
+
+    async def _finalize_readable_copy(
+        self, *, operation_id: uuid.UUID, result: DocumentTransformResult
+    ) -> None:
+        draft = await self._gateway.recover_output(operation_id)
+        if (
+            draft is None
+            or draft.output.file_id != result.output.file_id
+            or result.output_revision_id is None
+        ):
+            raise OutputConflictError
+        await self._gateway.complete(
+            operation_id=operation_id,
+            draft=replace(draft, revision_id=result.output_revision_id),
+            result=result.model_dump(mode="json"),
+        )
+        recovered = await self._gateway.recover_output(operation_id)
+        if (
+            recovered is None
+            or recovered.result_sha256 != _json_sha256(result.model_dump(mode="json"))
+            or recovered.verified_revision_sha256
+            != hashlib.sha256(result.output_revision_id.encode()).hexdigest()
+        ):
+            raise OutputConflictError
 
     async def _execute_copy(
         self,
@@ -1915,7 +2055,9 @@ class DocumentTransformExecutor(DocumentTransformRunner):
             replacements={},
             findings=_complex_structure_safe_noop_findings(
                 visual_ids=visual_ids,
-                preserved_font_ids=preserved_font_ids,
+                font_policy=NativeFontVerificationPolicy(
+                    preserved_family_block_ids=preserved_font_ids
+                ),
                 paragraph_layout=paragraph_layout,
             ),
             applied_patch_count=0,
@@ -2240,6 +2382,43 @@ class DocumentTransformExecutor(DocumentTransformRunner):
             output_name=output_name,
             imported_docx=imported_docx,
         )
+
+
+def _readability_result(
+    result: DocumentTransformResult,
+    layout: ReadabilityCheckpoint,
+    *,
+    model_ids: tuple[ModelId, ...],
+) -> DocumentTransformResult:
+    changed = len(layout.paragraphs) + len(layout.tables)
+    model_count = len(layout.paragraphs)
+    return result.model_copy(
+        update={
+            "promoted_heading_count": result.promoted_heading_count
+            + sum(
+                part.role.startswith("heading")
+                for paragraph in layout.paragraphs
+                for part in paragraph.parts
+            ),
+            "output_revision_id": layout.revision_id,
+            "applied_patch_count": result.applied_patch_count + changed,
+            "model_patch_count": result.model_patch_count + model_count,
+            "deterministic_patch_count": result.deterministic_patch_count + len(layout.tables),
+            "llm_invoked": result.llm_invoked or layout.model_invoked,
+            "model_ids": list(dict.fromkeys([*result.model_ids, *model_ids]))
+            if layout.model_invoked
+            else result.model_ids,
+            "changed": result.changed or bool(layout.requests),
+            "findings": [
+                *result.findings,
+                TransformFinding(
+                    code="document_readability_improved",
+                    detail=f"Improved paragraph/list structure in {len(layout.paragraphs)} passages and fitted {len(layout.tables)} tables to their content. Numeric values and precision were preserved.",
+                    severity=FindingSeverity.INFORMATIONAL,
+                ),
+            ],
+        }
+    )
 
 
 def _copy_output_name(request: DocumentTransformRequest, original: DocumentIR) -> str:
@@ -2700,7 +2879,9 @@ def _is_complex_structure_safe_noop(checkpoint: InPlaceCheckpoint) -> bool:
         and checkpoint.findings
         == _complex_structure_safe_noop_findings(
             visual_ids=checkpoint.visual_authority_block_ids,
-            preserved_font_ids=checkpoint.preserved_font_block_ids,
+            font_policy=NativeFontVerificationPolicy(
+                preserved_family_block_ids=checkpoint.preserved_font_block_ids
+            ),
             paragraph_layout=checkpoint.paragraph_layout,
         )
     )
@@ -2709,7 +2890,7 @@ def _is_complex_structure_safe_noop(checkpoint: InPlaceCheckpoint) -> bool:
 def _complex_structure_safe_noop_findings(
     *,
     visual_ids: tuple[str, ...],
-    preserved_font_ids: tuple[str, ...],
+    font_policy: NativeFontVerificationPolicy,
     paragraph_layout: tuple[NativeParagraphLayout, ...],
 ) -> list[TransformFinding]:
     return [
@@ -2737,7 +2918,7 @@ def _complex_structure_safe_noop_findings(
                 detail="This paragraph's authored font family was preserved unchanged.",
                 severity=FindingSeverity.INFORMATIONAL,
             )
-            for block_id in preserved_font_ids
+            for block_id in font_policy.preserved_family_block_ids
         ],
         *[
             TransformFinding(

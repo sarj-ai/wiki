@@ -621,7 +621,7 @@
           },
           "promoted_heading_count": {
             "default": 0,
-            "maximum": 20.0,
+            "maximum": 750.0,
             "minimum": 0.0,
             "title": "Promoted Heading Count",
             "type": "integer"
