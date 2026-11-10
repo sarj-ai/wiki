@@ -7,7 +7,7 @@ import json
 from typing import TYPE_CHECKING, Any, Literal, NewType, Protocol, TypedDict
 import uuid
 
-from pydantic import BaseModel, ConfigDict, JsonValue, RootModel
+from pydantic import BaseModel, ConfigDict, JsonValue, RootModel, with_config
 
 from app.document_transform.errors import InPlaceNeedsReviewError
 from app.document_transform.ir import parse_google_document, verify_planned_date_conversions
@@ -28,11 +28,13 @@ CHIP_PARAGRAPH_ELEMENTS = 2
 NativeDateBlockId = NewType("NativeDateBlockId", str)
 
 
+@with_config(ConfigDict(extra="allow"))
 class _DateTextRun(TypedDict, total=False):
     content: str
     textStyle: JsonValue
 
 
+@with_config(ConfigDict(extra="allow"))
 class _DateParagraphElement(TypedDict, total=False):
     startIndex: int
     endIndex: int
@@ -40,11 +42,19 @@ class _DateParagraphElement(TypedDict, total=False):
     dateElement: JsonValue
 
 
+@with_config(ConfigDict(extra="allow"))
 class _DateParagraph(TypedDict, total=False):
     elements: list[_DateParagraphElement]
 
 
-class _DateContent(Protocol):
+@with_config(ConfigDict(extra="allow"))
+class NativeDateContent(TypedDict):
+    startIndex: int
+    endIndex: int
+    paragraph: _DateParagraph
+
+
+class _ProviderDateContent(Protocol):
     def get(
         self, key: Literal["startIndex", "endIndex"], default: None = None, /
     ) -> int | None: ...
@@ -54,6 +64,9 @@ class _DateContent(Protocol):
     def __contains__(self, key: str, /) -> bool: ...
 
     def __iter__(self) -> Iterator[str]: ...
+
+
+type _DateContent = _ProviderDateContent | NativeDateContent
 
 
 type _DateBodyContent = list[_DateContent]
@@ -103,18 +116,18 @@ class NativeDateParagraph(BaseModel):
     tab_id: DocsTabId
     block_id: NativeDateBlockId
     source_sha256: str
-    paragraph: dict[str, Any]
+    paragraph: NativeDateContent
 
 
 class NativeDatePlan(BaseModel):
     model_config = ConfigDict(extra="forbid")
     revision_id: DocsRevisionId
     marker_name: str
-    marker_range: dict[str, Any]
+    marker_range: dict[str, JsonValue]
     invariant_sha256: str
     invariant_version: Literal["stable-images-v2"] | None = None
     paragraphs: list[NativeDateParagraph]
-    requests: list[dict[str, Any]]
+    requests: list[dict[str, JsonValue]]
 
 
 class PendingNativeDateCheckpoint(NativeDatePlan):
@@ -207,7 +220,7 @@ def versioned_date_invariant_sha256(
 
 def _date_document_payload(
     document: JsonValue, *, version: Literal["stable-images-v2"] | None
-) -> dict[str, JsonValue]:
+) -> dict[str, Any]:
     payload = stable_native_payload(document) if version == "stable-images-v2" else document
     if not isinstance(payload, dict):
         msg = "A date invariant requires a document object"
@@ -435,7 +448,7 @@ def plan_stable_copy_dates(
 
 def verified_versioned_date_projection(
     document: JsonValue, checkpoint: NativeDateCheckpoint
-) -> dict[str, JsonValue]:
+) -> dict[str, Any]:
     return verified_date_projection(
         _date_document_payload(document, version=checkpoint.invariant_version), checkpoint
     )

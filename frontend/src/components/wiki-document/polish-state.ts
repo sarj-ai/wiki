@@ -49,17 +49,12 @@ export type PolishEvent =
       readonly output: OutputReference;
     };
 
-function unreachable(value: never): never {
-  throw new Error(`Unsupported polish event: ${String(value)}`);
-}
-
 export function isPolishRunning(
   state: PolishState,
 ): state is Extract<PolishState, { kind: "starting" | "transforming" }> {
   return state.kind === "starting" || state.kind === "transforming";
 }
 
-/** Late completion/finish events are ignored after close, reset, or a terminal outcome. */
 export function transitionPolish(
   state: PolishState,
   event: PolishEvent,
@@ -111,11 +106,21 @@ export function transitionPolish(
           }
         : state;
     case "short-link-ready":
-      return (state.kind === "completed" || state.kind === "review") &&
-        state.result.operationId === event.result.operationId
-        ? { ...state, result: event.result }
-        : state;
+      return updatePolishShortLink(state, event.result);
     default:
       return unreachable(event);
   }
+}
+
+function updatePolishShortLink(
+  state: PolishState,
+  result: DocumentTransformResult,
+): PolishState {
+  if (state.kind !== "completed" && state.kind !== "review") return state;
+  if (state.result.operationId !== result.operationId) return state;
+  return { ...state, result };
+}
+
+function unreachable(value: never): never {
+  throw new Error(`Unsupported polish event: ${String(value)}`);
 }

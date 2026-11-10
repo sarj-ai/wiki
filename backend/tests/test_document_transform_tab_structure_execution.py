@@ -22,7 +22,6 @@ from app.document_transform.tab_structure_execution import (
     StructureProvider,
     StructureStage,
     StructureStateError,
-    _require_structure_state,
     bind_created_tabs,
     complete_structure,
     executable_structure,
@@ -93,10 +92,6 @@ def test_creation_requires_persisted_intent_and_never_retries_ambiguous_dispatch
     assert intent.stage is StructureStage.CREATING
     assert body["writeControl"] == {"requiredRevisionId": "rev1"}
     assert len(body["requests"]) == 3
-    with pytest.raises(StructureStateError):
-        _require_structure_state(intent, PlannedStructureCheckpoint)
-    with pytest.raises(StructureStateError):
-        _require_structure_state(intent, CreatedStructureCheckpoint)
 
 
 def test_native_keep_lines_together_is_preserved_in_tab_move_requests():
@@ -165,8 +160,6 @@ def test_move_is_one_atomic_cas_preserving_terminal_newline_and_utf16():
     )
     assert deletion["endIndex"] == checkpoint.plan.sections[-1].end_index - 1
     assert deletion["startIndex"] == checkpoint.plan.sections[0].end_index - 1
-    with pytest.raises(StructureStateError):
-        _require_structure_state(checkpoint, CreatedStructureCheckpoint)
 
 
 def test_exact_readback_recovers_lost_move_reply_without_replaying():

@@ -269,15 +269,16 @@ async def test_visual_authority_both_checkpoint_replay_is_bound(
     visual_id = "b1" if preceding_edit else "b0"
     assert checkpoint.visual_authority_block_ids == (visual_id,)
     assert checkpoint.replacements == ({"b0": "We approved 😀."} if preceding_edit else {})
-    assert all(
-        all(
-            not mutation.get(key)
-            or mutation[key]["range"].get("segmentId")
-            or (preceding_edit and mutation[key]["range"]["startIndex"] == 1)
-            for key in ("updateTextStyle", "updateParagraphStyle")
-        )
-        for mutation in checkpoint.requests
-    )
+    for mutation in checkpoint.requests:
+        for key in ("updateTextStyle", "updateParagraphStyle"):
+            payload = mutation.get(key)
+            if not payload:
+                continue
+            assert isinstance(payload, dict)
+            span = payload["range"]
+            assert isinstance(span, dict)
+            assert span.get("segmentId") or (preceding_edit and span["startIndex"] == 1)
+
     saved_requests = deepcopy(checkpoint.requests)
     if tamper != "none":
         updates = (

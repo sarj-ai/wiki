@@ -3,6 +3,7 @@ from dataclasses import replace
 from typing import Any
 import uuid
 
+from pydantic import JsonValue
 import pytest
 
 from app.document_transform.brand import SarjBrandProfile, build_copy_mutations
@@ -528,9 +529,31 @@ async def test_completed_copy_tab_projection_retains_bound_font_preservation(
     assert checks
     assert all(checks)
     assert (gateway.applies, gateway.brand_prepares) == writes
-    actual["tabs"][1]["documentTab"]["body"]["content"][2]["paragraph"]["elements"][1]["textRun"][
-        "textStyle"
-    ]["weightedFontFamily"]["weight"] = 400
+    target: JsonValue = actual
+    for part in (
+        "tabs",
+        1,
+        "documentTab",
+        "body",
+        "content",
+        2,
+        "paragraph",
+        "elements",
+        1,
+        "textRun",
+        "textStyle",
+        "weightedFontFamily",
+    ):
+        match part:
+            case int():
+                assert isinstance(target, list)
+                target = target[part]
+            case str():
+                assert isinstance(target, dict)
+                target = target[part]
+    assert isinstance(target, dict)
+    target["weight"] = 400
+
     with pytest.raises(OutputVerificationError):
         await transform._copy_executor(
             gateway=gateway, store=store, task_id=operation, checkpoint=checkpoint

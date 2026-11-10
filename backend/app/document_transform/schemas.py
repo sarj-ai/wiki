@@ -1,13 +1,14 @@
 from __future__ import annotations
 
 from enum import StrEnum
-from typing import Annotated, Any, Literal, Self
+from typing import Annotated, Literal, Self
 import uuid
 
 from pydantic import (
     BaseModel,
     ConfigDict,
     Field,
+    JsonValue,
     RootModel,
     StrictBool,
     StringConstraints,
@@ -295,7 +296,7 @@ class TabNamingCheckpoint(StrictTransformModel):
     plan: TabNamingPlan
     revision_id: DocsRevisionId
     marker_name: str
-    marker_range: dict[str, Any]
+    marker_range: dict[str, JsonValue]
     invariant_sha256: str
     invariant_version: Literal["stable-images-v2"] | None = None
 
@@ -399,9 +400,9 @@ class InPlacePlan(StrictTransformModel):
 
 class InPlaceMutation(InPlacePlan):
     marker_name: str
-    marker_range: dict[str, Any]
+    marker_range: dict[str, JsonValue]
     mutation_sha256: str
-    requests: list[dict[str, Any]] = Field(min_length=1)
+    requests: list[dict[str, JsonValue]] = Field(min_length=1)
 
 
 class HeaderInPlaceCheckpoint(InPlaceMutation):
@@ -423,7 +424,7 @@ class NonmutatingInPlacePlan(InPlacePlan):
     def normalize_unused_markers(cls, value: object) -> object:
         if (
             isinstance(value, dict)
-            and value.get("stage") == "content"
+            and value.get("stage") in {"content", "complete"}
             and value.get("requests") == []
         ):
             return {**value, "marker_name": None, "marker_range": None, "mutation_sha256": None}
@@ -454,7 +455,7 @@ class InPlaceCheckpointPayload(RootModel[InPlaceCheckpoint]):
         # They never authorized a write. Normalize only that exact harmless shape.
         if (
             isinstance(value, dict)
-            and value.get("stage") == "content"
+            and value.get("stage") in {"content", "complete"}
             and value.get("requests") == []
         ):
             return {**value, "marker_name": None, "marker_range": None, "mutation_sha256": None}
@@ -466,9 +467,9 @@ def transition_in_place(
     *,
     stage: InPlaceCheckpointStage,
     current_revision_id: DocsRevisionId,
-    requests: list[dict[str, Any]],
+    requests: list[dict[str, JsonValue]],
     marker_name: str | None,
-    marker_range: dict[str, Any] | None,
+    marker_range: dict[str, JsonValue] | None,
     mutation_sha256: str | None,
     headers: dict[str, str] | None = None,
 ) -> InPlaceCheckpoint:

@@ -408,9 +408,11 @@ class GoogleDocumentGateway(DocumentGateway):
                 # The executor persists this outcome before continuing. A crash
                 # before that save can redispatch the rejected CAS batch, but
                 # exact preimage/marker recovery still prevents duplicate edits.
-                if isinstance(checkpoint, PendingNativeDateCheckpoint):
-                    return decline_dates(checkpoint)
-                raise DocumentGatewayError from exc
+                match checkpoint:
+                    case PendingNativeDateCheckpoint():
+                        return decline_dates(checkpoint)
+                    case _:
+                        raise DocumentGatewayError from exc
             document = result.document
         verified_date_projection(document, checkpoint)
         return complete_dates(checkpoint, DocsRevisionId(_required_string(document, "revisionId")))

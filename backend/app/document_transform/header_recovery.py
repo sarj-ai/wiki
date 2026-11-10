@@ -157,11 +157,9 @@ def _header_inventory_matches(
     checkpoint: InPlaceCheckpoint,
     checks: dict[str, bool | str],
 ) -> bool:
-    expected = {tab_id: {header_id} for tab_id, header_id in new_headers.items()}
-    for binding in checkpoint.custom_furniture:
-        if binding.tab_id in new_headers and binding.header_ids:
-            return False
-        expected.setdefault(binding.tab_id, set()).update(binding.header_ids)
+    expected = _expected_headers(checkpoint, new_headers)
+    if expected is None:
+        return False
     pending = document.get("tabs")
     if not isinstance(pending, list):
         return False
@@ -181,24 +179,50 @@ def _header_inventory_matches(
         seen.add(tab_id)
         if len(seen) > MAX_DOC_TABS:
             return False
-        headers = native.get("headers", {})
-        if not isinstance(headers, dict) or set(headers) != expected.get(tab_id, set()):
+        if not _header_payload_matches(native, tab_id, expected, new_headers, checks):
             return False
-        if tab_id in new_headers:
-            style = native.get("documentStyle")
-            header_id = new_headers[tab_id]
-            if (
-                not isinstance(style, dict)
-                or style.get("defaultHeaderId") != header_id
-                or any(field in style for field in ("firstPageHeaderId", "evenPageHeaderId"))
-                or not _empty_header(headers.get(header_id), header_id, checks)
-            ):
-                return False
         children = tab.get("childTabs", [])
         if not isinstance(children, list):
             return False
         pending.extend(children)
     return set(expected) <= seen
+
+
+def _expected_headers(
+    checkpoint: InPlaceCheckpoint, new_headers: dict[str, str]
+) -> dict[str, set[str]] | None:
+    expected = {tab_id: {header_id} for tab_id, header_id in new_headers.items()}
+    for binding in checkpoint.custom_furniture:
+        if binding.tab_id in new_headers and binding.header_ids:
+            return None
+        expected.setdefault(binding.tab_id, set()).update(binding.header_ids)
+    return expected
+
+
+def _header_payload_matches(
+    native: object,
+    tab_id: str,
+    expected: dict[str, set[str]],
+    new_headers: dict[str, str],
+    checks: dict[str, bool | str],
+) -> bool:
+    if not isinstance(native, dict):
+        return False
+    headers = native.get("headers", {})
+    if not isinstance(headers, dict) or set(headers) != expected.get(tab_id, set()):
+        return False
+    return tab_id not in new_headers or _new_header_matches(native, new_headers[tab_id], checks)
+
+
+def _new_header_matches(native: object, header_id: str, checks: dict[str, bool | str]) -> bool:
+    if not isinstance(native, dict):
+        return False
+    style = native.get("documentStyle")
+    if not isinstance(style, dict) or style.get("defaultHeaderId") != header_id:
+        return False
+    if any(field in style for field in ("firstPageHeaderId", "evenPageHeaderId")):
+        return False
+    return _empty_header(native["headers"].get(header_id), header_id, checks)
 
 
 def _empty_header(
@@ -237,7 +261,10 @@ def _empty_header(
     ):
         _paragraph_style_diagnostics(style, checks)
         return False
-    runs = paragraph.get("elements")
+    return _empty_header_run(paragraph.get("elements"), checks)
+
+
+def _empty_header_run(runs: object, checks: dict[str, bool | str]) -> bool:
     checks["header_recovery_empty_reason"] = "run_wrapper"
     if not isinstance(runs, list) or len(runs) != 1 or not _terminal_wrapper(runs[0], "textRun"):
         return False

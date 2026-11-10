@@ -44,7 +44,7 @@
         "provider revision CAS",
         "semantic/structure invariants"
       ],
-      "recovery": "Durable markers distinguish committed effects; mismatches require review. Old no-op content markers normalize to absent because no request could have consumed them.",
+      "recovery": "Durable markers distinguish committed effects; mismatches require review. Old no-op content/completed markers normalize to absent because no request could have consumed them.",
       "decision": "convert",
       "sources": [
         "backend/app/document_transform/schemas.py",

@@ -1,11 +1,10 @@
 from dataclasses import dataclass
 from datetime import datetime, timedelta
+from typing import Literal
 
 
 @dataclass(frozen=True, slots=True)
 class TokenSnapshot:
-    """Database boundary data, decoded into a decision before it authorizes work."""
-
     access_ciphertext: str | None
     credential_ciphertext: str | None
     expires_at: datetime | None
@@ -19,6 +18,7 @@ class UseGoogleAccess:
     access_ciphertext: str
     expires_at: datetime
     generation: int
+    kind: Literal["use-access"] = "use-access"
 
 
 @dataclass(frozen=True, slots=True)
@@ -32,16 +32,18 @@ class RefreshGrant:
 @dataclass(frozen=True, slots=True)
 class AcquireGoogleRefresh:
     grant: RefreshGrant
+    kind: Literal["acquire-refresh"] = "acquire-refresh"
 
 
 @dataclass(frozen=True, slots=True)
 class AwaitGoogleRefresh:
     until: datetime
+    kind: Literal["await-refresh"] = "await-refresh"
 
 
 @dataclass(frozen=True, slots=True)
 class RequireGoogleLogin:
-    pass
+    kind: Literal["require-login"] = "require-login"
 
 
 type GoogleTokenDecision = (

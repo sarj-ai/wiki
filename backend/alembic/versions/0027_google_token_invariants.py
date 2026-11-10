@@ -1,5 +1,3 @@
-"""Constrain the Google credential and refresh-lease state."""
-
 from alembic import op
 
 

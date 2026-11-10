@@ -368,9 +368,11 @@ async def test_executor_persists_decline_and_reports_finding_on_recovery() -> No
             assert store.checkpoints[-1].native_dates == checkpoint
             if checkpoint.declined_reason is None:
                 self.date_writes += 1
-            if isinstance(checkpoint, PendingNativeDateCheckpoint):
-                return decline_dates(checkpoint)
-            return checkpoint
+            match checkpoint:
+                case PendingNativeDateCheckpoint():
+                    return decline_dates(checkpoint)
+                case _:
+                    return checkpoint
 
     gateway = Gateway(
         SourceSnapshot(
