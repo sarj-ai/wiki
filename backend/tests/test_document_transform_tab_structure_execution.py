@@ -9,18 +9,21 @@ import pytest
 
 from app.document_transform.gateway import OutputDraft, SourceSnapshot
 from app.document_transform.schemas import (
-    CopyCheckpoint,
+    CopyCheckpointPayload,
     DocumentTransformRequest,
     DriveFileSource,
     TransformMode,
 )
 from app.document_transform.tab_structure import plan_tab_structure
 from app.document_transform.tab_structure_execution import (
+    CreatedStructureCheckpoint,
+    PlannedStructureCheckpoint,
     StructureCheckpoint,
     StructureProvider,
     StructureStage,
     StructureStateError,
     bind_created_tabs,
+    complete_structure,
     executable_structure,
     prepare_content_move,
     prepare_tab_creation,
@@ -36,7 +39,7 @@ from tests.test_document_transform_tab_structure import _document
 def _checkpoint():
     plan = plan_tab_structure(_document(), comments_verified_absent=True)
     assert plan is not None
-    return StructureCheckpoint(plan)
+    return PlannedStructureCheckpoint(plan)
 
 
 def _moving():
@@ -89,10 +92,6 @@ def test_creation_requires_persisted_intent_and_never_retries_ambiguous_dispatch
     assert intent.stage is StructureStage.CREATING
     assert body["writeControl"] == {"requiredRevisionId": "rev1"}
     assert len(body["requests"]) == 3
-    with pytest.raises(StructureStateError):
-        prepare_tab_creation(intent)
-    with pytest.raises(StructureStateError):
-        prepare_content_move(intent)
 
 
 def test_native_keep_lines_together_is_preserved_in_tab_move_requests():
@@ -103,7 +102,7 @@ def test_native_keep_lines_together_is_preserved_in_tab_move_requests():
     plan = plan_tab_structure(document, comments_verified_absent=True)
     assert plan is not None
     assert executable_structure(plan, copy_mode=True)
-    intent, _ = prepare_tab_creation(StructureCheckpoint(plan))
+    intent, _ = prepare_tab_creation(PlannedStructureCheckpoint(plan))
     created = bind_created_tabs(
         intent,
         tab_ids=(DocsTabId("delivery"), DocsTabId("risks")),
@@ -161,16 +160,19 @@ def test_move_is_one_atomic_cas_preserving_terminal_newline_and_utf16():
     )
     assert deletion["endIndex"] == checkpoint.plan.sections[-1].end_index - 1
     assert deletion["startIndex"] == checkpoint.plan.sections[0].end_index - 1
-    with pytest.raises(StructureStateError):
-        prepare_content_move(checkpoint)
 
 
 def test_exact_readback_recovers_lost_move_reply_without_replaying():
     checkpoint, _ = _moving()
     output = _output(checkpoint)
     assert verify_structure_content(checkpoint, output)
-    assert verify_structure_content(replace(checkpoint, stage=StructureStage.VERIFIED), output)
-    assert not verify_structure_content(replace(checkpoint, stage=StructureStage.CREATED), output)
+    assert verify_structure_content(complete_structure(checkpoint, checkpoint.revision_id), output)
+    assert not verify_structure_content(
+        CreatedStructureCheckpoint(
+            checkpoint.plan, checkpoint.created_tab_ids, checkpoint.revision_id
+        ),
+        output,
+    )
     altered = deepcopy(output)
     altered["tabs"][1]["documentTab"]["body"]["content"][2]["paragraph"]["elements"][0]["textRun"][
         "content"
@@ -246,7 +248,7 @@ def test_creation_recovery_retains_exact_authored_source_metadata(icon: str | No
         source["tabs"][0]["tabProperties"]["iconEmoji"] = icon
     plan = plan_tab_structure(source, comments_verified_absent=True)
     assert plan is not None
-    intent, _ = prepare_tab_creation(StructureCheckpoint(plan))
+    intent, _ = prepare_tab_creation(PlannedStructureCheckpoint(plan))
     document = _created_document()
     document["tabs"][0]["tabProperties"] = deepcopy(source["tabs"][0]["tabProperties"])
     # The ownership marker depends on the planned icons, not on the source title.
@@ -290,7 +292,7 @@ def test_native_heading_ids_regenerate_only_on_link_free_copy_and_styles_remain_
     plan = plan_tab_structure(document, comments_verified_absent=True)
     assert plan is not None
     assert executable_structure(plan, copy_mode=True)
-    intent, _ = prepare_tab_creation(StructureCheckpoint(plan))
+    intent, _ = prepare_tab_creation(PlannedStructureCheckpoint(plan))
     created = bind_created_tabs(
         intent,
         tab_ids=(DocsTabId("delivery"), DocsTabId("risks")),
@@ -351,7 +353,7 @@ def test_custom_margins_remain_exact_during_tab_reconstruction(custom_margins: b
     }
     plan = plan_tab_structure(document, comments_verified_absent=True)
     assert plan is not None
-    intent, _ = prepare_tab_creation(StructureCheckpoint(plan))
+    intent, _ = prepare_tab_creation(PlannedStructureCheckpoint(plan))
     created = bind_created_tabs(
         intent,
         tab_ids=(DocsTabId("delivery"), DocsTabId("risks")),
@@ -482,7 +484,9 @@ async def test_executor_persists_before_dispatch_and_recovers_without_duplicate_
             await _copy_executor(gateway=gateway, store=store, task_id=task_id).execute(
                 operation_id=task_id, request=request
             )
-        checkpoint = CopyCheckpoint.model_validate_json(store.checkpoints[-1].model_dump_json())
+        checkpoint = CopyCheckpointPayload.model_validate_json(
+            store.checkpoints[-1].model_dump_json()
+        ).root
     result = await _copy_executor(
         gateway=gateway, store=store, task_id=task_id, checkpoint=checkpoint
     ).execute(operation_id=task_id, request=request)

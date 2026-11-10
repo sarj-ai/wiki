@@ -23,6 +23,7 @@ from app.document_transform.schemas import (
     OutputStrategy,
     TransformMode,
     WordCopyCheckpoint,
+    WordCopyPlan,
 )
 from app.document_transform.word_executor import WordTransformExecutor
 from app.document_transform.word_gateway import WORD_MIME, GoogleWordGateway, WordSource
@@ -126,7 +127,7 @@ class Harness:
     ) -> int:
         if self.save_error is not None:
             raise self.save_error
-        assert isinstance(checkpoint, WordCopyCheckpoint)
+        assert isinstance(checkpoint, WordCopyPlan)
         assert task_id == self.operation
         assert expected_generation == len(self.checkpoints)
         assert lease_token == self.operation

@@ -20,6 +20,7 @@ from sqlalchemy.ext.asyncio import (
 )
 
 from app.auth.encryption import decrypt_cache, encrypt_text
+from app.auth.google_token_state import RefreshGrant
 from app.auth.google_tokens import (
     GoogleReauthenticationRequiredError,
     GoogleRefreshResult,
@@ -827,8 +828,15 @@ async def test_live_lease_snapshot_skips_doomed_update_but_expired_lease_attempt
         queries = _Queries()
         event.listen(database.engine.sync_engine, "before_cursor_execute", queries.record)
         try:
+            credential = snapshot.credential_ciphertext
+            if credential is None:
+                msg = "fixture refresh credential missing"
+                raise AssertionError(msg)
+            grant = RefreshGrant(
+                credential, snapshot.generation, snapshot.session_revision, snapshot.lease_until
+            )
             acquired = await manager._acquire_lease(
-                identity, snapshot, uuid.uuid7(), datetime.now(UTC)
+                identity, grant, uuid.uuid7(), datetime.now(UTC)
             )
         finally:
             event.remove(database.engine.sync_engine, "before_cursor_execute", queries.record)

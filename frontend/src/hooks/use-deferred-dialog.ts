@@ -2,14 +2,18 @@
 
 import { useState } from "react";
 
+type DeferredDialogState = "unmounted" | "open" | "closed";
+
 export function useDeferredDialog() {
-  const [state, setState] = useState({ mounted: false, open: false });
+  const [state, setState] = useState<DeferredDialogState>("unmounted");
   const onOpenChange = (open: boolean) => {
     setState((previous) =>
-      previous.open === open
-        ? previous
-        : { mounted: previous.mounted || open, open },
+      open ? "open" : previous === "unmounted" ? "unmounted" : "closed",
     );
   };
-  return { ...state, onOpenChange };
+  return {
+    mounted: state !== "unmounted",
+    open: state === "open",
+    onOpenChange,
+  };
 }

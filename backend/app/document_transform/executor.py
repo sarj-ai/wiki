@@ -25,6 +25,7 @@ from app.document_transform.brand import (
     preserve_in_place_native_list_text_styles,
 )
 from app.document_transform.brand_manifest import CURRENT_BRAND_MANIFEST
+from app.document_transform.checkpoint_transitions import begin_copy, record_copy, verify_copy
 from app.document_transform.copy_font_defense import (
     copy_font_proofs,
     copy_preserved_font_ids,
@@ -114,24 +115,39 @@ from app.document_transform.readability import plan_readability
 from app.document_transform.readability_types import ReadabilityCheckpoint
 from app.document_transform.runner import DocumentTransformRunner
 from app.document_transform.schemas import (
+    CompletedInPlaceCheckpoint,
+    ContentInPlaceCheckpoint,
     CopyCheckpoint,
+    CopyCheckpointPayload,
     CopyCheckpointStage,
+    CopyPlan,
+    CreatedCopyCheckpoint,
+    CreatingCopyCheckpoint,
     DocumentOutput,
     DocumentTransformCheckpoint,
     DocumentTransformRequest,
     DocumentTransformResult,
     DriveFileSource,
     FindingSeverity,
+    HeaderInPlaceCheckpoint,
     InPlaceCheckpoint,
+    InPlaceCheckpointPayload,
     InPlaceCheckpointStage,
+    InPlaceMutation,
+    NoopContentInPlaceCheckpoint,
     OutputStrategy,
+    PlannedCopyCheckpoint,
     TabNamingDeclinedReason,
     TransformFinding,
     TransformMode,
     ValidationSummary,
+    VerifiedCopyCheckpoint,
+    transition_in_place,
 )
 from app.document_transform.tab_structure_execution import (
+    MovingStructureCheckpoint,
     StructureStage,
+    complete_structure,
     planned_structure_document,
     prepare_content_move,
     prepare_tab_creation,
@@ -304,7 +320,7 @@ class DocumentTransformExecutor(DocumentTransformRunner):
         self._checkpoint_store = checkpoint_store
         self._task_id = task_id
         self._lease_token = lease_token
-        self._checkpoint = checkpoint
+        self._checkpoint: DocumentTransformCheckpoint | None = checkpoint
         self._checkpoint_generation = checkpoint_generation
 
     @override
@@ -320,7 +336,8 @@ class DocumentTransformExecutor(DocumentTransformRunner):
         ):
             raise UnsupportedSourceError
         if (
-            isinstance(self._checkpoint, (CopyCheckpoint, InPlaceCheckpoint))
+            self._checkpoint is not None
+            and self._checkpoint.kind != "word_copy"
             and self._checkpoint.readability is not None
         ):
             result = self._checkpoint.readability_result
@@ -349,7 +366,12 @@ class DocumentTransformExecutor(DocumentTransformRunner):
         ):
             raise OutputConflictError
         match checkpoint:
-            case CopyCheckpoint():
+            case (
+                PlannedCopyCheckpoint()
+                | CreatingCopyCheckpoint()
+                | CreatedCopyCheckpoint()
+                | VerifiedCopyCheckpoint()
+            ):
                 snapshot = await self._load_source(request)
                 if (
                     _source_sha256(snapshot, _copy_original(snapshot, request))
@@ -357,7 +379,12 @@ class DocumentTransformExecutor(DocumentTransformRunner):
                 ):
                     raise OutputConflictError
                 await self._require_unchanged_drive_source(request, snapshot)
-            case InPlaceCheckpoint():
+            case (
+                HeaderInPlaceCheckpoint()
+                | ContentInPlaceCheckpoint()
+                | NoopContentInPlaceCheckpoint()
+                | CompletedInPlaceCheckpoint()
+            ):
                 if (
                     not isinstance(request.source, DriveFileSource)
                     or request.source.file_id != checkpoint.document_id
@@ -375,7 +402,8 @@ class DocumentTransformExecutor(DocumentTransformRunner):
         if (
             request.mode is TransformMode.UNSLOP
             or self._gateway.readability_provider is None
-            or not isinstance(checkpoint, (CopyCheckpoint, InPlaceCheckpoint))
+            or checkpoint is None
+            or checkpoint.kind == "word_copy"
             or self._checkpoint_store is None
         ):
             return result
@@ -403,7 +431,12 @@ class DocumentTransformExecutor(DocumentTransformRunner):
             model_ids=tuple(ModelId(value) for value in self._generator.model_ids),
         )
         match checkpoint:
-            case CopyCheckpoint():
+            case (
+                PlannedCopyCheckpoint()
+                | CreatingCopyCheckpoint()
+                | CreatedCopyCheckpoint()
+                | VerifiedCopyCheckpoint()
+            ):
                 await self._finalize_readable_copy(operation_id=operation_id, result=result)
                 checkpoint = checkpoint.model_copy(
                     update={
@@ -419,7 +452,12 @@ class DocumentTransformExecutor(DocumentTransformRunner):
                         else None,
                     }
                 )
-            case InPlaceCheckpoint():
+            case (
+                HeaderInPlaceCheckpoint()
+                | ContentInPlaceCheckpoint()
+                | NoopContentInPlaceCheckpoint()
+                | CompletedInPlaceCheckpoint()
+            ):
                 checkpoint = checkpoint.model_copy(
                     update={"current_revision_id": result.output_revision_id}
                 )
@@ -432,9 +470,19 @@ class DocumentTransformExecutor(DocumentTransformRunner):
         self, checkpoint: InPlaceCheckpoint | CopyCheckpoint
     ) -> InPlaceCheckpoint | CopyCheckpoint:
         match checkpoint:
-            case CopyCheckpoint():
+            case (
+                PlannedCopyCheckpoint()
+                | CreatingCopyCheckpoint()
+                | CreatedCopyCheckpoint()
+                | VerifiedCopyCheckpoint()
+            ):
                 return await self._save_copy_checkpoint(checkpoint)
-            case InPlaceCheckpoint():
+            case (
+                HeaderInPlaceCheckpoint()
+                | ContentInPlaceCheckpoint()
+                | NoopContentInPlaceCheckpoint()
+                | CompletedInPlaceCheckpoint()
+            ):
                 return await self._save_checkpoint(checkpoint)
 
     async def _finalize_readable_copy(
@@ -494,7 +542,7 @@ class DocumentTransformExecutor(DocumentTransformRunner):
         ):
             raise OutputConflictError
         if checkpoint.stage is CopyCheckpointStage.VERIFIED:
-            if recovered is None or checkpoint.result is None:
+            if recovered is None:
                 raise OutputConflictError
             snapshot, original = _structure_inputs(snapshot, outcome.document, checkpoint)
             return await self._complete_verified_copy(
@@ -579,15 +627,10 @@ class DocumentTransformExecutor(DocumentTransformRunner):
             applied_validation=applied_validation,
             findings=findings,
         )
+        if not isinstance(checkpoint, CreatedCopyCheckpoint):
+            raise OutputConflictError
         checkpoint = await self._save_copy_checkpoint(
-            checkpoint.model_copy(
-                update={
-                    "stage": CopyCheckpointStage.VERIFIED,
-                    "output": applied.output,
-                    "output_revision_id": applied.revision_id,
-                    "result": result,
-                }
-            )
+            verify_copy(checkpoint, applied.output, applied.revision_id, result)
         )
         return await self._complete_verified_copy(
             operation_id=operation_id,
@@ -721,9 +764,7 @@ class DocumentTransformExecutor(DocumentTransformRunner):
                 raise DocumentGatewayError(retryable=True)
             if checkpoint.stage is not CopyCheckpointStage.PLANNED:
                 raise OutputConflictError
-            checkpoint = await self._save_copy_checkpoint(
-                checkpoint.model_copy(update={"stage": CopyCheckpointStage.CREATING})
-            )
+            checkpoint = await self._save_copy_checkpoint(begin_copy(checkpoint))
             draft = await self._create_output(
                 operation_id=operation_id,
                 request=request,
@@ -735,13 +776,7 @@ class DocumentTransformExecutor(DocumentTransformRunner):
             )
             await self._record_copy_resource(draft.output.file_id)
             checkpoint = await self._save_copy_checkpoint(
-                checkpoint.model_copy(
-                    update={
-                        "stage": CopyCheckpointStage.CREATED,
-                        "output": draft.output,
-                        "output_revision_id": draft.revision_id,
-                    }
-                )
+                record_copy(checkpoint, draft.output, draft.revision_id)
             )
         else:
             draft = recovered
@@ -753,13 +788,7 @@ class DocumentTransformExecutor(DocumentTransformRunner):
             if checkpoint.stage is CopyCheckpointStage.CREATING:
                 await self._record_copy_resource(draft.output.file_id)
                 checkpoint = await self._save_copy_checkpoint(
-                    checkpoint.model_copy(
-                        update={
-                            "stage": CopyCheckpointStage.CREATED,
-                            "output": draft.output,
-                            "output_revision_id": draft.revision_id,
-                        }
-                    )
+                    record_copy(checkpoint, draft.output, draft.revision_id)
                 )
         return checkpoint, draft
 
@@ -1069,7 +1098,9 @@ class DocumentTransformExecutor(DocumentTransformRunner):
         if not verify_structure_content(structure, document):
             raise OutputVerificationError
         revision = DocsRevisionId(document["revisionId"])
-        structure = replace(structure, stage=StructureStage.VERIFIED, revision_id=revision)
+        if not isinstance(structure, MovingStructureCheckpoint):
+            raise OutputVerificationError
+        structure = complete_structure(structure, revision)
         await self._save_copy_checkpoint(checkpoint.model_copy(update={"tab_structure": structure}))
         return replace(draft, revision_id=revision)
 
@@ -1175,11 +1206,14 @@ class DocumentTransformExecutor(DocumentTransformRunner):
         checkpoint = self._checkpoint
         if checkpoint is None:
             return None
-        if not isinstance(checkpoint, CopyCheckpoint):
+        if not isinstance(checkpoint, CopyPlan):
             raise OutputConflictError
-        return checkpoint
+        try:
+            return CopyCheckpointPayload.model_validate(checkpoint.model_dump()).root
+        except ValueError as error:
+            raise OutputConflictError from error
 
-    async def _save_copy_checkpoint(self, checkpoint: CopyCheckpoint) -> CopyCheckpoint:
+    async def _save_copy_checkpoint[T: CopyCheckpoint](self, checkpoint: T) -> T:
         if self._checkpoint_store is None:
             self._checkpoint = checkpoint
             return checkpoint
@@ -1387,7 +1421,7 @@ class DocumentTransformExecutor(DocumentTransformRunner):
         snapshot: SourceSnapshot,
     ) -> InPlaceCheckpoint | None:
         checkpoint = self._checkpoint
-        if checkpoint is not None and not isinstance(checkpoint, InPlaceCheckpoint):
+        if checkpoint is not None and checkpoint.kind != "in_place":
             raise OutputConflictError
         if checkpoint is None and snapshot.modified_time != source.expected_modified_time:
             raise SourceChangedError
@@ -1467,18 +1501,15 @@ class DocumentTransformExecutor(DocumentTransformRunner):
         )
         if checkpoint.table_font_plan is not None:
             requests.extend(table_font_requests(checkpoint.table_font_plan))
-        checkpoint = checkpoint.model_copy(
-            update={
-                "stage": InPlaceCheckpointStage.CONTENT,
-                "current_revision_id": stage_result.revision_id,
-                "marker_name": _in_place_marker(operation_id, "content", requests),
-                "marker_range": inspection.marker_range,
-                "mutation_sha256": mutation_sha256(requests),
-                "requests": requests,
-                "headers": {
-                    str(header.tab_id): str(header.header_id) for header in inspection.headers
-                },
-            }
+        checkpoint = transition_in_place(
+            checkpoint,
+            stage=InPlaceCheckpointStage.CONTENT,
+            current_revision_id=stage_result.revision_id,
+            marker_name=_in_place_marker(operation_id, "content", requests),
+            marker_range=inspection.marker_range,
+            mutation_sha256=mutation_sha256(requests),
+            requests=requests,
+            headers={str(header.tab_id): str(header.header_id) for header in inspection.headers},
         )
         checkpoint = await self._save_checkpoint(checkpoint)
         return _InPlaceStage(snapshot, inspection, checkpoint)
@@ -1562,7 +1593,15 @@ class DocumentTransformExecutor(DocumentTransformRunner):
                 checkpoint=checkpoint,
             )
             checkpoint = await self._save_checkpoint(
-                checkpoint.model_copy(update={"stage": InPlaceCheckpointStage.COMPLETE})
+                transition_in_place(
+                    checkpoint,
+                    stage=InPlaceCheckpointStage.COMPLETE,
+                    current_revision_id=checkpoint.current_revision_id,
+                    requests=[],
+                    marker_name=None,
+                    marker_range=None,
+                    mutation_sha256=None,
+                )
             )
             return self._in_place_result(
                 operation_id=operation_id,
@@ -1602,15 +1641,14 @@ class DocumentTransformExecutor(DocumentTransformRunner):
             checkpoint=checkpoint,
         )
         checkpoint = await self._save_checkpoint(
-            checkpoint.model_copy(
-                update={
-                    "stage": InPlaceCheckpointStage.COMPLETE,
-                    "current_revision_id": checkpoint.current_revision_id,
-                    "requests": [],
-                    "marker_name": None,
-                    "marker_range": None,
-                    "mutation_sha256": None,
-                }
+            transition_in_place(
+                checkpoint,
+                stage=InPlaceCheckpointStage.COMPLETE,
+                current_revision_id=checkpoint.current_revision_id,
+                requests=[],
+                marker_name=None,
+                marker_range=None,
+                mutation_sha256=None,
             )
         )
         return self._in_place_result(
@@ -1819,67 +1857,78 @@ class DocumentTransformExecutor(DocumentTransformRunner):
         revision_id = snapshot.revision_id
         if revision_id is None:
             raise InPlaceNotAllowedError
-        return InPlaceCheckpoint(
-            visual_authority_block_ids=tuple(NativeFontBlockId(item) for item in visual_ids),
-            preserved_font_block_ids=tuple(NativeFontBlockId(item) for item in preserved_font_ids),
-            paragraph_layout=paragraph_layout,
-            table_font_plan=table_scope.plan,
-            native_font_proof=native_font_proof,
-            custom_furniture=inspection.custom_furniture,
-            custom_header_titles=tuple(
-                dict.fromkeys(
-                    (
-                        *inspection.custom_header_titles_present,
-                        *inspection.custom_header_title_targets,
+        return InPlaceCheckpointPayload.model_validate(
+            {
+                "visual_authority_block_ids": tuple(NativeFontBlockId(item) for item in visual_ids),
+                "preserved_font_block_ids": tuple(
+                    NativeFontBlockId(item) for item in preserved_font_ids
+                ),
+                "paragraph_layout": paragraph_layout,
+                "table_font_plan": table_scope.plan,
+                "native_font_proof": native_font_proof,
+                "custom_furniture": inspection.custom_furniture,
+                "custom_header_titles": tuple(
+                    dict.fromkeys(
+                        (
+                            *inspection.custom_header_titles_present,
+                            *inspection.custom_header_title_targets,
+                        )
                     )
                 )
-            )
-            if branded
-            else (),
-            custom_header_title_targets=inspection.custom_header_title_targets if branded else (),
-            custom_header_titles_required=branded
-            and bool(any(binding.header_ids for binding in inspection.custom_furniture)),
-            pagination=pagination,
-            header_identity=inspection.header_identity,
-            document_id=source.file_id,
-            source_title=snapshot.title,
-            source_sha256=_source_sha256(snapshot, original),
-            source_modified_time=source.expected_modified_time,
-            brand_profile_id=CURRENT_BRAND_MANIFEST.profile_id,
-            brand_profile_sha256=CURRENT_BRAND_MANIFEST.sha256,
-            pipeline_version=PIPELINE_VERSION,
-            request_builder_version=IN_PLACE_REQUEST_BUILDER_VERSION,
-            unslop_catalog_sha256=UNSLOP_CATALOG_SHA256,
-            original_semantic_sha256=original.semantic_sha256,
-            expected_semantic_sha256=outcome.document.semantic_sha256,
-            structural_sha256=inspection.structural_sha256,
-            protected_structure_sha256=table_scope.protected_sha256,
-            body_sha256=inspection.body_sha256,
-            header_safe_sha256=inspection.header_safe_sha256,
-            source_revision_id=revision_id,
-            current_revision_id=revision_id,
-            stage=stage,
-            marker_name=_in_place_marker(operation_id, stage.value, requests) if requests else None,
-            marker_range=inspection.marker_range if requests else None,
-            mutation_sha256=mutation_sha256(requests) if requests else None,
-            requests=requests,
-            replacements=replacements,
-            findings=_in_place_preservation_findings(
-                plan, preserved_findings, table_scope, inspection, branded=branded
-            ),
-            applied_patch_count=outcome.applied_count,
-            deterministic_patch_count=outcome.deterministic_count,
-            model_patch_count=outcome.model_count,
-            llm_invoked=outcome.llm_invoked,
-            model_ids=[ModelId(value) for value in self._generator.model_ids]
-            if outcome.llm_invoked
-            else [],
-            headers={str(header.tab_id): str(header.header_id) for header in inspection.headers},
-            preserved_headers={
-                str(header.tab_id): str(header.header_id) for header in inspection.preserved_headers
-            },
-            changed=bool(requests),
-        )
+                if branded
+                else (),
+                "custom_header_title_targets": inspection.custom_header_title_targets
+                if branded
+                else (),
+                "custom_header_titles_required": branded
+                and bool(any(binding.header_ids for binding in inspection.custom_furniture)),
+                "pagination": pagination,
+                "header_identity": inspection.header_identity,
+                "document_id": source.file_id,
+                "source_title": snapshot.title,
+                "source_sha256": _source_sha256(snapshot, original),
+                "source_modified_time": source.expected_modified_time,
+                "brand_profile_id": CURRENT_BRAND_MANIFEST.profile_id,
+                "brand_profile_sha256": CURRENT_BRAND_MANIFEST.sha256,
+                "pipeline_version": PIPELINE_VERSION,
+                "request_builder_version": IN_PLACE_REQUEST_BUILDER_VERSION,
+                "unslop_catalog_sha256": UNSLOP_CATALOG_SHA256,
+                "original_semantic_sha256": original.semantic_sha256,
+                "expected_semantic_sha256": outcome.document.semantic_sha256,
+                "structural_sha256": inspection.structural_sha256,
+                "protected_structure_sha256": table_scope.protected_sha256,
+                "body_sha256": inspection.body_sha256,
+                "header_safe_sha256": inspection.header_safe_sha256,
+                "source_revision_id": revision_id,
+                "current_revision_id": revision_id,
+                "stage": stage,
+                "marker_name": _in_place_marker(operation_id, stage.value, requests)
+                if requests
+                else None,
+                "marker_range": inspection.marker_range if requests else None,
+                "mutation_sha256": mutation_sha256(requests) if requests else None,
+                "requests": requests,
+                "replacements": replacements,
+                "findings": _in_place_preservation_findings(
+                    plan, preserved_findings, table_scope, inspection, branded=branded
+                ),
+                "applied_patch_count": outcome.applied_count,
+                "deterministic_patch_count": outcome.deterministic_count,
+                "model_patch_count": outcome.model_count,
+                "llm_invoked": outcome.llm_invoked,
+                "model_ids": [ModelId(value) for value in self._generator.model_ids]
+                if outcome.llm_invoked
+                else [],
+                "headers": {
+                    str(header.tab_id): str(header.header_id) for header in inspection.headers
+                },
+                "preserved_headers": {
+                    str(header.tab_id): str(header.header_id)
+                    for header in inspection.preserved_headers
+                },
+                "changed": bool(requests),
+            }
+        ).root
 
     async def _prepare_in_place_plan(
         self,
@@ -2022,7 +2071,7 @@ class DocumentTransformExecutor(DocumentTransformRunner):
         final_inspection = await self._gateway.inspect_in_place(
             snapshot=final_snapshot, title=final_snapshot.title
         )
-        checkpoint = InPlaceCheckpoint(
+        checkpoint = CompletedInPlaceCheckpoint(
             visual_authority_block_ids=tuple(NativeFontBlockId(item) for item in visual_ids),
             preserved_font_block_ids=tuple(NativeFontBlockId(item) for item in preserved_font_ids),
             paragraph_layout=paragraph_layout,
@@ -2166,6 +2215,8 @@ class DocumentTransformExecutor(DocumentTransformRunner):
         ]
 
     async def _apply_checkpoint_stage(self, checkpoint: InPlaceCheckpoint) -> InPlaceStageResult:
+        if not isinstance(checkpoint, InPlaceMutation):
+            raise DocumentGatewayError
         if not paragraph_layout_requests_safe(checkpoint.requests, checkpoint.paragraph_layout):
             raise OutputConflictError
         allowed_header_requests = (
@@ -2185,8 +2236,6 @@ class DocumentTransformExecutor(DocumentTransformRunner):
             allowed_header_requests=allowed_header_requests,
         ):
             raise OutputConflictError
-        if checkpoint.marker_name is None or checkpoint.marker_range is None:
-            raise DocumentGatewayError
         if checkpoint.mutation_sha256 != mutation_sha256(checkpoint.requests):
             raise OutputConflictError
         return await self._gateway.apply_in_place_stage(
@@ -2536,7 +2585,7 @@ def _new_copy_checkpoint(
         expected_semantic_sha256=outcome.document.semantic_sha256,
         logo_sha256=logo_sha256,
     )
-    return CopyCheckpoint(
+    return PlannedCopyCheckpoint(
         authored_labels=authored_labels,
         pagination=pagination,
         source_title=snapshot.title,
@@ -2840,7 +2889,7 @@ def _matches_pre_header_checkpoint(
 ) -> bool:
     if snapshot.revision_id is None:
         return False
-    requested_tab_ids = _header_request_tab_ids(checkpoint.requests)
+    requested_tab_ids = _header_request_tab_ids(list(checkpoint.requests))
     if requested_tab_ids is None:
         return False
     current_headers = {str(header.tab_id): str(header.header_id) for header in inspection.headers}
@@ -2864,7 +2913,6 @@ def _is_complex_structure_safe_noop(checkpoint: InPlaceCheckpoint) -> bool:
     return (
         checkpoint.stage is InPlaceCheckpointStage.COMPLETE
         and checkpoint.changed is False
-        and not checkpoint.requests
         and not checkpoint.replacements
         and checkpoint.marker_name is None
         and checkpoint.marker_range is None
@@ -3077,7 +3125,12 @@ def _tab_naming_decline_update(
         "tab_naming_declined_reason": "unsupported_metadata",
     }
     match checkpoint:
-        case InPlaceCheckpoint():
+        case (
+            HeaderInPlaceCheckpoint()
+            | ContentInPlaceCheckpoint()
+            | NoopContentInPlaceCheckpoint()
+            | CompletedInPlaceCheckpoint()
+        ):
             update["changed"] = checkpoint.current_revision_id != checkpoint.source_revision_id
         case _:
             pass

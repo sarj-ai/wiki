@@ -7,134 +7,158 @@
     {
       "table": "alembic_version",
       "decision": "retain",
-      "reason": "Migration bookkeeping, excluded from application table totals."
+      "reason": "Migration bookkeeping, excluded from application table totals.",
+      "lifecycleEvidence": "Migration bookkeeping, excluded from application table totals."
     },
     {
       "table": "cache_entries",
       "decision": "retain",
       "runtime": "backend/app/cache/service.py",
-      "reason": "Protected short-lived Drive/template reads and the bounded registration admission window share this namespaced store. Database constraints bound the internal history; the stable advisory lock still serializes all replicas. Disposable provider caches are cleared once, retiring legacy-key cleanup and its index."
+      "reason": "Protected short-lived Drive/template reads and the bounded registration admission window share this namespaced store. Database constraints bound the internal history; the stable advisory lock still serializes all replicas. Disposable provider caches are cleared once, retiring legacy-key cleanup and its index.",
+      "lifecycleEvidence": "backend/app/cache/service.py"
     },
     {
       "table": "doc_icons",
       "decision": "retain",
       "runtime": "backend/app/extras/service.py",
-      "reason": "Shared file icons remain active; unused cover URLs and write-only attribution fields are removed."
+      "reason": "Shared file icons remain active; unused cover URLs and write-only attribution fields are removed.",
+      "lifecycleEvidence": "backend/app/extras/service.py"
     },
     {
       "table": "document_aliases",
       "decision": "retain",
       "runtime": "backend/app/aliases/service.py",
-      "reason": "Active and retired names preserve public links and prevent reassignment. Drop created_by, created_at and retired_by: no runtime reader consumes attribution. retired_at continues to enforce permanent name reservations. Alias service no longer needs a separate user parameter; authenticated Drive access still gates every operation."
+      "reason": "Active and retired names preserve public links and prevent reassignment. Drop created_by, created_at and retired_by: no runtime reader consumes attribution. retired_at continues to enforce permanent name reservations. Alias service no longer needs a separate user parameter; authenticated Drive access still gates every operation.",
+      "lifecycleEvidence": "backend/app/aliases/service.py"
     },
     {
       "table": "document_header_provenance",
       "decision": "retain",
       "runtime": "backend/app/tasks/service.py",
-      "reason": "Verified header ownership survives task expiry and authorizes later in-place edits."
+      "reason": "Verified header ownership survives task expiry and authorizes later in-place edits.",
+      "lifecycleEvidence": "backend/app/tasks/service.py"
     },
     {
       "table": "document_transform_qa_corpus_campaigns",
       "decision": "delete",
-      "reason": "Retired optional cloud QA service has no product frontend callers. Issuer, workload endpoints, launchers, owner-only QA execution branches and infrastructure retire together; generated Drive documents remain untouched."
+      "reason": "Retired optional cloud QA service has no product frontend callers. Issuer, workload endpoints, launchers, owner-only QA execution branches and infrastructure retire together; generated Drive documents remain untouched.",
+      "lifecycleEvidence": "Retired optional cloud QA service has no product frontend callers. Issuer, workload endpoints, launchers, owner-only QA execution branches and infrastructure retire together; generated Drive documents remain untouched."
     },
     {
       "table": "document_transform_qa_corpus_members",
       "decision": "delete",
-      "reason": "Retired optional cloud QA service has no product frontend callers. Issuer, workload endpoints, launchers, owner-only QA execution branches and infrastructure retire together; generated Drive documents remain untouched."
+      "reason": "Retired optional cloud QA service has no product frontend callers. Issuer, workload endpoints, launchers, owner-only QA execution branches and infrastructure retire together; generated Drive documents remain untouched.",
+      "lifecycleEvidence": "Retired optional cloud QA service has no product frontend callers. Issuer, workload endpoints, launchers, owner-only QA execution branches and infrastructure retire together; generated Drive documents remain untouched."
     },
     {
       "table": "document_transform_qa_corpus_submissions",
       "decision": "delete",
-      "reason": "Retired optional cloud QA service has no product frontend callers. Issuer, workload endpoints, launchers, owner-only QA execution branches and infrastructure retire together; generated Drive documents remain untouched."
+      "reason": "Retired optional cloud QA service has no product frontend callers. Issuer, workload endpoints, launchers, owner-only QA execution branches and infrastructure retire together; generated Drive documents remain untouched.",
+      "lifecycleEvidence": "Retired optional cloud QA service has no product frontend callers. Issuer, workload endpoints, launchers, owner-only QA execution branches and infrastructure retire together; generated Drive documents remain untouched."
     },
     {
       "table": "document_transform_qa_grants",
       "decision": "delete",
-      "reason": "Retired optional cloud QA service has no product frontend callers. Issuer, workload endpoints, launchers, owner-only QA execution branches and infrastructure retire together; generated Drive documents remain untouched."
+      "reason": "Retired optional cloud QA service has no product frontend callers. Issuer, workload endpoints, launchers, owner-only QA execution branches and infrastructure retire together; generated Drive documents remain untouched.",
+      "lifecycleEvidence": "Retired optional cloud QA service has no product frontend callers. Issuer, workload endpoints, launchers, owner-only QA execution branches and infrastructure retire together; generated Drive documents remain untouched."
     },
     {
       "table": "document_transform_qa_runs",
       "decision": "delete",
-      "reason": "Retired optional cloud QA service has no product frontend callers. Issuer, workload endpoints, launchers, owner-only QA execution branches and infrastructure retire together; generated Drive documents remain untouched."
+      "reason": "Retired optional cloud QA service has no product frontend callers. Issuer, workload endpoints, launchers, owner-only QA execution branches and infrastructure retire together; generated Drive documents remain untouched.",
+      "lifecycleEvidence": "Retired optional cloud QA service has no product frontend callers. Issuer, workload endpoints, launchers, owner-only QA execution branches and infrastructure retire together; generated Drive documents remain untouched."
     },
     {
       "table": "drive_tree_cache",
       "decision": "delete",
-      "reason": "Unmodeled global cache left by old migrations. Runtime uses only user_drive_tree_cache; no active reader or writer remains."
+      "reason": "Unmodeled global cache left by old migrations. Runtime uses only user_drive_tree_cache; no active reader or writer remains.",
+      "lifecycleEvidence": "Unmodeled global cache left by old migrations. Runtime uses only user_drive_tree_cache; no active reader or writer remains."
     },
     {
       "table": "mcp_grants",
       "decision": "retain",
       "runtime": "backend/app/mcp/grants.py",
-      "reason": "User/client grants support expiry, revocation and permission checks across credentials."
+      "reason": "User/client grants support expiry, revocation and permission checks across credentials.",
+      "lifecycleEvidence": "backend/app/mcp/grants.py"
     },
     {
       "table": "mcp_native_state",
       "decision": "consolidate",
       "target": "mcp_oauth_entries",
-      "reason": "Identical encrypted state shape. Native collections retain their namespace, digest, ciphertext and expiry; quotas and one-time consumption remain enforced."
+      "reason": "Identical encrypted state shape. Native collections retain their namespace, digest, ciphertext and expiry; quotas and one-time consumption remain enforced.",
+      "lifecycleEvidence": "Identical encrypted state shape. Native collections retain their namespace, digest, ciphertext and expiry; quotas and one-time consumption remain enforced."
     },
     {
       "table": "mcp_oauth_entries",
       "decision": "retain",
       "runtime": "backend/app/mcp/native_state.py",
-      "reason": "The active native issuer stores encrypted clients, intents, codes, access and refresh credentials here. The old OAuth proxy has no application callers: retire its collections, SDK key/value adapter, bulk methods, direct dependency, and write-only updated_at column. Keep the transaction lock as PostgresOAuthOperations."
+      "reason": "The active native issuer stores encrypted clients, intents, codes, access and refresh credentials here. The old OAuth proxy has no application callers: retire its collections, SDK key/value adapter, bulk methods, direct dependency, and write-only updated_at column. Keep the transaction lock as PostgresOAuthOperations.",
+      "lifecycleEvidence": "backend/app/mcp/native_state.py"
     },
     {
       "table": "mcp_registration_admission",
       "decision": "consolidate",
       "runtime": "backend/app/mcp/native_admission.py",
       "reason": "One bounded expiring registration history needs no separate singleton table. Copy timestamps under the original advisory lock and table locks; preserve the two rolling windows, database bounds, failure redaction, and nonrefundable committed admission.",
-      "target": "cache_entries"
+      "target": "cache_entries",
+      "lifecycleEvidence": "backend/app/mcp/native_admission.py"
     },
     {
       "table": "task_replay_keys",
       "decision": "retain",
       "runtime": "backend/app/tasks/service.py",
-      "reason": "Multiple client keys can refer to one task; separate uniqueness prevents duplicate work."
+      "reason": "Multiple client keys can refer to one task; separate uniqueness prevents duplicate work.",
+      "lifecycleEvidence": "backend/app/tasks/service.py"
     },
     {
       "table": "tasks",
       "decision": "retain",
       "runtime": "backend/app/tasks/service.py",
-      "reason": "Durable execution, leases, checkpoints, dispatch and results for active document operations."
+      "reason": "Durable execution, leases, checkpoints, dispatch and results for active document operations.",
+      "lifecycleEvidence": "backend/app/tasks/service.py"
     },
     {
       "table": "user_drive_tree_cache",
       "decision": "retain",
       "runtime": "backend/app/sidebar/cache.py",
-      "reason": "Principal-scoped encrypted tree snapshots need independent version and invalidation queries."
+      "reason": "Principal-scoped encrypted tree snapshots need independent version and invalidation queries.",
+      "lifecycleEvidence": "backend/app/sidebar/cache.py"
     },
     {
       "table": "user_folder_icons",
       "decision": "consolidate",
       "target": "users",
-      "reason": "One owner row stores scalar preferences and JSON maps. SQL merges preserve simultaneous edits; the three tables and UNION/bulk-insert machinery retire."
+      "reason": "One owner row stores scalar preferences and JSON maps. SQL merges preserve simultaneous edits; the three tables and UNION/bulk-insert machinery retire.",
+      "lifecycleEvidence": "One owner row stores scalar preferences and JSON maps. SQL merges preserve simultaneous edits; the three tables and UNION/bulk-insert machinery retire."
     },
     {
       "table": "user_preferences",
       "decision": "consolidate",
       "target": "users",
-      "reason": "One owner row stores scalar preferences and JSON maps. SQL merges preserve simultaneous edits; the three tables and UNION/bulk-insert machinery retire."
+      "reason": "One owner row stores scalar preferences and JSON maps. SQL merges preserve simultaneous edits; the three tables and UNION/bulk-insert machinery retire.",
+      "lifecycleEvidence": "One owner row stores scalar preferences and JSON maps. SQL merges preserve simultaneous edits; the three tables and UNION/bulk-insert machinery retire."
     },
     {
       "table": "user_sessions",
       "decision": "retain",
       "runtime": "backend/app/auth/service.py",
-      "reason": "Refresh token families and revocation outlive individual bearer tokens."
+      "reason": "Refresh token families and revocation outlive individual bearer tokens.",
+      "lifecycleEvidence": "backend/app/auth/service.py"
     },
     {
       "table": "user_sort_order",
       "decision": "consolidate",
       "target": "users",
-      "reason": "One owner row stores scalar preferences and JSON maps. SQL merges preserve simultaneous edits; the three tables and UNION/bulk-insert machinery retire."
+      "reason": "One owner row stores scalar preferences and JSON maps. SQL merges preserve simultaneous edits; the three tables and UNION/bulk-insert machinery retire.",
+      "lifecycleEvidence": "One owner row stores scalar preferences and JSON maps. SQL merges preserve simultaneous edits; the three tables and UNION/bulk-insert machinery retire."
     },
     {
       "table": "users",
       "decision": "retain",
       "runtime": "backend/app/auth/service.py",
-      "reason": "Current identity, encrypted Google credentials, refresh fencing, and per-user settings."
+      "reason": "Current identity, encrypted Google credentials, refresh fencing, and per-user settings.",
+      "lifecycleEvidence": "backend/app/auth/service.py",
+      "currentChange": "Migration 0027 clears access ciphertext without expiry (16 unusable values in production preflight), retaining refresh credentials and versions. Enforce access/expiry pairing, lease pairing, lease-refresh dependency and nonnegative fencing generations in PostgreSQL."
     }
   ],
   "retainedInputContracts": {
@@ -184,5 +208,949 @@
     "Unused generic OAuth SDK key/value and bulk API; active native state remains encrypted and permission checked.",
     "Unused alias attribution columns, foreign keys, indexes and service injection.",
     "Legacy disposable provider-cache cleanup branch and index."
-  ]
+  ],
+  "currentMigration": "0027_google_token_invariants",
+  "currentApplicationTableCount": 11,
+  "productionPreflight": {
+    "credentialInvariants": {
+      "access_without_expiry": 16,
+      "expiry_without_access": 0,
+      "invalid_generation": 0,
+      "lease_without_refresh": 0,
+      "mismatched_lease": 0
+    },
+    "migration": "0026_retire_oauth_proxy",
+    "tables": [
+      {
+        "columns": [
+          {
+            "column_name": "version_num",
+            "data_type": "character varying",
+            "is_nullable": "NO"
+          }
+        ],
+        "constraints": [
+          {
+            "conname": "alembic_version_pkc",
+            "definition": "PRIMARY KEY (version_num)"
+          },
+          {
+            "conname": "alembic_version_version_num_not_null",
+            "definition": "NOT NULL version_num"
+          }
+        ],
+        "rows": 1,
+        "table": "alembic_version"
+      },
+      {
+        "columns": [
+          {
+            "column_name": "namespace",
+            "data_type": "text",
+            "is_nullable": "NO"
+          },
+          {
+            "column_name": "key",
+            "data_type": "text",
+            "is_nullable": "NO"
+          },
+          {
+            "column_name": "value",
+            "data_type": "jsonb",
+            "is_nullable": "NO"
+          },
+          {
+            "column_name": "expires_at",
+            "data_type": "timestamp with time zone",
+            "is_nullable": "NO"
+          }
+        ],
+        "constraints": [
+          {
+            "conname": "cache_entries_expires_at_not_null",
+            "definition": "NOT NULL expires_at"
+          },
+          {
+            "conname": "cache_entries_key_not_null",
+            "definition": "NOT NULL key"
+          },
+          {
+            "conname": "cache_entries_namespace_not_null",
+            "definition": "NOT NULL namespace"
+          },
+          {
+            "conname": "cache_entries_pkey",
+            "definition": "PRIMARY KEY (namespace, key)"
+          },
+          {
+            "conname": "cache_entries_value_not_null",
+            "definition": "NOT NULL value"
+          },
+          {
+            "conname": "ck_cache_registration_history",
+            "definition": "CHECK (((namespace <> 'mcp.registration'::text) OR ((key = 'global'::text) AND\nCASE\n    WHEN (jsonb_typeof(value) = 'array'::text) THEN ((jsonb_array_length(value) <= 300) AND (NOT jsonb_path_exists(value, '$[*]?(@.type() != \"string\")'::jsonpath)))\n    ELSE false\nEND)))"
+          }
+        ],
+        "rows": 1,
+        "table": "cache_entries"
+      },
+      {
+        "columns": [
+          {
+            "column_name": "drive_id",
+            "data_type": "text",
+            "is_nullable": "NO"
+          },
+          {
+            "column_name": "icon",
+            "data_type": "text",
+            "is_nullable": "YES"
+          }
+        ],
+        "constraints": [
+          {
+            "conname": "doc_icons_drive_id_not_null",
+            "definition": "NOT NULL drive_id"
+          },
+          {
+            "conname": "doc_icons_pkey",
+            "definition": "PRIMARY KEY (drive_id)"
+          }
+        ],
+        "rows": 64,
+        "table": "doc_icons"
+      },
+      {
+        "columns": [
+          {
+            "column_name": "alias",
+            "data_type": "text",
+            "is_nullable": "NO"
+          },
+          {
+            "column_name": "file_id",
+            "data_type": "text",
+            "is_nullable": "NO"
+          },
+          {
+            "column_name": "retired_at",
+            "data_type": "timestamp with time zone",
+            "is_nullable": "YES"
+          }
+        ],
+        "constraints": [
+          {
+            "conname": "ck_document_aliases_format",
+            "definition": "CHECK (((char_length(alias) <= 32) AND (alias ~ '^[a-z]{2,12}(-[a-z]{2,12}){1,2}$'::text)))"
+          },
+          {
+            "conname": "document_aliases_alias_not_null",
+            "definition": "NOT NULL alias"
+          },
+          {
+            "conname": "document_aliases_file_id_not_null",
+            "definition": "NOT NULL file_id"
+          },
+          {
+            "conname": "document_aliases_pkey",
+            "definition": "PRIMARY KEY (alias)"
+          }
+        ],
+        "rows": 114,
+        "table": "document_aliases"
+      },
+      {
+        "columns": [
+          {
+            "column_name": "owner_user_id",
+            "data_type": "uuid",
+            "is_nullable": "NO"
+          },
+          {
+            "column_name": "file_id",
+            "data_type": "text",
+            "is_nullable": "NO"
+          },
+          {
+            "column_name": "producer_operation_id",
+            "data_type": "uuid",
+            "is_nullable": "NO"
+          },
+          {
+            "column_name": "evidence",
+            "data_type": "jsonb",
+            "is_nullable": "NO"
+          },
+          {
+            "column_name": "result_sha256",
+            "data_type": "text",
+            "is_nullable": "NO"
+          },
+          {
+            "column_name": "verified_revision_sha256",
+            "data_type": "text",
+            "is_nullable": "NO"
+          },
+          {
+            "column_name": "created_at",
+            "data_type": "timestamp with time zone",
+            "is_nullable": "NO"
+          }
+        ],
+        "constraints": [
+          {
+            "conname": "document_header_provenance_created_at_not_null",
+            "definition": "NOT NULL created_at"
+          },
+          {
+            "conname": "document_header_provenance_evidence_not_null",
+            "definition": "NOT NULL evidence"
+          },
+          {
+            "conname": "document_header_provenance_file_id_not_null",
+            "definition": "NOT NULL file_id"
+          },
+          {
+            "conname": "document_header_provenance_owner_user_id_fkey",
+            "definition": "FOREIGN KEY (owner_user_id) REFERENCES users(id) ON DELETE CASCADE"
+          },
+          {
+            "conname": "document_header_provenance_owner_user_id_not_null",
+            "definition": "NOT NULL owner_user_id"
+          },
+          {
+            "conname": "document_header_provenance_pkey",
+            "definition": "PRIMARY KEY (owner_user_id, file_id)"
+          },
+          {
+            "conname": "document_header_provenance_producer_operation_id_not_null",
+            "definition": "NOT NULL producer_operation_id"
+          },
+          {
+            "conname": "document_header_provenance_result_sha256_not_null",
+            "definition": "NOT NULL result_sha256"
+          },
+          {
+            "conname": "document_header_provenance_verified_revision_sha256_not_null",
+            "definition": "NOT NULL verified_revision_sha256"
+          }
+        ],
+        "rows": 34,
+        "table": "document_header_provenance"
+      },
+      {
+        "columns": [
+          {
+            "column_name": "id",
+            "data_type": "uuid",
+            "is_nullable": "NO"
+          },
+          {
+            "column_name": "user_id",
+            "data_type": "uuid",
+            "is_nullable": "NO"
+          },
+          {
+            "column_name": "client_id",
+            "data_type": "text",
+            "is_nullable": "NO"
+          },
+          {
+            "column_name": "user_session_revision",
+            "data_type": "integer",
+            "is_nullable": "NO"
+          },
+          {
+            "column_name": "transform_allowed",
+            "data_type": "boolean",
+            "is_nullable": "NO"
+          },
+          {
+            "column_name": "created_at",
+            "data_type": "timestamp with time zone",
+            "is_nullable": "NO"
+          },
+          {
+            "column_name": "expires_at",
+            "data_type": "timestamp with time zone",
+            "is_nullable": "NO"
+          },
+          {
+            "column_name": "revoked_at",
+            "data_type": "timestamp with time zone",
+            "is_nullable": "YES"
+          }
+        ],
+        "constraints": [
+          {
+            "conname": "mcp_grants_client_id_not_null",
+            "definition": "NOT NULL client_id"
+          },
+          {
+            "conname": "mcp_grants_created_at_not_null",
+            "definition": "NOT NULL created_at"
+          },
+          {
+            "conname": "mcp_grants_expires_at_not_null",
+            "definition": "NOT NULL expires_at"
+          },
+          {
+            "conname": "mcp_grants_id_not_null",
+            "definition": "NOT NULL id"
+          },
+          {
+            "conname": "mcp_grants_pkey",
+            "definition": "PRIMARY KEY (id)"
+          },
+          {
+            "conname": "mcp_grants_transform_allowed_not_null",
+            "definition": "NOT NULL transform_allowed"
+          },
+          {
+            "conname": "mcp_grants_user_id_fkey",
+            "definition": "FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE"
+          },
+          {
+            "conname": "mcp_grants_user_id_not_null",
+            "definition": "NOT NULL user_id"
+          },
+          {
+            "conname": "mcp_grants_user_session_revision_not_null",
+            "definition": "NOT NULL user_session_revision"
+          }
+        ],
+        "rows": 3,
+        "table": "mcp_grants"
+      },
+      {
+        "columns": [
+          {
+            "column_name": "collection",
+            "data_type": "text",
+            "is_nullable": "NO"
+          },
+          {
+            "column_name": "key_digest",
+            "data_type": "text",
+            "is_nullable": "NO"
+          },
+          {
+            "column_name": "ciphertext",
+            "data_type": "text",
+            "is_nullable": "NO"
+          },
+          {
+            "column_name": "expires_at",
+            "data_type": "timestamp with time zone",
+            "is_nullable": "YES"
+          }
+        ],
+        "constraints": [
+          {
+            "conname": "mcp_oauth_entries_ciphertext_not_null",
+            "definition": "NOT NULL ciphertext"
+          },
+          {
+            "conname": "mcp_oauth_entries_collection_not_null",
+            "definition": "NOT NULL collection"
+          },
+          {
+            "conname": "mcp_oauth_entries_key_digest_not_null",
+            "definition": "NOT NULL key_digest"
+          },
+          {
+            "conname": "mcp_oauth_entries_pkey",
+            "definition": "PRIMARY KEY (collection, key_digest)"
+          }
+        ],
+        "rows": 14,
+        "table": "mcp_oauth_entries"
+      },
+      {
+        "columns": [
+          {
+            "column_name": "owner_user_id",
+            "data_type": "uuid",
+            "is_nullable": "NO"
+          },
+          {
+            "column_name": "kind",
+            "data_type": "text",
+            "is_nullable": "NO"
+          },
+          {
+            "column_name": "idempotency_key",
+            "data_type": "uuid",
+            "is_nullable": "NO"
+          },
+          {
+            "column_name": "task_id",
+            "data_type": "uuid",
+            "is_nullable": "NO"
+          }
+        ],
+        "constraints": [
+          {
+            "conname": "task_replay_keys_idempotency_key_not_null",
+            "definition": "NOT NULL idempotency_key"
+          },
+          {
+            "conname": "task_replay_keys_kind_not_null",
+            "definition": "NOT NULL kind"
+          },
+          {
+            "conname": "task_replay_keys_owner_user_id_fkey",
+            "definition": "FOREIGN KEY (owner_user_id) REFERENCES users(id) ON DELETE CASCADE"
+          },
+          {
+            "conname": "task_replay_keys_owner_user_id_not_null",
+            "definition": "NOT NULL owner_user_id"
+          },
+          {
+            "conname": "task_replay_keys_pkey",
+            "definition": "PRIMARY KEY (owner_user_id, kind, idempotency_key)"
+          },
+          {
+            "conname": "task_replay_keys_task_id_fkey",
+            "definition": "FOREIGN KEY (task_id) REFERENCES tasks(id) ON DELETE CASCADE"
+          },
+          {
+            "conname": "task_replay_keys_task_id_not_null",
+            "definition": "NOT NULL task_id"
+          }
+        ],
+        "rows": 2,
+        "table": "task_replay_keys"
+      },
+      {
+        "columns": [
+          {
+            "column_name": "id",
+            "data_type": "uuid",
+            "is_nullable": "NO"
+          },
+          {
+            "column_name": "owner_user_id",
+            "data_type": "uuid",
+            "is_nullable": "NO"
+          },
+          {
+            "column_name": "kind",
+            "data_type": "text",
+            "is_nullable": "NO"
+          },
+          {
+            "column_name": "status",
+            "data_type": "text",
+            "is_nullable": "NO"
+          },
+          {
+            "column_name": "idempotency_key",
+            "data_type": "uuid",
+            "is_nullable": "NO"
+          },
+          {
+            "column_name": "request_hash",
+            "data_type": "text",
+            "is_nullable": "NO"
+          },
+          {
+            "column_name": "payload",
+            "data_type": "jsonb",
+            "is_nullable": "NO"
+          },
+          {
+            "column_name": "result",
+            "data_type": "jsonb",
+            "is_nullable": "YES"
+          },
+          {
+            "column_name": "resource_id",
+            "data_type": "text",
+            "is_nullable": "YES"
+          },
+          {
+            "column_name": "error_code",
+            "data_type": "text",
+            "is_nullable": "YES"
+          },
+          {
+            "column_name": "error_detail",
+            "data_type": "text",
+            "is_nullable": "YES"
+          },
+          {
+            "column_name": "attempt_count",
+            "data_type": "integer",
+            "is_nullable": "NO"
+          },
+          {
+            "column_name": "lease_token",
+            "data_type": "uuid",
+            "is_nullable": "YES"
+          },
+          {
+            "column_name": "lease_expires_at",
+            "data_type": "timestamp with time zone",
+            "is_nullable": "YES"
+          },
+          {
+            "column_name": "created_at",
+            "data_type": "timestamp with time zone",
+            "is_nullable": "NO"
+          },
+          {
+            "column_name": "started_at",
+            "data_type": "timestamp with time zone",
+            "is_nullable": "YES"
+          },
+          {
+            "column_name": "finished_at",
+            "data_type": "timestamp with time zone",
+            "is_nullable": "YES"
+          },
+          {
+            "column_name": "updated_at",
+            "data_type": "timestamp with time zone",
+            "is_nullable": "NO"
+          },
+          {
+            "column_name": "expires_at",
+            "data_type": "timestamp with time zone",
+            "is_nullable": "NO"
+          },
+          {
+            "column_name": "checkpoint",
+            "data_type": "jsonb",
+            "is_nullable": "YES"
+          },
+          {
+            "column_name": "in_place_target",
+            "data_type": "text",
+            "is_nullable": "YES"
+          },
+          {
+            "column_name": "checkpoint_generation",
+            "data_type": "integer",
+            "is_nullable": "NO"
+          },
+          {
+            "column_name": "dispatch_ready_at",
+            "data_type": "timestamp with time zone",
+            "is_nullable": "YES"
+          }
+        ],
+        "constraints": [
+          {
+            "conname": "ck_tasks_attempt_count_matches_state",
+            "definition": "CHECK ((((status = 'pending'::text) AND (attempt_count = 0)) OR ((status = 'cancelled'::text) AND (attempt_count = 0)) OR ((status = ANY (ARRAY['running'::text, 'succeeded'::text, 'failed'::text])) AND (attempt_count > 0))))"
+          },
+          {
+            "conname": "ck_tasks_attempt_count_nonnegative",
+            "definition": "CHECK ((attempt_count >= 0))"
+          },
+          {
+            "conname": "ck_tasks_checkpoint_generation_nonnegative",
+            "definition": "CHECK ((checkpoint_generation >= 0))"
+          },
+          {
+            "conname": "ck_tasks_checkpoint_object",
+            "definition": "CHECK (((checkpoint IS NULL) OR (jsonb_typeof(checkpoint) = 'object'::text)))"
+          },
+          {
+            "conname": "ck_tasks_expiry_after_creation",
+            "definition": "CHECK ((expires_at > created_at))"
+          },
+          {
+            "conname": "ck_tasks_finish_after_start",
+            "definition": "CHECK (((finished_at IS NULL) OR (started_at IS NULL) OR (finished_at >= started_at)))"
+          },
+          {
+            "conname": "ck_tasks_lease_after_start",
+            "definition": "CHECK (((lease_expires_at IS NULL) OR (lease_expires_at > started_at)))"
+          },
+          {
+            "conname": "ck_tasks_legal_state",
+            "definition": "CHECK ((((status = 'pending'::text) AND (started_at IS NULL) AND (finished_at IS NULL) AND (lease_token IS NULL) AND (lease_expires_at IS NULL) AND (result IS NULL) AND (error_code IS NULL) AND (error_detail IS NULL)) OR ((status = 'running'::text) AND (started_at IS NOT NULL) AND (finished_at IS NULL) AND (lease_token IS NOT NULL) AND (lease_expires_at IS NOT NULL) AND (result IS NULL) AND (error_code IS NULL) AND (error_detail IS NULL)) OR ((status = 'succeeded'::text) AND (started_at IS NOT NULL) AND (finished_at IS NOT NULL) AND (lease_token IS NULL) AND (lease_expires_at IS NULL) AND (result IS NOT NULL) AND (error_code IS NULL) AND (error_detail IS NULL)) OR ((status = 'failed'::text) AND (started_at IS NOT NULL) AND (finished_at IS NOT NULL) AND (lease_token IS NULL) AND (lease_expires_at IS NULL) AND (result IS NULL) AND (error_code IS NOT NULL)) OR ((status = 'cancelled'::text) AND (started_at IS NULL) AND (finished_at IS NOT NULL) AND (lease_token IS NULL) AND (lease_expires_at IS NULL) AND (result IS NULL) AND (error_code IS NULL) AND (error_detail IS NULL))))"
+          },
+          {
+            "conname": "ck_tasks_payload_object",
+            "definition": "CHECK ((jsonb_typeof(payload) = 'object'::text))"
+          },
+          {
+            "conname": "ck_tasks_request_hash",
+            "definition": "CHECK ((char_length(request_hash) = 64))"
+          },
+          {
+            "conname": "ck_tasks_result_object",
+            "definition": "CHECK (((result IS NULL) OR (jsonb_typeof(result) = 'object'::text)))"
+          },
+          {
+            "conname": "ck_tasks_status",
+            "definition": "CHECK ((status = ANY (ARRAY['pending'::text, 'running'::text, 'succeeded'::text, 'failed'::text, 'cancelled'::text])))"
+          },
+          {
+            "conname": "tasks_attempt_count_not_null",
+            "definition": "NOT NULL attempt_count"
+          },
+          {
+            "conname": "tasks_checkpoint_generation_not_null",
+            "definition": "NOT NULL checkpoint_generation"
+          },
+          {
+            "conname": "tasks_created_at_not_null",
+            "definition": "NOT NULL created_at"
+          },
+          {
+            "conname": "tasks_expires_at_not_null",
+            "definition": "NOT NULL expires_at"
+          },
+          {
+            "conname": "tasks_id_not_null",
+            "definition": "NOT NULL id"
+          },
+          {
+            "conname": "tasks_idempotency_key_not_null",
+            "definition": "NOT NULL idempotency_key"
+          },
+          {
+            "conname": "tasks_kind_not_null",
+            "definition": "NOT NULL kind"
+          },
+          {
+            "conname": "tasks_owner_user_id_fkey",
+            "definition": "FOREIGN KEY (owner_user_id) REFERENCES users(id) ON DELETE CASCADE"
+          },
+          {
+            "conname": "tasks_owner_user_id_not_null",
+            "definition": "NOT NULL owner_user_id"
+          },
+          {
+            "conname": "tasks_payload_not_null",
+            "definition": "NOT NULL payload"
+          },
+          {
+            "conname": "tasks_pkey",
+            "definition": "PRIMARY KEY (id)"
+          },
+          {
+            "conname": "tasks_request_hash_not_null",
+            "definition": "NOT NULL request_hash"
+          },
+          {
+            "conname": "tasks_status_not_null",
+            "definition": "NOT NULL status"
+          },
+          {
+            "conname": "tasks_updated_at_not_null",
+            "definition": "NOT NULL updated_at"
+          },
+          {
+            "conname": "uq_tasks_owner_kind_idempotency",
+            "definition": "UNIQUE (owner_user_id, kind, idempotency_key)"
+          }
+        ],
+        "rows": 60,
+        "table": "tasks"
+      },
+      {
+        "columns": [
+          {
+            "column_name": "user_id",
+            "data_type": "uuid",
+            "is_nullable": "NO"
+          },
+          {
+            "column_name": "drive_id",
+            "data_type": "text",
+            "is_nullable": "NO"
+          },
+          {
+            "column_name": "tree",
+            "data_type": "text",
+            "is_nullable": "NO"
+          },
+          {
+            "column_name": "refreshed_at",
+            "data_type": "timestamp with time zone",
+            "is_nullable": "NO"
+          }
+        ],
+        "constraints": [
+          {
+            "conname": "user_drive_tree_cache_drive_id_not_null",
+            "definition": "NOT NULL drive_id"
+          },
+          {
+            "conname": "user_drive_tree_cache_pkey",
+            "definition": "PRIMARY KEY (user_id, drive_id)"
+          },
+          {
+            "conname": "user_drive_tree_cache_refreshed_at_not_null",
+            "definition": "NOT NULL refreshed_at"
+          },
+          {
+            "conname": "user_drive_tree_cache_tree_not_null",
+            "definition": "NOT NULL tree"
+          },
+          {
+            "conname": "user_drive_tree_cache_user_id_fkey",
+            "definition": "FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE"
+          },
+          {
+            "conname": "user_drive_tree_cache_user_id_not_null",
+            "definition": "NOT NULL user_id"
+          }
+        ],
+        "rows": 51,
+        "table": "user_drive_tree_cache"
+      },
+      {
+        "columns": [
+          {
+            "column_name": "id",
+            "data_type": "uuid",
+            "is_nullable": "NO"
+          },
+          {
+            "column_name": "family_id",
+            "data_type": "uuid",
+            "is_nullable": "NO"
+          },
+          {
+            "column_name": "user_id",
+            "data_type": "uuid",
+            "is_nullable": "NO"
+          },
+          {
+            "column_name": "refresh_jti",
+            "data_type": "uuid",
+            "is_nullable": "NO"
+          },
+          {
+            "column_name": "expires_at",
+            "data_type": "timestamp with time zone",
+            "is_nullable": "NO"
+          },
+          {
+            "column_name": "revoked_at",
+            "data_type": "timestamp with time zone",
+            "is_nullable": "YES"
+          },
+          {
+            "column_name": "created_at",
+            "data_type": "timestamp with time zone",
+            "is_nullable": "NO"
+          },
+          {
+            "column_name": "updated_at",
+            "data_type": "timestamp with time zone",
+            "is_nullable": "NO"
+          }
+        ],
+        "constraints": [
+          {
+            "conname": "user_sessions_created_at_not_null",
+            "definition": "NOT NULL created_at"
+          },
+          {
+            "conname": "user_sessions_expires_at_not_null",
+            "definition": "NOT NULL expires_at"
+          },
+          {
+            "conname": "user_sessions_family_id_not_null",
+            "definition": "NOT NULL family_id"
+          },
+          {
+            "conname": "user_sessions_id_not_null",
+            "definition": "NOT NULL id"
+          },
+          {
+            "conname": "user_sessions_pkey",
+            "definition": "PRIMARY KEY (id)"
+          },
+          {
+            "conname": "user_sessions_refresh_jti_not_null",
+            "definition": "NOT NULL refresh_jti"
+          },
+          {
+            "conname": "user_sessions_updated_at_not_null",
+            "definition": "NOT NULL updated_at"
+          },
+          {
+            "conname": "user_sessions_user_id_fkey",
+            "definition": "FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE"
+          },
+          {
+            "conname": "user_sessions_user_id_not_null",
+            "definition": "NOT NULL user_id"
+          }
+        ],
+        "rows": 181,
+        "table": "user_sessions"
+      },
+      {
+        "columns": [
+          {
+            "column_name": "id",
+            "data_type": "uuid",
+            "is_nullable": "NO"
+          },
+          {
+            "column_name": "email",
+            "data_type": "USER-DEFINED",
+            "is_nullable": "NO"
+          },
+          {
+            "column_name": "google_id",
+            "data_type": "text",
+            "is_nullable": "NO"
+          },
+          {
+            "column_name": "display_name",
+            "data_type": "text",
+            "is_nullable": "YES"
+          },
+          {
+            "column_name": "avatar_url",
+            "data_type": "text",
+            "is_nullable": "YES"
+          },
+          {
+            "column_name": "encrypted_access_token",
+            "data_type": "text",
+            "is_nullable": "YES"
+          },
+          {
+            "column_name": "encrypted_refresh_token",
+            "data_type": "text",
+            "is_nullable": "YES"
+          },
+          {
+            "column_name": "created_at",
+            "data_type": "timestamp with time zone",
+            "is_nullable": "NO"
+          },
+          {
+            "column_name": "token_version",
+            "data_type": "integer",
+            "is_nullable": "NO"
+          },
+          {
+            "column_name": "google_access_token_expires_at",
+            "data_type": "timestamp with time zone",
+            "is_nullable": "YES"
+          },
+          {
+            "column_name": "google_token_generation",
+            "data_type": "bigint",
+            "is_nullable": "NO"
+          },
+          {
+            "column_name": "google_refresh_lease_owner",
+            "data_type": "uuid",
+            "is_nullable": "YES"
+          },
+          {
+            "column_name": "google_refresh_lease_until",
+            "data_type": "timestamp with time zone",
+            "is_nullable": "YES"
+          },
+          {
+            "column_name": "show_non_doc_files",
+            "data_type": "boolean",
+            "is_nullable": "NO"
+          },
+          {
+            "column_name": "hidden_workspace_ids",
+            "data_type": "ARRAY",
+            "is_nullable": "NO"
+          },
+          {
+            "column_name": "folder_icons",
+            "data_type": "jsonb",
+            "is_nullable": "NO"
+          },
+          {
+            "column_name": "sort_orders",
+            "data_type": "jsonb",
+            "is_nullable": "NO"
+          }
+        ],
+        "constraints": [
+          {
+            "conname": "users_created_at_not_null",
+            "definition": "NOT NULL created_at"
+          },
+          {
+            "conname": "users_email_key",
+            "definition": "UNIQUE (email)"
+          },
+          {
+            "conname": "users_email_not_null",
+            "definition": "NOT NULL email"
+          },
+          {
+            "conname": "users_folder_icons_not_null",
+            "definition": "NOT NULL folder_icons"
+          },
+          {
+            "conname": "users_google_id_key",
+            "definition": "UNIQUE (google_id)"
+          },
+          {
+            "conname": "users_google_id_not_null",
+            "definition": "NOT NULL google_id"
+          },
+          {
+            "conname": "users_google_token_generation_not_null",
+            "definition": "NOT NULL google_token_generation"
+          },
+          {
+            "conname": "users_hidden_workspace_ids_not_null",
+            "definition": "NOT NULL hidden_workspace_ids"
+          },
+          {
+            "conname": "users_id_not_null",
+            "definition": "NOT NULL id"
+          },
+          {
+            "conname": "users_pkey",
+            "definition": "PRIMARY KEY (id)"
+          },
+          {
+            "conname": "users_show_non_doc_files_not_null",
+            "definition": "NOT NULL show_non_doc_files"
+          },
+          {
+            "conname": "users_sort_orders_not_null",
+            "definition": "NOT NULL sort_orders"
+          },
+          {
+            "conname": "users_token_version_not_null",
+            "definition": "NOT NULL token_version"
+          }
+        ],
+        "rows": 54,
+        "table": "users"
+      }
+    ],
+    "taskStates": [
+      {
+        "count": 26,
+        "kind": "file.document_transform",
+        "status": "failed"
+      },
+      {
+        "count": 4,
+        "kind": "file.document_transform",
+        "status": "running"
+      },
+      {
+        "count": 30,
+        "kind": "file.document_transform",
+        "status": "succeeded"
+      }
+    ]
+  }
 }

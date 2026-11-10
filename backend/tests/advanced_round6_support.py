@@ -19,11 +19,14 @@ from app.document_transform.schemas import (
     CopyCheckpointStage,
     DocumentOutput,
     DocumentTransformResult,
+    HeaderInPlaceCheckpoint,
     InPlaceCheckpoint,
     InPlaceCheckpointStage,
+    PlannedWordCheckpoint,
     TransformFinding,
     TransformMode,
     ValidationSummary,
+    VerifiedCopyCheckpoint,
     WordCopyCheckpoint,
 )
 from app.document_transform.versions import DOCUMENT_PIPELINE_VERSION
@@ -277,7 +280,7 @@ def smart_payload() -> SmartFileCreate:
 
 
 def in_place_checkpoint(*, request_count: int = 1, title: str = "Decision 絵") -> InPlaceCheckpoint:
-    return InPlaceCheckpoint(
+    return HeaderInPlaceCheckpoint(
         document_id=FileId("document-1"),
         source_title=title,
         source_sha256="a" * 64,
@@ -296,6 +299,9 @@ def in_place_checkpoint(*, request_count: int = 1, title: str = "Decision 絵") 
         source_revision_id=DocsRevisionId("revision-1"),
         current_revision_id=DocsRevisionId("revision-1"),
         stage=InPlaceCheckpointStage.HEADERS,
+        marker_name="fixture-marker",
+        marker_range={"startIndex": 1, "endIndex": 2},
+        mutation_sha256="a" * 64,
         requests=[
             {
                 "updateTextStyle": {
@@ -319,7 +325,7 @@ def in_place_checkpoint(*, request_count: int = 1, title: str = "Decision 絵") 
 
 
 def word_checkpoint() -> WordCopyCheckpoint:
-    return WordCopyCheckpoint(
+    return PlannedWordCheckpoint(
         request_sha256="a" * 64,
         source_binding={
             "mimeType": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
@@ -386,7 +392,7 @@ def verified_copy_checkpoint(*, findings_count: int = 1) -> CopyCheckpoint:
         ).encode()
     ).hexdigest()
     revision_digest = hashlib.sha256(b"output-revision-1").hexdigest()
-    return CopyCheckpoint(
+    return VerifiedCopyCheckpoint(
         source_title="Decision",
         source_sha256="c" * 64,
         source_modified_time=None,

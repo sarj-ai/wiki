@@ -101,6 +101,9 @@ from app.document_transform.markdown_import import (
 from app.document_transform.naming import suggested_document_title
 from app.document_transform.native_date_flow import (
     NativeDateCheckpoint,
+    PendingNativeDateCheckpoint,
+    complete_dates,
+    decline_dates,
     plan_stable_copy_dates as plan_copy_dates,
     verified_versioned_date_projection as verified_date_projection,
     verify_versioned_dates_unchanged as verify_dates_unchanged,
@@ -122,12 +125,16 @@ from app.document_transform.native_footer import (
     plan_native_footer,
 )
 from app.document_transform.native_footer_flow import (
+    CreatingNativeFooterCheckpoint,
     NativeFooterCheckpoint,
     NativeFooterCoverage,
     NativeFooterInvariant,
     NativeFooterLayout,
+    NativeFooterPayload,
     NativeFooterSkip,
     NativeFooterStage,
+    PopulatingNativeFooterCheckpoint,
+    advance_footer,
     footer_document_tab,
     verified_footer_coverage_projection,
     verified_footer_projection,
@@ -401,15 +408,14 @@ class GoogleDocumentGateway(DocumentGateway):
                 # The executor persists this outcome before continuing. A crash
                 # before that save can redispatch the rejected CAS batch, but
                 # exact preimage/marker recovery still prevents duplicate edits.
-                return checkpoint.model_copy(update={"declined_reason": "provider_rejected"})
+                match checkpoint:
+                    case PendingNativeDateCheckpoint():
+                        return decline_dates(checkpoint)
+                    case _:
+                        raise DocumentGatewayError from exc
             document = result.document
         verified_date_projection(document, checkpoint)
-        return checkpoint.model_copy(
-            update={
-                "complete": True,
-                "revision_id": DocsRevisionId(_required_string(document, "revisionId")),
-            }
-        )
+        return complete_dates(checkpoint, DocsRevisionId(_required_string(document, "revisionId")))
 
     def __init__(
         self,
@@ -669,26 +675,28 @@ class GoogleDocumentGateway(DocumentGateway):
             native_safety_error("footer_plan", "marker")
         first_tab = eligible[0] if eligible else draft.tab_id
         suffix = f"{operation_id.hex}_{topology.index(first_tab)}"
-        return NativeFooterCheckpoint(
-            stage=NativeFooterStage.CREATE if eligible else NativeFooterStage.COMPLETE,
-            tab_id=first_tab,
-            url=url,
-            display_text="Open in Wiki",
-            revision_id=draft.revision_id,
-            create_marker=f"sarj_footer_create_{suffix}",
-            populate_marker=f"sarj_footer_populate_{suffix}",
-            marker_range=marker_range,
-            invariant_sha256=versioned_footer_invariant_sha256(
-                document, version=NativeFooterInvariant.STABLE_IMAGES_V2
-            ),
-            invariant_version=NativeFooterInvariant.STABLE_IMAGES_V2,
-            coverage=NativeFooterCoverage(
-                topology=topology,
-                pending=tuple(eligible[1:]),
-                skipped=tuple(skipped),
-                active=bool(eligible),
-            ),
-        )
+        return NativeFooterPayload.model_validate(
+            {
+                "stage": NativeFooterStage.CREATE if eligible else NativeFooterStage.COMPLETE,
+                "tab_id": first_tab,
+                "url": url,
+                "display_text": "Open in Wiki",
+                "revision_id": draft.revision_id,
+                "create_marker": f"sarj_footer_create_{suffix}",
+                "populate_marker": f"sarj_footer_populate_{suffix}",
+                "marker_range": marker_range,
+                "invariant_sha256": versioned_footer_invariant_sha256(
+                    document, version=NativeFooterInvariant.STABLE_IMAGES_V2
+                ),
+                "invariant_version": NativeFooterInvariant.STABLE_IMAGES_V2,
+                "coverage": NativeFooterCoverage(
+                    topology=topology,
+                    pending=tuple(eligible[1:]),
+                    skipped=tuple(skipped),
+                    active=bool(eligible),
+                ),
+            }
+        ).root
 
     @override
     async def apply_copy_footer_stage(
@@ -718,12 +726,12 @@ class GoogleDocumentGateway(DocumentGateway):
         if creating:
             log_footer_snapshot(document, checkpoint.tab_id, "projection_empty")
         _, footer_id = verified_footer_projection(document, checkpoint, populated=not creating)
-        return checkpoint.model_copy(
-            update={
-                "stage": NativeFooterStage.POPULATE if creating else NativeFooterStage.COMPLETE,
-                "footer_id": footer_id,
-                "revision_id": DocsRevisionId(_required_string(document, "revisionId")),
-            }
+        if not isinstance(
+            checkpoint, (CreatingNativeFooterCheckpoint, PopulatingNativeFooterCheckpoint)
+        ):
+            native_safety_error("footer_populate", "action")
+        return advance_footer(
+            checkpoint, footer_id, DocsRevisionId(_required_string(document, "revisionId"))
         )
 
     @override
@@ -2062,28 +2070,30 @@ def _advance_footer_coverage(
     verified_footer_projection(document, checkpoint, populated=True)
     next_tab = coverage.pending[0]
     suffix = f"{checkpoint.create_marker.rsplit('_', 1)[0]}_{coverage.topology.index(next_tab)}"
-    return NativeFooterCheckpoint(
-        tab_id=next_tab,
-        url=checkpoint.url,
-        display_text=checkpoint.display_text,
-        revision_id=checkpoint.revision_id,
-        create_marker=suffix,
-        populate_marker=suffix.replace("sarj_footer_create_", "sarj_footer_populate_", 1),
-        marker_range=checkpoint.marker_range,
-        invariant_sha256=versioned_footer_invariant_sha256(
-            document, version=checkpoint.invariant_version
-        ),
-        invariant_version=checkpoint.invariant_version,
-        coverage=coverage.model_copy(
-            update={
-                "pending": coverage.pending[1:],
-                "completed": (
-                    *coverage.completed,
-                    checkpoint.model_copy(update={"coverage": None}),
-                ),
-            }
-        ),
-    )
+    return NativeFooterPayload.model_validate(
+        {
+            "tab_id": next_tab,
+            "url": checkpoint.url,
+            "display_text": checkpoint.display_text,
+            "revision_id": checkpoint.revision_id,
+            "create_marker": suffix,
+            "populate_marker": suffix.replace("sarj_footer_create_", "sarj_footer_populate_", 1),
+            "marker_range": checkpoint.marker_range,
+            "invariant_sha256": versioned_footer_invariant_sha256(
+                document, version=checkpoint.invariant_version
+            ),
+            "invariant_version": checkpoint.invariant_version,
+            "coverage": coverage.model_copy(
+                update={
+                    "pending": coverage.pending[1:],
+                    "completed": (
+                        *coverage.completed,
+                        checkpoint.model_copy(update={"coverage": None}),
+                    ),
+                }
+            ),
+        }
+    ).root
 
 
 class GoogleDocumentRevisionReader(GoogleDocumentGateway):

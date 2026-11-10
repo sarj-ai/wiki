@@ -10,10 +10,10 @@ import pytest
 from app.auth.encryption import decrypt_cache, encrypt_cache
 from app.document_transform.errors import CheckpointTooLargeError
 from app.document_transform.schemas import (
-    CopyCheckpoint,
+    CopyPlan,
     DocumentTransformCheckpoint,
-    InPlaceCheckpoint,
-    WordCopyCheckpoint,
+    InPlacePlan,
+    WordCopyPlan,
 )
 from app.drive.schemas import DriveTree
 from app.identifiers import FileId
@@ -297,13 +297,13 @@ async def test_checkpoint_storage_restores_sorted_legacy_and_current_envelopes(k
     dumped = checkpoint.model_dump(mode="json")
     legacy: dict[str, object]
     match checkpoint:
-        case InPlaceCheckpoint():
+        case InPlacePlan():
             plan_fields = {"source_title", "requests", "replacements", "findings", "headers"}
             expected = {key: value for key, value in dumped.items() if key in plan_fields}
             ciphertext_key = "plan_ciphertext"
             legacy = {key: value for key, value in dumped.items() if key not in plan_fields}
         case _:
-            assert isinstance(checkpoint, CopyCheckpoint | WordCopyCheckpoint)
+            assert isinstance(checkpoint, CopyPlan | WordCopyPlan)
             expected = dumped
             ciphertext_key = "checkpoint_ciphertext"
             legacy = {"kind": checkpoint.kind, "version": 1}

@@ -24,17 +24,19 @@ from app.auth.encryption import decrypt_cache, encrypt_cache
 from app.document_transform.brand_manifest import CURRENT_BRAND_MANIFEST
 from app.document_transform.errors import CheckpointTooLargeError, OutputConflictError
 from app.document_transform.schemas import (
-    CopyCheckpoint,
+    CopyCheckpointPayload,
     CopyCheckpointStage,
+    CopyPlan,
     DocumentTransformCheckpoint,
     DocumentTransformRequest,
     DocumentTransformResult,
     DriveFileSource,
-    InPlaceCheckpoint,
+    InPlaceCheckpointPayload,
     MarkdownSource,
     OutputStrategy,
     TransformMode,
-    WordCopyCheckpoint,
+    WordCheckpointPayload,
+    WordCopyPlan,
 )
 from app.document_transform.unslop import UNSLOP_CATALOG_SHA256
 from app.document_transform.versions import CURRENT_PIPELINE_VERSIONS, DOCUMENT_PIPELINE_VERSION
@@ -872,7 +874,7 @@ class PostgresTaskService(TaskService):
             "checkpoint_generation": Task.checkpoint_generation + 1,
             "updated_at": datetime.now(UTC),
         }
-        if isinstance(checkpoint, InPlaceCheckpoint):
+        if checkpoint is not None and checkpoint.kind == "in_place":
             values["resource_id"] = checkpoint.document_id
         elif checkpoint.output is not None:
             values["resource_id"] = checkpoint.output.file_id
@@ -1135,7 +1137,7 @@ class PostgresTaskService(TaskService):
             raise OutputConflictError from exc
         evidence = result.header_identity
         if (
-            not isinstance(checkpoint, CopyCheckpoint)
+            not isinstance(checkpoint, CopyPlan)
             or checkpoint.stage is not CopyCheckpointStage.VERIFIED
             or checkpoint.result is None
             or evidence is None
@@ -1363,7 +1365,7 @@ def _terminal_payload() -> object:
 
 def _serialize_checkpoint(checkpoint: DocumentTransformCheckpoint) -> dict[str, JsonValue]:
     serialized = checkpoint.model_dump(mode="json")
-    if isinstance(checkpoint, CopyCheckpoint | WordCopyCheckpoint):
+    if isinstance(checkpoint, CopyPlan | WordCopyPlan):
         plaintext = json.dumps(serialized, ensure_ascii=False, separators=(",", ":"))
         if len(plaintext.encode()) > _MAX_CHECKPOINT_PLAN_BYTES:
             raise CheckpointTooLargeError
@@ -1397,8 +1399,10 @@ def _deserialize_checkpoint(raw: Mapping[str, object]) -> DocumentTransformCheck
             if value is not None
             or field not in {"qa_destination_permission", "qa_permission_evidence", "qa_quarantine"}
         }
-        checkpoint_type = WordCopyCheckpoint if raw.get("kind") == "word_copy" else CopyCheckpoint
-        return checkpoint_type.model_validate(payload)
+        checkpoint_type = (
+            WordCheckpointPayload if raw.get("kind") == "word_copy" else CopyCheckpointPayload
+        )
+        return checkpoint_type.model_validate(payload).root
     metadata = dict(raw)
     ciphertext = metadata.pop("plan_ciphertext", None)
     if not isinstance(ciphertext, str):
@@ -1409,7 +1413,7 @@ def _deserialize_checkpoint(raw: Mapping[str, object]) -> DocumentTransformCheck
         msg = "Document transform checkpoint plan is invalid"
         raise ValueError(msg)
     metadata.update(plan)
-    return InPlaceCheckpoint.model_validate(metadata)
+    return InPlaceCheckpointPayload.model_validate(metadata).root
 
 
 def _persisted_error_detail(error_detail: str | None) -> str | None:

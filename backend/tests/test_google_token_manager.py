@@ -10,16 +10,17 @@ import uuid
 
 import pytest
 from sqlalchemy import inspect
+from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import make_transient_to_detached
 from sqlalchemy.orm.attributes import set_committed_value
 
 from app.auth.encryption import encrypt_text
+from app.auth.google_token_state import RefreshGrant, TokenSnapshot
 from app.auth.google_tokens import (
     GoogleReauthenticationRequiredError,
     GoogleTokenManager,
     GoogleTokenProvider,
     ManagedGoogleToken,
-    TokenSnapshot,
 )
 from app.identifiers import GoogleUserId, UserId
 from app.models.user import User
@@ -42,10 +43,7 @@ class _SharedTokenState:
 
 class _MemoryTokenManager(GoogleTokenManager):
     def __init__(self, state: _SharedTokenState) -> None:
-        super().__init__(
-            dependency(None),
-            dependency(None),
-        )
+        super().__init__(AsyncSession(), dependency(None))
         self.state = state
 
     @override
@@ -89,7 +87,7 @@ class _MemoryTokenManager(GoogleTokenManager):
     async def _acquire_lease(
         self,
         user: User,
-        snapshot: TokenSnapshot,
+        snapshot: RefreshGrant,
         owner: uuid.UUID,
         now: datetime,
     ) -> bool:
@@ -108,7 +106,7 @@ class _MemoryTokenManager(GoogleTokenManager):
     async def _refresh_owned(
         self,
         user: User,
-        snapshot: TokenSnapshot,
+        snapshot: RefreshGrant,
         owner: uuid.UUID,
     ) -> ManagedGoogleToken:
         del user

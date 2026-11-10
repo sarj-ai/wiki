@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import asyncio
+from collections.abc import AsyncGenerator
+from contextlib import asynccontextmanager
 from datetime import UTC, datetime
 import os
 from pathlib import Path
@@ -9,8 +11,20 @@ import sys
 import uuid
 
 import pytest
-from sqlalchemy import ARRAY, Column, DateTime, Integer, MetaData, Table, insert, select, text
-from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
+from sqlalchemy import (
+    ARRAY,
+    Column,
+    DateTime,
+    Integer,
+    MetaData,
+    Table,
+    insert,
+    select,
+    text,
+    update,
+)
+from sqlalchemy.exc import IntegrityError
+from sqlalchemy.ext.asyncio import AsyncEngine, async_sessionmaker, create_async_engine
 
 from app.extras.schemas import FolderIconWrite, PreferencesWrite, SortOrderWrite
 from app.extras.service import PostgresExtrasService
@@ -37,19 +51,10 @@ def _upgrade(dsn: str, revision: str) -> None:
 
 
 async def test_upgrade_preserves_settings_tokens_and_concurrent_user_edits() -> None:
-    admin = _qa_engine()
-    name = f"wiki_polish29_qa_storage_{uuid.uuid7().hex}"
-    url = admin.url.set(database=name)
-    dsn = url.render_as_string(hide_password=False)
-    engine = create_async_engine(url)
     owner = uuid.uuid7()
     other = uuid.uuid7()
-    try:
-        async with admin.connect() as connection:
-            await connection.execution_options(isolation_level="AUTOCOMMIT")
-            await connection.execute(
-                text(f'CREATE DATABASE "{name}"')
-            )  # sarj-noqa: SARJ429 -- Exercise legacy schema migration and database invariants before the current ORM applies.
+    async with _migration_database() as engine:
+        dsn = engine.url.render_as_string(hide_password=False)
         await asyncio.to_thread(_upgrade, dsn, "0024_configurable_email_domain")
         async with engine.begin() as db:
             await db.execute(  # sarj-noqa: SARJ429 -- Exercise legacy schema migration and database invariants before the current ORM applies.
@@ -185,6 +190,65 @@ async def test_upgrade_preserves_settings_tokens_and_concurrent_user_edits() -> 
             assert user.folder_icons[FileId("nullable")] is None
             assert user.show_non_doc_files
             assert user.hidden_workspace_ids == ["hidden"]
+
+
+async def test_google_token_invariants_preserve_refresh_and_reject_contradictions() -> None:
+    owner = uuid.uuid7()
+    async with _migration_database() as engine:
+        dsn = engine.url.render_as_string(hide_password=False)
+        await asyncio.to_thread(_upgrade, dsn, "0026_retire_oauth_proxy")
+        sessions = async_sessionmaker(engine, expire_on_commit=False)
+        async with sessions.begin() as db:
+            db.add(
+                User(
+                    id=owner,
+                    email="credential@example.com",
+                    google_id="credential",
+                    encrypted_access_token="unusable-access",
+                    encrypted_refresh_token="retained-refresh",
+                    google_token_generation=3,
+                    token_version=4,
+                )
+            )
+        await asyncio.to_thread(_upgrade, dsn, "head")
+        async with sessions() as db:
+            user = await db.get(User, owner)
+            assert user is not None
+            assert user.encrypted_access_token is None
+            assert user.encrypted_refresh_token == "retained-refresh"
+            assert user.google_token_generation == 3
+            assert user.token_version == 4
+        lease_owner = uuid.uuid7()
+        for statement in (
+            update(User).values(encrypted_access_token="orphan"),
+            update(User).values(google_access_token_expires_at=datetime.now(UTC)),
+            update(User).values(google_refresh_lease_owner=lease_owner),
+            update(User).values(google_token_generation=-1),
+            update(User).values(token_version=-1),
+            update(User).values(
+                encrypted_refresh_token=None,
+                google_refresh_lease_owner=lease_owner,
+                google_refresh_lease_until=datetime.now(UTC),
+            ),
+        ):
+            async with sessions.begin() as db:
+                with pytest.raises(IntegrityError):
+                    async with db.begin_nested():
+                        await db.execute(statement.where(User.id == owner))
+
+
+@asynccontextmanager
+async def _migration_database() -> AsyncGenerator[AsyncEngine]:
+    admin = _qa_engine()
+    name = f"wiki_polish29_qa_storage_{uuid.uuid7().hex}"
+    engine = create_async_engine(admin.url.set(database=name))
+    try:
+        async with admin.connect() as connection:
+            await connection.execution_options(isolation_level="AUTOCOMMIT")
+            await connection.execute(
+                text(f'CREATE DATABASE "{name}"')
+            )  # sarj-noqa: SARJ429 -- Exercise legacy schema migration and database invariants before the current ORM applies.
+        yield engine
     finally:
         await engine.dispose()
         async with admin.connect() as connection:

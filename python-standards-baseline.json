@@ -79,7 +79,6 @@
     "SARJ528": 14
   },
   "backend/app/document_transform/header_recovery.py": {
-    "SARJ444": 2,
     "SARJ447": 2
   },
   "backend/app/document_transform/ir.py": {
@@ -92,7 +91,7 @@
     "SARJ528": 10
   },
   "backend/app/document_transform/native_date_flow.py": {
-    "SARJ447": 8,
+    "SARJ447": 5,
     "SARJ528": 1
   },
   "backend/app/document_transform/native_font_context.py": {
@@ -154,9 +153,6 @@
   "backend/app/document_transform/router.py": {
     "SARJ451": 6
   },
-  "backend/app/document_transform/schemas.py": {
-    "SARJ447": 3
-  },
   "backend/app/document_transform/slides_brand.py": {
     "SARJ447": 107,
     "SARJ528": 4
@@ -181,8 +177,7 @@
     "SARJ528": 1
   },
   "backend/app/document_transform/tab_structure_execution.py": {
-    "SARJ444": 3,
-    "SARJ447": 18
+    "SARJ447": 9
   },
   "backend/app/document_transform/word_gateway.py": {
     "SARJ447": 3

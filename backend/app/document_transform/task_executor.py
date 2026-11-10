@@ -48,7 +48,6 @@ from app.document_transform.schemas import (
     DocumentTransformRequest,
     DocumentTransformResult,
     DriveFileSource,
-    InPlaceCheckpoint,
     OutputStrategy,
     TransformMode,
 )
@@ -477,7 +476,8 @@ async def _execute_claimed(
         checkpoint_stage=checkpoint.stage.value if checkpoint is not None else "none",
         mutation_sha256=(
             checkpoint.mutation_sha256
-            if isinstance(checkpoint, InPlaceCheckpoint) and checkpoint.mutation_sha256 is not None
+            if (checkpoint is not None and checkpoint.kind == "in_place")
+            and checkpoint.mutation_sha256 is not None
             else "none"
         ),
         pipeline=PIPELINE_VERSION,

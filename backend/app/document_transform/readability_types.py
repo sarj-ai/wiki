@@ -1,4 +1,4 @@
-from typing import Literal
+from typing import Annotated, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, JsonValue
 
@@ -47,7 +47,7 @@ class ReadabilityTable(BaseModel):
     header: bool = False
 
 
-class ReadabilityCheckpoint(BaseModel):
+class ReadabilityPlan(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
     version: Literal[1] = 1
@@ -58,7 +58,28 @@ class ReadabilityCheckpoint(BaseModel):
     tables: tuple[ReadabilityTable, ...] = ()
     original_lists: dict[str, dict[str, JsonValue]]
     requests: list[dict[str, JsonValue]]
-    complete: bool = False
-    revision_id: DocsRevisionId | None = None
     model_invoked: bool = False
     passes: int = Field(default=0, ge=0, le=100)
+
+
+class PlannedReadabilityCheckpoint(ReadabilityPlan):
+    complete: Literal[False] = False
+    revision_id: None = None
+
+
+class CompletedReadabilityCheckpoint(ReadabilityPlan):
+    complete: Literal[True] = True
+    revision_id: DocsRevisionId
+
+
+ReadabilityCheckpoint = Annotated[
+    PlannedReadabilityCheckpoint | CompletedReadabilityCheckpoint, Field(discriminator="complete")
+]
+
+
+def complete_readability(
+    checkpoint: ReadabilityCheckpoint, revision_id: DocsRevisionId
+) -> CompletedReadabilityCheckpoint:
+    return CompletedReadabilityCheckpoint.model_validate(
+        {**checkpoint.model_dump(), "complete": True, "revision_id": revision_id}
+    )

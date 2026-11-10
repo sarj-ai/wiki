@@ -1,7 +1,7 @@
 from datetime import datetime
 import uuid
 
-from sqlalchemy import Boolean, DateTime, Text, text
+from sqlalchemy import Boolean, CheckConstraint, DateTime, Text, text
 from sqlalchemy.dialects.postgresql import ARRAY, JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -11,6 +11,22 @@ from app.identifiers import DriveId, FileId, GoogleUserId, UserId
 
 class User(Base):
     __tablename__ = "users"
+    __table_args__ = (
+        CheckConstraint(
+            "(encrypted_access_token IS NULL) = (google_access_token_expires_at IS NULL)",
+            name="ck_users_google_access_pair",
+        ),
+        CheckConstraint(
+            "(google_refresh_lease_owner IS NULL) = (google_refresh_lease_until IS NULL)",
+            name="ck_users_google_lease_pair",
+        ),
+        CheckConstraint(
+            "google_refresh_lease_owner IS NULL OR encrypted_refresh_token IS NOT NULL",
+            name="ck_users_google_lease_credential",
+        ),
+        CheckConstraint("google_token_generation >= 0", name="ck_users_google_generation"),
+        CheckConstraint("token_version >= 0", name="ck_users_token_version"),
+    )
 
     id: Mapped[UserId] = mapped_column(
         UUID(as_uuid=True),

@@ -4,10 +4,10 @@ from copy import deepcopy
 import hashlib
 from itertools import chain
 import json
-from typing import TYPE_CHECKING, Any, Literal, NewType, Protocol, Self, TypedDict
+from typing import TYPE_CHECKING, Any, Literal, NewType, Protocol, TypedDict
 import uuid
 
-from pydantic import BaseModel, ConfigDict, JsonValue, model_validator
+from pydantic import BaseModel, ConfigDict, JsonValue, RootModel, with_config
 
 from app.document_transform.errors import InPlaceNeedsReviewError
 from app.document_transform.ir import parse_google_document, verify_planned_date_conversions
@@ -28,11 +28,13 @@ CHIP_PARAGRAPH_ELEMENTS = 2
 NativeDateBlockId = NewType("NativeDateBlockId", str)
 
 
+@with_config(ConfigDict(extra="allow", strict=True))
 class _DateTextRun(TypedDict, total=False):
     content: str
     textStyle: JsonValue
 
 
+@with_config(ConfigDict(extra="allow", strict=True))
 class _DateParagraphElement(TypedDict, total=False):
     startIndex: int
     endIndex: int
@@ -40,11 +42,19 @@ class _DateParagraphElement(TypedDict, total=False):
     dateElement: JsonValue
 
 
+@with_config(ConfigDict(extra="allow", strict=True))
 class _DateParagraph(TypedDict, total=False):
     elements: list[_DateParagraphElement]
 
 
-class _DateContent(Protocol):
+@with_config(ConfigDict(extra="allow", strict=True))
+class NativeDateContent(TypedDict):
+    startIndex: int
+    endIndex: int
+    paragraph: _DateParagraph
+
+
+class _ProviderDateContent(Protocol):
     def get(
         self, key: Literal["startIndex", "endIndex"], default: None = None, /
     ) -> int | None: ...
@@ -54,6 +64,9 @@ class _DateContent(Protocol):
     def __contains__(self, key: str, /) -> bool: ...
 
     def __iter__(self) -> Iterator[str]: ...
+
+
+type _DateContent = _ProviderDateContent | NativeDateContent
 
 
 type _DateBodyContent = list[_DateContent]
@@ -99,31 +112,60 @@ class _DateDocument(Protocol):
 
 
 class NativeDateParagraph(BaseModel):
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="forbid", frozen=True)
     tab_id: DocsTabId
     block_id: NativeDateBlockId
     source_sha256: str
-    paragraph: dict[str, Any]
+    paragraph: NativeDateContent
 
 
-class NativeDateCheckpoint(BaseModel):
-    model_config = ConfigDict(extra="forbid")
+class NativeDatePlan(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
     revision_id: DocsRevisionId
     marker_name: str
-    marker_range: dict[str, Any]
+    marker_range: dict[str, JsonValue]
     invariant_sha256: str
     invariant_version: Literal["stable-images-v2"] | None = None
     paragraphs: list[NativeDateParagraph]
-    requests: list[dict[str, Any]]
-    complete: bool = False
-    declined_reason: Literal["provider_rejected"] | None = None
+    requests: list[dict[str, JsonValue]]
 
-    @model_validator(mode="after")
-    def validate_outcome(self) -> Self:
-        if self.complete and self.declined_reason is not None:
-            msg = "A declined date conversion cannot be complete"
-            raise ValueError(msg)
-        return self
+
+class PendingNativeDateCheckpoint(NativeDatePlan):
+    complete: Literal[False] = False
+    declined_reason: None = None
+
+
+class DeclinedNativeDateCheckpoint(NativeDatePlan):
+    complete: Literal[False] = False
+    declined_reason: Literal["provider_rejected"] = "provider_rejected"
+
+
+class CompletedNativeDateCheckpoint(NativeDatePlan):
+    complete: Literal[True] = True
+    declined_reason: None = None
+
+
+NativeDateCheckpoint = (
+    PendingNativeDateCheckpoint | DeclinedNativeDateCheckpoint | CompletedNativeDateCheckpoint
+)
+
+
+class NativeDatePayload(RootModel[NativeDateCheckpoint]):
+    pass
+
+
+def decline_dates(checkpoint: PendingNativeDateCheckpoint) -> DeclinedNativeDateCheckpoint:
+    return DeclinedNativeDateCheckpoint.model_validate(
+        {**checkpoint.model_dump(), "declined_reason": "provider_rejected"}
+    )
+
+
+def complete_dates(
+    checkpoint: NativeDateCheckpoint, revision_id: DocsRevisionId
+) -> CompletedNativeDateCheckpoint:
+    return CompletedNativeDateCheckpoint.model_validate(
+        {**checkpoint.model_dump(), "complete": True, "revision_id": revision_id}
+    )
 
 
 def verify_dates_unchanged(document: dict[str, Any], checkpoint: NativeDateCheckpoint) -> None:
@@ -247,7 +289,7 @@ def plan_copy_dates(
         requests.extend(proposal.requests())
     if not paragraphs:
         return None
-    return NativeDateCheckpoint(
+    return PendingNativeDateCheckpoint(
         revision_id=DocsRevisionId(document["revisionId"]),
         marker_name=f"sarj_native_dates_{operation_id.hex}",
         marker_range={"tabId": anchor_tab, "startIndex": anchor_end - 1, "endIndex": anchor_end},

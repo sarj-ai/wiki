@@ -13,6 +13,7 @@ from app.document_transform.google_gateway import GoogleDocumentGateway
 from app.document_transform.native_footer_flow import (
     NativeFooterCheckpoint,
     NativeFooterInvariant,
+    NativeFooterPayload,
     NativeFooterStage,
     footer_coverage_complete,
     footer_invariant_sha256,
@@ -145,7 +146,7 @@ async def _plan(monkeypatch: pytest.MonkeyPatch, document: dict[str, Any]) -> _P
     assert checkpoint is not None
     return _Planned(
         gateway,
-        NativeFooterCheckpoint.model_validate_json(checkpoint.model_dump_json()),
+        NativeFooterPayload.model_validate_json(checkpoint.model_dump_json()).root,
         provider,
     )
 
@@ -198,7 +199,7 @@ async def test_legacy_footer_checkpoint_keeps_raw_url_and_replay_payload(
     legacy_payload.pop("display_text")
     legacy_payload.pop("coverage")
     legacy_payload.pop("invariant_version")
-    legacy = NativeFooterCheckpoint.model_validate(legacy_payload)
+    legacy = NativeFooterPayload.model_validate(legacy_payload).root
     assert legacy.display_text is None
     assert legacy.invariant_version is None
     created = await gateway.apply_copy_footer_stage(document_id=FileId("doc"), checkpoint=legacy)
@@ -313,7 +314,7 @@ async def test_all_tabs_footer_stages_recover_and_reverse_project(
             await gateway.apply_copy_footer_stage(document_id=FileId("doc"), checkpoint=checkpoint)
             == advanced
         )
-        checkpoint = NativeFooterCheckpoint.model_validate_json(advanced.model_dump_json())
+        checkpoint = NativeFooterPayload.model_validate_json(advanced.model_dump_json()).root
     assert footer_coverage_complete(checkpoint)
     assert len(provider.calls) == (4 if custom_middle else 6)
     before["revisionId"] = document["revisionId"]
@@ -346,7 +347,7 @@ async def test_footer_coverage_rejects_invalid_durable_topology(
         case _:
             coverage["topology"] = [f"t{index}" for index in range(51)]
     with pytest.raises(ValidationError):
-        NativeFooterCheckpoint.model_validate(payload)
+        NativeFooterPayload.model_validate(payload)
 
 
 @pytest.mark.asyncio
@@ -527,7 +528,7 @@ async def test_legacy_footer_hash_keeps_its_exact_image_url_comparison(
     payload = initial.model_dump(mode="json")
     payload.pop("invariant_version")
     payload["invariant_sha256"] = footer_invariant_sha256(document)
-    legacy = NativeFooterCheckpoint.model_validate(payload)
+    legacy = NativeFooterPayload.model_validate(payload).root
     assert legacy.invariant_version is None
     tab["inlineObjects"]["image-1"]["inlineObjectProperties"]["embeddedObject"]["imageProperties"][
         "contentUri"
@@ -556,7 +557,7 @@ async def test_image_invariant_version_survives_footer_tab_advancement(
         checkpoint = await gateway.apply_copy_footer_stage(
             document_id=FileId("doc"), checkpoint=checkpoint
         )
-        checkpoint = NativeFooterCheckpoint.model_validate_json(checkpoint.model_dump_json())
+        checkpoint = NativeFooterPayload.model_validate_json(checkpoint.model_dump_json()).root
         assert checkpoint.invariant_version is NativeFooterInvariant.STABLE_IMAGES_V2
     assert footer_coverage_complete(checkpoint)
     verified_footer_coverage_projection(document, checkpoint)

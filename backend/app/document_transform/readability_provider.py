@@ -8,7 +8,7 @@ from app.document_transform.readability import verify_readability
 from app.document_transform.readability_json import document_digest
 from app.document_transform.readability_paragraphs import readable_paragraph_requests
 from app.document_transform.readability_tables import readable_table_requests
-from app.document_transform.readability_types import ReadabilityCheckpoint
+from app.document_transform.readability_types import ReadabilityCheckpoint, complete_readability
 from app.identifiers import DocsRevisionId, FileId
 
 
@@ -40,6 +40,4 @@ class ReadabilityProvider:
             document = await self.read(document_id)
             if not verify_readability(document, checkpoint):
                 raise OutputVerificationError
-        return checkpoint.model_copy(
-            update={"complete": True, "revision_id": DocsRevisionId(str(document["revisionId"]))}
-        )
+        return complete_readability(checkpoint, DocsRevisionId(str(document["revisionId"])))

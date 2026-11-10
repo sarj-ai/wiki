@@ -69,13 +69,19 @@ from app.document_transform.ir import (
 )
 from app.document_transform.limits import MAX_MARKDOWN_BYTES
 from app.document_transform.models import PatchGenerator
-from app.document_transform.native_footer_flow import NativeFooterCheckpoint, NativeFooterStage
+from app.document_transform.native_footer_flow import (
+    CreatingNativeFooterCheckpoint,
+    NativeFooterCheckpoint,
+    NativeFooterPayload,
+    NativeFooterStage,
+)
 from app.document_transform.native_table_font import TableFontPlan
 from app.document_transform.planner import TextTransformPlanner
 from app.document_transform.safety import validate_patches
 from app.document_transform.schemas import (
     CopyCheckpoint,
     CopyCheckpointStage,
+    CopyPlan,
     DocumentOutput,
     DocumentTransformCheckpoint,
     DocumentTransformRequest,
@@ -83,6 +89,7 @@ from app.document_transform.schemas import (
     FindingSeverity,
     InPlaceCheckpoint,
     InPlaceCheckpointStage,
+    InPlacePlan,
     MarkdownSource,
     OutputStrategy,
     TabNamingCheckpoint,
@@ -2799,7 +2806,7 @@ class _CheckpointStore:
     ) -> int:
         del task_id, lease_token
         assert expected_generation == self.generation
-        assert isinstance(checkpoint, InPlaceCheckpoint)
+        assert isinstance(checkpoint, InPlacePlan)
         self.events.append(f"checkpoint:{checkpoint.stage}")
         self.checkpoints.append(checkpoint)
         self.generation += 1
@@ -2833,7 +2840,7 @@ class _CopyCheckpointStore:
     ) -> int:
         del task_id, lease_token
         assert expected_generation == self.generation
-        assert isinstance(checkpoint, CopyCheckpoint)
+        assert isinstance(checkpoint, CopyPlan)
         self.checkpoints.append(checkpoint)
         self.events.append(f"checkpoint:{checkpoint.stage.value}")
         self.generation += 1
@@ -3083,7 +3090,7 @@ async def test_copy_native_footer_persists_each_stage_and_does_not_replay_body(
             self, *, draft: OutputDraft, operation_id: uuid.UUID
         ) -> NativeFooterCheckpoint:
             assert self.applies == 1
-            return NativeFooterCheckpoint(
+            return CreatingNativeFooterCheckpoint(
                 tab_id=draft.tab_id,
                 url="https://wiki.sarj.ai/d/output",
                 revision_id=draft.revision_id,
@@ -3112,13 +3119,14 @@ async def test_copy_native_footer_persists_each_stage_and_does_not_replay_body(
                 if checkpoint.stage is NativeFooterStage.CREATE
                 else NativeFooterStage.COMPLETE
             )
-            result = checkpoint.model_copy(
-                update={
+            result = NativeFooterPayload.model_validate(
+                {
+                    **checkpoint.model_dump(),
                     "stage": stage,
                     "footer_id": DocsSegmentId("footer"),
                     "revision_id": DocsRevisionId(f"footer-{stage.value}"),
                 }
-            )
+            ).root
             assert self.draft is not None
             self.draft = replace(self.draft, revision_id=result.revision_id)
             return result
@@ -4339,7 +4347,7 @@ async def test_in_place_decline_crash_replay_never_reenters_verified_body(
             checkpoint=checkpoint,
         )
         if (
-            isinstance(checkpoint, InPlaceCheckpoint)
+            isinstance(checkpoint, InPlacePlan)
             and checkpoint.tab_naming_declined_reason is not None
             and not crashed
         ):
@@ -4519,7 +4527,7 @@ async def test_in_place_content_replay_rejects_post_commit_collaborator_edit() -
     persisted = task_service_module._deserialize_checkpoint(
         task_service_module._serialize_checkpoint(store.checkpoints[-1])
     )
-    assert isinstance(persisted, InPlaceCheckpoint)
+    assert isinstance(persisted, InPlacePlan)
     retry_generator = _Generator({TransformPhase.FORMAT: "must never be generated"})
 
     with pytest.raises(InPlaceNeedsReviewError):

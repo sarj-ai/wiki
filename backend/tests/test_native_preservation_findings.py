@@ -15,7 +15,7 @@ from app.document_transform.native_preservation import preserved_native_findings
 from app.document_transform.schemas import (
     DocumentTransformCheckpoint,
     FindingSeverity,
-    InPlaceCheckpoint,
+    InPlaceCheckpointPayload,
     TransformFinding,
     TransformMode,
 )
@@ -270,7 +270,7 @@ async def test_in_place_preservation_receipt_survives_interruption_and_completed
         payload = checkpoint.model_dump(mode="json")
         for proof in payload["native_font_proof"] or []:
             proof.pop("components", None)
-        checkpoint = InPlaceCheckpoint.model_validate(payload)
+        checkpoint = InPlaceCheckpointPayload.model_validate(payload).root
     assert checkpoint.findings[0].code == "native_rich_text_preserved"
     result = await executor(checkpoint).execute(operation_id=operation, request=request)
     assert result.findings == checkpoint.findings

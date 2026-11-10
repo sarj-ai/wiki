@@ -1,13 +1,15 @@
 from __future__ import annotations
 
 from enum import StrEnum
-from typing import Annotated, Any, Literal, Self
+from typing import Annotated, Literal, Self
 import uuid
 
 from pydantic import (
     BaseModel,
     ConfigDict,
     Field,
+    JsonValue,
+    RootModel,
     StrictBool,
     StringConstraints,
     field_validator,
@@ -294,7 +296,7 @@ class TabNamingCheckpoint(StrictTransformModel):
     plan: TabNamingPlan
     revision_id: DocsRevisionId
     marker_name: str
-    marker_range: dict[str, Any]
+    marker_range: dict[str, JsonValue]
     invariant_sha256: str
     invariant_version: Literal["stable-images-v2"] | None = None
 
@@ -305,7 +307,9 @@ class InPlaceCheckpointStage(StrEnum):
     COMPLETE = "complete"
 
 
-class InPlaceCheckpoint(StrictTransformModel):
+class InPlacePlan(StrictTransformModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
     readability: ReadabilityCheckpoint | None = None
     readability_result: DocumentTransformResult | None = None
     visual_authority_block_ids: tuple[
@@ -354,11 +358,6 @@ class InPlaceCheckpoint(StrictTransformModel):
     header_safe_sha256: str
     source_revision_id: DocsRevisionId
     current_revision_id: DocsRevisionId
-    stage: InPlaceCheckpointStage
-    marker_name: str | None = None
-    marker_range: dict[str, Any] | None = None
-    mutation_sha256: str | None = None
-    requests: list[dict[str, Any]] = Field(default_factory=list)
     replacements: dict[str, str]
     findings: list[TransformFinding]
     applied_patch_count: int = Field(ge=0)
@@ -401,6 +400,103 @@ class InPlaceCheckpoint(StrictTransformModel):
         return self
 
 
+class InPlaceMutation(InPlacePlan):
+    marker_name: str
+    marker_range: dict[str, JsonValue]
+    mutation_sha256: str
+    requests: list[dict[str, JsonValue]] = Field(min_length=1)
+
+
+class HeaderInPlaceCheckpoint(InPlaceMutation):
+    stage: Literal[InPlaceCheckpointStage.HEADERS] = InPlaceCheckpointStage.HEADERS
+
+
+class ContentInPlaceCheckpoint(InPlaceMutation):
+    stage: Literal[InPlaceCheckpointStage.CONTENT] = InPlaceCheckpointStage.CONTENT
+
+
+class NonmutatingInPlacePlan(InPlacePlan):
+    marker_name: None = None
+    marker_range: None = None
+    mutation_sha256: None = None
+    requests: tuple[()] = ()
+
+    @model_validator(mode="before")
+    @classmethod
+    def normalize_unused_markers(cls, value: object) -> object:
+        if (
+            isinstance(value, dict)
+            and value.get("stage") in {"content", "complete"}
+            and value.get("requests") == []
+        ):
+            return {**value, "marker_name": None, "marker_range": None, "mutation_sha256": None}
+        return value
+
+
+class NoopContentInPlaceCheckpoint(NonmutatingInPlacePlan):
+    stage: Literal[InPlaceCheckpointStage.CONTENT] = InPlaceCheckpointStage.CONTENT
+
+
+class CompletedInPlaceCheckpoint(NonmutatingInPlacePlan):
+    stage: Literal[InPlaceCheckpointStage.COMPLETE] = InPlaceCheckpointStage.COMPLETE
+
+
+InPlaceCheckpoint = (
+    HeaderInPlaceCheckpoint
+    | ContentInPlaceCheckpoint
+    | NoopContentInPlaceCheckpoint
+    | CompletedInPlaceCheckpoint
+)
+
+
+class InPlaceCheckpointPayload(RootModel[InPlaceCheckpoint]):
+    @model_validator(mode="before")
+    @classmethod
+    def normalize_nonmutating_plan(cls, value: object) -> object:
+        # Old checkpoints retained unused markers after a no-op content plan.
+        # They never authorized a write. Normalize only that exact harmless shape.
+        if (
+            isinstance(value, dict)
+            and value.get("stage") in {"content", "complete"}
+            and value.get("requests") == []
+        ):
+            return {**value, "marker_name": None, "marker_range": None, "mutation_sha256": None}
+        return value
+
+
+def transition_in_place(
+    checkpoint: InPlaceCheckpoint,
+    *,
+    stage: InPlaceCheckpointStage,
+    current_revision_id: DocsRevisionId,
+    requests: list[dict[str, JsonValue]],
+    marker_name: str | None,
+    marker_range: dict[str, JsonValue] | None,
+    mutation_sha256: str | None,
+    headers: dict[str, str] | None = None,
+) -> InPlaceCheckpoint:
+    allowed = {
+        InPlaceCheckpointStage.HEADERS: {InPlaceCheckpointStage.CONTENT},
+        InPlaceCheckpointStage.CONTENT: {InPlaceCheckpointStage.COMPLETE},
+        InPlaceCheckpointStage.COMPLETE: set(),
+    }
+    if stage not in allowed[checkpoint.stage]:
+        message = "Invalid in-place checkpoint transition"
+        raise ValueError(message)
+    payload = {
+        **checkpoint.model_dump(),
+        "stage": stage,
+        "current_revision_id": current_revision_id,
+        "requests": requests,
+        "marker_name": marker_name,
+        "marker_range": marker_range,
+        "mutation_sha256": mutation_sha256,
+    }
+    if headers is not None:
+        payload["headers"] = headers
+    return InPlaceCheckpointPayload.model_validate(payload).root
+
+
 class CopyCheckpointStage(StrEnum):
     PLANNED = "planned"
     CREATING = "creating"
@@ -408,7 +504,9 @@ class CopyCheckpointStage(StrEnum):
     VERIFIED = "verified"
 
 
-class CopyCheckpoint(StrictTransformModel):
+class CopyPlan(StrictTransformModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
     readability: ReadabilityCheckpoint | None = None
     readability_result: DocumentTransformResult | None = None
     pagination: tuple[NativePaginationRule, ...] = Field(
@@ -449,10 +547,6 @@ class CopyCheckpoint(StrictTransformModel):
     model_patch_count: int = Field(ge=0)
     llm_invoked: bool
     model_ids: list[ModelId]
-    stage: CopyCheckpointStage
-    output: DocumentOutput | None = None
-    output_revision_id: DocsRevisionId | None = None
-    result: DocumentTransformResult | None = None
     tab_naming: TabNamingCheckpoint | None = None
     tab_naming_declined_reason: TabNamingDeclinedReason | None = None
     native_footer: NativeFooterCheckpoint | None = None
@@ -466,31 +560,61 @@ class CopyCheckpoint(StrictTransformModel):
         if self.tab_naming is not None and self.tab_naming_declined_reason is not None:
             msg = "tab naming cannot be both planned and declined"
             raise ValueError(msg)
-        has_output = self.output is not None and self.output_revision_id is not None
-        if self.stage in {
-            CopyCheckpointStage.CREATED,
-            CopyCheckpointStage.VERIFIED,
-        }:
-            if not has_output:
-                msg = "created copy checkpoint requires an output and revision"
-                raise ValueError(msg)
-        elif self.output is not None or self.output_revision_id is not None:
-            msg = "pre-create copy checkpoint cannot contain an output"
-            raise ValueError(msg)
-        if (self.stage is CopyCheckpointStage.VERIFIED) != (self.result is not None):
-            msg = "only a verified copy checkpoint contains a result"
-            raise ValueError(msg)
-        if (
-            self.output_parent_folder_id is not None
-            and self.output is not None
-            and self.output.parent_folder_id != self.output_parent_folder_id
-        ):
-            msg = "copy checkpoint output must remain in its planned destination"
-            raise ValueError(msg)
         return self
 
 
-class WordCopyCheckpoint(StrictTransformModel):
+class UncreatedCopyPlan(CopyPlan):
+    output: None = None
+    output_revision_id: None = None
+    result: None = None
+
+
+class PlannedCopyCheckpoint(UncreatedCopyPlan):
+    stage: Literal[CopyCheckpointStage.PLANNED] = CopyCheckpointStage.PLANNED
+
+
+class CreatingCopyCheckpoint(UncreatedCopyPlan):
+    stage: Literal[CopyCheckpointStage.CREATING] = CopyCheckpointStage.CREATING
+
+
+class CreatedCopyPlan(CopyPlan):
+    output: DocumentOutput
+    output_revision_id: DocsRevisionId
+
+    @model_validator(mode="after")
+    def validate_destination(self) -> Self:
+        if (
+            self.output_parent_folder_id is not None
+            and self.output.parent_folder_id != self.output_parent_folder_id
+        ):
+            message = "copy checkpoint output must remain in its planned destination"
+            raise ValueError(message)
+        return self
+
+
+class CreatedCopyCheckpoint(CreatedCopyPlan):
+    stage: Literal[CopyCheckpointStage.CREATED] = CopyCheckpointStage.CREATED
+    result: None = None
+
+
+class VerifiedCopyCheckpoint(CreatedCopyPlan):
+    stage: Literal[CopyCheckpointStage.VERIFIED] = CopyCheckpointStage.VERIFIED
+    result: DocumentTransformResult
+
+
+CopyCheckpoint = Annotated[
+    PlannedCopyCheckpoint | CreatingCopyCheckpoint | CreatedCopyCheckpoint | VerifiedCopyCheckpoint,
+    Field(discriminator="stage"),
+]
+
+
+class CopyCheckpointPayload(RootModel[CopyCheckpoint]):
+    pass
+
+
+class WordCopyPlan(StrictTransformModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
     version: Literal[1] = 1
     kind: Literal["word_copy"] = "word_copy"
     request_sha256: str
@@ -502,14 +626,6 @@ class WordCopyCheckpoint(StrictTransformModel):
     output_name: OutputName
     reserved_output_id: FileId
     changed_run_count: int = Field(ge=0)
-    stage: Literal[
-        CopyCheckpointStage.PLANNED,
-        CopyCheckpointStage.CREATING,
-        CopyCheckpointStage.CREATED,
-        CopyCheckpointStage.VERIFIED,
-    ]
-    output: DocumentOutput | None = None
-    result: DocumentTransformResult | None = None
 
     @model_validator(mode="after")
     def validate_stage(
@@ -518,20 +634,51 @@ class WordCopyCheckpoint(StrictTransformModel):
         if not self.reserved_output_id or self.reserved_output_id == self.source_binding.get("id"):
             message = "Word copy requires a distinct reserved output ID"
             raise ValueError(message)
-        created = self.stage in {CopyCheckpointStage.CREATED, CopyCheckpointStage.VERIFIED}
-        if created != (self.output is not None):
-            message = "Word checkpoint output does not match its stage"
-            raise ValueError(message)
-        if self.output is not None and self.output.file_id != self.reserved_output_id:
+        return self
+
+
+class UncreatedWordPlan(WordCopyPlan):
+    output: None = None
+    result: None = None
+
+
+class PlannedWordCheckpoint(UncreatedWordPlan):
+    stage: Literal[CopyCheckpointStage.PLANNED] = CopyCheckpointStage.PLANNED
+
+
+class CreatingWordCheckpoint(UncreatedWordPlan):
+    stage: Literal[CopyCheckpointStage.CREATING] = CopyCheckpointStage.CREATING
+
+
+class CreatedWordPlan(WordCopyPlan):
+    output: DocumentOutput
+
+    @model_validator(mode="after")
+    def validate_output_identity(self) -> Self:
+        if self.output.file_id != self.reserved_output_id:
             message = "Word output does not match its reserved file ID"
-            raise ValueError(message)
-        if (self.stage is CopyCheckpointStage.VERIFIED) != (self.result is not None):
-            message = "Only verified Word checkpoints contain a result"
             raise ValueError(message)
         return self
 
 
-DocumentTransformCheckpoint = Annotated[
-    InPlaceCheckpoint | CopyCheckpoint | WordCopyCheckpoint,
-    Field(discriminator="kind"),
+class CreatedWordCheckpoint(CreatedWordPlan):
+    stage: Literal[CopyCheckpointStage.CREATED] = CopyCheckpointStage.CREATED
+    result: None = None
+
+
+class VerifiedWordCheckpoint(CreatedWordPlan):
+    stage: Literal[CopyCheckpointStage.VERIFIED] = CopyCheckpointStage.VERIFIED
+    result: DocumentTransformResult
+
+
+WordCopyCheckpoint = Annotated[
+    PlannedWordCheckpoint | CreatingWordCheckpoint | CreatedWordCheckpoint | VerifiedWordCheckpoint,
+    Field(discriminator="stage"),
 ]
+
+
+class WordCheckpointPayload(RootModel[WordCopyCheckpoint]):
+    pass
+
+
+DocumentTransformCheckpoint = InPlaceCheckpoint | CopyCheckpoint | WordCopyCheckpoint
