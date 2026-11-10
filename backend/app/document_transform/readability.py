@@ -117,11 +117,12 @@ async def _refine_layout(
         remaining = provider_retry_remaining_seconds()
         if remaining is not None and remaining < _MIN_LAYOUT_SECONDS:
             break
+        # Failed provider calls still count as attempts in table-only receipts.
+        best = _LayoutDraft(best.proposals, best.paragraphs, number)
         try:
             proposals = await generator.plan_readability(
                 ir, previous=best.proposals, feedback=feedback
             )
-            best = _LayoutDraft(best.proposals, best.paragraphs, number)
             paragraphs = validated_readability_paragraphs(document, ir, proposals)
         except ModelUnavailableError:
             break

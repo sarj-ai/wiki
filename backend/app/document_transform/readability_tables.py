@@ -5,6 +5,7 @@ import unicodedata
 from pydantic import JsonValue
 
 from app.document_transform.brand_manifest import CURRENT_BRAND_MANIFEST
+from app.document_transform.readability_geometry import readable_table_width
 from app.document_transform.readability_json import (
     array,
     bodies,
@@ -29,8 +30,6 @@ from app.document_transform.table_layout import (
 _TOKENS = CURRENT_BRAND_MANIFEST.document
 _MIN_COLUMNS = 2
 _MAX_COLUMNS = 10
-_MIN_PAGE_WIDTH = 150
-_MAX_PAGE_WIDTH = 1500
 _DIMENSION_TOLERANCE = 0.05
 _PARAGRAPH_FIELDS = ("alignment", "lineSpacing", "spaceAbove", "spaceBelow")
 
@@ -52,7 +51,10 @@ def plan_readable_tables(document: dict[str, JsonValue]) -> tuple[ReadabilityTab
             try:
                 cells = _cells(element)
                 rows = _rows(cells, integer(obj(element["table"])["columns"]))
-                widths = table_column_widths(rows, total=_printable_width(document, tab))
+                widths = table_column_widths(
+                    rows,
+                    total=readable_table_width(document, tab, start=integer(element["startIndex"])),
+                )
                 target = ReadabilityTable(
                     tab_id=tab_id,
                     start=integer(element["startIndex"]),
@@ -72,25 +74,6 @@ def plan_readable_tables(document: dict[str, JsonValue]) -> tuple[ReadabilityTab
 def _rows(cells: tuple[_Cell, ...], columns: int) -> tuple[tuple[str, ...], ...]:
     values = [" ".join(plain_text(part).strip() for part in cell.paragraphs) for cell in cells]
     return tuple(tuple(values[index : index + columns]) for index in range(0, len(values), columns))
-
-
-def _printable_width(document: dict[str, JsonValue], tab: dict[str, JsonValue]) -> int:
-    style = {**obj(document.get("documentStyle", {})), **obj(tab.get("documentStyle", {}))}
-    size = obj(style.get("documentSize", {}))
-    width = obj(size.get("width", {})).get("magnitude", 612)
-    left = obj(style.get("marginLeft", {})).get("magnitude", 72)
-    right = obj(style.get("marginRight", {})).get("magnitude", 72)
-    if not all(
-        isinstance(value, (float, int)) and not isinstance(value, bool)
-        for value in (width, left, right)
-    ):
-        msg = "Unknown page geometry"
-        raise ValueError(msg)
-    available = float(str(width)) - float(str(left)) - float(str(right))
-    if not _MIN_PAGE_WIDTH <= available <= _MAX_PAGE_WIDTH:
-        msg = "Unknown page geometry"
-        raise ValueError(msg)
-    return round(available * 20)
 
 
 def readable_table_requests(

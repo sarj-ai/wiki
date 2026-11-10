@@ -77,3 +77,21 @@ def test_100_table_geometries_fit_the_available_width(columns: int, width: int) 
     assert min(widths) > 0
     assert sum(widths) == width
     assert widths[0] > widths[-1]
+
+
+@pytest.mark.parametrize("available", [8320, 9360, 12960])
+def test_narrow_tables_reserve_font_sized_space_for_headers_and_uncertain_quantities(
+    available: int,
+) -> None:
+    rows = (
+        ("Measurement", "Value", "Notes"),
+        ("Uncertainty", "12.3 ± 0.4 ms", "Quoted interval, not a new estimate."),
+        ("Currency", "$1,250.00", "The amount includes two decimal places."),
+    )
+
+    widths = table_column_widths(rows, total=available)
+
+    assert widths[0] >= 80 * 20
+    assert widths[1] >= 80 * 20
+    assert widths[2] > max(widths[:2])
+    assert sum(widths) == available

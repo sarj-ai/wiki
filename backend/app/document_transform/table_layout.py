@@ -7,6 +7,7 @@ import unicodedata
 
 
 _MISSING = frozenset({"", "-", "–", "—", "n/a", "na", "null", "…"})
+_CHARACTER_WIDTH_TWIPS = 110  # Conservative 5.5 pt at the shared 10 pt table font size.
 _NUMBER = r"[+−-]?(?:\d[\d,\u2009\u202f ]*(?:\.\d+)?|\.\d+)(?:[eE][+−-]?\d+)?"
 _QUANTITY = re.compile(
     rf"(?:[<>≤≥~≈]\s*)?[$€£¥]?\s*(?:{_NUMBER}(?:\s*[/⁄:]\s*{_NUMBER})?|"
@@ -99,8 +100,7 @@ def _column_demand(values: list[str], *, numeric: bool, header: bool) -> _Column
 def _distribute_widths(demands: list[_ColumnDemand], *, total: int) -> tuple[int, ...]:
     # Allocate a readable minimum before distributing spare room. Numeric
     # columns need enough room for quantities; descriptions receive the rest.
-    capacity = total / 95  # Approximate characters across the printable page.
-    floors = [item.minimum * capacity for item in demands]
+    floors = [item.minimum * _CHARACTER_WIDTH_TWIPS for item in demands]
     if sum(floors) >= total:
         raw = [total * value / sum(floors) for value in floors]
     else:
