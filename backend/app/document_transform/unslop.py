@@ -11,12 +11,26 @@ from app.document_transform.limits import MIN_MODEL_PROSE_WORDS
 
 UNSLOP_UPSTREAM_COMMIT = "d81f5196167ded24f46fced04958c0c12d681798"
 UNSLOP_UPSTREAM_VERSION = "2.3.0"
-UNSLOP_POLICY_VERSION = "sarj-concise-v19"
+UNSLOP_POLICY_VERSION = "sarj-concise-v20"
 MAX_EDITORIAL_PASSES = 100
 MIN_CONCISION_PROSE_WORDS = 40
 CONCISION_WORD_NUMERATOR = 2
 CONCISION_WORD_DENOMINATOR = 5
-UNSLOP_REWRITE_INSTRUCTION = (
+UNSLOP_PRESENTATION_PADDING_INSTRUCTION = (
+    "Unmeasured praise of this text's presentation and imagined reader encouragement "
+    "(welcoming tone, anticipation, curiosity, confidence or pleasure) are removable "
+    "editorial padding; they may disappear entirely. This exception excludes actual "
+    "research, attributed or reported observations, substantive goals, audience "
+    "requirements, capabilities, quantities and uncertainty. Preserve those with their "
+    "original scope and force. Do not substitute new reader reactions or audiences, or "
+    "move a quantifier or modal onto another fact. A measured tone does not establish "
+    "measured estimates; a rounded presentation does not establish numerical rounding. "
+    "Do not turn presentation praise into new instructions or obligations. Retained "
+    "stylistic modifiers must keep their original writing-related attachment. "
+    "Existing literal constraints, hashes, "
+    "force-language counts and complete-source sentence audits remain mandatory. "
+)
+UNSLOP_REWRITE_INSTRUCTION = UNSLOP_PRESENTATION_PADDING_INSTRUCTION + (
     "Edit ruthlessly. Rewrite every supplied block into its shortest faithful, grammatical "
     "form. Lead with the concrete subject and a strong active verb. Convert passive voice "
     "to active voice whenever the source identifies the actor; never invent an actor. "
@@ -71,7 +85,7 @@ UNSLOP_REWRITE_INSTRUCTION = (
     "paragraph boundaries. Do not add claims, examples, headings, bullets, line breaks or "
     "commentary."
 )
-UNSLOP_REVIEW_INSTRUCTION = (
+UNSLOP_REVIEW_INSTRUCTION = UNSLOP_PRESENTATION_PADDING_INSTRUCTION + (
     "Perform factual audits, not edits or sentence replacements. For each sentence_audits entry, "
     "follow context_id to its document_contexts entry. source_sentence is the source unit being "
     "audited. source_kind distinguishes an original sentence, an additional clause audit and "

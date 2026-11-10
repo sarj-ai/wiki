@@ -1993,7 +1993,7 @@ def _assert_concision_wire_source(
     assert block.concision_target is not None
     assert block.concision_target.source_words == 59
     assert block.concision_target.max_words == 24
-    assert block.concision_target.draft_target_words == 19
+    assert block.concision_target.draft_target_words == 12
 
 
 @pytest.mark.parametrize("repair_fault", [False, True], ids=["repair-success", "repair-504"])
@@ -3166,6 +3166,93 @@ def test_normal_factory_policy_requires_a_project(document_settings: DocumentSet
         RuntimeError, match="GOOGLE_CLOUD_PROJECT is required for Document Transform"
     ):
         transform_dependencies.document_model_policy(project=None, document=document_settings)
+
+
+async def test_default_models_recover_capacity_and_denied_review_with_full_source_audits(
+    normal_sdk_client_factory: Callable[[httpx.AsyncClient], genai.Client],
+    normal_model_policy: GeminiModelPolicy,
+) -> None:
+    assert (
+        normal_model_policy.unslop_model,
+        normal_model_policy.fallback_model,
+        normal_model_policy.restyle_model,
+    ) == ("gemini-3.5-flash", "gemini-3.1-pro-preview", "gemini-3.5-flash")
+    padding = "The explanation describes the discussion in expanded wording before returning to the description."
+    sentences = (
+        "Atlas condenses prose for readers.",
+        "Prism refines layouts for readers.",
+        *([padding] * 4),
+    )
+    source = " ".join(sentences)
+    replacement = " ".join(sentences[:2])
+    document = parse_markdown(source, title="Default model availability")
+    block = document.blocks[0]
+    patch = TextPatch(block_id=block.id, expected_sha256=block.sha256, replacement=replacement)
+    models: list[ModelId] = []
+    writers: list[_WireRewriteBlock] = []
+    reviews: list[_WireReview] = []
+
+    def respond(request: httpx.Request) -> httpx.Response:
+        model = ModelId(request.url.path.rsplit("/", 1)[-1].removesuffix(":generateContent"))
+        models.append(model)
+        config = _VendorRequest.model_validate_json(request.content).generation_config
+        prompt = _WireReviewRequest.model_validate_json(request.content).contents[0].parts[0].text
+        if prompt.startswith("{"):
+            payload = _WireReview.model_validate_json(prompt)
+            reviews.append(payload)
+            assert config.thinking_config is not None
+            assert config.thinking_config.thinking_level == types.ThinkingLevel.HIGH
+            if model == "gemini-3.5-flash":
+                return httpx.Response(HTTPStatus.FORBIDDEN, json={"error": {"code": 403}})
+            assert model == "gemini-3.1-pro-preview"
+            return _review_response(_functional_audit_envelope(payload))
+        (submitted,) = _WireRewriteBlocks.model_validate_json(
+            next(line for line in prompt.splitlines() if line.startswith("["))
+        ).root
+        writers.append(submitted)
+        assert submitted.block_id == block.id
+        assert submitted.sha256 == block.sha256
+        assert submitted.text == source
+        if model == "gemini-3.5-flash":
+            assert config.thinking_config is not None
+            assert config.thinking_config.thinking_level == types.ThinkingLevel.MEDIUM
+            return httpx.Response(HTTPStatus.TOO_MANY_REQUESTS, json={"error": {"code": 429}})
+        assert model == "gemini-3.1-pro-preview"
+        assert config.thinking_config is not None
+        assert config.thinking_config.thinking_level == types.ThinkingLevel.HIGH
+        return _review_response(PatchEnvelope(patches=[patch]))
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(respond)) as http:
+        client = normal_sdk_client_factory(http)
+        try:
+            generator = VertexGeminiPatchGenerator(policy=normal_model_policy, client=client)
+            async with asyncio.timeout(30):
+                result = await TextTransformPlanner(
+                    max_editorial_passes=1, generator=generator, allow_unslop_model=True
+                ).transform(document, _document_budget_request(source))
+        finally:
+            await client.aio.aclose()
+
+    assert models == [
+        ModelId("gemini-3.5-flash"),
+        ModelId("gemini-3.5-flash"),
+        ModelId("gemini-3.5-flash"),
+        ModelId("gemini-3.1-pro-preview"),
+        ModelId("gemini-3.5-flash"),
+        ModelId("gemini-3.1-pro-preview"),
+    ]
+    assert len(writers) == 4
+    assert len(reviews) == 2
+    assert reviews[0] == reviews[1]
+    assert [
+        audit.source_sentence
+        for audit in reviews[-1].sentence_audits
+        if audit.source_kind == "sentence"
+    ] == list(sentences)
+    _assert_document_budget_audits(reviews, (block,), {block.id: replacement}, sentences)
+    assert result.document == document.replace_blocks({block.id: replacement})
+    assert result.model_count == 1
+    assert not result.findings
 
 
 async def test_normal_factory_policy_extends_only_the_review_sdk_deadline(

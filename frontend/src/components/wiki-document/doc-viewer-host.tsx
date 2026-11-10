@@ -3,6 +3,7 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useShallow } from "zustand/react/shallow";
 
+import { DrivePreviewSurface } from "@/components/ui/drive-preview-surface";
 import {
   type ActiveDoc,
   useDocViewerStore,
@@ -217,15 +218,17 @@ const DrivePreviewIframe = ({
       loading={isLoading}
       reducedMotion={reducedMotion}
     >
-      <iframe
-        allow="clipboard-read; clipboard-write"
-        className="block size-full border-0"
-        ref={attachIframeLoadListener.bind(undefined, () => {
-          markIframeLoaded(fileId, setIsLoading);
-        })}
-        src={src}
-        title={title}
-      />
+      <DrivePreviewSurface mimeType={mimeType}>
+        <iframe
+          allow="clipboard-read; clipboard-write"
+          className="block size-full border-0"
+          ref={attachIframeLoadListener.bind(undefined, () => {
+            markIframeLoaded(fileId, setIsLoading);
+          })}
+          src={src}
+          title={title}
+        />
+      </DrivePreviewSurface>
     </DocumentFrame>
   );
 };

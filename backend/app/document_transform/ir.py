@@ -24,6 +24,7 @@ MAX_DOCUMENT_BLOCKS = 750
 _MIN_TABLE_COLUMNS = 2
 _MAX_AUTHORED_LEAD_IN_LENGTH = 160
 _MIN_TERMINAL_TEXT_RUN_COUNT = 2
+_NUMERIC_MICROSECOND_UNIT_PATTERN = re.compile(r"(?<![\w.,])([0-9]+(?:\.[0-9]+)?[ \t]*)µs(?!\w)")
 
 
 class BlockKind(StrEnum):
@@ -756,9 +757,10 @@ def _font_run_is_safe(part: dict[Any, Any], run: dict[Any, Any]) -> bool:
     ):
         return False
     # Nunito's Latin branding must not replace a script-specific typeface.
+    script_text = _NUMERIC_MICROSECOND_UNIT_PATTERN.sub(r"\1us", str(run.get("content", "")))
     return all(
         not character.isalpha() or "LATIN" in unicodedata.name(character, "")
-        for character in str(run.get("content", ""))
+        for character in script_text
     )
 
 

@@ -2541,28 +2541,28 @@
       "count": 1
     },
     {
-      "fingerprint": "361568ed1e3c4c0b40992c51eca501a6f9958ea397d456517094cde8e14a65cf",
+      "fingerprint": "0f9f7b5c7cba83359221c048631ba3c3cda789f7230263d81d3db5e82a213dcc",
       "source": "sarj-python-lint",
       "ruleId": "no-excessive-cognitive-complexity",
       "path": "backend/app/document_transform/ir.py",
       "count": 1
     },
     {
-      "fingerprint": "a8005806c3f90cbfd1be63a8b899578484df1c69df83d45a024bb409aebb61ce",
+      "fingerprint": "5d408c53a8e15262f86bdd93c591f479285ad7b1eaf274c54b87cdb65c56b149",
       "source": "sarj-python-lint",
       "ruleId": "no-excessive-cognitive-complexity",
       "path": "backend/app/document_transform/ir.py",
       "count": 1
     },
     {
-      "fingerprint": "af6ffc18eb1de1a67483e7a8a7e4dc094520fc73378ce4e639d6d108b2c92991",
+      "fingerprint": "a9d029e4fdfff4308330d681b163b573aa67a15af5405e5fe14e2bea97b157f6",
       "source": "sarj-python-lint",
       "ruleId": "no-excessive-cognitive-complexity",
       "path": "backend/app/document_transform/ir.py",
       "count": 1
     },
     {
-      "fingerprint": "c6b040838b4fed062af2f8bf344924ecf1e58dc778df760119a76fe3623261ec",
+      "fingerprint": "ccb635ef18a296e8e07efcf078fcd6816a1ded0679f09690ff1b5b1744d0c9dc",
       "source": "sarj-python-lint",
       "ruleId": "no-excessive-cognitive-complexity",
       "path": "backend/app/document_transform/ir.py",
