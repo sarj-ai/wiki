@@ -726,9 +726,6 @@
     "SARJ477": 2,
     "SARJ528": 9
   },
-  "backend/tests/test_qa_polish_rounds_cli.py": {
-    "SARJ445": 1
-  },
   "backend/tests/test_request_body.py": {
     "SARJ442": 5,
     "SARJ457": 5

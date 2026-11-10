@@ -3682,13 +3682,6 @@
       "count": 10
     },
     {
-      "fingerprint": "aa46f10363eef1d17cf03fb8199c93cd9eec52bad2ff1df2b019481e1fa6b443",
-      "source": "sarj-python-lint",
-      "ruleId": "prefer-injected-dependency-over-monkeypatch",
-      "path": "backend/tests/test_qa_polish_rounds_cli.py",
-      "count": 1
-    },
-    {
       "fingerprint": "0f7be203bb5705310b4cde8d4f5e4cbc6fa892db4fc951554bc475cd8c8f6bbb",
       "source": "sarj-python-lint",
       "ruleId": "prefer-injected-dependency-over-monkeypatch",

@@ -11,6 +11,11 @@ depends_on = None
 
 
 def upgrade() -> None:
+    # Preserve concurrent settings edits and one-time OAuth consumption during transfer.
+    op.execute(
+        "LOCK TABLE users, user_preferences, user_folder_icons, user_sort_order, mcp_native_state "
+        "IN ACCESS EXCLUSIVE MODE"
+    )
     op.add_column(
         "users",
         sa.Column("show_non_doc_files", sa.Boolean(), nullable=False, server_default=sa.true()),

@@ -175,5 +175,6 @@
   "retainedSerializationCompatibility": {
     "path": "backend/app/tasks/service.py",
     "reason": "Old encrypted normal copy checkpoints contain null QA metadata. Discard only those null legacy keys when decoding; keep strict rejection of non-null retired QA payloads and every other unknown field. New checkpoints omit the retired keys."
-  }
+  },
+  "migrationIsolation": "Lock the users and retired preference/native-state tables for the entire copy/drop transaction so concurrent edits and single-use OAuth consumption cannot race the transfer. The brief write pause is intentional."
 }
