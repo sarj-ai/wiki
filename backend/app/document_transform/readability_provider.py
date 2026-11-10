@@ -6,6 +6,7 @@ from pydantic import JsonValue
 from app.document_transform.errors import OutputConflictError, OutputVerificationError
 from app.document_transform.readability import verify_readability
 from app.document_transform.readability_json import document_digest
+from app.document_transform.readability_lists import validate_readable_lists
 from app.document_transform.readability_paragraphs import readable_paragraph_requests
 from app.document_transform.readability_tables import readable_table_requests
 from app.document_transform.readability_types import ReadabilityCheckpoint, complete_readability
@@ -31,9 +32,13 @@ class ReadabilityProvider:
                 or document_digest(document) != checkpoint.source_sha256
             ):
                 raise OutputConflictError
-            requests = readable_paragraph_requests(checkpoint.paragraphs) + readable_table_requests(
-                document, checkpoint.tables
-            )
+            try:
+                validate_readable_lists(document, checkpoint.paragraphs)
+            except (KeyError, TypeError, ValueError) as error:
+                raise OutputConflictError from error
+            requests = readable_paragraph_requests(
+                checkpoint.paragraphs, grouped_lists=checkpoint.version != 1
+            ) + readable_table_requests(document, checkpoint.tables)
             if requests != checkpoint.requests:
                 raise OutputConflictError
             await self.write(document_id, checkpoint)

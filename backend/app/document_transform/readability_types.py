@@ -50,7 +50,8 @@ class ReadabilityTable(BaseModel):
 class ReadabilityPlan(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
-    version: Literal[1] = 1
+    # Version 1 wrote one bullet request per item; version 2 writes whole groups.
+    version: Literal[1, 2] = 2
     source_revision_id: DocsRevisionId
     source_sha256: str
     invariant_sha256: str
