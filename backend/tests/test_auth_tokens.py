@@ -12,8 +12,8 @@ from app.auth.encryption import encrypt_text
 from app.auth.errors import InvalidTokenError, TokenRevokedError
 from app.auth.jwt import (
     ALGORITHM,
-    TOKEN_AUDIENCE,
-    TOKEN_ISSUER,
+    JWT_AUDIENCE,
+    JWT_ISSUER,
     create_access_token,
     create_refresh_token,
     decode_token,
@@ -35,8 +35,8 @@ def test_tokens_have_verified_identity_and_no_email_claim() -> None:
         token,
         settings.SECRET_KEY.get_secret_value(),
         algorithms=[ALGORITHM],
-        audience=TOKEN_AUDIENCE,
-        issuer=TOKEN_ISSUER,
+        audience=JWT_AUDIENCE,
+        issuer=JWT_ISSUER,
     )
     parsed = decode_token(token)
 
@@ -56,8 +56,8 @@ def test_tokens_reject_wrong_issuer_or_audience(claim: str, value: str) -> None:
         "sub": str(uuid.uuid7()),
         "sid": str(uuid.uuid7()),
         "jti": str(uuid.uuid7()),
-        "iss": TOKEN_ISSUER,
-        "aud": TOKEN_AUDIENCE,
+        "iss": JWT_ISSUER,
+        "aud": JWT_AUDIENCE,
         "iat": now,
         "exp": now + timedelta(minutes=5),
         "type": "access",

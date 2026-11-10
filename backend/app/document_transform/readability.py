@@ -19,6 +19,7 @@ from app.document_transform.readability_tables import (
     readable_table_requests,
 )
 from app.document_transform.readability_types import (
+    PlannedReadabilityCheckpoint,
     ReadabilityCheckpoint,
     ReadabilityParagraph,
     ReadabilityProposal,
@@ -61,7 +62,7 @@ async def plan_readability(
     mutations = _bounded_readability_mutations(document, draft.paragraphs)
     if not mutations.requests:
         return None
-    checkpoint = ReadabilityCheckpoint(
+    checkpoint = PlannedReadabilityCheckpoint(
         source_revision_id=DocsRevisionId(str(document["revisionId"])),
         source_sha256=document_digest(document),
         invariant_sha256="",

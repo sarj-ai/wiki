@@ -6,11 +6,8 @@ from fastapi import APIRouter, Depends, Path, Response, status
 
 from app.auth.dependencies import get_current_user
 from app.document_transform.schemas import (
-    CopyCheckpoint,
     DriveFileSource,
-    InPlaceCheckpoint,
     OutputStrategy,
-    WordCopyCheckpoint,
 )
 from app.files.dependencies import files_service_dep
 from app.files.errors import FilesError
@@ -83,7 +80,7 @@ async def _with_unverified_output(
     if record.owner_user_id != user.id:
         return task
     if task.error_code == "in_place_verification_failed":
-        if not isinstance(checkpoint, InPlaceCheckpoint):
+        if checkpoint is None or checkpoint.kind != "in_place":
             return task
         payload_matches_original = payload is None or (
             payload.output_strategy is OutputStrategy.IN_PLACE
@@ -96,7 +93,7 @@ async def _with_unverified_output(
     else:
         if (
             (payload is not None and payload.output_strategy is not OutputStrategy.COPY)
-            or not isinstance(checkpoint, CopyCheckpoint | WordCopyCheckpoint)
+            or (checkpoint is None or checkpoint.kind == "in_place")
             or checkpoint.output is None
         ):
             return task

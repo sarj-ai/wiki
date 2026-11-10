@@ -143,7 +143,7 @@ def test_projection_uses_same_tab_parent_and_preserves_invariant(change: str) ->
             {"tabProperties": {"tabId": "t2"}, "documentTab": other},
         ]
     }
-    checkpoint = flow.NativeFooterCheckpoint(
+    checkpoint = flow.CreatingNativeFooterCheckpoint(
         tab_id=DocsTabId("t1"),
         url="https://example.com",
         revision_id=DocsRevisionId("r1"),

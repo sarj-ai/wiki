@@ -11,7 +11,7 @@ import {
   Sparkles,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { useEffect, useId, useRef, useState } from "react";
+import { useEffect, useId, useReducer, useRef, useState } from "react";
 import { toast } from "sonner";
 
 import { ensureDocumentAliasAction } from "@/app/actions/wiki-actions";
@@ -67,6 +67,7 @@ import { MIME_DOCX, MIME_PPTX, MIME_SLIDE } from "@/types/wiki";
 
 import { DocumentPolishReceipt } from "./document-polish-receipt";
 import { DocumentPolishRecovery } from "./document-polish-recovery";
+import { isPolishRunning, transitionPolish } from "./polish-state";
 
 const MODES = [
   {
@@ -162,27 +163,33 @@ export function DocumentPolishDialog({
   const [markdownError, setMarkdownError] = useState<null | string>(null);
   const [loadingMarkdownFile, setLoadingMarkdownFile] = useState(false);
   const [name, setName] = useState("Untitled document");
-  const [completedResult, setCompletedResult] =
-    useState<DocumentTransformResult | null>(null);
   const [destination, setDestination] = useState<null | SmartDestination>(
     source.kind === "markdown" ? source.initialDestination : null,
   );
   const [destinationOpen, setDestinationOpen] = useState(false);
-  const [submitting, setSubmitting] = useState(false);
-  const [stage, setStage] = useState<"idle" | "starting" | "transforming">(
-    "idle",
-  );
-  const [terminalMessage, setTerminalMessage] = useState<null | string>(null);
-  const [terminalTaskId, setTerminalTaskId] = useState<null | string>(null);
-  const [retryMessage, setRetryMessage] = useState<null | string>(null);
-  const [unverifiedOutputId, setUnverifiedOutputId] = useState<null | string>(
-    null,
-  );
-  const [unverifiedOutputIsOriginal, setUnverifiedOutputIsOriginal] =
-    useState(false);
-  const [reviewMessage, setReviewMessage] = useState<null | string>(null);
-  const [reviewResult, setReviewResult] =
-    useState<DocumentTransformResult | null>(null);
+  const [polish, sendPolish] = useReducer(transitionPolish, { kind: "idle" });
+  const submitting = isPolishRunning(polish);
+  const stage = polish.kind;
+  const completedResult = polish.kind === "completed" ? polish.result : null;
+  const terminalMessage = polish.kind === "failed" ? polish.message : null;
+  const terminalTaskId =
+    polish.kind === "failed" ||
+    polish.kind === "review" ||
+    polish.kind === "review-without-output"
+      ? polish.taskId
+      : null;
+  const retryMessage = polish.kind === "retryable" ? polish.message : null;
+  const unverifiedOutputId =
+    polish.kind === "failed" && polish.output.kind !== "unknown"
+      ? polish.output.fileId
+      : null;
+  const unverifiedOutputIsOriginal =
+    polish.kind === "failed" && polish.output.kind === "original";
+  const reviewMessage =
+    polish.kind === "review" || polish.kind === "review-without-output"
+      ? polish.message
+      : null;
+  const reviewResult = polish.kind === "review" ? polish.result : null;
   const isPresentation =
     source.kind === "drive_file" &&
     (source.mimeType === MIME_SLIDE || source.mimeType === MIME_PPTX);
@@ -364,31 +371,23 @@ export function DocumentPolishDialog({
 
   const resetRequest = () => {
     if (unresolved) return;
-    setRetryMessage(null);
     idempotencyKey.current = null;
     refreshedDriveSource.current = null;
     fileLoadGeneration.current += 1;
     fileLoadPending.current = false;
     setLoadingMarkdownFile(false);
-    setReviewMessage(null);
-    setReviewResult(null);
-    setTerminalMessage(null);
-    setTerminalTaskId(null);
-    setUnverifiedOutputId(null);
-    setUnverifiedOutputIsOriginal(false);
+    sendPolish({ type: "reset" });
   };
 
   const close = () => {
     if (closeLocked) return;
-    setRetryMessage(null);
     abortRef.current?.abort();
     abortRef.current = null;
     submitLatch.current = false;
     if (unresolved) {
       if (stage === "transforming")
         toast.info("Check progress by reopening Polish.");
-      setSubmitting(false);
-      setStage("idle");
+      sendPolish({ type: "reset" });
       onOpenChange(false);
       return;
     }
@@ -403,19 +402,11 @@ export function DocumentPolishDialog({
     setUploadedMarkdownId(null);
     setMarkdownError(null);
     setName("Untitled document");
-    setCompletedResult(null);
     setDestination(
       source.kind === "markdown" ? source.initialDestination : null,
     );
     setDestinationOpen(false);
-    setSubmitting(false);
-    setStage("idle");
-    setReviewMessage(null);
-    setReviewResult(null);
-    setTerminalMessage(null);
-    setTerminalTaskId(null);
-    setUnverifiedOutputId(null);
-    setUnverifiedOutputIsOriginal(false);
+    sendPolish({ type: "reset" });
     onOpenChange(false);
   };
 
@@ -474,11 +465,7 @@ export function DocumentPolishDialog({
       setName(imported.name);
       setMarkdownError(markdownTextError(imported.content));
       idempotencyKey.current = null;
-      setReviewMessage(null);
-      setReviewResult(null);
-      setTerminalMessage(null);
-      setTerminalTaskId(null);
-      setRetryMessage(null);
+      sendPolish({ type: "reset" });
     } catch (error: unknown) {
       if (fileLoadGeneration.current === generation) {
         setMarkdownError(
@@ -516,11 +503,7 @@ export function DocumentPolishDialog({
       return;
     if (!transformSource) return;
     submitLatch.current = true;
-    setRetryMessage(null);
-    setSubmitting(true);
-    setStage("starting");
-    setReviewMessage(null);
-    setReviewResult(null);
+    sendPolish({ type: "start" });
     const controller = new AbortController();
     const generation = lifecycleGeneration.current;
     const isCurrent = () =>
@@ -529,8 +512,7 @@ export function DocumentPolishDialog({
       if (abortRef.current !== controller) return;
       abortRef.current = null;
       submitLatch.current = false;
-      setSubmitting(false);
-      setStage("idle");
+      sendPolish({ type: "finish" });
     };
     abortRef.current?.abort();
     abortRef.current = controller;
@@ -558,7 +540,7 @@ export function DocumentPolishDialog({
             error,
             "Couldn’t verify the latest document revision",
           );
-          setRetryMessage(message);
+          sendPolish({ type: "retryable", message });
           toast.error(message);
         }
         finishSubmission();
@@ -653,7 +635,7 @@ export function DocumentPolishDialog({
       });
       controller.signal.throwIfAborted();
       if (!isCurrent()) return;
-      setStage("transforming");
+      sendPolish({ type: "admitted", taskId: task.id });
 
       const currentTask =
         !operation.taskId && task.status === "failed"
@@ -696,7 +678,7 @@ export function DocumentPolishDialog({
               : `Created “${result.outputFile.name}”`,
         );
       }
-      setCompletedResult(result);
+      sendPolish({ type: "completed", result });
     };
     try {
       await perform();
@@ -706,9 +688,12 @@ export function DocumentPolishDialog({
         await completeTransformRecovery(owner, sourceIdentity, operation.key);
         if (!isCurrent()) return;
         saveRecovery(null);
-        setReviewMessage(error.message);
-        setTerminalTaskId(knownTaskId);
-        setReviewResult(error.result ?? null);
+        sendPolish({
+          type: "review",
+          message: error.message,
+          taskId: knownTaskId,
+          result: error.result ?? null,
+        });
         if (error.result?.outputStrategy === "in_place") {
           await queryClient.invalidateQueries({
             queryKey: wikiKeys.file(error.result.outputFile.id),
@@ -730,16 +715,25 @@ export function DocumentPolishDialog({
           await completeTransformRecovery(owner, sourceIdentity, operation.key);
           if (!isCurrent()) return;
           saveRecovery(null);
-          setTerminalMessage(error.message);
-          setTerminalTaskId(knownTaskId);
-          setUnverifiedOutputId(error.unverifiedOutputId ?? null);
-          setUnverifiedOutputIsOriginal(
-            error.code === "in_place_verification_failed",
-          );
+          sendPolish({
+            type: "failed",
+            message: error.message,
+            taskId: knownTaskId,
+            output: error.unverifiedOutputId
+              ? {
+                  kind:
+                    error.code === "in_place_verification_failed"
+                      ? "original"
+                      : "copy",
+                  fileId: error.unverifiedOutputId,
+                }
+              : { kind: "unknown" },
+          });
         } else {
-          setRetryMessage(
-            errorMessage(error, `Couldn’t polish ${artifactNoun}`),
-          );
+          sendPolish({
+            type: "retryable",
+            message: errorMessage(error, `Couldn’t polish ${artifactNoun}`),
+          });
         }
         toast.error(errorMessage(error, `Couldn’t polish ${artifactNoun}`));
       }
@@ -879,11 +873,10 @@ export function DocumentPolishDialog({
                       ? {
                           onRetryShortLink: async () => {
                             const updated = await ensureShortLink(reviewResult);
-                            setReviewResult((current) =>
-                              current?.operationId === updated.operationId
-                                ? updated
-                                : current,
-                            );
+                            sendPolish({
+                              type: "short-link-ready",
+                              result: updated,
+                            });
                           },
                         }
                       : {})}
@@ -949,11 +942,10 @@ export function DocumentPolishDialog({
                         onRetryShortLink: async () => {
                           const updated =
                             await ensureShortLink(completedResult);
-                          setCompletedResult((current) =>
-                            current?.operationId === updated.operationId
-                              ? updated
-                              : current,
-                          );
+                          sendPolish({
+                            type: "short-link-ready",
+                            result: updated,
+                          });
                         },
                       }
                     : {})}

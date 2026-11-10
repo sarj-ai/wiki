@@ -5,6 +5,7 @@ import json
 from typing import TYPE_CHECKING, override
 import uuid
 
+from app.document_transform.checkpoint_transitions import begin_word, record_word, verify_word
 from app.document_transform.errors import (
     DocumentGatewayError,
     OutputConflictError,
@@ -16,15 +17,19 @@ from app.document_transform.naming import title_case_document_name
 from app.document_transform.runner import DocumentTransformRunner
 from app.document_transform.schemas import (
     CopyCheckpointStage,
+    CreatedWordCheckpoint,
     DocumentTransformCheckpoint,
     DocumentTransformRequest,
     DocumentTransformResult,
     DriveFileSource,
     OutputStrategy,
+    PlannedWordCheckpoint,
     TransformFinding,
     TransformMode,
     ValidationSummary,
+    WordCheckpointPayload,
     WordCopyCheckpoint,
+    WordCopyPlan,
 )
 from app.document_transform.versions import WORD_PIPELINE_VERSION
 from app.document_transform.word_gateway import WORD_MIME, WordGateway
@@ -91,16 +96,14 @@ class WordTransformExecutor(DocumentTransformRunner):
         if latest.binding != source.binding or latest.content != source.content:
             raise SourceChangedError
         if checkpoint.stage is CopyCheckpointStage.VERIFIED:
-            if checkpoint.result is None:
-                raise OutputConflictError
             expected = self._result(operation_id, checkpoint)
             if checkpoint.result != expected:
                 raise OutputConflictError
             return checkpoint.result
         result = self._result(operation_id, checkpoint)
-        await self._save(
-            checkpoint.model_copy(update={"stage": CopyCheckpointStage.VERIFIED, "result": result})
-        )
+        if not isinstance(checkpoint, CreatedWordCheckpoint):
+            raise OutputConflictError
+        await self._save(verify_word(checkpoint, result))
         return result
 
     async def _checkpoint_for_request(
@@ -115,15 +118,15 @@ class WordTransformExecutor(DocumentTransformRunner):
             ).encode()
         ).hexdigest()
         checkpoint = self._checkpoint
-        if checkpoint is not None and not isinstance(checkpoint, WordCopyCheckpoint):
+        if checkpoint is not None and not isinstance(checkpoint, WordCopyPlan):
             raise OutputConflictError
         if checkpoint is not None:
             try:
-                checkpoint = WordCopyCheckpoint.model_validate(checkpoint.model_dump())
+                checkpoint = WordCheckpointPayload.model_validate(checkpoint.model_dump()).root
             except ValueError as error:
                 raise OutputConflictError from error
         if checkpoint is None:
-            checkpoint = WordCopyCheckpoint(
+            checkpoint = PlannedWordCheckpoint(
                 request_sha256=request_sha256,
                 source_binding=source.binding,
                 source_sha256=formatted.source_sha256,
@@ -171,7 +174,7 @@ class WordTransformExecutor(DocumentTransformRunner):
             if checkpoint.stage not in {CopyCheckpointStage.PLANNED, CopyCheckpointStage.CREATING}:
                 raise DocumentGatewayError(retryable=True)
             if checkpoint.stage is CopyCheckpointStage.PLANNED:
-                checkpoint = checkpoint.model_copy(update={"stage": CopyCheckpointStage.CREATING})
+                checkpoint = begin_word(checkpoint)
                 await self._save(checkpoint)
             # Drive guarantees same-ID retries return 409 rather than creating duplicates.
             recovered = await self._gateway.create_word(
@@ -192,9 +195,7 @@ class WordTransformExecutor(DocumentTransformRunner):
         if checkpoint.output is not None and checkpoint.output != recovered:
             raise OutputConflictError
         if checkpoint.stage is CopyCheckpointStage.CREATING:
-            checkpoint = checkpoint.model_copy(
-                update={"stage": CopyCheckpointStage.CREATED, "output": recovered}
-            )
+            checkpoint = record_word(checkpoint, recovered)
             await self._save(checkpoint)
         return checkpoint, recovered
 

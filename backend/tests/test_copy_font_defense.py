@@ -25,16 +25,17 @@ from app.document_transform.native_visual_authority import (
     visual_authority_block_ids,
 )
 from app.document_transform.schemas import (
-    CopyCheckpoint,
+    CopyCheckpointPayload,
     FindingSeverity,
     OutputStrategy,
     TransformMode,
 )
 from app.document_transform.tab_structure import plan_tab_structure
 from app.document_transform.tab_structure_execution import (
+    PlannedStructureCheckpoint,
     StructureCheckpoint,
-    StructureStage,
     bind_created_tabs,
+    complete_structure,
     planned_structure_document,
     prepare_content_move,
     prepare_tab_creation,
@@ -188,7 +189,7 @@ async def test_copy_plan_binds_fonts_findings_manifest_and_completed_replay(*, k
         assert ("severity" in serialized_finding) is (
             finding.severity is FindingSeverity.INFORMATIONAL
         )
-    reloaded_checkpoint = CopyCheckpoint.model_validate(serialized_checkpoint)
+    reloaded_checkpoint = CopyCheckpointPayload.model_validate(serialized_checkpoint).root
     writes = gateway.applies, gateway.brand_prepares
     assert (
         await transform._copy_executor(
@@ -470,14 +471,14 @@ def sectioned_rich_document() -> dict[str, Any]:
 def verified_sections(source: dict[str, Any]) -> StructureCheckpoint:
     plan = plan_tab_structure(source, comments_verified_absent=True)
     assert plan is not None
-    intent, _ = prepare_tab_creation(StructureCheckpoint(plan))
+    intent, _ = prepare_tab_creation(PlannedStructureCheckpoint(plan))
     created = bind_created_tabs(
         intent,
         tab_ids=(DocsTabId("delivery"), DocsTabId("risks")),
         revision_id=DocsRevisionId("r2"),
     )
     moving, _ = prepare_content_move(created)
-    return replace(moving, stage=StructureStage.VERIFIED)
+    return complete_structure(moving, moving.revision_id)
 
 
 async def test_completed_copy_tab_projection_retains_bound_font_preservation(

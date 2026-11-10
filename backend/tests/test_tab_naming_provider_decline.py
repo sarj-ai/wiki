@@ -10,7 +10,7 @@ from app.document_transform.errors import DocumentGatewayError, UnsupportedTabMe
 from app.document_transform.gateway import InPlaceStageResult, OutputVerification
 from app.document_transform.google_gateway import GoogleDocumentGateway
 from app.document_transform.schemas import (
-    CopyCheckpoint,
+    CopyCheckpointPayload,
     CopyCheckpointStage,
     InPlaceCheckpointStage,
     TabNamingCheckpoint,
@@ -227,7 +227,9 @@ async def test_verified_copy_survives_rejected_tab_write_and_never_replays_it(
     result = await _copy_executor(gateway=gateway, store=store, task_id=task_id).execute(
         operation_id=task_id, request=request
     )
-    checkpoint = CopyCheckpoint.model_validate_json(store.checkpoints[-1].model_dump_json())
+    checkpoint = CopyCheckpointPayload.model_validate_json(
+        store.checkpoints[-1].model_dump_json()
+    ).root
     assert checkpoint.stage is CopyCheckpointStage.VERIFIED
     assert checkpoint.tab_naming is None
     assert checkpoint.tab_naming_declined_reason == "unsupported_metadata"

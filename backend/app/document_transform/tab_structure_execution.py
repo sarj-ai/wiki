@@ -3,12 +3,13 @@ from __future__ import annotations
 import asyncio
 from collections.abc import Callable
 from copy import deepcopy
-from dataclasses import dataclass, replace
+from dataclasses import dataclass
 from enum import StrEnum
 import json
-from typing import Any, NamedTuple
+from typing import Annotated, Any, Literal, NamedTuple
 
 from loguru import logger
+from pydantic import Field
 
 from app.document_transform.errors import OutputVerificationError
 from app.document_transform.ir import utf16_length
@@ -23,7 +24,6 @@ from app.identifiers import DocsRevisionId, DocsTabId, FileId
 
 MAX_STRUCTURE_REQUESTS = 1_000
 MAX_STRUCTURE_BYTES = 2 * 1024 * 1024
-_EMPTY_REVISION = DocsRevisionId("")
 
 
 class StructureStage(StrEnum):
@@ -39,15 +39,57 @@ class StructureStateError(OutputVerificationError):
 
 
 @dataclass(frozen=True, slots=True)
-class StructureCheckpoint:
+class StructurePlanCheckpoint:
     plan: TabStructurePlan
-    stage: StructureStage = StructureStage.PLANNED
-    created_tab_ids: tuple[DocsTabId, ...] = ()
-    revision_id: DocsRevisionId = _EMPTY_REVISION
 
 
-class StructureDispatch(NamedTuple):
-    checkpoint: StructureCheckpoint
+@dataclass(frozen=True, slots=True)
+class PlannedStructureCheckpoint(StructurePlanCheckpoint):
+    stage: Literal[StructureStage.PLANNED] = StructureStage.PLANNED
+    created_tab_ids: tuple[()] = ()
+    revision_id: Literal[""] = ""
+
+
+@dataclass(frozen=True, slots=True)
+class CreatingStructureCheckpoint(StructurePlanCheckpoint):
+    stage: Literal[StructureStage.CREATING] = StructureStage.CREATING
+    created_tab_ids: tuple[()] = ()
+    revision_id: Literal[""] = ""
+
+
+@dataclass(frozen=True, slots=True)
+class BoundStructureCheckpoint(StructurePlanCheckpoint):
+    created_tab_ids: tuple[DocsTabId, ...]
+    revision_id: DocsRevisionId
+
+
+@dataclass(frozen=True, slots=True)
+class CreatedStructureCheckpoint(BoundStructureCheckpoint):
+    stage: Literal[StructureStage.CREATED] = StructureStage.CREATED
+
+
+@dataclass(frozen=True, slots=True)
+class MovingStructureCheckpoint(BoundStructureCheckpoint):
+    stage: Literal[StructureStage.MOVING] = StructureStage.MOVING
+
+
+@dataclass(frozen=True, slots=True)
+class VerifiedStructureCheckpoint(BoundStructureCheckpoint):
+    stage: Literal[StructureStage.VERIFIED] = StructureStage.VERIFIED
+
+
+StructureCheckpoint = Annotated[
+    PlannedStructureCheckpoint
+    | CreatingStructureCheckpoint
+    | CreatedStructureCheckpoint
+    | MovingStructureCheckpoint
+    | VerifiedStructureCheckpoint,
+    Field(discriminator="stage"),
+]
+
+
+class StructureDispatch[T: StructureCheckpoint](NamedTuple):
+    checkpoint: T
     body: dict[str, Any]
 
 
@@ -82,7 +124,7 @@ class StructureProvider:
         logger.info("document tab structure eligibility checks={checks}", checks=checks)
         if not comments_absent or plan is None:
             return None
-        return StructureCheckpoint(plan)
+        return PlannedStructureCheckpoint(plan)
 
 
 def structure_eligibility_checks(document: dict[str, Any]) -> dict[str, int | bool]:
@@ -236,17 +278,15 @@ def executable_structure(plan: TabStructurePlan, *, copy_mode: bool) -> bool:
 
 
 def prepare_tab_creation(
-    checkpoint: StructureCheckpoint,
-) -> StructureDispatch:
-    if checkpoint.stage is not StructureStage.PLANNED or not executable_structure(
-        checkpoint.plan, copy_mode=True
-    ):
+    checkpoint: PlannedStructureCheckpoint,
+) -> StructureDispatch[CreatingStructureCheckpoint]:
+    _require_structure_state(checkpoint, PlannedStructureCheckpoint)
+    if not executable_structure(checkpoint.plan, copy_mode=True):
         raise StructureStateError
     # Validate the largest subsequent write before creating even an empty tab.
     prepare_content_move(
-        replace(
-            checkpoint,
-            stage=StructureStage.CREATED,
+        CreatedStructureCheckpoint(
+            plan=checkpoint.plan,
             revision_id=checkpoint.plan.revision_id,
             created_tab_ids=tuple(
                 DocsTabId(f"preflight-{index}")
@@ -256,7 +296,7 @@ def prepare_tab_creation(
     )
     # Persist this returned state before dispatch. An ambiguous response must NOT
     # be retried: Docs generates IDs and there is no documented idempotency key.
-    intent = replace(checkpoint, stage=StructureStage.CREATING)
+    intent = CreatingStructureCheckpoint(checkpoint.plan)
     requests: list[dict[str, Any]] = [
         {
             "addDocumentTab": {
@@ -386,8 +426,11 @@ def _has_marker(checkpoint: StructureCheckpoint, document: dict[str, Any]) -> bo
 
 
 def bind_created_tabs(
-    checkpoint: StructureCheckpoint, *, tab_ids: tuple[DocsTabId, ...], revision_id: DocsRevisionId
-) -> StructureCheckpoint:
+    checkpoint: CreatingStructureCheckpoint,
+    *,
+    tab_ids: tuple[DocsTabId, ...],
+    revision_id: DocsRevisionId,
+) -> CreatedStructureCheckpoint:
     if (
         checkpoint.stage is not StructureStage.CREATING
         or len(tab_ids) != len(checkpoint.plan.sections) - 1
@@ -396,15 +439,14 @@ def bind_created_tabs(
         or not revision_id
     ):
         raise StructureStateError
-    return replace(
-        checkpoint, stage=StructureStage.CREATED, created_tab_ids=tab_ids, revision_id=revision_id
-    )
+    return CreatedStructureCheckpoint(checkpoint.plan, tab_ids, revision_id)
 
 
 def prepare_content_move(
-    checkpoint: StructureCheckpoint,
-) -> StructureDispatch:
-    if checkpoint.stage is not StructureStage.CREATED or not checkpoint.revision_id:
+    checkpoint: CreatedStructureCheckpoint,
+) -> StructureDispatch[MovingStructureCheckpoint]:
+    _require_structure_state(checkpoint, CreatedStructureCheckpoint)
+    if not checkpoint.revision_id:
         raise StructureStateError
     plan = checkpoint.plan
     if len(checkpoint.created_tab_ids) != len(plan.sections) - 1:
@@ -452,7 +494,9 @@ def prepare_content_move(
     # One atomic batch inserts all destinations and removes the source tail.
     # Persist MOVING before dispatch; recover only by exact complete readback.
     return StructureDispatch(
-        replace(checkpoint, stage=StructureStage.MOVING),
+        MovingStructureCheckpoint(
+            checkpoint.plan, checkpoint.created_tab_ids, checkpoint.revision_id
+        ),
         {
             "requests": requests,
             "writeControl": {"requiredRevisionId": checkpoint.revision_id},
@@ -617,3 +661,17 @@ def planned_structure_document(
         )
     source["tabs"] = tabs
     return source
+
+
+def complete_structure(
+    checkpoint: MovingStructureCheckpoint, revision_id: DocsRevisionId
+) -> VerifiedStructureCheckpoint:
+    _require_structure_state(checkpoint, MovingStructureCheckpoint)
+    if not revision_id:
+        raise StructureStateError
+    return VerifiedStructureCheckpoint(checkpoint.plan, checkpoint.created_tab_ids, revision_id)
+
+
+def _require_structure_state(value: object, expected: type[StructurePlanCheckpoint]) -> None:
+    if not isinstance(value, expected):
+        raise StructureStateError

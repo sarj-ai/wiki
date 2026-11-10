@@ -5,11 +5,11 @@ from fastapi import Response
 import pytest
 
 from app.document_transform.schemas import (
-    CopyCheckpoint,
+    CopyCheckpointStage,
+    CreatedCopyCheckpoint,
     DocumentOutput,
     DocumentTransformRequest,
     DriveFileSource,
-    InPlaceCheckpoint,
     OutputStrategy,
     TransformMode,
 )
@@ -20,6 +20,7 @@ from app.models.user import User
 from app.tasks.errors import TaskNotFoundError
 from app.tasks.router import get_task
 from app.tasks.schemas import DocumentTransformTaskRecord, FailedTaskRead, TaskKind, TaskStatus
+from tests.advanced_round6_support import in_place_checkpoint
 
 
 class TaskReaderStub:
@@ -98,7 +99,17 @@ async def test_failed_copy_review_descriptor_checks_owner_and_live_access(scenar
     output = DocumentOutput(
         file_id=output_id, name="Private title", parent_folder_id=FileId("parent")
     )
-    checkpoint = CopyCheckpoint.model_construct(output=output)
+    from tests.advanced_round6_support import verified_copy_checkpoint
+
+    checkpoint = CreatedCopyCheckpoint.model_validate(
+        {
+            **verified_copy_checkpoint().model_dump(),
+            "stage": CopyCheckpointStage.CREATED,
+            "output": output,
+            "result": None,
+            "header_finalization": None,
+        }
+    )
     payload = DocumentTransformRequest(
         source=DriveFileSource(
             kind="drive_file",
@@ -172,7 +183,7 @@ async def test_post_mutation_failure_exposes_only_owner_verified_original(
         resource_id=FileId("different-resource") if scenario == "wrong_resource" else source_id,
         error_code="needs_review" if scenario == "wrong_error" else "in_place_verification_failed",
     )
-    checkpoint = InPlaceCheckpoint.model_construct(document_id=source_id)
+    checkpoint = in_place_checkpoint().model_copy(update={"document_id": source_id})
     payload = DocumentTransformRequest(
         source=DriveFileSource(
             kind="drive_file",

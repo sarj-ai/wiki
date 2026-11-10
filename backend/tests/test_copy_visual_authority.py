@@ -19,9 +19,11 @@ from app.document_transform.native_visual_authority import (
 from app.document_transform.schemas import OutputStrategy, TransformMode
 from app.document_transform.tab_structure import plan_tab_structure
 from app.document_transform.tab_structure_execution import (
+    MovingStructureCheckpoint,
+    PlannedStructureCheckpoint,
     StructureCheckpoint,
-    StructureStage,
     bind_created_tabs,
+    complete_structure,
     prepare_content_move,
     prepare_tab_creation,
     verify_structure_content,
@@ -181,7 +183,7 @@ def _manual_title_move() -> _ManualTitleMove:
     content.insert(4, title)
     plan = plan_tab_structure(source, comments_verified_absent=True)
     assert plan is not None
-    intent, _ = prepare_tab_creation(StructureCheckpoint(plan))
+    intent, _ = prepare_tab_creation(PlannedStructureCheckpoint(plan))
     created = bind_created_tabs(
         intent,
         tab_ids=(DocsTabId("new-delivery"), DocsTabId("new-risks")),
@@ -198,6 +200,7 @@ def _manual_title_move() -> _ManualTitleMove:
 
 async def test_visual_authority_survives_verified_move_to_new_tab(monkeypatch: pytest.MonkeyPatch):
     source, moving, actual = _manual_title_move()
+    assert isinstance(moving, MovingStructureCheckpoint)
     snapshot = replace(_snapshot(source), modified_time="2026-09-03T00:00:00Z")
     gateway, store, operation = _Gateway(snapshot), _CopyCheckpointStore(), TaskId(uuid.uuid7())
     request = _in_place_request(TransformMode.BOTH).model_copy(
@@ -207,7 +210,7 @@ async def test_visual_authority_survives_verified_move_to_new_tab(monkeypatch: p
         operation_id=operation, request=request
     )
     checkpoint = store.checkpoints[-1].model_copy(
-        update={"tab_structure": replace(moving, stage=StructureStage.VERIFIED)}
+        update={"tab_structure": complete_structure(moving, moving.revision_id)}
     )
     original_verify = gateway.verify_output
     checks: list[bool] = []

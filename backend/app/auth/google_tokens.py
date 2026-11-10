@@ -8,7 +8,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 import secrets
 import threading
-from typing import TYPE_CHECKING, NamedTuple, Protocol, TypeIs, override
+from typing import TYPE_CHECKING, NamedTuple, Protocol, TypeIs, assert_never, override
 import uuid
 
 import httpx
@@ -20,6 +20,15 @@ from sqlalchemy.orm.attributes import set_committed_value
 from sqlalchemy.sql.elements import ColumnElement
 
 from app.auth.encryption import decrypt_text, encrypt_text
+from app.auth.google_token_state import (
+    AcquireGoogleRefresh,
+    AwaitGoogleRefresh,
+    RefreshGrant,
+    RequireGoogleLogin,
+    TokenSnapshot,
+    UseGoogleAccess,
+    decide_google_token,
+)
 from app.auth.schemas import GoogleTokenResponse
 from app.auth.service import GOOGLE_OAUTH_URL, GOOGLE_REVOKE_URL
 from app.config import settings
@@ -71,16 +80,6 @@ class ManagedGoogleToken:
     expires_at: datetime
     generation: int
     access_ciphertext: str | None = None
-
-
-@dataclass(frozen=True, slots=True)
-class TokenSnapshot:
-    access_ciphertext: str | None
-    credential_ciphertext: str | None
-    expires_at: datetime | None
-    generation: int
-    session_revision: int
-    lease_until: datetime | None
 
 
 class GoogleRefreshResult(NamedTuple):
@@ -243,18 +242,24 @@ class GoogleTokenManager(GoogleTokenProvider):
         while True:
             snapshot = await self._snapshot(user)
             now = datetime.now(UTC)
-            forced_current_generation = (
-                force_generation is not None and snapshot.generation == force_generation
+            decision = decide_google_token(
+                snapshot, now, expiry_skew=_EXPIRY_SKEW, force_generation=force_generation
             )
-            if not forced_current_generation and self._is_valid(snapshot, now):
-                return self._managed(snapshot)
-            if snapshot.credential_ciphertext is None:
-                raise GoogleReauthenticationRequiredError
-
-            owner = uuid.uuid7()
-            acquired = await self._acquire_lease(user, snapshot, owner, now)
-            if acquired:
-                return await self._refresh_owned(user, snapshot, owner)
+            match decision:
+                case UseGoogleAccess():
+                    return self._managed(decision)
+                case RequireGoogleLogin():
+                    raise GoogleReauthenticationRequiredError
+                case AwaitGoogleRefresh():
+                    # Waiters release the checkout while another replica owns refresh.
+                    await self._db.commit()
+                case AcquireGoogleRefresh():
+                    owner = uuid.uuid7()
+                    acquired = await self._acquire_lease(user, decision.grant, owner, now)
+                    if acquired:
+                        return await self._refresh_owned(user, decision.grant, owner)
+                case _:
+                    assert_never(decision)
 
             if asyncio.get_running_loop().time() >= deadline:
                 raise GoogleTokenUnavailableError(retry_after=1)
@@ -287,7 +292,7 @@ class GoogleTokenManager(GoogleTokenProvider):
     async def _acquire_lease(
         self,
         user: User,
-        snapshot: TokenSnapshot,
+        snapshot: RefreshGrant,
         owner: uuid.UUID,
         now: datetime,
     ) -> bool:
@@ -329,11 +334,11 @@ class GoogleTokenManager(GoogleTokenProvider):
     async def _refresh_owned(
         self,
         user: User,
-        snapshot: TokenSnapshot,
+        snapshot: RefreshGrant,
         owner: uuid.UUID,
     ) -> ManagedGoogleToken:
         increment("google_token_refresh_count")
-        refresh_token = decrypt_text(snapshot.credential_ciphertext or "")
+        refresh_token = decrypt_text(snapshot.credential_ciphertext)
         try:
             with timed("google_token_refresh"):
                 response = await self._http.post(
@@ -367,7 +372,7 @@ class GoogleTokenManager(GoogleTokenProvider):
     async def _persist_refresh_response(
         self,
         user: User,
-        snapshot: TokenSnapshot,
+        snapshot: RefreshGrant,
         owner: uuid.UUID,
         response: httpx.Response,
         *,
@@ -435,7 +440,7 @@ class GoogleTokenManager(GoogleTokenProvider):
     async def _handle_refresh_error(
         self,
         user: User,
-        snapshot: TokenSnapshot,
+        snapshot: RefreshGrant,
         owner: uuid.UUID,
         response: httpx.Response,
     ) -> None:
@@ -479,7 +484,7 @@ class GoogleTokenManager(GoogleTokenProvider):
     async def _clear_lease(
         self,
         user: User,
-        snapshot: TokenSnapshot,
+        snapshot: RefreshGrant,
         owner: uuid.UUID,
     ) -> None:
         session_revision_column = User.token_version
@@ -506,22 +511,12 @@ class GoogleTokenManager(GoogleTokenProvider):
             logger.warning("google orphan token revocation failed")
 
     @staticmethod
-    def _is_valid(snapshot: TokenSnapshot, now: datetime) -> bool:
-        return (
-            snapshot.access_ciphertext is not None
-            and snapshot.expires_at is not None
-            and snapshot.expires_at > now + _EXPIRY_SKEW
-        )
-
-    @staticmethod
-    def _managed(snapshot: TokenSnapshot) -> ManagedGoogleToken:
-        if snapshot.access_ciphertext is None or snapshot.expires_at is None:
-            raise GoogleReauthenticationRequiredError
+    def _managed(access: UseGoogleAccess) -> ManagedGoogleToken:
         return ManagedGoogleToken(
-            token=decrypt_text(snapshot.access_ciphertext),
-            expires_at=snapshot.expires_at,
-            generation=snapshot.generation,
-            access_ciphertext=snapshot.access_ciphertext,
+            token=decrypt_text(access.access_ciphertext),
+            expires_at=access.expires_at,
+            generation=access.generation,
+            access_ciphertext=access.access_ciphertext,
         )
 
     @staticmethod

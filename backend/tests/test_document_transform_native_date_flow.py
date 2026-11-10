@@ -11,7 +11,10 @@ from app.document_transform.gateway import InPlaceStageResult, OutputDraft, Sour
 from app.document_transform.google_gateway import GoogleDocumentGateway, stage_request_kinds
 from app.document_transform.native_date_flow import (
     NativeDateCheckpoint,
+    NativeDatePayload,
+    PendingNativeDateCheckpoint,
     date_invariant_sha256,
+    decline_dates,
     plan_copy_dates,
     plan_stable_copy_dates,
     verified_date_projection,
@@ -313,13 +316,14 @@ def test_stage_diagnostics_only_emit_allowlisted_kinds() -> None:
 def test_declined_checkpoint_rejects_later_edits_and_conflicting_outcome() -> None:
     checkpoint = plan_copy_dates(_document(), operation_id=uuid.uuid7())
     assert checkpoint is not None
-    declined = checkpoint.model_copy(update={"declined_reason": "provider_rejected"})
+    assert isinstance(checkpoint, PendingNativeDateCheckpoint)
+    declined = decline_dates(checkpoint)
     changed = _document()
     changed["revisionId"] = "r2"
     with pytest.raises(InPlaceNeedsReviewError):
         verified_date_projection(changed, declined)
     with pytest.raises(ValidationError):
-        NativeDateCheckpoint.model_validate({**declined.model_dump(), "complete": True})
+        NativeDatePayload.model_validate({**declined.model_dump(), "complete": True})
 
 
 @pytest.mark.asyncio
@@ -348,7 +352,7 @@ async def test_executor_persists_decline_and_reports_finding_on_recovery() -> No
         async def plan_copy_dates(
             self, *, draft: OutputDraft, operation_id: uuid.UUID
         ) -> NativeDateCheckpoint:
-            return NativeDateCheckpoint(
+            return PendingNativeDateCheckpoint(
                 revision_id=draft.revision_id,
                 marker_name=f"date-{operation_id}",
                 marker_range={},
@@ -364,7 +368,9 @@ async def test_executor_persists_decline_and_reports_finding_on_recovery() -> No
             assert store.checkpoints[-1].native_dates == checkpoint
             if checkpoint.declined_reason is None:
                 self.date_writes += 1
-            return checkpoint.model_copy(update={"declined_reason": "provider_rejected"})
+            if isinstance(checkpoint, PendingNativeDateCheckpoint):
+                return decline_dates(checkpoint)
+            return checkpoint
 
     gateway = Gateway(
         SourceSnapshot(
@@ -455,7 +461,7 @@ async def test_date_stage_accepts_rotating_image_urls_and_recovers_without_a_sec
     original["tabs"][0]["documentTab"]["inlineObjects"] = date_image_objects
     checkpoint = plan_stable_copy_dates(original, operation_id=uuid.uuid7())
     assert checkpoint is not None
-    checkpoint = NativeDateCheckpoint.model_validate_json(checkpoint.model_dump_json())
+    checkpoint = NativeDatePayload.model_validate_json(checkpoint.model_dump_json()).root
     assert checkpoint.invariant_version == "stable-images-v2"
     actual = _converted()
     actual["tabs"][0]["documentTab"]["inlineObjects"] = deepcopy(
@@ -491,7 +497,7 @@ def test_legacy_date_checkpoint_keeps_its_raw_image_invariant(
     payload = checkpoint.model_dump(mode="json")
     payload.pop("invariant_version")
     payload["invariant_sha256"] = date_invariant_sha256(original)
-    legacy = NativeDateCheckpoint.model_validate(payload)
+    legacy = NativeDatePayload.model_validate(payload).root
     assert legacy.invariant_version is None
     date_image_properties["contentUri"] = "https://example.com/temporary-v2"
     with pytest.raises(InPlaceNeedsReviewError):

@@ -33,6 +33,8 @@ def _recover_empty_header_postcondition(
     operation_id: uuid.UUID,
     checks: dict[str, bool | str],
 ) -> InPlaceStageResult | None:
+    if checkpoint.stage is not InPlaceCheckpointStage.HEADERS:
+        return None
     document = snapshot.google_document
     targets = _requested_tabs(checkpoint.requests)
     digest = mutation_sha256(checkpoint.requests)

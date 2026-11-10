@@ -4,9 +4,9 @@ from copy import deepcopy
 from enum import StrEnum
 import hashlib
 import json
-from typing import Any, Literal, NamedTuple, Self
+from typing import Any, Literal, NamedTuple, Self, assert_never
 
-from pydantic import BaseModel, ConfigDict, Field, JsonValue, model_validator
+from pydantic import BaseModel, ConfigDict, Field, JsonValue, RootModel, model_validator
 
 from app.document_transform.brand_manifest import CURRENT_BRAND_MANIFEST
 from app.document_transform.ir import MAX_DOC_TABS
@@ -78,10 +78,9 @@ class NativeFooterInvariant(StrEnum):
     STABLE_IMAGES_V2 = "stable-images-v2"
 
 
-class NativeFooterCheckpoint(BaseModel):
-    model_config = ConfigDict(extra="forbid")
+class NativeFooterPlan(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
 
-    stage: NativeFooterStage = NativeFooterStage.CREATE
     tab_id: DocsTabId
     url: str
     # Missing on old durable checkpoints: retain their exact original payload.
@@ -92,11 +91,19 @@ class NativeFooterCheckpoint(BaseModel):
     marker_range: dict[str, Any]
     invariant_sha256: str
     invariant_version: NativeFooterInvariant | None = None
-    footer_id: DocsSegmentId | None = None
-    coverage: NativeFooterCoverage | None = None
 
     @model_validator(mode="after")
     def validate_coverage(self) -> Self:
+        if not isinstance(
+            self,
+            (
+                CreatingNativeFooterCheckpoint,
+                PopulatingNativeFooterCheckpoint,
+                CompletedNativeFooterCheckpoint,
+                SkippedNativeFooterCheckpoint,
+            ),
+        ):
+            return self
         coverage = self.coverage
         if coverage is None:
             return self
@@ -130,6 +137,69 @@ class NativeFooterCheckpoint(BaseModel):
         return self
 
 
+class ActiveNativeFooterPlan(NativeFooterPlan):
+    coverage: NativeFooterCoverage | None = None
+
+
+class CreatingNativeFooterCheckpoint(ActiveNativeFooterPlan):
+    stage: Literal[NativeFooterStage.CREATE] = NativeFooterStage.CREATE
+    footer_id: None = None
+
+
+class PopulatingNativeFooterCheckpoint(ActiveNativeFooterPlan):
+    stage: Literal[NativeFooterStage.POPULATE] = NativeFooterStage.POPULATE
+    footer_id: DocsSegmentId
+
+
+class CompletedNativeFooterCheckpoint(ActiveNativeFooterPlan):
+    stage: Literal[NativeFooterStage.COMPLETE] = NativeFooterStage.COMPLETE
+    footer_id: DocsSegmentId
+
+
+class SkippedNativeFooterCheckpoint(NativeFooterPlan):
+    stage: Literal[NativeFooterStage.COMPLETE] = NativeFooterStage.COMPLETE
+    footer_id: None = None
+    coverage: NativeFooterCoverage
+
+    @model_validator(mode="after")
+    def validate_skipped(self) -> Self:
+        if self.coverage.active or self.coverage.pending or self.coverage.completed:
+            message = "Skipped footer must contain only skipped coverage"
+            raise ValueError(message)
+        return self
+
+
+NativeFooterCheckpoint = (
+    CreatingNativeFooterCheckpoint
+    | PopulatingNativeFooterCheckpoint
+    | CompletedNativeFooterCheckpoint
+    | SkippedNativeFooterCheckpoint
+)
+
+
+class NativeFooterPayload(RootModel[NativeFooterCheckpoint]):
+    pass
+
+
+def advance_footer(
+    checkpoint: CreatingNativeFooterCheckpoint | PopulatingNativeFooterCheckpoint,
+    footer_id: DocsSegmentId,
+    revision_id: DocsRevisionId,
+) -> PopulatingNativeFooterCheckpoint | CompletedNativeFooterCheckpoint:
+    payload = {**checkpoint.model_dump(), "footer_id": footer_id, "revision_id": revision_id}
+    match checkpoint:
+        case CreatingNativeFooterCheckpoint():
+            return PopulatingNativeFooterCheckpoint.model_validate(
+                {**payload, "stage": NativeFooterStage.POPULATE}
+            )
+        case PopulatingNativeFooterCheckpoint():
+            return CompletedNativeFooterCheckpoint.model_validate(
+                {**payload, "stage": NativeFooterStage.COMPLETE}
+            )
+        case _:
+            assert_never(checkpoint)
+
+
 class NativeFooterSkip(BaseModel):
     model_config = ConfigDict(extra="forbid")
     tab_id: DocsTabId
@@ -140,7 +210,9 @@ class NativeFooterCoverage(BaseModel):
     model_config = ConfigDict(extra="forbid")
     topology: tuple[DocsTabId, ...] = Field(max_length=MAX_DOC_TABS)
     pending: tuple[DocsTabId, ...] = Field(default=(), max_length=MAX_DOC_TABS)
-    completed: tuple[NativeFooterCheckpoint, ...] = Field(default=(), max_length=MAX_DOC_TABS)
+    completed: tuple[CompletedNativeFooterCheckpoint, ...] = Field(
+        default=(), max_length=MAX_DOC_TABS
+    )
     skipped: tuple[NativeFooterSkip, ...] = Field(default=(), max_length=MAX_DOC_TABS)
     active: bool = True
 
@@ -524,3 +596,14 @@ def _footer_link_style_failure(
     if style.get("italic"):
         return FooterShapeFailure("italic", "mismatch")
     return None
+
+
+for _footer_model in (
+    NativeFooterPlan,
+    CreatingNativeFooterCheckpoint,
+    PopulatingNativeFooterCheckpoint,
+    CompletedNativeFooterCheckpoint,
+    SkippedNativeFooterCheckpoint,
+    NativeFooterPayload,
+):
+    _footer_model.model_rebuild()

@@ -15,9 +15,6 @@ ACCESS_TOKEN_EXPIRE_MINUTES = 30
 REFRESH_TOKEN_EXPIRE_DAYS = 7
 JWT_ISSUER = "sarj-wiki"
 JWT_AUDIENCE = "sarj-wiki-api"
-# Compatibility exports for callers that imported the original public names.
-TOKEN_ISSUER = JWT_ISSUER
-TOKEN_AUDIENCE = JWT_AUDIENCE
 
 
 class TokenPayload(BaseModel):
