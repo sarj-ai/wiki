@@ -3,12 +3,12 @@ import { MIME_DOC, MIME_SHEET, MIME_SLIDE } from "@/types/wiki";
 import { DEMO_FILES, demoFileFor, demoHref } from "./demo-data";
 
 describe("public demo file selection", () => {
-  it("opens Latency guide and offers the four native files in one Drive", () => {
+  it("opens Numbers Every Programmer Should Know and offers the four native files in one Drive", () => {
     expect(DEMO_FILES.map((file) => [file.id, file.name])).toEqual([
-      ["latency-guide", "Latency guide"],
+      ["latency-guide", "Numbers Every Programmer Should Know"],
       ["ai-draft", "AI draft"],
-      ["latency-workbook", "Latency workbook"],
-      ["latency-slides", "Latency slides"],
+      ["latency-workbook", "Numbers workbook"],
+      ["latency-slides", "Numbers slides"],
     ]);
     expect(demoFileFor(null).id).toBe("latency-guide");
     expect(DEMO_FILES.map((file) => file.mimeType)).toEqual([
@@ -29,15 +29,18 @@ describe("public demo file selection", () => {
     "wiki-overview",
     "wiki-statistics",
     "wiki-walkthrough",
-    "1at-tDSuHIho4SsnetRaOz7_SZj54FEd4WZym51wmZIs",
+    "1Ks_EO_8tzXNgUKLgrXgbcOSSGAXlNWKb8zeiDRqBGEo",
     "https://docs.google.com/document/d/private-id/edit",
     "https://evil.example/preview",
     "../api/wiki/files/private-id",
     "<script>alert(1)</script>",
-  ])("resolves an unknown selector to Latency guide: %s", (selector) => {
-    const selected = demoFileFor(selector);
-    expect(selected).toBe(demoFileFor(null));
-    expect(DEMO_FILES).toContain(selected);
-    expect(demoHref(selected)).not.toContain(encodeURIComponent(selector));
-  });
+  ])(
+    "resolves an unknown selector to Numbers Every Programmer Should Know: %s",
+    (selector) => {
+      const selected = demoFileFor(selector);
+      expect(selected).toBe(demoFileFor(null));
+      expect(DEMO_FILES).toContain(selected);
+      expect(demoHref(selected)).not.toContain(encodeURIComponent(selector));
+    },
+  );
 });

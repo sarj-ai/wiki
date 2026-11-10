@@ -62,11 +62,11 @@ describe("public read-only Wiki demo", () => {
     });
   }
 
-  it("opens Latency guide without authentication, private requests or a context banner", async () => {
+  it("opens Numbers Every Programmer Should Know without authentication, private requests or a context banner", async () => {
     await mount();
     expect(screen.getByText("Read-only workspace")).toBeInTheDocument();
     expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent(
-      "Latency guide",
+      "Numbers Every Programmer Should Know",
     );
     expect(screen.getByTitle(/read-only preview/)).toHaveAttribute(
       "src",
@@ -108,10 +108,10 @@ describe("public read-only Wiki demo", () => {
       .getAllByRole("link")
       .filter((link) => link.getAttribute("href")?.startsWith("/demo?file="));
     expect(files.map((link) => link.textContent)).toEqual([
-      "Latency guide",
+      "Numbers Every Programmer Should Know",
       "AI draft",
-      "Latency workbook",
-      "Latency slides",
+      "Numbers workbook",
+      "Numbers slides",
     ]);
     expect(files[0]).toHaveAttribute("aria-current", "page");
     expect(within(drive).getByText("Sarj Wiki")).toBeInTheDocument();
@@ -142,7 +142,7 @@ describe("public read-only Wiki demo", () => {
     "../d/private",
     "<script>alert(1)</script>",
   ])(
-    "uses only the trusted Latency guide for an unknown selector: %s",
+    "uses only the trusted Numbers Every Programmer Should Know for an unknown selector: %s",
     async (selector) => {
       ROUTING.search = new URLSearchParams({ file: selector }).toString();
       await mount();
@@ -210,11 +210,12 @@ describe("public read-only Wiki demo", () => {
       await vi.advanceTimersByTimeAsync(0);
     });
     const result = within(dialog).getByRole("option", {
-      name: /Latency workbook/u,
+      name: /Numbers workbook/u,
     });
     expect(result).toBeVisible();
-    expect(within(dialog).getAllByRole("option")).toHaveLength(1);
+    expect(within(dialog).getAllByRole("option")[0]).toBe(result);
     fireEvent.keyDown(input, { key: "ArrowDown" });
+    fireEvent.keyDown(input, { key: "Home" });
     fireEvent.keyDown(input, { key: "Enter" });
     await act(async () => {
       await vi.advanceTimersByTimeAsync(0);
