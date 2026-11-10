@@ -693,9 +693,7 @@ function seed(client: QueryClient): void {
     folders: [DESTINATION, NESTED_FOLDER],
   });
   client.setQueryData(wikiKeys.sortOrders, RANKS);
-  client.setQueryData(wikiKeys.docIcons, [
-    { driveId: FILE.id, icon: "old", coverUrl: "cover" },
-  ]);
+  client.setQueryData(wikiKeys.docIcons, [{ driveId: FILE.id, icon: "old" }]);
   client.setQueryData(wikiKeys.folderIcons, [
     { folderDriveId: DESTINATION.id, icon: "old" },
   ]);

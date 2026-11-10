@@ -2,7 +2,6 @@ import { bootstrapRead } from "@/lib/wiki-schemas";
 
 const WIRE_FIELDS = {
   avatarUrl: "avatar_url",
-  coverUrl: "cover_url",
   displayName: "display_name",
   docIcons: "doc_icons",
   driveId: "drive_id",
@@ -24,7 +23,6 @@ const BOOTSTRAP_WIRE = {
     {
       [WIRE_FIELDS.driveId]: "document",
       icon: "📖",
-      [WIRE_FIELDS.coverUrl]: null,
     },
   ],
   drives: [{ id: "drive", name: "Engineering" }],
@@ -63,7 +61,7 @@ const BOOTSTRAP_WIRE = {
 describe("bootstrap wire validation and shared key transforms", () => {
   it("preserves nullable metadata and wire defaults in every bootstrap resource", () => {
     expect(bootstrapRead.parse(BOOTSTRAP_WIRE)).toEqual({
-      docIcons: [{ driveId: "document", icon: "📖", coverUrl: undefined }],
+      docIcons: [{ driveId: "document", icon: "📖" }],
       drives: [{ id: "drive", name: "Engineering", isPersonal: false }],
       firstDriveTree: {
         driveId: "drive",
@@ -105,7 +103,6 @@ describe("bootstrap wire validation and shared key transforms", () => {
         {
           [WIRE_FIELDS.driveId]: 123,
           icon: null,
-          [WIRE_FIELDS.coverUrl]: null,
         },
       ],
     },

@@ -648,7 +648,7 @@
       "count": 1
     },
     "@sarj/require-camelcase-properties": {
-      "count": 28
+      "count": 27
     }
   },
   "src/lib/wiki-cache.ts": {

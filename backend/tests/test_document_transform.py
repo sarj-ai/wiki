@@ -4,7 +4,6 @@ import asyncio
 from collections import UserDict
 from copy import deepcopy
 from dataclasses import replace
-from datetime import UTC, datetime
 from io import BytesIO
 import json
 from pathlib import Path
@@ -20,6 +19,7 @@ from loguru import logger
 from pydantic import ValidationError
 import pytest
 
+from app.auth.encryption import encrypt_cache
 from app.document_transform import (
     executor as executor_module,
     google_gateway as google_gateway_module,
@@ -34,7 +34,6 @@ from app.document_transform.errors import (
     CheckpointTooLargeError,
     ConcisionTargetUnmetError,
     CustomHeaderNeedsReviewError,
-    DestinationAccessChangedError,
     DocumentGatewayError,
     IncompatiblePendingOutputError,
     InPlaceNeedsReviewError,
@@ -87,11 +86,6 @@ from app.document_transform.schemas import (
     InPlaceCheckpointStage,
     MarkdownSource,
     OutputStrategy,
-    QaCopyPermissionEvidence,
-    QaDestinationPermissionBinding,
-    QaDocumentTransformRequest,
-    QaDocumentTransformResult,
-    QaFilePermissionEvidence,
     TabNamingCheckpoint,
     TextPatch,
     TransformFinding,
@@ -2851,9 +2845,6 @@ def _copy_executor(
     store: _CopyCheckpointStore,
     task_id: TaskId,
     checkpoint: CopyCheckpoint | None = None,
-    qa_destination_permission_verifier: executor_module.QaDestinationPermissionVerifier
-    | None = None,
-    qa_created_copy_verifier: executor_module.QaCreatedCopyVerifier | None = None,
 ) -> DocumentTransformExecutor:
     return DocumentTransformExecutor(
         gateway=gateway,
@@ -2863,8 +2854,6 @@ def _copy_executor(
         lease_token=uuid.uuid7(),
         checkpoint=checkpoint,
         checkpoint_generation=store.generation,
-        qa_destination_permission_verifier=qa_destination_permission_verifier,
-        qa_created_copy_verifier=qa_created_copy_verifier,
     )
 
 
@@ -2895,75 +2884,6 @@ def _native_copy_request(*, destination: FileId | None = None) -> DocumentTransf
     )
 
 
-def _qa_native_copy_request(
-    *,
-    destination: FileId | None = None,
-    binding: QaDestinationPermissionBinding | None = None,
-) -> QaDocumentTransformRequest:
-    return QaDocumentTransformRequest(
-        source=DriveFileSource(
-            kind="drive_file",
-            file_id=FileId("source"),
-            expected_modified_time="2026-09-03T00:00:00Z",
-        ),
-        mode=TransformMode.UNSLOP,
-        copy_destination_folder_id=destination or FileId("qa-folder"),
-        qa_destination_permission=binding
-        or QaDestinationPermissionBinding(version="17", sha256="a" * 64),
-    )
-
-
-def _qa_permission_evidence(
-    *,
-    output_file_id: FileId,
-    destination_folder_id: FileId,
-    operation_id: uuid.UUID,
-    source_sha256: str,
-    output_revision_id: DocsRevisionId,
-    output_version: str = "18",
-) -> QaCopyPermissionEvidence:
-    observed_at = datetime.now(UTC)
-    return QaCopyPermissionEvidence(
-        operation_id=operation_id,
-        source_sha256=source_sha256,
-        output_revision_id=output_revision_id,
-        destination=QaFilePermissionEvidence(
-            file_id=destination_folder_id,
-            mime_type="application/vnd.google-apps.folder",
-            parent_folder_id=None,
-            version="17",
-            permission_sha256="a" * 64,
-            observed_at=observed_at,
-        ),
-        output=QaFilePermissionEvidence(
-            file_id=output_file_id,
-            mime_type="application/vnd.google-apps.document",
-            parent_folder_id=destination_folder_id,
-            version=output_version,
-            permission_sha256="b" * 64,
-            observed_at=observed_at,
-        ),
-    )
-
-
-def test_public_transform_request_rejects_internal_qa_permission_binding() -> None:
-    binding = QaDestinationPermissionBinding(version="17", sha256="a" * 64)
-
-    with pytest.raises(ValidationError, match="Extra inputs are not permitted"):
-        DocumentTransformRequest.model_validate(
-            {
-                "source": {
-                    "kind": "drive_file",
-                    "file_id": "source",
-                    "expected_modified_time": "2026-09-03T00:00:00Z",
-                },
-                "mode": "unslop",
-                "output_strategy": "in_place",
-                "qa_destination_permission": binding.model_dump(mode="json"),
-            }
-        )
-
-
 async def test_native_copy_uses_and_checkpoints_explicit_destination() -> None:
     gateway = _native_copy_gateway()
     store = _CopyCheckpointStore()
@@ -2978,457 +2898,6 @@ async def test_native_copy_uses_and_checkpoints_explicit_destination() -> None:
     assert {checkpoint.output_parent_folder_id for checkpoint in store.checkpoints} == {"qa-folder"}
 
 
-async def test_qa_copy_revalidates_bound_destination_immediately_before_create() -> None:
-    gateway = _native_copy_gateway()
-    store = _CopyCheckpointStore()
-    task_id = TaskId(uuid.uuid7())
-    binding = QaDestinationPermissionBinding(version="17", sha256="a" * 64)
-    request = _qa_native_copy_request(binding=binding)
-    verifier_calls: list[tuple[FileId, QaDestinationPermissionBinding]] = []
-
-    async def reject_changed_access(
-        destination_folder_id: FileId,
-        binding: QaDestinationPermissionBinding,
-    ) -> None:
-        verifier_calls.append((destination_folder_id, binding))
-        raise DestinationAccessChangedError
-
-    executor = DocumentTransformExecutor(
-        gateway=gateway,
-        generator=_Generator(),
-        checkpoint_store=store,
-        task_id=task_id,
-        lease_token=uuid.uuid7(),
-        qa_destination_permission_verifier=reject_changed_access,
-    )
-
-    with pytest.raises(DestinationAccessChangedError):
-        await executor.execute(operation_id=task_id, request=request)
-
-    assert verifier_calls == [(FileId("qa-folder"), binding)]
-    assert gateway.draft is None
-    assert [checkpoint.stage for checkpoint in store.checkpoints] == [CopyCheckpointStage.PLANNED]
-    assert store.checkpoints[0].qa_destination_permission == binding
-
-
-async def test_qa_copy_verifies_created_output_before_continuing() -> None:
-    gateway = _native_copy_gateway()
-    store = _CopyCheckpointStore()
-    task_id = TaskId(uuid.uuid7())
-    binding = QaDestinationPermissionBinding(version="17", sha256="a" * 64)
-    request = _qa_native_copy_request(binding=binding)
-    postcheck_ids: list[FileId] = []
-
-    async def accept_destination(
-        destination_folder_id: FileId,
-        binding: QaDestinationPermissionBinding,
-    ) -> None:
-        del destination_folder_id, binding
-
-    async def reject_created_copy(
-        request: executor_module.QaCreatedCopyPermissionRequest,
-    ) -> QaCopyPermissionEvidence:
-        postcheck_ids.append(request.output_file_id)
-        raise DestinationAccessChangedError
-
-    executor = _copy_executor(
-        gateway=gateway,
-        store=store,
-        task_id=task_id,
-        qa_destination_permission_verifier=accept_destination,
-        qa_created_copy_verifier=reject_created_copy,
-    )
-
-    with pytest.raises(DestinationAccessChangedError):
-        await executor.execute(operation_id=task_id, request=request)
-
-    assert gateway.draft is not None
-    assert postcheck_ids == [gateway.draft.output.file_id]
-    assert [checkpoint.stage for checkpoint in store.checkpoints] == [
-        CopyCheckpointStage.PLANNED,
-        CopyCheckpointStage.CREATING,
-        CopyCheckpointStage.CREATED,
-        CopyCheckpointStage.QUARANTINED,
-    ]
-    quarantine = store.checkpoints[-1].qa_quarantine
-    assert quarantine is not None
-    assert quarantine.status == "quarantined_unverified"
-    assert quarantine.operation_id == task_id
-    assert quarantine.output_file_id == gateway.draft.output.file_id
-    assert quarantine.destination_folder_id == "qa-folder"
-    assert quarantine.manual_recovery_required
-
-
-async def test_qa_copy_quarantines_when_final_permission_readback_fails() -> None:
-    gateway = _native_copy_gateway()
-    store = _CopyCheckpointStore()
-    task_id = TaskId(uuid.uuid7())
-    binding = QaDestinationPermissionBinding(version="17", sha256="a" * 64)
-    request = _qa_native_copy_request(binding=binding)
-    verifier_calls: list[executor_module.QaCreatedCopyPermissionRequest] = []
-
-    async def accept_destination(
-        destination_folder_id: FileId,
-        binding: QaDestinationPermissionBinding,
-    ) -> None:
-        del destination_folder_id, binding
-
-    async def fail_final_readback(
-        request: executor_module.QaCreatedCopyPermissionRequest,
-    ) -> QaCopyPermissionEvidence:
-        verifier_calls.append(request)
-        if len(verifier_calls) == 2:
-            raise DestinationAccessChangedError
-        return _qa_permission_evidence(
-            output_file_id=request.output_file_id,
-            destination_folder_id=request.destination_folder_id,
-            operation_id=request.operation_id,
-            source_sha256=request.source_sha256,
-            output_revision_id=request.output_revision_id,
-        )
-
-    with pytest.raises(DestinationAccessChangedError):
-        await _copy_executor(
-            gateway=gateway,
-            store=store,
-            task_id=task_id,
-            qa_destination_permission_verifier=accept_destination,
-            qa_created_copy_verifier=fail_final_readback,
-        ).execute(operation_id=task_id, request=request)
-
-    assert len(verifier_calls) == 2
-    assert gateway.draft is not None
-    assert verifier_calls[-1].output_revision_id == gateway.draft.revision_id
-    quarantine = store.checkpoints[-1].qa_quarantine
-    assert quarantine is not None
-    assert quarantine.status == "quarantined_unverified"
-    assert quarantine.output_file_id == gateway.draft.output.file_id
-    assert quarantine.output_revision_id == gateway.draft.revision_id
-    assert store.checkpoints[-1].stage is CopyCheckpointStage.QUARANTINED
-    assert store.checkpoints[-1].result is None
-    assert store.checkpoints[-1].qa_permission_evidence is None
-
-
-async def test_qa_copy_revalidates_recovered_verified_output_before_return() -> None:
-    gateway = _native_copy_gateway()
-    store = _CopyCheckpointStore()
-    task_id = TaskId(uuid.uuid7())
-    binding = QaDestinationPermissionBinding(version="17", sha256="a" * 64)
-    request = _qa_native_copy_request(binding=binding)
-
-    async def accept_destination(
-        destination_folder_id: FileId,
-        binding: QaDestinationPermissionBinding,
-    ) -> None:
-        del destination_folder_id, binding
-
-    async def accept_created_copy(
-        request: executor_module.QaCreatedCopyPermissionRequest,
-    ) -> QaCopyPermissionEvidence:
-        return _qa_permission_evidence(
-            output_file_id=request.output_file_id,
-            destination_folder_id=request.destination_folder_id,
-            operation_id=request.operation_id,
-            source_sha256=request.source_sha256,
-            output_revision_id=request.output_revision_id,
-        )
-
-    result = await _copy_executor(
-        gateway=gateway,
-        store=store,
-        task_id=task_id,
-        qa_destination_permission_verifier=accept_destination,
-        qa_created_copy_verifier=accept_created_copy,
-    ).execute(operation_id=task_id, request=request)
-    assert result.access_scope == "owner_only"
-    assert isinstance(result, QaDocumentTransformResult)
-    evidence = result.qa_permission_evidence
-    assert evidence is not None
-    assert evidence.operation_id == task_id
-    assert evidence.source_sha256 == result.source_sha256
-    assert evidence.output.file_id == result.output.file_id
-    assert evidence.output.parent_folder_id == result.output.parent_folder_id
-    assert evidence.output_revision_id == result.output_revision_id
-    assert store.checkpoints[-1].qa_permission_evidence == evidence
-    assert store.checkpoints[-1].result == result
-    recovered_ids: list[FileId] = []
-
-    async def reject_recovered_copy(
-        request: executor_module.QaCreatedCopyPermissionRequest,
-    ) -> QaCopyPermissionEvidence:
-        recovered_ids.append(request.output_file_id)
-        raise DestinationAccessChangedError
-
-    with pytest.raises(DestinationAccessChangedError):
-        await _copy_executor(
-            gateway=gateway,
-            store=store,
-            task_id=task_id,
-            checkpoint=store.checkpoints[-1],
-            qa_destination_permission_verifier=accept_destination,
-            qa_created_copy_verifier=reject_recovered_copy,
-        ).execute(operation_id=task_id, request=request)
-
-    assert gateway.draft is not None
-    assert recovered_ids == [gateway.draft.output.file_id]
-    assert store.checkpoints[-1].stage is CopyCheckpointStage.QUARANTINED
-    assert store.checkpoints[-1].result is None
-    assert store.checkpoints[-1].qa_permission_evidence is None
-
-
-async def test_qa_copy_attests_state_after_complete_mutates_output_metadata() -> None:
-    gateway = _native_copy_gateway()
-    store = _CopyCheckpointStore()
-    task_id = TaskId(uuid.uuid7())
-    request = _qa_native_copy_request()
-    observed_complete_states: list[bool] = []
-
-    async def accept_destination(
-        destination_folder_id: FileId,
-        binding: QaDestinationPermissionBinding,
-    ) -> None:
-        del destination_folder_id, binding
-
-    async def attest_copy(
-        request: executor_module.QaCreatedCopyPermissionRequest,
-    ) -> QaCopyPermissionEvidence:
-        completed = gateway.completed_result is not None
-        observed_complete_states.append(completed)
-        return _qa_permission_evidence(
-            output_file_id=request.output_file_id,
-            destination_folder_id=request.destination_folder_id,
-            operation_id=request.operation_id,
-            source_sha256=request.source_sha256,
-            output_revision_id=request.output_revision_id,
-            output_version="19" if completed else "18",
-        )
-
-    result = await _copy_executor(
-        gateway=gateway,
-        store=store,
-        task_id=task_id,
-        qa_destination_permission_verifier=accept_destination,
-        qa_created_copy_verifier=attest_copy,
-    ).execute(operation_id=task_id, request=request)
-
-    assert observed_complete_states == [False, True]
-    assert isinstance(result, QaDocumentTransformResult)
-    assert result.qa_permission_evidence.output.version == "19"
-    assert store.checkpoints[-1].stage is CopyCheckpointStage.ATTESTED
-    assert store.checkpoints[-1].qa_permission_evidence == result.qa_permission_evidence
-    assert gateway.completed_result is not None
-    assert "qa_permission_evidence" not in gateway.completed_result
-
-
-async def test_qa_copy_attestation_orders_docs_acl_docs_barrier(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    gateway = _native_copy_gateway()
-    store = _CopyCheckpointStore()
-    task_id = TaskId(uuid.uuid7())
-    events: list[str] = []
-    original_verify = gateway.verify_output
-    original_complete = gateway.complete
-
-    async def verify_output(
-        *,
-        draft: OutputDraft,
-        source: SourceSnapshot,
-        expected: DocumentIR,
-        verify_brand: bool,
-        header_title: str | None = None,
-    ) -> OutputVerification:
-        events.append("docs:complete" if gateway.completed_result is not None else "docs:draft")
-        return await original_verify(
-            draft=draft,
-            source=source,
-            expected=expected,
-            verify_brand=verify_brand,
-            header_title=header_title,
-        )
-
-    async def complete(
-        *, operation_id: uuid.UUID, draft: OutputDraft, result: dict[str, Any]
-    ) -> None:
-        events.append("complete")
-        await original_complete(operation_id=operation_id, draft=draft, result=result)
-
-    async def accept_destination(
-        destination_folder_id: FileId,
-        binding: QaDestinationPermissionBinding,
-    ) -> None:
-        del destination_folder_id, binding
-        events.append("destination")
-
-    async def attest_copy(
-        request: executor_module.QaCreatedCopyPermissionRequest,
-    ) -> QaCopyPermissionEvidence:
-        events.append("acl:terminal" if gateway.completed_result is not None else "acl:created")
-        return _qa_permission_evidence(
-            output_file_id=request.output_file_id,
-            destination_folder_id=request.destination_folder_id,
-            operation_id=request.operation_id,
-            source_sha256=request.source_sha256,
-            output_revision_id=request.output_revision_id,
-        )
-
-    monkeypatch.setattr(gateway, "verify_output", verify_output)
-    monkeypatch.setattr(gateway, "complete", complete)
-    result = await _copy_executor(
-        gateway=gateway,
-        store=store,
-        task_id=task_id,
-        qa_destination_permission_verifier=accept_destination,
-        qa_created_copy_verifier=attest_copy,
-    ).execute(operation_id=task_id, request=_qa_native_copy_request())
-
-    assert isinstance(result, QaDocumentTransformResult)
-    assert events == [
-        "destination",
-        "acl:created",
-        "docs:draft",
-        "docs:draft",
-        "complete",
-        "docs:complete",
-        "acl:terminal",
-        "docs:complete",
-    ]
-    assert store.checkpoints[-1].stage is CopyCheckpointStage.ATTESTED
-
-
-async def test_qa_copy_post_acl_revision_drift_is_durably_quarantined(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    gateway = _native_copy_gateway()
-    store = _CopyCheckpointStore()
-    task_id = TaskId(uuid.uuid7())
-    verify_calls = 0
-    acl_calls = 0
-    original_verify = gateway.verify_output
-
-    async def verify_output(
-        *,
-        draft: OutputDraft,
-        source: SourceSnapshot,
-        expected: DocumentIR,
-        verify_brand: bool,
-        header_title: str | None = None,
-    ) -> OutputVerification:
-        nonlocal verify_calls
-        verify_calls += 1
-        verified = await original_verify(
-            draft=draft,
-            source=source,
-            expected=expected,
-            verify_brand=verify_brand,
-            header_title=header_title,
-        )
-        if verify_calls == 4:
-            return replace(verified, revision_id=DocsRevisionId("output-revision-3"))
-        return verified
-
-    async def accept_destination(
-        destination_folder_id: FileId,
-        binding: QaDestinationPermissionBinding,
-    ) -> None:
-        del destination_folder_id, binding
-
-    async def attest_copy(
-        request: executor_module.QaCreatedCopyPermissionRequest,
-    ) -> QaCopyPermissionEvidence:
-        nonlocal acl_calls
-        acl_calls += 1
-        return _qa_permission_evidence(
-            output_file_id=request.output_file_id,
-            destination_folder_id=request.destination_folder_id,
-            operation_id=request.operation_id,
-            source_sha256=request.source_sha256,
-            output_revision_id=request.output_revision_id,
-        )
-
-    monkeypatch.setattr(gateway, "verify_output", verify_output)
-    with pytest.raises(OutputVerificationError):
-        await _copy_executor(
-            gateway=gateway,
-            store=store,
-            task_id=task_id,
-            qa_destination_permission_verifier=accept_destination,
-            qa_created_copy_verifier=attest_copy,
-        ).execute(operation_id=task_id, request=_qa_native_copy_request())
-
-    assert verify_calls == 4
-    assert acl_calls == 2
-    quarantined = store.checkpoints[-1]
-    assert quarantined.stage is CopyCheckpointStage.QUARANTINED
-    assert quarantined.output_revision_id == "output-revision-3"
-    assert quarantined.result is None
-    assert quarantined.qa_permission_evidence is None
-    assert quarantined.qa_quarantine is not None
-    assert quarantined.qa_quarantine.output_revision_id == "output-revision-3"
-
-
-async def test_qa_copy_post_acl_transient_docs_failure_retains_verified_retry_state(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    gateway = _native_copy_gateway()
-    store = _CopyCheckpointStore()
-    task_id = TaskId(uuid.uuid7())
-    verify_calls = 0
-    original_verify = gateway.verify_output
-
-    async def verify_output(
-        *,
-        draft: OutputDraft,
-        source: SourceSnapshot,
-        expected: DocumentIR,
-        verify_brand: bool,
-        header_title: str | None = None,
-    ) -> OutputVerification:
-        nonlocal verify_calls
-        verify_calls += 1
-        if verify_calls == 4:
-            raise DocumentGatewayError(retryable=True)
-        return await original_verify(
-            draft=draft,
-            source=source,
-            expected=expected,
-            verify_brand=verify_brand,
-            header_title=header_title,
-        )
-
-    async def accept_destination(
-        destination_folder_id: FileId,
-        binding: QaDestinationPermissionBinding,
-    ) -> None:
-        del destination_folder_id, binding
-
-    async def attest_copy(
-        request: executor_module.QaCreatedCopyPermissionRequest,
-    ) -> QaCopyPermissionEvidence:
-        return _qa_permission_evidence(
-            output_file_id=request.output_file_id,
-            destination_folder_id=request.destination_folder_id,
-            operation_id=request.operation_id,
-            source_sha256=request.source_sha256,
-            output_revision_id=request.output_revision_id,
-        )
-
-    monkeypatch.setattr(gateway, "verify_output", verify_output)
-    with pytest.raises(DocumentGatewayError):
-        await _copy_executor(
-            gateway=gateway,
-            store=store,
-            task_id=task_id,
-            qa_destination_permission_verifier=accept_destination,
-            qa_created_copy_verifier=attest_copy,
-        ).execute(operation_id=task_id, request=_qa_native_copy_request())
-
-    assert verify_calls == 4
-    assert store.checkpoints[-1].stage is CopyCheckpointStage.VERIFIED
-    assert store.checkpoints[-1].result is not None
-    assert store.checkpoints[-1].qa_permission_evidence is None
-
-
 async def test_native_copy_rejects_recovered_output_in_wrong_destination() -> None:
     gateway = _native_copy_gateway()
     gateway._create("source-hash", "Recovered", parent_folder_id=FileId("wrong-folder"))
@@ -3438,30 +2907,6 @@ async def test_native_copy_rejects_recovered_output_in_wrong_destination() -> No
             operation_id=uuid.uuid7(),
             request=_native_copy_request(destination=FileId("qa-folder")),
         )
-
-
-async def test_qa_copy_revalidates_wrong_parent_recovery_before_rejecting_it() -> None:
-    gateway = _native_copy_gateway()
-    gateway._create("source-hash", "Recovered", parent_folder_id=FileId("wrong-folder"))
-    binding = QaDestinationPermissionBinding(version="17", sha256="a" * 64)
-    request = _qa_native_copy_request(binding=binding)
-    postchecks: list[tuple[FileId, FileId]] = []
-
-    async def reject_untrusted_recovery(
-        request: executor_module.QaCreatedCopyPermissionRequest,
-    ) -> QaCopyPermissionEvidence:
-        postchecks.append((request.output_file_id, request.destination_folder_id))
-        raise DestinationAccessChangedError
-
-    with pytest.raises(DestinationAccessChangedError):
-        await DocumentTransformExecutor(
-            gateway=gateway,
-            generator=_Generator(),
-            qa_created_copy_verifier=reject_untrusted_recovery,
-        ).execute(operation_id=uuid.uuid7(), request=request)
-
-    assert gateway.draft is not None
-    assert postchecks == [(gateway.draft.output.file_id, FileId("qa-folder"))]
 
 
 async def test_legacy_copy_checkpoint_without_output_parent_uses_source_parent() -> None:
@@ -3575,6 +3020,18 @@ async def test_copy_checkpoints_plan_before_create_and_resource_immediately_afte
     persisted = task_service_module._serialize_checkpoint(verified)
     assert set(persisted) == {"kind", "version", "checkpoint_ciphertext"}
     assert task_service_module._deserialize_checkpoint(persisted) == verified
+
+    legacy_payload = verified.model_dump(mode="json") | {
+        "qa_destination_permission": None,
+        "qa_permission_evidence": None,
+        "qa_quarantine": None,
+    }
+    persisted["checkpoint_ciphertext"] = encrypt_cache(json.dumps(legacy_payload))
+    assert task_service_module._deserialize_checkpoint(persisted) == verified
+    legacy_payload["qa_permission_evidence"] = {"retired": True}
+    persisted["checkpoint_ciphertext"] = encrypt_cache(json.dumps(legacy_payload))
+    with pytest.raises(ValidationError, match="qa_permission_evidence"):
+        task_service_module._deserialize_checkpoint(persisted)
 
 
 @pytest.mark.parametrize(

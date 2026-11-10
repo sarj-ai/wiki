@@ -21,5 +21,4 @@ terraform -chdir=terraform validate -no-color
 # separate real-provider recovery tests or an unfiltered plan/apply here.
 terraform -chdir=terraform test -filter=tests/mcp_edge_preview.tftest.hcl -no-color
 terraform -chdir=terraform test -filter=tests/mcp_production_plumbing.tftest.hcl -no-color
-terraform -chdir=terraform test -filter=tests/document_transform_qa_job.tftest.hcl -no-color
 terraform -chdir=terraform test -filter=tests/github_identity.tftest.hcl -no-color

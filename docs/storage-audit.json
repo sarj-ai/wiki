@@ -1,0 +1,180 @@
+{
+  "scope": "All PostgreSQL tables produced by the complete Wiki migration chain, including tables absent from ORM metadata.",
+  "beforeApplicationTableCount": 22,
+  "afterApplicationTableCount": 12,
+  "migration": "0025_simplify_storage",
+  "tables": [
+    {
+      "table": "alembic_version",
+      "decision": "retain",
+      "reason": "Migration bookkeeping, excluded from application table totals."
+    },
+    {
+      "table": "cache_entries",
+      "decision": "retain",
+      "runtime": "backend/app/cache/service.py",
+      "reason": "Expiring protected provider reads and signed task/upload references share this store."
+    },
+    {
+      "table": "doc_icons",
+      "decision": "retain",
+      "runtime": "backend/app/extras/service.py",
+      "reason": "Shared file icons remain active; unused cover URLs and write-only attribution fields are removed."
+    },
+    {
+      "table": "document_aliases",
+      "decision": "retain",
+      "runtime": "backend/app/aliases/service.py",
+      "reason": "Active and retired public links reserve stable names and prevent reassignment."
+    },
+    {
+      "table": "document_header_provenance",
+      "decision": "retain",
+      "runtime": "backend/app/tasks/service.py",
+      "reason": "Verified header ownership survives task expiry and authorizes later in-place edits."
+    },
+    {
+      "table": "document_transform_qa_corpus_campaigns",
+      "decision": "delete",
+      "reason": "Retired optional cloud QA service has no product frontend callers. Issuer, workload endpoints, launchers, owner-only QA execution branches and infrastructure retire together; generated Drive documents remain untouched."
+    },
+    {
+      "table": "document_transform_qa_corpus_members",
+      "decision": "delete",
+      "reason": "Retired optional cloud QA service has no product frontend callers. Issuer, workload endpoints, launchers, owner-only QA execution branches and infrastructure retire together; generated Drive documents remain untouched."
+    },
+    {
+      "table": "document_transform_qa_corpus_submissions",
+      "decision": "delete",
+      "reason": "Retired optional cloud QA service has no product frontend callers. Issuer, workload endpoints, launchers, owner-only QA execution branches and infrastructure retire together; generated Drive documents remain untouched."
+    },
+    {
+      "table": "document_transform_qa_grants",
+      "decision": "delete",
+      "reason": "Retired optional cloud QA service has no product frontend callers. Issuer, workload endpoints, launchers, owner-only QA execution branches and infrastructure retire together; generated Drive documents remain untouched."
+    },
+    {
+      "table": "document_transform_qa_runs",
+      "decision": "delete",
+      "reason": "Retired optional cloud QA service has no product frontend callers. Issuer, workload endpoints, launchers, owner-only QA execution branches and infrastructure retire together; generated Drive documents remain untouched."
+    },
+    {
+      "table": "drive_tree_cache",
+      "decision": "delete",
+      "reason": "Unmodeled global cache left by old migrations. Runtime uses only user_drive_tree_cache; no active reader or writer remains."
+    },
+    {
+      "table": "mcp_grants",
+      "decision": "retain",
+      "runtime": "backend/app/mcp/grants.py",
+      "reason": "User/client grants support expiry, revocation and permission checks across credentials."
+    },
+    {
+      "table": "mcp_native_state",
+      "decision": "consolidate",
+      "target": "mcp_oauth_entries",
+      "reason": "Identical encrypted state shape. Native collections retain their namespace, digest, ciphertext and expiry; quotas and one-time consumption remain enforced."
+    },
+    {
+      "table": "mcp_oauth_entries",
+      "decision": "retain",
+      "runtime": "backend/app/mcp/storage.py",
+      "reason": "One encrypted namespaced key/value store now serves both protocol and native OAuth state."
+    },
+    {
+      "table": "mcp_registration_admission",
+      "decision": "retain",
+      "runtime": "backend/app/mcp/native_admission.py",
+      "reason": "Atomic bounded global registration admission across replicas; typed history and advisory lock remain."
+    },
+    {
+      "table": "task_replay_keys",
+      "decision": "retain",
+      "runtime": "backend/app/tasks/service.py",
+      "reason": "Multiple client keys can refer to one task; separate uniqueness prevents duplicate work."
+    },
+    {
+      "table": "tasks",
+      "decision": "retain",
+      "runtime": "backend/app/tasks/service.py",
+      "reason": "Durable execution, leases, checkpoints, dispatch and results for active document operations."
+    },
+    {
+      "table": "user_drive_tree_cache",
+      "decision": "retain",
+      "runtime": "backend/app/sidebar/cache.py",
+      "reason": "Principal-scoped encrypted tree snapshots need independent version and invalidation queries."
+    },
+    {
+      "table": "user_folder_icons",
+      "decision": "consolidate",
+      "target": "users",
+      "reason": "One owner row stores scalar preferences and JSON maps. SQL merges preserve simultaneous edits; the three tables and UNION/bulk-insert machinery retire."
+    },
+    {
+      "table": "user_preferences",
+      "decision": "consolidate",
+      "target": "users",
+      "reason": "One owner row stores scalar preferences and JSON maps. SQL merges preserve simultaneous edits; the three tables and UNION/bulk-insert machinery retire."
+    },
+    {
+      "table": "user_sessions",
+      "decision": "retain",
+      "runtime": "backend/app/auth/service.py",
+      "reason": "Refresh token families and revocation outlive individual bearer tokens."
+    },
+    {
+      "table": "user_sort_order",
+      "decision": "consolidate",
+      "target": "users",
+      "reason": "One owner row stores scalar preferences and JSON maps. SQL merges preserve simultaneous edits; the three tables and UNION/bulk-insert machinery retire."
+    },
+    {
+      "table": "users",
+      "decision": "retain",
+      "runtime": "backend/app/auth/service.py",
+      "reason": "Current identity, encrypted Google credentials, refresh fencing, and per-user settings."
+    }
+  ],
+  "retainedInputContracts": {
+    "path": "terraform/variables.tf",
+    "manifest": ".sarj-terraform-guards.json",
+    "reason": "The repository pins the exact historical validation contracts in immutable Git provenance and rejects deleting their owners. Their legacy QA input declarations remain inert; no QA resources or application paths consume them.",
+    "nativeUnusedInputExceptions": {
+      "source": "tflint",
+      "rule": "terraform_unused_declarations",
+      "count": 4,
+      "baseline": "diagnostic-baseline.json",
+      "inputs": [
+        "document_transform_qa_image",
+        "document_transform_qa_release_sha",
+        "document_transform_qa_operator_emails",
+        "document_transform_qa_corpus_source_folder_id"
+      ]
+    }
+  },
+  "migrationVerificationExceptions": {
+    "reason": "One-time transactional data reshaping and disposable old-schema migration tests require direct database access. These exact exceptions are reviewed against the native SARJ020/SARJ429 guidance; no application query receives an allowance.",
+    "baseline": "suppression-baseline.json",
+    "rules": {
+      "SARJ020": {
+        "count": 2,
+        "path": "backend/alembic/versions/0025_simplify_storage.py",
+        "reason": "Atomic per-user JSON map construction preserves all legacy icon/sort rows during the authorized schema migration."
+      },
+      "SARJ429": {
+        "count": 10,
+        "paths": [
+          "backend/tests/test_storage_simplification_postgres.py",
+          "backend/tests/test_auth_domain_migration.py"
+        ],
+        "reason": "Seed the pre-migration schema and assert PostgreSQL constraints/data preservation before current ORM columns exist."
+      }
+    }
+  },
+  "retainedSerializationCompatibility": {
+    "path": "backend/app/tasks/service.py",
+    "reason": "Old encrypted normal copy checkpoints contain null QA metadata. Discard only those null legacy keys when decoding; keep strict rejection of non-null retired QA payloads and every other unknown field. New checkpoints omit the retired keys."
+  },
+  "migrationIsolation": "Lock the users and retired preference/native-state tables for the entire copy/drop transaction so concurrent edits and single-use OAuth consumption cannot race the transfer. The brief write pause is intentional."
+}

@@ -229,33 +229,31 @@ async def test_decoded_latest_index_tracks_entry_eviction_and_old_version_replac
     assert len(decoder.threads) == 35
 
 
-class _OverlayResult:
-    def all(self) -> list[tuple[str, object, object, object, object, object]]:
-        return []
+async def test_sidebar_settings_query_binds_current_user() -> None:
+    from types import SimpleNamespace
 
+    statements: list[ClauseElement] = []
 
-class _OverlaySession:
-    def __init__(self) -> None:
-        self.executions: list[tuple[ClauseElement, dict[str, object]]] = []
+    class Session:
+        async def execute(self, statement: ClauseElement) -> SimpleNamespace:
+            statements.append(statement)
+            return SimpleNamespace(
+                one=lambda: SimpleNamespace(
+                    show_non_doc_files=True,
+                    hidden_workspace_ids=[],
+                    folder_icons={},
+                    sort_orders={},
+                )
+            )
 
-    async def execute(
-        self, statement: ClauseElement, parameters: dict[str, object]
-    ) -> _OverlayResult:
-        self.executions.append((statement, parameters))
-        return _OverlayResult()
-
-
-async def test_sidebar_overlay_shape_binds_current_user_per_public_service() -> None:
-    db = _OverlaySession()
     users = [_user(), _user()]
-    await asyncio.gather(
-        *(PostgresExtrasService(db=dependency(db), user=user).load_sidebar() for user in users)
-    )
-    first, second = db.executions
-    assert first[0] is second[0]
-    assert first[1]["sidebar_user_id"] == users[0].id
-    assert second[1]["sidebar_user_id"] == users[1].id
-    assert str(first[0]).count(":sidebar_user_id") == 3
+    for user in users:
+        result = await PostgresExtrasService(db=dependency(Session()), user=user).load_sidebar()
+        assert result.preferences.show_non_doc_files
+    for statement, user in zip(statements, users, strict=True):
+        parameters = statement.compile().params
+        assert parameters is not None
+        assert parameters["id_1"] == user.id
 
 
 class _ProviderInterruption(BaseException):

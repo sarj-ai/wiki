@@ -194,7 +194,6 @@ async def test_sidebar_reuse_is_owner_scoped_and_detects_same_timestamp_row_repl
                 drive_id=drive_id,
                 tree=encrypt_cache_bytes(to_json(tree)),
                 refreshed_at=stamp,
-                refreshed_by=owner.id,
             )
         )
         await db.commit()

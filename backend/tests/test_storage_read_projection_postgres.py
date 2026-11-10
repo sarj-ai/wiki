@@ -28,9 +28,6 @@ from app.models.user import User
 from app.models.wiki import (
     CacheEntry,
     DriveTreeCache,
-    UserFolderIcon,
-    UserPreferences,
-    UserSortOrder,
 )
 import app.sidebar.cache as sidebar_cache
 from app.sidebar.cache import PostgresSidebarCacheService
@@ -114,7 +111,6 @@ async def _store(database: _Database, tree: DriveTree, user: User, refreshed_at:
                 drive_id=database.drive_id,
                 tree=encryption.encrypt_cache(tree.model_dump_json()),
                 refreshed_at=refreshed_at,
-                refreshed_by=user.id,
             )
         )
         await db.commit()
@@ -273,37 +269,37 @@ async def test_decode_handoff_retains_key_snapshot_and_never_deletes_a_replaceme
 
 
 @pytest.mark.parametrize("rows", ["none", "preferences", "mixed"])
-async def test_typed_sidebar_union_preserves_defaults_nullable_icons_and_user_scope(
+async def test_user_sidebar_preserves_defaults_nullable_icons_and_user_scope(
     database: _Database, rows: str
 ) -> None:
     async with database.sessions() as db:
-        db.add_all(
-            [
-                UserPreferences(
-                    user_id=database.other.id,
-                    show_non_doc_files=False,
-                    hidden_workspace_ids=["other"],
-                ),
-                UserFolderIcon(user_id=database.other.id, folder_drive_id="same-folder", icon="🔒"),
-                UserSortOrder(user_id=database.other.id, drive_id="same-drive", sort_order=99),
-            ]
+        await db.execute(
+            update(User)
+            .where(User.id == database.other.id)
+            .values(
+                show_non_doc_files=False,
+                hidden_workspace_ids=["other"],
+                folder_icons={"same-folder": "🔒"},
+                sort_orders={"same-drive": 99},
+            )
         )
         if rows != "none":
-            db.add(
-                UserPreferences(
-                    user_id=database.user.id,
+            await db.execute(
+                update(User)
+                .where(User.id == database.user.id)
+                .values(
                     show_non_doc_files=False,
                     hidden_workspace_ids=["hidden-one", "hidden-two"],
                 )
             )
         if rows == "mixed":
-            db.add_all(
-                [
-                    UserFolderIcon(
-                        user_id=database.user.id, folder_drive_id="same-folder", icon=None
-                    ),
-                    UserSortOrder(user_id=database.user.id, drive_id="same-drive", sort_order=-0.5),
-                ]
+            await db.execute(
+                update(User)
+                .where(User.id == database.user.id)
+                .values(
+                    folder_icons={"same-folder": None},
+                    sort_orders={"same-drive": -0.5},
+                )
             )
         await db.commit()
         result = await PostgresExtrasService(db=db, user=database.user).load_sidebar()

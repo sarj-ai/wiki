@@ -18,10 +18,6 @@ from app.bootstrap.router import router as bootstrap_router
 from app.config import Settings, settings
 from app.csrf import CookieOriginMiddleware
 from app.database import async_session, close_connector
-from app.document_transform.qa_router import (
-    issuer_router as document_transform_qa_issuer_router,
-    workload_router as document_transform_qa_workload_router,
-)
 from app.document_transform.router import router as document_transform_router
 from app.drive.errors import DrivePermissionsError
 from app.drive.search_router import router as drive_search_router
@@ -75,29 +71,9 @@ async def files_error_handler(
     )
 
 
-async def drive_permissions_error_handler(
+async def operation_error_handler(
     _request: Request,
-    exc: DrivePermissionsError,
-) -> JSONResponse:
-    return JSONResponse(
-        status_code=exc.http_status,
-        content={"code": exc.code, "detail": str(exc)},
-    )
-
-
-async def alias_error_handler(
-    _request: Request,
-    exc: AliasError,
-) -> JSONResponse:
-    return JSONResponse(
-        status_code=exc.http_status,
-        content={"code": exc.code, "detail": str(exc)},
-    )
-
-
-async def task_error_handler(
-    _request: Request,
-    exc: TaskError,
+    exc: AliasError | DrivePermissionsError | TaskError,
 ) -> JSONResponse:
     return JSONResponse(
         status_code=exc.http_status,
@@ -207,9 +183,9 @@ def create_app(
 
     application.exception_handler(Exception)(global_exception_handler)
     application.exception_handler(FilesError)(files_error_handler)
-    application.exception_handler(DrivePermissionsError)(drive_permissions_error_handler)
-    application.exception_handler(AliasError)(alias_error_handler)
-    application.exception_handler(TaskError)(task_error_handler)
+    application.exception_handler(DrivePermissionsError)(operation_error_handler)
+    application.exception_handler(AliasError)(operation_error_handler)
+    application.exception_handler(TaskError)(operation_error_handler)
 
     application.include_router(auth_router)
     application.include_router(bootstrap_router)
@@ -221,8 +197,6 @@ def create_app(
     application.include_router(templates_router)
     application.include_router(smart_create_router)
     application.include_router(document_transform_router)
-    application.include_router(document_transform_qa_issuer_router)
-    application.include_router(document_transform_qa_workload_router)
     application.include_router(tasks_router)
     application.include_router(internal_tasks_router)
 

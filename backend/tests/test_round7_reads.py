@@ -360,7 +360,7 @@ async def test_document_icon_empty_fast_path_keeps_nonempty_permission_filtering
     icon_count: int,
 ) -> None:
     icons = [
-        DocIconRead(drive_id=FileId(f"round7-fixture-doc-{index}"), icon="📚", cover_url=None)
+        DocIconRead(drive_id=FileId(f"round7-fixture-doc-{index}"), icon="📚")
         for index in range(icon_count)
     ]
     extras = ReadsExtras(icons)

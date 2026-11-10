@@ -456,14 +456,12 @@ class PostgresSidebarCacheService(SidebarCacheService):
                 drive_id=tree.drive_id,
                 tree=encrypted,
                 refreshed_at=datetime.now(UTC),
-                refreshed_by=self._user.id,
             )
             .on_conflict_do_update(
                 index_elements=["user_id", "drive_id"],
                 set_={
                     "tree": pg_insert(DriveTreeCache).excluded.tree,
                     "refreshed_at": pg_insert(DriveTreeCache).excluded.refreshed_at,
-                    "refreshed_by": pg_insert(DriveTreeCache).excluded.refreshed_by,
                 },
                 where=(
                     pg_insert(DriveTreeCache).excluded.refreshed_at > DriveTreeCache.refreshed_at

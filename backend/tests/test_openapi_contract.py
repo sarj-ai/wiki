@@ -1,4 +1,3 @@
-import json
 from typing import Any
 
 from app.config import settings
@@ -21,15 +20,6 @@ def test_client_schema_excludes_runtime_only_and_removed_operations() -> None:
     assert "/internal/tasks/smart-create" not in paths
     assert "get" not in paths["/extras/doc-icons/{drive_id}"]
     assert "/extras/sort-order/{drive_id}" not in paths
-
-
-def test_client_schema_excludes_internal_qa_acl_contract() -> None:
-    rendered = json.dumps(_schema(), sort_keys=True)
-
-    assert "qa_destination_permission" not in rendered
-    assert "qa_permission_evidence" not in rendered
-    assert "QaDestinationPermissionBinding" not in rendered
-    assert "QaCopyPermissionEvidence" not in rendered
 
 
 def test_operations_have_explicit_unique_ids() -> None:

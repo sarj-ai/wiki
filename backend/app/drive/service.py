@@ -55,7 +55,6 @@ from app.drive.schemas import (
     MIME_SHORTCUT,
     MIME_SLIDE,
     NAVIGATOR_SUPPORTED_MIME_TYPES,
-    BoundedFolderMembers,
     DriveNode,
     DrivePermission,
     DrivePermissionDetail,
@@ -100,11 +99,6 @@ _NAMED_FOLDER_FIELDS = "nextPageToken,files(id,name,mimeType)"
 _DRIVE_TREE_FIELDS = (
     "nextPageToken,files(id,name,mimeType,parents,modifiedTime,driveId,"
     "shortcutDetails(targetId,targetMimeType))"
-)
-
-_QA_CORPUS_FOLDER_FIELDS = (
-    "nextPageToken,incompleteSearch,files(id,name,mimeType,parents,driveId,"
-    "modifiedTime,version,shortcutDetails(targetId,targetMimeType))"
 )
 
 _PERMISSION_PAGE_FIELDS = (
@@ -219,17 +213,6 @@ class DriveService(ABC):
         max_pages: int,
         max_children: int,
     ) -> list[DriveNode]:
-        raise NotImplementedError
-
-    async def list_folder_members_bounded(
-        self,
-        folder_id: FileId,
-        *,
-        drive_id: DriveId,
-        max_pages: int,
-        max_children: int,
-        max_metadata_bytes: int = 4 * 1024 * 1024,
-    ) -> BoundedFolderMembers:
         raise NotImplementedError
 
     @abstractmethod
@@ -554,17 +537,15 @@ class GoogleDriveService(DriveService):
 
     @override
     async def list_template_children(self, folder_id: FileId) -> list[DriveNode]:
-        parsed = await asyncio.to_thread(
+        return await asyncio.to_thread(
             self._list_members_sync,
             folder_id,
             max_pages=None,
             max_children=None,
             fail_closed=False,
-            include_unsupported=False,
             navigator_mime_types=_TEMPLATE_MIME_TYPES,
             navigator_fields=_TEMPLATE_FOLDER_FIELDS,
         )
-        return parsed.members
 
     @override
     async def list_named_root_folders(self, drive_id: DriveId, *, name: str) -> list[DriveNode]:
@@ -574,12 +555,11 @@ class GoogleDriveService(DriveService):
             max_pages=None,
             max_children=None,
             fail_closed=False,
-            include_unsupported=False,
             navigator_mime_types=(MIME_FOLDER,),
             navigator_fields=_NAMED_FOLDER_FIELDS,
             name=name,
         )
-        return _named_folders(parsed.members, name=name)
+        return _named_folders(parsed, name=name)
 
     @override
     async def list_folder_children_bounded(
@@ -599,29 +579,6 @@ class GoogleDriveService(DriveService):
             fail_closed=True,
         )
         return await self._resolve_shortcut_nodes(nodes)
-
-    @override
-    async def list_folder_members_bounded(
-        self,
-        folder_id: FileId,
-        *,
-        drive_id: DriveId,
-        max_pages: int,
-        max_children: int,
-        max_metadata_bytes: int = 4 * 1024 * 1024,
-    ) -> BoundedFolderMembers:
-        if max_pages < 1 or max_children < 1 or max_metadata_bytes < 1:
-            raise ValueError
-        is_personal = await self._is_personal_drive(drive_id)
-        return await asyncio.to_thread(
-            self._list_folder_members_sync,
-            folder_id,
-            drive_id=drive_id,
-            is_personal=is_personal,
-            max_pages=max_pages,
-            max_children=max_children,
-            max_metadata_bytes=max_metadata_bytes,
-        )
 
     @override
     async def search_drive(
@@ -1088,28 +1045,6 @@ class GoogleDriveService(DriveService):
             max_pages=max_pages,
             max_children=max_children,
             fail_closed=fail_closed,
-            include_unsupported=False,
-        ).members
-
-    def _list_folder_members_sync(
-        self,
-        folder_id: FileId,
-        *,
-        drive_id: DriveId,
-        is_personal: bool,
-        max_pages: int,
-        max_children: int,
-        max_metadata_bytes: int,
-    ) -> BoundedFolderMembers:
-        return self._list_members_sync(
-            folder_id,
-            drive_id=drive_id,
-            is_personal=is_personal,
-            max_pages=max_pages,
-            max_children=max_children,
-            fail_closed=True,
-            include_unsupported=True,
-            max_metadata_bytes=max_metadata_bytes,
         )
 
     def _list_members_sync(
@@ -1121,22 +1056,17 @@ class GoogleDriveService(DriveService):
         max_pages: int | None,
         max_children: int | None,
         fail_closed: bool,
-        include_unsupported: bool,
-        max_metadata_bytes: int | None = None,
         navigator_mime_types: tuple[str, ...] = (*NAVIGATOR_SUPPORTED_MIME_TYPES, MIME_SHORTCUT),
         navigator_fields: str = _NAVIGATOR_FOLDER_FIELDS,
         name: str | None = None,
-    ) -> BoundedFolderMembers:
+    ) -> list[DriveNode]:
         client = self._client()
         out: list[DriveNode] = []
         raw_children = 0
         page_token: str | None = None
         pages = 0
-        metadata_bytes = 0
         query = f"'{folder_id}' in parents and trashed=false"
-        fields = _QA_CORPUS_FOLDER_FIELDS if include_unsupported else navigator_fields
-        if not include_unsupported:
-            query += f" and {_build_mime_clause(navigator_mime_types)}"
+        query += f" and {_build_mime_clause(navigator_mime_types)}"
         if name is not None:
             query += f" and name='{escape_query_value(name)}'"
         while True:
@@ -1147,7 +1077,7 @@ class GoogleDriveService(DriveService):
                 drive_id,
                 is_personal=is_personal,
                 query=query,
-                fields=fields,
+                fields=navigator_fields,
                 page_token=page_token,
             )
             try:
@@ -1156,31 +1086,18 @@ class GoogleDriveService(DriveService):
                 _log_provider_failure("list_folder_children", exc)
                 if fail_closed:
                     raise DriveTraversalIncompleteError from exc
-                return BoundedFolderMembers(members=out, page_count=pages)
+                return out
             raw_files = resp.get("files", [])
-            if include_unsupported and resp.get("incompleteSearch", False):
-                raise DriveTraversalIncompleteError
             raw_children += len(raw_files)
             if max_children is not None and raw_children > max_children:
                 raise DriveTraversalIncompleteError
-            parsed = _parse_folder_member_page(
-                raw_files,
-                folder_id=folder_id,
-                drive_id=drive_id,
-                is_personal=is_personal,
-                include_unsupported=include_unsupported,
-                metadata_bytes=metadata_bytes,
-                max_metadata_bytes=max_metadata_bytes,
-            )
-            out.extend(parsed.members)
-            metadata_bytes = parsed.metadata_bytes
+            for raw in raw_files:
+                node = _folder_member_node(GoogleFile.model_validate(raw), folder_id=folder_id)
+                if node is not None:
+                    out.append(node)
             page_token = resp.get("nextPageToken")
             if not page_token:
-                return BoundedFolderMembers(
-                    members=out,
-                    page_count=pages,
-                    metadata_bytes=metadata_bytes,
-                )
+                return out
 
     def _list_drive_files_sync(
         self, drive_id: DriveId, *, is_personal: bool = False
@@ -1748,55 +1665,14 @@ def _bounded_reorganization_text(text: str) -> str | None:
     return f"{prefix[:head_chars]} … [middle omitted] … {suffix[-tail_chars:]}"
 
 
-def _parse_folder_member_page(
-    raw_files: list[Any],
-    *,
-    folder_id: FileId,
-    drive_id: DriveId | None,
-    is_personal: bool | None,
-    include_unsupported: bool,
-    metadata_bytes: int,
-    max_metadata_bytes: int | None,
-) -> BoundedFolderMembers:
-    members: list[DriveNode] = []
-    for raw in raw_files:
-        if max_metadata_bytes is not None:
-            metadata_bytes += len(
-                json.dumps(raw, ensure_ascii=False, separators=(",", ":")).encode()
-            )
-            if metadata_bytes > max_metadata_bytes:
-                raise DriveTraversalIncompleteError
-        node = _folder_member_node(
-            GoogleFile.model_validate(raw),
-            folder_id=folder_id,
-            drive_id=drive_id,
-            is_personal=is_personal,
-            include_unsupported=include_unsupported,
-        )
-        if node is not None:
-            members.append(node)
-    return BoundedFolderMembers(members=members, page_count=1, metadata_bytes=metadata_bytes)
-
-
 def _folder_member_node(
     file: GoogleFile,
     *,
     folder_id: FileId,
-    drive_id: DriveId | None,
-    is_personal: bool | None,
-    include_unsupported: bool,
 ) -> DriveNode | None:
-    if include_unsupported:
-        expected_provider_drive = None if is_personal else drive_id
-        if file.parents != (folder_id,) or file.drive_id != expected_provider_drive:
-            raise DriveTraversalIncompleteError
     details = file.shortcut_details
     target_mime = details.target_mime_type if details else None
-    if (
-        not include_unsupported
-        and file.mime_type == MIME_SHORTCUT
-        and target_mime not in NAVIGATOR_SUPPORTED_MIME_TYPES
-    ):
+    if file.mime_type == MIME_SHORTCUT and target_mime not in NAVIGATOR_SUPPORTED_MIME_TYPES:
         return None
     return DriveNode(
         id=file.id,
@@ -1804,9 +1680,7 @@ def _folder_member_node(
         mime_type=file.mime_type,
         parent_id=folder_id,
         modified_time=file.modified_time,
-        version=file.version if include_unsupported else None,
-        drive_id=drive_id if include_unsupported else None,
-        description=file.description if not include_unsupported else None,
+        description=file.description,
         shortcut_target_id=details.target_id if details else None,
         shortcut_target_mime_type=target_mime,
     )

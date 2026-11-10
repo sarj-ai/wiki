@@ -5,9 +5,7 @@ locals {
   )
   active_backend_service_name = google_cloud_run_v2_service.backend_dammam[0].name
 
-  document_transform_qa_corpus_environment = var.document_transform_qa_corpus_source_folder_id != null ? {
-    DOCUMENT_TRANSFORM_QA_CORPUS_SOURCE_FOLDER_ID = var.document_transform_qa_corpus_source_folder_id
-  } : {}
+
 }
 
 resource "google_cloud_run_v2_service" "backend_dammam" {
@@ -68,7 +66,7 @@ resource "google_cloud_run_v2_service" "backend_dammam" {
       }
 
       dynamic "env" {
-        for_each = merge({
+        for_each = {
           ALLOWED_DOMAIN                      = "sarj.ai"
           COOKIE_DOMAIN                       = "sarj.ai"
           FRONTEND_URL                        = var.frontend_url
@@ -95,17 +93,8 @@ resource "google_cloud_run_v2_service" "backend_dammam" {
           MCP_NATIVE_HTTPS_CALLBACKS          = jsonencode([])
           MCP_NATIVE_ISSUER                   = "https://${var.backend_domain}"
           MCP_NATIVE_LOOPBACK_PATHS           = jsonencode(["/callback"])
-          }, local.document_transform_qa_enabled ? {
-          DOCUMENT_TRANSFORM_QA_AUDIENCE                = "https://${var.backend_domain}/internal/document-transform-qa/exchange"
-          DOCUMENT_TRANSFORM_QA_BOOTSTRAP_URL           = "https://${var.backend_domain}/internal/document-transform-qa/bootstrap"
-          DOCUMENT_TRANSFORM_QA_JOB                     = google_cloud_run_v2_job.document_transform_qa[0].name
-          DOCUMENT_TRANSFORM_QA_IMAGE                   = var.document_transform_qa_image
-          DOCUMENT_TRANSFORM_QA_SERVICE_ACCOUNT         = google_service_account.document_transform_qa[0].email
-          DOCUMENT_TRANSFORM_QA_IMAGE_DIGEST            = split("@", var.document_transform_qa_image)[1]
-          DOCUMENT_TRANSFORM_QA_RELEASE_SHA             = var.document_transform_qa_release_sha
-          DOCUMENT_TRANSFORM_QA_BACKEND_SERVICE_ACCOUNT = google_service_account.backend.email
-          DOCUMENT_TRANSFORM_QA_OPERATOR_EMAILS         = jsonencode(var.document_transform_qa_operator_emails)
-        } : {}, local.document_transform_qa_corpus_environment)
+        }
+
         content {
           name  = env.key
           value = env.value
