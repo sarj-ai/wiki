@@ -19,6 +19,7 @@ from loguru import logger
 from pydantic import ValidationError
 import pytest
 
+from app.auth.encryption import encrypt_cache
 from app.document_transform import (
     executor as executor_module,
     google_gateway as google_gateway_module,
@@ -3019,6 +3020,18 @@ async def test_copy_checkpoints_plan_before_create_and_resource_immediately_afte
     persisted = task_service_module._serialize_checkpoint(verified)
     assert set(persisted) == {"kind", "version", "checkpoint_ciphertext"}
     assert task_service_module._deserialize_checkpoint(persisted) == verified
+
+    legacy_payload = verified.model_dump(mode="json") | {
+        "qa_destination_permission": None,
+        "qa_permission_evidence": None,
+        "qa_quarantine": None,
+    }
+    persisted["checkpoint_ciphertext"] = encrypt_cache(json.dumps(legacy_payload))
+    assert task_service_module._deserialize_checkpoint(persisted) == verified
+    legacy_payload["qa_permission_evidence"] = {"retired": True}
+    persisted["checkpoint_ciphertext"] = encrypt_cache(json.dumps(legacy_payload))
+    with pytest.raises(ValidationError, match="qa_permission_evidence"):
+        task_service_module._deserialize_checkpoint(persisted)
 
 
 @pytest.mark.parametrize(

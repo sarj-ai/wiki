@@ -1390,6 +1390,13 @@ def _deserialize_checkpoint(raw: Mapping[str, object]) -> DocumentTransformCheck
         if not isinstance(payload, dict):
             msg = "Copy transform checkpoint payload is invalid"
             raise ValueError(msg)
+        # Older normal checkpoints serialized unused QA metadata as null.
+        payload = {
+            field: value
+            for field, value in payload.items()
+            if value is not None
+            or field not in {"qa_destination_permission", "qa_permission_evidence", "qa_quarantine"}
+        }
         checkpoint_type = WordCopyCheckpoint if raw.get("kind") == "word_copy" else CopyCheckpoint
         return checkpoint_type.model_validate(payload)
     metadata = dict(raw)
