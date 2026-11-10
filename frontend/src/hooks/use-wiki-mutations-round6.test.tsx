@@ -89,7 +89,7 @@ describe("round-six mutation lifecycle fixtures", () => {
   it("cancels only the exact stale icon read while leaving the admitted provider action pending", async () => {
     render();
     client.setQueryData<DocIcon[]>(wikiKeys.docIcons, [
-      { driveId: "file", icon: "old", coverUrl: undefined },
+      { driveId: "file", icon: "old" },
     ]);
     const staleRead = Promise.withResolvers<DocIcon[]>();
     let readSignal: AbortSignal | undefined;
@@ -109,9 +109,7 @@ describe("round-six mutation lifecycle fixtures", () => {
     expect(readSignal?.aborted).toBe(true);
     expect(ACTIONS.icon).toHaveBeenCalledOnce();
     expect(icon.isPending).toBe(true);
-    staleRead.resolve([
-      { driveId: "file", icon: "stale", coverUrl: undefined },
-    ]);
+    staleRead.resolve([{ driveId: "file", icon: "stale" }]);
     await read;
     expect(client.getQueryData<DocIcon[]>(wikiKeys.docIcons)?.[0]?.icon).toBe(
       "pending",
@@ -147,7 +145,7 @@ describe("round-six mutation lifecycle fixtures", () => {
   it("retirement during asynchronous read cancellation cleans up before same-client reactivation", async () => {
     render();
     client.setQueryData<DocIcon[]>(wikiKeys.docIcons, [
-      { driveId: "file", icon: "old", coverUrl: undefined },
+      { driveId: "file", icon: "old" },
     ]);
     const cancellation = Promise.withResolvers<undefined>();
     const cancel = vi

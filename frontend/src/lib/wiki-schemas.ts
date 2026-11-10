@@ -141,7 +141,6 @@ export const fileDetail = zFileDetail.transform((f) => ({
 
 function toDocIcon(d: z.infer<typeof zDocIconRead>) {
   return {
-    coverUrl: d["cover_url"] ?? undefined,
     driveId: d["drive_id"],
     icon: d.icon ?? undefined,
   };

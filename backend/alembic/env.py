@@ -7,11 +7,7 @@ from app.database import Base, build_engine, close_connector
 from app.database_config import database_settings
 from app.models import (
     auth_session as auth_session,
-    document_transform_qa_grant as document_transform_qa_grant,
-    document_transform_qa_corpus as document_transform_qa_corpus,
-    document_transform_qa_run as document_transform_qa_run,
     mcp_grant as mcp_grant,
-    mcp_native_state as mcp_native_state,
     mcp_oauth as mcp_oauth,
     mcp_registration_admission as mcp_registration_admission,
     task as task,

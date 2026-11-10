@@ -7,7 +7,7 @@ import uuid
 from fastapi import Response
 import httpx
 from pydantic import JsonValue
-from sqlalchemy import delete, event
+from sqlalchemy import delete, event, update
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from sqlalchemy.pool import AsyncAdaptedQueuePool
 
@@ -18,7 +18,7 @@ from app.drive.schemas import DriveSummary
 from app.extras.service import PostgresExtrasService
 from app.identifiers import DriveId, GoogleUserId, UserId
 from app.models.user import User
-from app.models.wiki import CacheEntry, UserFolderIcon, UserPreferences, UserSortOrder
+from app.models.wiki import CacheEntry
 from tests.test_task_source_dedupe_postgres import _qa_engine
 
 
@@ -98,16 +98,15 @@ async def test_sidebar_overlays_use_one_user_scoped_database_query() -> None:
                 )
             await db.flush()
             for owner in owners:
-                db.add_all(
-                    [
-                        UserPreferences(
-                            user_id=owner,
-                            show_non_doc_files=False,
-                            hidden_workspace_ids=["hidden-drive"],
-                        ),
-                        UserFolderIcon(user_id=owner, folder_drive_id=str(owner), icon="📚"),
-                        UserSortOrder(user_id=owner, drive_id=str(owner), sort_order=1.5),
-                    ]
+                await db.execute(
+                    update(User)
+                    .where(User.id == owner)
+                    .values(
+                        show_non_doc_files=False,
+                        hidden_workspace_ids=["hidden-drive"],
+                        folder_icons={str(owner): "📚"},
+                        sort_orders={str(owner): 1.5},
+                    )
                 )
             await db.commit()
         async with sessions() as db:

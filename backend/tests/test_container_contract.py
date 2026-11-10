@@ -2,7 +2,6 @@ from pathlib import Path
 
 
 _DOCKERFILE = Path(__file__).parents[1] / "Dockerfile"
-_QA_DOCKERFILE = Path(__file__).parents[1] / "Dockerfile.qa"
 _REPOSITORY_ROOT = Path(__file__).parents[2]
 _DEPLOY_WORKFLOW = _REPOSITORY_ROOT / ".github/workflows/deploy-backend.yml"
 _DEPLOY_CANDIDATE = _REPOSITORY_ROOT / "scripts/github/deploy-backend-candidate.sh"
@@ -12,7 +11,6 @@ _LEGACY_CACHE_CLEANUP_MODULE = _REPOSITORY_ROOT / "backend/app/cache/cleanup_leg
 _VERIFY_LOGS = _REPOSITORY_ROOT / "scripts/github/verify-backend-correlated-logs.sh"
 _MIGRATIONS_TERRAFORM = _REPOSITORY_ROOT / "terraform/migrations.tf"
 _BACKEND_CI = _REPOSITORY_ROOT / ".github/workflows/ci-backend.yml"
-_QA_TERRAFORM = _REPOSITORY_ROOT / "terraform/document_transform_qa.tf"
 
 
 def test_application_container_does_not_run_database_migrations() -> None:
@@ -22,63 +20,6 @@ def test_application_container_does_not_run_database_migrations() -> None:
         'CMD [".venv/bin/uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]'
         in dockerfile
     )
-
-
-def test_qa_container_uses_secretless_static_entrypoint_without_runtime_arguments() -> None:
-    dockerfile = _QA_DOCKERFILE.read_text()
-    assert "COPY scripts/ scripts/" in dockerfile
-    assert all("@sha256:" in line for line in dockerfile.splitlines() if line.startswith("FROM "))
-    assert dockerfile.count("FROM ") == 2
-    assert "/bin/sh /tmp/prepare-runtime.sh qa" in dockerfile
-    runtime_setup = (_QA_DOCKERFILE.parent / "scripts/prepare-runtime.sh").read_text()
-    assert "apk add --no-cache poppler-utils=" in runtime_setup
-    assert "adduser -D -u 1001 app" in runtime_setup
-    assert "USER 1001:1001" in dockerfile
-    assert (
-        'ENTRYPOINT [".venv/bin/python", "-m", "scripts.qa_document_transform_cloud"]' in dockerfile
-    )
-    assert "CMD" not in dockerfile
-
-
-def test_qa_job_is_backend_launched_without_override_permissions_or_transport_secrets() -> None:
-    terraform = _QA_TERRAFORM.read_text()
-    launcher = terraform[
-        terraform.index(
-            'resource "google_cloud_run_v2_job_iam_member" "document_transform_qa_launcher"'
-        ) : terraform.index(
-            'resource "google_cloud_run_v2_job_iam_member" "document_transform_qa_attestor"'
-        )
-    ]
-    assert 'role     = "roles/run.jobsExecutor"' in launcher
-    assert "roles/run.jobsExecutorWithOverrides" not in terraform
-    assert 'member   = "serviceAccount:${google_service_account.backend.email}"' in launcher
-    job = terraform[
-        terraform.index(
-            'resource "google_cloud_run_v2_job" "document_transform_qa"'
-        ) : terraform.index(
-            'resource "google_cloud_run_v2_job_iam_member" "document_transform_qa_launcher"'
-        )
-    ]
-    assert "args" not in job
-    assert all(
-        secret not in job
-        for secret in ("CAPABILITY_TOKEN", "GRANT_TOKEN", "RUN_ID", "SECRET_KEY", "FERNET_KEY")
-    )
-
-
-def test_qa_grant_concurrency_suite_is_in_required_postgres_ci() -> None:
-    workflow = _BACKEND_CI.read_text()
-    postgres_job = workflow[
-        workflow.index("  postgres-concurrency:") : workflow.index("\n  image:\n")
-    ]
-    assert "tests/test_document_transform_qa_grants.py" in postgres_job
-    assert "tests/test_document_transform_qa_submit_postgres.py" in postgres_job
-    assert "tests/test_document_transform_qa_corpus_postgres.py" in postgres_job
-    assert "tests/test_document_transform_qa_campaigns_postgres.py" in postgres_job
-    required = workflow[workflow.index("  required:") :]
-    assert "needs: [changes, lint-and-typecheck, test, postgres-concurrency, image]" in required
-    assert "POSTGRES_RESULT: ${{ needs.postgres-concurrency.result }}" in required
-    assert "scripts/github/release_gate.py ci backend" in required
 
 
 def test_deployment_runs_one_shot_migrations_before_traffic_switch() -> None:

@@ -277,8 +277,7 @@ export function useSetPreferences() {
 
 export function useSetDocIcon() {
   return useIconMutation<DocIcon, { driveId: string; icon: null | string }>({
-    buildItem: ({ driveId, icon }, existing) => ({
-      coverUrl: existing?.coverUrl,
+    buildItem: ({ driveId, icon }) => ({
       driveId,
       icon: icon ?? undefined,
     }),

@@ -343,13 +343,6 @@
       "count": 2
     },
     {
-      "fingerprint": "e6b65390e227c831065acfe236209cfbcb362e74a04e8a92da2596f15bc75783",
-      "source": "sarj-iac-lint",
-      "ruleId": "conditional-resource-presence",
-      "path": "terraform/document_transform_qa.tf",
-      "count": 7
-    },
-    {
       "fingerprint": "aadcb5dae872ccb73b3f2faa8b8b9231a7b1ccf3d16e02edab78d75cd9eec37b",
       "source": "sarj-iac-lint",
       "ruleId": "conditional-resource-presence",
@@ -495,13 +488,6 @@
       "ruleId": "fastapi-class-router-contract",
       "path": "backend/app/bootstrap/router.py",
       "count": 1
-    },
-    {
-      "fingerprint": "60c29bbc9c3217035c42f38bc92b22824dc60dd44e5d5dc47c56defb4447868f",
-      "source": "sarj-python-lint",
-      "ruleId": "fastapi-class-router-contract",
-      "path": "backend/app/document_transform/qa_router.py",
-      "count": 2
     },
     {
       "fingerprint": "68f30115979cd48d88592e470ac0bdebdecf46b11f3013e5b5c1de72804c0e0e",
@@ -711,97 +697,6 @@
       "source": "sarj-python-lint",
       "ruleId": "fastapi-route-declares-security",
       "path": "backend/app/bootstrap/router.py",
-      "count": 1
-    },
-    {
-      "fingerprint": "03fa4b6e1560dd60613341a09940f5e22f14c28fde9cd142182adc4a8914031a",
-      "source": "sarj-python-lint",
-      "ruleId": "fastapi-route-declares-security",
-      "path": "backend/app/document_transform/qa_router.py",
-      "count": 1
-    },
-    {
-      "fingerprint": "16f25f35273eebc341b3e345285de9d551aa0ba7058bd230ec540dcc9a9371c4",
-      "source": "sarj-python-lint",
-      "ruleId": "fastapi-route-declares-security",
-      "path": "backend/app/document_transform/qa_router.py",
-      "count": 1
-    },
-    {
-      "fingerprint": "35e42d7be06b9a95385069f856f1dfb05174d1e3e88d21d9c68a4c776d82d694",
-      "source": "sarj-python-lint",
-      "ruleId": "fastapi-route-declares-security",
-      "path": "backend/app/document_transform/qa_router.py",
-      "count": 1
-    },
-    {
-      "fingerprint": "49d2dfd77355d2a6aa40b160d1a9bd8cbbc2d8c759f90170611483fd8248a3c0",
-      "source": "sarj-python-lint",
-      "ruleId": "fastapi-route-declares-security",
-      "path": "backend/app/document_transform/qa_router.py",
-      "count": 1
-    },
-    {
-      "fingerprint": "512498fd669b86583d4727bd81f9f833568c61689bc2bd8c8523f77e56f0551e",
-      "source": "sarj-python-lint",
-      "ruleId": "fastapi-route-declares-security",
-      "path": "backend/app/document_transform/qa_router.py",
-      "count": 1
-    },
-    {
-      "fingerprint": "5552ccb9a09094cd51224ba7599165d77172437a1527d6b0696a8f210aaef84a",
-      "source": "sarj-python-lint",
-      "ruleId": "fastapi-route-declares-security",
-      "path": "backend/app/document_transform/qa_router.py",
-      "count": 1
-    },
-    {
-      "fingerprint": "82f27e95d0ef77dccc0dbc1af0991536d9ae7b14608c367e8ce832f037db3caa",
-      "source": "sarj-python-lint",
-      "ruleId": "fastapi-route-declares-security",
-      "path": "backend/app/document_transform/qa_router.py",
-      "count": 1
-    },
-    {
-      "fingerprint": "83047b8e213b9075b3f07ec9e1ebd883ec204d91205baf0ef60b07d76838d962",
-      "source": "sarj-python-lint",
-      "ruleId": "fastapi-route-declares-security",
-      "path": "backend/app/document_transform/qa_router.py",
-      "count": 1
-    },
-    {
-      "fingerprint": "c56e43d5a590afa9daf154db1756001ac90ec700fdd31d1ddf94b3c071cb7a51",
-      "source": "sarj-python-lint",
-      "ruleId": "fastapi-route-declares-security",
-      "path": "backend/app/document_transform/qa_router.py",
-      "count": 1
-    },
-    {
-      "fingerprint": "c6ded98c41ed121f796fef89aa88ef03aad7040228e44cf2c5d5616008bc8628",
-      "source": "sarj-python-lint",
-      "ruleId": "fastapi-route-declares-security",
-      "path": "backend/app/document_transform/qa_router.py",
-      "count": 1
-    },
-    {
-      "fingerprint": "cc29e193a9af376992848726c1534e513a2c67fc0f8a4bb3564cd3d8c6b8be71",
-      "source": "sarj-python-lint",
-      "ruleId": "fastapi-route-declares-security",
-      "path": "backend/app/document_transform/qa_router.py",
-      "count": 1
-    },
-    {
-      "fingerprint": "d781da4e673ccb0c5fd1b87708fdbc7feff3cb0490dcbe3d0ee009f315fd1acf",
-      "source": "sarj-python-lint",
-      "ruleId": "fastapi-route-declares-security",
-      "path": "backend/app/document_transform/qa_router.py",
-      "count": 1
-    },
-    {
-      "fingerprint": "d9ecc36e046ae35ac5b316f4cde8a1be38c6ff819c7234323ae82d4ac6edfd58",
-      "source": "sarj-python-lint",
-      "ruleId": "fastapi-route-declares-security",
-      "path": "backend/app/document_transform/qa_router.py",
       "count": 1
     },
     {
@@ -1428,20 +1323,6 @@
       "count": 1
     },
     {
-      "fingerprint": "7d0e113882c14d3acbc59c73e6158168bf94a3134de466d7bdd327c4227610b7",
-      "source": "sarj-python-lint",
-      "ruleId": "no-any-mapping-types",
-      "path": "backend/scripts/qa_document_transform_cloud.py",
-      "count": 1
-    },
-    {
-      "fingerprint": "72025a2b76250e8736b08f2a96227f345bed45c399b4078df2dcd08a71b982a5",
-      "source": "sarj-python-lint",
-      "ruleId": "no-any-mapping-types",
-      "path": "backend/scripts/qa_document_transform_corpus.py",
-      "count": 11
-    },
-    {
       "fingerprint": "d271960cfa75e6d51dcb3cd2d93f7ba0dab5defb9ce82085813d2e422e22eb0b",
       "source": "sarj-python-lint",
       "ruleId": "no-any-mapping-types",
@@ -1601,13 +1482,6 @@
       "ruleId": "no-any-mapping-types",
       "path": "backend/tests/test_document_transform_provider_diagnostics.py",
       "count": 1
-    },
-    {
-      "fingerprint": "b990ac6b7c5f2e7b27049856eb4d95e621d5c76c240e91f2b539c9846be8acc8",
-      "source": "sarj-python-lint",
-      "ruleId": "no-any-mapping-types",
-      "path": "backend/tests/test_document_transform_qa_router.py",
-      "count": 2
     },
     {
       "fingerprint": "172bd093888a55adf3b02535e2e6d0a3c376d83ce9020feb2a04fb60e790d41a",
@@ -1890,13 +1764,6 @@
       "count": 1
     },
     {
-      "fingerprint": "e8b4f1763cee756625bc8bc441bd4893a92eeda7132f294b3771a2a6c46c44b4",
-      "source": "sarj-python-lint",
-      "ruleId": "no-any-mapping-types",
-      "path": "backend/tests/test_qa_document_transform_corpus.py",
-      "count": 1
-    },
-    {
       "fingerprint": "4425c0b1787f872011085e3b7c08088ea4c9f75d0ebb00a45e94db78baea6889",
       "source": "sarj-python-lint",
       "ruleId": "no-any-mapping-types",
@@ -2056,41 +1923,6 @@
       "ruleId": "no-broad-keyword-capture",
       "path": "backend/tests/test_document_transform_native_safety_diagnostics.py",
       "count": 1
-    },
-    {
-      "fingerprint": "9547383d35869b12024fbd259656492c07200b9a38e1d76bacbd8f7e15ef4e66",
-      "source": "sarj-python-lint",
-      "ruleId": "no-broad-keyword-capture",
-      "path": "backend/tests/test_document_transform_qa_campaigns_postgres.py",
-      "count": 2
-    },
-    {
-      "fingerprint": "ff0e4aaef500b1ab844c9ac96658fa8e62f2b4219f3f4cc67632d6700fd27cdc",
-      "source": "sarj-python-lint",
-      "ruleId": "no-broad-keyword-capture",
-      "path": "backend/tests/test_document_transform_qa_corpus_schema.py",
-      "count": 1
-    },
-    {
-      "fingerprint": "5662d8d225a65c2f39372f7dbf8b7c03d36f5c12b6a08a469588bf572fd5f666",
-      "source": "sarj-python-lint",
-      "ruleId": "no-broad-keyword-capture",
-      "path": "backend/tests/test_document_transform_qa_migration.py",
-      "count": 5
-    },
-    {
-      "fingerprint": "4cbb4ef853ec1efeb5aeb49e2138e8a710303265ea77baad312cf5c12858fdbc",
-      "source": "sarj-python-lint",
-      "ruleId": "no-broad-keyword-capture",
-      "path": "backend/tests/test_document_transform_qa_router.py",
-      "count": 29
-    },
-    {
-      "fingerprint": "f115a0a32440061ab0c1493c1d694941fe7a9155f781f0bd1d0dce940c678edd",
-      "source": "sarj-python-lint",
-      "ruleId": "no-broad-keyword-capture",
-      "path": "backend/tests/test_document_transform_qa_router.py",
-      "count": 16
     },
     {
       "fingerprint": "e6ed00c38878200cbb0e54af2711ff9cb3acfaaa7d6a09ca928bdc6db2b0c195",
@@ -2317,32 +2149,11 @@
       "count": 2
     },
     {
-      "fingerprint": "bc6be9bffc96e9fc1a1e17c49ccb0cd0ea22a304ca73d2c48af6ceddb1f27a6a",
-      "source": "sarj-python-lint",
-      "ruleId": "no-broad-keyword-capture",
-      "path": "backend/tests/test_qa_document_transform_corpus.py",
-      "count": 5
-    },
-    {
-      "fingerprint": "de67287712afe5f3b620e4c3d2edcb8d999e4cc1decc1c43b84d37bb7a4bdf05",
-      "source": "sarj-python-lint",
-      "ruleId": "no-broad-keyword-capture",
-      "path": "backend/tests/test_qa_document_transform_corpus.py",
-      "count": 2
-    },
-    {
       "fingerprint": "aa2ad080ee49c64a80e13083a2cc5863a79bd227863a6e84d54862d222033db4",
       "source": "sarj-python-lint",
       "ruleId": "no-broad-keyword-capture",
       "path": "backend/tests/test_qa_markdown_transform_cli.py",
       "count": 2
-    },
-    {
-      "fingerprint": "fba68ba428a8e789bc565c23e145833e4c14f4da7f9c4682db64d02c8c3cb856",
-      "source": "sarj-python-lint",
-      "ruleId": "no-broad-keyword-capture",
-      "path": "backend/tests/test_qa_pdf_process_safety.py",
-      "count": 4
     },
     {
       "fingerprint": "d7c18d51c764f60d4a020b8797bf3738fd96736f5e11ec3a1805e6ff0ff7b6d8",
@@ -2377,34 +2188,6 @@
       "source": "sarj-python-lint",
       "ruleId": "no-custom-control-flow-exception",
       "path": "backend/app/auth/google_tokens.py",
-      "count": 1
-    },
-    {
-      "fingerprint": "2d2baa648ebaf1c1b2933e2e9d610d1cb9591221ff4bd3921036bf01947de100",
-      "source": "sarj-python-lint",
-      "ruleId": "no-custom-control-flow-exception",
-      "path": "backend/app/document_transform/qa_campaigns.py",
-      "count": 1
-    },
-    {
-      "fingerprint": "234bbd4e535017c63f320faa2b51631aa928108abc955ed193972b3f87c94b5d",
-      "source": "sarj-python-lint",
-      "ruleId": "no-custom-control-flow-exception",
-      "path": "backend/app/document_transform/qa_corpus.py",
-      "count": 1
-    },
-    {
-      "fingerprint": "e93bbd747fb667e272df438b8e190eb7d6f21a3e23ff430948a2865bb8a0d22a",
-      "source": "sarj-python-lint",
-      "ruleId": "no-custom-control-flow-exception",
-      "path": "backend/app/document_transform/qa_grants.py",
-      "count": 1
-    },
-    {
-      "fingerprint": "1997089d170214bc716656460970fc13f3ec0c28343828781ae07ba7067fe694",
-      "source": "sarj-python-lint",
-      "ruleId": "no-custom-control-flow-exception",
-      "path": "backend/app/document_transform/qa_launcher.py",
       "count": 1
     },
     {
@@ -2447,13 +2230,6 @@
       "source": "sarj-python-lint",
       "ruleId": "no-custom-control-flow-exception",
       "path": "backend/app/mcp/protection.py",
-      "count": 1
-    },
-    {
-      "fingerprint": "fdc8980e2eb1002127763ab98330b6e68d9295ac3e587c20454f736cd0382d1b",
-      "source": "sarj-python-lint",
-      "ruleId": "no-custom-control-flow-exception",
-      "path": "backend/scripts/qa_document_transform_cloud.py",
       "count": 1
     },
     {
@@ -2504,13 +2280,6 @@
       "ruleId": "no-delete-statement",
       "path": "backend/app/mcp/server.py",
       "count": 1
-    },
-    {
-      "fingerprint": "756d7e904f13c3a6e5c949cb66d14c7a5ee2bb2d55f146c9bfe363ee750cb4b1",
-      "source": "sarj-python-lint",
-      "ruleId": "no-delete-statement",
-      "path": "backend/scripts/qa_document_transform_corpus.py",
-      "count": 2
     },
     {
       "fingerprint": "7fd25b81d37f774ff59d35f59f3659fd9cd6c043b51fc9c82b04b9c71fca46c2",
@@ -2580,20 +2349,6 @@
       "source": "sarj-python-lint",
       "ruleId": "no-delete-statement",
       "path": "backend/tests/test_document_transform_header_preservation.py",
-      "count": 2
-    },
-    {
-      "fingerprint": "9c52030d45d197cc9737821bc1234c109363aa0fada7e4b76f7eeeb068990490",
-      "source": "sarj-python-lint",
-      "ruleId": "no-delete-statement",
-      "path": "backend/tests/test_document_transform_qa_broker.py",
-      "count": 1
-    },
-    {
-      "fingerprint": "7ad34c8ebc7640305f66b959301e56dd5a47cd9de1e705d2afb3fa5375ed3408",
-      "source": "sarj-python-lint",
-      "ruleId": "no-delete-statement",
-      "path": "backend/tests/test_document_transform_qa_corpus.py",
       "count": 2
     },
     {
@@ -2728,27 +2483,6 @@
       "ruleId": "no-delete-statement",
       "path": "backend/tests/test_presentation_transform.py",
       "count": 7
-    },
-    {
-      "fingerprint": "788ebbfaf05ff8d6d1aaf163afe424a694ff192df3763022722fecfda68f9c2b",
-      "source": "sarj-python-lint",
-      "ruleId": "no-delete-statement",
-      "path": "backend/tests/test_qa_corpus_cli.py",
-      "count": 1
-    },
-    {
-      "fingerprint": "14e794a745c67150f5c8793b8d65cb718b2fd164c88e5fadcfd27b6232f57160",
-      "source": "sarj-python-lint",
-      "ruleId": "no-delete-statement",
-      "path": "backend/tests/test_qa_document_transform_cli.py",
-      "count": 1
-    },
-    {
-      "fingerprint": "fe511c91ddbea23da665cf9e46b49469a196662ffa60fb5fe6f53370514c3cb0",
-      "source": "sarj-python-lint",
-      "ruleId": "no-delete-statement",
-      "path": "backend/tests/test_qa_document_transform_corpus.py",
-      "count": 2
     },
     {
       "fingerprint": "28cae097c3fd0e44d5a60ec12a01d0a37bf648b3ebf8023dbcdd352fc19684d5",
@@ -3017,27 +2751,6 @@
       "count": 1
     },
     {
-      "fingerprint": "7be13762aab9a09062fee332e6ff81087ce5dde8f9b172a4ffa340de7cb3b3ea",
-      "source": "sarj-python-lint",
-      "ruleId": "no-excessive-cognitive-complexity",
-      "path": "backend/app/document_transform/qa_broker.py",
-      "count": 1
-    },
-    {
-      "fingerprint": "a271a3d44a54bfd4a13d098d9bd49140756022d30ae9db223918e3bcb49f28a8",
-      "source": "sarj-python-lint",
-      "ruleId": "no-excessive-cognitive-complexity",
-      "path": "backend/app/document_transform/qa_broker.py",
-      "count": 1
-    },
-    {
-      "fingerprint": "8fe907949972870d63410166459fa3346b827d94c173d4baf551d9654748af42",
-      "source": "sarj-python-lint",
-      "ruleId": "no-excessive-cognitive-complexity",
-      "path": "backend/app/document_transform/qa_corpus.py",
-      "count": 1
-    },
-    {
       "fingerprint": "0338f8916acc3eb404cd93d9baa7dbbe8dbd6bd4fdf0cbee3a63188cf6a3623c",
       "source": "sarj-python-lint",
       "ruleId": "no-excessive-cognitive-complexity",
@@ -3101,13 +2814,6 @@
       "count": 1
     },
     {
-      "fingerprint": "379cc6279373935cec50d88064b325ea0ec3e8e0f7fd3c64ce218f0da4689e2e",
-      "source": "sarj-python-lint",
-      "ruleId": "no-excessive-cognitive-complexity",
-      "path": "backend/scripts/qa_document_transform_cloud.py",
-      "count": 1
-    },
-    {
       "fingerprint": "b0399b239f238c8f6347dac6ceb7536a7161a3584f6069e1443b3bc6c4631247",
       "source": "sarj-python-lint",
       "ruleId": "no-excessive-cognitive-complexity",
@@ -3133,13 +2839,6 @@
       "source": "sarj-python-lint",
       "ruleId": "no-excessive-cognitive-complexity",
       "path": "backend/tests/test_native_spacer_layout.py",
-      "count": 1
-    },
-    {
-      "fingerprint": "750bf9187b3509c29f51828f8da5542a09a93141e70d6a413aab3d5c549107b6",
-      "source": "sarj-python-lint",
-      "ruleId": "no-fixed-sleep-in-loop",
-      "path": "backend/scripts/qa_document_transform_cloud.py",
       "count": 1
     },
     {
@@ -3248,13 +2947,6 @@
       "count": 1
     },
     {
-      "fingerprint": "6f633ad9d4d0d2cc73ff39352edafd6bba68120d87099096b477afd64c5a68b4",
-      "source": "sarj-python-lint",
-      "ruleId": "no-redundant-attribute-unpacking",
-      "path": "backend/app/document_transform/qa_grants.py",
-      "count": 7
-    },
-    {
       "fingerprint": "29d620459249f1a5e2af1fc104e8cbb4f50cffdbfc6aa37fcaf6ef7ed79a67d3",
       "source": "sarj-python-lint",
       "ruleId": "no-redundant-attribute-unpacking",
@@ -3273,13 +2965,6 @@
       "source": "sarj-python-lint",
       "ruleId": "no-redundant-attribute-unpacking",
       "path": "backend/tests/test_custom_furniture.py",
-      "count": 2
-    },
-    {
-      "fingerprint": "07afb15a0aa431fd5264af56ac43bc2c3a7ffbde273c251b779f7c7f21ee5c91",
-      "source": "sarj-python-lint",
-      "ruleId": "no-redundant-attribute-unpacking",
-      "path": "backend/tests/test_document_transform_qa_campaigns_postgres.py",
       "count": 2
     },
     {
@@ -3351,20 +3036,6 @@
       "ruleId": "no-test-comments",
       "path": "backend/tests/test_document_transform_native_safety_diagnostics.py",
       "count": 1
-    },
-    {
-      "fingerprint": "29c77baebd1fc61f688d2f165b5189a864ad2ddd8af1c1af2b0e7934faeee485",
-      "source": "sarj-python-lint",
-      "ruleId": "no-test-comments",
-      "path": "backend/tests/test_document_transform_qa_corpus_postgres.py",
-      "count": 2
-    },
-    {
-      "fingerprint": "7e5c306fe813d896533a5035d6d7ea8e0bd3a730b49efb4cbb31730df72a27cf",
-      "source": "sarj-python-lint",
-      "ruleId": "no-test-comments",
-      "path": "backend/tests/test_document_transform_qa_router.py",
-      "count": 2
     },
     {
       "fingerprint": "f9c4578ac5618ec553845d7deef9eab86791adcf0a6d1c15aee6edb25a125f96",
@@ -3794,34 +3465,6 @@
       "count": 1
     },
     {
-      "fingerprint": "d65b83655067bcb16fe50fac320a8016aa2f56d0100ce82d95de03a424a2ef62",
-      "source": "sarj-python-lint",
-      "ruleId": "prefer-injected-dependency-over-monkeypatch",
-      "path": "backend/tests/test_document_transform_qa_campaigns.py",
-      "count": 4
-    },
-    {
-      "fingerprint": "e0041eba1995a6a7070df37bbb03b2762c0bf1033ca86321d122339776df6980",
-      "source": "sarj-python-lint",
-      "ruleId": "prefer-injected-dependency-over-monkeypatch",
-      "path": "backend/tests/test_document_transform_qa_campaigns_postgres.py",
-      "count": 2
-    },
-    {
-      "fingerprint": "ae08a5ba7cfab435ec0215ed4ec1bd3b068545cdd9b9d60bacab1cd1972b99dd",
-      "source": "sarj-python-lint",
-      "ruleId": "prefer-injected-dependency-over-monkeypatch",
-      "path": "backend/tests/test_document_transform_qa_corpus.py",
-      "count": 6
-    },
-    {
-      "fingerprint": "bcc92762dea54e8b9f0d8ca59135455d6c45f123449e205a061b2d1c040d1a4d",
-      "source": "sarj-python-lint",
-      "ruleId": "prefer-injected-dependency-over-monkeypatch",
-      "path": "backend/tests/test_document_transform_qa_router.py",
-      "count": 48
-    },
-    {
       "fingerprint": "567e87ab125364960207affdd09bb7bc00f609e7b20878e9e6b0bda460c3e13e",
       "source": "sarj-python-lint",
       "ruleId": "prefer-injected-dependency-over-monkeypatch",
@@ -4053,34 +3696,6 @@
       "count": 2
     },
     {
-      "fingerprint": "d01c808ab30083ced30157c4f242d38d0f9d530e2a7c60200bfad176b0d207d2",
-      "source": "sarj-python-lint",
-      "ruleId": "prefer-injected-dependency-over-monkeypatch",
-      "path": "backend/tests/test_qa_corpus_cli.py",
-      "count": 8
-    },
-    {
-      "fingerprint": "6f871289e050c0bac4ae8a59ede0eb21a5c64cc69b7e87b0af33947e3b4a594b",
-      "source": "sarj-python-lint",
-      "ruleId": "prefer-injected-dependency-over-monkeypatch",
-      "path": "backend/tests/test_qa_document_transform_cli.py",
-      "count": 8
-    },
-    {
-      "fingerprint": "477c45c6acbd77d69b16522dcf02615dfdf86bb75f42616b66859bbf51d50927",
-      "source": "sarj-python-lint",
-      "ruleId": "prefer-injected-dependency-over-monkeypatch",
-      "path": "backend/tests/test_qa_document_transform_cloud.py",
-      "count": 6
-    },
-    {
-      "fingerprint": "7b3bcedcbc3b3da35a90e60a392e6cc40fec0f7806c4d0b2de8fcfb60c43947f",
-      "source": "sarj-python-lint",
-      "ruleId": "prefer-injected-dependency-over-monkeypatch",
-      "path": "backend/tests/test_qa_document_transform_corpus.py",
-      "count": 31
-    },
-    {
       "fingerprint": "a5409c6101e9121f987cdfb2e2c3b0fe32cec6f8e136c29842a9016333885c46",
       "source": "sarj-python-lint",
       "ruleId": "prefer-injected-dependency-over-monkeypatch",
@@ -4093,13 +3708,6 @@
       "ruleId": "prefer-injected-dependency-over-monkeypatch",
       "path": "backend/tests/test_qa_markdown_transform_cli.py",
       "count": 10
-    },
-    {
-      "fingerprint": "296a0e022091c9cecd4daf66e27a28d3aca308306c2b7e53c82685654e2b14e9",
-      "source": "sarj-python-lint",
-      "ruleId": "prefer-injected-dependency-over-monkeypatch",
-      "path": "backend/tests/test_qa_pdf_process_safety.py",
-      "count": 9
     },
     {
       "fingerprint": "aa46f10363eef1d17cf03fb8199c93cd9eec52bad2ff1df2b019481e1fa6b443",
@@ -4221,20 +3829,6 @@
       "count": 2
     },
     {
-      "fingerprint": "5b1c1bfedbccd9eee1b6bd78b3bf3a39a26a8f4c1822a8da0ff70d896f5f09be",
-      "source": "sarj-python-lint",
-      "ruleId": "prefer-nominal-id-types",
-      "path": "backend/scripts/qa_document_transform_corpus.py",
-      "count": 2
-    },
-    {
-      "fingerprint": "ef1314e0901e316a99ef46aa8dd1952725efd1ec7e76e52f63b46b694f3cfa29",
-      "source": "sarj-python-lint",
-      "ruleId": "prefer-nominal-id-types",
-      "path": "backend/tests/test_document_transform_qa_corpus_postgres.py",
-      "count": 1
-    },
-    {
       "fingerprint": "676c8eca49ef19c24a5975d6b52d483d6023e6e13cb0bf37794a86ae3b39010a",
       "source": "sarj-python-lint",
       "ruleId": "prefer-nominal-id-types",
@@ -4295,13 +3889,6 @@
       "source": "sarj-python-lint",
       "ruleId": "prefer-optional-composite",
       "path": "backend/app/drive/schemas.py",
-      "count": 1
-    },
-    {
-      "fingerprint": "c5f7979282bf413ff190961c7df7d2b6b3be0c27987836292993dc1bbe8a2fb5",
-      "source": "sarj-python-lint",
-      "ruleId": "prefer-optional-composite",
-      "path": "backend/scripts/qa_document_transform_corpus.py",
       "count": 1
     },
     {
@@ -4417,13 +4004,6 @@
       "count": 1
     },
     {
-      "fingerprint": "a3f04865a7dbe11a54c2c3d4cfe7c86518cb7901adb234899b7097b0ca0d5df9",
-      "source": "sarj-python-lint",
-      "ruleId": "prefer-precise-object-contract",
-      "path": "backend/app/document_transform/qa_campaigns.py",
-      "count": 2
-    },
-    {
       "fingerprint": "bdbc26026d00675f93bbe0a612dcae8ae52a1d5f790a6f52bbe3921dbb703701",
       "source": "sarj-python-lint",
       "ruleId": "prefer-precise-object-contract",
@@ -4512,20 +4092,6 @@
       "source": "sarj-python-lint",
       "ruleId": "prefer-precise-object-contract",
       "path": "backend/scripts/benchmark_performance.py",
-      "count": 1
-    },
-    {
-      "fingerprint": "8bfd2f6719eef32c4efae7f2f627848ad0d62e1ae73364f22639a074720f63ae",
-      "source": "sarj-python-lint",
-      "ruleId": "prefer-precise-object-contract",
-      "path": "backend/scripts/qa_document_transform.py",
-      "count": 1
-    },
-    {
-      "fingerprint": "dec624767d6368471de7686909a8233e5f1596fd553d81757f78113992572968",
-      "source": "sarj-python-lint",
-      "ruleId": "prefer-precise-object-contract",
-      "path": "backend/scripts/qa_document_transform_cloud.py",
       "count": 1
     },
     {
@@ -4660,55 +4226,6 @@
       "ruleId": "prefer-precise-object-contract",
       "path": "backend/tests/test_document_transform_provider_diagnostics.py",
       "count": 2
-    },
-    {
-      "fingerprint": "1f531f874073ffa10de17bec574dfe6fc15ae9fb971ea79ca4e60e0265057ef7",
-      "source": "sarj-python-lint",
-      "ruleId": "prefer-precise-object-contract",
-      "path": "backend/tests/test_document_transform_qa_campaigns.py",
-      "count": 6
-    },
-    {
-      "fingerprint": "5a93d9b2d94d00296a2abe94f5fd96004b827972b9c198739b729d64f88b9828",
-      "source": "sarj-python-lint",
-      "ruleId": "prefer-precise-object-contract",
-      "path": "backend/tests/test_document_transform_qa_campaigns_postgres.py",
-      "count": 4
-    },
-    {
-      "fingerprint": "1770afad100ba235f75b4366f10b90878f407c57ca9a629092c72efcca4c1d22",
-      "source": "sarj-python-lint",
-      "ruleId": "prefer-precise-object-contract",
-      "path": "backend/tests/test_document_transform_qa_corpus_postgres.py",
-      "count": 12
-    },
-    {
-      "fingerprint": "9726aca43ab5c46a6b80ce6c816645b79bfb956e94058580b5d0e0fac4aa38e1",
-      "source": "sarj-python-lint",
-      "ruleId": "prefer-precise-object-contract",
-      "path": "backend/tests/test_document_transform_qa_corpus_schema.py",
-      "count": 3
-    },
-    {
-      "fingerprint": "d0e52db06481e08bd2b01d5184f9fa0d95f423e53389d26d0846d9ea44c0bbcb",
-      "source": "sarj-python-lint",
-      "ruleId": "prefer-precise-object-contract",
-      "path": "backend/tests/test_document_transform_qa_grants.py",
-      "count": 2
-    },
-    {
-      "fingerprint": "ec5cd347d4d639e0578b319c2500bba07fd5c55493fd9c02fbbdf7b213be507f",
-      "source": "sarj-python-lint",
-      "ruleId": "prefer-precise-object-contract",
-      "path": "backend/tests/test_document_transform_qa_migration.py",
-      "count": 11
-    },
-    {
-      "fingerprint": "98f0213ddbd7b361caad5bd6cc1da14331a40ce39685d2dae341f14e93795493",
-      "source": "sarj-python-lint",
-      "ruleId": "prefer-precise-object-contract",
-      "path": "backend/tests/test_document_transform_qa_router.py",
-      "count": 91
     },
     {
       "fingerprint": "2fb1bf7c027ff3e28a8b0c9f5f5df19940236751793058f8fb6b292ce2834c23",
@@ -4977,27 +4494,6 @@
       "count": 1
     },
     {
-      "fingerprint": "82e830027cba52a387b906173f31346e242d7b939baf899a1a905913cef52c78",
-      "source": "sarj-python-lint",
-      "ruleId": "prefer-precise-object-contract",
-      "path": "backend/tests/test_qa_document_transform_cli.py",
-      "count": 5
-    },
-    {
-      "fingerprint": "f9165fe7ebd3cbd98ba149a2d656ae0aab0ce6de9dba88c78fd70406532ae330",
-      "source": "sarj-python-lint",
-      "ruleId": "prefer-precise-object-contract",
-      "path": "backend/tests/test_qa_document_transform_cloud.py",
-      "count": 9
-    },
-    {
-      "fingerprint": "56d19f749a6ac954c5cc3bdaf5f8b4b2065547912c5e509976ae434f68a4ec2d",
-      "source": "sarj-python-lint",
-      "ruleId": "prefer-precise-object-contract",
-      "path": "backend/tests/test_qa_document_transform_corpus.py",
-      "count": 15
-    },
-    {
       "fingerprint": "d28fac6c99b6f6a8fbdaa8065398d989d0ee9cb36f3695906c7bc607126d16bb",
       "source": "sarj-python-lint",
       "ruleId": "prefer-precise-object-contract",
@@ -5010,13 +4506,6 @@
       "ruleId": "prefer-precise-object-contract",
       "path": "backend/tests/test_qa_markdown_transform_cli.py",
       "count": 9
-    },
-    {
-      "fingerprint": "dbb5ef3c3cea6b653dee5ae908fedee5536bbda6b99fdd9233b8c7b8ce846ee5",
-      "source": "sarj-python-lint",
-      "ruleId": "prefer-precise-object-contract",
-      "path": "backend/tests/test_qa_pdf_process_safety.py",
-      "count": 4
     },
     {
       "fingerprint": "d420412e5eb35c00bcc712bf1ac4f6c2193d17235ac9082a70f3bad4d3a97938",
@@ -5208,13 +4697,6 @@
       "count": 2
     },
     {
-      "fingerprint": "aa6790c56e1452a20187b597ee8f92b900e7230472453f6184f161896917dfbb",
-      "source": "sarj-python-lint",
-      "ruleId": "prefer-pydantic-json-value",
-      "path": "backend/tests/test_document_transform_qa_launcher.py",
-      "count": 1
-    },
-    {
       "fingerprint": "9fc73528967077c9f0e81fd25d6a32f40d9d97cbeb6d55e3d4dcc8028a7ca3e9",
       "source": "sarj-python-lint",
       "ruleId": "prefer-pydantic-model-assertion",
@@ -5348,13 +4830,6 @@
       "count": 2
     },
     {
-      "fingerprint": "396f87b969720a38dcc04610648ccb511f21e950e77067353ebfda5a18657722",
-      "source": "sarj-python-lint",
-      "ruleId": "prefer-pytest-dependency-fixtures",
-      "path": "backend/tests/test_document_transform_qa_router.py",
-      "count": 9
-    },
-    {
       "fingerprint": "9ccff800cbe0a162f2ae9bf0858e472553a3d4146d6a76fd71c55a891ae8c2c0",
       "source": "sarj-python-lint",
       "ruleId": "prefer-pytest-dependency-fixtures",
@@ -5465,13 +4940,6 @@
       "ruleId": "prefer-pytest-dependency-fixtures",
       "path": "backend/tests/test_provider_round3.py",
       "count": 7
-    },
-    {
-      "fingerprint": "c3198cf1147fa14d93a726fc06a3ab12226dcce6d198bf10b646475818a2150b",
-      "source": "sarj-python-lint",
-      "ruleId": "prefer-pytest-dependency-fixtures",
-      "path": "backend/tests/test_qa_document_transform_cloud.py",
-      "count": 2
     },
     {
       "fingerprint": "1899e7af2839854c888406d5e6c87534c6ec8e2de1c592e3f822f5e5cfa0350f",
@@ -5709,27 +5177,6 @@
       "source": "sarj-python-lint",
       "ruleId": "prefer-required-constructor-parameters",
       "path": "backend/app/document_transform/planner.py",
-      "count": 1
-    },
-    {
-      "fingerprint": "3057fb5dda5245ab51d3bb98f97c352f0e729dcbb872c58b65c8a1722fec0249",
-      "source": "sarj-python-lint",
-      "ruleId": "prefer-required-constructor-parameters",
-      "path": "backend/app/document_transform/qa_launcher.py",
-      "count": 1
-    },
-    {
-      "fingerprint": "d2cb5ef6e709e8734b0239288f3e8f36e312b24c3f27ebfcebec1eb4f2c582c9",
-      "source": "sarj-python-lint",
-      "ruleId": "prefer-required-constructor-parameters",
-      "path": "backend/app/document_transform/qa_launcher.py",
-      "count": 1
-    },
-    {
-      "fingerprint": "d5d1495bf7f3012d6a38241b8203e16cbfacedceb9493eca38f1325450e7c5b7",
-      "source": "sarj-python-lint",
-      "ruleId": "prefer-required-constructor-parameters",
-      "path": "backend/app/document_transform/qa_launcher.py",
       "count": 1
     },
     {
@@ -6062,13 +5509,6 @@
       "count": 6
     },
     {
-      "fingerprint": "ecca81c07d009c1cff12bf7ee414253c932f15f2213da19fcf1eef1d31f8d130",
-      "source": "sarj-python-lint",
-      "ruleId": "prefer-typed-mapping-get",
-      "path": "backend/scripts/qa_document_transform_corpus.py",
-      "count": 7
-    },
-    {
       "fingerprint": "2297ba3c3395775641d53bcb1b6e971e54337945931139b2fd058eba4b05e60a",
       "source": "sarj-python-lint",
       "ruleId": "prefer-typed-mapping-get",
@@ -6088,13 +5528,6 @@
       "ruleId": "prefer-typed-mapping-get",
       "path": "scripts/github/read-transform-diagnostics.py",
       "count": 9
-    },
-    {
-      "fingerprint": "c93c7c0114245cf7a5d183c61c373b3b0664ac9e8e7b2d1b05f14045884faf6b",
-      "source": "sarj-python-lint",
-      "ruleId": "repeated-test-composition",
-      "path": "backend/tests/test_document_transform_qa_router.py",
-      "count": 38
     },
     {
       "fingerprint": "b7fc202c3ff63f0d6d19b38671ed19bbd832ac6ad33e2c8fbb2b8524e35a288b",
@@ -6258,13 +5691,6 @@
       "count": 5
     },
     {
-      "fingerprint": "925362f641586128de412d6817f758371bb0dea71ea66af6eefc54bafe8d6862",
-      "source": "sarj-python-lint",
-      "ruleId": "require-pydantic-for-mapping-shape",
-      "path": "backend/scripts/qa_document_transform_corpus.py",
-      "count": 6
-    },
-    {
       "fingerprint": "b177c1494b562d441c4f0992d71a54adacc97ee31cfce4dfc3bd20328c72a13f",
       "source": "sarj-python-lint",
       "ruleId": "require-pydantic-for-mapping-shape",
@@ -6325,6 +5751,34 @@
       "source": "shellcheck",
       "ruleId": "SC2312",
       "path": "scripts/github/verify-backend-production-health.sh",
+      "count": 1
+    },
+    {
+      "fingerprint": "014afb432e25e604c81ee82fe0479be83520b7d828a2632e0bb60379a29c5381",
+      "source": "tflint",
+      "ruleId": "terraform_unused_declarations",
+      "path": "terraform/variables.tf",
+      "count": 1
+    },
+    {
+      "fingerprint": "4c02c05f3e5bd217d4c2beeb3110e6c2d63e1bf9daca5cafd8921f6474db8aa9",
+      "source": "tflint",
+      "ruleId": "terraform_unused_declarations",
+      "path": "terraform/variables.tf",
+      "count": 1
+    },
+    {
+      "fingerprint": "efd115acf0fbee13859878f7611a3c1fc3a6131fd589aa818b52fa38ab6dd21a",
+      "source": "tflint",
+      "ruleId": "terraform_unused_declarations",
+      "path": "terraform/variables.tf",
+      "count": 1
+    },
+    {
+      "fingerprint": "f073cbd5e064d561ecd463e974466e63e5db9c8182772764b63fdbd4168c55ef",
+      "source": "tflint",
+      "ruleId": "terraform_unused_declarations",
+      "path": "terraform/variables.tf",
       "count": 1
     }
   ]

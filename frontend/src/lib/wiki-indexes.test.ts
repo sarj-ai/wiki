@@ -38,9 +38,7 @@ describe("shared immutable sidebar indexes", () => {
 
   it("shares overlays without mixing separately scoped query arrays", () => {
     const folders: FolderIcon[] = [{ folderDriveId: "folder", icon: "📚" }];
-    const docs: DocIcon[] = [
-      { driveId: "file", icon: "🚀", coverUrl: undefined },
-    ];
+    const docs: DocIcon[] = [{ driveId: "file", icon: "🚀" }];
     const sorts: SortOrder[] = [{ driveId: "file", sortOrder: 1.5 }];
     expect(indexFolderIcons(folders)).toBe(indexFolderIcons(folders));
     expect(indexDocIcons(docs)).toBe(indexDocIcons(docs));

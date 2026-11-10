@@ -498,7 +498,7 @@ async def test_named_template_roots_keep_all_pages_and_filter_name_and_mime(name
     assert provider.reads == {}
 
 
-type _MetadataReadKind = Literal["full", "search", "qa", "access"]
+type _MetadataReadKind = Literal["full", "search", "access"]
 
 
 async def _read_metadata(
@@ -509,15 +509,13 @@ async def _read_metadata(
     match kind:
         case "search":
             return await files.get_search_metadata_many(file_ids)
-        case "qa":
-            return await files.get_qa_corpus_metadata_many(file_ids)
         case "access":
             return await files.get_accessible_ids(file_ids)
         case _:
             return await files.get_accessible_many(file_ids)
 
 
-@pytest.mark.parametrize("kind", ["full", "search", "qa", "access"])
+@pytest.mark.parametrize("kind", ["full", "search", "access"])
 async def test_bulk_metadata_binds_response_identity_before_membership(
     kind: _MetadataReadKind,
 ) -> None:
@@ -567,7 +565,7 @@ async def test_bulk_metadata_binds_response_identity_before_membership(
     assert ancestors.reads == {}
 
 
-@pytest.mark.parametrize("kind", ["full", "search", "qa", "access"])
+@pytest.mark.parametrize("kind", ["full", "search", "access"])
 async def test_bulk_metadata_identity_filter_preserves_upstream_error(
     kind: _MetadataReadKind,
 ) -> None:

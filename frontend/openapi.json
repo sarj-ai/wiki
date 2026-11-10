@@ -244,17 +244,6 @@
       },
       "DocIconRead": {
         "properties": {
-          "cover_url": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Cover Url"
-          },
           "drive_id": {
             "title": "Drive Id",
             "type": "string"
@@ -273,28 +262,13 @@
         },
         "required": [
           "drive_id",
-          "icon",
-          "cover_url"
+          "icon"
         ],
         "title": "DocIconRead",
         "type": "object"
       },
       "DocIconWrite": {
         "properties": {
-          "cover_url": {
-            "anyOf": [
-              {
-                "format": "uri",
-                "maxLength": 2083,
-                "minLength": 1,
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Cover Url"
-          },
           "icon": {
             "anyOf": [
               {
@@ -1820,96 +1794,6 @@
           "folder_path"
         ],
         "title": "ProposalDestination",
-        "type": "object"
-      },
-      "QaGrantBinding": {
-        "additionalProperties": false,
-        "properties": {
-          "destination_folder_id": {
-            "maxLength": 255,
-            "minLength": 1,
-            "title": "Destination Folder Id",
-            "type": "string"
-          },
-          "image_digest": {
-            "pattern": "^sha256:[0-9a-f]{64}$",
-            "title": "Image Digest",
-            "type": "string"
-          },
-          "mode": {
-            "$ref": "#/components/schemas/TransformMode"
-          },
-          "release_sha": {
-            "pattern": "^[0-9a-f]{40}$",
-            "title": "Release Sha",
-            "type": "string"
-          },
-          "source_folder_id": {
-            "maxLength": 255,
-            "minLength": 1,
-            "title": "Source Folder Id",
-            "type": "string"
-          }
-        },
-        "required": [
-          "release_sha",
-          "image_digest",
-          "source_folder_id",
-          "destination_folder_id",
-          "mode"
-        ],
-        "title": "QaGrantBinding",
-        "type": "object"
-      },
-      "QaGrantIssueResponse": {
-        "additionalProperties": false,
-        "properties": {
-          "expires_at": {
-            "format": "date-time",
-            "title": "Expires At",
-            "type": "string"
-          },
-          "grant_id": {
-            "title": "Grant Id",
-            "type": "string"
-          },
-          "grant_token": {
-            "title": "Grant Token",
-            "type": "string"
-          }
-        },
-        "required": [
-          "grant_id",
-          "grant_token",
-          "expires_at"
-        ],
-        "title": "QaGrantIssueResponse",
-        "type": "object"
-      },
-      "QaLaunchResponse": {
-        "additionalProperties": false,
-        "properties": {
-          "execution_name": {
-            "title": "Execution Name",
-            "type": "string"
-          },
-          "run_id": {
-            "format": "uuid",
-            "title": "Run Id",
-            "type": "string"
-          },
-          "status": {
-            "const": "execution_bound",
-            "default": "execution_bound",
-            "title": "Status",
-            "type": "string"
-          }
-        },
-        "required": [
-          "run_id",
-          "execution_name"
-        ],
-        "title": "QaLaunchResponse",
         "type": "object"
       },
       "RecentDocumentAlias": {
@@ -3748,133 +3632,6 @@
         "summary": "Get Current Polish",
         "tags": [
           "document-transforms"
-        ]
-      }
-    },
-    "/document-transforms/qa/grants": {
-      "post": {
-        "operationId": "issue_document_transform_qa_grant_document_transforms_qa_grants_post",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/QaGrantBinding"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "201": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/QaGrantIssueResponse"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "401": {
-            "description": "A same-site login is required"
-          },
-          "409": {
-            "description": "Binding mismatch"
-          },
-          "410": {
-            "description": "The legacy grant flow is disabled in launcher mode"
-          },
-          "422": {
-            "description": "The legacy grant request is invalid"
-          }
-        },
-        "security": [
-          {
-            "APIKeyCookie": []
-          },
-          {
-            "HTTPBearer": []
-          }
-        ],
-        "summary": "Issue Document Transform Qa Grant",
-        "tags": [
-          "document-transform-qa"
-        ]
-      }
-    },
-    "/document-transforms/qa/launch": {
-      "post": {
-        "description": "Launch only the configured job and bind its server-issued execution identity.",
-        "operationId": "launch_document_transform_qa_run_document_transforms_qa_launch_post",
-        "parameters": [
-          {
-            "in": "header",
-            "name": "Idempotency-Key",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Idempotency-Key"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/QaGrantBinding"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "202": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/QaLaunchResponse"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "401": {
-            "description": "A same-site login is required"
-          },
-          "403": {
-            "description": "The authenticated user is not an allowed QA operator"
-          },
-          "409": {
-            "description": "Binding mismatch"
-          },
-          "422": {
-            "description": "A UUIDv7 idempotency key is required"
-          },
-          "502": {
-            "description": "The execution could not be safely launched or attested"
-          },
-          "503": {
-            "description": "The default-off launcher is disabled"
-          }
-        },
-        "security": [
-          {
-            "APIKeyCookie": []
-          },
-          {
-            "HTTPBearer": []
-          }
-        ],
-        "summary": "Launch Document Transform Qa Run",
-        "tags": [
-          "document-transform-qa"
         ]
       }
     },

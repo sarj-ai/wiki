@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Annotated
 
-from pydantic import BaseModel, Field, HttpUrl, StringConstraints
+from pydantic import BaseModel, Field, StringConstraints
 
 from app.identifiers import DriveId, FileId
 
@@ -15,13 +15,11 @@ MAX_HIDDEN_WORKSPACE_IDS = 500
 
 class DocIconWrite(BaseModel):
     icon: IconStr | None = None
-    cover_url: HttpUrl | None = None
 
 
 class DocIconRead(BaseModel):
     drive_id: FileId
     icon: str | None
-    cover_url: str | None
 
 
 class FolderIconWrite(BaseModel):

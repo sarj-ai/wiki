@@ -52,18 +52,3 @@ output "dammam_state_bucket" {
   description = "Versioned Saudi Terraform state bucket"
   value       = var.enable_dammam_stack ? google_storage_bucket.terraform_state_dammam[0].name : null
 }
-
-output "document_transform_qa_job" {
-  description = "Default-off private corpus QA job name"
-  value       = local.document_transform_qa_enabled ? google_cloud_run_v2_job.document_transform_qa[0].name : null
-}
-
-output "document_transform_qa_artifact_bucket" {
-  description = "Private, lifecycle-bounded QA evidence bucket"
-  value       = local.document_transform_qa_enabled ? google_storage_bucket.document_transform_qa[0].name : null
-}
-
-output "cert_dns_authorization_record" {
-  description = "CNAME record to add to Cloudflare for DNS-01 cert validation"
-  value       = google_certificate_manager_dns_authorization.backend.dns_resource_record
-}

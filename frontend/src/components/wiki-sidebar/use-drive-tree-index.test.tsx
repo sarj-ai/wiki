@@ -51,7 +51,6 @@ describe("collapsed drive cold indexes", () => {
         return `file-${index}`;
       },
       icon: "📄",
-      coverUrl: undefined,
     }));
     folderIcons = Array.from({ length: 1000 }, (_, index) => ({
       get folderDriveId() {

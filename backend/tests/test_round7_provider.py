@@ -12,12 +12,11 @@ import pytest
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
 
-from app.document_transform.schemas import DocumentTransformResult
 from app.drive.schemas import MIME_DOC, MIME_FOLDER, MIME_SHORTCUT, DriveTree
 from app.files.breadcrumb import build_breadcrumb
 from app.files.errors import FileNotInScopeError
 from app.files.service import GoogleFilesService
-from app.identifiers import DriveId, FileId, IdempotencyKey, TaskId, UserId
+from app.identifiers import DriveId, FileId, IdempotencyKey, TaskId
 from app.models.task import Task
 from app.models.user import User
 from app.smart_create.schemas import AIMode, BlankSource, SmartFileCreate
@@ -26,7 +25,6 @@ from app.smart_create.service import (
     organization_candidates,
     smart_create_candidates,
 )
-from app.tasks.errors import TaskNotFoundError
 from app.tasks.queue import CloudTasksEnqueuer
 from app.tasks.schemas import TaskKind
 from app.tasks.service import PostgresTaskService
@@ -51,7 +49,6 @@ from tests.round7_provider_support import (
     shortcut_rows,
     shortcut_targets,
     streaming_canonical_hash,
-    succeeded_task,
     wide_tree,
 )
 from tests.support import dependency
@@ -244,28 +241,6 @@ async def database() -> AsyncGenerator[Database]:
             await db.execute(delete(User).where(User.id == user.id))
             await db.commit()
         await engine.dispose()
-
-
-@pytest.mark.parametrize("evidence", [False, True])
-async def test_task_copy_on_redaction_preserves_owner_qa_stripping_and_model_ownership(
-    database: Database, evidence: bool
-) -> None:
-    task = succeeded_task(database.user, evidence=evidence)
-    original = json.dumps(task.result, sort_keys=True)
-    async with database.sessions() as db:
-        db.add(task)
-        await db.commit()
-        service = PostgresTaskService(db=db)
-        first = await service.get_for_owner(task.id, database.user.id)
-        assert isinstance(first.result, DocumentTransformResult)
-        assert "qa_permission_evidence" not in first.model_dump_json()
-        first.result.output.name = "Owned response change"
-        second = await service.get_for_owner(task.id, database.user.id)
-        assert isinstance(second.result, DocumentTransformResult)
-        assert second.result.output.name == "Output 絵"
-        assert json.dumps(task.result, sort_keys=True) == original
-        with pytest.raises(TaskNotFoundError):
-            await service.get_for_owner(task.id, UserId(uuid.uuid7()))
 
 
 async def test_rejected_json_validation_bypass_keeps_nonobject_payload_out_of_database(

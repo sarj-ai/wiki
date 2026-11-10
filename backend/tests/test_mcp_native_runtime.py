@@ -34,7 +34,7 @@ from app.mcp.protection import OAuthStateProtector
 from app.mcp.redirect_policy import McpRedirectPolicy
 from app.mcp.storage import PostgresOAuthStorage
 from app.models.mcp_grant import McpGrant
-from app.models.mcp_native_state import McpNativeState
+from app.models.mcp_oauth import MCPOAuthEntry
 from app.models.mcp_registration_admission import McpRegistrationAdmission
 from app.models.user import User
 from app.tasks.queue import TaskEnqueuer
@@ -239,7 +239,7 @@ async def runtime(
     try:
         async with engine.begin() as connection:
             await connection.execute(CreateSchema(schema))
-            for model in (User, McpGrant, McpNativeState, McpRegistrationAdmission):
+            for model in (User, McpGrant, MCPOAuthEntry, McpRegistrationAdmission):
                 table = model.__table__
                 assert isinstance(table, Table)
                 await connection.run_sync(table.create)

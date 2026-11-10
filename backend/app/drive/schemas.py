@@ -119,12 +119,6 @@ class DriveTree(BaseModel):
     files_complete: bool
 
 
-class BoundedFolderMembers(BaseModel):
-    members: list[DriveNode]
-    page_count: int = Field(ge=1)
-    metadata_bytes: int = Field(default=0, ge=0)
-
-
 class SearchResult(BaseModel):
     id: FileId
     name: str

@@ -33,9 +33,6 @@ from app.document_transform.schemas import (
     InPlaceCheckpoint,
     MarkdownSource,
     OutputStrategy,
-    QaCopyPermissionEvidence,
-    QaDocumentTransformRequest,
-    QaDocumentTransformResult,
     TransformMode,
     WordCopyCheckpoint,
 )
@@ -196,15 +193,6 @@ class TaskService(ABC):
         max_model_entries: int,
         max_tool_entries: int,
     ) -> TaskRead:
-        raise NotImplementedError
-
-    async def get_qa_permission_evidence(
-        self,
-        task_id: TaskId,
-        owner_user_id: UserId,
-        *,
-        max_evidence_bytes: int,
-    ) -> QaCopyPermissionEvidence:
         raise NotImplementedError
 
     @abstractmethod
@@ -848,37 +836,6 @@ class PostgresTaskService(TaskService):
         return _to_read(task)
 
     @override
-    async def get_qa_permission_evidence(
-        self,
-        task_id: TaskId,
-        owner_user_id: UserId,
-        *,
-        max_evidence_bytes: int,
-    ) -> QaCopyPermissionEvidence:
-        if max_evidence_bytes < 1:
-            raise ValueError
-        evidence = Task.result["qa_permission_evidence"]
-        evidence_bytes = func.octet_length(cast(evidence, Text))
-        row = (
-            await self._db.execute(
-                select(evidence.label("evidence"))
-                .where(
-                    Task.id == task_id,
-                    Task.owner_user_id == owner_user_id,
-                    Task.kind == TaskKind.FILE_DOCUMENT_TRANSFORM,
-                    Task.status == TaskStatus.SUCCEEDED,
-                    Task.expires_at > func.now(),
-                    func.jsonb_typeof(evidence) == "object",
-                    evidence_bytes.between(1, max_evidence_bytes),
-                )
-                .with_for_update(read=True)
-            )
-        ).one_or_none()
-        if row is None:
-            raise TaskNotFoundError
-        return QaCopyPermissionEvidence.model_validate(row.evidence)
-
-    @override
     async def load_smart_create(self, task_id: TaskId) -> SmartCreateTaskRecord:
         task = (
             await self._db.execute(
@@ -896,7 +853,7 @@ class PostgresTaskService(TaskService):
         return SmartCreateTaskRecord.model_validate(
             {
                 "owner_user_id": task.owner_user_id,
-                "task": _task_read_payload(task),
+                "task": _to_read(task),
                 "payload": task.payload,
             }
         )
@@ -971,7 +928,7 @@ class PostgresTaskService(TaskService):
         return DocumentTransformTaskRecord.model_validate(
             {
                 "owner_user_id": task.owner_user_id,
-                "task": _task_read_payload(task),
+                "task": _to_read(task),
                 "payload": payload,
                 "checkpoint": (
                     _deserialize_checkpoint(task.checkpoint)
@@ -1179,14 +1136,13 @@ class PostgresTaskService(TaskService):
         evidence = result.header_identity
         if (
             not isinstance(checkpoint, CopyCheckpoint)
-            or checkpoint.stage not in {CopyCheckpointStage.VERIFIED, CopyCheckpointStage.ATTESTED}
+            or checkpoint.stage is not CopyCheckpointStage.VERIFIED
             or checkpoint.result is None
             or evidence is None
             or checkpoint.header_finalization is None
         ):
             raise OutputConflictError
         finalized = checkpoint.result
-        _validate_header_attestation(checkpoint, finalized, result)
         if (
             finalized.header_identity != evidence
             or evidence.operation_id != task.id
@@ -1203,7 +1159,7 @@ class PostgresTaskService(TaskService):
         # pre-alias checkpoint result whose Drive completion was read back.
         result_digest = hashlib.sha256(
             json.dumps(
-                _public_document_transform_payload(finalized),
+                _serialize(finalized),
                 ensure_ascii=False,
                 sort_keys=True,
                 separators=(",", ":"),
@@ -1283,32 +1239,6 @@ def _task_ids_for_key(
     )
 
 
-def _validate_header_attestation(
-    checkpoint: CopyCheckpoint,
-    finalized: DocumentTransformResult | QaDocumentTransformResult,
-    result: DocumentTransformResult,
-) -> None:
-    if checkpoint.stage is CopyCheckpointStage.ATTESTED:
-        if (
-            checkpoint.qa_destination_permission is None
-            or checkpoint.qa_permission_evidence is None
-            or not isinstance(finalized, QaDocumentTransformResult)
-        ):
-            raise OutputConflictError
-        if finalized.qa_permission_evidence != checkpoint.qa_permission_evidence or not isinstance(
-            result, QaDocumentTransformResult
-        ):
-            raise OutputConflictError
-        if result.qa_permission_evidence != checkpoint.qa_permission_evidence:
-            raise OutputConflictError
-    elif checkpoint.qa_permission_evidence is not None or isinstance(
-        finalized, QaDocumentTransformResult
-    ):
-        # A QA task cannot persist provenance from the provisional VERIFIED
-        # checkpoint that precedes its terminal owner-only attestation.
-        raise OutputConflictError
-
-
 def _serialize(model: BaseModel) -> dict[str, JsonValue]:
     serialized = model.model_dump(mode="json")
     match model:
@@ -1321,14 +1251,6 @@ def _serialize(model: BaseModel) -> dict[str, JsonValue]:
                 serialized.pop("output_strategy", None)
         case _:
             pass
-    return _TaskJsonObject.model_validate(serialized).root
-
-
-def _public_document_transform_payload(
-    result: DocumentTransformResult,
-) -> dict[str, JsonValue]:
-    serialized = result.model_dump(mode="json")
-    serialized.pop("qa_permission_evidence", None)
     return _TaskJsonObject.model_validate(serialized).root
 
 
@@ -1397,15 +1319,10 @@ def _payload_for_storage(
 
 def _deserialize_document_transform_payload(
     raw: Mapping[str, object],
-) -> DocumentTransformRequest | QaDocumentTransformRequest:
+) -> DocumentTransformRequest:
     source = raw.get("source")
     if not isinstance(source, dict) or source.get(_MARKDOWN_ENCRYPTION_FIELD) is None:
-        payload_type = (
-            QaDocumentTransformRequest
-            if raw.get("qa_contract") == "owner_only_v1"
-            else DocumentTransformRequest
-        )
-        return payload_type.model_validate(raw)
+        return DocumentTransformRequest.model_validate(raw)
     if source.get(_MARKDOWN_ENCRYPTION_FIELD) != _MARKDOWN_ENCRYPTION_VERSION:
         msg = "Markdown task payload uses an unsupported encryption version"
         raise ValueError(msg)
@@ -1499,29 +1416,5 @@ def _request_hash(payload: dict[str, JsonValue]) -> str:
     return hashlib.sha256(canonical.encode()).hexdigest()
 
 
-def _task_read_payload(task: Task) -> dict[str, object]:
-    result = task.result
-    if (
-        task.kind == TaskKind.FILE_DOCUMENT_TRANSFORM
-        and isinstance(result, dict)
-        and "qa_permission_evidence" in result
-    ):
-        result = dict(result)
-        result.pop("qa_permission_evidence", None)
-    return {
-        "id": task.id,
-        "kind": task.kind,
-        "status": task.status,
-        "result": result,
-        "resource_id": task.resource_id,
-        "error_code": task.error_code,
-        "error_detail": task.error_detail,
-        "attempt_count": task.attempt_count,
-        "started_at": task.started_at,
-        "finished_at": task.finished_at,
-        "created_at": task.created_at,
-    }
-
-
 def _to_read(task: Task) -> TaskRead:
-    return _TaskReadPayload.model_validate(_task_read_payload(task)).root
+    return _TaskReadPayload.model_validate(task, from_attributes=True).root

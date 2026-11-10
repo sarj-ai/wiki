@@ -3,7 +3,6 @@ from __future__ import annotations
 from datetime import UTC, datetime, timedelta
 import hashlib
 import json
-from types import SimpleNamespace
 from typing import Any
 import uuid
 
@@ -19,10 +18,6 @@ from app.document_transform.schemas import (
     DriveFileSource,
     MarkdownSource,
     OutputStrategy,
-    QaCopyPermissionEvidence,
-    QaDestinationPermissionBinding,
-    QaDocumentTransformRequest,
-    QaFilePermissionEvidence,
     TransformMode,
     ValidationSummary,
 )
@@ -145,96 +140,6 @@ def _markdown_payload() -> DocumentTransformRequest:
         ),
         mode=TransformMode.BOTH,
     )
-
-
-def _qa_copy_payload() -> QaDocumentTransformRequest:
-    return QaDocumentTransformRequest(
-        source=DriveFileSource(
-            kind="drive_file",
-            file_id=FileId("document-1"),
-            expected_modified_time="2026-09-03T00:00:00Z",
-        ),
-        mode=TransformMode.BOTH,
-        output_strategy=OutputStrategy.COPY,
-        copy_destination_folder_id=FileId("owner-only-folder"),
-        qa_destination_permission=QaDestinationPermissionBinding(version="17", sha256="a" * 64),
-    )
-
-
-def test_internal_qa_payload_round_trips_through_worker_storage_decoder() -> None:
-    payload = _qa_copy_payload()
-
-    serialized = task_service_module._serialize(payload)
-    restored = task_service_module._deserialize_document_transform_payload(serialized)
-
-    assert serialized["qa_contract"] == "owner_only_v1"
-    assert serialized["qa_destination_permission"] == {
-        "version": "17",
-        "sha256": "a" * 64,
-    }
-    assert isinstance(restored, QaDocumentTransformRequest)
-    assert restored == payload
-
-
-def test_public_task_read_strips_internal_qa_permission_evidence() -> None:
-    row = _task(request_hash="0" * 64, status=TaskStatus.SUCCEEDED)
-    row.kind = TaskKind.FILE_DOCUMENT_TRANSFORM
-    row.attempt_count = 1
-    row.started_at = row.created_at
-    row.finished_at = row.created_at
-    result = _transform_success_result(row.id, TransformMode.BOTH)
-    internal_result: dict[str, object] = result.model_dump(mode="json")
-    internal_result["access_scope"] = "owner_only"
-    internal_result["qa_permission_evidence"] = {"private": "must-not-leak"}
-    row.result = internal_result
-
-    public = task_service_module._to_read(row)
-
-    assert public.result is not None
-    serialized = public.model_dump(mode="json")
-    assert "qa_permission_evidence" not in json.dumps(serialized)
-
-
-async def test_qa_permission_evidence_read_is_exact_owner_task_and_size_scoped() -> None:
-    task_id = TaskId(uuid.uuid7())
-    owner_id = UserId(uuid.uuid7())
-    observed_at = datetime.now(UTC)
-    evidence = QaCopyPermissionEvidence(
-        operation_id=task_id,
-        source_sha256="a" * 64,
-        output_revision_id=DocsRevisionId("revision-2"),
-        destination=QaFilePermissionEvidence(
-            file_id=FileId("destination"),
-            mime_type="application/vnd.google-apps.folder",
-            parent_folder_id=None,
-            version="17",
-            permission_sha256="b" * 64,
-            observed_at=observed_at,
-        ),
-        output=QaFilePermissionEvidence(
-            file_id=FileId("output"),
-            mime_type="application/vnd.google-apps.document",
-            parent_folder_id=FileId("destination"),
-            version="19",
-            permission_sha256="c" * 64,
-            observed_at=observed_at,
-        ),
-    )
-    session = _Session(SimpleNamespace(evidence=evidence.model_dump(mode="json")))
-
-    restored = await _service(session).get_qa_permission_evidence(
-        task_id, owner_id, max_evidence_bytes=16 * 1024
-    )
-
-    assert restored == evidence
-    sql = str(session.statements[0])
-    assert "tasks.id" in sql
-    assert "tasks.owner_user_id" in sql
-    assert "tasks.kind" in sql
-    assert "tasks.status" in sql
-    assert "tasks.expires_at > now()" in sql
-    assert "jsonb_typeof" in sql
-    assert "octet_length" in sql
 
 
 def _success_result(task_id: TaskId) -> SmartCreateResult:

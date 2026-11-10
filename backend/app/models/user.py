@@ -1,12 +1,12 @@
 from datetime import datetime
 import uuid
 
-from sqlalchemy import DateTime, Text, text
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy import Boolean, DateTime, Text, text
+from sqlalchemy.dialects.postgresql import ARRAY, JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.database import Base
-from app.identifiers import GoogleUserId, UserId
+from app.identifiers import DriveId, FileId, GoogleUserId, UserId
 
 
 class User(Base):
@@ -16,6 +16,18 @@ class User(Base):
         UUID(as_uuid=True),
         primary_key=True,
         server_default=text("gen_random_uuid()"),
+    )
+    show_non_doc_files: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, server_default=text("true")
+    )
+    hidden_workspace_ids: Mapped[list[DriveId]] = mapped_column(
+        ARRAY(Text), nullable=False, server_default=text("'{}'::text[]")
+    )
+    folder_icons: Mapped[dict[FileId, str | None]] = mapped_column(
+        JSONB, nullable=False, server_default=text("'{}'::jsonb")
+    )
+    sort_orders: Mapped[dict[DriveId, float]] = mapped_column(
+        JSONB, nullable=False, server_default=text("'{}'::jsonb")
     )
     email: Mapped[str] = mapped_column(Text, unique=True, nullable=False)
     google_id: Mapped[GoogleUserId] = mapped_column(Text, unique=True, nullable=False)

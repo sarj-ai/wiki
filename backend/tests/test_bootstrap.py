@@ -63,8 +63,8 @@ class _FakeExtrasService(ExtrasService):
     @override
     async def list_doc_icons(self) -> list[DocIconRead]:
         return [
-            DocIconRead(drive_id=FileId("doc-1"), icon="📚", cover_url=None),
-            DocIconRead(drive_id=FileId("private-doc"), icon="🔒", cover_url=None),
+            DocIconRead(drive_id=FileId("doc-1"), icon="📚"),
+            DocIconRead(drive_id=FileId("private-doc"), icon="🔒"),
         ]
 
     @override

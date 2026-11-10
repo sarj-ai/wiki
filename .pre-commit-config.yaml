@@ -5,7 +5,7 @@ repos:
       - id: trailing-whitespace
         exclude: ^frontend/public/
       - id: end-of-file-fixer
-        exclude: ^frontend/public/
+        exclude: '^(?:frontend/public/|frontend/oxlint-suppressions\.json$)'
       - id: check-merge-conflict
       - id: check-yaml
         args: [--allow-multiple-documents]
