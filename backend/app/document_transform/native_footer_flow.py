@@ -201,13 +201,13 @@ def advance_footer(
 
 
 class NativeFooterSkip(BaseModel):
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="forbid", frozen=True)
     tab_id: DocsTabId
     reason: FooterSkipReason
 
 
 class NativeFooterCoverage(BaseModel):
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="forbid", frozen=True)
     topology: tuple[DocsTabId, ...] = Field(max_length=MAX_DOC_TABS)
     pending: tuple[DocsTabId, ...] = Field(default=(), max_length=MAX_DOC_TABS)
     completed: tuple[CompletedNativeFooterCheckpoint, ...] = Field(

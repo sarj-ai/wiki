@@ -308,6 +308,8 @@ class InPlaceCheckpointStage(StrEnum):
 
 
 class InPlacePlan(StrictTransformModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
     readability: ReadabilityCheckpoint | None = None
     readability_result: DocumentTransformResult | None = None
     visual_authority_block_ids: tuple[
@@ -503,6 +505,8 @@ class CopyCheckpointStage(StrEnum):
 
 
 class CopyPlan(StrictTransformModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
     readability: ReadabilityCheckpoint | None = None
     readability_result: DocumentTransformResult | None = None
     pagination: tuple[NativePaginationRule, ...] = Field(
@@ -609,6 +613,8 @@ class CopyCheckpointPayload(RootModel[CopyCheckpoint]):
 
 
 class WordCopyPlan(StrictTransformModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
     version: Literal[1] = 1
     kind: Literal["word_copy"] = "word_copy"
     request_sha256: str

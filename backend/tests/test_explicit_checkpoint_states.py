@@ -1,6 +1,7 @@
 from pydantic import ValidationError
 import pytest
 
+from app.document_transform.native_date_flow import NativeDateParagraph
 from app.document_transform.schemas import (
     InPlaceCheckpointPayload,
     InPlaceCheckpointStage,
@@ -51,3 +52,15 @@ def test_legacy_noop_markers_do_not_authorize_a_mutation(stage: str) -> None:
     assert checkpoint.marker_name is None
     assert checkpoint.marker_range is None
     assert checkpoint.mutation_sha256 is None
+
+
+def test_native_checkpoint_rejects_coerced_indices_at_the_persistence_boundary() -> None:
+    with pytest.raises(ValidationError):
+        NativeDateParagraph.model_validate(
+            {
+                "tab_id": "tab",
+                "block_id": "block",
+                "source_sha256": "a" * 64,
+                "paragraph": {"startIndex": "1", "endIndex": 2, "paragraph": {"elements": []}},
+            }
+        )

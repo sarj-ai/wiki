@@ -28,13 +28,13 @@ CHIP_PARAGRAPH_ELEMENTS = 2
 NativeDateBlockId = NewType("NativeDateBlockId", str)
 
 
-@with_config(ConfigDict(extra="allow"))
+@with_config(ConfigDict(extra="allow", strict=True))
 class _DateTextRun(TypedDict, total=False):
     content: str
     textStyle: JsonValue
 
 
-@with_config(ConfigDict(extra="allow"))
+@with_config(ConfigDict(extra="allow", strict=True))
 class _DateParagraphElement(TypedDict, total=False):
     startIndex: int
     endIndex: int
@@ -42,12 +42,12 @@ class _DateParagraphElement(TypedDict, total=False):
     dateElement: JsonValue
 
 
-@with_config(ConfigDict(extra="allow"))
+@with_config(ConfigDict(extra="allow", strict=True))
 class _DateParagraph(TypedDict, total=False):
     elements: list[_DateParagraphElement]
 
 
-@with_config(ConfigDict(extra="allow"))
+@with_config(ConfigDict(extra="allow", strict=True))
 class NativeDateContent(TypedDict):
     startIndex: int
     endIndex: int
@@ -112,7 +112,7 @@ class _DateDocument(Protocol):
 
 
 class NativeDateParagraph(BaseModel):
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="forbid", frozen=True)
     tab_id: DocsTabId
     block_id: NativeDateBlockId
     source_sha256: str
@@ -120,7 +120,7 @@ class NativeDateParagraph(BaseModel):
 
 
 class NativeDatePlan(BaseModel):
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="forbid", frozen=True)
     revision_id: DocsRevisionId
     marker_name: str
     marker_range: dict[str, JsonValue]
