@@ -21,7 +21,7 @@ import typer
 
 ROOT = Path(__file__).resolve().parents[1]
 # Audit the latest repository engine independently of the immutable Standards bundle.
-REPOSITORY_STANDARDS_VERSION = "6.22.2"
+REPOSITORY_STANDARDS_VERSION = "6.22.3"
 REPOSITORY_TESTS = (
     "test_release_gate.py",
     "test_wiki_cli.py",
@@ -61,7 +61,6 @@ class Protection(StrEnum):
 class Command:
     arguments: tuple[str, ...]
     environment: tuple[tuple[str, str], ...] = ()
-    allow_failure: bool = False
 
 
 def _backend(*arguments: str) -> Command:
@@ -234,7 +233,7 @@ def run(commands: tuple[Command, ...]) -> None:
             check=False,
             shell=False,
         )
-        if result.returncode and not command.allow_failure:
+        if result.returncode:
             raise typer.Exit(
                 result.returncode if result.returncode > 0 else 128 - result.returncode
             )

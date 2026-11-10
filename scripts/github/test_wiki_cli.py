@@ -210,11 +210,10 @@ def test_frontend_contract_checks_generated_api_and_types_before_the_production_
     assert commands[-1].environment == (("NEXT_PUBLIC_API_URL", "http://localhost:8000"),)
 
 
-def test_full_qualification_has_no_advisory_steps_or_repeated_registry_scan() -> None:
+def test_full_qualification_keeps_one_repository_audit_and_required_gates() -> None:
     commands = wiki.checks(wiki.Check.ALL)
 
-    assert all(not command.allow_failure for command in commands)
-    assert wiki.REPOSITORY_STANDARDS_VERSION == "6.22.2"
+    assert wiki.REPOSITORY_STANDARDS_VERSION == "6.22.3"
     distribution = f"repo-standards=={wiki.REPOSITORY_STANDARDS_VERSION}"
     assert sum(distribution in command.arguments for command in commands) == 1
     assert any("--verify-python-baseline" in command.arguments for command in commands)
