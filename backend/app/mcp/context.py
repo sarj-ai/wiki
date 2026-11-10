@@ -69,5 +69,5 @@ async def open_mcp_context(
             drive=drive,
             files=files,
             tasks=PostgresTaskService(db=db),
-            aliases=PostgresAliasService(db=db, files=files, drive=drive, user=prepared.user),
+            aliases=PostgresAliasService(db=db, files=files, drive=drive),
         )

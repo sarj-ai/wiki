@@ -27,7 +27,6 @@ from app.files.errors import FilesError
 from app.files.schemas import FileResponse
 from app.files.service import FilesService
 from app.identifiers import FileId
-from app.models.user import User
 from app.models.wiki import DocumentAlias
 
 
@@ -72,12 +71,10 @@ class PostgresAliasService(AliasService):
         *,
         db: AsyncSession,
         files: FilesService,
-        user: User,
         drive: DriveService | None = None,
     ) -> None:
         self._db = db
         self._files = files
-        self._user = user
         self._drive = drive
 
     @override
@@ -120,11 +117,10 @@ class PostgresAliasService(AliasService):
         now = datetime.now(UTC)
         if existing is not None:
             existing.retired_at = now
-            existing.retired_by = self._user.id
             await self._db.flush()
         statement = (
             pg_insert(DocumentAlias)
-            .values(alias=alias, file_id=file_id, created_by=self._user.id)
+            .values(alias=alias, file_id=file_id)
             .on_conflict_do_nothing()
             .returning(DocumentAlias)
         )
@@ -160,7 +156,7 @@ class PostgresAliasService(AliasService):
         for alias in candidates:
             statement = (
                 pg_insert(DocumentAlias)
-                .values(alias=alias, file_id=file.id, created_by=self._user.id)
+                .values(alias=alias, file_id=file.id)
                 .on_conflict_do_nothing()
                 .returning(DocumentAlias)
             )
@@ -192,7 +188,7 @@ class PostgresAliasService(AliasService):
         retired = await self._db.execute(
             update(DocumentAlias)
             .where(DocumentAlias.file_id == file_id, DocumentAlias.retired_at.is_(None))
-            .values(retired_at=datetime.now(UTC), retired_by=self._user.id)
+            .values(retired_at=datetime.now(UTC))
             .returning(DocumentAlias.alias)
         )
         if retired.scalar_one_or_none() is None:

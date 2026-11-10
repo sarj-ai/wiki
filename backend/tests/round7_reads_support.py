@@ -50,6 +50,7 @@ class ReadsDatabase:
     protector: CacheEntryProtector
     rotation_keys: tuple[str, ...] = field(repr=False)
     cache_keys: dict[CacheNamespace, set[str]] = field(default_factory=dict)
+    aliases: set[str] = field(default_factory=set)
 
     def register_cache(self, namespace: CacheNamespace, values: Mapping[str, JsonValue]) -> None:
         self.cache_keys.setdefault(namespace, set()).update(values)
@@ -86,7 +87,7 @@ async def reads_database(url: URL) -> AsyncGenerator[ReadsDatabase]:
                         CacheEntry.key.in_([key for keys in physical.values() for key in keys]),
                     )
                 )
-            await db.execute(delete(DocumentAlias).where(DocumentAlias.created_by == user.id))
+            await db.execute(delete(DocumentAlias).where(DocumentAlias.alias.in_(database.aliases)))
             await db.execute(delete(User).where(User.id == user.id))
             await db.commit()
         await engine.dispose()
@@ -265,8 +266,9 @@ def reads_file(file_id: FileId, *, drive_id: DriveId | None = None) -> FileRespo
 async def seed_alias(database: ReadsDatabase, file_id: FileId) -> str:
     alias = "fixture-" + "".join(chr(97 + int(digit, 16)) for digit in uuid.uuid7().hex[-12:])
     async with database.sessions() as db:
-        db.add(DocumentAlias(alias=alias, file_id=file_id, created_by=database.user.id))
+        db.add(DocumentAlias(alias=alias, file_id=file_id))
         await db.commit()
+    database.aliases.add(alias)
     return alias
 
 

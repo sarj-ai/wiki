@@ -355,8 +355,6 @@ async def test_put_persists_only_active_hmac_key_and_encrypted_envelope() -> Non
     assert "private-drive-id" not in parameters
     assert protector.physical_keys(CacheNamespace.DRIVE_LIST, "private-user-id")[0] in parameters
     assert "f1" in parameters
-    assert "cache_entries.key !~" in str(session.statements[0])
-    assert "^h[0-9]+\\\\." in parameters
 
 
 async def test_get_many_physical_key_collision_fails_closed_without_database_access() -> None:

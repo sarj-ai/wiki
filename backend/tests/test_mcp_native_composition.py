@@ -19,7 +19,7 @@ from app.mcp.native_runtime import create_native_runtime
 from app.mcp.native_state import NativeStateStore
 from app.mcp.protection import OAuthStateProtector
 from app.mcp.redirect_policy import McpRedirectPolicy
-from app.mcp.storage import PostgresOAuthStorage
+from app.mcp.storage import PostgresOAuthOperations
 from app.tasks.queue import TaskEnqueuer
 
 
@@ -88,7 +88,7 @@ class Factory:
             (Fernet.generate_key().decode(),), lock_key=Fernet.generate_key().decode()
         )
         core = NativeOAuthCore(
-            PostgresOAuthStorage(sessions, protector),
+            PostgresOAuthOperations(sessions, protector),
             NativeStateStore(protector),
             f"{ISSUER}mcp",
             issuer=ISSUER,

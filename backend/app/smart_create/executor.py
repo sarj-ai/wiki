@@ -114,7 +114,7 @@ class DriveSmartCreateTaskExecutor(SmartCreateTaskExecutor):
             refresh_handler=prepared.refresh_handler,
         )
         files = GoogleFilesService(user=prepared.user, drive=drive)
-        aliases = PostgresAliasService(db=self._db, files=files, user=prepared.user)
+        aliases = PostgresAliasService(db=self._db, files=files)
         extras = PostgresExtrasService(db=self._db, user=prepared.user)
         templates = DriveTemplateCatalogService(
             drive=drive,

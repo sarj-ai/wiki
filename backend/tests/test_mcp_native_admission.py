@@ -18,8 +18,9 @@ from app.mcp.native_admission import (
     PostgresRegistrationAdmission,
     RegistrationAdmissionDeniedError,
     RegistrationAdmissionUnavailableError,
+    RegistrationHistory,
 )
-from app.models.mcp_registration_admission import McpRegistrationAdmission
+from app.models.wiki import CacheEntry
 
 
 class QASettings(BaseSettings):
@@ -34,12 +35,21 @@ class Lab:
 
     async def seed(self, history: list[datetime]) -> None:
         async with self.sessions.begin() as db:
-            db.add(McpRegistrationAdmission(id=1, admitted_at=history))
+            db.add(
+                CacheEntry(
+                    namespace="mcp.registration",
+                    key="global",
+                    value=[stamp.isoformat() for stamp in history],
+                    expires_at=self.now + timedelta(minutes=30),
+                )
+            )
 
     async def history(self) -> list[datetime]:
         async with self.sessions() as db:
-            history = await db.scalar(select(McpRegistrationAdmission.admitted_at))
-            return history or []
+            history = await db.scalar(
+                select(CacheEntry.value).where(CacheEntry.namespace == "mcp.registration")
+            )
+            return RegistrationHistory.model_validate(history or []).root
 
 
 @pytest.fixture
@@ -62,7 +72,7 @@ async def lab() -> AsyncGenerator[Lab]:
     try:
         async with engine.begin() as connection:
             await connection.execute(CreateSchema(schema))
-            table = McpRegistrationAdmission.__table__
+            table = CacheEntry.__table__
             assert isinstance(table, Table)
             await connection.run_sync(table.create)
         async with sessions() as db:
@@ -132,13 +142,28 @@ async def test_expired_history_is_replaced_by_one_current_admission(lab: Lab) ->
     assert history[0] >= lab.now
 
 
+async def test_future_history_cannot_expire_before_its_budget_window(lab: Lab) -> None:
+    future = lab.now + timedelta(hours=1)
+    await lab.seed([future])
+    await PostgresRegistrationAdmission(lab.sessions).admit()
+    async with lab.sessions() as db:
+        expiry = await db.scalar(
+            select(CacheEntry.expires_at).where(CacheEntry.namespace == "mcp.registration")
+        )
+        assert expiry == future + timedelta(minutes=30)
+
+
 async def test_later_transaction_failure_cannot_refund_admission(lab: Lab) -> None:
     admission = PostgresRegistrationAdmission(lab.sessions)
 
     async def failed_registration() -> None:
         async with lab.sessions.begin() as db:
             await admission.admit()
-            db.add(McpRegistrationAdmission(id=2, admitted_at=[]))
+            db.add(
+                CacheEntry(
+                    namespace="mcp.registration", key="invalid", value=[], expires_at=lab.now
+                )
+            )
 
     with pytest.raises(IntegrityError):
         await failed_registration()
@@ -177,7 +202,7 @@ async def test_interrupted_admission_rolls_back_and_releases_lock(
 
 async def test_database_failure_is_constant_and_redacted(lab: Lab) -> None:
     async with lab.sessions.begin() as db:
-        table = McpRegistrationAdmission.__table__
+        table = CacheEntry.__table__
         assert isinstance(table, Table)
         connection = await db.connection()
         await connection.run_sync(table.drop)
@@ -192,9 +217,9 @@ async def test_database_failure_is_constant_and_redacted(lab: Lab) -> None:
 @pytest.mark.parametrize("history", ["oversize", "null-element", "null-array"])
 async def test_database_rejects_invalid_ledger(lab: Lab, history: str) -> None:
     statements = {
-        "oversize": "INSERT INTO mcp_registration_admission VALUES (1, array_fill(now(), ARRAY[301]))",
-        "null-element": "INSERT INTO mcp_registration_admission VALUES (1, ARRAY[NULL]::timestamptz[])",
-        "null-array": "INSERT INTO mcp_registration_admission VALUES (1, NULL)",
+        "oversize": "INSERT INTO cache_entries VALUES ('mcp.registration', 'global', to_jsonb(array_fill(now(), ARRAY[301])), now())",
+        "null-element": "INSERT INTO cache_entries VALUES ('mcp.registration', 'global', '[null]'::jsonb, now())",
+        "null-array": "INSERT INTO cache_entries VALUES ('mcp.registration', 'global', 'null'::jsonb, now())",
     }
     with pytest.raises(IntegrityError):
         async with lab.sessions.begin() as db:

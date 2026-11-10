@@ -1,19 +1,27 @@
 import asyncio
 from datetime import datetime, timedelta
 import math
+from typing import Annotated
 
+from pydantic import AwareDatetime, Field, RootModel, ValidationError
 from sqlalchemy import func, select, text
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from app.models.mcp_registration_admission import McpRegistrationAdmission
+from app.models.wiki import CacheEntry
 
 
 # Fixed namespace, not an encryption-key-derived lock: all replicas/rotations agree.
 _ADMISSION_LOCK = 0x57494B4944435231
 _ADMISSION_TIMEOUT = timedelta(seconds=3)
 _WINDOWS = ((10, timedelta(seconds=60)), (300, timedelta(seconds=1800)))
-_SINGLETON = 1
+ADMISSION_KEY = ("mcp.registration", "global")
+
+
+class RegistrationHistory(RootModel[list[AwareDatetime]]):
+    root: Annotated[list[AwareDatetime], Field(max_length=300)]
+
+
 _MAX_RETRY = 1800
 
 
@@ -43,7 +51,7 @@ class PostgresRegistrationAdmission:
         # Own the commit before registration; later registration failures never refund it.
         try:
             await self._admit()
-        except SQLAlchemyError, TimeoutError:
+        except SQLAlchemyError, TimeoutError, ValidationError:
             raise RegistrationAdmissionUnavailableError from None
 
     async def _admit(self) -> None:
@@ -58,9 +66,11 @@ class PostgresRegistrationAdmission:
                 {"identity": _ADMISSION_LOCK},
             )
             now = await _database_time(db)
-            row = await db.get(McpRegistrationAdmission, _SINGLETON)
+            row = await db.get(CacheEntry, ADMISSION_KEY)
             history = sorted(
-                value for value in (row.admitted_at if row else []) if value > now - _WINDOWS[-1][1]
+                value
+                for value in (RegistrationHistory.model_validate(row.value).root if row else [])
+                if value > now - _WINDOWS[-1][1]
             )
             retry = 0
             for limit, window in _WINDOWS:
@@ -74,6 +84,7 @@ class PostgresRegistrationAdmission:
                 raise RegistrationAdmissionDeniedError(timedelta(seconds=retry))
             history.append(now)
             if row is None:
-                db.add(McpRegistrationAdmission(id=_SINGLETON, admitted_at=history))
-            else:
-                row.admitted_at = history
+                row = CacheEntry(namespace=ADMISSION_KEY[0], key=ADMISSION_KEY[1])
+                db.add(row)
+            row.value = [value.isoformat() for value in history]
+            row.expires_at = max(history) + _WINDOWS[-1][1]

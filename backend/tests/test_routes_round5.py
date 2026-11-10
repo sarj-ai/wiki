@@ -323,18 +323,14 @@ async def test_atomic_alias_retirement_keeps_tombstones_and_fresh_edit_authority
             user = User(id=owner, email=f"round5-{owner}@sarj.ai", google_id=str(owner))
             db.add(user)
             await db.flush()
-            db.add(DocumentAlias(alias=alias, file_id=file_id, created_by=owner))
+            db.add(DocumentAlias(alias=alias, file_id=file_id))
             await db.commit()
-            denied = PostgresAliasService(
-                db=db, files=dependency(_AliasFiles(editable=False)), user=user
-            )
+            denied = PostgresAliasService(db=db, files=dependency(_AliasFiles(editable=False)))
             event.listen(engine.sync_engine, "before_cursor_execute", record)
             with pytest.raises(AliasEditForbiddenError):
                 await denied.retire(file_id)
             assert statements == []
-            service = PostgresAliasService(
-                db=db, files=dependency(_AliasFiles(editable=True)), user=user
-            )
+            service = PostgresAliasService(db=db, files=dependency(_AliasFiles(editable=True)))
             await service.retire(file_id)
             event.remove(engine.sync_engine, "before_cursor_execute", record)
             assert len(statements) == 1
@@ -343,12 +339,11 @@ async def test_atomic_alias_retirement_keeps_tombstones_and_fresh_edit_authority
             row = await db.get(DocumentAlias, alias)
             assert row is not None
             assert row.retired_at is not None
-            assert row.retired_by == owner
             retired_at = row.retired_at
             await db.commit()
-            await PostgresAliasService(
-                db=db, files=dependency(_AliasFiles(editable=True)), user=user
-            ).retire(file_id)
+            await PostgresAliasService(db=db, files=dependency(_AliasFiles(editable=True))).retire(
+                file_id
+            )
         async with sessions() as db:
             row = await db.scalar(select(DocumentAlias).where(DocumentAlias.alias == alias))
             assert row is not None
@@ -357,9 +352,9 @@ async def test_atomic_alias_retirement_keeps_tombstones_and_fresh_edit_authority
             pending_user = await db.get(User, owner)
             assert pending_user is not None
             pending_user.display_name = "Pending unrelated profile"
-            await PostgresAliasService(
-                db=db, files=dependency(_AliasFiles(editable=True)), user=pending_user
-            ).retire(FileId(f"absent-{owner}"))
+            await PostgresAliasService(db=db, files=dependency(_AliasFiles(editable=True))).retire(
+                FileId(f"absent-{owner}")
+            )
             assert db.in_transaction()
             await db.rollback()
         async with sessions() as db:

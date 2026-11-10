@@ -9,7 +9,6 @@ from app.models import (
     auth_session as auth_session,
     mcp_grant as mcp_grant,
     mcp_oauth as mcp_oauth,
-    mcp_registration_admission as mcp_registration_admission,
     task as task,
     task_replay_key as task_replay_key,
     user as user,

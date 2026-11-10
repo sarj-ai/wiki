@@ -119,7 +119,7 @@ async def test_access_only_route_and_alias_reads_project_fresh_scope() -> None:
     drive = _CountingDrive()
     provider = _SingleProvider({"id": "document", "parents": ["common-parent"]})
     files = _SingleFiles(drive, provider)
-    aliases = PostgresAliasService(db=dependency(_Session()), files=files, user=_user())
+    aliases = PostgresAliasService(db=dependency(_Session()), files=files)
 
     assert (await aliases.get_for_file(FileId("document"))).alias is None
     assert await require_accessible_doc(FileId("document"), files) == "document"

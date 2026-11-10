@@ -39,11 +39,11 @@ from app.mcp.native_state import NativeStateStore, native_database_time
 from app.mcp.protection import OAuthStateProtector
 from app.mcp.redirect_policy import McpRedirectPolicy
 from app.mcp.schemas import McpCapability
-from app.mcp.storage import PostgresOAuthStorage
+from app.mcp.storage import PostgresOAuthOperations
 from app.models.mcp_grant import McpGrant
 from app.models.mcp_oauth import MCPOAuthEntry
-from app.models.mcp_registration_admission import McpRegistrationAdmission
 from app.models.user import User
+from app.models.wiki import CacheEntry
 
 
 _RESOURCE = "https://api.example.test/mcp"
@@ -133,7 +133,7 @@ async def lab() -> AsyncGenerator[Lab]:
     providers = [
         NativeWikiOAuthProvider(
             core=NativeOAuthCore(
-                PostgresOAuthStorage(sessions, protector),
+                PostgresOAuthOperations(sessions, protector),
                 NativeStateStore(protector),
                 _RESOURCE,
                 issuer="https://api.example.test",
@@ -150,7 +150,7 @@ async def lab() -> AsyncGenerator[Lab]:
     try:
         async with engine.begin() as connection:
             await connection.execute(CreateSchema(schema))
-            for model in (User, McpGrant, MCPOAuthEntry, McpRegistrationAdmission):
+            for model in (User, McpGrant, MCPOAuthEntry, CacheEntry):
                 table = model.__table__
                 assert isinstance(table, Table)
                 await connection.run_sync(table.create)
@@ -600,8 +600,10 @@ async def test_failed_registration_consumes_independent_admission(lab: Lab) -> N
     with pytest.raises(RegistrationError):
         await lab.providers[0].register_client(lab.client)
     async with lab.sessions() as db:
-        history = await db.scalar(select(McpRegistrationAdmission.admitted_at))
-        assert history is not None
+        history = await db.scalar(
+            select(CacheEntry.value).where(CacheEntry.namespace == "mcp.registration")
+        )
+        assert isinstance(history, list)
         assert len(history) == 2
         assert (
             await db.scalar(

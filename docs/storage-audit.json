@@ -1,8 +1,8 @@
 {
-  "scope": "All PostgreSQL tables produced by the complete Wiki migration chain, including tables absent from ORM metadata.",
+  "scope": "Every table in the complete Wiki PostgreSQL migration chain, including migration bookkeeping and tables retired by previous cleanups.",
   "beforeApplicationTableCount": 22,
-  "afterApplicationTableCount": 12,
-  "migration": "0025_simplify_storage",
+  "afterApplicationTableCount": 11,
+  "migration": "0026_retire_oauth_proxy",
   "tables": [
     {
       "table": "alembic_version",
@@ -13,7 +13,7 @@
       "table": "cache_entries",
       "decision": "retain",
       "runtime": "backend/app/cache/service.py",
-      "reason": "Expiring protected provider reads and signed task/upload references share this store."
+      "reason": "Protected short-lived Drive/template reads and the bounded registration admission window share this namespaced store. Database constraints bound the internal history; the stable advisory lock still serializes all replicas. Disposable provider caches are cleared once, retiring legacy-key cleanup and its index."
     },
     {
       "table": "doc_icons",
@@ -25,7 +25,7 @@
       "table": "document_aliases",
       "decision": "retain",
       "runtime": "backend/app/aliases/service.py",
-      "reason": "Active and retired public links reserve stable names and prevent reassignment."
+      "reason": "Active and retired names preserve public links and prevent reassignment. Drop created_by, created_at and retired_by: no runtime reader consumes attribution. retired_at continues to enforce permanent name reservations. Alias service no longer needs a separate user parameter; authenticated Drive access still gates every operation."
     },
     {
       "table": "document_header_provenance",
@@ -78,14 +78,15 @@
     {
       "table": "mcp_oauth_entries",
       "decision": "retain",
-      "runtime": "backend/app/mcp/storage.py",
-      "reason": "One encrypted namespaced key/value store now serves both protocol and native OAuth state."
+      "runtime": "backend/app/mcp/native_state.py",
+      "reason": "The active native issuer stores encrypted clients, intents, codes, access and refresh credentials here. The old OAuth proxy has no application callers: retire its collections, SDK key/value adapter, bulk methods, direct dependency, and write-only updated_at column. Keep the transaction lock as PostgresOAuthOperations."
     },
     {
       "table": "mcp_registration_admission",
-      "decision": "retain",
+      "decision": "consolidate",
       "runtime": "backend/app/mcp/native_admission.py",
-      "reason": "Atomic bounded global registration admission across replicas; typed history and advisory lock remain."
+      "reason": "One bounded expiring registration history needs no separate singleton table. Copy timestamps under the original advisory lock and table locks; preserve the two rolling windows, database bounds, failure redaction, and nonrefundable committed admission.",
+      "target": "cache_entries"
     },
     {
       "table": "task_replay_keys",
@@ -176,5 +177,12 @@
     "path": "backend/app/tasks/service.py",
     "reason": "Old encrypted normal copy checkpoints contain null QA metadata. Discard only those null legacy keys when decoding; keep strict rejection of non-null retired QA payloads and every other unknown field. New checkpoints omit the retired keys."
   },
-  "migrationIsolation": "Lock the users and retired preference/native-state tables for the entire copy/drop transaction so concurrent edits and single-use OAuth consumption cannot race the transfer. The brief write pause is intentional."
+  "migrationIsolation": "Acquire the unchanged global registration advisory lock, then pause the old admission table and cache writes for the copy/drop transaction. Native OAuth state is preserved byte-for-byte; only replaced proxy collections and disposable provider caches are removed.",
+  "previousMigration": "0025_simplify_storage",
+  "reviewedBase": "8173764",
+  "retiredCode": [
+    "Unused generic OAuth SDK key/value and bulk API; active native state remains encrypted and permission checked.",
+    "Unused alias attribution columns, foreign keys, indexes and service injection.",
+    "Legacy disposable provider-cache cleanup branch and index."
+  ]
 }

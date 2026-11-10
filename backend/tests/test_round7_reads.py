@@ -278,7 +278,7 @@ async def test_alias_resolve_reads_retirement_even_with_a_retained_orm_identity(
             )
             await editor.commit()
         assert held_identity.retired_at is None
-        service = PostgresAliasService(db=db, files=dependency(files), user=database.user)
+        service = PostgresAliasService(db=db, files=dependency(files))
         with pytest.raises(AliasNotFoundError):
             await service.resolve(alias)
         assert files.access_calls == []
@@ -292,7 +292,7 @@ async def test_alias_resolve_projects_a_fresh_target_then_rechecks_access(
     alias = await seed_alias(database, file_id)
     files = ReadsFiles([reads_file(file_id)])
     async with database.sessions() as db:
-        service = PostgresAliasService(db=db, files=dependency(files), user=database.user)
+        service = PostgresAliasService(db=db, files=dependency(files))
         assert (await service.resolve(alias)).file_id == file_id
         assert not db.in_transaction()
         files.files.clear()
@@ -315,9 +315,7 @@ async def test_recent_aliases_keep_inventory_for_accessible_metadata(
     files = ReadsFiles([reads_file(file_id, drive_id=drive_id)])
     drive = ReadsDrive([DriveSummary(id=DriveId("round7-fixture-drive"), name="Fixture drive")])
     async with database.sessions() as db:
-        service = PostgresAliasService(
-            db=db, files=dependency(files), drive=dependency(drive), user=database.user
-        )
+        service = PostgresAliasService(db=db, files=dependency(files), drive=dependency(drive))
         result = await service.resolve_recent([alias, alias, "absent-alias"])
         assert len(result) == 1
         assert result[0].alias == alias
@@ -345,9 +343,7 @@ async def test_native_recent_metadata_normalizes_null_provider_drive_before_inve
     metadata = await files.get_search_metadata_many([file_id])
     assert [file.drive_id for file in metadata.values()] == ([drive_id] if authorized else [])
     async with database.sessions() as db:
-        service = PostgresAliasService(
-            db=db, files=files, drive=dependency(drive), user=database.user
-        )
+        service = PostgresAliasService(db=db, files=files, drive=dependency(drive))
         result = await service.resolve_recent([alias])
         assert [item.drive_name for item in result] == (
             ["Fixture personal drive"] if authorized else []

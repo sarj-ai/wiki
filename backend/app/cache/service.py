@@ -19,7 +19,6 @@ from sqlalchemy import (
     delete,
     func,
     literal,
-    or_,
     select,
 )
 from sqlalchemy.dialects.postgresql import ARRAY, Insert, insert as pg_insert
@@ -158,13 +157,7 @@ def _cache_insert(
 def _cache_write_cleanup_statement() -> CTE:
     return (
         delete(CacheEntry)
-        .where(
-            or_(
-                CacheEntry.expires_at <= func.now(),
-                (CacheEntry.namespace == bindparam("cache_namespace", type_=Text))
-                & CacheEntry.key.op("!~")(literal(r"^h[0-9]+\.", literal_execute=True)),
-            )
-        )
+        .where(CacheEntry.expires_at <= func.now())
         .cte("delete_expired_cache_entries")
     )
 

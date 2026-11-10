@@ -221,7 +221,7 @@ jobs:
           tests/test_storage_hot_paths_postgres.py
           tests/test_storage_simplification_postgres.py
 
-      - name: Exercise MCP storage and client grants across database sessions
+      - name: Exercise native MCP transactions and client grants across database sessions
         run: >-
           uv run --locked pytest tests/test_mcp_storage.py tests/test_mcp_grants.py
           tests/test_native_mcp_core.py tests/test_mcp_native_runtime.py

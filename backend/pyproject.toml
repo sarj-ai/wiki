@@ -24,7 +24,6 @@ dependencies = [
   "pydantic[email]>=2.14.3",
   "pydantic-core>=2.50.4",
   "starlette>=1.10.0",
-  "py-key-value-aio>=0.4.6",
   "python-docx>=1.2.0",
   "markdown-it-py==4.2.0",
   "defusedxml>=0.7.1",
@@ -69,7 +68,6 @@ google-cloud-tasks = "google"
 google-genai = "google"
 cloud-sql-python-connector = "google"
 python-docx = "docx"
-py-key-value-aio = "key_value"
 
 [tool.deptry.per_rule_ignores]
 # Executables and SQLAlchemy's driver string are used outside Python imports.
