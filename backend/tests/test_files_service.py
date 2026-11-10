@@ -266,59 +266,6 @@ async def test_get_accessible_many_uses_one_google_batch_and_omits_denied_files(
     assert batch_executions == 1
 
 
-async def test_qa_corpus_metadata_batch_omits_unbounded_description(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    requested_fields: list[str] = []
-
-    class _Request(NamedTuple):
-        file_id: str
-
-    class _FakeFiles:
-        def get(self, **kwargs: Any) -> _Request:
-            requested_fields.append(str(kwargs["fields"]))
-            return _Request(kwargs["fileId"])
-
-    class _Batch:
-        def __init__(self, callback: Any) -> None:
-            self.callback = callback
-            self.requests: list[tuple[str, _Request]] = []
-
-        def add(self, request: _Request, *, request_id: str) -> None:
-            self.requests.append((request_id, request))
-
-        def execute(self) -> None:
-            for request_id, request in self.requests:
-                self.callback(
-                    request_id,
-                    {
-                        "driveId": "d1",
-                        "id": request.file_id,
-                        "mimeType": "application/vnd.google-apps.document",
-                        "name": "Document",
-                        "parents": ["folder"],
-                        "modifiedTime": "2026-09-08T12:00:00Z",
-                        "version": "7",
-                    },
-                    None,
-                )
-
-    class _FakeClient:
-        def files(self) -> _FakeFiles:
-            return _FakeFiles()
-
-        def new_batch_http_request(self, *, callback: Any) -> _Batch:
-            return _Batch(callback)
-
-    _patch_client(monkeypatch, _FakeClient())
-    result = await _svc("d1").get_qa_corpus_metadata_many([FileId("first")])
-
-    assert result[FileId("first")].version == "7"
-    assert requested_fields
-    assert all("version" in fields for fields in requested_fields)
-    assert all("description" not in fields for fields in requested_fields)
-
-
 def test_internal_provider_version_is_excluded_from_public_file_response() -> None:
     response = FileResponse(
         id=FileId("doc"),

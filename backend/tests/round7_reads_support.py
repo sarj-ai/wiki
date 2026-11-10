@@ -297,7 +297,6 @@ async def seed_trees(
                     drive_id=drive,
                     tree=encrypt_cache_bytes(to_json(tree)),
                     refreshed_at=datetime.now(UTC),
-                    refreshed_by=database.user.id,
                 )
             )
         await db.commit()

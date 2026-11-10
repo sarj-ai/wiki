@@ -27,7 +27,7 @@ from app.drive.schemas import DriveSummary
 from app.extras.service import PostgresExtrasService, SidebarExtras
 from app.identifiers import FileId, GoogleUserId, UserId
 from app.models.user import User
-from app.models.wiki import CacheEntry, DocIcon, UserFolderIcon, UserPreferences, UserSortOrder
+from app.models.wiki import CacheEntry, DocIcon
 from tests.support import dependency
 from tests.test_task_source_dedupe_postgres import _qa_engine
 
@@ -163,16 +163,15 @@ async def test_deferred_bootstrap_releases_overlay_read_before_independent_drive
 ) -> None:
     async with database.sessions() as db:
         for user, hidden in ((database.owner, "owner"), (database.other, "other")):
-            db.add_all(
-                [
-                    UserPreferences(
-                        user_id=user.id,
-                        show_non_doc_files=False,
-                        hidden_workspace_ids=[hidden],
-                    ),
-                    UserFolderIcon(user_id=user.id, folder_drive_id="same-folder", icon=None),
-                    UserSortOrder(user_id=user.id, drive_id="same-drive", sort_order=-0.5),
-                ]
+            await db.execute(
+                update(User)
+                .where(User.id == user.id)
+                .values(
+                    show_non_doc_files=False,
+                    hidden_workspace_ids=[hidden],
+                    folder_icons={"same-folder": None},
+                    sort_orders={"same-drive": -0.5},
+                )
             )
         await db.commit()
     async with database.sessions() as db:
@@ -249,7 +248,7 @@ async def _seed_icons(database: _Database, count: int) -> None:
     database.icon_ids.extend(FileId(f"{database.owner.id}-{index}") for index in range(count))
     async with database.sessions() as db:
         db.add_all(
-            DocIcon(drive_id=icon_id, icon="📚" if index % 2 else None, cover_url=None)
+            DocIcon(drive_id=icon_id, icon="📚" if index % 2 else None)
             for index, icon_id in enumerate(database.icon_ids)
         )
         await db.commit()

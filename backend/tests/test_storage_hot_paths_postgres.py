@@ -38,7 +38,7 @@ from app.identifiers import DriveId, FileId, GoogleUserId, IdempotencyKey, UserI
 from app.models.task import Task
 from app.models.task_replay_key import TaskReplayKey
 from app.models.user import User
-from app.models.wiki import CacheEntry, DriveTreeCache, UserSortOrder
+from app.models.wiki import CacheEntry, DriveTreeCache
 from app.sidebar.cache import PostgresSidebarCacheService
 from app.sidebar.singleflight import Singleflight
 from app.tasks.errors import TaskNotFoundError
@@ -374,17 +374,14 @@ async def test_sort_order_bulk_writes_skip_unchanged_rows_and_keep_user_isolatio
         await PostgresExtrasService(db=db, user=other).upsert_sort_orders(
             [SortOrderWrite(drive_id=items[0].drive_id, sort_order=-7)]
         )
-        versions = select(UserSortOrder.drive_id, column("xmin").cast(Text)).where(
-            UserSortOrder.user_id == database.owner
-        )
+        versions = select(User.id, column("xmin").cast(Text)).where(User.id == database.owner)
         before = dict((await db.execute(versions)).tuples().all())
         await service.upsert_sort_orders(list(reversed(items)))
         assert dict((await db.execute(versions)).tuples().all()) == before
         changed = items[0].model_copy(update={"sort_order": 42.5})
         await service.upsert_sort_orders([changed, *items[1:]])
         after = dict((await db.execute(versions)).tuples().all())
-        assert after.pop(changed.drive_id) != before.pop(changed.drive_id)
-        assert after == before
+        assert after[database.owner] != before[database.owner]
         observed = {item.drive_id: item.sort_order for item in await service.list_sort_orders()}
         assert observed == {item.drive_id: item.sort_order for item in [changed, *items[1:]]}
         other_rows = await PostgresExtrasService(db=db, user=other).list_sort_orders()

@@ -75,7 +75,6 @@ export interface CreateFileInput {
 }
 
 export interface DocIconInput {
-  coverUrl?: null | string;
   icon?: null | string;
 }
 
@@ -280,7 +279,6 @@ export function makeWikiApi(client?: Client) {
         setDocIcon,
         {
           body: {
-            cover_url: payload.coverUrl ?? null,
             icon: payload.icon ?? null,
           },
           path: { drive_id: driveId },

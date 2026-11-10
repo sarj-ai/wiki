@@ -10,10 +10,9 @@ import pytest
 from sqlalchemy import Column, DateTime, MetaData, String, Table, Uuid, create_engine, delete
 
 from app.auth.dependencies import get_current_user
-from app.files.dependencies import files_service_dep
 from app.identifiers import IdempotencyKey, UserId
 from app.main import app
-from app.tasks.dependencies import task_enqueuer_dep, task_service_dep
+from app.tasks.dependencies import task_service_dep
 from app.tasks.errors import TaskNotFoundError
 from app.tasks.schemas import TaskKind
 from app.tasks.service import PostgresTaskService
@@ -180,36 +179,6 @@ async def test_admission_http_contract_has_no_private_data(
         assert response.headers["Cache-Control"] == "no-store"
     if case in {"invalid", "unauthorized"}:
         assert database.statements == []
-
-
-async def test_public_transform_route_rejects_internal_qa_binding() -> None:
-    user = _user()
-    app.dependency_overrides[get_current_user] = lambda: user
-    app.dependency_overrides[task_service_dep] = object
-    app.dependency_overrides[task_enqueuer_dep] = object
-    app.dependency_overrides[files_service_dep] = object
-    try:
-        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
-            response = await client.post(
-                "/document-transforms",
-                headers={"Idempotency-Key": str(uuid.uuid7())},
-                json={
-                    "source": {
-                        "kind": "drive_file",
-                        "file_id": "source",
-                        "expected_modified_time": "2026-09-03T00:00:00Z",
-                    },
-                    "mode": "unslop",
-                    "output_strategy": "copy",
-                    "copy_destination_folder_id": "destination",
-                    "qa_destination_permission": {"version": "17", "sha256": "a" * 64},
-                },
-            )
-    finally:
-        app.dependency_overrides.clear()
-
-    assert response.status_code == 422
-    assert "qa_destination_permission" in response.text
 
 
 def test_transform_openapi_explains_markdown_submission_and_recovery() -> None:

@@ -253,7 +253,7 @@ async def test_worker_envelope_validates_status_invariants_once(smart: bool) -> 
         )
 
 
-async def test_transform_worker_preserves_terminal_redaction_and_private_evidence_filter() -> None:
+async def test_transform_worker_preserves_terminal_redaction() -> None:
     checkpoint = verified_copy_checkpoint()
     assert checkpoint.result is not None
     row = task_row(TaskKind.FILE_DOCUMENT_TRANSFORM)
@@ -264,7 +264,6 @@ async def test_transform_worker_preserves_terminal_redaction_and_private_evidenc
     redacted: dict[str, object] = {"redacted": True}
     row.payload = redacted
     result_data: dict[str, object] = checkpoint.result.model_dump(mode="json")
-    result_data["qa_permission_evidence"] = {"private": "must not leave storage"}
     row.result = result_data
     session = FixtureSession(row)
     record = await PostgresTaskService(db=fixture_dependency(session)).load_document_transform(
@@ -272,7 +271,7 @@ async def test_transform_worker_preserves_terminal_redaction_and_private_evidenc
     )
     assert record.payload is None
     assert record.task.result is not None
-    assert "qa_permission_evidence" not in record.task.result.model_dump(mode="json")
+    assert record.task.result.model_dump(mode="json") == result_data
 
 
 @pytest.mark.parametrize("kind", ["in_place", "copy", "word_copy"])

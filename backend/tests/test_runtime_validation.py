@@ -5,7 +5,7 @@ import pytest
 
 from app.auth.schemas import GoogleTokenResponse, GoogleUserInfo
 from app.drive.google_schemas import GoogleDrive, GoogleFile
-from app.extras.schemas import DocIconWrite, SortOrderWrite
+from app.extras.schemas import SortOrderWrite
 from app.files.schemas import FileCreate
 
 
@@ -59,16 +59,6 @@ def test_sort_order_rejects_non_finite() -> None:
     for bad in ("inf", "-inf", "nan"):
         with pytest.raises(ValidationError):
             SortOrderWrite.model_validate({"drive_id": "d1", "sort_order": float(bad)})
-
-
-def test_doc_icon_rejects_non_url_cover() -> None:
-    with pytest.raises(ValidationError):
-        DocIconWrite.model_validate({"cover_url": "javascript:alert(1)"})
-
-
-def test_doc_icon_accepts_https_cover() -> None:
-    payload = DocIconWrite.model_validate({"icon": "📄", "cover_url": "https://example.com/c.png"})
-    assert str(payload.cover_url) == "https://example.com/c.png"
 
 
 def test_file_create_rejects_blank_and_oversized_name() -> None:

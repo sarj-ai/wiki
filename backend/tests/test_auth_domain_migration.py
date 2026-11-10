@@ -13,7 +13,7 @@ from alembic.script import ScriptDirectory
 import httpx
 from pydantic_settings import BaseSettings, SettingsConfigDict
 import pytest
-from sqlalchemy import inspect, select
+from sqlalchemy import inspect, select, text
 from sqlalchemy.engine import Connection, make_url
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
@@ -24,14 +24,13 @@ from app.auth.jwt import decode_token
 from app.auth.service import GOOGLE_OAUTH_URL, GOOGLE_USERINFO_URL, GoogleAuthService
 from app.config import settings
 from app.database_config import database_settings
-from app.identifiers import GoogleUserId
 from app.models.auth_session import UserSession
 from app.models.user import User
 from app.models.wiki import DocumentAlias
 
 
 _BACKEND = Path(__file__).parents[1]
-_HEAD = "0024_configurable_email_domain"
+_HEAD = "0025_simplify_storage"
 
 
 @runtime_checkable
@@ -87,7 +86,7 @@ def test_seed_revision_preserves_history_without_seeding_or_deleting_aliases() -
     assert scripts.get_heads() == [_HEAD]
     head = scripts.get_revision(_HEAD)
     assert head is not None
-    assert head.down_revision == "0023_storage_hot_paths"
+    assert head.down_revision == "0024_configurable_email_domain"
 
 
 def _drop_obsolete_check_again(connection: Connection) -> None:
@@ -119,10 +118,15 @@ async def test_fresh_migrations_and_oauth_support_only_the_configured_company_do
         await asyncio.to_thread(command.upgrade, _config(), "0023_storage_hot_paths")
         sessions = async_sessionmaker(engine, expire_on_commit=False)
         async with sessions() as db:
-            assert list((await db.execute(select(DocumentAlias.alias))).scalars()) == []
-            db.add(User(email="member@example.org", google_id=GoogleUserId("pre-upgrade-subject")))
+            assert (
+                list((await db.execute(select(DocumentAlias.alias))).scalars()) == []
+            )  # sarj-noqa: SARJ429 -- Exercise legacy schema migration and database invariants before the current ORM applies.
             with pytest.raises(IntegrityError, match="ck_users_email_domain"):
-                await db.commit()
+                await db.execute(  # sarj-noqa: SARJ429 -- Exercise legacy schema migration and database invariants before the current ORM applies.
+                    text(
+                        "INSERT INTO users (email, google_id) VALUES ('member@example.org', 'pre-upgrade-subject')"
+                    )
+                )
             await db.rollback()
 
         await asyncio.to_thread(command.upgrade, _config(), "head")

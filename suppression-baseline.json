@@ -6,47 +6,42 @@
   ],
   "codes": {
     "noqa:BLE001": 3,
-    "noqa:F401": 1,
     "noqa:RUF029": 1,
-    "noqa:S404": 1,
-    "noqa:S603": 3,
-    "noqa:TID251": 3,
+    "noqa:TID251": 1,
     "pyright:reportAttributeAccessIssue": 1,
+    "sarj-noqa:SARJ020": 2,
     "sarj-noqa:SARJ071": 1,
     "sarj-noqa:SARJ428": 2,
+    "sarj-noqa:SARJ429": 10,
     "sarj-noqa:SARJ470": 8,
     "type-ignore:attr-defined": 1,
     "type-ignore:no-untyped-call": 2
   },
   "packages": {
-    "backend": 27
+    "backend": 32
   },
   "excluded_subtrees": [],
   "files": {
     "per_file_ceiling": 10,
     "exceptions": {},
     "selectors": {
-      "backend/alembic/env.py": {
-        "noqa:F401": 1
-      },
       "backend/alembic/versions/0022_qa_corpus_campaigns.py": {
         "sarj-noqa:SARJ470": 8
+      },
+      "backend/alembic/versions/0025_simplify_storage.py": {
+        "sarj-noqa:SARJ020": 2
       },
       "backend/app/drive/service.py": {
         "pyright:reportAttributeAccessIssue": 1,
         "type-ignore:attr-defined": 1,
         "type-ignore:no-untyped-call": 2
       },
-      "backend/app/logging_config.py": {
-        "noqa:TID251": 1
-      },
       "backend/app/mcp/native_core.py": {
         "noqa:BLE001": 1
       },
       "backend/app/mcp/native_http_guard.py": {
         "noqa:BLE001": 1,
-        "noqa:RUF029": 1,
-        "noqa:TID251": 1
+        "noqa:RUF029": 1
       },
       "backend/app/mcp/protection.py": {
         "sarj-noqa:SARJ071": 1
@@ -54,15 +49,15 @@
       "backend/app/mcp/server.py": {
         "noqa:BLE001": 1
       },
-      "backend/scripts/qa_document_transform_corpus.py": {
-        "noqa:S404": 1,
-        "noqa:S603": 3
-      },
-      "backend/tests/test_mcp_native_http_guard.py": {
-        "noqa:TID251": 1
+      "backend/tests/test_auth_domain_migration.py": {
+        "sarj-noqa:SARJ429": 2
       },
       "backend/tests/test_sidebar_cache.py": {
         "sarj-noqa:SARJ428": 2
+      },
+      "backend/tests/test_storage_simplification_postgres.py": {
+        "noqa:TID251": 1,
+        "sarj-noqa:SARJ429": 8
       }
     }
   }

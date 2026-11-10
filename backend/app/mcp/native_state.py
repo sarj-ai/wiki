@@ -12,7 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.mcp.native_schemas import NativeOAuthError
 from app.mcp.native_state_port import NativeStatePort
 from app.mcp.protection import OAuthStateProtector
-from app.models.mcp_native_state import McpNativeState
+from app.models.mcp_oauth import MCPOAuthEntry
 
 
 _CLIENT_STATE_LIMIT = 1000
@@ -57,16 +57,16 @@ class NativeStateStore(NativeStatePort):
         )
         updated = list(
             await db.scalars(
-                update(McpNativeState)
+                update(MCPOAuthEntry)
                 .where(
-                    McpNativeState.purpose == NativePurpose.CLIENT,
-                    McpNativeState.key_digest.in_(
+                    MCPOAuthEntry.collection == "native:client",
+                    MCPOAuthEntry.key_digest.in_(
                         self._protector.physical_keys("native:client", key)
                     ),
-                    McpNativeState.expires_at > func.clock_timestamp(),
+                    MCPOAuthEntry.expires_at > func.clock_timestamp(),
                 )
-                .values(expires_at=func.greatest(McpNativeState.expires_at, expires_at))
-                .returning(McpNativeState.key_digest)
+                .values(expires_at=func.greatest(MCPOAuthEntry.expires_at, expires_at))
+                .returning(MCPOAuthEntry.key_digest)
             )
         )
         if len(updated) != 1:
@@ -80,10 +80,10 @@ class NativeStateStore(NativeStatePort):
         namespace = f"native:{purpose}"
         rows = list(
             await db.scalars(
-                select(McpNativeState).where(
-                    McpNativeState.purpose == purpose,
-                    McpNativeState.key_digest.in_(self._protector.physical_keys(namespace, key)),
-                    McpNativeState.expires_at > func.clock_timestamp(),
+                select(MCPOAuthEntry).where(
+                    MCPOAuthEntry.collection == namespace,
+                    MCPOAuthEntry.key_digest.in_(self._protector.physical_keys(namespace, key)),
+                    MCPOAuthEntry.expires_at > func.clock_timestamp(),
                 )
             )
         )
@@ -113,32 +113,32 @@ class NativeStateStore(NativeStatePort):
             {"identity": self._protector.lock_id("native-state-quota")},
         )
         expired = (
-            select(McpNativeState.purpose, McpNativeState.key_digest)
-            .where(McpNativeState.expires_at <= func.clock_timestamp())
+            select(MCPOAuthEntry.collection, MCPOAuthEntry.key_digest)
+            .where(MCPOAuthEntry.expires_at <= func.clock_timestamp())
             .limit(100)
             .cte("expired_native")
         )
         await db.execute(
-            delete(McpNativeState).where(
-                McpNativeState.purpose == expired.c.purpose,
-                McpNativeState.key_digest == expired.c.key_digest,
+            delete(MCPOAuthEntry).where(
+                MCPOAuthEntry.collection == expired.c.collection,
+                MCPOAuthEntry.key_digest == expired.c.key_digest,
             )
         )
         digests = self._protector.physical_keys(namespace, key)
         existing = await db.scalar(
-            select(McpNativeState.key_digest).where(
-                McpNativeState.purpose == purpose,
-                McpNativeState.key_digest.in_(digests),
-                McpNativeState.expires_at > func.clock_timestamp(),
+            select(MCPOAuthEntry.key_digest).where(
+                MCPOAuthEntry.collection == namespace,
+                MCPOAuthEntry.key_digest.in_(digests),
+                MCPOAuthEntry.expires_at > func.clock_timestamp(),
             )
         )
         if existing is None:
             count = await db.scalar(
                 select(func.count())
-                .select_from(McpNativeState)
+                .select_from(MCPOAuthEntry)
                 .where(
-                    McpNativeState.purpose == purpose,
-                    McpNativeState.expires_at > func.clock_timestamp(),
+                    MCPOAuthEntry.collection == namespace,
+                    MCPOAuthEntry.expires_at > func.clock_timestamp(),
                 )
             )
             if (count or 0) >= (
@@ -148,19 +148,19 @@ class NativeStateStore(NativeStatePort):
             ):
                 raise NativeOAuthError
         await db.execute(
-            delete(McpNativeState).where(
-                McpNativeState.purpose == purpose, McpNativeState.key_digest.in_(digests[1:])
+            delete(MCPOAuthEntry).where(
+                MCPOAuthEntry.collection == namespace, MCPOAuthEntry.key_digest.in_(digests[1:])
             )
         )
-        statement = insert(McpNativeState).values(
-            purpose=purpose,
+        statement = insert(MCPOAuthEntry).values(
+            collection=namespace,
             key_digest=digests[0],
             expires_at=expires_at,
             ciphertext=self._protector.protect(namespace, key, value.model_dump(mode="json")),
         )
         await db.execute(
             statement.on_conflict_do_update(
-                index_elements=[McpNativeState.purpose, McpNativeState.key_digest],
+                index_elements=[MCPOAuthEntry.collection, MCPOAuthEntry.key_digest],
                 set_={"ciphertext": statement.excluded.ciphertext, "expires_at": expires_at},
             )
         )

@@ -49,7 +49,6 @@ _FIELDS = (
     "id,name,mimeType,parents,driveId,modifiedTime,description,trashed,"
     "capabilities(canEdit,canAddChildren)"
 )
-_QA_CORPUS_FIELDS = "id,name,mimeType,parents,driveId,modifiedTime,version,trashed"
 _ACCESS_FIELDS = "id,parents,driveId,trashed"
 _SEARCH_FIELDS = "id,name,mimeType,parents,driveId,modifiedTime,trashed"
 _SMART_TASK_PROPERTY = "sarjWikiTaskId"
@@ -120,11 +119,6 @@ class FilesService(ABC):
 
         loaded = await asyncio.gather(*(load(file_id) for file_id in dict.fromkeys(file_ids)))
         return {item.id: item.response for item in loaded if item is not None}
-
-    async def get_qa_corpus_metadata_many(
-        self, file_ids: list[FileId]
-    ) -> dict[FileId, FileResponse]:
-        return await self.get_accessible_many(file_ids)
 
     async def get_accessible_ids(self, file_ids: list[FileId]) -> set[FileId]:
         return set(await self.get_accessible_many(file_ids))
@@ -268,12 +262,6 @@ class GoogleFilesService(FilesService):
     @override
     async def get_search_metadata_many(self, file_ids: list[FileId]) -> dict[FileId, FileResponse]:
         return await self._get_accessible_many(file_ids, fields=_SEARCH_FIELDS)
-
-    @override
-    async def get_qa_corpus_metadata_many(
-        self, file_ids: list[FileId]
-    ) -> dict[FileId, FileResponse]:
-        return await self._get_accessible_many(file_ids, fields=_QA_CORPUS_FIELDS)
 
     @override
     async def get_accessible_ids(self, file_ids: list[FileId]) -> set[FileId]:

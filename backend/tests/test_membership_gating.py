@@ -70,16 +70,15 @@ class _FakeCache(SidebarCacheService):
 class _FakeExtras:
     async def list_doc_icons(self) -> list[DocIconRead]:
         return [
-            DocIconRead(drive_id=ACCESSIBLE_DOC, icon="📄", cover_url=None),
+            DocIconRead(drive_id=ACCESSIBLE_DOC, icon="📄"),
             DocIconRead(
                 drive_id=INACCESSIBLE_DOC,
                 icon="🔒",
-                cover_url="https://example.com/private-cover.png",
             ),
         ]
 
     async def upsert_doc_icon(self, drive_id: FileId, payload: DocIconWrite) -> DocIconRead:
-        return DocIconRead(drive_id=FileId(drive_id), icon="📄", cover_url=None)
+        return DocIconRead(drive_id=FileId(drive_id), icon="📄")
 
 
 class _FakeFiles:
@@ -209,7 +208,7 @@ async def test_non_member_drive_is_404(client: AsyncClient, method: str, path: s
 # caller can open the doc rather than testing it against the drive list.
 @pytest.mark.parametrize(
     ("method", "json"),
-    [("PUT", {"icon": "🔥", "cover_url": None})],
+    [("PUT", {"icon": "🔥"})],
 )
 async def test_accessible_doc_icon_is_allowed(
     client: AsyncClient, method: str, json: dict[str, object] | None
@@ -221,7 +220,7 @@ async def test_accessible_doc_icon_is_allowed(
 
 @pytest.mark.parametrize(
     ("method", "json"),
-    [("PUT", {"icon": "🔥", "cover_url": None})],
+    [("PUT", {"icon": "🔥"})],
 )
 async def test_inaccessible_doc_icon_is_404(
     client: AsyncClient, method: str, json: dict[str, object] | None
@@ -236,7 +235,7 @@ async def test_doc_icon_list_omits_inaccessible_metadata(client: AsyncClient) ->
     async with client:
         resp = await client.get("/extras/doc-icons")
     assert resp.status_code == 200
-    assert resp.json() == [{"drive_id": ACCESSIBLE_DOC, "icon": "📄", "cover_url": None}]
+    assert resp.json() == [{"drive_id": ACCESSIBLE_DOC, "icon": "📄"}]
 
 
 async def test_non_member_never_reaches_the_cache(client: AsyncClient) -> None:

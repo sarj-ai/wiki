@@ -138,7 +138,6 @@ def test_backend_deploy_runs_only_for_production_inputs() -> None:
         {
             "backend/tests/**",
             "backend/scripts/**",
-            "backend/Dockerfile.qa",
         }
     )
     assert deploy_workflow["jobs"]["ci-backend"]["uses"] == ("./.github/workflows/ci-backend.yml")

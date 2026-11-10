@@ -41,7 +41,7 @@ from app.mcp.redirect_policy import McpRedirectPolicy
 from app.mcp.schemas import McpCapability
 from app.mcp.storage import PostgresOAuthStorage
 from app.models.mcp_grant import McpGrant
-from app.models.mcp_native_state import McpNativeState
+from app.models.mcp_oauth import MCPOAuthEntry
 from app.models.mcp_registration_admission import McpRegistrationAdmission
 from app.models.user import User
 
@@ -150,7 +150,7 @@ async def lab() -> AsyncGenerator[Lab]:
     try:
         async with engine.begin() as connection:
             await connection.execute(CreateSchema(schema))
-            for model in (User, McpGrant, McpNativeState, McpRegistrationAdmission):
+            for model in (User, McpGrant, MCPOAuthEntry, McpRegistrationAdmission):
                 table = model.__table__
                 assert isinstance(table, Table)
                 await connection.run_sync(table.create)
@@ -274,7 +274,7 @@ async def test_logout_and_disconnected_google_deny_next_token_use(lab: Lab, fail
     tokens = await lab.tokens()
     async with lab.sessions.begin() as db:
         if failure == "expiry":
-            await db.execute(update(McpNativeState).values(expires_at=func.clock_timestamp()))
+            await db.execute(update(MCPOAuthEntry).values(expires_at=func.clock_timestamp()))
         else:
             changes = (
                 {"token_version": User.token_version + 1}
@@ -310,7 +310,7 @@ async def test_state_is_encrypted_and_credentials_are_purpose_separated(lab: Lab
     assert await lab.providers[0].load_access_token(tokens.refresh_token or "") is None
     assert await lab.providers[0].load_refresh_token(lab.client, tokens.access_token) is None
     async with lab.sessions() as db:
-        rows = list(await db.scalars(select(McpNativeState)))
+        rows = list(await db.scalars(select(MCPOAuthEntry)))
         assert rows
         for row in rows:
             assert tokens.access_token not in row.ciphertext + row.key_digest
@@ -397,8 +397,9 @@ async def test_full_intent_quota_allows_existing_decision_and_rejects_new_intent
     view = await core.consent_view(intent, identity=lab.user, browser=_BROWSER)
     async with lab.sessions.begin() as db:
         await db.execute(
-            insert(McpNativeState).values(
-                purpose="intent", expires_at=func.clock_timestamp() + timedelta(minutes=20)
+            insert(MCPOAuthEntry).values(
+                collection="native:intent",
+                expires_at=func.clock_timestamp() + timedelta(minutes=20),
             ),
             [
                 {"key_digest": f"{index:064x}", "ciphertext": "synthetic-unread-quota-slot"}
@@ -563,9 +564,13 @@ async def test_expired_state_backlog_does_not_prevent_quota_recovery(
 ) -> None:
     async with lab.sessions.begin() as db:
         await db.execute(
-            insert(McpNativeState).values(expires_at=func.clock_timestamp() - timedelta(days=1)),
+            insert(MCPOAuthEntry).values(expires_at=func.clock_timestamp() - timedelta(days=1)),
             [
-                {"purpose": "intent", "key_digest": f"{index:064x}", "ciphertext": "expired-unread"}
+                {
+                    "collection": "native:intent",
+                    "key_digest": f"{index:064x}",
+                    "ciphertext": "expired-unread",
+                }
                 for index in range(201)
             ],
         )
@@ -574,8 +579,8 @@ async def test_expired_state_backlog_does_not_prevent_quota_recovery(
     async with lab.sessions() as db:
         remaining = await db.scalar(
             select(func.count())
-            .select_from(McpNativeState)
-            .where(McpNativeState.expires_at <= func.clock_timestamp())
+            .select_from(MCPOAuthEntry)
+            .where(MCPOAuthEntry.expires_at <= func.clock_timestamp())
         )
         assert remaining is not None
         assert remaining > 0
@@ -584,7 +589,7 @@ async def test_expired_state_backlog_does_not_prevent_quota_recovery(
 async def client_expiry(lab: Lab) -> datetime:
     async with lab.sessions() as db:
         expiry = await db.scalar(
-            select(McpNativeState.expires_at).where(McpNativeState.purpose == "client")
+            select(MCPOAuthEntry.expires_at).where(MCPOAuthEntry.collection == "native:client")
         )
         assert expiry is not None
         return expiry
@@ -601,8 +606,8 @@ async def test_failed_registration_consumes_independent_admission(lab: Lab) -> N
         assert (
             await db.scalar(
                 select(func.count())
-                .select_from(McpNativeState)
-                .where(McpNativeState.purpose == "client")
+                .select_from(MCPOAuthEntry)
+                .where(MCPOAuthEntry.collection == "native:client")
             )
             == 1
         )
@@ -628,8 +633,8 @@ async def test_pending_registration_is_short_and_reads_denial_never_extend(lab: 
     assert await client_expiry(lab) == initial
     async with lab.sessions.begin() as db:
         await db.execute(
-            update(McpNativeState)
-            .where(McpNativeState.purpose == "client")
+            update(MCPOAuthEntry)
+            .where(MCPOAuthEntry.collection == "native:client")
             .values(expires_at=func.clock_timestamp())
         )
     assert await provider.get_client("client") is None
@@ -677,8 +682,8 @@ async def test_failed_approval_rolls_back_registration_promotion_and_grant(
         assert (
             await db.scalar(
                 select(func.count())
-                .select_from(McpNativeState)
-                .where(McpNativeState.purpose == "code")
+                .select_from(MCPOAuthEntry)
+                .where(MCPOAuthEntry.collection == "native:code")
             )
             == 0
         )

@@ -177,7 +177,7 @@ class _Extras(ExtrasService):
     @override
     async def upsert_doc_icon(self, drive_id: FileId, payload: DocIconWrite) -> DocIconRead:
         self.icon = payload.icon
-        return DocIconRead(drive_id=drive_id, icon=payload.icon, cover_url=None)
+        return DocIconRead(drive_id=drive_id, icon=payload.icon)
 
     @override
     async def list_folder_icons(self) -> list[FolderIconRead]:

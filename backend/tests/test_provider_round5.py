@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from collections.abc import Sequence
 import json
 from typing import TYPE_CHECKING, Self, override
 
@@ -9,12 +8,11 @@ from httplib2 import Response
 from pydantic import JsonValue, ValidationError
 import pytest
 
-from app.drive.errors import DriveTraversalIncompleteError
 from app.drive.google_schemas import GoogleFile
 from app.drive.schemas import MIME_DOC, MIME_FOLDER
 from app.drive.service import GoogleDriveService
 from app.files.errors import DriveUpstreamError
-from app.identifiers import DriveId, FileId
+from app.identifiers import FileId
 from tests.support import dependency
 from tests.test_drive_modules import _FakeClient
 from tests.test_provider_hot_paths import _MetadataFiles, _MetadataProvider, _user
@@ -38,110 +36,6 @@ def test_inventory_parent_tuples_validate_all_ids_and_preserve_json_arrays() -> 
         GoogleFile.model_validate(
             {"id": "bad", "name": "Bad", "mimeType": MIME_DOC, "parents": ["valid", {}]}
         )
-
-
-class _FolderProvider:
-    def __init__(self, pages: Sequence[dict[str, JsonValue]]) -> None:
-        self.pages = pages
-        self.page = 0
-        self.child_calls: list[dict[str, JsonValue]] = []
-
-    def files(self) -> Self:
-        return self
-
-    def drives(self) -> Self:
-        return self
-
-    def get(self, **params: JsonValue) -> _SingleRequest:
-        assert params["fileId"] == "root"
-        return _SingleRequest({"id": "personal"})
-
-    def list(self, **params: JsonValue) -> _SingleRequest:
-        if "corpora" not in params:
-            return _SingleRequest({"drives": [{"id": "shared", "name": "Shared"}]})
-        self.child_calls.append(params)
-        response = self.pages[self.page]
-        self.page += 1
-        return _SingleRequest(response)
-
-
-class _FolderDrive(GoogleDriveService):
-    def __init__(self, provider: _FolderProvider) -> None:
-        super().__init__(_user())
-        self.provider = provider
-
-    @override
-    def _client(self) -> DriveResource:
-        client: DriveResource = dependency(self.provider)
-        return client
-
-
-async def test_member_metadata_budget_is_exact_and_independent_of_key_order() -> None:
-    raw: dict[str, JsonValue] = {
-        "version": "7",
-        "parents": ["folder"],
-        "name": "Planning 日本語 😀",
-        "mimeType": MIME_DOC,
-        "id": "document",
-        "driveId": "shared",
-        "modifiedTime": "2026-10-11T00:00:00Z",
-    }
-    previous = {**raw, "id": "previous", "name": "Previous 日本語"}
-    counted = sum(
-        len(json.dumps(row, ensure_ascii=False, separators=(",", ":"), sort_keys=True).encode())
-        for row in (previous, raw)
-    )
-    for ordered in (raw, dict(reversed(tuple(raw.items())))):
-        pages: list[dict[str, JsonValue]] = [
-            {"files": [previous], "nextPageToken": "next"},
-            {"files": [ordered]},
-        ]
-        provider = _FolderProvider(pages)
-        result = await _FolderDrive(provider).list_folder_members_bounded(
-            FileId("folder"),
-            drive_id=DriveId("shared"),
-            max_pages=2,
-            max_children=2,
-            max_metadata_bytes=counted,
-        )
-        assert result.metadata_bytes == counted
-        assert result.page_count == 2
-        assert [member.id for member in result.members] == ["previous", "document"]
-        assert result.members[1].parent_id == "folder"
-        assert provider.child_calls[1]["pageToken"] == "next"
-        with pytest.raises(DriveTraversalIncompleteError):
-            await _FolderDrive(_FolderProvider(pages)).list_folder_members_bounded(
-                FileId("folder"),
-                drive_id=DriveId("shared"),
-                max_pages=2,
-                max_children=2,
-                max_metadata_bytes=counted - 1,
-            )
-
-
-@pytest.mark.parametrize("parents", [["other"], ["folder", "other"], []])
-async def test_tuple_membership_still_rejects_nonexact_folder_parent(
-    parents: list[JsonValue],
-) -> None:
-    provider = _FolderProvider(
-        [
-            {
-                "files": [
-                    {"id": "document", "name": "Document", "mimeType": MIME_DOC, "parents": parents}
-                ]
-            }
-        ]
-    )
-    with pytest.raises(DriveTraversalIncompleteError):
-        await _FolderDrive(provider).list_folder_members_bounded(
-            FileId("folder"),
-            drive_id=DriveId("personal"),
-            max_pages=1,
-            max_children=1,
-            max_metadata_bytes=1024,
-        )
-    assert provider.child_calls[0]["corpora"] == "user"
-    assert provider.child_calls[0]["supportsAllDrives"] is True
 
 
 async def test_bounded_search_publishes_final_names_with_fresh_owned_scope() -> None:

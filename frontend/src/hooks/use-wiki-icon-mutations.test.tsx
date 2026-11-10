@@ -66,7 +66,6 @@ describe("icon optimistic overlay work", () => {
         return `file-${index}`;
       },
       icon: "📄",
-      coverUrl: `cover-${index}`,
     }));
     client.setQueryData(wikiKeys.docIcons, previous);
     const pending = Promise.withResolvers<ActionResult<unknown>>();
@@ -79,7 +78,6 @@ describe("icon optimistic overlay work", () => {
     expect(current?.at(-1)).toEqual({
       driveId: "file-9999",
       icon: "🌟",
-      coverUrl: "cover-9999",
     });
     expect(current?.[0]).toBe(previous[0]);
     pending.resolve({ ok: true, data: {} });
@@ -90,16 +88,16 @@ describe("icon optimistic overlay work", () => {
   it("retains first-match cover and removes all duplicate entries in their existing order", async () => {
     render();
     const previous: DocIcon[] = [
-      { driveId: "target", icon: "first", coverUrl: "first-cover" },
-      { driveId: "keep", icon: "📄", coverUrl: undefined },
-      { driveId: "target", icon: "second", coverUrl: "second-cover" },
+      { driveId: "target", icon: "first" },
+      { driveId: "keep", icon: "📄" },
+      { driveId: "target", icon: "second" },
     ];
     client.setQueryData(wikiKeys.docIcons, previous);
     ACTIONS.doc.mockResolvedValue({ ok: true, data: {} });
     await doc.mutateAsync({ driveId: "target", icon: null });
     expect(client.getQueryData(wikiKeys.docIcons)).toEqual([
       previous[1],
-      { driveId: "target", icon: undefined, coverUrl: "first-cover" },
+      { driveId: "target", icon: undefined },
     ]);
   });
 

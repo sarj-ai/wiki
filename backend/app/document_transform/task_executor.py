@@ -4,7 +4,6 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from datetime import timedelta
 import hashlib
-import hmac
 import time
 from typing import Protocol, override
 import uuid
@@ -25,7 +24,6 @@ from app.auth.google_tokens import (
 from app.cache.service import CacheService
 from app.document_transform.brand_manifest import CURRENT_BRAND_MANIFEST
 from app.document_transform.errors import (
-    DestinationAccessChangedError,
     DocumentGatewayError,
     DocumentTransformError,
     InPlaceNeedsReviewError,
@@ -34,7 +32,6 @@ from app.document_transform.errors import (
 )
 from app.document_transform.executor import (
     PIPELINE_VERSION,
-    QaCreatedCopyPermissionRequest,
 )
 from app.document_transform.google_gateway import GoogleDocumentGateway
 from app.document_transform.google_presentation_gateway import (
@@ -45,12 +42,6 @@ from app.document_transform.header_provenance import HeaderIdentityEvidence, Hea
 from app.document_transform.models import PatchGenerator
 from app.document_transform.naming import polish_alias_candidates
 from app.document_transform.presentation_executor import PresentationTransformExecutor
-from app.document_transform.qa_broker import (
-    QaDestinationPermissionProof,
-    QaPermissionProofExpectation,
-    read_owner_only_file_permission_proof,
-)
-from app.document_transform.qa_grants import QaGrantError
 from app.document_transform.runner import DocumentTransformRunner as DocumentTransformRunner
 from app.document_transform.schemas import (
     DocumentTransformCheckpoint,
@@ -59,19 +50,14 @@ from app.document_transform.schemas import (
     DriveFileSource,
     InPlaceCheckpoint,
     OutputStrategy,
-    QaCopyPermissionEvidence,
-    QaDestinationPermissionBinding,
-    QaDocumentTransformRequest,
-    QaFilePermissionEvidence,
     TransformMode,
 )
 from app.document_transform.slides_brand import presentation_fingerprint
 from app.document_transform.threaded_markdown_executor import ThreadedMarkdownExecutor
 from app.document_transform.word_executor import WordTransformExecutor
 from app.document_transform.word_gateway import WORD_MIME, GoogleWordGateway
-from app.drive.errors import DrivePermissionsError, DriveTraversalIncompleteError
 from app.drive.retry import ProviderDeadlineError
-from app.drive.schemas import MIME_DOC, MIME_FOLDER, MIME_SLIDE
+from app.drive.schemas import MIME_SLIDE
 from app.drive.service import GoogleDriveService
 from app.files.errors import FileNotInScopeError, FilesError
 from app.files.schemas import FileResponse
@@ -382,88 +368,6 @@ class DriveDocumentTransformTaskExecutor(DocumentTransformTaskExecutor):
             header_identity=header_identity,
         )
 
-        async def read_qa_destination_permission(
-            destination_folder_id: FileId,
-            binding: QaDestinationPermissionBinding,
-        ) -> QaDestinationPermissionProof:
-            try:
-                proof = await read_owner_only_file_permission_proof(
-                    file_id=destination_folder_id,
-                    expectation=QaPermissionProofExpectation(
-                        user_email=user.email,
-                        mime_type=MIME_FOLDER,
-                    ),
-                    drive=drive,
-                )
-            except QaGrantError as exc:
-                raise DestinationAccessChangedError from exc
-            except DrivePermissionsError as exc:
-                if exc.http_status in {403, 404}:
-                    raise DestinationAccessChangedError from exc
-                raise DocumentGatewayError from exc
-            except (DriveTraversalIncompleteError, ValueError) as exc:
-                raise DestinationAccessChangedError from exc
-            if proof.version != binding.version or not hmac.compare_digest(
-                proof.sha256,
-                binding.sha256,
-            ):
-                raise DestinationAccessChangedError
-            return proof
-
-        async def verify_qa_destination_permission(
-            destination_folder_id: FileId,
-            binding: QaDestinationPermissionBinding,
-        ) -> None:
-            await read_qa_destination_permission(destination_folder_id, binding)
-
-        async def verify_qa_created_copy(
-            request: QaCreatedCopyPermissionRequest,
-        ) -> QaCopyPermissionEvidence:
-            destination_proof = await read_qa_destination_permission(
-                request.destination_folder_id, request.binding
-            )
-            try:
-                output_proof = await read_owner_only_file_permission_proof(
-                    file_id=request.output_file_id,
-                    expectation=QaPermissionProofExpectation(
-                        user_email=user.email,
-                        mime_type=MIME_DOC,
-                        parent_id=request.destination_folder_id,
-                        operation_id=request.operation_id,
-                        source_sha256=request.source_sha256,
-                    ),
-                    drive=drive,
-                )
-            except QaGrantError as exc:
-                raise DestinationAccessChangedError from exc
-            except DrivePermissionsError as exc:
-                if exc.http_status in {403, 404}:
-                    raise DestinationAccessChangedError from exc
-                raise DocumentGatewayError from exc
-            except (DriveTraversalIncompleteError, ValueError) as exc:
-                raise DestinationAccessChangedError from exc
-            return QaCopyPermissionEvidence(
-                operation_id=request.operation_id,
-                source_sha256=request.source_sha256,
-                output_revision_id=request.output_revision_id,
-                destination=QaFilePermissionEvidence(
-                    file_id=destination_proof.file_id,
-                    mime_type=destination_proof.mime_type,
-                    parent_folder_id=destination_proof.parent_folder_id,
-                    version=destination_proof.version,
-                    permission_sha256=destination_proof.sha256,
-                    observed_at=destination_proof.observed_at,
-                ),
-                output=QaFilePermissionEvidence(
-                    file_id=output_proof.file_id,
-                    mime_type=output_proof.mime_type,
-                    parent_folder_id=output_proof.parent_folder_id,
-                    version=output_proof.version,
-                    permission_sha256=output_proof.sha256,
-                    observed_at=output_proof.observed_at,
-                ),
-            )
-
         transform = ThreadedMarkdownExecutor(
             gateway=document_gateway,
             generator=self._generator,
@@ -473,8 +377,6 @@ class DriveDocumentTransformTaskExecutor(DocumentTransformTaskExecutor):
             lease_token=lease_token,
             checkpoint=checkpoint,
             checkpoint_generation=checkpoint_generation,
-            qa_destination_permission_verifier=verify_qa_destination_permission,
-            qa_created_copy_verifier=verify_qa_created_copy,
         )
         transform.upload_owner = owner_user_id
         return DocumentTransformRuntime(short_links=short_links, transform=transform)
@@ -496,8 +398,6 @@ class DriveDocumentTransformTaskExecutor(DocumentTransformTaskExecutor):
             if exc.http_status in {401, 403}:
                 raise UnsupportedSourceError from exc
             raise DocumentGatewayError from exc
-        if isinstance(payload, QaDocumentTransformRequest) and source_file.mime_type != MIME_DOC:
-            raise DestinationAccessChangedError
         if payload.output_strategy is not OutputStrategy.IN_PLACE:
             return source_file, None
         provenance = (
