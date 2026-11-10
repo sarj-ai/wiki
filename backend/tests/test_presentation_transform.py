@@ -15,6 +15,7 @@ from app.document_transform.errors import (
     UnsupportedSourceError,
 )
 from app.document_transform.google_presentation_gateway import PPTX_MIME_TYPE
+from app.document_transform.ir import DocumentIR
 from app.document_transform.models import PatchGenerator
 from app.document_transform.presentation_executor import PresentationTransformExecutor
 from app.document_transform.presentation_gateway import (
@@ -27,6 +28,7 @@ from app.document_transform.presentation_gateway import (
 from app.document_transform.schemas import (
     DocumentTransformRequest,
     DriveFileSource,
+    FindingSeverity,
     OutputStrategy,
     TextPatch,
     TransformMode,
@@ -183,6 +185,108 @@ class PresentationGatewaySpy:
 @pytest.fixture
 def presentation_gateway_factory() -> type[PresentationGatewaySpy]:
     return PresentationGatewaySpy
+
+
+class QuantityPatchGenerator(PatchGenerator):
+    supports_semantic_rewrite = True
+
+    def __init__(self, *, change_quantity: bool) -> None:
+        self.calls = 0
+        self._change_quantity = change_quantity
+
+    @property
+    @override
+    def model_ids(self) -> tuple[str, ...]:
+        return ("gemini-test-001",)
+
+    @override
+    async def generate(self, document: DocumentIR, *, phase: TransformPhase) -> list[TextPatch]:
+        assert phase is TransformPhase.UNSLOP
+        self.calls += 1
+        block = document.blocks[0]
+        return [
+            TextPatch(
+                block_id=block.id,
+                expected_sha256=block.sha256,
+                replacement=block.text.replace("15", "16") if self._change_quantity else block.text,
+            )
+        ]
+
+
+@pytest.mark.parametrize(
+    ("verbose", "change_quantity", "expected_findings", "expected_unsafe_count"),
+    [
+        pytest.param(
+            True,
+            False,
+            {"concision_target_unmet": FindingSeverity.INFORMATIONAL},
+            0,
+            id="info-only",
+        ),
+        pytest.param(
+            False,
+            True,
+            {"protected_content_changed": FindingSeverity.REVIEW},
+            1,
+            id="review-only",
+        ),
+        pytest.param(
+            True,
+            True,
+            {
+                "protected_content_changed": FindingSeverity.REVIEW,
+                "concision_target_unmet": FindingSeverity.INFORMATIONAL,
+            },
+            1,
+            id="mixed",
+        ),
+        pytest.param(False, False, {}, 0, id="no-findings"),
+    ],
+)
+async def test_presentation_result_distinguishes_review_rejections_from_information(
+    verbose: bool,
+    change_quantity: bool,
+    expected_findings: dict[str, FindingSeverity],
+    expected_unsafe_count: int,
+    presentation_gateway_factory: type[PresentationGatewaySpy],
+) -> None:
+    gateway = presentation_gateway_factory(mime_type=MIME_SLIDE)
+    text = "The sensor records exactly 15 samples each night."
+    if verbose:
+        text += " The report presents the details of the account in extended prose." * 4
+    for presentation in (gateway.snapshot.presentation, gateway.output_presentation):
+        assert presentation is not None
+        run = presentation["slides"][0]["pageElements"][0]["shape"]["text"]["textElements"][1]
+        run["textRun"]["content"] = text + "\n"
+        run["endIndex"] = len(text) + 1
+    source_before = deepcopy(gateway.snapshot)
+    generator = QuantityPatchGenerator(change_quantity=change_quantity)
+    executor = PresentationTransformExecutor(
+        gateway=gateway,
+        generator=generator,
+        logo_uri="https://wiki.sarj.ai/brand/sarj-logo-light.png",
+    )
+
+    result = await executor.execute(
+        operation_id=uuid.uuid7(),
+        request=_request(output_strategy=OutputStrategy.COPY),
+    )
+
+    assert {finding.code: finding.severity for finding in result.findings} == expected_findings
+    assert result.validation.unsafe_patch_count == expected_unsafe_count
+    assert result.needs_review is bool(expected_unsafe_count)
+    assert result.validation.source_unchanged
+    assert result.validation.protected_content_preserved
+    assert result.validation.structure_preserved
+    assert result.model_patch_count == 0
+    assert result.llm_invoked
+    assert generator.calls == 1
+    assert gateway.snapshot == source_before
+    assert gateway.created == gateway.completed == 1
+    assert gateway.required_revision_id == "output-revision"
+    assert not any(
+        "deleteText" in request or "insertText" in request for request in gateway.requests
+    )
 
 
 @pytest.mark.parametrize("mime_type", [MIME_SLIDE, PPTX_MIME_TYPE])

@@ -164,6 +164,148 @@ def test_script_specific_typefaces_are_preserved(text: str) -> None:
     assert _font_requests(raw) == []
 
 
+@pytest.mark.parametrize(
+    "text",
+    [
+        "The operation takes 2 µs.",
+        "The operation takes 1.6 µs.",
+        "The operation takes 10µs.",
+        "Compression takes 2 µs. Sending takes 1.6 µs; RAM takes 10 µs and SSD takes 20 µs.",
+    ],
+)
+def test_numeric_microsecond_prose_is_editable_without_changing_its_text(text: str) -> None:
+    raw = _document([_run(text + "\n", weightedFontFamily={"fontFamily": "Arial"})])
+    before = deepcopy(raw)
+
+    block = parse_google_document(raw, title="Report").blocks[0]
+
+    assert block.editable
+    assert block.text == text
+    assert block.source_range is not None
+    assert block.source_range.end_index == 1 + utf16_length(text)
+    assert block.font_style_ranges == (block.source_range,)
+    assert _font_requests(raw)
+    assert raw == before
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "Standalone µ remains protected.",
+        "The identifier µs has no numeric quantity.",
+        "The identifier item2µs is not a unit.",
+        "The identifier 2µs_suffix is not a unit.",
+        "The token 2µs2 is not a unit.",
+        "The malformed number 1.2.3µs remains protected.",
+        "The duration is 2 μs.",
+        "The duration is 2 µs and µ remains an identifier.",
+        "The duration is 2 µs and κόσμος remains Greek.",
+        "The duration is 2 µs and مرحبا remains Arabic.",
+        "The duration is 2 µs and 日本語 remains Japanese.",
+    ],
+)
+def test_microsecond_exception_keeps_non_units_and_other_scripts_protected(text: str) -> None:
+    raw = _document([_run(text + "\n")])
+    block = parse_google_document(raw, title="Report").blocks[0]
+
+    assert block.text == text
+    assert not block.editable
+    assert block.font_style_ranges == ()
+    assert _font_requests(raw) == []
+
+
+@pytest.mark.parametrize(
+    ("font", "baseline"),
+    [
+        pytest.param("Roboto Mono", "NONE", id="monospace"),
+        pytest.param("Fira Code", "NONE", id="code-font"),
+        pytest.param("Cambria Math", "NONE", id="math-font"),
+        pytest.param("Symbol", "NONE", id="symbol-font"),
+        pytest.param("Arial", "SUPERSCRIPT", id="superscript"),
+        pytest.param("Arial", "SUBSCRIPT", id="subscript"),
+    ],
+)
+def test_numeric_microseconds_do_not_override_font_or_baseline_safety(
+    font: str,
+    baseline: str,
+) -> None:
+    raw = _document(
+        [
+            _run(
+                "The operation takes 2 µs.\n",
+                weightedFontFamily={"fontFamily": font},
+                baselineOffset=baseline,
+            )
+        ]
+    )
+    block = parse_google_document(raw, title="Report").blocks[0]
+
+    assert not block.editable
+    assert block.font_style_ranges == ()
+    assert _font_requests(raw) == []
+
+
+@pytest.mark.parametrize(
+    ("location", "field"),
+    [
+        ("element", "suggestedInsertionIds"),
+        ("element", "suggestedDeletionIds"),
+        ("run", "suggestedInsertionIds"),
+        ("run", "suggestedTextStyleChanges"),
+    ],
+)
+def test_numeric_microseconds_keep_suggested_runs_protected(location: str, field: str) -> None:
+    run = _run("The operation takes 2 µs.\n")
+    target = run if location == "element" else run["textRun"]
+    target[field] = ["pending"] if field.endswith("Ids") else {"pending": {"bold": True}}
+    raw = _document([run])
+    block = parse_google_document(raw, title="Report").blocks[0]
+
+    assert not block.editable
+    assert block.font_style_ranges == ()
+    assert _font_requests(raw) == []
+
+
+@pytest.mark.parametrize("field", ["suggestedParagraphStyleChanges", "suggestedBulletChanges"])
+def test_numeric_microseconds_keep_paragraph_suggestions_protected(field: str) -> None:
+    raw = _document([_run("The operation takes 2 µs.\n")])
+    paragraph = raw["tabs"][0]["documentTab"]["body"]["content"][0]["paragraph"]
+    paragraph[field] = {"pending": {}}
+    block = parse_google_document(raw, title="Report").blocks[0]
+
+    assert not block.editable
+    assert block.font_style_ranges == ()
+    assert _font_requests(raw) == []
+
+
+def test_numeric_microseconds_do_not_rewrite_linked_or_mixed_style_text() -> None:
+    linked = _document([_run("Read the 2 µs reference.\n", link={"url": "https://example.test"})])
+    mixed = _document(
+        [_run("A transfer takes "), _run("2 µs", bold=True), _run(" in this reference.\n")]
+    )
+    for raw in (linked, mixed):
+        before = deepcopy(raw)
+        block = parse_google_document(raw, title="Report").blocks[0]
+
+        assert not block.editable
+        requests = _font_requests(raw)
+        assert requests
+        assert all(request["fields"] == "weightedFontFamily.fontFamily" for request in requests)
+        assert raw == before
+
+
+def test_numeric_microsecond_context_cannot_be_borrowed_from_an_adjacent_run() -> None:
+    prefix = "A transfer takes 2 "
+    raw = _document([_run(prefix), _run("µs."), _run("\n")])
+    block = parse_google_document(raw, title="Report").blocks[0]
+
+    assert block.text == prefix + "µs."
+    assert not block.editable
+    assert len(block.font_style_ranges) == 1
+    assert block.font_style_ranges[0].start_index == 1
+    assert block.font_style_ranges[0].end_index == 1 + utf16_length(prefix)
+
+
 def test_suggested_runs_and_superscript_are_preserved() -> None:
     suggested = _run("Suggestion ")
     suggested["textRun"]["suggestedTextStyleChanges"] = {"id": {"textStyle": {"bold": True}}}

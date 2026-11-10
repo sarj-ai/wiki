@@ -4,6 +4,7 @@ import { FileWarning, RefreshCw } from "lucide-react";
 import { useEffect, useEffectEvent, useRef, useState } from "react";
 
 import { Button } from "@/components/ui/button";
+import { DrivePreviewSurface } from "@/components/ui/drive-preview-surface";
 import { DocumentLoading } from "@/components/wiki-document/document-loading";
 import { useIsClient } from "@/hooks/use-is-client";
 
@@ -100,18 +101,20 @@ function PreviewFrame({ file, onReload }: DemoPreviewProps) {
         ref={preview}
       >
         {previewUrl === null ? null : (
-          <iframe
-            allowFullScreen
-            aria-hidden={status !== "ready"}
-            className="html-theme-frame absolute inset-0 size-full border-0"
-            onLoad={loaded}
-            ref={frame}
-            referrerPolicy="no-referrer"
-            sandbox="allow-scripts allow-same-origin"
-            src={previewUrl}
-            tabIndex={status === "ready" ? 0 : -1}
-            title={`${file.name} — read-only preview`}
-          />
+          <DrivePreviewSurface mimeType={file.mimeType}>
+            <iframe
+              allowFullScreen
+              aria-hidden={status !== "ready"}
+              className="html-theme-frame absolute inset-0 size-full border-0"
+              onLoad={loaded}
+              ref={frame}
+              referrerPolicy="no-referrer"
+              sandbox="allow-scripts allow-same-origin"
+              src={previewUrl}
+              tabIndex={status === "ready" ? 0 : -1}
+              title={`${file.name} — read-only preview`}
+            />
+          </DrivePreviewSurface>
         )}
         {status === "loading" ? (
           <div className="bg-background absolute inset-0">

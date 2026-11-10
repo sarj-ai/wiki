@@ -273,7 +273,7 @@ async def _yield_writer_sleep(_delay: float) -> None:
 @pytest.mark.parametrize(
     ("model_override", "expected_model", "thinking_level"),
     [
-        pytest.param(None, "gemini-3.1-pro-preview", types.ThinkingLevel.HIGH, id="normal-default"),
+        pytest.param(None, "gemini-3.5-flash", types.ThinkingLevel.MEDIUM, id="normal-default"),
         pytest.param(
             "gemini-3.8-flash",
             "gemini-3.8-flash",
@@ -938,7 +938,7 @@ def test_conventional_framing_can_go_without_relaxing_the_following_obligation(p
     )
     assert decision.accepted == {block.id: proposed}
     assert not decision.findings
-    assert UNSLOP_POLICY_VERSION == "sarj-concise-v19"
+    assert UNSLOP_POLICY_VERSION == "sarj-concise-v20"
 
 
 @pytest.mark.parametrize(
@@ -1508,7 +1508,7 @@ async def test_numeric_concision_target_and_failure_feedback_remain_source_bound
     assert initial.concision_target is not None
     assert initial.concision_target.source_words == 59
     assert initial.concision_target.max_words == 24
-    assert initial.concision_target.draft_target_words == 19
+    assert initial.concision_target.draft_target_words == 12
     assert initial.sha256 == block.sha256
     decision = validate_patches(
         document, [patch], phase=TransformPhase.UNSLOP, aggressive_unslop=True
@@ -1572,8 +1572,8 @@ async def test_repair_feedback_preserves_an_empty_original_force_counter() -> No
 @pytest.mark.parametrize(
     ("source_words", "maximum", "draft"),
     [
-        pytest.param(94, 38, 30, id="near-cap-purpose"),
-        pytest.param(103, 42, 33, id="near-cap-alternatives"),
+        pytest.param(94, 38, 19, id="near-cap-purpose"),
+        pytest.param(103, 42, 21, id="near-cap-alternatives"),
     ],
 )
 @pytest.mark.parametrize("suffix", ["", " [7]"], ids=["plain", "native-citation"])
@@ -1882,7 +1882,7 @@ async def test_writer_supplies_numeric_advisory_batch_draft_and_reports_global_o
 
     prompt = harness.call.prompts[0]
     assert "120 eligible prose words in these supplied blocks" in prompt
-    assert "combined advisory draft allocation is 38 words" in prompt
+    assert "combined advisory draft allocation is 24 words" in prompt
     assert "a dense block may exceed its allocation" in prompt
     result = await TextTransformPlanner(
         max_editorial_passes=1, generator=harness.generator, allow_unslop_model=True

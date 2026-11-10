@@ -27,6 +27,7 @@ from app.document_transform.schemas import (
     DocumentTransformRequest,
     DocumentTransformResult,
     DriveFileSource,
+    FindingSeverity,
     OutputStrategy,
     TransformFinding,
     TransformMode,
@@ -45,6 +46,8 @@ from app.identifiers import DocsRevisionId, ModelId
 
 
 if TYPE_CHECKING:
+    from collections.abc import Iterable
+
     from app.document_transform.planner import TransformOutcome
     from app.document_transform.slides_brand import SlideMutationPlan
 
@@ -271,14 +274,14 @@ class PresentationTransformExecutor(DocumentTransformRunner):
                 source_unchanged=True,
                 protected_content_preserved=verification.content_preserved,
                 structure_preserved=verification.structure_preserved,
-                unsafe_patch_count=len(planned.findings),
+                unsafe_patch_count=_review_finding_count(planned.findings),
             ),
             model_ids=[ModelId(model) for model in self._generator.model_ids]
             if planned.llm_invoked
             else [],
             tool_versions=_tool_versions(),
             pipeline_version=PRESENTATION_PIPELINE_VERSION,
-            needs_review=bool(result_findings),
+            needs_review=bool(_review_finding_count(result_findings)),
             brand_profile_id=CURRENT_BRAND_MANIFEST.profile_id,
             brand_profile_sha256=CURRENT_BRAND_MANIFEST.sha256,
             deterministic_patch_count=planned.deterministic_count,
@@ -417,6 +420,10 @@ class PresentationTransformExecutor(DocumentTransformRunner):
             artifact_kind="presentation",
             access_scope="inherited",
         )
+
+
+def _review_finding_count(findings: Iterable[TransformFinding]) -> int:
+    return sum(finding.severity is FindingSeverity.REVIEW for finding in findings)
 
 
 def _source_sha256(
