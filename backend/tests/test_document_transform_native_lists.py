@@ -123,7 +123,7 @@ def test_numbered_headings_keep_their_native_heading_role() -> None:
     ] = "HEADING_1"
     block = parse_google_document(raw, title="Review").blocks[0]
     assert block.kind == BlockKind.HEADING
-    assert paragraph_spacing(block, SarjBrandProfile()).above == 14
+    assert paragraph_spacing(block, SarjBrandProfile()).above == 12
     assert not any("createParagraphBullets" in request for request in _requests(raw))
 
 

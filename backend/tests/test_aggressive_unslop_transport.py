@@ -1162,7 +1162,9 @@ async def test_model_phase_shares_forbidden_reviewer_only_with_its_own_repair(
             client=client,
             writer_sleep=_yield_writer_sleep,
         )
-        planner = TextTransformPlanner(generator=generator, allow_unslop_model=True)
+        planner = TextTransformPlanner(
+            max_editorial_passes=1, generator=generator, allow_unslop_model=True
+        )
 
         async def transform(subject: str) -> None:
             text = "\n\n".join([source.replace("bird", subject)] * 2)
@@ -1797,7 +1799,7 @@ async def test_sdk_concision_repair_keeps_numeric_budget_and_full_source_audits(
         try:
             generator = _functional_generator(client)
             result = await TextTransformPlanner(
-                generator=generator, allow_unslop_model=True
+                max_editorial_passes=1, generator=generator, allow_unslop_model=True
             ).transform(document, _document_budget_request(source))
         finally:
             await client.aio.aclose()
@@ -1894,7 +1896,9 @@ async def test_sdk_document_budget_is_shared_across_separate_editor_batches(
         client = sdk_client_factory(http)
         try:
             result = await TextTransformPlanner(
-                generator=_functional_generator(client), allow_unslop_model=True
+                max_editorial_passes=1,
+                generator=_functional_generator(client),
+                allow_unslop_model=True,
             ).transform(document, _document_budget_request(source))
         finally:
             await client.aio.aclose()
@@ -2096,7 +2100,7 @@ async def test_sdk_initial_fallback_and_flash_repair_keep_independent_review_hig
     ]
     assert levels == [
         types.ThinkingLevel.LOW,
-        types.ThinkingLevel.MEDIUM
+        types.ThinkingLevel.HIGH
         if fallback in {"gemini-3.1-pro-preview", "gemini-4-argon"}
         else None,
         types.ThinkingLevel.HIGH,
@@ -3389,7 +3393,7 @@ async def test_real_sdk_backoff_is_cancelled_by_the_unchanged_per_call_timeout(
                     await call
         finally:
             await client.aio.aclose()
-    assert len(requests) == (1 if operation == "writer" else 3)
+    assert len(requests) == (2 if operation == "writer" else 3)
 
 
 @pytest.mark.parametrize("phase", [TransformPhase.UNSLOP, TransformPhase.FORMAT])

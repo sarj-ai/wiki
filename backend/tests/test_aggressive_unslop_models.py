@@ -17,7 +17,7 @@ import pytest
 from app.document_settings import DocumentSettings
 from app.document_transform import models as transform_models
 from app.document_transform.dependencies import document_model_policy
-from app.document_transform.errors import ConcisionTargetUnmetError, ModelUnavailableError
+from app.document_transform.errors import ModelUnavailableError
 from app.document_transform.ir import BlockKind, parse_google_document, parse_markdown
 from app.document_transform.models import GeminiModelPolicy, VertexGeminiPatchGenerator
 from app.document_transform.planner import TextTransformPlanner
@@ -273,7 +273,7 @@ async def _yield_writer_sleep(_delay: float) -> None:
 @pytest.mark.parametrize(
     ("model_override", "expected_model", "thinking_level"),
     [
-        pytest.param(None, "gemini-3.7-flash", None, id="normal-default"),
+        pytest.param(None, "gemini-3.1-pro-preview", types.ThinkingLevel.HIGH, id="normal-default"),
         pytest.param(
             "gemini-3.8-flash",
             "gemini-3.8-flash",
@@ -938,7 +938,7 @@ def test_conventional_framing_can_go_without_relaxing_the_following_obligation(p
     )
     assert decision.accepted == {block.id: proposed}
     assert not decision.findings
-    assert UNSLOP_POLICY_VERSION == "sarj-concise-v18"
+    assert UNSLOP_POLICY_VERSION == "sarj-concise-v19"
 
 
 @pytest.mark.parametrize(
@@ -1516,19 +1516,22 @@ async def test_numeric_concision_target_and_failure_feedback_remain_source_bound
     assert not decision.accepted
     assert not decision.findings
 
-    with pytest.raises(ConcisionTargetUnmetError):
-        await TextTransformPlanner(generator=harness.generator, allow_unslop_model=True).transform(
-            document,
-            DocumentTransformRequest(
-                source=MarkdownSource(
-                    kind="markdown",
-                    content=source,
-                    name="Sensor",
-                    destination_folder_id=FileId("folder"),
-                ),
-                mode=TransformMode.UNSLOP,
+    result = await TextTransformPlanner(
+        max_editorial_passes=1, generator=harness.generator, allow_unslop_model=True
+    ).transform(
+        document,
+        DocumentTransformRequest(
+            source=MarkdownSource(
+                kind="markdown",
+                content=source,
+                name="Sensor",
+                destination_folder_id=FileId("folder"),
             ),
-        )
+            mode=TransformMode.UNSLOP,
+        ),
+    )
+
+    assert any(finding.code == "concision_target_unmet" for finding in result.findings)
     arrays = _rewrite_payload_lines(harness.call.prompts[-1])
     current = _RewriteInputs.model_validate_json(arrays[0]).root[0]
     rejected = _RejectedInputs.model_validate_json(arrays[1]).root[0]
@@ -1865,7 +1868,7 @@ async def test_repair_reports_exact_original_and_proposed_protected_token_counts
     assert document.blocks[0].text == source
 
 
-async def test_writer_supplies_numeric_advisory_batch_draft_without_relaxing_global_limit() -> None:
+async def test_writer_supplies_numeric_advisory_batch_draft_and_reports_global_overage() -> None:
     paragraph = " ".join("reading" for _ in range(60))
     source = paragraph + "\n\n" + paragraph
     document = parse_markdown(source, title="Batch word allocation")
@@ -1881,16 +1884,19 @@ async def test_writer_supplies_numeric_advisory_batch_draft_without_relaxing_glo
     assert "120 eligible prose words in these supplied blocks" in prompt
     assert "combined advisory draft allocation is 38 words" in prompt
     assert "a dense block may exceed its allocation" in prompt
-    with pytest.raises(ConcisionTargetUnmetError):
-        await TextTransformPlanner(generator=harness.generator, allow_unslop_model=True).transform(
-            document,
-            DocumentTransformRequest(
-                source=MarkdownSource(
-                    kind="markdown",
-                    content=source,
-                    name="Batch word allocation",
-                    destination_folder_id=FileId("folder"),
-                ),
-                mode=TransformMode.UNSLOP,
+    result = await TextTransformPlanner(
+        max_editorial_passes=1, generator=harness.generator, allow_unslop_model=True
+    ).transform(
+        document,
+        DocumentTransformRequest(
+            source=MarkdownSource(
+                kind="markdown",
+                content=source,
+                name="Batch word allocation",
+                destination_folder_id=FileId("folder"),
             ),
-        )
+            mode=TransformMode.UNSLOP,
+        ),
+    )
+
+    assert any(finding.code == "concision_target_unmet" for finding in result.findings)

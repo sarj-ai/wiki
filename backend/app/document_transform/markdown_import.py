@@ -1457,7 +1457,7 @@ def _table_brand_matches(
             if len(paragraphs) != 1:
                 return False
             pseudo_block = MarkdownImportBlock(
-                kind="paragraph",
+                kind="table_cell",
                 text="".join(inline.text for inline in expected_cell),
                 inline_signature=expected_cell,
             )
@@ -1487,7 +1487,7 @@ def _paragraph_brand_matches(
         return False
     named_type = str(paragraph_style.get("namedStyleType", "NORMAL_TEXT"))
     named_text_style, named_paragraph_style = _named_style(document, tab, named_type)
-    if not _paragraph_spacing_matches(paragraph_style, named_paragraph_style):
+    if not _paragraph_spacing_matches(paragraph_style, named_paragraph_style, expected):
         return False
     runs = tuple(_text_runs(paragraph))
     role = _RoleBrand(
@@ -1561,6 +1561,8 @@ def _expected_code_for_range(
 
 def _role_size(block: MarkdownImportBlock) -> float:
     tokens = CURRENT_BRAND_MANIFEST.document
+    if block.kind == "table_cell":
+        return tokens.table_size_pt or tokens.body_size_pt
     if block.kind == "title" or (block.kind == "heading" and block.level == 1):
         return tokens.h1_size_pt
     if block.kind == "heading" and block.level == _H2_LEVEL:
@@ -1602,16 +1604,34 @@ def _named_style(
 def _paragraph_spacing_matches(
     style: dict[str, Any],
     inherited: dict[str, Any],
+    block: MarkdownImportBlock,
 ) -> bool:
     tokens = CURRENT_BRAND_MANIFEST.document
+    expected_above = tokens.paragraph_space_above_pt
+    expected_below = tokens.paragraph_space_below_pt
+    expected_line = tokens.line_spacing_percent
+    if block.kind == "title":
+        expected_below *= 2
+    elif block.kind == "heading":
+        expected_above = tokens.paragraph_space_below_pt * (2 if block.level in {1, 2} else 1)
+    elif block.kind in {"list", "check"}:
+        expected_below = tokens.list_space_below_pt or 0
+        expected_line = tokens.list_line_spacing_percent or 100
+    elif block.kind == "table_cell":
+        expected_below = 2
+        expected_line = 100
     above = _effective_dimension_points(style, inherited, "spaceAbove")
     below = _effective_dimension_points(style, inherited, "spaceBelow")
     line_spacing = style.get("lineSpacing", inherited.get("lineSpacing"))
     return (
-        abs(above - tokens.paragraph_space_above_pt) <= _TOLERANCE
-        and abs(below - tokens.paragraph_space_below_pt) <= _TOLERANCE
+        abs(above - expected_above) <= _TOLERANCE
+        and abs(below - expected_below) <= _TOLERANCE
         and isinstance(line_spacing, int | float)
-        and abs(float(line_spacing) - tokens.line_spacing_percent) <= _TOLERANCE
+        and abs(float(line_spacing) - expected_line) <= _TOLERANCE
+        and (
+            block.kind != "paragraph"
+            or style.get("alignment", inherited.get("alignment")) == tokens.body_alignment
+        )
     )
 
 

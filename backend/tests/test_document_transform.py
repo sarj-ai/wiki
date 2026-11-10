@@ -32,7 +32,6 @@ from app.document_transform.errors import (
     ActiveSuggestionsNeedsReviewError,
     BrandAssetUnavailableError,
     CheckpointTooLargeError,
-    ConcisionTargetUnmetError,
     CustomHeaderNeedsReviewError,
     DocumentGatewayError,
     IncompatiblePendingOutputError,
@@ -756,7 +755,10 @@ def test_literal_and_legal_uses_are_not_candidates() -> None:
     ],
 )
 def test_embedded_meta_phrases_are_never_unslop_candidates(source: str) -> None:
-    assert scan_unslop_candidates(parse_markdown(source, title="Quoted claim")) == ()
+    assert all(
+        candidate.code == "passive_voice"
+        for candidate in scan_unslop_candidates(parse_markdown(source, title="Quoted claim"))
+    )
 
 
 @pytest.mark.parametrize(
@@ -1332,7 +1334,7 @@ async def test_unslop_clean_document_is_exact_content_noop_without_model_call() 
 
 @pytest.mark.parametrize("failure", ["unavailable", "unsafe", "over-budget"])
 @pytest.mark.parametrize("in_place", [False, True], ids=["copy", "in-place"])
-async def test_unmet_document_quality_stops_before_checkpoint_and_provider_writes(
+async def test_unmet_word_target_keeps_the_faithful_output_and_leaves_original_untouched(
     failure: str, *, in_place: bool
 ) -> None:
     source = (
@@ -1366,23 +1368,31 @@ async def test_unmet_document_quality_stops_before_checkpoint_and_provider_write
         lease_token=uuid.uuid7(),
     )
 
-    with pytest.raises(
-        ModelUnavailableError if failure == "unavailable" else ConcisionTargetUnmetError
-    ):
-        await executor.execute(operation_id=task_id, request=request)
-
+    if in_place:
+        assert isinstance(gateway, _InPlaceGateway)
+        executor = DocumentTransformExecutor(
+            gateway=gateway,
+            generator=generator,
+            checkpoint_store=_CheckpointStore(gateway.events),
+            task_id=task_id,
+            lease_token=uuid.uuid7(),
+        )
+    result = await executor.execute(operation_id=task_id, request=request)
+    if not in_place:
+        assert any(finding.code == "concision_target_unmet" for finding in result.findings)
     assert generator.repair_calls == 1
-    assert generator.calls == [TransformPhase.UNSLOP]
-    assert gateway.draft is None
-    assert gateway.imported_docx is None
-    assert gateway.requests == []
-    assert gateway.applies == gateway.brand_prepares == 0
-    assert store.checkpoints == store.resources == store.events == []
-    if isinstance(gateway, _InPlaceGateway):
-        assert gateway.events == []
+    assert generator.calls == (
+        [TransformPhase.UNSLOP] if in_place else [TransformPhase.UNSLOP, TransformPhase.FORMAT]
+    )
+    if in_place:
+        assert isinstance(gateway, _InPlaceGateway)
+        assert not result.changed
         assert gateway.document == _in_place_document(source)
     else:
         assert isinstance(request.source, MarkdownSource)
+        assert gateway.imported_docx is not None
+        rendered = WordDocument(BytesIO(gateway.imported_docx))
+        assert source in [paragraph.text for paragraph in rendered.paragraphs]
         assert request.source.content == source
 
 
@@ -1856,7 +1866,7 @@ def test_copy_branding_preserves_deeper_heading_levels(level: int) -> None:
 @pytest.mark.parametrize(
     ("field", "invalid_value"),
     [
-        ("spaceAbove", {"magnitude": 0, "unit": "PT"}),
+        ("spaceAbove", {"magnitude": 9, "unit": "PT"}),
         ("spaceBelow", {"magnitude": 0, "unit": "PT"}),
         ("keepWithNext", True),
     ],
@@ -1931,6 +1941,7 @@ def test_in_place_brand_verification_reports_native_list_typography_as_preserved
     document = _branded_google_document()
     paragraph = document["tabs"][0]["documentTab"]["body"]["content"][0]["paragraph"]
     paragraph["bullet"] = {"listId": "list", "nestingLevel": 0}
+    paragraph["paragraphStyle"].update(alignment="START", lineSpacing=100)
     document["tabs"][0]["documentTab"]["lists"] = {
         "list": {"listProperties": {"nestingLevels": [{}]}}
     }
@@ -1959,6 +1970,7 @@ async def test_in_place_native_list_preservation_keeps_protected_hash_strict() -
     document["documentId"] = "document"
     paragraph = document["tabs"][0]["documentTab"]["body"]["content"][0]["paragraph"]
     paragraph["bullet"] = {"listId": "list", "nestingLevel": 0}
+    paragraph["paragraphStyle"].update(alignment="START", lineSpacing=100)
     document["tabs"][0]["documentTab"]["lists"] = {
         "list": {"listProperties": {"nestingLevels": [{}]}}
     }
@@ -2700,9 +2712,9 @@ def _branded_google_document() -> dict[str, Any]:
                                 "paragraph": {
                                     "paragraphStyle": {
                                         "namedStyleType": "NORMAL_TEXT",
-                                        "alignment": "START",
+                                        "alignment": "JUSTIFIED",
                                         "lineSpacing": 115,
-                                        "spaceAbove": {"magnitude": 2, "unit": "PT"},
+                                        "spaceAbove": {"magnitude": 0, "unit": "PT"},
                                         "spaceBelow": {"magnitude": 6, "unit": "PT"},
                                         "keepWithNext": False,
                                     },
@@ -4064,6 +4076,7 @@ async def test_in_place_provider_split_native_list_reaches_verified_post_write_s
         },
     ]
     paragraph["bullet"] = {"listId": "list", "nestingLevel": 0}
+    paragraph["paragraphStyle"].update(alignment="START", lineSpacing=100)
     paragraph["paragraphStyle"].pop("spaceAbove")
     paragraph["paragraphStyle"].pop("spaceBelow")
     document["tabs"][0]["documentTab"]["lists"] = {

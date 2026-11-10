@@ -17,9 +17,13 @@ def test_brand_manifests_are_immutable_canonical_and_distinct() -> None:
     legacy = load_brand_manifest("sarj-legacy-v1")
     previous = load_brand_manifest("sarj-2026-v2")
     prior_current = load_brand_manifest("sarj-2026-v3")
-    current = load_brand_manifest("sarj-2026-v4")
+    prior = load_brand_manifest("sarj-2026-v4")
+    current = load_brand_manifest("sarj-2026-v5")
 
-    assert current.sha256 == load_brand_manifest("sarj-2026-v4").sha256
+    assert current.sha256 == load_brand_manifest("sarj-2026-v5").sha256
+    assert current.sha256 != prior.sha256
+    assert prior.sha256 == "bbc319b0152be2a645099c0d88516ebf13b375bdadb5b443ef7037da027dcb22"
+    assert current.document.body_alignment == "JUSTIFIED"
     assert current.sha256 != legacy.sha256
     assert current.sha256 != prior_current.sha256
     assert previous.sha256 == ("8824cf836c053056cbe9a3f195944d4720897804264790da750e3c74101654d8")
@@ -27,7 +31,7 @@ def test_brand_manifests_are_immutable_canonical_and_distinct() -> None:
         "4a21dfdc50faa2b1e59d3f6a3397b5a0b6fb248aab4abcfde742e58476321589"
     )
     assert current.sha256 == EXPECTED_BRAND_PROFILE_SHA256[current.profile_id]
-    assert json.loads(current.canonical_json)["profile_id"] == "sarj-2026-v4"
+    assert json.loads(current.canonical_json)["profile_id"] == "sarj-2026-v5"
     assert current.assets.logo_sha256 == (
         "c7b088d8caa20b39bcbf885fc142ea291aa5233c011e4859d126b8e45fec8afd"
     )

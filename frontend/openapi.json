@@ -530,12 +530,12 @@
             "type": "string"
           },
           "brand_profile_id": {
-            "default": "sarj-2026-v4",
+            "default": "sarj-2026-v5",
             "title": "Brand Profile Id",
             "type": "string"
           },
           "brand_profile_sha256": {
-            "default": "bbc319b0152be2a645099c0d88516ebf13b375bdadb5b443ef7037da027dcb22",
+            "default": "d9467cc5a3d0200a9704f151b67c67e80f092fdc9fabad918499c3a5e72df019",
             "title": "Brand Profile Sha256",
             "type": "string"
           },

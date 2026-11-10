@@ -20,7 +20,7 @@ from docx.oxml.ns import qn
 from docx.oxml.xmlchemy import BaseOxmlElement
 from docx.shared import Inches, Pt, RGBColor
 from docx.styles.style import BaseStyle, ParagraphStyle
-from docx.table import Table, _Cell
+from docx.table import Table, _Cell, _Row
 from docx.text.paragraph import Paragraph
 from docx.text.run import Run
 from markdown_it import MarkdownIt
@@ -477,13 +477,14 @@ def _configure_styles(document: Document, *, branded: bool) -> None:
         before=_DOCUMENT.paragraph_space_above_pt,
         after=_DOCUMENT.paragraph_space_below_pt,
         line_spacing=_DOCUMENT.line_spacing_percent / 100,
+        alignment=WD_ALIGN_PARAGRAPH.JUSTIFY,
     )
     _set_style(
         _paragraph_style(styles["Heading 1"]),
         size=_DOCUMENT.h1_size_pt,
         color=_SARJ_PURPLE,
         bold=True,
-        before=_DOCUMENT.paragraph_space_above_pt,
+        before=_DOCUMENT.paragraph_space_below_pt * 2,
         after=_DOCUMENT.paragraph_space_below_pt,
         line_spacing=_DOCUMENT.line_spacing_percent / 100,
         keep_with_next=True,
@@ -493,7 +494,7 @@ def _configure_styles(document: Document, *, branded: bool) -> None:
         size=_DOCUMENT.h2_size_pt,
         color=_SARJ_PURPLE,
         bold=True,
-        before=_DOCUMENT.paragraph_space_above_pt,
+        before=_DOCUMENT.paragraph_space_below_pt * 2,
         after=_DOCUMENT.paragraph_space_below_pt,
         line_spacing=_DOCUMENT.line_spacing_percent / 100,
         keep_with_next=True,
@@ -503,7 +504,7 @@ def _configure_styles(document: Document, *, branded: bool) -> None:
         size=_DOCUMENT.h3_size_pt,
         color=_SARJ_PURPLE,
         bold=True,
-        before=_DOCUMENT.paragraph_space_above_pt,
+        before=_DOCUMENT.paragraph_space_below_pt,
         after=_DOCUMENT.paragraph_space_below_pt,
         line_spacing=_DOCUMENT.line_spacing_percent / 100,
         keep_with_next=True,
@@ -514,7 +515,7 @@ def _configure_styles(document: Document, *, branded: bool) -> None:
             size=_DOCUMENT.h3_size_pt,
             color=_SARJ_PURPLE,
             bold=True,
-            before=_DOCUMENT.paragraph_space_above_pt,
+            before=_DOCUMENT.paragraph_space_below_pt,
             after=_DOCUMENT.paragraph_space_below_pt,
             line_spacing=_DOCUMENT.line_spacing_percent / 100,
             keep_with_next=True,
@@ -525,7 +526,7 @@ def _configure_styles(document: Document, *, branded: bool) -> None:
         color=_SARJ_PURPLE,
         bold=True,
         before=_DOCUMENT.paragraph_space_above_pt,
-        after=_DOCUMENT.paragraph_space_below_pt,
+        after=_DOCUMENT.paragraph_space_below_pt * 2,
         line_spacing=_DOCUMENT.line_spacing_percent / 100,
         keep_with_next=True,
     )
@@ -534,8 +535,8 @@ def _configure_styles(document: Document, *, branded: bool) -> None:
         size=_DOCUMENT.body_size_pt,
         color=_INK,
         before=_DOCUMENT.paragraph_space_above_pt,
-        after=_DOCUMENT.paragraph_space_below_pt,
-        line_spacing=_DOCUMENT.line_spacing_percent / 100,
+        after=_DOCUMENT.list_space_below_pt or 0,
+        line_spacing=(_DOCUMENT.list_line_spacing_percent or 100) / 100,
     )
     quote = _paragraph_style(styles.add_style("Sarj Quote", WD_STYLE_TYPE.PARAGRAPH))
     _set_style(
@@ -564,11 +565,11 @@ def _configure_styles(document: Document, *, branded: bool) -> None:
     code.paragraph_format.right_indent = Inches(0.125)
     _set_style(
         _paragraph_style(styles.add_style("Sarj Table Text", WD_STYLE_TYPE.PARAGRAPH)),
-        size=_DOCUMENT.body_size_pt,
+        size=_DOCUMENT.table_size_pt or _DOCUMENT.body_size_pt,
         color=_INK,
         before=_DOCUMENT.paragraph_space_above_pt,
-        after=_DOCUMENT.paragraph_space_below_pt,
-        line_spacing=_DOCUMENT.line_spacing_percent / 100,
+        after=2,
+        line_spacing=1,
     )
 
 
@@ -607,6 +608,7 @@ def _set_style(
     before: float = 0,
     line_spacing: float = 1.0,
     keep_with_next: bool = False,
+    alignment: WD_ALIGN_PARAGRAPH = WD_ALIGN_PARAGRAPH.LEFT,
 ) -> None:
     _set_style_font_family(
         style,
@@ -622,10 +624,12 @@ def _set_style(
         msg = f"Paragraph style {style.name!r} is detached"
         raise ValueError(msg)
     paragraph_format = style.paragraph_format
+    paragraph_format.alignment = alignment
     paragraph_format.space_before = Pt(before)
     paragraph_format.space_after = Pt(after)
     paragraph_format.line_spacing = line_spacing
     paragraph_format.keep_with_next = keep_with_next
+    paragraph_format.keep_together = keep_with_next
     paragraph_format.widow_control = True
 
 
@@ -806,6 +810,9 @@ def _configure_footer(document: Document) -> None:
     paragraph = document.sections[0].footer.paragraphs[0]
     paragraph.alignment = WD_ALIGN_PARAGRAPH.RIGHT
     paragraph.paragraph_format.space_before = Pt(4)
+    paragraph.paragraph_format.space_after = Pt(0)
+    paragraph.paragraph_format.line_spacing = 1
+    paragraph.paragraph_format.keep_with_next = False
     label = paragraph.add_run("Sarj  ·  ")
     _format_run(label, size=_DOCUMENT.caption_size_pt, color=_MUTED)
     _append_page_field(paragraph)
@@ -1015,40 +1022,66 @@ def _append_table(document: Document, block: _Block, *, branded: bool) -> None:
         return
     column_count = len(block.rows[0])
     widths = _table_widths(block.rows, column_count)
+    data_rows = block.rows[1:] if block.has_header else block.rows
+    numeric_columns = {
+        index
+        for index in range(column_count)
+        if data_rows and all(_numeric_table_value(row[index]) for row in data_rows)
+    }
     table = document.add_table(rows=len(block.rows), cols=column_count)
     table.alignment = WD_TABLE_ALIGNMENT.LEFT
     table.autofit = False
     _configure_table_geometry(table, widths, branded=branded)
-    for row_index, (source_row, target_row) in enumerate(zip(block.rows, table.rows, strict=True)):
-        row_properties = _properties_element(target_row, "_tr", "w:trPr")
-        keep_together = OxmlElement("w:cantSplit")
-        keep_together.set(qn("w:val"), "true")
-        row_properties.append(keep_together)
-        if block.has_header and row_index == 0:
-            repeat = OxmlElement("w:tblHeader")
-            repeat.set(qn("w:val"), "true")
-            row_properties.append(repeat)
-        source_inlines = block.cell_inlines[row_index]
-        for _value, inlines, cell, width in zip(
-            source_row, source_inlines, target_row.cells, widths, strict=True
-        ):
-            cell.vertical_alignment = WD_CELL_VERTICAL_ALIGNMENT.CENTER
-            cell.width = Inches(width / 1_440)
-            _set_cell_width(cell, width)
-            if branded and block.has_header and row_index == 0:
-                _set_cell_fill(cell, _SARJ_PURPLE_LIGHT)
-            paragraph = cell.paragraphs[0]
-            paragraph.style = _paragraph_style(
-                document.styles["Sarj Table Text" if branded else "Normal"]
-            )
-            _append_inlines(
-                paragraph,
-                inlines,
-                force_bold=block.has_header and row_index == 0,
-                branded=branded,
-            )
+    for row_index, target_row in enumerate(table.rows):
+        _append_table_row(
+            document,
+            target_row,
+            block,
+            row_index=row_index,
+            widths=widths,
+            numeric_columns=numeric_columns,
+            branded=branded,
+        )
     spacer = document.add_paragraph()
     spacer.paragraph_format.space_after = Pt(4)
+
+
+def _append_table_row(
+    document: Document,
+    row: _Row,
+    block: _Block,
+    *,
+    row_index: int,
+    widths: tuple[int, ...],
+    numeric_columns: set[int],
+    branded: bool,
+) -> None:
+    header = block.has_header and row_index == 0
+    row_properties = _properties_element(row, "_tr", "w:trPr")
+    keep_together = OxmlElement("w:cantSplit")
+    keep_together.set(qn("w:val"), "true")
+    row_properties.append(keep_together)
+    if header:
+        repeat = OxmlElement("w:tblHeader")
+        repeat.set(qn("w:val"), "true")
+        row_properties.append(repeat)
+    for column_index, (inlines, cell, width) in enumerate(
+        zip(block.cell_inlines[row_index], row.cells, widths, strict=True)
+    ):
+        cell.vertical_alignment = WD_CELL_VERTICAL_ALIGNMENT.CENTER
+        cell.width = Inches(width / 1_440)
+        _set_cell_width(cell, width)
+        if branded and header:
+            _set_cell_fill(cell, _SARJ_PURPLE_LIGHT)
+        elif branded and row_index % 2 == 0:
+            _set_cell_fill(cell, _CODE_FILL)
+        paragraph = cell.paragraphs[0]
+        paragraph.style = _paragraph_style(
+            document.styles["Sarj Table Text" if branded else "Normal"]
+        )
+        _append_inlines(paragraph, inlines, force_bold=header, branded=branded)
+        if branded and column_index in numeric_columns:
+            paragraph.alignment = WD_ALIGN_PARAGRAPH.RIGHT
 
 
 def _configure_table_geometry(
@@ -1257,7 +1290,13 @@ def _set_paragraph_direction(paragraph: Paragraph, text: str) -> None:
         bidi = OxmlElement("w:bidi")
         properties.append(bidi)
     bidi.set(qn("w:val"), "true")
-    paragraph.alignment = WD_ALIGN_PARAGRAPH.RIGHT
+    if (
+        paragraph.style is not None
+        and paragraph.style.paragraph_format.alignment == WD_ALIGN_PARAGRAPH.JUSTIFY
+    ):
+        paragraph.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
+    else:
+        paragraph.alignment = WD_ALIGN_PARAGRAPH.RIGHT
 
 
 def _set_run_direction(run: Run, text: str) -> None:
@@ -1370,6 +1409,18 @@ def _table_widths(rows: tuple[tuple[str, ...], ...], columns: int) -> tuple[int,
     widths = [int(value * scale) for value in raw]
     widths[-1] += _CONTENT_WIDTH_DXA - sum(widths)
     return tuple(widths)
+
+
+def _numeric_table_value(value: str) -> bool:
+    return (
+        re.fullmatch(
+            r"\s*[<>≤≥~≈]?[+-]?[$€£¥]?\s*\d[\d,.]*(?:\s*[–-]\s*\d[\d,.]*)?"
+            r"(?:\s*(?:%|ns|[µμu]s|ms|s|KB|MB|GB|TB|KiB|MiB|GiB|Kbps|Mbps|Gbps|×|x))?\s*",
+            value,
+            re.IGNORECASE,
+        )
+        is not None
+    )
 
 
 def _plain_inlines(text: str) -> tuple[MarkdownImportInline, ...]:

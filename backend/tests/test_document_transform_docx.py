@@ -174,8 +174,14 @@ def test_sarj_paragraph_styles_follow_manifest(rendered: bytes) -> None:
         assert foreground.get(f"{W}val") == color
         spacing = style.find(f"./{W}pPr/{W}spacing")
         assert spacing is not None
-        assert spacing.get(f"{W}before") == str(document_tokens.paragraph_space_above_pt * 20)
-        assert spacing.get(f"{W}after") == str(document_tokens.paragraph_space_below_pt * 20)
+        above = (
+            document_tokens.paragraph_space_below_pt * (1 if style_id == "Heading3" else 2)
+            if style_id.startswith("Heading")
+            else document_tokens.paragraph_space_above_pt
+        )
+        below = document_tokens.paragraph_space_below_pt * (2 if style_id == "SarjTitle" else 1)
+        assert spacing.get(f"{W}before") == str(above * 20)
+        assert spacing.get(f"{W}after") == str(below * 20)
         assert spacing.get(f"{W}line") == str(
             round(document_tokens.line_spacing_percent / 100 * 240)
         )
@@ -444,7 +450,7 @@ def test_first_strong_rtl_sets_native_direction_without_changing_mixed_text() ->
         assert run_rtl is not None
         assert run_fonts is not None
         assert bidi.get(f"{W}val") == "true"
-        assert alignment.get(f"{W}val") == "right"
+        assert alignment.get(f"{W}val") == ("right" if text == "عنوان عربي" else "both")
         assert run_rtl.get(f"{W}val") == "true"
         assert run_fonts.get(f"{W}cs") == "Arial"
         assert run_fonts.get(f"{W}cstheme") is None

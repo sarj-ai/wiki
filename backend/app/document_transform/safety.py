@@ -15,6 +15,7 @@ from app.document_transform.unslop import (
     RFCISH_EMAIL_PATTERN,
     SINGLE_QUOTED_SPAN_PATTERN,
     UnslopCandidate,
+    editorial_quality,
     expanded_deletion_span,
     scan_unslop_candidates,
     without_editorial_framing,
@@ -124,6 +125,8 @@ def validate_patches(
             aggressive_unslop=aggressive_unslop,
         )
         seen.add(patch.block_id)
+        if code == "concision_not_improved":
+            continue
         if code is not None:
             findings.append(
                 TransformFinding(
@@ -225,6 +228,10 @@ def _aggressive_unslop_code(block: TextBlock, replacement: str) -> str | None:
     words = frozenset(word.casefold() for word in re.findall(r"\b\w+\b", replacement))
     if any(name.casefold() not in words for name in _protected_rewrite_names(block.text)):
         return "proper_noun_changed"
+    if replacement != block.text and editorial_quality(block, replacement) >= editorial_quality(
+        block, block.text
+    ):
+        return "concision_not_improved"
     return None
 
 

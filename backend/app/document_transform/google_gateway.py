@@ -24,10 +24,12 @@ from pydantic import JsonValue, ValidationError
 from app.document_transform.brand import (
     DocsRequest,
     SarjBrandProfile,
+    paragraph_alignment,
     paragraph_color,
     paragraph_font_size,
     paragraph_keep_lines_together,
     paragraph_keep_with_next,
+    paragraph_line_spacing,
     paragraph_named_style,
     paragraph_spacing,
 )
@@ -4218,9 +4220,9 @@ def _paragraph_brand_diagnostics(
         or (allow_preserved_visual_authority and block.preserved_visual_authority)
         if block.preserved_paragraph_style_sha256 is not None or block.preserved_visual_authority
         else bool(
-            paragraph_style.get("alignment") == "START"
+            paragraph_style.get("alignment") == paragraph_alignment(block)
             and paragraph_style.get("lineSpacing")
-            == CURRENT_BRAND_MANIFEST.document.line_spacing_percent
+            == paragraph_line_spacing(block, SarjBrandProfile())
             and _dimension_matches(
                 paragraph_style.get("spaceAbove"),
                 spacing.above,
@@ -4660,8 +4662,8 @@ def _paragraph_has_brand(
     spacing = paragraph_spacing(block, SarjBrandProfile())
     style_checks = (
         paragraph_style.get("namedStyleType") == expected_named_style,
-        paragraph_style.get("alignment") == "START",
-        paragraph_style.get("lineSpacing") == CURRENT_BRAND_MANIFEST.document.line_spacing_percent,
+        paragraph_style.get("alignment") == paragraph_alignment(block),
+        paragraph_style.get("lineSpacing") == paragraph_line_spacing(block, SarjBrandProfile()),
         _dimension_matches(
             paragraph_style.get("spaceAbove"),
             spacing.above,

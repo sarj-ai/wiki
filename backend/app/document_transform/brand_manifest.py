@@ -12,12 +12,13 @@ from pydantic import BaseModel, ConfigDict, Field, StringConstraints, field_vali
 from app.identifiers import BrandProfileId
 
 
-CURRENT_BRAND_PROFILE_ID = BrandProfileId("sarj-2026-v4")
+CURRENT_BRAND_PROFILE_ID = BrandProfileId("sarj-2026-v5")
 BRAND_PROFILE_IDS = frozenset(
     {
         BrandProfileId("sarj-legacy-v1"),
         BrandProfileId("sarj-2026-v2"),
         BrandProfileId("sarj-2026-v3"),
+        BrandProfileId("sarj-2026-v4"),
         CURRENT_BRAND_PROFILE_ID,
     }
 )
@@ -32,9 +33,10 @@ EXPECTED_BRAND_PROFILE_SHA256 = MappingProxyType(
         BrandProfileId("sarj-2026-v3"): (
             "4a21dfdc50faa2b1e59d3f6a3397b5a0b6fb248aab4abcfde742e58476321589"
         ),
-        CURRENT_BRAND_PROFILE_ID: (
+        BrandProfileId("sarj-2026-v4"): (
             "bbc319b0152be2a645099c0d88516ebf13b375bdadb5b443ef7037da027dcb22"
         ),
+        CURRENT_BRAND_PROFILE_ID: "d9467cc5a3d0200a9704f151b67c67e80f092fdc9fabad918499c3a5e72df019",
     }
 )
 HexColor = Annotated[str, StringConstraints(pattern=r"^#[0-9A-F]{6}$")]
@@ -85,6 +87,10 @@ class DocumentBrandTokens(_ManifestModel):
     paragraph_space_below_pt: int = Field(ge=0, le=16)
     horizontal_margin_pt: int = Field(ge=36, le=108)
     vertical_margin_pt: int = Field(ge=36, le=108)
+    body_alignment: Literal["JUSTIFIED"] | None = None
+    list_line_spacing_percent: int | None = Field(default=None, ge=100, le=120)
+    list_space_below_pt: int | None = Field(default=None, ge=0, le=6)
+    table_size_pt: int | None = Field(default=None, ge=9, le=12)
     header: DocumentHeaderBrandTokens | None = None
 
 

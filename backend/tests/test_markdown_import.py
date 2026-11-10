@@ -3,6 +3,7 @@ from __future__ import annotations
 from copy import deepcopy
 from typing import Any
 
+from pydantic import JsonValue
 import pytest
 
 from app.document_transform.brand_manifest import (
@@ -144,12 +145,16 @@ def _brand_run_style(*, size: int, color: str, bold: bool = False) -> dict[str, 
     return style
 
 
-def _brand_paragraph_style() -> dict[str, Any]:
+def _brand_paragraph_style(*, title: bool = False) -> dict[str, JsonValue]:
     tokens = CURRENT_BRAND_MANIFEST.document
     return {
         "namedStyleType": "NORMAL_TEXT",
+        "alignment": "START" if title else "JUSTIFIED",
         "spaceAbove": {"magnitude": tokens.paragraph_space_above_pt, "unit": "PT"},
-        "spaceBelow": {"magnitude": tokens.paragraph_space_below_pt, "unit": "PT"},
+        "spaceBelow": {
+            "magnitude": tokens.paragraph_space_below_pt * (2 if title else 1),
+            "unit": "PT",
+        },
         "lineSpacing": tokens.line_spacing_percent,
     }
 
@@ -362,7 +367,7 @@ def _branded_document() -> dict[str, Any]:
                                         ),
                                     )
                                 ],
-                                style=_brand_paragraph_style(),
+                                style=_brand_paragraph_style(title=True),
                             ),
                             _paragraph(
                                 [
@@ -712,7 +717,7 @@ def test_brand_readback_does_not_treat_explicit_zero_or_invalid_font_as_inherite
         ]
     }
     explicit_zero["tabs"][0]["documentTab"]["body"]["content"][1]["paragraph"]["paragraphStyle"][
-        "spaceAbove"
+        "spaceBelow"
     ]["magnitude"] = 0
     assert verify_markdown_import(explicit_zero, manifest).brand_applied is False
 
