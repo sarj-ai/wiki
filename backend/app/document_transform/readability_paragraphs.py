@@ -444,7 +444,10 @@ def _verify_part_layout(
     observed = dict(obj(obj(element["paragraph"])["paragraphStyle"]))
     if part.role.startswith("heading"):
         observed.pop("headingId", None)
-    wanted = {**obj(obj(target.source["paragraph"]).get("paragraphStyle", {})), **_part_style(part)}
+    wanted: dict[str, JsonValue] = {
+        **obj(obj(target.source["paragraph"]).get("paragraphStyle", {})),
+        **_part_style(part),
+    }
     if part.role in {"bullet", "numbered"}:
         wanted.update(
             {
