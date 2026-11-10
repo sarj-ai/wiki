@@ -5,6 +5,7 @@ from datetime import timedelta
 import uuid
 
 from cryptography.fernet import Fernet
+from pydantic import BaseModel
 from pydantic_settings import BaseSettings, SettingsConfigDict
 import pytest
 from sqlalchemy import Table, select, update
@@ -21,12 +22,17 @@ from app.mcp.grants import (
     validate_live_grant,
 )
 from app.mcp.identity import McpClientId
+from app.mcp.native_state import NativePurpose, NativeStateStore, native_database_time
 from app.mcp.protection import OAuthStateProtector
 from app.mcp.schemas import McpCapability
-from app.mcp.storage import PostgresOAuthStorage
+from app.mcp.storage import PostgresOAuthOperations
 from app.models.mcp_grant import McpGrant, McpGrantId
 from app.models.mcp_oauth import MCPOAuthEntry
 from app.models.user import User
+
+
+class _State(BaseModel):
+    value: str
 
 
 class _QASettings(BaseSettings):
@@ -93,16 +99,30 @@ async def test_real_postgres_grant_and_oauth_state_share_one_transaction(
     protector = OAuthStateProtector(
         (Fernet.generate_key().decode(),), lock_key=Fernet.generate_key().decode()
     )
-    writer = PostgresOAuthStorage(sessions, protector)
-    observer = PostgresOAuthStorage(sessions, protector)
-    collection = "mcp-authorization-codes"
+    writer = PostgresOAuthOperations(sessions, protector)
+    state = NativeStateStore(protector)
+
+    async def read(key: str) -> _State | None:
+        async with sessions() as db:
+            return await state.get(db, NativePurpose.CODE, key, _State)
+
+    async def write(db: AsyncSession, key: str, value: str) -> None:
+        await state.put(
+            db,
+            NativePurpose.CODE,
+            key,
+            _State(value=value),
+            await native_database_time(db) + timedelta(minutes=1),
+        )
+
     async with sessions.begin() as db:
         user = await _user(db, "atomic")
         previous = await enroll_approved_client(
             db, approving_user_id=user.id, client_id=McpClientId("client")
         )
         previous_binding = _binding(previous, user)
-    await writer.put("code", {"approved": True}, collection=collection, ttl=60)
+    async with sessions.begin() as db:
+        await write(db, "code", "approved")
     replacements: list[McpGrantId] = []
     ready = asyncio.Event()
     if outcome == "deadline":
@@ -119,16 +139,11 @@ async def test_real_postgres_grant_and_oauth_state_share_one_transaction(
                     transform_approved=True,
                 )
                 replacements.append(replacement.id)
-                assert await writer.delete("code", collection=collection)
-                await writer.put(
-                    "new-token",
-                    {"grant": str(replacement.id)},
-                    collection="mcp-jti-mappings",
-                    ttl=60,
-                )
-            # Independent instance/session cannot observe either uncommitted write.
-            assert await observer.get("code", collection=collection) == {"approved": True}
-            assert await observer.get("new-token", collection="mcp-jti-mappings") is None
+                await write(db, "code", "consumed")
+                await write(db, "new-token", str(replacement.id))
+            # Independent sessions cannot observe either uncommitted state write.
+            assert await read("code") == _State(value="approved")
+            assert await read("new-token") is None
             async with sessions() as reader:
                 assert await reader.get(McpGrant, replacement.id) is None
                 await validate_live_grant(reader, previous_binding)
@@ -170,12 +185,8 @@ async def test_real_postgres_grant_and_oauth_state_share_one_transaction(
         else:
             assert saved is None
             await validate_live_grant(reader, previous_binding)
-    assert await observer.get("code", collection=collection) == (
-        None if commit else {"approved": True}
-    )
-    assert await observer.get("new-token", collection="mcp-jti-mappings") == (
-        {"grant": str(replacement_id)} if commit else None
-    )
+    assert await read("code") == _State(value="consumed" if commit else "approved")
+    assert await read("new-token") == (_State(value=str(replacement_id)) if commit else None)
 
 
 async def test_real_postgres_client_identity_revocation_and_generation(

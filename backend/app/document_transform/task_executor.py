@@ -315,7 +315,7 @@ class DriveDocumentTransformTaskExecutor(DocumentTransformTaskExecutor):
         )
         files = GoogleFilesService(user=prepared.user, drive=drive)
         short_links = _AutomaticShortLinks(
-            aliases=PostgresAliasService(db=self._db, files=files, user=prepared.user),
+            aliases=PostgresAliasService(db=self._db, files=files),
             db=self._db,
         )
         logo_bytes: bytes | None = None

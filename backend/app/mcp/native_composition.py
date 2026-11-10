@@ -18,7 +18,7 @@ from app.mcp.native_runtime import NativeMcpRuntime, create_native_runtime
 from app.mcp.native_state import NativeStateStore
 from app.mcp.protection import OAuthStateProtector
 from app.mcp.redirect_policy import McpRedirectPolicy
-from app.mcp.storage import PostgresOAuthStorage
+from app.mcp.storage import PostgresOAuthOperations
 from app.request_id import RequestIDMiddleware
 from app.security_headers import SecurityHeadersMiddleware
 from app.tasks.queue import CloudTasksEnqueuer
@@ -72,7 +72,7 @@ async def native_composition(
         lock_key=parse_fernet_keys(lock_key.get_secret_value())[0],
     )
     core = NativeOAuthCore(
-        PostgresOAuthStorage(sessions, protector),
+        PostgresOAuthOperations(sessions, protector),
         NativeStateStore(protector),
         f"{str(issuer).rstrip('/')}/mcp",
         issuer=str(issuer),

@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from typing import Self, override
-import uuid
 
 from pydantic import ValidationError
 import pytest
@@ -18,8 +17,7 @@ from app.document_transform.naming import polish_alias_candidates
 from app.drive.schemas import DriveSummary
 from app.files.errors import FileNotInScopeError
 from app.files.schemas import FileResponse
-from app.identifiers import DriveId, FileId, GoogleUserId, UserId
-from app.models.user import User
+from app.identifiers import DriveId, FileId
 from app.models.wiki import DocumentAlias
 from tests.support import dependency
 
@@ -176,15 +174,6 @@ class _Session:
         self.flushes += 1
 
 
-def _user() -> User:
-    user = User()
-    user.id = UserId(uuid.uuid7())
-    user.email = "editor@sarj.ai"
-    user.google_id = GoogleUserId("google-user")
-    user.token_version = 0
-    return user
-
-
 class _Drive:
     async def list_drives(self) -> list[DriveSummary]:
         return [DriveSummary(id=DriveId("drive-1"), name="Engineering")]
@@ -281,12 +270,11 @@ def _service(session: _Session, files: _Files) -> PostgresAliasService:
         db=dependency(session),
         files=dependency(files),
         drive=dependency(_Drive()),
-        user=_user(),
     )
 
 
 async def test_resolve_rechecks_current_drive_access() -> None:
-    row = DocumentAlias(alias="eng-onboarding", file_id="file-1", created_by=_user().id)
+    row = DocumentAlias(alias="eng-onboarding", file_id="file-1")
     service = _service(_Session(by_alias=row), _Files(accessible=False))
 
     with pytest.raises(AliasNotFoundError):
@@ -294,8 +282,8 @@ async def test_resolve_rechecks_current_drive_access() -> None:
 
 
 async def test_rename_retires_old_alias_and_creates_new_claim_atomically() -> None:
-    old = DocumentAlias(alias="eng-onboarding", file_id="file-1", created_by=_user().id)
-    new = DocumentAlias(alias="people-org-chart", file_id="file-1", created_by=_user().id)
+    old = DocumentAlias(alias="eng-onboarding", file_id="file-1")
+    new = DocumentAlias(alias="people-org-chart", file_id="file-1")
     session = _Session(active=old, inserted=new)
     service = _service(session, _Files())
 
@@ -303,13 +291,12 @@ async def test_rename_retires_old_alias_and_creates_new_claim_atomically() -> No
 
     assert result.alias == "people-org-chart"
     assert old.retired_at is not None
-    assert old.retired_by is not None
     assert session.commits == 1
     assert session.flushes == 1
 
 
 async def test_unique_constraint_conflict_rolls_back_without_losing_old_alias() -> None:
-    old = DocumentAlias(alias="eng-onboarding", file_id="file-1", created_by=_user().id)
+    old = DocumentAlias(alias="eng-onboarding", file_id="file-1")
     session = _Session(active=old)
     service = _service(session, _Files())
 
@@ -320,7 +307,7 @@ async def test_unique_constraint_conflict_rolls_back_without_losing_old_alias() 
 
 
 async def test_saving_same_alias_is_idempotent() -> None:
-    old = DocumentAlias(alias="eng-onboarding", file_id="file-1", created_by=_user().id)
+    old = DocumentAlias(alias="eng-onboarding", file_id="file-1")
     session = _Session(active=old)
 
     result = await _service(session, _Files()).save(FileId("file-1"), "eng-onboarding")
@@ -360,7 +347,7 @@ async def test_folder_cannot_receive_a_document_alias() -> None:
 
 
 async def test_retire_is_idempotent_and_preserves_tombstone() -> None:
-    row = DocumentAlias(alias="eng-onboarding", file_id="file-1", created_by=_user().id)
+    row = DocumentAlias(alias="eng-onboarding", file_id="file-1")
     session = _Session(active=row)
     service = _service(session, _Files())
 
@@ -379,12 +366,8 @@ async def test_retire_is_idempotent_and_preserves_tombstone() -> None:
 
 
 async def test_recent_bulk_resolves_once_and_omits_inaccessible_items() -> None:
-    accessible_alias = DocumentAlias(
-        alias="eng-onboarding", file_id="file-1", created_by=_user().id
-    )
-    inaccessible_alias = DocumentAlias(
-        alias="people-org-chart", file_id="file-2", created_by=_user().id
-    )
+    accessible_alias = DocumentAlias(alias="eng-onboarding", file_id="file-1")
+    inaccessible_alias = DocumentAlias(alias="people-org-chart", file_id="file-2")
     files = _Files(inaccessible_ids={FileId("file-2")})
 
     result = await _service(

@@ -1,19 +1,24 @@
 from __future__ import annotations
 
 import asyncio
+from datetime import UTC, datetime
 import os
 from pathlib import Path
 import subprocess
 import sys
 import uuid
 
-from sqlalchemy import text
+import pytest
+from sqlalchemy import ARRAY, Column, DateTime, Integer, MetaData, Table, insert, select, text
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from app.extras.schemas import FolderIconWrite, PreferencesWrite, SortOrderWrite
 from app.extras.service import PostgresExtrasService
 from app.identifiers import DriveId, FileId
+from app.mcp.native_admission import PostgresRegistrationAdmission, RegistrationAdmissionDeniedError
+from app.models.mcp_oauth import MCPOAuthEntry
 from app.models.user import User
+from app.models.wiki import CacheEntry
 from tests.test_task_source_dedupe_postgres import _qa_engine
 
 
@@ -98,8 +103,32 @@ async def test_upgrade_preserves_settings_tokens_and_concurrent_user_edits() -> 
                     },
                 ],
             )
+            admission = Table(
+                "mcp_registration_admission",
+                MetaData(),
+                Column("id", Integer),
+                Column("admitted_at", ARRAY(DateTime(timezone=True))),
+            )
+            await db.execute(insert(admission).values(id=1, admitted_at=[datetime.now(UTC)] * 10))
+            await db.execute(
+                insert(MCPOAuthEntry).values(
+                    collection="mcp-authorization-codes",
+                    key_digest="old-proxy",
+                    ciphertext="retired",
+                )
+            )
+            await db.execute(
+                insert(CacheEntry).values(
+                    namespace="drive.list",
+                    key="legacy",
+                    value={},
+                    expires_at=datetime.now(UTC).replace(year=2030),
+                )
+            )
         await asyncio.to_thread(_upgrade, dsn, "head")
         sessions = async_sessionmaker(engine, expire_on_commit=False)
+        with pytest.raises(RegistrationAdmissionDeniedError):
+            await PostgresRegistrationAdmission(sessions).admit()
         async with sessions() as db:
             user = await db.get(User, owner)
             default_user = await db.get(User, other)
@@ -123,13 +152,15 @@ async def test_upgrade_preserves_settings_tokens_and_concurrent_user_edits() -> 
                 == "unchanged ciphertext"
             )
             assert await db.scalar(text("SELECT count(*) FROM tasks")) == 1
+            assert list(await db.scalars(select(MCPOAuthEntry.collection))) == ["native:code"]
+            assert list(await db.scalars(select(CacheEntry.namespace))) == ["mcp.registration"]
             assert (
                 await db.scalar(
                     text(
                         "SELECT count(*) FROM information_schema.tables WHERE table_schema='public' AND table_type='BASE TABLE'"
                     )
                 )
-                == 13
+                == 12
             )
 
         async def write(index: int) -> None:

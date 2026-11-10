@@ -32,11 +32,11 @@ from app.mcp.native_runtime import create_native_runtime
 from app.mcp.native_state import NativeStateStore
 from app.mcp.protection import OAuthStateProtector
 from app.mcp.redirect_policy import McpRedirectPolicy
-from app.mcp.storage import PostgresOAuthStorage
+from app.mcp.storage import PostgresOAuthOperations
 from app.models.mcp_grant import McpGrant
 from app.models.mcp_oauth import MCPOAuthEntry
-from app.models.mcp_registration_admission import McpRegistrationAdmission
 from app.models.user import User
+from app.models.wiki import CacheEntry
 from app.tasks.queue import TaskEnqueuer
 
 
@@ -212,7 +212,7 @@ async def runtime(
         (Fernet.generate_key().decode(),), lock_key=Fernet.generate_key().decode()
     )
     core = NativeOAuthCore(
-        PostgresOAuthStorage(sessions, protector),
+        PostgresOAuthOperations(sessions, protector),
         NativeStateStore(protector),
         _RESOURCE,
         issuer=_ISSUER,
@@ -239,7 +239,7 @@ async def runtime(
     try:
         async with engine.begin() as connection:
             await connection.execute(CreateSchema(schema))
-            for model in (User, McpGrant, MCPOAuthEntry, McpRegistrationAdmission):
+            for model in (User, McpGrant, MCPOAuthEntry, CacheEntry):
                 table = model.__table__
                 assert isinstance(table, Table)
                 await connection.run_sync(table.create)

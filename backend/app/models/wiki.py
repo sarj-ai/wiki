@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from datetime import datetime
-import uuid
 
 from sqlalchemy import CheckConstraint, DateTime, ForeignKey, Index, Text, text
 from sqlalchemy.dialects.postgresql import JSONB, UUID
@@ -14,12 +13,15 @@ from app.identifiers import DriveId, FileId, TaskId, UserId
 class CacheEntry(Base):
     __tablename__ = "cache_entries"
     __table_args__ = (
-        Index("ix_cache_entries_expires_at", "expires_at"),
-        Index(
-            "ix_cache_entries_legacy_namespace",
-            "namespace",
-            postgresql_where=text(r"key !~ '^h[0-9]+\.'"),
+        CheckConstraint(
+            """namespace <> 'mcp.registration' OR
+        (key = 'global' AND CASE WHEN jsonb_typeof(value) = 'array' THEN
+          jsonb_array_length(value) <= 300 AND
+          NOT jsonb_path_exists(value, '$[*] ? (@.type() != "string")')
+        ELSE false END)""",
+            name="ck_cache_registration_history",
         ),
+        Index("ix_cache_entries_expires_at", "expires_at"),
     )
 
     namespace: Mapped[str] = mapped_column(Text, primary_key=True)
@@ -86,33 +88,8 @@ class DocumentAlias(Base):
             unique=True,
             postgresql_where=text("retired_at IS NULL"),
         ),
-        Index(
-            "ix_document_aliases_created_by",
-            "created_by",
-            postgresql_where=text("created_by IS NOT NULL"),
-        ),
-        Index(
-            "ix_document_aliases_retired_by",
-            "retired_by",
-            postgresql_where=text("retired_by IS NOT NULL"),
-        ),
     )
 
     alias: Mapped[str] = mapped_column(Text, primary_key=True)
     file_id: Mapped[FileId] = mapped_column(Text, nullable=False)
-    created_by: Mapped[uuid.UUID | None] = mapped_column(
-        UUID(as_uuid=True),
-        ForeignKey("users.id", ondelete="SET NULL"),
-        nullable=True,
-    )
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True),
-        nullable=False,
-        server_default=text("now()"),
-    )
-    retired_by: Mapped[uuid.UUID | None] = mapped_column(
-        UUID(as_uuid=True),
-        ForeignKey("users.id", ondelete="SET NULL"),
-        nullable=True,
-    )
     retired_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

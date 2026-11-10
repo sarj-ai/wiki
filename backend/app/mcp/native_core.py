@@ -32,7 +32,7 @@ from app.mcp.native_state import (
 )
 from app.mcp.native_state_port import NativeStatePort
 from app.mcp.schemas import McpCapability
-from app.mcp.storage import PostgresOAuthStorage
+from app.mcp.storage import PostgresOAuthOperations
 from app.models.mcp_grant import McpGrant, McpGrantId
 from app.models.user import User
 
@@ -62,7 +62,7 @@ def native_errors[**P, T](method: Callable[P, Awaitable[T]]) -> Callable[P, Awai
 class NativeOAuthCore:
     def __init__(
         self,
-        operations: PostgresOAuthStorage,
+        operations: PostgresOAuthOperations,
         state: NativeStatePort,
         resource: str,
         *,

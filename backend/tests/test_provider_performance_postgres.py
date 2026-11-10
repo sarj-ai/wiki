@@ -103,7 +103,9 @@ async def provider_database() -> AsyncGenerator[_ProviderDatabase]:
     finally:
         await CachePSqlService(sessions).delete(CacheNamespace.DRIVE_LIST, str(owner))
         async with sessions() as db:
-            await db.execute(delete(DocumentAlias).where(DocumentAlias.created_by == owner))
+            await db.execute(
+                delete(DocumentAlias).where(DocumentAlias.file_id == f"provider-file-{owner}")
+            )
             await db.execute(delete(User).where(User.id == owner))
             await db.commit()
         await engine.dispose()
@@ -226,7 +228,7 @@ async def test_alias_reads_release_connection_before_provider_cache_checkout(
     suffix = "".join(chr(ord("a") + byte % 26) for byte in provider_database.owner.bytes)
     alias = f"perf-{suffix[:8]}-{suffix[8:]}"
     async with provider_database.sessions() as db:
-        db.add(DocumentAlias(alias=alias, file_id=file_id, created_by=provider_database.owner))
+        db.add(DocumentAlias(alias=alias, file_id=file_id))
         await db.commit()
 
     async with provider_database.sessions() as db:
@@ -234,7 +236,7 @@ async def test_alias_reads_release_connection_before_provider_cache_checkout(
         assert user is not None
         drive = _OfflineDrive(user, CachePSqlService(provider_database.sessions))
         service = PostgresAliasService(
-            db=db, files=_OfflineFiles(user=user, drive=drive), user=user, drive=drive
+            db=db, files=_OfflineFiles(user=user, drive=drive), drive=drive
         )
         if recent:
             result = await asyncio.wait_for(service.resolve_recent([alias]), timeout=2)

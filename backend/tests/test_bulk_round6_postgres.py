@@ -55,7 +55,9 @@ async def bulk_database() -> AsyncGenerator[BulkDatabase]:
         yield BulkDatabase(engine, sessions, user)
     finally:
         async with sessions() as db:
-            await db.execute(delete(DocumentAlias).where(DocumentAlias.created_by == user.id))
+            await db.execute(
+                delete(DocumentAlias).where(DocumentAlias.file_id.startswith(f"{user.id}-"))
+            )
             await db.execute(delete(User).where(User.id == user.id))
             await db.commit()
         await engine.dispose()
@@ -86,7 +88,6 @@ async def test_recent_alias_array_read_preserves_order_retirement_scope_and_fres
         DocumentAlias(
             alias=f"bulk-{label}",
             file_id=FileId(f"{bulk_database.user.id}-{label}"),
-            created_by=bulk_database.user.id,
             retired_at=datetime.now(UTC) if label == "retired" else None,
         )
         for label in labels
@@ -147,7 +148,6 @@ async def test_recent_alias_array_read_preserves_order_retirement_scope_and_fres
         service = PostgresAliasService(
             db=db,
             files=ReleasedAliasFiles(provider, drive, bulk_database, db),
-            user=bulk_database.user,
             drive=drive,
         )
         event.listen(bulk_database.engine.sync_engine, "before_cursor_execute", record)
