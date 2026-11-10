@@ -5,7 +5,7 @@ const GOOGLE_PREVIEW =
 const SHEET_TAB_PREVIEW =
   /^https:\/\/docs\.google\.com\/spreadsheets\/d\/[A-Za-z0-9_-]{1,128}\/preview#gid=[0-9]{1,10}$/u;
 const GOOGLE_EXPORT =
-  /^https:\/\/docs\.google\.com\/(?:document\/d\/[A-Za-z0-9_-]{1,128}\/export\?format=docx|spreadsheets\/d\/[A-Za-z0-9_-]{1,128}\/export\?format=xlsx|presentation\/d\/[A-Za-z0-9_-]{1,128}\/export\/pptx)$/u;
+  /^https:\/\/docs\.google\.com\/(?:document\/d\/[A-Za-z0-9_-]{1,128}\/export\?format=docx(?:&tab=t\.0)?|spreadsheets\/d\/[A-Za-z0-9_-]{1,128}\/export\?format=xlsx|presentation\/d\/[A-Za-z0-9_-]{1,128}\/export\/pptx)$/u;
 const DRIVE_DOWNLOAD =
   /^https:\/\/drive\.google\.com\/uc\?(?:export=download&id=[A-Za-z0-9_-]{1,128}|id=[A-Za-z0-9_-]{1,128}&export=download)$/u;
 const DRIVE_VIEW =
