@@ -14,7 +14,7 @@
     "build:worker": "opennextjs-cloudflare build",
     "deploy": "wrangler deploy",
     "start": "next start",
-    "lint": "npm --prefix .. run lint",
+    "lint": "npm --prefix .. run lint -- frontend",
     "format": "oxfmt",
     "format:check": "oxfmt --check",
     "generate:api": "openapi-ts && node scripts/patch-generated.ts && node scripts/format-generated.ts",
