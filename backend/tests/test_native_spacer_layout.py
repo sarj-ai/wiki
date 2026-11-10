@@ -333,7 +333,9 @@ def test_ambiguous_spacers_never_produce_padding_rules(change: str) -> None:
     )
 
 
-@pytest.mark.parametrize("tamper", ["none", "missing", "digest", "old_version", "older_version"])
+@pytest.mark.parametrize(
+    "tamper", ["none", "missing", "digest", "previous_version", "old_version", "older_version"]
+)
 async def test_spacer_checkpoint_recomputes_proof_before_replay(tamper: str) -> None:
     gateway = _Gateway(_snapshot(_spaced_document()))
     store = _CopyCheckpointStore()
@@ -348,16 +350,16 @@ async def test_spacer_checkpoint_recomputes_proof_before_replay(tamper: str) -> 
         operation_id=task_id, request=request
     )
     checkpoint = store.checkpoints[-1]
-    assert checkpoint.request_builder_version == "google-docs-requests-v28"
+    assert checkpoint.request_builder_version == "google-docs-requests-v29"
     assert checkpoint.pagination[0].below_spacer_sha256 is not None
-    if tamper in {"old_version", "older_version"}:
+    if tamper in {"previous_version", "old_version", "older_version"}:
         checkpoint = checkpoint.model_copy(
             update={
-                "request_builder_version": (
-                    "google-docs-requests-v26"
-                    if tamper == "old_version"
-                    else "google-docs-requests-v21"
-                )
+                "request_builder_version": {
+                    "previous_version": "google-docs-requests-v28",
+                    "old_version": "google-docs-requests-v26",
+                    "older_version": "google-docs-requests-v21",
+                }[tamper]
             }
         )
     elif tamper != "none":
