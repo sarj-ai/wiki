@@ -17,6 +17,7 @@ from app.document_transform.unslop import (
     UnslopCandidate,
     editorial_quality,
     expanded_deletion_span,
+    reassigned_document_writing_action,
     scan_unslop_candidates,
     without_editorial_framing,
 )
@@ -75,6 +76,7 @@ REPAIRABLE_REWRITE_CODES = frozenset(
         "empty_replacement",
         "semantic_review_rejected",
         "scope_qualifier_changed",
+        "document_writing_actor_changed",
     }
 )
 
@@ -215,6 +217,8 @@ def _same_retained_values(before: list[str], after: list[str], *, allow_reorderi
 
 
 def _aggressive_unslop_code(block: TextBlock, replacement: str) -> str | None:
+    if reassigned_document_writing_action(block.text, replacement):
+        return "document_writing_actor_changed"
     if Counter(_scope_qualifiers(block.text)) != Counter(_scope_qualifiers(replacement)):
         return "scope_qualifier_changed"
     if _quoted_spans(block.text) != _quoted_spans(replacement):
