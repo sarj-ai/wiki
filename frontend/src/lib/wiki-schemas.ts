@@ -36,7 +36,7 @@ function toDriveNode(n: z.infer<typeof zDriveNode>) {
   };
 }
 
-function toFileResponse(f: z.infer<typeof zFileResponse>) {
+export function toFileResponse(f: z.infer<typeof zFileResponse>) {
   return {
     canEdit: f["can_edit"],
     driveId: f["drive_id"] ?? undefined,
