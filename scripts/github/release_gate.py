@@ -18,7 +18,7 @@ import typer
 type JsonValue = str | int | bool | list[JsonValue] | dict[str, JsonValue] | None
 type JsonObject = dict[str, JsonValue]
 type Fetch = Callable[[str], JsonObject]
-REPOSITORY = "sarj-ai/wiki-internal"
+REPOSITORY = "sarj-ai/wiki"
 REPOSITORY_ID = 1183627122
 GITHUB_ACTIONS_APP_ID = 15368
 MAX_RESPONSE_BYTES = 2_000_000

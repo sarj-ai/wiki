@@ -1,0 +1,140 @@
+{
+  "schema": 1,
+  "guards": [
+    {
+      "path": "terraform/variables.tf",
+      "owner": [
+        "variable",
+        "cache_fernet_key_generation"
+      ],
+      "kind": "validation",
+      "shape": "[\"validation\",[],[[\"condition\",[\"var.cache_fernet_key_generation\",\">=\",\"1\",\"&&\",\"floor\",\"(\",\"var.cache_fernet_key_generation\",\")\",\"==\",\"var.cache_fernet_key_generation\"]],[\"error_message\",[\"\\\"cache_fernet_key_generation must be a positive integer.\\\"\"]]],[]]"
+    },
+    {
+      "path": "terraform/variables.tf",
+      "owner": [
+        "variable",
+        "provision_mcp_native_secrets"
+      ],
+      "kind": "validation",
+      "shape": "[\"validation\",[],[[\"condition\",[\"(\",\"var.provision_mcp_native_secrets\",\"==\",\"(\",\"var.mcp_native_fernet_keys\",\"!=\",\"null\",\")\",\"&&\",\"var.provision_mcp_native_secrets\",\"==\",\"(\",\"var.mcp_native_lock_key\",\"!=\",\"null\",\")\",\")\"]],[\"error_message\",[\"\\\"Set both native MCP secret values exactly when provision_mcp_native_secrets is true.\\\"\"]]],[]]"
+    },
+    {
+      "path": "terraform/variables.tf",
+      "owner": [
+        "variable",
+        "enable_mcp_native"
+      ],
+      "kind": "validation",
+      "shape": "[\"validation\",[],[[\"condition\",[\"!\",\"var.enable_mcp_native\",\"||\",\"var.provision_mcp_native_secrets\"]],[\"error_message\",[\"\\\"enable_mcp_native requires provision_mcp_native_secrets so both independent key references are present.\\\"\"]]],[]]"
+    },
+    {
+      "path": "terraform/variables.tf",
+      "owner": [
+        "variable",
+        "mcp_native_fernet_keys"
+      ],
+      "kind": "validation",
+      "shape": "[\"validation\",[],[[\"condition\",[\"var.mcp_native_fernet_keys\",\"==\",\"null\",\"||\",\"try\",\"(\",\"trimspace\",\"(\",\"var.mcp_native_fernet_keys\",\")\",\"!=\",\"\\\"\\\"\",\",\",\"false\",\")\"]],[\"error_message\",[\"\\\"mcp_native_fernet_keys must be null or non-empty.\\\"\"]]],[]]"
+    },
+    {
+      "path": "terraform/variables.tf",
+      "owner": [
+        "variable",
+        "mcp_native_fernet_keys_generation"
+      ],
+      "kind": "validation",
+      "shape": "[\"validation\",[],[[\"condition\",[\"var.mcp_native_fernet_keys_generation\",\">=\",\"1\",\"&&\",\"floor\",\"(\",\"var.mcp_native_fernet_keys_generation\",\")\",\"==\",\"var.mcp_native_fernet_keys_generation\"]],[\"error_message\",[\"\\\"mcp_native_fernet_keys_generation must be a positive integer.\\\"\"]]],[]]"
+    },
+    {
+      "path": "terraform/variables.tf",
+      "owner": [
+        "variable",
+        "mcp_native_lock_key"
+      ],
+      "kind": "validation",
+      "shape": "[\"validation\",[],[[\"condition\",[\"var.mcp_native_lock_key\",\"==\",\"null\",\"||\",\"try\",\"(\",\"trimspace\",\"(\",\"var.mcp_native_lock_key\",\")\",\"!=\",\"\\\"\\\"\",\",\",\"false\",\")\"]],[\"error_message\",[\"\\\"mcp_native_lock_key must be null or non-empty.\\\"\"]]],[]]"
+    },
+    {
+      "path": "terraform/variables.tf",
+      "owner": [
+        "variable",
+        "mcp_native_lock_key_generation"
+      ],
+      "kind": "validation",
+      "shape": "[\"validation\",[],[[\"condition\",[\"var.mcp_native_lock_key_generation\",\">=\",\"1\",\"&&\",\"floor\",\"(\",\"var.mcp_native_lock_key_generation\",\")\",\"==\",\"var.mcp_native_lock_key_generation\"]],[\"error_message\",[\"\\\"mcp_native_lock_key_generation must be a positive integer.\\\"\"]]],[]]"
+    },
+    {
+      "path": "terraform/variables.tf",
+      "owner": [
+        "variable",
+        "github_repository_id"
+      ],
+      "kind": "validation",
+      "shape": "[\"validation\",[],[[\"condition\",[\"can\",\"(\",\"regex\",\"(\",\"\\\"^[1-9][0-9]*$\\\"\",\",\",\"var.github_repository_id\",\")\",\")\"]],[\"error_message\",[\"\\\"github_repository_id must be a positive numeric GitHub repository ID.\\\"\"]]],[]]"
+    },
+    {
+      "path": "terraform/variables.tf",
+      "owner": [
+        "variable",
+        "github_repository_owner_id"
+      ],
+      "kind": "validation",
+      "shape": "[\"validation\",[],[[\"condition\",[\"can\",\"(\",\"regex\",\"(\",\"\\\"^[1-9][0-9]*$\\\"\",\",\",\"var.github_repository_owner_id\",\")\",\")\"]],[\"error_message\",[\"\\\"github_repository_owner_id must be a positive numeric GitHub owner ID.\\\"\"]]],[]]"
+    },
+    {
+      "path": "terraform/variables.tf",
+      "owner": [
+        "variable",
+        "document_transform_qa_image"
+      ],
+      "kind": "validation",
+      "shape": "[\"validation\",[],[[\"condition\",[\"(\",\"!\",\"var.enable_document_transform_qa_job\",\"||\",\"(\",\"var.document_transform_qa_image\",\"!=\",\"null\",\"&&\",\"can\",\"(\",\"regex\",\"(\",\"\\\"^${var.dammam_region}-docker[.]pkg[.]dev/${var.project_id}/sarj-docs-dammam/document-transform-qa@sha256:[0-9a-f]{64}$\\\"\",\",\",\"var.document_transform_qa_image\",\",\",\")\",\")\",\")\",\")\"]],[\"error_message\",[\"\\\"Enabled document-transform QA requires the exact sarj-docs-dammam/document-transform-qa repository digest.\\\"\"]]],[]]"
+    },
+    {
+      "path": "terraform/variables.tf",
+      "owner": [
+        "variable",
+        "document_transform_qa_release_sha"
+      ],
+      "kind": "validation",
+      "shape": "[\"validation\",[],[[\"condition\",[\"(\",\"!\",\"var.enable_document_transform_qa_job\",\"||\",\"(\",\"var.document_transform_qa_release_sha\",\"!=\",\"null\",\"&&\",\"can\",\"(\",\"regex\",\"(\",\"\\\"^[0-9a-f]{40}$\\\"\",\",\",\"var.document_transform_qa_release_sha\",\")\",\")\",\")\",\")\"]],[\"error_message\",[\"\\\"Enabled document-transform QA requires an exact 40-character release SHA.\\\"\"]]],[]]"
+    },
+    {
+      "path": "terraform/variables.tf",
+      "owner": [
+        "variable",
+        "document_transform_qa_operator_emails"
+      ],
+      "kind": "validation",
+      "shape": "[\"validation\",[],[[\"condition\",[\"(\",\"local.document_transform_qa_job_disabled\",\"||\",\"length\",\"(\",\"var.document_transform_qa_operator_emails\",\")\",\">\",\"0\",\")\"]],[\"error_message\",[\"\\\"Enabled document-transform QA requires at least one exact lowercase sarj.ai operator.\\\"\"]]],[]]"
+    },
+    {
+      "path": "terraform/variables.tf",
+      "owner": [
+        "variable",
+        "document_transform_qa_operator_emails"
+      ],
+      "kind": "validation",
+      "shape": "[\"validation\",[],[[\"condition\",[\"(\",\"local.document_transform_qa_job_disabled\",\"||\",\"alltrue\",\"(\",\"[\",\"for\",\"email\",\"in\",\"var.document_transform_qa_operator_emails\",\":\",\"can\",\"(\",\"regex\",\"(\",\"\\\"^[a-z0-9.!#$%&'*+/=?^_`{|}~-]+@sarj[.]ai$\\\"\",\",\",\"email\",\")\",\")\",\"]\",\")\",\")\"]],[\"error_message\",[\"\\\"Enabled document-transform QA requires at least one exact lowercase sarj.ai operator.\\\"\"]]],[]]"
+    },
+    {
+      "path": "terraform/variables.tf",
+      "owner": [
+        "variable",
+        "document_transform_qa_operator_emails"
+      ],
+      "kind": "validation",
+      "shape": "[\"validation\",[],[[\"condition\",[\"(\",\"local.document_transform_qa_job_disabled\",\"||\",\"alltrue\",\"(\",\"[\",\"for\",\"email\",\"in\",\"var.document_transform_qa_operator_emails\",\":\",\"email\",\"==\",\"lower\",\"(\",\"email\",\")\",\"]\",\")\",\")\"]],[\"error_message\",[\"\\\"Enabled document-transform QA requires at least one exact lowercase sarj.ai operator.\\\"\"]]],[]]"
+    },
+    {
+      "path": "terraform/variables.tf",
+      "owner": [
+        "variable",
+        "document_transform_qa_corpus_source_folder_id"
+      ],
+      "kind": "validation",
+      "shape": "[\"validation\",[],[[\"condition\",[\"var.document_transform_qa_corpus_source_folder_id\",\"==\",\"null\",\"||\",\"trimspace\",\"(\",\"var.document_transform_qa_corpus_source_folder_id\",\")\",\"!=\",\"\\\"\\\"\"]],[\"error_message\",[\"\\\"document_transform_qa_corpus_source_folder_id must be null or non-empty.\\\"\"]]],[]]"
+    }
+  ]
+}

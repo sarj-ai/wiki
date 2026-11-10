@@ -32,6 +32,8 @@ import type {
   SmartCreationPlan,
   SmartFileType,
 } from "@/lib/smart-create-types";
+import { toFileResponse } from "@/lib/wiki-schemas";
+
 const SourceSchema = z.discriminatedUnion("kind", [
   zBlankSource.strict(),
   zTemplateSource.strict(),
@@ -218,15 +220,7 @@ function parseCreateResult(
   result: z.infer<typeof CreateResultSchema>,
 ): SmartCreateResult {
   return {
-    file: {
-      canEdit: result.file.can_edit,
-      driveId: result.file.drive_id ?? undefined,
-      id: result.file.id,
-      mimeType: result.file.mime_type,
-      modifiedTime: result.file.modified_time ?? undefined,
-      name: result.file.name,
-      parentFolderId: result.file.parent_folder_id ?? undefined,
-    },
+    file: toFileResponse(result.file),
     taskId: result.task_id,
     warnings: result.warnings,
   };

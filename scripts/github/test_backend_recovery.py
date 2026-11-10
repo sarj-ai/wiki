@@ -41,7 +41,7 @@ class _ModeResolverRun:
 
 
 def receipts() -> dict:
-    repository = {"id": 1183627122, "full_name": "sarj-ai/wiki-internal"}
+    repository = {"id": 1183627122, "full_name": "sarj-ai/wiki"}
     run = {
         "id": RUN_ID,
         "workflow_id": recovery.WORKFLOW_ID,

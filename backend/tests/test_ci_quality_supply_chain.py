@@ -30,7 +30,16 @@ def test_protected_pre_commit_check_runs_every_repository_quality_gate() -> None
     ]
 
     assert "name: pre-commit (actionlint, hygiene, sarj rules)" in protected_job
-    assert "\n    if:" not in protected_job
+    assert (
+        "    needs: route-quality\n"
+        "    if: ${{ !cancelled() && (needs.route-quality.result != 'success' || "
+        "needs.route-quality.outputs.run_quality != 'false') }}\n"
+    ) in protected_job
+    for step in protected_job.split("\n      - ")[1:]:
+        if step.startswith("name: Reject lint baseline growth\n"):
+            assert "if: github.event_name == 'pull_request'" in step
+        else:
+            assert "\n        if:" not in step
     assert "continue-on-error" not in protected_job
     assert "scripts/standards_checks/check_standards.py --verify-python-baseline ." in protected_job
     assert 'WIKI_PYTHON_BASELINE_JOBS: "2"' in protected_job

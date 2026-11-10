@@ -195,12 +195,12 @@ def test_pending_run_waits_without_accepting_success() -> None:
 def context() -> dict[str, str]:
     return {
         "GITHUB_SHA": SHA,
-        "GITHUB_REPOSITORY": "sarj-ai/wiki-internal",
+        "GITHUB_REPOSITORY": "sarj-ai/wiki",
         "GITHUB_REPOSITORY_ID": "1183627122",
         "GITHUB_EVENT_NAME": "push",
         "GITHUB_REF": "refs/heads/main",
         "GITHUB_WORKFLOW_SHA": SHA,
-        "GITHUB_WORKFLOW_REF": "sarj-ai/wiki-internal/.github/workflows/deploy-backend.yml@refs/heads/main",
+        "GITHUB_WORKFLOW_REF": "sarj-ai/wiki/.github/workflows/deploy-backend.yml@refs/heads/main",
     }
 
 
@@ -211,13 +211,15 @@ def test_exact_release_context_passes() -> None:
 @pytest.mark.parametrize(
     ("repository", "repository_id"),
     [
-        ("sarj-ai/wiki-internal", 1434944257),
-        ("sarj-ai/wiki", 1183627122),
         ("sarj-ai/wiki", 1434944257),
+        ("sarj-ai/wiki-legacy", 1434944257),
+        ("sarj-ai/wiki-internal", 1183627122),
     ],
-    ids=["new-public-id", "reclaimed-public-name", "public-identity"],
+    ids=["public-mirror-id", "archived-public-repository", "old-internal-name"],
 )
-def test_public_identity_cannot_authorize_deployment(repository: str, repository_id: int) -> None:
+def test_other_repository_identities_cannot_authorize_deployment(
+    repository: str, repository_id: int
+) -> None:
     environment = context()
     environment.update(
         GITHUB_REPOSITORY=repository,

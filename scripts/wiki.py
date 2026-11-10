@@ -21,7 +21,7 @@ import typer
 
 ROOT = Path(__file__).resolve().parents[1]
 # Audit the latest repository engine independently of the immutable Standards bundle.
-REPOSITORY_STANDARDS_VERSION = "6.22.2"
+REPOSITORY_STANDARDS_VERSION = "6.22.3"
 REPOSITORY_TESTS = (
     "test_release_gate.py",
     "test_wiki_cli.py",
@@ -61,7 +61,6 @@ class Protection(StrEnum):
 class Command:
     arguments: tuple[str, ...]
     environment: tuple[tuple[str, str], ...] = ()
-    allow_failure: bool = False
 
 
 def _backend(*arguments: str) -> Command:
@@ -114,7 +113,11 @@ def _repository_checks() -> tuple[Command, ...]:
         _project("python", "backend/scripts/generate_sarj_loader.py", "--check"),
         _project("python", "scripts/repository_checks.py", "all"),
         _project(
-            "python", "-m", "pytest", "-q", *(f"scripts/github/{name}" for name in REPOSITORY_TESTS)
+            "python",
+            "-m",
+            "pytest",
+            "-q",
+            *(f"scripts/github/{name}" for name in REPOSITORY_TESTS),
         ),
     )
 
@@ -123,7 +126,13 @@ def checks(scope: Check) -> tuple[Command, ...]:
     if scope is Check.ALL:
         return tuple(
             command
-            for part in (Check.NODE, Check.QUALITY, Check.BACKEND, Check.FRONTEND, Check.IAC)
+            for part in (
+                Check.NODE,
+                Check.QUALITY,
+                Check.BACKEND,
+                Check.FRONTEND,
+                Check.IAC,
+            )
             for command in checks(part)
         )
     if scope is Check.NODE:
@@ -144,7 +153,12 @@ def checks(scope: Check) -> tuple[Command, ...]:
             _backend("ty", "check", "app"),
             _backend("vulture"),
             _backend("lint-imports"),
-            _backend("pytest", "--cov=app", "--cov-report=term-missing", "--cov-fail-under=70"),
+            _backend(
+                "pytest",
+                "--cov=app",
+                "--cov-report=term-missing",
+                "--cov-fail-under=70",
+            ),
         )
     return (
         *(
@@ -219,7 +233,7 @@ def run(commands: tuple[Command, ...]) -> None:
             check=False,
             shell=False,
         )
-        if result.returncode and not command.allow_failure:
+        if result.returncode:
             raise typer.Exit(
                 result.returncode if result.returncode > 0 else 128 - result.returncode
             )
@@ -234,7 +248,9 @@ CLI = typer.Typer(
 
 
 @CLI.command("check", help="Run all qualification gates or selected subsystems in order.")
-def check_command(scopes: Annotated[list[Check] | None, typer.Argument()] = None) -> None:
+def check_command(
+    scopes: Annotated[list[Check] | None, typer.Argument()] = None,
+) -> None:
     commands = (command for scope in scopes or [Check.ALL] for command in checks(scope))
     run(tuple(dict.fromkeys(commands)))
 
@@ -249,7 +265,9 @@ def lint_command(context: typer.Context) -> None:
 
 
 @CLI.command("standards", help="Maintain the pinned source and repository standards.")
-def standards_command(action: Annotated[Standards, typer.Argument()] = Standards.CHECK) -> None:
+def standards_command(
+    action: Annotated[Standards, typer.Argument()] = Standards.CHECK,
+) -> None:
     if action is Standards.SYNC:
         run((_standards("update", "--offline", "--no-install"),))
         return
@@ -328,7 +346,8 @@ def fix_command() -> None:
     help="Inspect or apply a reviewed policy with the native confirmation guards.",
 )
 def protection_command(
-    context: typer.Context, action: Annotated[Protection, typer.Argument()] = Protection.CHECK
+    context: typer.Context,
+    action: Annotated[Protection, typer.Argument()] = Protection.CHECK,
 ) -> None:
     run(
         (
