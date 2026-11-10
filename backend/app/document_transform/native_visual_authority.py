@@ -169,7 +169,10 @@ def _has_current_body_presentation(
 ) -> bool:
     # Format writes explicit body tokens without replacing the source Normal
     # named style. Those overrides are ordinary prose, not an authored title.
-    if parent is None or paragraph.paragraph_style.alignment != "START":
+    if parent is None or paragraph.paragraph_style.alignment not in {
+        "START",
+        CURRENT_BRAND_MANIFEST.document.body_alignment,
+    }:
         return False
     if _VisualTextStyle.model_validate(parent).model_extra:
         return False

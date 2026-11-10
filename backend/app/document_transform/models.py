@@ -3,7 +3,7 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 import asyncio
 from collections import Counter
-from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager, contextmanager
 from contextvars import ContextVar
 from dataclasses import asdict, dataclass, replace
 from datetime import timedelta
@@ -53,7 +53,7 @@ from app.performance import provider_retry_remaining_seconds
 
 
 if TYPE_CHECKING:
-    from collections.abc import AsyncGenerator, Awaitable, Callable
+    from collections.abc import AsyncGenerator, Awaitable, Callable, Generator
 
     from pydantic import JsonValue
 
@@ -124,6 +124,33 @@ _DRAFT_WORD_NUMERATOR = 4
 _DRAFT_WORD_DENOMINATOR = 5
 _ReviewContextId = NewType("_ReviewContextId", str)
 _ReviewBlockId = NewType("_ReviewBlockId", str)
+
+
+@dataclass(frozen=True, slots=True)
+class _EditorialPass:
+    original: DocumentIR
+    number: int
+
+
+_editorial_pass_var: ContextVar[_EditorialPass | None] = ContextVar(
+    "document_editorial_pass", default=None
+)
+
+
+@contextmanager
+def editorial_pass_scope(original: DocumentIR, *, number: int) -> Generator[None]:
+    token = _editorial_pass_var.set(_EditorialPass(original=original, number=number))
+    try:
+        yield
+    finally:
+        _editorial_pass_var.reset(token)
+
+
+def _original_block(block: TextBlock) -> TextBlock:
+    current_pass = _editorial_pass_var.get()
+    if current_pass is not None:
+        return next((item for item in current_pass.original.blocks if item.id == block.id), block)
+    return block
 
 
 def _response_json_schema(
@@ -464,6 +491,8 @@ class VertexGeminiPatchGenerator(PatchGenerator):
                 if repair
                 else genai_types.ThinkingLevel.LOW
             )
+        if phase is TransformPhase.UNSLOP and model in _THINKING_FALLBACK_MODELS:
+            return genai_types.ThinkingConfig(thinking_level=genai_types.ThinkingLevel.HIGH)
         if model == self._policy.fallback_model:
             if model not in _THINKING_FALLBACK_MODELS:
                 return None
@@ -1050,6 +1079,7 @@ def _prompt(
     phase: TransformPhase,
     feedback: tuple[_RepairProposal, ...] = (),
 ) -> str:
+    current_pass = _editorial_pass_var.get()
     selected = (
         model_editable_blocks(document) if phase is TransformPhase.UNSLOP else document.blocks
     )
@@ -1059,6 +1089,7 @@ def _prompt(
             "sha256": block.sha256,
             "kind": block.kind,
             "text": block.text,
+            "original_text": _original_block(block).text,
             "protected_suffix": block.protected_suffix,
             "rewrite_constraints": asdict(rewrite_constraints(block.text)),
             "concision_target": (
@@ -1071,14 +1102,18 @@ def _prompt(
     instruction = (
         "Apply the trusted system editing policy to every supplied block. "
         "Each supplied concision_target.draft_target_words and max_words is an advisory "
-        "block allocation. The complete document must retain at most 40% of its originally "
+        "block allocation. Target at most 40% of the complete document's originally "
         "eligible prose words, counting unchanged blocks too. Preserve every fact, "
         "qualification and original constraint count. Draft around every original "
         "protected_tokens entry before shortening other wording. Copy each complete entry, "
         "including any adjacent words, with its original occurrence count. Preserve each "
         "force_language and scope_qualifiers entry with its original predicate or object "
         "and occurrence count, including empty lists. Count the completed candidate's "
-        "eligible prose words before returning. protected_suffix is excluded from the word count."
+        "eligible prose words before returning. protected_suffix is excluded from the word count. "
+        "original_text is the factual baseline; text is the current draft. Targets always refer "
+        "to the original, never to a repeatedly shrinking denominator. Shorten the current "
+        "draft further and replace remaining passive voice with active verbs. Return the "
+        "current draft unchanged only when no shorter or more direct faithful wording remains."
         if phase is TransformPhase.UNSLOP
         else "Formatting preserves every character of the author's text, including whitespace "
         'and punctuation. Do not propose text replacements. Return {"patches":[]}; '
@@ -1086,7 +1121,10 @@ def _prompt(
     )
     return "\n".join(
         (
-            "You are a precise content editor.",
+            "You are a ruthless, precise content editor.",
+            f"Editorial pass {current_pass.number}."
+            if current_pass is not None
+            else "Initial editorial pass.",
             instruction,
             _batch_concision_instruction(selected, phase=phase),
             (
@@ -1136,7 +1174,7 @@ def _batch_concision_instruction(selected: tuple[TextBlock, ...], *, phase: Tran
     targets = tuple(
         target
         for block in selected
-        if block.editable and (target := concision_target(block)) is not None
+        if block.editable and (target := concision_target(_original_block(block))) is not None
     )
     if not targets:
         return ""
@@ -1147,13 +1185,13 @@ def _batch_concision_instruction(selected: tuple[TextBlock, ...], *, phase: Tran
         "words. Redistribute that advisory allocation among these blocks as their "
         "facts require; a dense block may exceed its allocation. This batch may be "
         "only part of the document. Its draft allocation adds no separate safety "
-        "limit: the complete document's 40% limit remains strict, with unchanged "
+        "limit: the complete document's 40% target remains anchored to the original, with unchanged "
         "and rejected blocks counted at their retained length."
     )
 
 
 def _concision_metadata(block: TextBlock) -> dict[str, int] | None:
-    target = concision_target(block)
+    target = concision_target(_original_block(block))
     if target is None:
         return None
     return {

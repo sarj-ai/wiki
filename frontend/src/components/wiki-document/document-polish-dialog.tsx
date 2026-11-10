@@ -70,19 +70,19 @@ import { DocumentPolishRecovery } from "./document-polish-recovery";
 
 const MODES = [
   {
-    description: "Shorten the writing and refine the layout.",
+    description: "Cut word count, use active voice, and format the document.",
     icon: Sparkles,
     label: "Both",
     value: "both",
   },
   {
-    description: "Refine the layout; keep wording unchanged.",
+    description: "Justify body text and format headings, lists, and tables.",
     icon: Paintbrush,
     label: "Format",
     value: "format",
   },
   {
-    description: "Cut filler and repetition; preserve meaning.",
+    description: "Rewrite for brevity and active voice; preserve facts.",
     icon: BrushCleaning,
     label: "Unslop",
     value: "unslop",

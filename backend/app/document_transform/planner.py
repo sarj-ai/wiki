@@ -1,13 +1,19 @@
 from __future__ import annotations
 
+from contextlib import suppress
 from dataclasses import dataclass, replace
 
-from app.document_transform.errors import ConcisionTargetUnmetError, ModelUnavailableError
+from app.document_transform.errors import ModelUnavailableError
 from app.document_transform.ir import BlockKind, DocumentIR
-from app.document_transform.models import PatchGenerator, model_phase_review_scope
+from app.document_transform.models import (
+    PatchGenerator,
+    editorial_pass_scope,
+    model_phase_review_scope,
+)
 from app.document_transform.safety import REPAIRABLE_REWRITE_CODES, PatchDecision, validate_patches
 from app.document_transform.schemas import (
     DocumentTransformRequest,
+    FindingSeverity,
     TextPatch,
     TransformFinding,
     TransformMode,
@@ -16,6 +22,7 @@ from app.document_transform.schemas import (
 from app.document_transform.unslop import (
     CONCISION_WORD_DENOMINATOR,
     CONCISION_WORD_NUMERATOR,
+    MAX_EDITORIAL_PASSES,
     MAX_MODEL_EDITABLE_BLOCK_CHARS,
     ConcisionTarget,
     UnslopCandidate,
@@ -25,6 +32,11 @@ from app.document_transform.unslop import (
     prose_word_count,
     scan_unslop_candidates,
 )
+from app.performance import provider_retry_remaining_seconds
+
+
+# Further passes are optional; retain time for a complete factual review and write.
+_MIN_REFINEMENT_SECONDS = 180
 
 
 @dataclass(frozen=True, slots=True)
@@ -100,10 +112,15 @@ class TextTransformPlanner:
         generator: PatchGenerator,
         allow_format_text_edits: bool = False,
         allow_unslop_model: bool = False,
+        max_editorial_passes: int = MAX_EDITORIAL_PASSES,
     ) -> None:
+        if not 1 <= max_editorial_passes <= MAX_EDITORIAL_PASSES:
+            msg = "Editorial passes must be between 1 and 100"
+            raise ValueError(msg)
         self._generator = generator
         self._allow_format_text_edits = allow_format_text_edits
         self._allow_unslop_model = allow_unslop_model
+        self._max_editorial_passes = max_editorial_passes
 
     async def transform(
         self,
@@ -126,13 +143,8 @@ class TextTransformPlanner:
             outcome = _merge_outcomes(outcome, _deterministic_unslop(original))
             if self._allow_unslop_model:
                 if model_editable_blocks(outcome.document):
-                    outcome = _merge_outcomes(
-                        outcome,
-                        await self._model_phase(
-                            outcome.document,
-                            phase=TransformPhase.UNSLOP,
-                            concision_source=concision_source,
-                        ),
+                    outcome = await self._refine_unslop(
+                        outcome, original=original, concision_source=concision_source
                     )
             else:
                 outcome = replace(
@@ -142,11 +154,53 @@ class TextTransformPlanner:
             if self._allow_unslop_model and _document_concision_findings(
                 concision_source, outcome.document
             ):
-                raise ConcisionTargetUnmetError
+                outcome = replace(
+                    outcome,
+                    findings=outcome.findings
+                    + tuple(
+                        finding.model_copy(update={"severity": FindingSeverity.INFORMATIONAL})
+                        for finding in _document_concision_findings(
+                            concision_source, outcome.document
+                        )
+                    ),
+                )
         if request.mode is not TransformMode.UNSLOP and self._allow_format_text_edits:
             outcome = _merge_outcomes(
                 outcome, await self._model_phase(outcome.document, phase=TransformPhase.FORMAT)
             )
+        return outcome
+
+    async def _refine_unslop(
+        self,
+        outcome: TransformOutcome,
+        *,
+        original: DocumentIR,
+        concision_source: DocumentIR,
+    ) -> TransformOutcome:
+        for number in range(1, self._max_editorial_passes + 1):
+            remaining = provider_retry_remaining_seconds()
+            if number > 1 and remaining is not None and remaining < _MIN_REFINEMENT_SECONDS:
+                break
+            try:
+                with editorial_pass_scope(original, number=number):
+                    following = await self._model_phase(
+                        outcome.document,
+                        phase=TransformPhase.UNSLOP,
+                        concision_source=concision_source,
+                        fidelity_source=original,
+                    )
+            except ModelUnavailableError:
+                if number == 1:
+                    raise
+                break
+            if following.document.text_sha256 == outcome.document.text_sha256:
+                # A rejected optional attempt must not invalidate a reviewed draft.
+                if number == 1:
+                    outcome = _merge_outcomes(outcome, following)
+                break
+            outcome = _merge_refinement(outcome, following)
+            if not model_editable_blocks(outcome.document):
+                break
         return outcome
 
     @model_phase_review_scope()
@@ -156,27 +210,26 @@ class TextTransformPlanner:
         *,
         phase: TransformPhase,
         concision_source: DocumentIR | None = None,
+        fidelity_source: DocumentIR | None = None,
     ) -> TransformOutcome:
         patches = await self._generator.generate(document, phase=phase)
         aggressive = phase is TransformPhase.UNSLOP and self._allow_unslop_model
         decision = validate_patches(document, patches, phase=phase, aggressive_unslop=aggressive)
         if aggressive and decision.accepted:
-            decision = await self._review_rewrites(document, decision)
+            decision = await self._review_rewrites(
+                document, decision, fidelity_source=fidelity_source
+            )
         feedback = decision.findings
         if aggressive and concision_source is not None:
             feedback += _document_concision_findings(
                 concision_source, document.replace_blocks(decision.accepted)
             )
         if aggressive and feedback:
-            try:
+            # An optional repair outage must not discard an independently reviewed draft.
+            with suppress(ModelUnavailableError):
                 decision = await self._repair_rewrites(
-                    document, patches, decision, feedback=feedback
+                    document, patches, decision, feedback=feedback, fidelity_source=fidelity_source
                 )
-            except ModelUnavailableError:
-                if concision_source is not None and _document_concision_findings(
-                    concision_source, document.replace_blocks(decision.accepted)
-                ):
-                    raise
         count = len(decision.accepted)
         return TransformOutcome(
             document=document.replace_blocks(decision.accepted),
@@ -194,6 +247,7 @@ class TextTransformPlanner:
         decision: PatchDecision,
         *,
         feedback: tuple[TransformFinding, ...],
+        fidelity_source: DocumentIR | None = None,
     ) -> PatchDecision:
         repair_ids = {
             finding.block_id for finding in feedback if finding.code in REPAIRABLE_REWRITE_CODES
@@ -205,7 +259,9 @@ class TextTransformPlanner:
         restricted = replace(
             document, blocks=tuple(block for block in document.blocks if block.id in repair_ids)
         )
-        repair = await self._attempt_repair(document, patches, feedback, restricted=restricted)
+        repair = await self._attempt_repair(
+            document, patches, feedback, restricted=restricted, fidelity_source=fidelity_source
+        )
         repaired = repair.decision
         retained_ids = _retained_approved_ids(document, decision, repaired)
         remaining = tuple(
@@ -233,6 +289,7 @@ class TextTransformPlanner:
         findings: tuple[TransformFinding, ...],
         *,
         restricted: DocumentIR,
+        fidelity_source: DocumentIR | None = None,
     ) -> _ReviewedRepair:
         proposals = await self._generator.repair(document, patches, findings)
         repaired = validate_patches(
@@ -240,23 +297,36 @@ class TextTransformPlanner:
         )
         validated_ids = frozenset(repaired.accepted)
         if repaired.accepted:
-            repaired = await self._review_rewrites(restricted, repaired)
+            repaired = await self._review_rewrites(
+                restricted, repaired, fidelity_source=fidelity_source
+            )
         return _ReviewedRepair(decision=repaired, validated_ids=validated_ids)
 
     async def _review_rewrites(
-        self, document: DocumentIR, decision: PatchDecision
+        self,
+        document: DocumentIR,
+        decision: PatchDecision,
+        *,
+        fidelity_source: DocumentIR | None = None,
     ) -> PatchDecision:
-        by_id = {block.id: block for block in document.blocks}
+        baseline = fidelity_source if fidelity_source is not None else document
+        by_id = {block.id: block for block in baseline.blocks}
         proposed = [
             TextPatch(block_id=block_id, expected_sha256=by_id[block_id].sha256, replacement=text)
             for block_id, text in decision.accepted.items()
         ]
-        verified = await self._generator.review(document, proposed)
+        literal = validate_patches(
+            baseline, proposed, phase=TransformPhase.UNSLOP, aggressive_unslop=True
+        )
+        proposed = [patch for patch in proposed if patch.block_id in literal.accepted]
+        verified = await self._generator.review(baseline, proposed)
         rejected = tuple(
             TransformFinding(
                 code="semantic_review_rejected",
                 block_id=block_id,
-                detail=verified.rejected[block_id],
+                detail=verified.rejected.get(
+                    block_id, "The rewrite changed an original constraint"
+                ),
             )
             for block_id in decision.accepted
             if block_id not in verified.approved
@@ -291,7 +361,8 @@ def _document_concision_findings(
         f"Document concision target unmet: source {target.source_words} words; "
         f"proposal {proposed_words} words; maximum {target.max_words} eligible prose words "
         "across the complete document. Unchanged and rejected blocks count at their retained "
-        "length. Local block targets are advisory; preserve every fact and qualification."
+        "length. Local block targets are advisory. Shorten further wherever faithful wording permits; never delete facts or "
+        "qualifications to satisfy a word target."
     )
     return tuple(
         TransformFinding(code="concision_target_unmet", block_id=block.id, detail=detail)
@@ -342,6 +413,26 @@ def _merge_outcomes(first: TransformOutcome, following: TransformOutcome) -> Tra
         deterministic_count=first.deterministic_count + following.deterministic_count,
         model_count=first.model_count + following.model_count,
         llm_invoked=first.llm_invoked or following.llm_invoked,
+    )
+
+
+def _merge_refinement(first: TransformOutcome, following: TransformOutcome) -> TransformOutcome:
+    changed_ids = {
+        after.id
+        for before, after in zip(first.document.blocks, following.document.blocks, strict=True)
+        if before.text != after.text
+    }
+    return _merge_outcomes(
+        replace(
+            first,
+            findings=tuple(
+                finding
+                for finding in first.findings
+                if finding.block_id not in changed_ids
+                or finding.code not in REPAIRABLE_REWRITE_CODES
+            ),
+        ),
+        following,
     )
 
 

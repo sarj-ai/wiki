@@ -3,9 +3,10 @@ import hashlib
 import json
 from typing import Any, Literal, NewType
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, JsonValue
 
-from app.document_transform.ir import MAX_DOC_TABS, DocumentIR, utf16_length
+from app.document_transform.brand_manifest import CURRENT_BRAND_MANIFEST
+from app.document_transform.ir import MAX_DOC_TABS, BlockKind, DocumentIR, TextBlock, utf16_length
 from app.identifiers import DocsTabId
 
 
@@ -38,7 +39,7 @@ def capture_paragraph_layout(
     tabs = _tabs(document)
     deltas: dict[DocsTabId, int] = {}
     result = []
-    if len(original.blocks) != len(transformed.blocks) or original.tab_ids != transformed.tab_ids:
+    if (len(original.blocks), original.tab_ids) != (len(transformed.blocks), transformed.tab_ids):
         raise ValueError
     for before, after in zip(original.blocks, transformed.blocks, strict=True):
         source = before.source_range
@@ -60,18 +61,18 @@ def capture_paragraph_layout(
             raise ValueError
         ordinal, element = matches[0]
         style = element.get("paragraph", {}).get("paragraphStyle", {})
-        if not isinstance(style, dict) or style.get("alignment") not in {
-            "CENTER",
-            "END",
-            "JUSTIFIED",
-        }:
+        if (
+            not isinstance(style, dict)
+            or style.get("alignment") not in {"CENTER", "END", "JUSTIFIED"}
+            or _managed_body_layout(before, style)
+        ):
             continue
         if (
-            source.segment_id is not None
-            or before.id != after.id
-            or before.source_range != after.source_range
-            or source.end_index - source.start_index != utf16_length(before.text)
-        ):
+            source.segment_id,
+            before.id,
+            before.source_range,
+            source.end_index - source.start_index,
+        ) != (None, after.id, after.source_range, utf16_length(before.text)):
             raise ValueError
         result.append(
             NativeParagraphLayout(
@@ -89,6 +90,28 @@ def capture_paragraph_layout(
             )
         )
     return tuple(result)
+
+
+def _managed_body_layout(block: TextBlock, style: dict[str, JsonValue]) -> bool:
+    tokens = CURRENT_BRAND_MANIFEST.document
+    return (
+        block.kind is BlockKind.PARAGRAPH
+        and block.native_named_style not in {"TITLE", "SUBTITLE"}
+        and not block.is_authored_lead_in
+        and style.get("alignment") == tokens.body_alignment
+        and style.get("lineSpacing") == tokens.line_spacing_percent
+        and _managed_dimension(style.get("spaceAbove"), tokens.paragraph_space_above_pt)
+        and _managed_dimension(style.get("spaceBelow"), tokens.paragraph_space_below_pt)
+        and style.get("keepWithNext") is False
+    )
+
+
+def _managed_dimension(value: object, magnitude: int) -> bool:
+    return (
+        isinstance(value, dict)
+        and value.get("unit") == "PT"
+        and value.get("magnitude", 0) == magnitude
+    )
 
 
 def apply_paragraph_layout(
@@ -153,15 +176,15 @@ def paragraph_layout_requests_safe(
         if "updateParagraphStyle" not in request:
             continue
         update = request["updateParagraphStyle"]
-        if not isinstance(update, dict):
+        if not isinstance(update, dict) or not isinstance(target := update.get("range"), dict):
             return False
-        target = update.get("range")
-        if not isinstance(target, dict):
-            return False
-        if target.get("segmentId"):
-            if not isinstance(target["segmentId"], str):
+        match target.get("segmentId"):
+            case None | "":
+                pass
+            case str():
+                continue
+            case _:
                 return False
-            continue
         start, end = target.get("startIndex"), target.get("endIndex")
         if type(start) is not int or type(end) is not int or start >= end:
             return False

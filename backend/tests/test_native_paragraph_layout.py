@@ -80,7 +80,8 @@ def test_exact_layout_proof_preserves_padding_and_ordinary_copy_policy(alignment
         original, original, profile=SarjBrandProfile(), headers=(), logo_uri=""
     )
     assert any(
-        item.get("updateParagraphStyle", {}).get("paragraphStyle", {}).get("alignment") == "START"
+        item.get("updateParagraphStyle", {}).get("paragraphStyle", {}).get("alignment")
+        == "JUSTIFIED"
         for item in ordinary
     )
     assert _paragraph(document)["paragraphStyle"]["spaceAbove"]["magnitude"] == 90
@@ -182,7 +183,7 @@ def test_title_subtitle_status_layout_and_ordinary_body_are_distinct() -> None:
     ]
     assert len(paragraph_requests) == 1
     assert paragraph_requests[0]["range"]["startIndex"] == 41
-    assert paragraph_requests[0]["paragraphStyle"]["alignment"] == "START"
+    assert paragraph_requests[0]["paragraphStyle"]["alignment"] == "JUSTIFIED"
     assert verify_paragraph_layout(document, proof)
     assert not paragraph_layout_requests_safe(
         [{"updateParagraphStyle": {"range": {"startIndex": 1, "endIndex": 50, "tabId": "tab-a"}}}],
@@ -431,3 +432,12 @@ async def test_layout_evidence_survives_header_creation_and_recovery(
         item.paragraph_layout == store.checkpoints[0].paragraph_layout for item in store.checkpoints
     )
     assert _paragraph(document)["paragraphStyle"] == original_style
+
+
+@pytest.mark.parametrize("omit_zero_magnitude", [False, True])
+def test_current_justified_body_is_managed_layout_on_repeat(*, omit_zero_magnitude: bool) -> None:
+    document = _branded_google_document()
+    if omit_zero_magnitude:
+        _paragraph(document)["paragraphStyle"]["spaceAbove"].pop("magnitude")
+    parsed = parse_google_document(document, title="Decision")
+    assert capture_paragraph_layout(document, parsed, parsed) == ()

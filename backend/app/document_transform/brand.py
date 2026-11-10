@@ -505,8 +505,8 @@ def _paragraph_style_request(
         "updateParagraphStyle": {
             "range": range_value,
             "paragraphStyle": {
-                "alignment": "START",
-                "lineSpacing": profile.line_spacing_percent if branded else 100,
+                "alignment": paragraph_alignment(block) if branded else "START",
+                "lineSpacing": paragraph_line_spacing(block, profile) if branded else 100,
                 "spaceAbove": {
                     "magnitude": paragraph_spacing(block, profile).above if branded else 0,
                     "unit": "PT",
@@ -659,7 +659,7 @@ def _role_paragraph_spacing(block: TextBlock, profile: SarjBrandProfile) -> Para
     if block.kind == BlockKind.HEADING:
         return ParagraphSpacing(above + below * (2 if block.level in {1, 2} else 1), below)
     if block.kind in {BlockKind.LIST_ITEM, BlockKind.CHECKLIST}:
-        return ParagraphSpacing(0, above)
+        return ParagraphSpacing(0, CURRENT_BRAND_MANIFEST.document.list_space_below_pt or above)
     if block.is_authored_lead_in:
         return ParagraphSpacing(above, above)
     return ParagraphSpacing(above, below)
@@ -667,6 +667,25 @@ def _role_paragraph_spacing(block: TextBlock, profile: SarjBrandProfile) -> Para
 
 def paragraph_named_style(block: TextBlock) -> str:
     return _named_style(block)
+
+
+def paragraph_alignment(block: TextBlock) -> str:
+    if (
+        block.kind is BlockKind.PARAGRAPH
+        and block.native_named_style not in {"TITLE", "SUBTITLE"}
+        and not block.is_authored_lead_in
+    ):
+        return CURRENT_BRAND_MANIFEST.document.body_alignment or "START"
+    return "START"
+
+
+def paragraph_line_spacing(block: TextBlock, profile: SarjBrandProfile) -> int:
+    if block.kind in {BlockKind.LIST_ITEM, BlockKind.CHECKLIST}:
+        return (
+            CURRENT_BRAND_MANIFEST.document.list_line_spacing_percent
+            or profile.line_spacing_percent
+        )
+    return profile.line_spacing_percent
 
 
 def paragraph_keep_with_next(block: TextBlock) -> bool:

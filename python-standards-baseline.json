@@ -132,7 +132,6 @@
     "SARJ528": 2
   },
   "backend/app/document_transform/native_paragraph_layout.py": {
-    "SARJ444": 2,
     "SARJ447": 12
   },
   "backend/app/document_transform/native_preservation.py": {
@@ -536,7 +535,7 @@
   "backend/tests/test_markdown_import.py": {
     "SARJ442": 4,
     "SARJ445": 1,
-    "SARJ447": 16
+    "SARJ447": 15
   },
   "backend/tests/test_markdown_native_header_title.py": {
     "SARJ445": 1,
