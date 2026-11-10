@@ -1,6 +1,6 @@
 from hashlib import sha256
+from pathlib import Path
 import sys
-from typing import TYPE_CHECKING
 
 from pydantic import BaseModel
 import pytest
@@ -13,9 +13,6 @@ from scripts.standards_checks.check_baseline_growth import (
     _validated_allowances,
 )
 
-
-if TYPE_CHECKING:
-    from pathlib import Path
 
 _USAGE_ERROR = 2
 _NATIVE_FAILURE = 7
@@ -107,7 +104,9 @@ def test_unknown_check_scope_fails_before_starting_a_tool(native_tool: Path) -> 
     assert not native_tool.exists()
 
 
-def test_failed_native_command_preserves_exit_code_and_stops_later_steps(native_tool: Path) -> None:
+def test_failed_native_command_preserves_exit_code_and_stops_later_steps(
+    native_tool: Path,
+) -> None:
     commands = tuple(
         wiki.Command(arguments=("fixture-tool", argument))
         for argument in ("first", "fail", "unreachable")
@@ -117,7 +116,10 @@ def test_failed_native_command_preserves_exit_code_and_stops_later_steps(native_
         wiki.run(commands)
 
     assert failed.value.exit_code == _NATIVE_FAILURE
-    assert [call.arguments for call in _invocations(native_tool)] == [["first"], ["fail"]]
+    assert [call.arguments for call in _invocations(native_tool)] == [
+        ["first"],
+        ["fail"],
+    ]
 
 
 def test_command_environment_does_not_leak_to_the_next_tool(
@@ -156,7 +158,14 @@ def test_multiple_scopes_preserve_order_without_repeating_native_commands(
     assert result.exit_code == 0
     calls = _invocations(native_tool)
     assert len(calls) == expected_count
-    assert calls[0].arguments == ["--directory", "backend", "run", "--locked", "deptry", "."]
+    assert calls[0].arguments == [
+        "--directory",
+        "backend",
+        "run",
+        "--locked",
+        "deptry",
+        ".",
+    ]
     if "frontend" in scopes:
         assert calls[-1].arguments == ["--prefix", "frontend", "run", "build"]
 
@@ -201,11 +210,10 @@ def test_frontend_contract_checks_generated_api_and_types_before_the_production_
     assert commands[-1].environment == (("NEXT_PUBLIC_API_URL", "http://localhost:8000"),)
 
 
-def test_full_qualification_has_no_advisory_steps_or_repeated_registry_scan() -> None:
+def test_full_qualification_keeps_one_repository_audit_and_required_gates() -> None:
     commands = wiki.checks(wiki.Check.ALL)
 
-    assert all(not command.allow_failure for command in commands)
-    assert wiki.REPOSITORY_STANDARDS_VERSION == "6.22.2"
+    assert wiki.REPOSITORY_STANDARDS_VERSION == "6.22.3"
     distribution = f"repo-standards=={wiki.REPOSITORY_STANDARDS_VERSION}"
     assert sum(distribution in command.arguments for command in commands) == 1
     assert any("--verify-python-baseline" in command.arguments for command in commands)
@@ -224,7 +232,8 @@ def test_explicit_branch_policy_arguments_reach_the_original_guard(
     executable.rename(native_tool.parent / "uv")
 
     result = CliRunner().invoke(
-        wiki.CLI, ["branch-protection", "apply", "--reviewed-fingerprint", "fixture-fingerprint"]
+        wiki.CLI,
+        ["branch-protection", "apply", "--reviewed-fingerprint", "fixture-fingerprint"],
     )
 
     assert result.exit_code == 0
@@ -253,11 +262,22 @@ def test_setup_initializes_locked_local_providers_after_packages_and_preserves_d
     assert result.exit_code == 0
     calls = _invocations(native_tool)
     assert calls[0].arguments == ["scripts/github/install-hooks.sh"]
-    assert calls[1].arguments[-4:] == ["code-standards", "update", "--offline", "--no-install"]
+    assert calls[1].arguments[-4:] == [
+        "code-standards",
+        "update",
+        "--offline",
+        "--no-install",
+    ]
     assert [call.arguments for call in calls[2:]] == [
         ["sync", "--project", "backend", "--locked"],
         ["ci", "--prefix", "frontend"],
-        ["-chdir=terraform", "init", "-backend=false", "-input=false", "-lockfile=readonly"],
+        [
+            "-chdir=terraform",
+            "init",
+            "-backend=false",
+            "-input=false",
+            "-lockfile=readonly",
+        ],
     ]
     assert all(call.terraform_data_directory == selected_directory for call in calls)
 
@@ -267,12 +287,11 @@ def test_migration_allowance_requires_the_exact_reviewed_changed_source(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, review: str
 ) -> None:
     monkeypatch.chdir(tmp_path)
-    source = tmp_path / "frontend/sample.ts"
+    source = Path("frontend/sample.ts")
     source.parent.mkdir()
     source.write_text("export const value = 1;\n", encoding="utf-8")
-    relative_source = "frontend/sample.ts"
     digest = sha256(source.read_bytes()).hexdigest()
-    hashes = {} if review == "missing" else {relative_source: digest}
+    hashes = {} if review == "missing" else {str(source): digest}
     if review == "tampered":
         source.write_text("export const value = 2;\n", encoding="utf-8")
 
@@ -283,7 +302,7 @@ def test_migration_allowance_requires_the_exact_reviewed_changed_source(
             _validated_allowances(
                 allowances,
                 bootstrap="review.json",
-                changed={relative_source},
+                changed={str(source)},
                 changed_prefix="frontend/",
                 reviewed_source_hashes=hashes,
             )

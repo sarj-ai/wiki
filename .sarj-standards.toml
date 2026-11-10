@@ -1,5 +1,5 @@
 # Managed by `code-standards setup`; commit this file.
-bundle = "9.14.0"
+bundle = "9.19.0"
 rule_profile = "all"
 schema = 4
 
@@ -54,3 +54,6 @@ bootstrap = [
   "mise --no-config --no-env --no-hooks exec aqua:hashicorp/terraform@1.17.0 -- terraform -chdir=terraform init -backend=false -input=false -lockfile=readonly",
 ]
 runner = "ubuntu-24.04"
+
+[iac.no-terraform-guard-blocks]
+contracts = ".sarj-terraform-guards.json"

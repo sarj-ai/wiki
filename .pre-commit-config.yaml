@@ -47,12 +47,12 @@ repos:
         types: [yaml]
       - id: sarj-current-registries
         name: "sarj-standards: Python registry with exact native baseline"
-        entry: uvx --from uv==0.13.7 uv run --project backend --locked python scripts/standards_checks/check_standards.py
+        entry: uv run --project backend --locked python scripts/standards_checks/check_standards.py
         language: system
         files: '(?i)\.py$'
       - id: sarj-current-text-config-registries
         name: "sarj-standards: every non-Python code, config, text, and artifact rule"
-        entry: uvx --no-config --isolated --python 3.14 --from sarj-standards-bootstrap code-standards check --staged --trust-repository-code
+        entry: uvx --no-config --isolated --python 3.14 --from sarj-standards-bootstrap code-standards check --staged --fix --trust-repository-code
         language: system
         always_run: true
         pass_filenames: false

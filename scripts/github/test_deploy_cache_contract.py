@@ -1,6 +1,8 @@
 import ast
+from dataclasses import dataclass
 import itertools
 import json
+import os
 from pathlib import Path
 import re
 from typing import Any
@@ -142,17 +144,248 @@ def test_backend_deploy_runs_only_for_production_inputs() -> None:
     assert "ci-backend" in deploy_workflow["jobs"]["deploy"]["needs"]
 
 
-def test_standalone_quality_skips_only_exact_domain_deploy_paths_on_main() -> None:
+def test_standalone_quality_preserves_pr_and_reusable_checks_and_fails_open() -> None:
     quality = _workflow("ci-quality.yml")
-    ignored = set(quality["on"]["push"]["paths-ignore"])
-    deploy_paths = set(_workflow("release-main.yml")["on"]["push"]["paths"])
-
-    assert ignored == deploy_paths
+    assert set(quality["on"]["push"]) == {"branches", "paths-ignore"}
     assert quality["on"]["push"]["branches"] == ["main"]
     assert quality["on"]["pull_request"] is None
     assert quality["on"]["workflow_call"]["inputs"]["force_full"]["default"] is False
+    router = quality["jobs"]["route-quality"]
+    assert router["outputs"] == {"run_quality": "${{ steps.route.outputs.run_quality }}"}
+    checkout, route = router["steps"]
+    assert checkout["with"] == {"fetch-depth": 0, "persist-credentials": False}
+    assert route["id"] == "route"
+    assert route["env"] == {
+        "BASE_SHA": "${{ github.event.before }}",
+        "HEAD_SHA": "${{ github.sha }}",
+    }
+    assert route["run"] == (
+        'bash scripts/github/quality-ci-policy.sh --diff "$BASE_SHA" "$HEAD_SHA" >>"$GITHUB_OUTPUT"'
+    )
+    for job_id, name in {
+        "repository-quality": "pre-commit (actionlint, hygiene, sarj rules)",
+        "api-contract": "OpenAPI spec in sync",
+        "secret-scan": "gitleaks (full history)",
+    }.items():
+        job = quality["jobs"][job_id]
+        assert job["name"] == name
+        assert job["needs"] == "route-quality"
+        assert job["if"] == (
+            "${{ !cancelled() && (needs.route-quality.result != 'success' || needs.route-quality.outputs.run_quality != 'false') }}"
+        )
+        assert "continue-on-error" not in job
     release = _workflow("release-main.yml")
     assert release["jobs"]["ci-quality"]["with"] == {"force_full": True}
+    assert "if" not in release["jobs"]["ci-quality"]
+    pre_commit = _named_step(quality["jobs"]["repository-quality"]["steps"], "Run pre-commit")
+    assert pre_commit["env"]["FORCE_FULL"] == "${{ inputs.force_full }}"
+
+
+@pytest.mark.parametrize(
+    ("cancelled", "router_result", "output", "expected"),
+    [
+        (False, "success", "false", False),
+        (False, "success", "true", True),
+        (False, "success", "", True),
+        (False, "success", "unknown", True),
+        (False, "failure", "false", True),
+        (False, "skipped", "", True),
+        (False, "cancelled", "", True),
+        (True, "success", "true", False),
+        (True, "success", "false", False),
+        (True, "failure", "false", False),
+        (True, "skipped", "", False),
+        (True, "cancelled", "", False),
+    ],
+)
+def test_quality_dependency_contract_fails_open_and_honors_workflow_cancellation(
+    *, cancelled: bool, router_result: str, output: str, expected: bool
+) -> None:
+    for job_id in ("repository-quality", "api-contract", "secret-scan"):
+        condition = _workflow("ci-quality.yml")["jobs"][job_id]["if"]
+        assert condition == (
+            "${{ !cancelled() && (needs.route-quality.result != 'success' || needs.route-quality.outputs.run_quality != 'false') }}"
+        )
+        selected = not cancelled and (router_result != "success" or output != "false")
+        assert selected is expected
+
+
+@pytest.mark.parametrize(
+    ("event", "ref", "inputs", "expected"),
+    [
+        ("push", "refs/heads/main", {}, True),
+        ("push", "refs/heads/main", {"force_full": ""}, True),
+        ("push", "refs/heads/main", {"force_full": False}, False),
+        ("push", "refs/heads/main", {"force_full": True}, False),
+        ("pull_request", "refs/pull/1/merge", {}, False),
+        ("workflow_call", "refs/heads/main", {"force_full": False}, False),
+        ("push", "refs/heads/topic", {}, False),
+        ("workflow_dispatch", "refs/heads/main", {}, False),
+    ],
+)
+def test_quality_router_selects_plain_main_pushes_from_typed_event_inputs(
+    *, event: str, ref: str, inputs: dict[str, bool | str], expected: bool
+) -> None:
+    condition = _workflow("ci-quality.yml")["jobs"]["route-quality"]["if"]
+    event_check, ref_check, input_check = condition.split(" && ")
+    assert event_check == "github.event_name == 'push'"
+    assert ref_check == "github.ref == 'refs/heads/main'"
+    comparison = r"toJSON\(inputs\.force_full\) == '([^']*)'"
+    assert re.sub(comparison, "INPUT", input_check) == "(INPUT || INPUT)"
+    accepted_inputs = re.findall(comparison, input_check)
+    serialized_input = json.dumps(inputs.get("force_full"))
+    selected = event == "push" and ref == "refs/heads/main" and serialized_input in accepted_inputs
+    assert selected is expected
+
+
+def test_quality_router_matches_the_complete_release_path_contract() -> None:
+    source = (ROOT / "scripts/github/quality-ci-policy.sh").read_text()
+    patterns = source.split('case "$path" in\n', 1)[1].split(")\n", 1)[0]
+    shell_paths = {part.strip() for part in patterns.replace("\\\n", "").split("|")}
+    native_patterns = set(_workflow("release-main.yml")["on"]["push"]["paths"])
+    assert set(_workflow("ci-quality.yml")["on"]["push"]["paths-ignore"]) == native_patterns
+    native_paths = {path[:-1] if path.endswith("/**") else path for path in native_patterns}
+    assert shell_paths == native_paths
+
+
+@dataclass(frozen=True, kw_only=True)
+class _QualityHistory:
+    base: str
+    head: str
+
+
+def _quality_history(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, paths: list[str]
+) -> _QualityHistory:
+    repository = tmp_path / "repository"
+    repository.mkdir()
+    for name in command_output(["git", "rev-parse", "--local-env-vars"]).splitlines():
+        monkeypatch.delenv(name, raising=False)
+    monkeypatch.chdir(repository)
+    monkeypatch.setenv("RUNNER_TEMP", str(tmp_path))
+    command_output(["git", "init", "--quiet"])
+    command_output(["git", "config", "user.name", "Quality fixture"])
+    command_output(["git", "config", "user.email", "quality@example.test"])
+    (repository / "seed").write_text("seed\n")
+    command_output(["git", "add", "."])
+    command_output(["git", "commit", "--quiet", "-m", "base"])
+    base = command_output(["git", "rev-parse", "HEAD"])
+    for name in paths:
+        path = repository / name
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text("changed\n")
+    command_output(["git", "add", "."])
+    command_output(["git", "commit", "--quiet", "--allow-empty", "-m", "head"])
+    return _QualityHistory(base=base, head=command_output(["git", "rev-parse", "HEAD"]))
+
+
+@pytest.mark.parametrize(
+    ("paths", "run_quality"),
+    [
+        (["backend/app/nested/module.py"], False),
+        (["backend/tests/test_module.py"], True),
+        (["backend/app/nested/module.py", "backend/tests/test_module.py"], False),
+        (["frontend/src/page.tsx", "scripts/shared-helper.py"], False),
+        (["scripts/shared-helper.py"], True),
+        (["backend/appish/module.py"], True),
+        (["scripts/github/quality-ci-policy.sh"], True),
+        (["backend/app/space and\nnewline.py"], False),
+        (["scripts/shared\nbackend/app/fake.py"], True),
+        ([], True),
+        (["backend/app/module.py", *(f"tests/{i}.py" for i in range(299))], False),
+        (["backend/app/module.py", *(f"tests/{i}.py" for i in range(300))], True),
+    ],
+)
+def test_quality_routes_real_push_diffs(
+    *, paths: list[str], run_quality: bool, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    history = _quality_history(tmp_path, monkeypatch, paths)
+    output = command_output(
+        [
+            "bash",
+            str(ROOT / "scripts/github/quality-ci-policy.sh"),
+            "--diff",
+            history.base,
+            history.head,
+        ]
+    )
+    assert output == f"run_quality={str(run_quality).lower()}"
+    assert list(tmp_path.glob("quality-paths.*")) == []
+
+
+@pytest.mark.parametrize("base", ["", "0" * 40, "1" * 40, "not-a-sha"])
+def test_quality_retains_checks_for_missing_or_invalid_base(
+    base: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    head = _quality_history(tmp_path, monkeypatch, ["backend/app/module.py"]).head
+    assert (
+        command_output(
+            [
+                "bash",
+                str(ROOT / "scripts/github/quality-ci-policy.sh"),
+                "--diff",
+                base,
+                head,
+            ]
+        )
+        == "run_quality=true"
+    )
+
+
+@pytest.mark.parametrize("destination", [None, "backend/tests/module.py", "backend/app/moved.py"])
+def test_quality_retains_checks_for_deletions_and_both_rename_sides(
+    destination: str | None, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    base = _quality_history(tmp_path, monkeypatch, ["backend/app/module.py"]).head
+    original = Path("backend/app/module.py")
+    if destination is None:
+        original.unlink()
+    else:
+        moved = Path(destination)
+        moved.parent.mkdir(parents=True, exist_ok=True)
+        original.rename(moved)
+    command_output(["git", "add", "."])
+    command_output(["git", "commit", "--quiet", "-m", "remove or move"])
+    head = command_output(["git", "rev-parse", "HEAD"])
+    assert (
+        command_output(
+            [
+                "bash",
+                str(ROOT / "scripts/github/quality-ci-policy.sh"),
+                "--diff",
+                base,
+                head,
+            ]
+        )
+        == "run_quality=true"
+    )
+
+
+def test_quality_retains_checks_when_native_diff_detection_fails(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    history = _quality_history(tmp_path, monkeypatch, ["backend/app/module.py"])
+    real_git = command_output(["bash", "-c", "command -v git"])
+    executable = tmp_path / "git"
+    executable.write_text(
+        '#!/usr/bin/env bash\nif [[ "$1" == diff ]]; then exit 23; fi\nexec "$REAL_GIT" "$@"\n'
+    )
+    executable.chmod(0o755)
+    monkeypatch.setenv("REAL_GIT", real_git)
+    monkeypatch.setenv("PATH", str(tmp_path), prepend=os.pathsep)
+    assert (
+        command_output(
+            [
+                "bash",
+                str(ROOT / "scripts/github/quality-ci-policy.sh"),
+                "--diff",
+                history.base,
+                history.head,
+            ]
+        )
+        == "run_quality=true"
+    )
+    assert list(tmp_path.glob("quality-paths.*")) == []
 
 
 def test_deploys_trust_exact_sha_gates_without_repeating_generic_validation() -> None:
@@ -434,9 +667,17 @@ def test_required_ci_aggregators_skip_only_shapes_the_gate_accepts(
         (["backend/app/main.py"], True, True),
         (["backend/uv.lock"], True, True),
         (["frontend/openapi.json"], True, True),
-        pytest.param(["frontend/scripts/patch-generated.ts"], True, True, id="typed-api-generator"),
         pytest.param(
-            ["frontend/scripts/patch-generated.mjs"], True, True, id="legacy-api-generator"
+            ["frontend/scripts/patch-generated.ts"],
+            True,
+            True,
+            id="typed-api-generator",
+        ),
+        pytest.param(
+            ["frontend/scripts/patch-generated.mjs"],
+            True,
+            True,
+            id="legacy-api-generator",
         ),
         (["frontend/src/lib/generated/types.ts"], True, True),
         ([".github/workflows/ci-backend.yml"], True, True),

@@ -468,7 +468,7 @@
   },
   "src/lib/browser-storage.ts": {
     "@sarj/no-frontend-comments": {
-      "count": 5
+      "count": 2
     }
   },
   "src/lib/build-destination-sort-orders.test.ts": {
@@ -622,7 +622,7 @@
       "count": 2
     },
     "@sarj/require-camelcase-properties": {
-      "count": 33
+      "count": 28
     },
     "@sarj/sole-export-matches-filename": {
       "count": 1

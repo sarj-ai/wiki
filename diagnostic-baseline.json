@@ -1,9 +1,9 @@
 {
   "schemaVersion": 2,
   "provenance": {
-    "bundleVersion": "9.14.0",
-    "consumerBaseSha": "a4439928487c4ef620701474c3952532fe0742c4",
-    "catalogDigest": "7338a8d7cec37225483560bc72b9de777b6e81de4fe4f647e2dc67075fd1dd1d"
+    "bundleVersion": "9.19.0",
+    "consumerBaseSha": "661f2438108b230767e944f0d8add965f769d447",
+    "catalogDigest": "77a0cd43b29f31386cbd51a8d840b05a625d0a249f255a954985aa9d7b785f85"
   },
   "diagnostics": [
     {
@@ -14,60 +14,25 @@
       "count": 4
     },
     {
-      "fingerprint": "b84d20a7e28675185d4dc8dc959570fe6d6d85c41f5ba0f53c7dd63d2f50e9ef",
+      "fingerprint": "ff330b49e936c889a659b737fe0775d04001951b141a9081f7605a1b253d79ea",
       "source": "oxlint",
       "ruleId": "@sarj/no-explicit-type-predicate",
-      "path": "frontend/scripts/oxlint-owned/shared/ast.ts",
-      "count": 4
-    },
-    {
-      "fingerprint": "ca5b9938ae25a0964931090840757b7ea07a1c1d1d4da112e5d3d1f68cd84d8a",
-      "source": "oxlint",
-      "ruleId": "@sarj/no-explicit-type-predicate",
-      "path": "frontend/src/app/login/page.tsx",
+      "path": "frontend/scripts/benchmark-bundle.ts",
       "count": 1
     },
     {
-      "fingerprint": "b8deba5721af78e4bed7df998ef28d167b4f95a508ac9d2dcee17c96e159dd32",
+      "fingerprint": "d3936bf142b7082cb6a9bdf22e961a4ffdd1c36ce1dcc4805b4780fa57389c66",
       "source": "oxlint",
       "ruleId": "@sarj/no-explicit-type-predicate",
-      "path": "frontend/src/components/ui/sidebar.tsx",
-      "count": 4
-    },
-    {
-      "fingerprint": "aa1e53795b4d9841afd63e4cdc5472b0417438dfd013297995e728fcc353007b",
-      "source": "oxlint",
-      "ruleId": "@sarj/no-explicit-type-predicate",
-      "path": "frontend/src/lib/api-client.test.ts",
-      "count": 1
-    },
-    {
-      "fingerprint": "af3f252ec592dad3a7a3837caa0ac8ce2dc7d220cdcd615f75bad28014da8085",
-      "source": "oxlint",
-      "ruleId": "@sarj/no-explicit-type-predicate",
-      "path": "frontend/src/lib/api-client.ts",
-      "count": 1
-    },
-    {
-      "fingerprint": "ecdfd754070dec853794d10943470752a885fec0ee5b111b54eee9dc197dd862",
-      "source": "oxlint",
-      "ruleId": "@sarj/no-explicit-type-predicate",
-      "path": "frontend/src/lib/clients/wiki-read-http.test.ts",
-      "count": 1
-    },
-    {
-      "fingerprint": "4c7ab9c9429185ba3ab96277d5f5c1e3f68f497487048bd16dbfa0e718b97c5e",
-      "source": "oxlint",
-      "ruleId": "@sarj/no-explicit-type-predicate",
-      "path": "frontend/src/lib/mutation-toast.ts",
-      "count": 1
+      "path": "frontend/scripts/eslint-owned/shared/ast.ts",
+      "count": 3
     },
     {
       "fingerprint": "0d3b1a5d4cf50e9769414245b2d360640c0dfb79100fcce787f9b3e17220dfd0",
       "source": "oxlint",
       "ruleId": "@sarj/no-explicit-type-predicate",
       "path": "frontend/src/lib/perf-marks.ts",
-      "count": 2
+      "count": 1
     },
     {
       "fingerprint": "b89c384c3923f41215cfcc49065ae8f1f4a3d55676256261a557f04adbc3ed34",
@@ -84,20 +49,6 @@
       "count": 1
     },
     {
-      "fingerprint": "18d4fe93e37522cfe1cbebfecde6fab63ef2f989390bfa62cce63e2ddcd1a2db",
-      "source": "oxlint",
-      "ruleId": "@sarj/no-explicit-type-predicate",
-      "path": "frontend/src/lib/smart-create-client.test.ts",
-      "count": 1
-    },
-    {
-      "fingerprint": "bc169423f8aa282a0467b9cd1e28fc7940fa20cd6984c95328d312c465a90a54",
-      "source": "oxlint",
-      "ruleId": "@sarj/no-explicit-type-predicate",
-      "path": "frontend/src/lib/speculation-policy.ts",
-      "count": 1
-    },
-    {
       "fingerprint": "2e4b1e438bc47d31646b97852f2eab0404a35914e3d06bb61b1680b1282f8d5e",
       "source": "oxlint",
       "ruleId": "@sarj/no-explicit-type-predicate",
@@ -109,6 +60,13 @@
       "source": "oxlint",
       "ruleId": "@sarj/no-logical-or-fallback",
       "path": "frontend/src/components/mcp/mcp-consent.tsx",
+      "count": 1
+    },
+    {
+      "fingerprint": "5cbb15b2cc8528744be1292943ce130e95d9644064c935f99fb455b3b0128a66",
+      "source": "oxlint",
+      "ruleId": "@sarj/no-logical-or-fallback",
+      "path": "frontend/src/components/wiki-document/document-polish-dialog.tsx",
       "count": 1
     },
     {
@@ -144,6 +102,13 @@
       "source": "oxlint",
       "ruleId": "@sarj/no-logical-or-fallback",
       "path": "frontend/src/lib/markdown-import.ts",
+      "count": 1
+    },
+    {
+      "fingerprint": "1d265e34a682a917f781cfbd108079d36be79f08dda0ed55cf6ffda06b7c2da8",
+      "source": "oxlint",
+      "ruleId": "@sarj/no-zod-parse-typed-object",
+      "path": "frontend/src/app/(app)/d/[driveId]/page.tsx",
       "count": 1
     },
     {
@@ -266,17 +231,24 @@
       "count": 1
     },
     {
-      "fingerprint": "bc851d285183de64945e115bc37cb84a807ca2db33e98dd3e4f1088a23644298",
+      "fingerprint": "e324886b89a483cd084fa7d8ccec2607ae07c1635a9d125c85888c12597275ff",
       "source": "oxlint",
-      "ruleId": "no-empty",
-      "path": "frontend/src/components/wiki-document/document-polish-dialog.tsx",
+      "ruleId": "import/no-duplicates",
+      "path": "frontend/src/lib/smart-create-types.ts",
       "count": 1
     },
     {
-      "fingerprint": "7a7837c2f6b1158323ccf2f38847583bad043597201eb1fb1f5e0fe807e78796",
+      "fingerprint": "f2a9d243b1d7be46297c304d61f85fab440f15408ec9a729e83e31900f449668",
       "source": "oxlint",
-      "ruleId": "no-empty",
-      "path": "frontend/src/lib/clients/wiki-read-http.ts",
+      "ruleId": "oxlint/unused-directive",
+      "path": "frontend/src/hooks/use-document-alias.ts",
+      "count": 1
+    },
+    {
+      "fingerprint": "b1539fab25a73b95d7d695775b647a084d3f39ecb68c9ecc48f99e71b36abc45",
+      "source": "oxlint",
+      "ruleId": "oxlint/unused-directive",
+      "path": "frontend/src/lib/wiki-keys.ts",
       "count": 1
     },
     {
@@ -2807,6 +2779,13 @@
       "count": 1
     },
     {
+      "fingerprint": "2322e300b3efbbb12da677115db67822d6337a8e730b4eb1d78d344b42b15f3f",
+      "source": "sarj-python-lint",
+      "ruleId": "no-excessive-cognitive-complexity",
+      "path": "scripts/github/read-transform-diagnostics.py",
+      "count": 1
+    },
+    {
       "fingerprint": "b56412110e411122a09a23aff7807d3a2711c07b4f32ae2a25bdb1b56b77bed5",
       "source": "sarj-python-lint",
       "ruleId": "no-generic-json-parser",
@@ -2847,13 +2826,6 @@
       "ruleId": "no-mutating-input-with-result",
       "path": "backend/app/mcp/native_http_guard.py",
       "count": 5
-    },
-    {
-      "fingerprint": "e0e71cf1ef4bced4876c1512d4c9e16156b365b7d74b0e241123c0899ce6ac62",
-      "source": "sarj-python-lint",
-      "ruleId": "no-nullable-dependency-fallback",
-      "path": "backend/app/document_transform/models.py",
-      "count": 1
     },
     {
       "fingerprint": "8bd5961e5b69d4aa91b9453b2ac16ab5d8fb56310847e0583b3d548dab7ed465",
@@ -4547,7 +4519,7 @@
       "source": "sarj-python-lint",
       "ruleId": "prefer-precise-object-contract",
       "path": "backend/tests/test_transform_diagnostics_workflow.py",
-      "count": 6
+      "count": 7
     },
     {
       "fingerprint": "2f58ff8ccd070bd637a501ae53247a9cdef0998a6c599589b15b1bcd44530e4c",
@@ -4660,20 +4632,6 @@
       "ruleId": "prefer-pytest-dependency-fixtures",
       "path": "backend/tests/test_advanced_round6.py",
       "count": 4
-    },
-    {
-      "fingerprint": "c644bb8a0942ed0846779d6115644677f2b49d9c5a4d3750a06dc9d1ce16006d",
-      "source": "sarj-python-lint",
-      "ruleId": "prefer-pytest-dependency-fixtures",
-      "path": "backend/tests/test_aggressive_unslop.py",
-      "count": 6
-    },
-    {
-      "fingerprint": "705bfbdbe4f84b00c6594902a8dc6ff91ed8359b23aee64843c909b98817db58",
-      "source": "sarj-python-lint",
-      "ruleId": "prefer-pytest-dependency-fixtures",
-      "path": "backend/tests/test_aggressive_unslop_transport.py",
-      "count": 1
     },
     {
       "fingerprint": "8616c8ed7c5718ef6fb71f63ff5d07185e77b3507856fbde5d6e1954a37a37f9",
@@ -5075,13 +5033,6 @@
       "count": 1
     },
     {
-      "fingerprint": "79701d3939c9a853a84db20b5f4f412b55d83d932f1c892d4360aee09f64604b",
-      "source": "sarj-python-lint",
-      "ruleId": "prefer-required-constructor-parameters",
-      "path": "backend/app/document_transform/models.py",
-      "count": 1
-    },
-    {
       "fingerprint": "883b2b6c014b3d3a1fc868e834c168932ffa05bdaf60df62127909654c50fa41",
       "source": "sarj-python-lint",
       "ruleId": "prefer-required-constructor-parameters",
@@ -5437,13 +5388,6 @@
       "ruleId": "prefer-typed-mapping-get",
       "path": "backend/tests/test_google_presentation_gateway.py",
       "count": 3
-    },
-    {
-      "fingerprint": "99a6649c995aa2231dcc79428787aba99bf576546821e9887bd039592e54f60c",
-      "source": "sarj-python-lint",
-      "ruleId": "prefer-typed-mapping-get",
-      "path": "scripts/github/read-transform-diagnostics.py",
-      "count": 9
     },
     {
       "fingerprint": "b7fc202c3ff63f0d6d19b38671ed19bbd832ac6ad33e2c8fbb2b8524e35a288b",

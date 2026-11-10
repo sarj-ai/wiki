@@ -60,30 +60,32 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Prettier check
+      - name: Oxfmt check
         run: npm run format:check
 
       - name: TypeScript check
         run: npm run typecheck
 
-      - name: Install uv for managed lint
+      - name: Install uv
         uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
         with:
           version-file: backend/uv.toml
-          enable-cache: true
-          cache-dependency-glob: .sarj-standards.toml
-
       - name: Install the pinned native tool bootstrap
         working-directory: .
         env:
           UV_PYTHON_DOWNLOADS_JSON_URL: https://raw.githubusercontent.com/astral-sh/uv/4ecd0eff2a81e3ffdcd7cfee10d08936e4747c17/crates/uv-python-managed/download-metadata.json
-        run: uv run --no-config --no-project --python 3.15.0 --with code-standards==9.14.0 python -m sarj_standards.libs.adoption.native_bootstrap
+        run: uv run --no-config --no-project --python 3.15.0 --with code-standards==9.19.0 python -m sarj_standards.libs.adoption.native_bootstrap
       - name: Install and attest applicable native tools
         working-directory: .
         env:
           GITHUB_TOKEN: ${{ github.token }}
         run: uvx --no-config --isolated --python 3.14 --from sarj-standards-bootstrap code-standards setup --tools-only
-
+      - name: Install backend analysis dependencies
+        working-directory: .
+        run: uv sync --locked --project backend
+      - name: Initialize locked Terraform providers
+        working-directory: .
+        run: mise --no-config --no-env --no-hooks exec aqua:hashicorp/terraform@1.17.0 -- terraform -chdir=terraform init -backend=false -input=false -lockfile=readonly
       - name: Native lint with exact baseline
         env:
           SARJ_STANDARDS_BASE: >-
@@ -113,7 +115,6 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          fetch-depth: 0
           persist-credentials: false
 
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
@@ -138,7 +139,6 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          fetch-depth: 0
           persist-credentials: false
 
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
@@ -208,7 +208,6 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          fetch-depth: 0
           persist-credentials: false
       - name: Install uv for the required gate
         uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3

@@ -28,6 +28,5 @@
   },
   "[css]": {
     "editor.defaultFormatter": "oxc.oxc-vscode"
-  },
-  "oxc.workingDirectories": ["frontend"]
+  }
 }
