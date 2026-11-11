@@ -938,7 +938,7 @@ def test_conventional_framing_can_go_without_relaxing_the_following_obligation(p
     )
     assert decision.accepted == {block.id: proposed}
     assert not decision.findings
-    assert UNSLOP_POLICY_VERSION == "sarj-concise-v22"
+    assert UNSLOP_POLICY_VERSION == "sarj-concise-v23"
 
 
 @pytest.mark.parametrize(
@@ -1166,6 +1166,10 @@ async def test_dependent_focus_binds_its_exact_parent_among_other_original_sente
         'The quote reads "A feature exists. Atlas condenses prose; Prism refines layouts."',
         "For a while Atlas condenses prose and Prism refines layouts for readers.",
         'The quote reads "Atlas condenses prose while Prism refines layouts for readers."',
+        "The quote reads 'don't change Atlas; Prism refines layouts for readers'.",
+        "The quote reads ‘don’t change Atlas; Prism refines layouts for readers’.",
+        "The quote reads 'the team's recorder collects data while Pump runs'.",
+        "The quote reads ‘the team’s recorder collects data while Pump runs’.",
         'Recorder collects data while Pump displays "A. B" on the screen.',
         "Atlas condenses prose (using context (from records); Prism refines layouts).",
         "Atlas condenses prose [using context; Prism refines layouts for readers.",

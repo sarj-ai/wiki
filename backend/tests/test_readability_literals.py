@@ -39,6 +39,10 @@ from tests.test_readability_lists import _prose_document
         "The report states “measure latency|then select storage” before release.",
         "The report states 'measure latency|then select storage' before release.",
         "The report states ‘measure latency|then select storage’ before release.",
+        "The report states 'we don't have|enough data' before release.",
+        "The report states ‘we don’t have|enough data’ before release.",
+        "The report states 'the team's samples|contain enough data' before release.",
+        "The report states ‘the team’s samples|contain enough data’ before release.",
         "Keep the exact literal `query =|LIMIT 10` before release.",
         "Keep the exact literal ```SELECT|LIMIT 10``` before release.",
         "Measurements remain approximately 12.3|± 0.4 ms under load.",
@@ -94,6 +98,7 @@ def test_layout_rejects_paragraph_breaks_inside_source_literals(marked: str) -> 
     [
         ("Cache reads take 1 µs.", "Memory reads take 100 ns."),
         ('The guide says "measure latency".', 'The report says "select storage".'),
+        ("The guide says 'we don't have data'.", "The report says ‘the service isn’t ready’."),
         ("Preserve `LIMIT 10` in queries.", "Preserve `sample_rate=1e-6` in configuration."),
         ("Measurements remain 12.3 ± 0.4 ms.", "The budget remains $1,250.00."),
         ("The guide cites [1, 2].", "The report cites [3, 4]."),
@@ -106,6 +111,7 @@ def test_layout_rejects_paragraph_breaks_inside_source_literals(marked: str) -> 
     ids=[
         "quantities",
         "quotations",
+        "single-quoted-contractions",
         "code",
         "uncertainty-and-currency",
         "citations",
@@ -245,6 +251,8 @@ async def test_saved_checkpoint_cannot_split_a_literal_on_write_or_readback(vers
         "The calibration remains 1.234(5)|ms under load.",
         "The acceleration remains 9.81 m|/ s² under load.",
         "The acceleration remains 9.81 m /|s² under load.",
+        "The report states 'we don't have|enough data' before release.",
+        "The report states ‘the team’s samples|contain enough data’ before release.",
     ],
     ids=[
         "grouped-number",
@@ -252,9 +260,11 @@ async def test_saved_checkpoint_cannot_split_a_literal_on_write_or_readback(vers
         "parenthetical-uncertainty",
         "spaced-unit-operator",
         "spaced-unit-denominator",
+        "quoted-contraction",
+        "quoted-possessive",
     ],
 )
-async def test_saved_numeric_split_is_rejected_before_any_provider_write(
+async def test_saved_literal_split_is_rejected_before_any_provider_write(
     version: int, marked: str
 ) -> None:
     document = _prose_document((marked.replace("|", " "),))
@@ -269,7 +279,7 @@ async def test_saved_numeric_split_is_rejected_before_any_provider_write(
         text_style={},
         parts=tuple(ReadabilityPart(text=text, role="bullet") for text in marked.split("|")),
     )
-    translation = str.maketrans(string.digits, "xxxxxxxxxx")
+    translation = str.maketrans(string.digits + "'‘’", "x" * 13)
     legacy_request_document = _prose_document((marked.replace("|", " ").translate(translation),))
     legacy_request_target = target.model_copy(
         update={
@@ -295,7 +305,7 @@ async def test_saved_numeric_split_is_rejected_before_any_provider_write(
         return deepcopy(document)
 
     async def write(_identifier: FileId, _checkpoint: ReadabilityCheckpoint) -> None:
-        pytest.fail("Reject numeric literal splits before writing saved checkpoints")
+        pytest.fail("Reject literal splits before writing saved checkpoints")
 
     with pytest.raises(OutputConflictError):
         await ReadabilityProvider(read, write).apply(

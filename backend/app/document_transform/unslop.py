@@ -11,7 +11,7 @@ from app.document_transform.limits import MIN_MODEL_PROSE_WORDS
 
 UNSLOP_UPSTREAM_COMMIT = "d81f5196167ded24f46fced04958c0c12d681798"
 UNSLOP_UPSTREAM_VERSION = "2.3.0"
-UNSLOP_POLICY_VERSION = "sarj-concise-v22"
+UNSLOP_POLICY_VERSION = "sarj-concise-v23"
 MAX_EDITORIAL_PASSES = 100
 MIN_CONCISION_PROSE_WORDS = 40
 CONCISION_WORD_NUMERATOR = 2
@@ -199,7 +199,12 @@ RFCISH_EMAIL_PATTERN = (
     r"(?:[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?\.)+"
     r"[A-Za-z]{2,63}"
 )
-SINGLE_QUOTED_SPAN_PATTERN = r"(?<!\w)'[^'\n]+'(?!\w)|‘[^’\n]+’"
+# An apostrophe inside a word belongs to the quoted text, not its delimiter.
+# Keep contractions and singular possessives intact in every shared quote gate.
+SINGLE_QUOTED_SPAN_PATTERN = (
+    r"(?<!\w)'(?:[^'\n]|(?<=\w)'(?=\w))+'(?!\w)|"
+    r"‘(?:[^’\n]|(?<=\w)’(?=\w))+’"
+)
 CUSTOM_URI_PATTERN = r"[A-Za-z][A-Za-z0-9+.-]*:(?://)?[^\s)>]+"
 HTML_ENTITY_PATTERN = r"&(?:#[0-9]+|#[xX][0-9A-Fa-f]+|[A-Za-z][A-Za-z0-9]+);"
 
