@@ -41,14 +41,14 @@ def numeric_table_value(value: str) -> bool:
     return _QUANTITY.fullmatch(text) is not None
 
 
-def numeric_columns(rows: tuple[tuple[str, ...], ...], *, header: bool = True) -> frozenset[int]:
+def numeric_columns(rows: tuple[tuple[str, ...], ...], *, header_rows: int = 1) -> frozenset[int]:
     if not rows:
         return frozenset()
     result = set()
     for column in range(len(rows[0])):
         values = [
             row[column].strip()
-            for row in rows[int(header) :]
+            for row in rows[header_rows:]
             if row[column].strip().casefold() not in _MISSING
         ]
         if values and all(numeric_table_value(value) for value in values):
@@ -73,7 +73,7 @@ def _text_width(value: str) -> float:
 
 
 def table_column_widths(
-    rows: tuple[tuple[str, ...], ...], *, total: int, header: bool = True
+    rows: tuple[tuple[str, ...], ...], *, total: int, header_rows: int = 1
 ) -> tuple[int, ...]:
     if not rows or not rows[0] or any(len(row) != len(rows[0]) for row in rows):
         msg = "Table width planning requires a nonempty rectangular table"
@@ -82,9 +82,11 @@ def table_column_widths(
     if total < columns:
         msg = "Table width must accommodate every column"
         raise ValueError(msg)
-    numeric = numeric_columns(rows, header=header)
+    numeric = numeric_columns(rows, header_rows=header_rows)
     demands = [
-        _column_demand([row[column] for row in rows], numeric=column in numeric, header=header)
+        _column_demand(
+            [row[column] for row in rows], numeric=column in numeric, header_rows=header_rows
+        )
         for column in range(columns)
     ]
     return _distribute_widths(demands, total=total)
@@ -96,10 +98,10 @@ class _ColumnDemand:
     preferred: float
 
 
-def _column_demand(values: list[str], *, numeric: bool, header: bool) -> _ColumnDemand:
+def _column_demand(values: list[str], *, numeric: bool, header_rows: int) -> _ColumnDemand:
     lengths = sorted(_text_width(value) for value in values)
     typical = lengths[math.ceil((len(lengths) - 1) * 0.8)]
-    label = _text_width(values[0]) if header else 0
+    label = max((_text_width(value) for value in values[:header_rows]), default=0)
     longest_word = max((_text_width(word) for value in values for word in value.split()), default=0)
     if numeric:
         minimum = min(max(lengths) + 3, 24)

@@ -2,7 +2,7 @@ from copy import deepcopy
 from dataclasses import dataclass
 import unicodedata
 
-from pydantic import JsonValue
+from pydantic import BaseModel, ConfigDict, Field, JsonValue
 
 from app.document_transform.brand_manifest import CURRENT_BRAND_MANIFEST
 from app.document_transform.readability_geometry import readable_table_width
@@ -25,6 +25,7 @@ from app.document_transform.table_layout import (
     numeric_table_value,
     table_column_widths,
 )
+from app.identifiers import DocsTabId
 
 
 _TOKENS = CURRENT_BRAND_MANIFEST.document
@@ -41,6 +42,18 @@ class _Cell:
     paragraphs: tuple[dict[str, JsonValue], ...]
 
 
+class _HeaderStyle(BaseModel):
+    model_config = ConfigDict(extra="ignore", frozen=True, strict=True)
+
+    header: bool = Field(default=False, alias="tableHeader")
+
+
+class _HeaderRow(BaseModel):
+    model_config = ConfigDict(extra="ignore", frozen=True, strict=True)
+
+    style: _HeaderStyle = Field(default=_HeaderStyle(), alias="tableRowStyle")
+
+
 def plan_readable_tables(document: dict[str, JsonValue]) -> tuple[ReadabilityTable, ...]:
     result = []
     for tab_id, tab in bodies(document):
@@ -49,26 +62,47 @@ def plan_readable_tables(document: dict[str, JsonValue]) -> tuple[ReadabilityTab
             if "table" not in element:
                 continue
             try:
-                cells = _cells(element)
-                rows = _rows(cells, integer(obj(element["table"])["columns"]))
-                widths = table_column_widths(
-                    rows,
-                    total=readable_table_width(document, tab, start=integer(element["startIndex"])),
-                )
-                target = ReadabilityTable(
-                    tab_id=tab_id,
-                    start=integer(element["startIndex"]),
-                    widths=widths,
-                    numeric=numeric_columns(rows),
-                    header=any(
-                        not numeric_table_value(rows[0][column]) for column in numeric_columns(rows)
-                    ),
-                )
+                target = _table_plan(element, document=document, tab=tab, tab_id=tab_id)
                 _project_table(deepcopy(element), target, document=document, tab=tab, applied=False)
             except KeyError, ValueError, TypeError:
                 continue
             result.append(target)
     return tuple(result)
+
+
+def _table_plan(
+    element: dict[str, JsonValue],
+    *,
+    document: dict[str, JsonValue],
+    tab: dict[str, JsonValue],
+    tab_id: DocsTabId,
+) -> ReadabilityTable:
+    rows = _rows(_cells(element), integer(obj(element["table"])["columns"]))
+    native_headers = _native_header_rows(element)
+    header_rows = native_headers or 1
+    numeric = numeric_columns(rows, header_rows=header_rows)
+    return ReadabilityTable(
+        tab_id=tab_id,
+        start=integer(element["startIndex"]),
+        widths=table_column_widths(
+            rows,
+            total=readable_table_width(document, tab, start=integer(element["startIndex"])),
+            header_rows=header_rows,
+        ),
+        numeric=numeric,
+        header=bool(native_headers)
+        or any(not numeric_table_value(rows[0][column]) for column in numeric),
+        header_rows=header_rows,
+    )
+
+
+def _native_header_rows(element: dict[str, JsonValue]) -> int:
+    count = 0
+    for value in array(obj(element["table"])["tableRows"]):
+        if not _HeaderRow.model_validate(value).style.header:
+            break
+        count += 1
+    return count
 
 
 def _rows(cells: tuple[_Cell, ...], columns: int) -> tuple[tuple[str, ...], ...]:
@@ -127,7 +161,7 @@ def readable_table_requests(
                         target,
                         document=document,
                         tab=tabs[target.tab_id],
-                        header=target.header and cell.row == 0,
+                        header=target.header and cell.row < target.header_rows,
                     )
                 )
     return requests
@@ -235,7 +269,7 @@ def _project_table(
         for paragraph in cell.paragraphs:
             _project_paragraph(
                 paragraph,
-                header=target.header and cell.row == 0,
+                header=target.header and cell.row < target.header_rows,
                 document=document,
                 tab=tab,
                 numeric=cell.column in target.numeric,

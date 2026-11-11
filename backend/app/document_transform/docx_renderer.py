@@ -1021,8 +1021,10 @@ def _append_code_block(document: Document, text: str, *, branded: bool) -> None:
 def _append_table(document: Document, block: _Block, *, branded: bool) -> None:
     if not block.rows:
         return
-    widths = table_column_widths(block.rows, total=_CONTENT_WIDTH_DXA, header=block.has_header)
-    numeric = numeric_columns(block.rows, header=block.has_header)
+    widths = table_column_widths(
+        block.rows, total=_CONTENT_WIDTH_DXA, header_rows=int(block.has_header)
+    )
+    numeric = numeric_columns(block.rows, header_rows=int(block.has_header))
     table = document.add_table(rows=len(block.rows), cols=len(block.rows[0]))
     table.alignment = WD_TABLE_ALIGNMENT.LEFT
     table.autofit = False
