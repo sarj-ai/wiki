@@ -11,7 +11,7 @@ from app.document_transform.limits import MIN_MODEL_PROSE_WORDS
 
 UNSLOP_UPSTREAM_COMMIT = "d81f5196167ded24f46fced04958c0c12d681798"
 UNSLOP_UPSTREAM_VERSION = "2.3.0"
-UNSLOP_POLICY_VERSION = "sarj-concise-v21"
+UNSLOP_POLICY_VERSION = "sarj-concise-v22"
 MAX_EDITORIAL_PASSES = 100
 MIN_CONCISION_PROSE_WORDS = 40
 CONCISION_WORD_NUMERATOR = 2
@@ -30,7 +30,18 @@ UNSLOP_PRESENTATION_PADDING_INSTRUCTION = (
     "Existing literal constraints, hashes, "
     "force-language counts and complete-source sentence audits remain mandatory. "
 )
-UNSLOP_REWRITE_INSTRUCTION = UNSLOP_PRESENTATION_PADDING_INSTRUCTION + (
+UNSLOP_QUALIFIER_ATTACHMENT_INSTRUCTION = (
+    "Keep dates, locations and operating conditions attached to their original predicates. "
+    "A date on one source action does not date another action. For example, 'The team "
+    "recorded 1 ms on 2026-11-11. The team reported 2 ms under load' must not become "
+    "'On 2026-11-11, the team recorded 1 ms and reported 2 ms under load': that invents "
+    "a reporting date. Keep a qualifier local when merging sentences, or retain separate "
+    "sentences. A fronted qualifier governs coordinated predicates; check each one against "
+    "the source independently. Preserving its words and numbers does not preserve its scope. "
+)
+UNSLOP_REWRITE_INSTRUCTION = (
+    UNSLOP_PRESENTATION_PADDING_INSTRUCTION + UNSLOP_QUALIFIER_ATTACHMENT_INSTRUCTION
+) + (
     "Edit ruthlessly. Rewrite every supplied block into its shortest faithful, grammatical "
     "form. Lead with the concrete subject and a strong active verb. Convert passive voice "
     "to active voice whenever the source identifies the actor; never invent an actor. "
@@ -88,7 +99,9 @@ UNSLOP_REWRITE_INSTRUCTION = UNSLOP_PRESENTATION_PADDING_INSTRUCTION + (
     "paragraph boundaries. Do not add claims, examples, headings, bullets, line breaks or "
     "commentary."
 )
-UNSLOP_REVIEW_INSTRUCTION = UNSLOP_PRESENTATION_PADDING_INSTRUCTION + (
+UNSLOP_REVIEW_INSTRUCTION = (
+    UNSLOP_PRESENTATION_PADDING_INSTRUCTION + UNSLOP_QUALIFIER_ATTACHMENT_INSTRUCTION
+) + (
     "Perform factual audits, not edits or sentence replacements. For each sentence_audits entry, "
     "follow context_id to its document_contexts entry. source_sentence is the source unit being "
     "audited. source_kind distinguishes an original sentence, an additional clause audit and "

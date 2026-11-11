@@ -143,6 +143,13 @@ def test_numeric_units_do_not_absorb_following_prose(prose: str) -> None:
     )
 
 
+@pytest.mark.parametrize("conjunction", ["and", "or", "but", "nor", "yet"])
+def test_numeric_literals_do_not_absorb_a_following_conjunction(conjunction: str) -> None:
+    assert rewrite_constraints(
+        f"The team recorded 2026-11-11 {conjunction} retained the report."
+    ).protected_tokens == ("2026-11-11",)
+
+
 @pytest.mark.parametrize("boundary", ["\n", "\r", "\v", "\f", "\u0085", "\u2028", "\u2029"])
 def test_compound_units_cannot_cross_existing_line_boundaries(boundary: str) -> None:
     assert rewrite_constraints(f"The reading is 3 m{boundary}/ s².").protected_tokens == ("3 m",)

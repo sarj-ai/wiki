@@ -35,7 +35,8 @@ _NUMERIC_MAGNITUDE = (
 )
 _SIGNED_NUMBER = rf"[+−-]?(?:[$€£¥₹₩₽₺]\s*)?[+−-]?{_NUMERIC_MAGNITUDE}"
 _NUMERIC_UNIT = (
-    rf"(?:%|‰|(?![xX]{HORIZONTAL_SPACE}*\d)[A-Za-zµμ°ΩÅ]{{1,5}}{_NUMERIC_POWER})"
+    rf"(?:%|‰|(?!(?i:and|or|but|nor|yet)\b|[xX]{HORIZONTAL_SPACE}*\d)"
+    rf"[A-Za-zµμ°ΩÅ]{{1,5}}{_NUMERIC_POWER})"
     rf"(?:{HORIZONTAL_SPACE}*[/*·]{HORIZONTAL_SPACE}*[A-Za-zµμ°ΩÅ]{{1,5}}{_NUMERIC_POWER}"
     # Unmarked multiplication needs known unit symbols, not arbitrary prose words.
     rf"|{HORIZONTAL_SPACE}+{UNIT_SYMBOL}{_NUMERIC_POWER}(?![A-Za-zµμ°ΩÅ]))*"
@@ -86,6 +87,12 @@ _RHETORICAL_COMPOUNDS = frozenset(
 )
 _PROPER_NOUN = re.compile(r"\b(?:[A-Z][a-z]+|[A-Z]{2,}|[A-Z][A-Za-z0-9]*[A-Z][A-Za-z0-9]*)\b")
 _SENTENCE = re.compile(r".*?(?:[.!?]+(?=\s+|$)|$)", re.DOTALL)
+_ISO_DATE = r"\b\d{4}-\d{2}-\d{2}\b"
+_DATE = re.compile(_ISO_DATE)
+_FRONTED_DATE = re.compile(
+    rf"\s*(?:on|by|before|after|since|until|as of)\s+(?P<date>{_ISO_DATE})(?:\s*,|\s+)",
+    re.IGNORECASE,
+)
 _MAX_CHANGE_RATIO = MappingProxyType({TransformPhase.UNSLOP: 0.35, TransformPhase.FORMAT: 0.70})
 _CAPITALIZABLE_START_WORDS = frozenset(
     {"a", "an", "he", "it", "our", "she", "that", "the", "they", "this", "we", "you", "your"}
@@ -106,6 +113,7 @@ REPAIRABLE_REWRITE_CODES = frozenset(
         "semantic_review_rejected",
         "scope_qualifier_changed",
         "document_writing_actor_changed",
+        "temporal_scope_changed",
     }
 )
 
@@ -248,6 +256,8 @@ def _same_retained_values(before: list[str], after: list[str], *, allow_reorderi
 def _aggressive_unslop_code(block: TextBlock, replacement: str) -> str | None:
     if reassigned_document_writing_action(block.text, replacement):
         return "document_writing_actor_changed"
+    if _fronted_date_scope_expanded(block.text, replacement):
+        return "temporal_scope_changed"
     if Counter(_scope_qualifiers(block.text)) != Counter(_scope_qualifiers(replacement)):
         return "scope_qualifier_changed"
     if _quoted_spans(block.text) != _quoted_spans(replacement):
@@ -266,6 +276,27 @@ def _aggressive_unslop_code(block: TextBlock, replacement: str) -> str | None:
     ):
         return "concision_not_improved"
     return None
+
+
+def _fronted_date_scope_expanded(source: str, replacement: str) -> bool:
+    # A fronted date governs the coordinated predicates that follow it. Do not
+    # move an unrelated source measurement under that date while merging prose.
+    dated: dict[str, set[str]] = {}
+    for sentence in _SENTENCE.finditer(source):
+        text = sentence.group()
+        for date in _DATE.finditer(text):
+            dated.setdefault(date.group(), set()).update(_protected_tokens(text))
+    for sentence in _SENTENCE.finditer(replacement):
+        text = sentence.group().split(";", maxsplit=1)[0]
+        fronted = _FRONTED_DATE.match(text)
+        if fronted is None or fronted["date"] not in dated:
+            continue
+        if any(
+            token not in dated[fronted["date"]] and any(char.isdecimal() for char in token)
+            for token in _protected_tokens(text)
+        ):
+            return True
+    return False
 
 
 def _scope_qualifiers(text: str) -> list[str]:
