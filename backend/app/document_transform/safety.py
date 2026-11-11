@@ -26,9 +26,10 @@ from app.document_transform.unslop import (
 _VULGAR_FRACTION = r"[¼½¾⅐⅑⅒⅓⅔⅕⅖⅗⅘⅙⅚⅛⅜⅝⅞]"
 _NUMERIC_POWER = r"(?:[⁰¹²³⁴⁵⁶⁷⁸⁹⁺⁻]+|(?:\^|\*\*)[+−-]?\d+)?"
 _NUMERIC_MAGNITUDE = (
-    rf"(?:(?:\d+(?:[.,:/⁄-]\d+|[\u2009\u202f]\d{{3}})*|[.,]\d+)"
-    rf"(?:{_VULGAR_FRACTION})?|{_VULGAR_FRACTION})"
-    rf"(?:[eE][+−-]?\d+)?{_NUMERIC_POWER}"
+    rf"(?:(?:\d+[^\S\n]+)?\d+[^\S\n]*[/⁄][^\S\n]*\d+|"
+    rf"(?:\d+[^\S\n]*)?{_VULGAR_FRACTION}|"
+    r"\d+(?:[.,:/⁄-]\d+|[ \u00a0\u2009\u202f]\d{3})*|[.,]\d+)"
+    rf"(?:\(\d+\))?(?:[eE][+−-]?\d+)?{_NUMERIC_POWER}"
 )
 _SIGNED_NUMBER = rf"[+−-]?(?:[$€£¥₹₩₽₺]\s*)?[+−-]?{_NUMERIC_MAGNITUDE}"
 _NUMERIC_UNIT = (
@@ -37,7 +38,7 @@ _NUMERIC_UNIT = (
 )
 _QUANTITY_LITERAL = (
     rf"(?:(?:[<>]=?|[≤≥~≈≃])\s*)?{_SIGNED_NUMBER}"
-    rf"(?:[^\S\n]*[±∓×÷+−*/⁄:^\-][^\S\n]*{_SIGNED_NUMBER})*"
+    rf"(?:[^\S\n]*[±∓×÷+−–*/⁄:^\-][^\S\n]*{_SIGNED_NUMBER})*"
     rf"(?:[^\S\n]?{_NUMERIC_UNIT})?"
 )
 _PROTECTED_TOKEN = re.compile(
@@ -45,6 +46,8 @@ _PROTECTED_TOKEN = re.compile(
     rf"{RFCISH_EMAIL_PATTERN}|{CUSTOM_URI_PATTERN}|"
     # Keep the full notation: signs, exponents, uncertainty, powers, and accounting
     # parentheses can change a value even when every decimal digit survives.
+    # Keep grouped integers, mixed fractions, and parenthetical uncertainty
+    # together so layout breaks cannot detach part of a quantity or its unit.
     rf"(?<![\w.])(?:\({_QUANTITY_LITERAL}\)|{_QUANTITY_LITERAL})(?![\w])"
     r"|\b(?=\w*\d)\w+(?:[.:-]\w+)*\b"
     r"|[±∓×÷≤≥≠≈≃]"
