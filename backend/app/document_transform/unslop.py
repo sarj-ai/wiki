@@ -12,7 +12,7 @@ from app.document_transform.quotations import SINGLE_QUOTED_SPAN_PATTERN, quoted
 
 UNSLOP_UPSTREAM_COMMIT = "d81f5196167ded24f46fced04958c0c12d681798"
 UNSLOP_UPSTREAM_VERSION = "2.3.0"
-UNSLOP_POLICY_VERSION = "sarj-concise-v29"
+UNSLOP_POLICY_VERSION = "sarj-concise-v30"
 MAX_EDITORIAL_PASSES = 100
 MIN_CONCISION_PROSE_WORDS = 40
 CONCISION_WORD_NUMERATOR = 2
@@ -48,6 +48,10 @@ UNSLOP_QUALIFIER_ATTACHMENT_INSTRUCTION = (
     "'The figures are not modern benchmarks.' Keep the condition and its effect explicit. "
     "Equivalent do not/don't, does not/doesn't and did not/didn't forms satisfy the same "
     "not constraint. Preserve the source subject, tense and complete negated predicate. "
+    "Keep named latency columns identifiable as fields when shortening: millisecond "
+    "cells or ms cells preserve a millisecond column's identity; unnamed blank columns "
+    "do not. When conversions include entries whose source cells are blank, preserve "
+    "entries as the inclusion object. Do not claim the conversions include blank columns. "
 )
 UNSLOP_REWRITE_INSTRUCTION = (
     UNSLOP_PRESENTATION_PADDING_INSTRUCTION + UNSLOP_QUALIFIER_ATTACHMENT_INSTRUCTION
