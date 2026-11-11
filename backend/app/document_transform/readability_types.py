@@ -47,6 +47,8 @@ class ReadabilityTable(BaseModel):
     header: bool = False
     # Older checkpoints formatted only the first row, even with native headers.
     header_rows: int = Field(default=1, ge=1)
+    # Older checkpoints styled cells only when a header was detected.
+    style_cells: bool = False
 
 
 class ReadabilityPlan(BaseModel):
