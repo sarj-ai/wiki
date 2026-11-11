@@ -8,6 +8,7 @@ from types import MappingProxyType
 from typing import Literal
 
 from app.document_transform.ir import BlockKind, DocumentIR, TextBlock
+from app.document_transform.quantity_notation import HORIZONTAL_SPACE, UNIT_POWER, UNIT_SYMBOL
 from app.document_transform.schemas import TextPatch, TransformFinding, TransformPhase
 from app.document_transform.unslop import (
     CUSTOM_URI_PATTERN,
@@ -24,7 +25,8 @@ from app.document_transform.unslop import (
 
 
 _VULGAR_FRACTION = r"[¼½¾⅐⅑⅒⅓⅔⅕⅖⅗⅘⅙⅚⅛⅜⅝⅞]"
-_NUMERIC_POWER = r"(?:[⁰¹²³⁴⁵⁶⁷⁸⁹⁺⁻]+|(?:\^|\*\*)[+−-]?\d+)?"
+# Preservation also retains unusual authored superscript sequences verbatim.
+_NUMERIC_POWER = rf"(?:[⁰¹²³⁴⁵⁶⁷⁸⁹⁺⁻]+|{UNIT_POWER})?"
 _NUMERIC_MAGNITUDE = (
     rf"(?:(?:\d+[^\S\n]+)?\d+[^\S\n]*[/⁄][^\S\n]*\d+|"
     rf"(?:\d+[^\S\n]*)?{_VULGAR_FRACTION}|"
@@ -33,13 +35,15 @@ _NUMERIC_MAGNITUDE = (
 )
 _SIGNED_NUMBER = rf"[+−-]?(?:[$€£¥₹₩₽₺]\s*)?[+−-]?{_NUMERIC_MAGNITUDE}"
 _NUMERIC_UNIT = (
-    rf"(?:%|‰|[A-Za-zµμ°ΩÅ]{{1,5}}{_NUMERIC_POWER})"
-    rf"(?:[/*·][A-Za-zµμ°ΩÅ]{{1,5}}{_NUMERIC_POWER})*"
+    rf"(?:%|‰|(?![xX]{HORIZONTAL_SPACE}*\d)[A-Za-zµμ°ΩÅ]{{1,5}}{_NUMERIC_POWER})"
+    rf"(?:{HORIZONTAL_SPACE}*[/*·]{HORIZONTAL_SPACE}*[A-Za-zµμ°ΩÅ]{{1,5}}{_NUMERIC_POWER}"
+    # Unmarked multiplication needs known unit symbols, not arbitrary prose words.
+    rf"|{HORIZONTAL_SPACE}+{UNIT_SYMBOL}{_NUMERIC_POWER}(?![A-Za-zµμ°ΩÅ]))*"
 )
+_QUANTITY_TERM = rf"{_SIGNED_NUMBER}(?:{HORIZONTAL_SPACE}*{_NUMERIC_UNIT})?"
 _QUANTITY_LITERAL = (
-    rf"(?:(?:[<>]=?|[≤≥~≈≃])\s*)?{_SIGNED_NUMBER}"
-    rf"(?:[^\S\n]*[±∓×÷+−–*/⁄:^\-][^\S\n]*{_SIGNED_NUMBER})*"
-    rf"(?:[^\S\n]?{_NUMERIC_UNIT})?"
+    rf"(?:(?:[<>]=?|[≤≥~≈≃])\s*)?{_QUANTITY_TERM}"
+    rf"(?:{HORIZONTAL_SPACE}*[±∓×xX÷+−–*/⁄:^\-]{HORIZONTAL_SPACE}*{_QUANTITY_TERM})*"
 )
 _PROTECTED_TOKEN = re.compile(
     r"```[\s\S]*?```|`[^`\n]+`|"
@@ -48,6 +52,7 @@ _PROTECTED_TOKEN = re.compile(
     # parentheses can change a value even when every decimal digit survives.
     # Keep grouped integers, mixed fractions, and parenthetical uncertainty
     # together so layout breaks cannot detach part of a quantity or its unit.
+    # Compound units and powers may contain authored horizontal spacing.
     rf"(?<![\w.])(?:\({_QUANTITY_LITERAL}\)|{_QUANTITY_LITERAL})(?![\w])"
     r"|\b(?=\w*\d)\w+(?:[.:-]\w+)*\b"
     r"|[±∓×÷≤≥≠≈≃]"
