@@ -48,12 +48,18 @@ def _fixture(
     document = _DocumentFixture.model_validate_json((_DATA / f"{stage}.json").read_text()).root
     table = obj(_paragraph(document, 247)["table"])
     obj(obj(array(table["tableRows"])[0])["tableRowStyle"])["tableHeader"] = True
-    if stage == "after" and version == CURRENT_READABILITY_VERSION:
+    if stage == "after" and version >= 3:
         for source, actual in zip(
             _fixture_cells(_fixture("before")), _fixture_cells(document), strict=True
         ):
-            for field in ("paddingLeft", "paddingRight"):
-                actual[field] = deepcopy(source[field])
+            fields = ("paddingLeft", "paddingRight") + (
+                ("borderTop", "borderBottom", "borderLeft", "borderRight") if version >= 4 else ()
+            )
+            for field in fields:
+                if field in source:
+                    actual[field] = deepcopy(source[field])
+                else:
+                    actual.pop(field, None)
     return document
 
 
