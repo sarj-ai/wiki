@@ -25,11 +25,16 @@ from app.document_transform.readability_json import (
     plain_text,
     rgb_color,
 )
+from app.document_transform.readability_lists import (
+    readable_list_requests,
+    validate_readable_lists,
+)
 from app.document_transform.readability_types import (
     ReadabilityParagraph,
     ReadabilityPart,
     ReadabilityProposal,
 )
+from app.document_transform.safety import rewrite_constraints
 from app.identifiers import DocsTabId
 
 
@@ -56,7 +61,6 @@ _SOURCE_SEQUENCE = re.compile(
     r"\b(?:first|second|third|next|then|finally|steps?|procedure|before|after)\b", re.IGNORECASE
 )
 _HEADING_WORDS = 12
-_MIN_LIST_ITEMS = 2
 
 
 def readability_document(document: dict[str, JsonValue], *, title: str) -> DocumentIR:
@@ -218,7 +222,7 @@ def validated_readability_paragraphs(
     if len(ir.blocks) + sum(len(target.parts) - 1 for target in result) > MAX_DOCUMENT_BLOCKS:
         msg = "Restructuring must stay within the document paragraph limit"
         raise ValueError(msg)
-    _validate_groups(result)
+    validate_readable_lists(document, tuple(result))
     return tuple(result)
 
 
@@ -231,6 +235,7 @@ def _validate_parts(block: TextBlock, proposal: ReadabilityProposal) -> None:
             "Layout must preserve every source character except spaces replaced by paragraph breaks"
         )
         raise ValueError(msg)
+    _validate_literal_breaks(block.text, proposal.parts)
     if any(
         part.role.startswith("heading")
         and (len(part.text.split()) > _HEADING_WORDS or part.text.endswith((".", "!", "?")))
@@ -245,36 +250,27 @@ def _validate_parts(block: TextBlock, proposal: ReadabilityProposal) -> None:
         raise ValueError(msg)
 
 
-def _validate_groups(targets: list[ReadabilityParagraph]) -> None:
-    # A list must contain parallel items. Do not manufacture a one-item list,
-    # or join facts across a tab boundary or an intervening section/table.
-    groups: list[list[ReadabilityPart]] = []
-    previous_tab = None
-    previous_end = -1
-    for target in sorted(targets, key=lambda item: (item.tab_id, item.start)):
-        adjacent = target.tab_id == previous_tab and target.start == previous_end + 1
-        for part in target.parts:
-            if part.role in {"bullet", "numbered"}:
-                if groups and adjacent and groups[-1][-1].role == part.role:
-                    groups[-1].append(part)
-                else:
-                    groups.append([part])
-                adjacent = True
-            else:
-                adjacent = False
-        previous_tab, previous_end = target.tab_id, target.end
-    if any(len(group) < _MIN_LIST_ITEMS for group in groups):
-        msg = "Lists require at least two adjacent items"
+def _validate_literal_breaks(source: str, parts: tuple[ReadabilityPart, ...]) -> None:
+    original = rewrite_constraints(source)
+    proposed = rewrite_constraints("\n".join(part.text for part in parts))
+    if (
+        original.protected_tokens != proposed.protected_tokens
+        or original.quotations != proposed.quotations
+    ):
+        msg = "Paragraph breaks must preserve complete quotations, code, citations, and numeric literals"
         raise ValueError(msg)
 
 
 def readable_paragraph_requests(
     targets: tuple[ReadabilityParagraph, ...],
+    *,
+    grouped_lists: bool = True,
 ) -> list[dict[str, JsonValue]]:
     requests: list[dict[str, JsonValue]] = []
     # Replace only the separator spaces. Keep words, character styles, and
     # anchors in place, with no net change to Google Docs' UTF-16 indexes.
     for target in sorted(targets, key=lambda item: (item.tab_id, item.start), reverse=True):
+        _validate_literal_breaks(plain_text(target.source), target.parts)
         boundaries = []
         index = target.start
         for part in target.parts[:-1]:
@@ -303,24 +299,7 @@ def readable_paragraph_requests(
             )
     for target in targets:
         requests.extend(_paragraph_appearance_requests(target))
-    # Create adjacent bullets together so Google starts one ordered list and
-    # computes the numbering; never insert literal numbers into the prose.
-    for target in targets:
-        index = target.start
-        for part in target.parts:
-            end = index + utf16_length(part.text)
-            if part.role in {"bullet", "numbered"}:
-                requests.append(
-                    {
-                        "createParagraphBullets": {
-                            "range": {"startIndex": index, "endIndex": end, "tabId": target.tab_id},
-                            "bulletPreset": "NUMBERED_DECIMAL_ALPHA_ROMAN"
-                            if part.role == "numbered"
-                            else "BULLET_DISC_CIRCLE_SQUARE",
-                        }
-                    }
-                )
-            index = end + 1
+    requests.extend(readable_list_requests(targets, grouped=grouped_lists))
     return requests
 
 
@@ -384,6 +363,7 @@ def project_readable_paragraphs(
 ) -> None:
     tabs = dict(bodies(document))
     for target in sorted(targets, key=lambda item: (item.tab_id, item.start), reverse=True):
+        _validate_literal_breaks(plain_text(target.source), target.parts)
         values = content(tabs[target.tab_id])
         matches = [
             index
@@ -398,10 +378,6 @@ def project_readable_paragraphs(
             index = target.start
             for offset, part in enumerate(target.parts):
                 element = obj(values[ordinal + offset])
-                if part.role in {"bullet", "numbered"}:
-                    _verify_bullet(
-                        obj(element["paragraph"]), obj(tabs[target.tab_id].get("lists", {})), part
-                    )
                 _verify_part(element, part, start=index)
                 _verify_part_layout(document, tabs[target.tab_id], element, part, target=target)
                 _verify_part_text_style(document, tabs[target.tab_id], element, part, target=target)
@@ -480,24 +456,6 @@ def _verify_part_text_style(
         if run["content"] != "\n" and canonical_style(observed) != canonical_style(wanted):
             msg = "Unplanned inline formatting changed"
             raise ValueError(msg)
-
-
-def _verify_bullet(
-    paragraph: dict[str, JsonValue], lists: dict[str, JsonValue], part: ReadabilityPart
-) -> None:
-    bullet = obj(paragraph.get("bullet", {}))
-    if set(bullet) - {"listId", "nestingLevel", "textStyle"} or bullet.get("nestingLevel", 0) != 0:
-        raise ValueError
-    definition = obj(lists[str(bullet["listId"])])
-    first = obj(array(obj(definition["listProperties"])["nestingLevels"])[0])
-    if part.role == "numbered":
-        if first.get("glyphType") != "DECIMAL":
-            raise ValueError
-    elif not first.get("glyphSymbol") or first.get("glyphType") not in {
-        None,
-        "GLYPH_TYPE_UNSPECIFIED",
-    }:
-        raise ValueError
 
 
 def _part_text_style(target: ReadabilityParagraph, part: ReadabilityPart) -> dict[str, JsonValue]:

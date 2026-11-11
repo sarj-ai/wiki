@@ -7,6 +7,7 @@ from app.document_transform.brand import mutation_sha256
 from app.document_transform.errors import ModelUnavailableError, SourceTooLargeError
 from app.document_transform.models import PatchGenerator
 from app.document_transform.readability_json import bodies, content, document_digest, obj
+from app.document_transform.readability_lists import validate_readable_lists, verify_readable_lists
 from app.document_transform.readability_paragraphs import (
     project_readable_paragraphs,
     readability_document,
@@ -86,6 +87,11 @@ def _bounded_readability_mutations(
 ) -> _ReadabilityMutations:
     tables = plan_readable_tables(document)
     while paragraphs or tables:
+        try:
+            validate_readable_lists(document, paragraphs)
+        except ValueError:
+            paragraphs = paragraphs[:-1]
+            continue
         requests = readable_paragraph_requests(paragraphs) + readable_table_requests(
             document, tables
         )
@@ -161,7 +167,7 @@ def _layout_burden(
                 if part.role in {"bullet", "numbered"}
                 else 25
             )
-            score += max(0, 4 - words) * 50 if part.role in {"bullet", "numbered"} else 0
+            score += max(0, 2 - words) * 50 if part.role in {"bullet", "numbered"} else 0
     return score
 
 
@@ -179,6 +185,10 @@ def _project(
     document: dict[str, JsonValue], checkpoint: ReadabilityCheckpoint, *, applied: bool
 ) -> dict[str, JsonValue]:
     projected = deepcopy(document)
+    if applied:
+        verify_readable_lists(
+            projected, checkpoint.paragraphs, original_lists=checkpoint.original_lists
+        )
     project_readable_tables(projected, checkpoint.tables, applied=applied)
     project_readable_paragraphs(projected, checkpoint.paragraphs, applied=applied)
     for tab_id, tab in bodies(projected):
