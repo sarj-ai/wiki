@@ -127,9 +127,14 @@ class TextTransformPlanner:
         original: DocumentIR,
         request: DocumentTransformRequest,
     ) -> TransformOutcome:
+        editable_ids = {block.id for block in model_editable_blocks(original)}
         concision_source = replace(
             original,
-            blocks=tuple(block for block in original.blocks if concision_target(block) is not None),
+            blocks=tuple(
+                block
+                for block in original.blocks
+                if block.id in editable_ids and concision_target(block) is not None
+            ),
         )
         outcome = TransformOutcome(
             document=original,

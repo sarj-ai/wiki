@@ -13,6 +13,7 @@ from app.document_transform.ir import (
     parse_google_document,
     utf16_length,
 )
+from app.document_transform.quotations import quoted_block_ids
 from app.document_transform.readability_json import (
     array,
     bodies,
@@ -65,6 +66,7 @@ _HEADING_WORDS = 12
 
 def readability_document(document: dict[str, JsonValue], *, title: str) -> DocumentIR:
     parsed = parse_google_document(document, title=title)
+    quoted = quoted_block_ids(parsed)
     tabs = dict(bodies(document))
     positions = {
         (tab_id, integer(obj(value)["startIndex"])): obj(value)
@@ -75,7 +77,11 @@ def readability_document(document: dict[str, JsonValue], *, title: str) -> Docum
     return replace(
         parsed,
         blocks=tuple(
-            replace(block, editable=_eligible_block(block, positions, document=document, tabs=tabs))
+            replace(
+                block,
+                editable=block.id not in quoted
+                and _eligible_block(block, positions, document=document, tabs=tabs),
+            )
             for block in parsed.blocks
         ),
     )

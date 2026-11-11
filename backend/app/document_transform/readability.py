@@ -31,7 +31,10 @@ from app.performance import provider_retry_remaining_seconds
 
 
 MAX_READABILITY_PASSES = 100
-_MIN_LAYOUT_SECONDS = 180
+# Leave at least 60 seconds for a layout call and the model adapter's existing
+# 30-second write/readback reserve. A 180-second admission floor skipped layout
+# after an ordinary one-minute editorial pass in the four-minute worker budget.
+_MIN_LAYOUT_SECONDS = 90
 _MAX_LAYOUT_CHARACTERS = 60000
 # A useful group of 2-6 facts should improve on one short paragraph. Tiny
 # fragments still incur a separate penalty in the layout score.

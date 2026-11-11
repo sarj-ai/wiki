@@ -1,4 +1,5 @@
 from copy import deepcopy
+from datetime import timedelta
 from pathlib import Path
 from typing import Literal, override
 import uuid
@@ -27,6 +28,7 @@ from app.document_transform.readability_types import (
 )
 from app.document_transform.schemas import TextPatch, TransformPhase
 from app.identifiers import FileId
+from app.performance import provider_retry_budget
 
 
 _DATA = Path(__file__).parent / "data" / "readability"
@@ -125,6 +127,18 @@ async def test_google_docs_readback_verifies_native_lists_heading_and_content_fi
     assert not verify_readability(_fixture("before"), plan)
     assert "NUMBERED_DECIMAL_ALPHA_ROMAN" in str(plan.requests)
     assert "columnWidth" not in str(plan.requests)
+
+
+async def test_layout_fits_after_a_reviewed_editorial_pass_in_the_production_budget() -> None:
+    elapsed = 0.0
+    editor = _LayoutEditor()
+    with provider_retry_budget(timedelta(minutes=4), clock=lambda: elapsed):
+        # The live Pro editorial case took 63.52 seconds. Keep the same shared
+        # deadline instead of resetting the budget for the layout stage.
+        elapsed = 64.0
+        plan = await _plan(editor)
+    assert editor.calls == plan.passes == 2
+    assert verify_readability(_fixture("after"), plan)
 
 
 @pytest.mark.parametrize(
