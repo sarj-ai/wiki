@@ -55,6 +55,16 @@ from app.document_transform.table_layout import (
         "1.234,50 EUR",
         "1\u00a0234,50 EUR",
         "0,125 ± 0,004 m/s²",
+        "9.81 m / s²",
+        "3 kg · m / s²",
+        "3 kg * m / s²",
+        "3 m ^ 2",
+        "3 m ** 2",
+        "3 m ^ -2",
+        "9.81 m s^-2",
+        "3 kg m s⁻²",
+        "12.3 ms ± 0.4 ms",
+        "1.2 ms–2.4 ms",
     ],
 )
 def test_quantities_use_numeric_alignment_without_rewriting_their_representation(
@@ -172,6 +182,10 @@ def _native_table(rows: tuple[tuple[str, ...], ...]) -> dict[str, JsonValue]:
         "1.2e",
         "12,34,56",
         "12.34.56",
+        "3 m under load",
+        "3 m in May",
+        "3 m moving",
+        "3 m / sample",
     ],
 )
 def test_dates_versions_identifiers_and_unrecognized_quantities_are_not_numbers(text: str) -> None:

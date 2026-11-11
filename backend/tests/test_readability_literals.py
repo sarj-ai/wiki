@@ -58,6 +58,20 @@ from tests.test_readability_lists import _prose_document
         "The exposure remains approximately 1|½ h under load.",
         "Measurements remain approximately 1.234(5)|ms under load.",
         "Measurements remain approximately 1.234(5)|× 10^-6 s under load.",
+        "Measurements remain approximately 9.81 m|/ s² under load.",
+        "Measurements remain approximately 9.81 m /|s² under load.",
+        "Measurements remain approximately 3 kg|· m / s² under load.",
+        "Measurements remain approximately 3 kg ·|m / s² under load.",
+        "Measurements remain approximately 3 m|^ 2 under load.",
+        "Measurements remain approximately 3 m ^|2 under load.",
+        "Measurements remain approximately 3 m|** 2 under load.",
+        "Measurements remain approximately 3 m **|2 under load.",
+        "Measurements remain approximately 9.81 m|s^-2 under load.",
+        "Measurements remain approximately 3 kg m|s⁻² under load.",
+        "Measurements remain approximately 12.3 ms|± 0.4 ms under load.",
+        "Measurements remain approximately 12.3 ms ±|0.4 ms under load.",
+        "Measurements remain approximately 1.2|x 10^3 s under load.",
+        "Measurements remain approximately 1.2 x|10^3 s under load.",
     ],
 )
 def test_layout_rejects_paragraph_breaks_inside_source_literals(marked: str) -> None:
@@ -86,6 +100,8 @@ def test_layout_rejects_paragraph_breaks_inside_source_literals(marked: str) -> 
         ("🙂 Cache reads take 1 µs.", "Disk reads take 10 ms."),
         ("The response is 1 234.50 ms.", "The exposure is 1 1/2 h."),
         ("The calibration is 1.234(5) ms.", "The range is 1–2 ms."),
+        ("The acceleration is 9.81 m / s².", "The force is 3 kg · m / s²."),
+        ("The range is 12.3 ms ± 0.4 ms.", "The estimate is 1.2 x 10^3 s."),
     ],
     ids=[
         "quantities",
@@ -96,6 +112,8 @@ def test_layout_rejects_paragraph_breaks_inside_source_literals(marked: str) -> 
         "utf16",
         "grouped-and-mixed",
         "parenthetical-and-range",
+        "spaced-compound-units",
+        "complete-uncertainty-and-scientific",
     ],
 )
 def test_layout_can_break_between_complete_source_literals(sentences: tuple[str, str]) -> None:
@@ -225,8 +243,16 @@ async def test_saved_checkpoint_cannot_split_a_literal_on_write_or_readback(vers
         "The response remains 1|234.50 ms under load.",
         "The exposure remains 1|1/2 h for each sample.",
         "The calibration remains 1.234(5)|ms under load.",
+        "The acceleration remains 9.81 m|/ s² under load.",
+        "The acceleration remains 9.81 m /|s² under load.",
     ],
-    ids=["grouped-number", "mixed-fraction", "parenthetical-uncertainty"],
+    ids=[
+        "grouped-number",
+        "mixed-fraction",
+        "parenthetical-uncertainty",
+        "spaced-unit-operator",
+        "spaced-unit-denominator",
+    ],
 )
 async def test_saved_numeric_split_is_rejected_before_any_provider_write(
     version: int, marked: str

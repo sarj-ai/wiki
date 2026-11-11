@@ -33,6 +33,19 @@ from tests.test_editorial_refinement import _RefiningEditor, _request
         pytest.param("3 m²", "3 m³", id="unit-power"),
         pytest.param("3 m^2", "3 m^3", id="ascii-unit-power"),
         pytest.param("3 kg·m/s²", "3 kg·m/s³", id="compound-unit-power"),
+        pytest.param("9.81 m / s²", "9.81 m / s³", id="spaced-quotient-power"),
+        pytest.param("3 kg · m / s²", "3 kg · m / s³", id="spaced-product-power"),
+        pytest.param("3 kg * m / s²", "3 kg * m / s³", id="spaced-ascii-product"),
+        pytest.param("9.81 m / s²", "9.81 m * s²", id="spaced-unit-operator"),
+        pytest.param("9.81 m / s²", "9.81 m / h²", id="spaced-denominator-unit"),
+        pytest.param("3 m ^ 2", "3 m ^ 3", id="spaced-unit-power"),
+        pytest.param("3 m ** 2", "3 m ** 3", id="spaced-double-star-power"),
+        pytest.param("3 kg m s⁻²", "3 kg m s⁻³", id="implicit-product-power"),
+        pytest.param("9.81 m s^-2", "9.81 m h^-2", id="implicit-denominator-unit"),
+        pytest.param("12.3 ms ± 0.4 ms", "12.3 ms ± 0.4 s", id="repeated-unit-uncertainty"),
+        pytest.param("12.3 ms ± 0.4 ms", "12.3 ms + 0.4 ms", id="repeated-unit-operator"),
+        pytest.param("1.2 x 10^3 s", "1.2 + 10^3 s", id="ascii-scientific-multiplication"),
+        pytest.param("12.3   ms", "12.3 ms", id="multiple-unit-separators"),
         pytest.param("3 µs", "3 μs", id="unit-literal"),
         pytest.param("6.02×10²³", "6.02÷10²³", id="scientific-operator"),
         pytest.param("6.02×10²³", "6.02×10⁻²³", id="superscript-exponent-sign"),
@@ -100,6 +113,22 @@ def test_numeric_mutations_are_rejected_before_review_while_active_voice_is_allo
         "1.234(5) ms",
         "1.234(5)e-6 s",
         "6.67430(15) × 10^-11 m³/kg/s²",
+        "9.81 m / s²",
+        "3 kg · m / s²",
+        "3 kg * m / s²",
+        "3 m ^ 2",
+        "3 m ** 2",
+        "3 m ^ -2",
+        "9.81 m\u00a0/\u00a0s²",
+        "9.81 m\u2009/\u2009s²",
+        "9.81 m\u202f/\u202fs²",
+        "9.81 m s^-2",
+        "3 kg m s⁻²",
+        "12.3 ms ± 0.4 ms",
+        "1.2 x 10^3 s",
+        "12.3   ms",
+        "3 m⁻",
+        "3 m²⁻",
         "1–2 ms",
     ],
 )
@@ -107,17 +136,47 @@ def test_repair_constraints_include_the_complete_numeric_notation(literal: str) 
     assert rewrite_constraints(f"The team measured {literal}.").protected_tokens == (literal,)
 
 
+@pytest.mark.parametrize("prose", ["under load", "in May", "must remain exact", "now", "moving"])
+def test_numeric_units_do_not_absorb_following_prose(prose: str) -> None:
+    assert rewrite_constraints(f"The team measured 3 m / s² {prose}.").protected_tokens == (
+        "3 m / s²",
+    )
+
+
+@pytest.mark.parametrize("conjunction", ["and", "or", "but", "nor", "yet"])
+def test_numeric_literals_do_not_absorb_a_following_conjunction(conjunction: str) -> None:
+    assert rewrite_constraints(
+        f"The team recorded 2026-11-11 {conjunction} retained the report."
+    ).protected_tokens == ("2026-11-11",)
+
+
+@pytest.mark.parametrize("boundary", ["\n", "\r", "\v", "\f", "\u0085", "\u2028", "\u2029"])
+def test_compound_units_cannot_cross_existing_line_boundaries(boundary: str) -> None:
+    assert rewrite_constraints(f"The reading is 3 m{boundary}/ s².").protected_tokens == ("3 m",)
+
+
 @pytest.fixture
 def numeric_editor_factory() -> Callable[[tuple[str, ...]], _RefiningEditor]:
     return _RefiningEditor
 
 
-async def test_changed_exponent_never_reaches_even_a_permissive_factual_reviewer(
+@pytest.mark.parametrize(
+    ("before", "after"),
+    [
+        ("1.20e-6 s", "1.20e+6 s"),
+        ("9.81 m / s²", "9.81 m / s³"),
+        ("3 kg m s⁻²", "3 kg m s⁻³"),
+        ("12.3 ms ± 0.4 ms", "12.3 ms + 0.4 ms"),
+    ],
+)
+async def test_changed_quantity_never_reaches_even_a_permissive_factual_reviewer(
+    before: str,
+    after: str,
     numeric_editor_factory: Callable[[tuple[str, ...]], _RefiningEditor],
 ) -> None:
-    source = "The reading was measured by the team at 1.20e-6 s."
+    source = f"The reading was measured by the team at {before}."
     original = parse_markdown(source, title="Numeric preservation")
-    editor = numeric_editor_factory(("The team measured the reading at 1.20e+6 s.",))
+    editor = numeric_editor_factory((f"The team measured the reading at {after}.",))
 
     outcome = await TextTransformPlanner(generator=editor, allow_unslop_model=True).transform(
         original, _request(source)
