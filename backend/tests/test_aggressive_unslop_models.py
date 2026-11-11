@@ -938,7 +938,7 @@ def test_conventional_framing_can_go_without_relaxing_the_following_obligation(p
     )
     assert decision.accepted == {block.id: proposed}
     assert not decision.findings
-    assert UNSLOP_POLICY_VERSION == "sarj-concise-v24"
+    assert UNSLOP_POLICY_VERSION == "sarj-concise-v25"
 
 
 @pytest.mark.parametrize(
