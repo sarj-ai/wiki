@@ -5,7 +5,11 @@ import pytest
 
 from app.document_transform.errors import OutputConflictError
 from app.document_transform.ir import utf16_length
-from app.document_transform.readability import plan_readability, verify_readability
+from app.document_transform.readability import (
+    plan_readability,
+    readability_invariant_sha256,
+    verify_readability,
+)
 from app.document_transform.readability_json import array, bodies, document_digest, obj
 from app.document_transform.readability_paragraphs import (
     readability_document,
@@ -14,7 +18,10 @@ from app.document_transform.readability_paragraphs import (
 )
 from app.document_transform.readability_provider import ReadabilityProvider
 from app.document_transform.readability_tables import readable_table_requests
-from app.document_transform.readability_types import ReadabilityCheckpoint
+from app.document_transform.readability_types import (
+    CURRENT_READABILITY_VERSION,
+    ReadabilityCheckpoint,
+)
 from app.identifiers import FileId
 from tests.test_document_readability import _fixture, _LayoutEditor, _paragraph, _plan
 
@@ -85,7 +92,7 @@ async def test_proposals_next_to_authored_lists_are_rejected_before_writing() ->
 
 async def test_native_list_requests_cover_each_complete_group_once() -> None:
     plan = await _plan()
-    assert plan.version == 2
+    assert plan.version == CURRENT_READABILITY_VERSION
     assert [
         request["createParagraphBullets"]
         for request in plan.requests
@@ -103,12 +110,12 @@ async def test_native_list_requests_cover_each_complete_group_once() -> None:
 
 
 async def test_version_one_checkpoint_retries_its_original_per_item_requests() -> None:
-    before, after = _fixture("before"), _fixture("after")
+    before, after = _fixture("before"), _fixture("after", version=1)
     plan = await _plan()
     paragraphs = tuple(reversed(plan.paragraphs))
     requests = readable_paragraph_requests(
         paragraphs, grouped_lists=False
-    ) + readable_table_requests(before, plan.tables)
+    ) + readable_table_requests(before, plan.tables, version=1)
     legacy_bullets = [
         obj(obj(request["createParagraphBullets"])["range"])
         for request in requests
@@ -123,6 +130,9 @@ async def test_version_one_checkpoint_retries_its_original_per_item_requests() -
         (68, 90),
     ]
     legacy = plan.model_copy(update={"version": 1, "paragraphs": paragraphs, "requests": requests})
+    legacy = legacy.model_copy(
+        update={"invariant_sha256": readability_invariant_sha256(before, legacy, applied=False)}
+    )
     current = before
     writes = []
 

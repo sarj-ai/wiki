@@ -1,7 +1,7 @@
 from copy import deepcopy
-from dataclasses import replace
+from dataclasses import dataclass, replace
 import json
-from typing import Any
+from typing import Any, override
 
 import pytest
 
@@ -12,7 +12,7 @@ from app.document_transform.bullet_style_projection import (
 )
 from app.document_transform.gateway import OutputDraft, SourceSnapshot
 from app.document_transform.google_gateway import GoogleDocumentGateway
-from app.document_transform.ir import parse_google_document
+from app.document_transform.ir import DocumentIR, parse_google_document
 from app.document_transform.schemas import DocumentOutput
 from app.drive.schemas import MIME_DOC
 from app.identifiers import DocsRevisionId, DocsTabId, FileId
@@ -378,3 +378,169 @@ def test_bullet_diagnostics_emit_only_static_counts_without_document_content():
     assert "private" not in repr(counts).lower()
     assert "secret" not in repr(counts).lower()
     assert "numbered" not in repr(counts)
+
+
+@dataclass(frozen=True, slots=True)
+class _RebasedNativeListCase:
+    source: SourceSnapshot
+    expected: DocumentIR
+    copied: SourceSnapshot
+
+
+def _rebased_native_list_case() -> _RebasedNativeListCase:
+    original = _document()
+    tab = original["tabs"][0]["documentTab"]
+    item = tab["body"]["content"][0]
+    item["paragraph"]["paragraphStyle"] = {"namedStyleType": "NORMAL_TEXT"}
+    item["paragraph"]["bullet"]["textStyle"] = {}
+    prefix = deepcopy(item)
+    prefix["paragraph"].pop("bullet")
+    tab["body"]["content"] = [prefix, item]
+    texts = [
+        "An unnecessarily verbose 🦊 prefix.\n",
+        "Moreover, preserve exact measurement context.\n",
+    ]
+    source = SourceSnapshot(
+        title="Review",
+        parent_folder_id=FileId("folder"),
+        modified_time="now",
+        revision_id=DocsRevisionId("r1"),
+        media_type=MIME_DOC,
+        google_document=original,
+    )
+    _set_native_paragraph_texts(source, texts)
+    tab["lists"]["unreferenced"] = deepcopy(tab["lists"]["numbered"])
+    original_ir = parse_google_document(original, title="Review")
+    expected = original_ir.replace_blocks(
+        {"b0": "Short 🦊.", "b1": "Preserve exact measurement context."}
+    )
+    copied = deepcopy(original)
+    copied_snapshot = replace(source, google_document=copied)
+    _set_native_paragraph_texts(copied_snapshot, [block.text + "\n" for block in expected.blocks])
+    copied_tab = copied["tabs"][0]["documentTab"]
+    copied_tab["lists"].pop("unreferenced")
+    copied_tab["body"]["content"][1]["paragraph"]["bullet"]["textStyle"] = {
+        "weightedFontFamily": {"fontFamily": "Nunito", "weight": 400},
+        "foregroundColor": {
+            "color": {
+                "rgbColor": {
+                    "red": 0.039215688,
+                    "green": 0.039215688,
+                    "blue": 0.039215688,
+                }
+            }
+        },
+    }
+    return _RebasedNativeListCase(source, expected, copied_snapshot)
+
+
+def _set_native_paragraph_texts(snapshot: SourceSnapshot, texts: list[str]) -> None:
+    document = snapshot.google_document
+    assert document is not None
+    cursor = 1
+    for element, text in zip(
+        document["tabs"][0]["documentTab"]["body"]["content"], texts, strict=True
+    ):
+        end = cursor + len(text.encode("utf-16-le")) // 2
+        element["startIndex"], element["endIndex"] = cursor, end
+        element["paragraph"]["elements"] = [
+            {"startIndex": cursor, "endIndex": end, "textRun": {"content": text}}
+        ]
+        cursor = end
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    [
+        "planned",
+        "wrong_font",
+        "wrong_weight",
+        "wrong_color",
+        "link",
+        "unknown_style",
+        "unknown_bullet",
+        "nesting",
+        "identity",
+        "numbering",
+    ],
+)
+async def test_copy_bullet_projection_tracks_shortened_utf16_prefix_and_list_item(
+    mutation: str,
+) -> None:
+    case = _rebased_native_list_case()
+    source, expected, copied = case.source, case.expected, case.copied
+    assert source.google_document is not None
+    assert copied.google_document is not None
+    untouched = deepcopy(source.google_document)
+    actual = copied.google_document
+    tab = actual["tabs"][0]["documentTab"]
+    bullet = tab["body"]["content"][1]["paragraph"]["bullet"]
+    match mutation:
+        case "planned":
+            pass
+        case "wrong_font":
+            bullet["textStyle"]["weightedFontFamily"]["fontFamily"] = "Arial"
+        case "wrong_weight":
+            bullet["textStyle"]["weightedFontFamily"]["weight"] = 700
+        case "wrong_color":
+            bullet["textStyle"]["foregroundColor"] = {"color": {"rgbColor": {"red": 1}}}
+        case "link":
+            bullet["textStyle"]["link"] = {"url": "https://example.test/changed"}
+        case "unknown_style":
+            bullet["textStyle"]["futureStyle"] = True
+        case "unknown_bullet":
+            bullet["futureBullet"] = True
+        case "nesting":
+            bullet["nestingLevel"] = 1
+        case "identity":
+            bullet["listId"] = "other"
+        case "numbering":
+            tab["lists"]["numbered"]["listProperties"]["nestingLevels"][0]["startNumber"] = 1
+        case _:
+            pytest.fail(f"Unknown bullet mutation: {mutation}")
+    counts = bullet_style_diagnostics(parse_google_document(actual, title="Review"), expected)
+    if mutation == "planned":
+        assert counts["bullet_projection_accepted"] == 1
+        assert counts["bullet_font_mismatch"] == 0
+        assert counts["bullet_color_mismatch"] == 0
+
+    class _ReadbackGateway(GoogleDocumentGateway):
+        @override
+        def _get_document_sync(self, file_id: FileId):
+            assert file_id == FileId("copy")
+            return actual
+
+    gateway = object.__new__(_ReadbackGateway)
+    verification = await gateway.verify_output(
+        draft=OutputDraft(
+            output=DocumentOutput(
+                file_id=FileId("copy"), name="Copy", parent_folder_id=FileId("folder")
+            ),
+            document_id=FileId("copy"),
+            tab_id=DocsTabId("tab"),
+            revision_id=DocsRevisionId("r1"),
+            source_sha256="source",
+        ),
+        source=source,
+        expected=expected,
+        verify_brand=True,
+    )
+    assert verification.structure_preserved is (mutation == "planned")
+    if mutation != "numbering":
+        assert verification.content_preserved is (mutation == "planned")
+    assert source.google_document == untouched
+
+
+def test_subparagraph_styles_do_not_authorize_bullet_changes_after_prefix_rebase() -> None:
+    case = _rebased_native_list_case()
+    source, copied = case.source, case.copied
+    assert source.google_document is not None
+    assert copied.google_document is not None
+    original = parse_google_document(source.google_document, title="Review")
+    expected = original.replace_blocks({"b0": "Short 🦊."})
+    _set_native_paragraph_texts(copied, [block.text + "\n" for block in expected.blocks])
+    assert project_branded_bullet_styles(copied.google_document, expected) == copied.google_document
+    counts = bullet_style_diagnostics(
+        parse_google_document(copied.google_document, title="Review"), expected
+    )
+    assert counts["bullet_projection_accepted"] == 0

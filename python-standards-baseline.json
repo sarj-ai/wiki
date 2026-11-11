@@ -30,7 +30,6 @@
     "SARJ528": 2
   },
   "backend/app/document_transform/bullet_style_projection.py": {
-    "SARJ444": 1,
     "SARJ447": 7,
     "SARJ528": 2
   },
@@ -82,7 +81,6 @@
     "SARJ447": 2
   },
   "backend/app/document_transform/ir.py": {
-    "SARJ444": 4,
     "SARJ447": 8,
     "SARJ528": 2
   },
@@ -529,7 +527,7 @@
   "backend/tests/test_markdown_import.py": {
     "SARJ442": 4,
     "SARJ445": 1,
-    "SARJ447": 15
+    "SARJ447": 14
   },
   "backend/tests/test_markdown_native_header_title.py": {
     "SARJ445": 1,

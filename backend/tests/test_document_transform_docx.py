@@ -91,6 +91,42 @@ def test_fenced_code_preserves_blank_lines_without_inserting_spaces() -> None:
     assert expected.blocks[-1].text == document.paragraphs[-1].text
 
 
+def test_branded_fence_uses_syntax_colors_without_changing_imported_text() -> None:
+    code = 'def greet(name):\n\t# μs and Unicode stay literal.\n\treturn "Hello, " + name\n\n'
+    source = f"```python\n{code}```"
+    document = WordDocument(BytesIO(render_markdown_docx(source, title="Code")))
+    paragraph = document.paragraphs[-1]
+    assert paragraph.text == code.removesuffix("\n")
+    assert paragraph.style is not None
+    assert paragraph.style.name == "Sarj Code"
+    assert all(run.font.name == "Courier New" for run in paragraph.runs)
+    colors = {str(run.font.color.rgb) for run in paragraph.runs}
+    assert {"6D28D9", "006D77", "62616C"} <= colors
+    assert all(not run.bold for run in paragraph.runs)
+    expected = markdown_import_manifest(source, title="Code", branded=True)
+    assert expected.blocks[-1].text == paragraph.text
+    assert len(document.paragraphs) == 2  # Title and code; no added language label.
+
+
+def test_unbranded_fence_remains_plain_before_rendering() -> None:
+    source = '```python\ndef greet():\n\treturn "Hello"\n```'
+    document = WordDocument(BytesIO(render_markdown_docx(source, title="Code", branded=False)))
+    paragraph = document.paragraphs[-1]
+    assert paragraph.text == 'def greet():\n\treturn "Hello"'
+    assert all(run.font.name == "Courier New" for run in paragraph.runs)
+    assert all(str(run.font.color.rgb) == "000000" for run in paragraph.runs)
+    assert all(not run.bold for run in paragraph.runs)
+
+
+def test_explicit_fence_hint_overrides_unhinted_language_detection() -> None:
+    code = '{"enabled": true, "name": "Sarj"}'
+    source = f"```text\n{code}\n```"
+    document = WordDocument(BytesIO(render_markdown_docx(source, title="Code")))
+    paragraph = document.paragraphs[-1]
+    assert paragraph.text == code
+    assert len({str(run.font.color.rgb) for run in paragraph.runs}) == 1
+
+
 @pytest.mark.parametrize(
     "source",
     [

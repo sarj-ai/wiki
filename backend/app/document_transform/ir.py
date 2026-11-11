@@ -12,8 +12,10 @@ import unicodedata
 
 from pydantic import JsonValue
 
+from app.document_transform.code_syntax import is_code_font_family
 from app.document_transform.errors import SourceTooLargeError, UnsupportedSourceError
 from app.document_transform.limits import MAX_MARKDOWN_BYTES, MIN_MODEL_PROSE_WORDS
+from app.document_transform.native_code_source import protect_native_code
 from app.document_transform.native_prose import linked_prose_tail
 from app.identifiers import DocsSegmentId, DocsTabId
 
@@ -325,38 +327,39 @@ def parse_markdown(content: str, *, title: str) -> DocumentIR:
         if fence_marker is not None:
             fence_lines.append(line)
             continue
-        if line_index in protected_lines:
-            _append_block(blocks, BlockKind.TABLE, line, editable=False)
-            continue
-        if line.startswith(("    ", "\t")) and line.strip():
-            _append_block(blocks, BlockKind.CODE, line, editable=False)
-            continue
-        if (heading := _HEADING.match(line)) is not None:
-            _append_block(
-                blocks,
-                BlockKind.HEADING,
-                heading.group(2),
-                level=len(heading.group(1)),
-            )
-            continue
-        if (list_item := _LIST.match(line)) is not None:
-            item_text = list_item.group(1)
-            if item_text.startswith(("[ ] ", "[x] ", "[X] ")):
-                _append_block(blocks, BlockKind.CHECKLIST, item_text[4:])
-            else:
-                _append_block(blocks, BlockKind.LIST_ITEM, item_text)
-            continue
-        if (quote := re.match(r"^ {0,3}> ?(.*)$", line)) is not None:
-            _append_block(blocks, BlockKind.QUOTE, quote.group(1), editable=False)
-        elif line.startswith("|") and line.endswith("|"):
-            _append_block(blocks, BlockKind.TABLE, line, editable=False)
-        elif not line.strip():
-            _append_block(blocks, BlockKind.BLANK, "", editable=False)
-        else:
-            _append_block(blocks, BlockKind.PARAGRAPH, line)
+        _append_markdown_line(blocks, line, protected=line_index in protected_lines)
     if fence_marker is not None:
         raise UnsupportedSourceError
     return DocumentIR(title=title, blocks=tuple(blocks), source_format="markdown")
+
+
+def _append_markdown_line(blocks: list[TextBlock], line: str, *, protected: bool) -> None:
+    if protected:
+        _append_block(blocks, BlockKind.TABLE, line, editable=False)
+        return
+    if line.startswith(("    ", "\t")) and line.strip():
+        _append_block(blocks, BlockKind.CODE, line, editable=False)
+        return
+    if (heading := _HEADING.match(line)) is not None:
+        _append_block(blocks, BlockKind.HEADING, heading.group(2), level=len(heading.group(1)))
+        return
+    if (list_item := _LIST.match(line)) is not None:
+        item_text = list_item.group(1)
+        if item_text.startswith(("[ ] ", "[x] ", "[X] ")):
+            _append_block(blocks, BlockKind.CHECKLIST, item_text[4:])
+        else:
+            _append_block(blocks, BlockKind.LIST_ITEM, item_text)
+        return
+    if (quote := re.match(r"^ {0,3}> ?(.*)$", line)) is not None:
+        _append_block(blocks, BlockKind.QUOTE, quote.group(1), editable=False)
+        return
+    if line.startswith("|") and line.endswith("|"):
+        _append_block(blocks, BlockKind.TABLE, line, editable=False)
+        return
+    if not line.strip():
+        _append_block(blocks, BlockKind.BLANK, "", editable=False)
+        return
+    _append_block(blocks, BlockKind.PARAGRAPH, line)
 
 
 def parse_google_document(document: dict[str, Any], *, title: str) -> DocumentIR:
@@ -381,18 +384,26 @@ def parse_google_document(document: dict[str, Any], *, title: str) -> DocumentIR
             parsed = _parse_structural_element(element, tab_id, len(blocks))
             if parsed is None:
                 continue
-            total_units += utf16_length(parsed.text)
-            if total_units > MAX_DOC_UTF16_UNITS:
-                raise SourceTooLargeError
-            if len(blocks) >= MAX_DOCUMENT_BLOCKS:
-                raise SourceTooLargeError
-            blocks.append(parsed)
-    return DocumentIR(
-        title=title,
-        blocks=tuple(blocks),
-        source_format="google_doc",
-        tab_ids=tuple(_tab_id(tab) for tab in flattened),
+            total_units = _append_google_block(blocks, parsed, total_units)
+    return protect_native_code(
+        DocumentIR(
+            title=title,
+            blocks=tuple(blocks),
+            source_format="google_doc",
+            tab_ids=tuple(_tab_id(tab) for tab in flattened),
+        ),
+        document,
     )
+
+
+def _append_google_block(blocks: list[TextBlock], block: TextBlock, total_units: int) -> int:
+    total_units += utf16_length(block.text)
+    if total_units > MAX_DOC_UTF16_UNITS:
+        raise SourceTooLargeError
+    if len(blocks) >= MAX_DOCUMENT_BLOCKS:
+        raise SourceTooLargeError
+    blocks.append(block)
+    return total_units
 
 
 def utf16_length(value: str) -> int:
@@ -674,21 +685,25 @@ def _parse_native_content(part: object, offset: int) -> NativeContent | None:
         display = next((value for key in display_keys if (value := properties.get(key))), None)
         if not isinstance(display, str):
             raise UnsupportedSourceError
-        # Styling can legitimately change; identity, suggestions and all future
-        # unknown provider properties must survive byte-equivalently in JSON.
-        protected = {key: value for key, value in payload.items() if key != "textStyle"}
-        outer = {
-            key: value for key, value in part.items() if key not in {"startIndex", "endIndex", kind}
-        }
         return NativeContent(
             kind,
             offset,
             display,
-            json.dumps(
-                {"element": protected, "outer": outer}, sort_keys=True, separators=(",", ":")
-            ),
+            _native_chip_payload_json(part, payload, kind),
         )
     return None
+
+
+def _native_chip_payload_json(
+    part: dict[str, JsonValue], payload: dict[str, JsonValue], kind: str
+) -> str:
+    # Styling can legitimately change; identity, suggestions and all future
+    # unknown provider properties must survive byte-equivalently in JSON.
+    protected = {key: value for key, value in payload.items() if key != "textStyle"}
+    outer = {
+        key: value for key, value in part.items() if key not in {"startIndex", "endIndex", kind}
+    }
+    return json.dumps({"element": protected, "outer": outer}, sort_keys=True, separators=(",", ":"))
 
 
 def _safe_font_ranges(
@@ -772,12 +787,7 @@ def _text_run_is_locked(part: object, style: object) -> bool:
         isinstance(part, dict)
         and (part.get("suggestedInsertionIds") or part.get("suggestedDeletionIds"))
     )
-    return (
-        "link" in style_dict
-        or str(font_family).casefold()
-        in {"consolas", "courier new", "menlo", "monospace", "roboto mono"}
-        or has_suggestion
-    )
+    return "link" in style_dict or is_code_font_family(str(font_family)) or has_suggestion
 
 
 def _paragraph_is_editable(
@@ -823,6 +833,12 @@ def _terminal_text_run_shape(
         style != visible_styles[0] for style in visible_styles[1:]
     ):
         return False
+    return _terminal_run_offsets_match(elements, runs, start=start, end=end)
+
+
+def _terminal_run_offsets_match(
+    elements: list[JsonValue], runs: list[tuple[str, bool]], *, start: int, end: int
+) -> bool:
     cursor = start
     for element, (text, _) in zip(elements, runs, strict=True):
         if not isinstance(element, dict) or set(element) - {"startIndex", "endIndex", "textRun"}:

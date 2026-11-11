@@ -2,14 +2,20 @@ from pydantic import JsonValue
 
 from app.document_transform.brand_manifest import CURRENT_BRAND_MANIFEST
 from app.document_transform.readability_json import array, obj
-from app.document_transform.readability_types import ReadabilityTable
+from app.document_transform.readability_types import (
+    CURRENT_READABILITY_VERSION,
+    ReadabilityTable,
+    ReadabilityVersion,
+)
 
 
 _COLORS = CURRENT_BRAND_MANIFEST.colors
 _COLOR_TOLERANCE = 0.00001
 
 
-def _row_style(row: int, *, target: ReadabilityTable) -> dict[str, JsonValue]:
+def _row_style(
+    row: int, *, target: ReadabilityTable, version: ReadabilityVersion
+) -> dict[str, JsonValue]:
     header_rows = target.header_rows if target.header else 0
     color = (
         _COLORS.primary_tint
@@ -39,20 +45,29 @@ def _row_style(row: int, *, target: ReadabilityTable) -> dict[str, JsonValue]:
         "backgroundColor": {"color": {"rgbColor": rgb}},
         "paddingTop": {"magnitude": 4, "unit": "PT"},
         "paddingBottom": {"magnitude": 4, "unit": "PT"},
-        "paddingLeft": {"magnitude": 6, "unit": "PT"},
-        "paddingRight": {"magnitude": 6, "unit": "PT"},
+        **(
+            {
+                "paddingLeft": {"magnitude": 6, "unit": "PT"},
+                "paddingRight": {"magnitude": 6, "unit": "PT"},
+            }
+            if version != CURRENT_READABILITY_VERSION
+            else {}
+        ),
         "contentAlignment": "TOP",
     }
 
 
 def readable_table_cell_requests(
-    element: dict[str, JsonValue], target: ReadabilityTable
+    element: dict[str, JsonValue],
+    target: ReadabilityTable,
+    *,
+    version: ReadabilityVersion = CURRENT_READABILITY_VERSION,
 ) -> list[dict[str, JsonValue]]:
     if not (target.header or target.style_cells):
         return []
     requests: list[dict[str, JsonValue]] = []
     for row, _value in enumerate(array(obj(element["table"])["tableRows"])):
-        style = _row_style(row, target=target)
+        style = _row_style(row, target=target, version=version)
         requests.append(
             {
                 "updateTableCellStyle": {
@@ -74,7 +89,11 @@ def readable_table_cell_requests(
 
 
 def project_readable_table_cells(
-    element: dict[str, JsonValue], target: ReadabilityTable, *, applied: bool
+    element: dict[str, JsonValue],
+    target: ReadabilityTable,
+    *,
+    applied: bool,
+    version: ReadabilityVersion = CURRENT_READABILITY_VERSION,
 ) -> None:
     if not (target.header or target.style_cells):
         return
@@ -82,7 +101,7 @@ def project_readable_table_cells(
         for cell_value in array(obj(value)["tableCells"]):
             cell = obj(cell_value)
             style = obj(cell.get("tableCellStyle", {}))
-            for key, expected in _row_style(row, target=target).items():
+            for key, expected in _row_style(row, target=target, version=version).items():
                 if applied and not _matches(
                     style.get(key, "TOP" if key == "contentAlignment" else None), expected
                 ):

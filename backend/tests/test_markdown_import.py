@@ -755,6 +755,81 @@ def test_code_font_is_allowed_only_at_the_exact_expected_offsets() -> None:
     assert verify_markdown_import(document, manifest).brand_applied is False
 
 
+def _branded_code_document():
+    document = _branded_document()
+    elements = []
+    for text, color in (
+        ("re", "#6D28D9"),
+        ("turn", "#6D28D9"),
+        (" ", CURRENT_BRAND_MANIFEST.colors.ink),
+        ('"μs"', "#006D77"),
+        ("  ", CURRENT_BRAND_MANIFEST.colors.ink),
+        ("# note\n", "#62616C"),
+    ):
+        style = _brand_run_style(size=CURRENT_BRAND_MANIFEST.document.body_size_pt, color=color)
+        style["weightedFontFamily"] = {"fontFamily": "Courier New"}
+        elements.append({"textRun": {"content": text, "textStyle": style}})
+    document["tabs"][0]["documentTab"]["body"]["content"][1]["paragraph"]["elements"] = elements
+    return document
+
+
+def test_code_brand_verifies_exact_syntax_colors_with_fragmented_unicode_runs() -> None:
+    manifest = markdown_import_manifest(
+        '```python\nreturn "μs"  # note\n```', title="Import", branded=True
+    )
+    verification = verify_markdown_import(_branded_code_document(), manifest)
+    assert verification.content_preserved
+    assert verification.structure_preserved
+    assert verification.brand_applied
+
+
+@pytest.mark.parametrize("corruption", ["wrong-color", "uniform-ink", "cross-token-run"])
+def test_code_brand_rejects_wrong_or_misplaced_colors(corruption: str) -> None:
+    manifest = markdown_import_manifest(
+        '```python\nreturn "μs"  # note\n```', title="Import", branded=True
+    )
+    document = _branded_code_document()
+    elements = document["tabs"][0]["documentTab"]["body"]["content"][1]["paragraph"]["elements"]
+    match corruption:
+        case "wrong-color":
+            elements[0]["textRun"]["textStyle"]["foregroundColor"] = _rgb("#006D77")
+        case "uniform-ink":
+            for element in elements:
+                element["textRun"]["textStyle"]["foregroundColor"] = _rgb(
+                    CURRENT_BRAND_MANIFEST.colors.ink
+                )
+        case _:
+            document["tabs"][0]["documentTab"]["body"]["content"][1]["paragraph"]["elements"] = [
+                {
+                    "textRun": {
+                        "content": 'return "μs"  # note\n',
+                        "textStyle": elements[0]["textRun"]["textStyle"],
+                    }
+                }
+            ]
+    verification = verify_markdown_import(document, manifest)
+    assert verification.content_preserved
+    assert verification.structure_preserved
+    assert not verification.brand_applied
+
+
+def test_explicit_plain_fence_requires_plain_color_and_retains_structure_guards() -> None:
+    manifest = markdown_import_manifest(
+        '```text\nreturn "μs"  # note\n```', title="Import", branded=True
+    )
+    document = _branded_code_document()
+    elements = document["tabs"][0]["documentTab"]["body"]["content"][1]["paragraph"]["elements"]
+    assert not verify_markdown_import(document, manifest).brand_applied
+    for element in elements:
+        element["textRun"]["textStyle"]["foregroundColor"] = _rgb(CURRENT_BRAND_MANIFEST.colors.ink)
+    verification = verify_markdown_import(document, manifest)
+    assert verification.content_preserved
+    assert verification.structure_preserved
+    assert verification.brand_applied
+    elements[0]["textRun"]["textStyle"]["bold"] = True
+    assert not verify_markdown_import(document, manifest).structure_preserved
+
+
 def test_brand_readback_allows_named_style_inheritance_and_complex_script_fallback() -> None:
     tokens = CURRENT_BRAND_MANIFEST.document
     document = _branded_document()
@@ -788,7 +863,7 @@ def test_brand_readback_allows_named_style_inheritance_and_complex_script_fallba
 def test_google_gateway_uses_markdown_manifest_for_post_import_readback(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    document: dict[str, Any] = {
+    document: dict[str, JsonValue] = {
         "revisionId": "revision-2",
         "tabs": [
             {

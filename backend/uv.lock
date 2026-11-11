@@ -2891,6 +2891,7 @@ dependencies = [
     { name = "pydantic", extra = ["email"] },
     { name = "pydantic-core" },
     { name = "pydantic-settings" },
+    { name = "pygments" },
     { name = "pyjwt" },
     { name = "python-docx" },
     { name = "sqlalchemy", extra = ["asyncio"] },
@@ -2918,6 +2919,7 @@ dev = [
     { name = "ty" },
     { name = "types-defusedxml" },
     { name = "types-httplib2" },
+    { name = "types-pygments" },
     { name = "types-requests" },
     { name = "vulture" },
 ]
@@ -2946,6 +2948,7 @@ requires-dist = [
     { name = "pydantic", extras = ["email"], specifier = ">=2.14.3" },
     { name = "pydantic-core", specifier = ">=2.50.4" },
     { name = "pydantic-settings", specifier = ">=2.16.2" },
+    { name = "pygments", specifier = ">=2.21.0" },
     { name = "pyjwt", specifier = ">=2.15.1" },
     { name = "python-docx", specifier = ">=1.2.0" },
     { name = "sqlalchemy", extras = ["asyncio"], specifier = ">=2.1.8" },
@@ -2973,6 +2976,7 @@ dev = [
     { name = "ty", specifier = ">=0.0.99" },
     { name = "types-defusedxml", specifier = ">=0.7.0.20260504" },
     { name = "types-httplib2", specifier = ">=0.32.1.20261029" },
+    { name = "types-pygments", specifier = ">=2.21.0.20260819" },
     { name = "types-requests", specifier = ">=2.33.0.20261030" },
     { name = "vulture", specifier = ">=2.16" },
 ]
@@ -3276,6 +3280,15 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/0b/e8/d848bff57950c6cc142c603c6529f9acc14cc8a5b3972a9b7bf46f2397c6/types_httplib2-0.32.1.20261029.tar.gz", hash = "sha256:b1dbb861ecd4644e2097b7aa1d9046217f985792f6dc9a9d3397e7f079f52718", size = 12003, upload-time = "2026-10-29T07:44:30.203Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/b9/7a/74077271ef44c2bd1dcf3d2b9ddbbe84d13472f028c71243873cd9c92c73/types_httplib2-0.32.1.20261029-py3-none-any.whl", hash = "sha256:fe4ac38d6f2879afd944dea6b5c2cee6ee29e71f09ee5ad34c345614dd2c187f", size = 11511, upload-time = "2026-10-29T07:44:29.327Z" },
+]
+
+[[package]]
+name = "types-pygments"
+version = "2.21.0.20260819"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/84/2b/b3e929c39fb056f0e44560acbe53a7c3f28f428af5362d043642d80b31ec/types_pygments-2.21.0.20260819.tar.gz", hash = "sha256:68e0cb27115b08b681c843e30a153b5d9850c048e1158623ada36ccd4cf7e89b", size = 21509, upload-time = "2026-08-19T02:47:15.827Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/d9/a5/10a2de06b53a36f4334391fcf292b51877cbc71d3f6eac353e7b87a0a17e/types_pygments-2.21.0.20260819-py3-none-any.whl", hash = "sha256:85e216770d616db6a7e96fb70c2de9d9f283b746c37edb7768ce645bdbcaddb2", size = 29099, upload-time = "2026-08-19T02:47:14.81Z" },
 ]
 
 [[package]]

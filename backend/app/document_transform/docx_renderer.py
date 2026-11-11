@@ -33,6 +33,7 @@ from app.document_transform.brand_manifest import (
     normalize_header_title,
     trusted_document_logo_description,
 )
+from app.document_transform.code_syntax import CodeToken, format_code
 from app.document_transform.errors import (
     EmptyMarkdownBlockError,
     SourceTooLargeError,
@@ -116,6 +117,7 @@ class _Block:
     inlines: tuple[MarkdownImportInline, ...] = ()
     cell_inlines: tuple[tuple[tuple[MarkdownImportInline, ...], ...], ...] = ()
     has_header: bool = False
+    language: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -246,8 +248,9 @@ def _render_complexity_counts(blocks: tuple[_Block, ...], title: str) -> tuple[i
                     for cell in row:
                         count_inlines(cell)
             case "code":
-                # Each hard line break is materialized as its own run.
-                inline_runs += max(1, 2 * len(block.text.split("\n")) - 1)
+                tokens = format_code(block.text, block.language).tokens
+                inline_runs += max(1, len(tokens) + block.text.count("\n"))
+                styled_spans += len(tokens)
             case _:
                 count_inlines(block.inlines)
     return table_cells, inline_runs, styled_spans, hyperlinks
@@ -339,6 +342,7 @@ def _manifest_block(
         inline_signature=signature,
         cell_signatures=block.cell_inlines,
         checked=block.checked if block.kind == "check" else None,
+        code_language=block.language if block.kind == "code" else None,
     )
 
 
@@ -885,7 +889,7 @@ def _append_nonlist_block(document: Document, block: _Block, *, branded: bool) -
             _set_paragraph_box(paragraph, fill=_SARJ_PURPLE_LIGHT, left_border=_SARJ_PURPLE)
         _append_inlines(paragraph, block.inlines, branded=branded)
     elif block.kind == "code":
-        _append_code_block(document, block.text, branded=branded)
+        _append_code_block(document, block.text, language=block.language, branded=branded)
     elif block.kind == "table":
         _append_table(document, block, branded=branded)
     elif block.kind == "rule":
@@ -999,23 +1003,25 @@ def _set_numbering(paragraph: Paragraph, num_id: int, level: int) -> None:
     properties.append(num_properties)
 
 
-def _append_code_block(document: Document, text: str, *, branded: bool) -> None:
+def _append_code_block(
+    document: Document, text: str, *, language: str | None, branded: bool
+) -> None:
     paragraph = document.add_paragraph(style="Sarj Code" if branded else "Normal")
     _set_paragraph_direction(paragraph, text)
     if branded:
         _set_paragraph_box(paragraph, fill=_CODE_FILL)
-    for index, line in enumerate(text.split("\n")):
-        if index:
-            paragraph.add_run().add_break()
-        # An empty source line is represented by the adjacent break. Adding a
-        # space here changes the code block's content after DOCX conversion.
-        run = paragraph.add_run(line)
+    tokens = format_code(text, language).tokens if branded else (CodeToken(text),)
+    for token in tokens:
+        # python-docx emits native line breaks and tabs, including empty lines;
+        # never insert spaces or a language label into the protected code text.
+        run = paragraph.add_run(token.text)
         _format_run(
             run,
             font="Courier New",
             size=_DOCUMENT.body_size_pt if branded else 10,
-            color=_INK if branded else "000000",
+            color=(token.color or _INK) if branded else "000000",
         )
+        run.bold = False
 
 
 def _append_table(document: Document, block: _Block, *, branded: bool) -> None:
@@ -1500,7 +1506,9 @@ def _consume_block_token(state: _BlockParseState, token: Token) -> None:
     elif kind in {"fence", "code_block"}:
         if state.quote_depth or state.list_stack or state.table_rows is not None:
             raise UnsupportedSourceError
-        state.blocks.append(_Block("code", text=token.content.removesuffix("\n")))
+        state.blocks.append(
+            _Block("code", text=token.content.removesuffix("\n"), language=token.info or None)
+        )
     else:
         raise UnsupportedSourceError
 

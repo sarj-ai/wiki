@@ -5,6 +5,11 @@ from pydantic import BaseModel, ConfigDict, Field, JsonValue
 from app.identifiers import DocsRevisionId, DocsTabId
 
 
+type ReadabilityVersion = Literal[1, 2, 3]
+
+CURRENT_READABILITY_VERSION: Literal[3] = 3
+
+
 class ReadabilityPart(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
@@ -54,8 +59,8 @@ class ReadabilityTable(BaseModel):
 class ReadabilityPlan(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
-    # Version 1 wrote one bullet request per item; version 2 writes whole groups.
-    version: Literal[1, 2] = 2
+    # Missing versions retain legacy grouped-list and horizontal-padding writes.
+    version: ReadabilityVersion = 2
     source_revision_id: DocsRevisionId
     source_sha256: str
     invariant_sha256: str

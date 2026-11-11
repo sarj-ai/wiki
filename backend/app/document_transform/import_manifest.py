@@ -26,6 +26,7 @@ class MarkdownImportBlock:
     inline_signature: tuple[MarkdownImportInline, ...] = ()
     cell_signatures: tuple[tuple[tuple[MarkdownImportInline, ...], ...], ...] = ()
     checked: bool | None = None
+    code_language: str | None = None
 
 
 @dataclass(frozen=True, slots=True)

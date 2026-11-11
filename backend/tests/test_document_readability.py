@@ -22,9 +22,11 @@ from app.document_transform.readability_paragraphs import (
 )
 from app.document_transform.readability_provider import ReadabilityProvider
 from app.document_transform.readability_types import (
+    CURRENT_READABILITY_VERSION,
     ReadabilityCheckpoint,
     ReadabilityPart,
     ReadabilityProposal,
+    ReadabilityVersion,
 )
 from app.document_transform.schemas import TextPatch, TransformPhase
 from app.identifiers import FileId
@@ -38,8 +40,30 @@ class _DocumentFixture(RootModel[dict[str, JsonValue]]):
     pass
 
 
-def _fixture(stage: Literal["before", "after"]) -> dict[str, JsonValue]:
-    return _DocumentFixture.model_validate_json((_DATA / f"{stage}.json").read_text()).root
+def _fixture(
+    stage: Literal["before", "after"],
+    *,
+    version: ReadabilityVersion = CURRENT_READABILITY_VERSION,
+) -> dict[str, JsonValue]:
+    document = _DocumentFixture.model_validate_json((_DATA / f"{stage}.json").read_text()).root
+    if stage == "after" and version == CURRENT_READABILITY_VERSION:
+        for source, actual in zip(
+            _fixture_cells(_fixture("before")), _fixture_cells(document), strict=True
+        ):
+            for field in ("paddingLeft", "paddingRight"):
+                actual[field] = deepcopy(source[field])
+    return document
+
+
+def _fixture_cells(document: dict[str, JsonValue]) -> list[dict[str, JsonValue]]:
+    return [
+        obj(obj(cell)["tableCellStyle"])
+        for _, tab in bodies(document)
+        for element in content(tab)
+        if "table" in obj(element)
+        for row in array(obj(obj(element)["table"])["tableRows"])
+        for cell in array(obj(row)["tableCells"])
+    ]
 
 
 def _paragraph(document: dict[str, JsonValue], start: int) -> dict[str, JsonValue]:
