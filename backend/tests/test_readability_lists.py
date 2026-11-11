@@ -180,7 +180,7 @@ async def test_production_request_limit_drops_both_siblings_when_one_does_not_fi
         "Operational notes",
         " ".join([fact] * 10),
         "Operational notes",
-        "Operational notes",
+        "Operational details",
         fact,
         "Cache reads take 100 ns.",
     )

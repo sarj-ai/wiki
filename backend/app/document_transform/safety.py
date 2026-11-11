@@ -10,6 +10,7 @@ from typing import Final, Literal
 from app.document_transform.ir import BlockKind, DocumentIR, TextBlock
 from app.document_transform.quantity_notation import HORIZONTAL_SPACE, UNIT_POWER, UNIT_SYMBOL
 from app.document_transform.quotations import QUOTED_SPAN_PATTERN, quoted_block_ids
+from app.document_transform.revision_arguments import revision_arguments
 from app.document_transform.schemas import TextPatch, TransformFinding, TransformPhase
 from app.document_transform.unslop import (
     CUSTOM_URI_PATTERN,
@@ -114,6 +115,12 @@ _PROPER_NOUN = re.compile(r"\b(?:[A-Z][a-z]+|[A-Z]{2,}|[A-Z][A-Za-z0-9]*[A-Z][A-
 _SENTENCE = re.compile(r".*?(?:[.!?]+(?=\s+|$)|$)", re.DOTALL)
 _ISO_DATE = r"\b\d{4}-\d{2}-\d{2}\b"
 _DATE = re.compile(_ISO_DATE)
+_TEMPORAL_SCOPE = re.compile(
+    rf"\b(?P<operator>on|by|before|after|since|until|as\s+of)\s+"
+    rf"(?P<ticks>`*)(?P<date>{_ISO_DATE})(?P=ticks)",
+    re.IGNORECASE,
+)
+_NON_TEMPORAL_ON = re.compile(r"\bbased\s+$", re.IGNORECASE)
 _FRONTED_DATE = re.compile(
     rf"\s*(?:on|by|before|after|since|until|as of)\s+(?P<date>{_ISO_DATE})(?:\s*,|\s+)",
     re.IGNORECASE,
@@ -142,6 +149,7 @@ REPAIRABLE_REWRITE_CODES = frozenset(
         "negative_transformation_scope_changed",
         "unit_column_identity_changed",
         "source_entry_relationship_changed",
+        "revision_argument_changed",
     }
 )
 
@@ -159,6 +167,8 @@ class RewriteConstraints:
     quotations: tuple[str, ...]
     protected_names: tuple[str, ...]
     scope_qualifiers: tuple[str, ...] = ()
+    revision_arguments: tuple[str, ...] = ()
+    temporal_scopes: tuple[str, ...] = ()
 
 
 def rewrite_constraints(text: str) -> RewriteConstraints:
@@ -168,6 +178,8 @@ def rewrite_constraints(text: str) -> RewriteConstraints:
         quotations=_quoted_spans(text),
         protected_names=_protected_rewrite_names(text),
         scope_qualifiers=tuple(_scope_qualifiers(text)),
+        revision_arguments=revision_arguments(text),
+        temporal_scopes=_temporal_scopes(text),
     )
 
 
@@ -268,7 +280,10 @@ def _rejection_code(
 
 def _literal_change_code(
     *, before: str, after: str, allow_reordering: bool
-) -> Literal["protected_content_changed", "force_language_changed"] | None:
+) -> (
+    Literal["protected_content_changed", "force_language_changed", "revision_argument_changed"]
+    | None
+):
     if not _same_retained_values(
         _protected_tokens(before), _protected_tokens(after), allow_reordering=allow_reordering
     ):
@@ -280,6 +295,12 @@ def _literal_change_code(
         _force_words(before), _force_words(after), allow_reordering=allow_reordering
     ):
         return "force_language_changed"
+    if not _same_retained_values(
+        list(revision_arguments(before)),
+        list(revision_arguments(after)),
+        allow_reordering=allow_reordering,
+    ):
+        return "revision_argument_changed"
     return None
 
 
@@ -292,7 +313,9 @@ def _same_retained_values(before: list[str], after: list[str], *, allow_reorderi
 def _aggressive_unslop_code(block: TextBlock, replacement: str) -> str | None:
     if reassigned_document_writing_action(block.text, replacement):
         return "document_writing_actor_changed"
-    if _fronted_date_scope_expanded(block.text, replacement):
+    if _fronted_date_scope_expanded(block.text, replacement) or Counter(
+        _temporal_scopes(block.text)
+    ) != Counter(_temporal_scopes(replacement)):
         return "temporal_scope_changed"
     if len(_NEGATED_TRANSFORMATION.findall(block.text)) > len(
         _RETAINED_NEGATED_TRANSFORMATION.findall(replacement)
@@ -367,6 +390,15 @@ def _fronted_date_scope_expanded(source: str, replacement: str) -> bool:
         ):
             return True
     return False
+
+
+def _temporal_scopes(text: str) -> tuple[str, ...]:
+    return tuple(
+        " ".join(match["operator"].casefold().split()) + " " + match["date"]
+        for match in _TEMPORAL_SCOPE.finditer(text)
+        if match["operator"].casefold() != "on"
+        or _NON_TEMPORAL_ON.search(text[: match.start()]) is None
+    )
 
 
 def _scope_qualifiers(text: str) -> list[str]:

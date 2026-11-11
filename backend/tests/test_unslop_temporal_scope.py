@@ -115,3 +115,56 @@ async def test_later_pass_keeps_original_date_scope_after_a_safe_sentence_merge(
     assert outcome.document.blocks[0].text == faithful
     assert outcome.model_count == 1
     assert not outcome.findings
+
+
+@pytest.mark.parametrize(
+    ("original", "changed"),
+    [
+        ("before", "after"),
+        ("after", "before"),
+        ("by", "after"),
+        ("since", "before"),
+        ("until", "after"),
+    ],
+)
+def test_temporal_operators_stay_bound_to_their_dates(original: str, changed: str) -> None:
+    source = f"In order to recover, the worker must retry {original} 2026-11-01."
+    replacement = f"To recover, the worker must retry {changed} 2026-11-01."
+
+    assert [finding.code for finding in _decision(source, replacement).findings] == [
+        "temporal_scope_changed"
+    ]
+
+
+def test_live_as_of_snapshot_does_not_become_an_on_date_assertion() -> None:
+    source = "As of 2026-10-01, replay was not available. As of 2026-11-01, replay is available. The QA sample suggests replay could finish within 10–12 ms, except when a lease is stale. Correlation with fewer timeouts does not establish causation."
+    replacement = "Replay was not available on 2026-10-01, but is available as of 2026-11-01. The QA sample suggests replay could finish within 10–12 ms, except for stale leases. Correlation with fewer timeouts does not establish causation."
+
+    assert [finding.code for finding in _decision(source, replacement).findings] == [
+        "temporal_scope_changed"
+    ]
+
+
+def test_temporal_operator_can_move_with_its_unchanged_date() -> None:
+    source = "In order to recover, the worker must retry before 2026-11-01."
+    replacement = "Before 2026-11-01, the worker must retry to recover."
+
+    assert list(_decision(source, replacement).accepted.values()) == [replacement]
+
+
+@pytest.mark.parametrize("ticks", ["`", "``"])
+def test_code_formatted_dates_keep_their_temporal_operators(ticks: str) -> None:
+    source = f"In order to recover, the worker must retry before {ticks}2026-11-01{ticks}."
+    replacement = f"To recover, the worker must retry after {ticks}2026-11-01{ticks}."
+
+    assert [finding.code for finding in _decision(source, replacement).findings] == [
+        "temporal_scope_changed"
+    ]
+
+
+@pytest.mark.parametrize("separator", [" ", "   "])
+def test_based_on_dated_measurements_can_use_active_voice(separator: str) -> None:
+    source = f"The dashboard is based{separator}on 2026-11-01 measurements."
+    replacement = "The dashboard uses 2026-11-01 measurements."
+
+    assert list(_decision(source, replacement).accepted.values()) == [replacement]

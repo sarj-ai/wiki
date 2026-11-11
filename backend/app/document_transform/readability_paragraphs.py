@@ -30,6 +30,7 @@ from app.document_transform.readability_lists import (
     readable_list_requests,
     validate_readable_lists,
 )
+from app.document_transform.readability_outline import validate_proposed_outline
 from app.document_transform.readability_terminators import verify_readable_terminator
 from app.document_transform.readability_types import (
     ReadabilityParagraph,
@@ -229,6 +230,7 @@ def validated_readability_paragraphs(
     if len(ir.blocks) + sum(len(target.parts) - 1 for target in result) > MAX_DOCUMENT_BLOCKS:
         msg = "Restructuring must stay within the document paragraph limit"
         raise ValueError(msg)
+    validate_proposed_outline(document, ir, proposals)
     validate_readable_lists(document, tuple(result))
     return tuple(result)
 
