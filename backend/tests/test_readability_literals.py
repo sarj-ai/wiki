@@ -1,4 +1,5 @@
 from copy import deepcopy
+import string
 from typing import override
 
 from pydantic import JsonValue
@@ -20,11 +21,13 @@ from app.document_transform.readability_tables import (
     readable_table_requests,
 )
 from app.document_transform.readability_types import (
+    PlannedReadabilityCheckpoint,
     ReadabilityCheckpoint,
+    ReadabilityParagraph,
     ReadabilityPart,
     ReadabilityProposal,
 )
-from app.identifiers import FileId
+from app.identifiers import DocsRevisionId, FileId
 from tests.test_document_readability import _fixture, _LayoutEditor, _paragraph, _plan
 from tests.test_readability_lists import _prose_document
 
@@ -49,6 +52,12 @@ from tests.test_readability_lists import _prose_document
         "Keep the citation [Google|SRE](https://sre.google/books/) before release.",
         "Measurements remain approximately 12.3|m/s² under load.",
         "The accounting amount is ($|1,250.00) per month.",
+        "Measurements remain approximately 1|234.50 ms under load.",
+        "Measurements remain approximately 1 234|567.80 ms under load.",
+        "The exposure remains approximately 1|1/2 h under load.",
+        "The exposure remains approximately 1|½ h under load.",
+        "Measurements remain approximately 1.234(5)|ms under load.",
+        "Measurements remain approximately 1.234(5)|× 10^-6 s under load.",
     ],
 )
 def test_layout_rejects_paragraph_breaks_inside_source_literals(marked: str) -> None:
@@ -75,8 +84,19 @@ def test_layout_rejects_paragraph_breaks_inside_source_literals(marked: str) -> 
         ("Measurements remain 12.3 ± 0.4 ms.", "The budget remains $1,250.00."),
         ("The guide cites [1, 2].", "The report cites [3, 4]."),
         ("🙂 Cache reads take 1 µs.", "Disk reads take 10 ms."),
+        ("The response is 1 234.50 ms.", "The exposure is 1 1/2 h."),
+        ("The calibration is 1.234(5) ms.", "The range is 1–2 ms."),
     ],
-    ids=["quantities", "quotations", "code", "uncertainty-and-currency", "citations", "utf16"],
+    ids=[
+        "quantities",
+        "quotations",
+        "code",
+        "uncertainty-and-currency",
+        "citations",
+        "utf16",
+        "grouped-and-mixed",
+        "parenthetical-and-range",
+    ],
 )
 def test_layout_can_break_between_complete_source_literals(sentences: tuple[str, str]) -> None:
     document = _prose_document((" ".join(sentences),))
@@ -191,6 +211,65 @@ async def test_saved_checkpoint_cannot_split_a_literal_on_write_or_readback(vers
 
     async def write(_identifier: FileId, _checkpoint: ReadabilityCheckpoint) -> None:
         pytest.fail("Saved checkpoints must preserve complete literals before any write")
+
+    with pytest.raises(OutputConflictError):
+        await ReadabilityProvider(read, write).apply(
+            document_id=FileId("fixture"), checkpoint=checkpoint
+        )
+
+
+@pytest.mark.parametrize("version", [1, 2])
+@pytest.mark.parametrize(
+    "marked",
+    [
+        "The response remains 1|234.50 ms under load.",
+        "The exposure remains 1|1/2 h for each sample.",
+        "The calibration remains 1.234(5)|ms under load.",
+    ],
+    ids=["grouped-number", "mixed-fraction", "parenthetical-uncertainty"],
+)
+async def test_saved_numeric_split_is_rejected_before_any_provider_write(
+    version: int, marked: str
+) -> None:
+    document = _prose_document((marked.replace("|", " "),))
+    source = _paragraph(document, 1)
+    source_range = readability_document(document, title="Numeric checkpoint").blocks[0].source_range
+    assert source_range is not None
+    target = ReadabilityParagraph(
+        tab_id=source_range.tab_id,
+        start=1,
+        end=source_range.end_index,
+        source=source,
+        text_style={},
+        parts=tuple(ReadabilityPart(text=text, role="bullet") for text in marked.split("|")),
+    )
+    translation = str.maketrans(string.digits, "xxxxxxxxxx")
+    legacy_request_document = _prose_document((marked.replace("|", " ").translate(translation),))
+    legacy_request_target = target.model_copy(
+        update={
+            "source": _paragraph(legacy_request_document, 1),
+            "parts": tuple(
+                part.model_copy(update={"text": part.text.translate(translation)})
+                for part in target.parts
+            ),
+        }
+    )
+    checkpoint = PlannedReadabilityCheckpoint(
+        source_revision_id=DocsRevisionId(str(document["revisionId"])),
+        source_sha256=document_digest(document),
+        invariant_sha256=document_digest(document),
+        original_lists={str(target.tab_id): {}},
+        paragraphs=(target,),
+        requests=readable_paragraph_requests((legacy_request_target,), grouped_lists=version != 1),
+    ).model_copy(update={"version": version})
+
+    assert not verify_readability(document, checkpoint)
+
+    async def read(_identifier: FileId) -> dict[str, JsonValue]:
+        return deepcopy(document)
+
+    async def write(_identifier: FileId, _checkpoint: ReadabilityCheckpoint) -> None:
+        pytest.fail("Reject numeric literal splits before writing saved checkpoints")
 
     with pytest.raises(OutputConflictError):
         await ReadabilityProvider(read, write).apply(

@@ -14,6 +14,12 @@ from tests.test_editorial_refinement import _RefiningEditor, _request
     [
         pytest.param("1.20e-6 s", "1.20e+6 s", id="exponent-sign"),
         pytest.param("1.20e-6 s", "1.2e-6 s", id="significant-zeros"),
+        pytest.param("1.234(5) ms", "1.234(5) s", id="parenthetical-uncertainty-unit"),
+        pytest.param("1.234(5)", "1.234 5", id="detached-uncertainty"),
+        pytest.param("1–2 ms", "1 2 ms", id="dropped-range-dash"),
+        pytest.param("1 234 ms", "1  234 ms", id="grouped-number-literal"),
+        pytest.param("1\u00a0234 ms", "1 234 ms", id="nonbreaking-group-separator"),
+        pytest.param("1 1/2 h", "1 1 / 2 h", id="mixed-fraction-literal"),
         pytest.param(".5 s", "5 s", id="leading-decimal"),
         pytest.param(",5 s", "5 s", id="locale-leading-decimal"),
         pytest.param("-5 s", "5 s", id="negative-sign"),
@@ -73,7 +79,29 @@ def test_numeric_mutations_are_rejected_before_review_while_active_voice_is_allo
 
 @pytest.mark.parametrize(
     "literal",
-    ["1.20e-6 s", "½", "12.3 ± 0.4 ms", ".5 s", "-5 s", "3 m²", "6.02×10²³", "($1,250.00)"],
+    [
+        "1.20e-6 s",
+        "½",
+        "12.3 ± 0.4 ms",
+        ".5 s",
+        "-5 s",
+        "3 m²",
+        "6.02×10²³",
+        "($1,250.00)",
+        "1 234.50 ms",
+        "1\u00a0234.50 ms",
+        "1\u2009234.50 ms",
+        "1\u202f234.50 ms",
+        "1 234 567,80 EUR",
+        "1 1/2 h",
+        "-1 1⁄2 h",
+        "1 1 / 2 h",
+        "1 ½ h",
+        "1.234(5) ms",
+        "1.234(5)e-6 s",
+        "6.67430(15) × 10^-11 m³/kg/s²",
+        "1–2 ms",
+    ],
 )
 def test_repair_constraints_include_the_complete_numeric_notation(literal: str) -> None:
     assert rewrite_constraints(f"The team measured {literal}.").protected_tokens == (literal,)
