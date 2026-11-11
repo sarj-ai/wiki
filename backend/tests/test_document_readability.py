@@ -46,6 +46,8 @@ def _fixture(
     version: ReadabilityVersion = CURRENT_READABILITY_VERSION,
 ) -> dict[str, JsonValue]:
     document = _DocumentFixture.model_validate_json((_DATA / f"{stage}.json").read_text()).root
+    table = obj(_paragraph(document, 247)["table"])
+    obj(obj(array(table["tableRows"])[0])["tableRowStyle"])["tableHeader"] = True
     if stage == "after" and version == CURRENT_READABILITY_VERSION:
         for source, actual in zip(
             _fixture_cells(_fixture("before")), _fixture_cells(document), strict=True
@@ -105,13 +107,15 @@ class _LayoutEditor(PatchGenerator):
             return previous
         proposals = []
         for block in document.blocks:
-            role: Literal["bullet", "numbered", "heading2"]
+            role: Literal["bullet", "numbered", "heading2", "heading3"]
             if block.text.startswith("Cache reads take"):
                 role = "bullet"
             elif block.text.startswith("First, measure"):
                 role = "numbered"
             elif block.text == "Operational notes":
                 role = "heading2"
+            elif block.text == "Operational details":
+                role = "heading3"
             else:
                 continue
             chunks = block.text.split(". ") if role != "heading2" else [block.text]

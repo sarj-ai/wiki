@@ -760,11 +760,15 @@ def _constraint_repair_feedback(block: TextBlock, patch: TextPatch) -> tuple[str
         "protected_tokens": Counter(original.protected_tokens),
         "force_language": Counter(original.force_language),
         "scope_qualifiers": Counter(original.scope_qualifiers),
+        "revision_arguments": Counter(original.revision_arguments),
+        "temporal_scopes": Counter(original.temporal_scopes),
     }
     observed = {
         "protected_tokens": Counter(proposed.protected_tokens),
         "force_language": Counter(proposed.force_language),
         "scope_qualifiers": Counter(proposed.scope_qualifiers),
+        "revision_arguments": Counter(proposed.revision_arguments),
+        "temporal_scopes": Counter(proposed.temporal_scopes),
     }
     return tuple(
         "Exact original constraint counts for "
@@ -1189,8 +1193,10 @@ def _prompt(
         "qualification and original constraint count. Draft around every original "
         "protected_tokens entry before shortening other wording. Copy each complete entry, "
         "including any adjacent words, with its original occurrence count. Preserve each "
-        "force_language and scope_qualifiers entry with its original predicate or object "
-        "and occurrence count, including empty lists. Count the completed candidate's "
+        "force_language, scope_qualifiers, revision_arguments and temporal_scopes entry with its original "
+        "predicate or object and occurrence count, including empty lists. A revision used "
+        "as a write argument must remain an argument, not become the retried operation. "
+        "Count the completed candidate's "
         "eligible prose words before returning. protected_suffix is excluded from the word count. "
         "original_text is the factual baseline; text is the current draft. Targets always refer "
         "to the original, never to a repeatedly shrinking denominator. Shorten the current "
