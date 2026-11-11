@@ -75,7 +75,7 @@ _SCOPE_QUALIFIER = re.compile(
     r"\b(?:generally|usual|usually|typically|often|sometimes|rarely|mostly|mainly|rounded|"
     r"at least|at most|no more than|up to|same|helps?|appears?|suggests?|interpreted|evidence|"
     r"particular|specific|within|together|available|still|other|another|different|earlier|later|"
-    r"successive|sample|useful|essential|necessary|shape|maintain|rare|young|older|younger|"
+    r"successive|current|sample|useful|essential|necessary|shape|maintain|rare|young|older|younger|"
     r"observed|recorded|studied|measured|estimated|reported|inferred|concluded|proved|"
     r"national|confidence intervals?|as (?:clearly|often|likely|many|much) as)\b|"
     r"\b(?:about|around|roughly|approximately|nearly)\b(?=\s+\d)|"
