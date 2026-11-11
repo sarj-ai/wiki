@@ -93,6 +93,7 @@ def _table_plan(
         header=bool(native_headers)
         or any(not numeric_table_value(rows[0][column]) for column in numeric),
         header_rows=header_rows,
+        style_cells=True,
     )
 
 

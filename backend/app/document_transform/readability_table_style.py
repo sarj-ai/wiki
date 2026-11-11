@@ -9,7 +9,8 @@ _COLORS = CURRENT_BRAND_MANIFEST.colors
 _COLOR_TOLERANCE = 0.00001
 
 
-def _row_style(row: int, *, header_rows: int) -> dict[str, JsonValue]:
+def _row_style(row: int, *, target: ReadabilityTable) -> dict[str, JsonValue]:
+    header_rows = target.header_rows if target.header else 0
     color = (
         _COLORS.primary_tint
         if row < header_rows
@@ -47,11 +48,11 @@ def _row_style(row: int, *, header_rows: int) -> dict[str, JsonValue]:
 def readable_table_cell_requests(
     element: dict[str, JsonValue], target: ReadabilityTable
 ) -> list[dict[str, JsonValue]]:
-    if not target.header:
+    if not (target.header or target.style_cells):
         return []
     requests: list[dict[str, JsonValue]] = []
     for row, _value in enumerate(array(obj(element["table"])["tableRows"])):
-        style = _row_style(row, header_rows=target.header_rows)
+        style = _row_style(row, target=target)
         requests.append(
             {
                 "updateTableCellStyle": {
@@ -75,13 +76,13 @@ def readable_table_cell_requests(
 def project_readable_table_cells(
     element: dict[str, JsonValue], target: ReadabilityTable, *, applied: bool
 ) -> None:
-    if not target.header:
+    if not (target.header or target.style_cells):
         return
     for row, value in enumerate(array(obj(element["table"])["tableRows"])):
         for cell_value in array(obj(value)["tableCells"]):
             cell = obj(cell_value)
             style = obj(cell.get("tableCellStyle", {}))
-            for key, expected in _row_style(row, header_rows=target.header_rows).items():
+            for key, expected in _row_style(row, target=target).items():
                 if applied and not _matches(
                     style.get(key, "TOP" if key == "contentAlignment" else None), expected
                 ):
