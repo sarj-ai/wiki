@@ -13,6 +13,7 @@ from tests.test_table_layout import _native_table
     ("rows", "numeric"),
     [
         ((("1/3 s", "12.50%", "€1.234,50"),), {0, 1, 2}),
+        ((("SAR 1,250.00", "USD 1,234.50", "EUR 1.234,50"),), {0, 1, 2}),
         ((("Latency", "1.20e-7 s", "N/A"),), {1}),
         ((("1/2 µs", "12.500%"), ("3/4 µs", "15.000%")), {0, 1}),
         ((("Cache", "Read only"),), set()),

@@ -18,10 +18,11 @@ _SCIENTIFIC = rf"(?:{_DECIMAL}(?:\(\d+\))?(?:[eE][+−-]?\d+|\s*[×x·]\s*10{_PO
 _VULGAR_FRACTION = r"[¼½¾⅐⅑⅒⅓⅔⅕⅖⅗⅘⅙⅚⅛⅜⅝⅞]"
 _FRACTION = rf"{_SCIENTIFIC}\s*[/⁄]\s*[+−-]?{_SCIENTIFIC}"
 _MAGNITUDE = rf"(?:\d+\s+{_FRACTION}|(?:\d+\s*)?{_VULGAR_FRACTION}|{_FRACTION}|{_SCIENTIFIC})"
-_CURRENCY = r"[$€£¥₹₩₽₺]"
+_CURRENCY_CODE = r"(?:USD|EUR|GBP|SAR)"
+_CURRENCY = rf"(?:[$€£¥₹₩₽₺]|{_CURRENCY_CODE}(?=\s))"
 _NUMBER = rf"(?:[+−-]?\s*(?:{_CURRENCY}\s*)?|{_CURRENCY}\s*[+−-]?)\s*{_MAGNITUDE}"
 _UNIT = rf"{UNIT_SYMBOL}(?:{_POWER})?(?:{UNIT_PRODUCT}{UNIT_SYMBOL}(?:{_POWER})?)*"
-_QUANTITY_TERM = rf"{_NUMBER}(?:\s*(?:%|‰|×|x|USD|EUR|GBP|SAR|{_UNIT}))?"
+_QUANTITY_TERM = rf"{_NUMBER}(?:\s*(?:%|‰|×|x|{_CURRENCY_CODE}|{_UNIT}))?"
 _QUANTITY = re.compile(
     rf"(?:[<>≤≥~≈]\s*)?{_QUANTITY_TERM}(?:\s*:\s*{_QUANTITY_TERM})?"
     rf"(?:\s*(?:±|–|−|-)\s*{_QUANTITY_TERM})?",
