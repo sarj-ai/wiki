@@ -2,9 +2,13 @@ from io import BytesIO
 
 from docx import Document
 from docx.enum.text import WD_ALIGN_PARAGRAPH
+from pydantic import JsonValue
 import pytest
 
 from app.document_transform.docx_renderer import render_markdown_docx
+from app.document_transform.ir import utf16_length
+from app.document_transform.readability_json import obj
+from app.document_transform.readability_tables import plan_readable_tables, readable_table_requests
 from app.document_transform.table_layout import (
     numeric_columns,
     numeric_table_value,
@@ -27,6 +31,30 @@ from app.document_transform.table_layout import (
         "1–10 GB",
         "1\u202f000 ms",
         "2.5 SAR",
+        "6.02 × 10²³ mol⁻¹",
+        "1.20 × 10^-7 s",
+        "2.50 x 10**6 B",
+        "10⁻⁹ s",
+        "1½ kg",
+        "1 ½ kg",
+        "2 1/3 m",
+        "1/-2",
+        "1.20e-7/2",
+        "−$1,250.00",
+        "$−1,250.00",
+        "₹ 1,250.00",
+        "₹1,25,000.00",
+        "12,34,567.89",
+        "1,23,456",
+        "1.234(5) m",
+        "9.81 m/s²",
+        "1.00 kg·m/s^2",
+        "12.3 ± 0.4 m/s",
+        "1.2e-7–2.4e-7 s",
+        "1,25 m",
+        "1.234,50 EUR",
+        "1\u00a0234,50 EUR",
+        "0,125 ± 0,004 m/s²",
     ],
 )
 def test_quantities_use_numeric_alignment_without_rewriting_their_representation(
@@ -46,11 +74,105 @@ def test_quantities_use_numeric_alignment_without_rewriting_their_representation
     document = Document(BytesIO(render_markdown_docx(source, title="Measurements")))
     assert document.tables[0].cell(1, 1).text == quantity
     assert document.tables[0].cell(1, 1).paragraphs[0].alignment == WD_ALIGN_PARAGRAPH.RIGHT
+    native = _native_table(rows)
+    targets = plan_readable_tables(native)
+    assert len(targets) == 1
+    assert targets[0].numeric == {1}
+    assert targets[0].header
+    assert sum(targets[0].widths) == 9360
+    requests = readable_table_requests(native, targets)
+    assert all(
+        next(iter(request))
+        in {
+            "updateTableCellStyle",
+            "updateTableColumnProperties",
+            "updateParagraphStyle",
+            "updateTextStyle",
+        }
+        for request in requests
+    )
+    alignment = [
+        obj(obj(request["updateParagraphStyle"])["paragraphStyle"])["alignment"]
+        for request in requests
+        if "updateParagraphStyle" in request
+    ]
+    assert alignment == ["START", "END", "START"] * len(rows)
+
+
+def _native_table(rows: tuple[tuple[str, ...], ...]) -> dict[str, JsonValue]:
+    index = 2
+    native_rows: list[JsonValue] = []
+    for row in rows:
+        cells: list[JsonValue] = []
+        index += 1
+        for text in row:
+            index += 1
+            end = index + utf16_length(text) + 1
+            cells.append(
+                {
+                    "content": [
+                        {
+                            "startIndex": index,
+                            "endIndex": end,
+                            "paragraph": {
+                                "paragraphStyle": {},
+                                "elements": [
+                                    {
+                                        "startIndex": index,
+                                        "endIndex": end,
+                                        "textRun": {"content": text + "\n", "textStyle": {}},
+                                    }
+                                ],
+                            },
+                        }
+                    ]
+                }
+            )
+            index = end
+        native_rows.append({"tableCells": cells})
+    return {
+        "tabs": [
+            {
+                "tabProperties": {"tabId": "t.0"},
+                "documentTab": {
+                    "body": {
+                        "content": [
+                            {
+                                "startIndex": 1,
+                                "endIndex": index + 1,
+                                "table": {"columns": len(rows[0]), "tableRows": native_rows},
+                            }
+                        ]
+                    }
+                },
+            }
+        ]
+    }
 
 
 @pytest.mark.parametrize(
     "text",
-    ["2026-11-10", "v1.2.3", "RFC 9110", "1.2.3", "A123", "12 apples", "12,34.56.78", "", "N/A"],
+    [
+        "2026-11-10",
+        "v1.2.3",
+        "RFC 9110",
+        "1.2.3",
+        "A123",
+        "12 apples",
+        "12,34.56.78",
+        "",
+        "N/A",
+        "6.02 × 10",
+        "1.2 × 10^",
+        "1.2 × 10⁻",
+        "1.2 × 10^3 apples",
+        "-$-1.00",
+        "1.234(note) m",
+        "10 m/unknown",
+        "1.2e",
+        "12,34,56",
+        "12.34.56",
+    ],
 )
 def test_dates_versions_identifiers_and_unrecognized_quantities_are_not_numbers(text: str) -> None:
     assert not numeric_table_value(text)

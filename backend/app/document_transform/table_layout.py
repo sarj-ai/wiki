@@ -8,13 +8,26 @@ import unicodedata
 
 _MISSING = frozenset({"", "-", "–", "—", "n/a", "na", "null", "…"})
 _CHARACTER_WIDTH_TWIPS = 110  # Conservative 5.5 pt at the shared 10 pt table font size.
-_NUMBER = r"[+−-]?(?:\d[\d,\u2009\u202f ]*(?:\.\d+)?|\.\d+)(?:[eE][+−-]?\d+)?"
+_INTEGER = r"(?:\d{1,3}(?:[,\u00a0\u2009\u202f ]\d{3})+|\d{1,2}(?:,\d{2})+,\d{3}|\d+)"
+_COMMA_INTEGER = r"(?:\d{1,3}(?:[.\u00a0\u2009\u202f ]\d{3})+|\d+)"
+_DECIMAL = rf"(?:{_INTEGER}(?:\.\d+)?|{_COMMA_INTEGER},\d+|[.,]\d+)"
+_POWER = r"(?:\^[+−-]?\d+|\*\*[+−-]?\d+|[⁺⁻]?[⁰¹²³⁴⁵⁶⁷⁸⁹]+)"
+_SCIENTIFIC = rf"(?:{_DECIMAL}(?:\(\d+\))?(?:[eE][+−-]?\d+|\s*[×x·]\s*10{_POWER})?|10{_POWER})"
+_VULGAR_FRACTION = r"[¼½¾⅐⅑⅒⅓⅔⅕⅖⅗⅘⅙⅚⅛⅜⅝⅞]"
+_FRACTION = rf"{_SCIENTIFIC}\s*[/⁄]\s*[+−-]?{_SCIENTIFIC}"
+_MAGNITUDE = rf"(?:\d+\s+{_FRACTION}|(?:\d+\s*)?{_VULGAR_FRACTION}|{_FRACTION}|{_SCIENTIFIC})"
+_CURRENCY = r"[$€£¥₹₩₽₺]"
+_NUMBER = rf"(?:[+−-]?\s*(?:{_CURRENCY}\s*)?|{_CURRENCY}\s*[+−-]?)\s*{_MAGNITUDE}"
+_UNIT_SYMBOL = (
+    r"(?:ns|[µμu]s|ms|s|min|h|d|B|[KMGTPE]i?B|[kKMGT]bps|Hz|[kMGT]Hz|"
+    r"mm|cm|m|km|mg|g|kg|mL|L|°[CF]|mol|mmol|Pa|[kMGT]Pa|W|[kMGT]W|"
+    r"J|[kMGT]J|V|mV|A|mA|Ω|kΩ|N)"
+)
+_UNIT = rf"{_UNIT_SYMBOL}(?:{_POWER})?(?:\s*[/*·]\s*{_UNIT_SYMBOL}(?:{_POWER})?)*"
 _QUANTITY = re.compile(
-    rf"(?:[<>≤≥~≈]\s*)?[$€£¥]?\s*(?:{_NUMBER}(?:\s*[/⁄:]\s*{_NUMBER})?|"
-    r"[¼½¾⅐⅑⅒⅓⅔⅕⅖⅗⅘⅙⅚⅛⅜⅝⅞])"
+    rf"(?:[<>≤≥~≈]\s*)?{_NUMBER}(?:\s*:\s*{_NUMBER})?"
     rf"(?:\s*(?:±|–|−|-)\s*{_NUMBER})?"
-    r"(?:\s*(?:%|‰|ns|[µμu]s|ms|s|min|h|d|B|[KMGTPE]i?B|[kKMGT]bps|"
-    r"Hz|[kMGT]Hz|mm|cm|m|km|mg|g|kg|mL|L|°[CF]|×|x|USD|EUR|GBP|SAR))?",
+    rf"(?:\s*(?:%|‰|×|x|USD|EUR|GBP|SAR|{_UNIT}))?",
     re.IGNORECASE,
 )
 
