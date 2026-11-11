@@ -34,11 +34,11 @@ class ReadabilityProvider:
                 raise OutputConflictError
             try:
                 validate_readable_lists(document, checkpoint.paragraphs)
+                requests = readable_paragraph_requests(
+                    checkpoint.paragraphs, grouped_lists=checkpoint.version != 1
+                ) + readable_table_requests(document, checkpoint.tables)
             except (KeyError, TypeError, ValueError) as error:
                 raise OutputConflictError from error
-            requests = readable_paragraph_requests(
-                checkpoint.paragraphs, grouped_lists=checkpoint.version != 1
-            ) + readable_table_requests(document, checkpoint.tables)
             if requests != checkpoint.requests:
                 raise OutputConflictError
             await self.write(document_id, checkpoint)

@@ -34,6 +34,7 @@ from app.document_transform.readability_types import (
     ReadabilityPart,
     ReadabilityProposal,
 )
+from app.document_transform.safety import rewrite_constraints
 from app.identifiers import DocsTabId
 
 
@@ -234,6 +235,7 @@ def _validate_parts(block: TextBlock, proposal: ReadabilityProposal) -> None:
             "Layout must preserve every source character except spaces replaced by paragraph breaks"
         )
         raise ValueError(msg)
+    _validate_literal_breaks(block.text, proposal.parts)
     if any(
         part.role.startswith("heading")
         and (len(part.text.split()) > _HEADING_WORDS or part.text.endswith((".", "!", "?")))
@@ -248,6 +250,17 @@ def _validate_parts(block: TextBlock, proposal: ReadabilityProposal) -> None:
         raise ValueError(msg)
 
 
+def _validate_literal_breaks(source: str, parts: tuple[ReadabilityPart, ...]) -> None:
+    original = rewrite_constraints(source)
+    proposed = rewrite_constraints("\n".join(part.text for part in parts))
+    if (
+        original.protected_tokens != proposed.protected_tokens
+        or original.quotations != proposed.quotations
+    ):
+        msg = "Paragraph breaks must preserve complete quotations, code, citations, and numeric literals"
+        raise ValueError(msg)
+
+
 def readable_paragraph_requests(
     targets: tuple[ReadabilityParagraph, ...],
     *,
@@ -257,6 +270,7 @@ def readable_paragraph_requests(
     # Replace only the separator spaces. Keep words, character styles, and
     # anchors in place, with no net change to Google Docs' UTF-16 indexes.
     for target in sorted(targets, key=lambda item: (item.tab_id, item.start), reverse=True):
+        _validate_literal_breaks(plain_text(target.source), target.parts)
         boundaries = []
         index = target.start
         for part in target.parts[:-1]:
@@ -349,6 +363,7 @@ def project_readable_paragraphs(
 ) -> None:
     tabs = dict(bodies(document))
     for target in sorted(targets, key=lambda item: (item.tab_id, item.start), reverse=True):
+        _validate_literal_breaks(plain_text(target.source), target.parts)
         values = content(tabs[target.tab_id])
         matches = [
             index
