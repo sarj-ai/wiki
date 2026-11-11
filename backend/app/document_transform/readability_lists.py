@@ -4,12 +4,24 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field, JsonValue
 
 from app.document_transform.ir import utf16_length
-from app.document_transform.readability_json import bodies, content, obj
+from app.document_transform.readability_json import (
+    bodies,
+    canonical_style,
+    content,
+    effective_text_style,
+    obj,
+)
 from app.document_transform.readability_types import ReadabilityParagraph
 from app.identifiers import DocsTabId
 
 
 _MIN_LIST_ITEMS = 2
+
+
+class _FontFamilyStyle(BaseModel):
+    model_config = ConfigDict(extra="ignore", frozen=True, strict=True)
+
+    family: dict[str, JsonValue] = Field(default_factory=dict, alias="weightedFontFamily")
 
 
 class _Bullet(BaseModel):
@@ -24,6 +36,7 @@ class _ListParagraph(BaseModel):
     model_config = ConfigDict(extra="ignore", frozen=True)
 
     bullet: _Bullet | None = None
+    paragraph_style: dict[str, JsonValue] = Field(default_factory=dict, alias="paragraphStyle")
 
 
 class _ListElement(BaseModel):
@@ -41,6 +54,7 @@ class _ListMarker(BaseModel):
     glyph_symbol: str | None = Field(default=None, alias="glyphSymbol")
     glyph_format: str = Field(alias="glyphFormat")
     start_number: int | None = Field(default=None, alias="startNumber")
+    text_style: dict[str, JsonValue] = Field(default_factory=dict, alias="textStyle")
 
 
 class _ListProperties(BaseModel):
@@ -61,6 +75,7 @@ class _ListGroup:
     role: Literal["bullet", "numbered"]
     starts: tuple[int, ...]
     end: int
+    text_styles: tuple[dict[str, JsonValue], ...]
 
 
 def _groups(targets: tuple[ReadabilityParagraph, ...]) -> tuple[_ListGroup, ...]:
@@ -76,7 +91,12 @@ def _groups(targets: tuple[ReadabilityParagraph, ...]) -> tuple[_ListGroup, ...]
                     and groups[-1].role == part.role
                     and groups[-1].end + 1 == index
                 ):
-                    groups[-1] = replace(groups[-1], starts=(*groups[-1].starts, index), end=end)
+                    groups[-1] = replace(
+                        groups[-1],
+                        starts=(*groups[-1].starts, index),
+                        end=end,
+                        text_styles=(*groups[-1].text_styles, target.text_style),
+                    )
                 else:
                     groups.append(
                         _ListGroup(
@@ -84,6 +104,7 @@ def _groups(targets: tuple[ReadabilityParagraph, ...]) -> tuple[_ListGroup, ...]
                             "numbered" if part.role == "numbered" else "bullet",
                             (index,),
                             end,
+                            (target.text_style,),
                         )
                     )
             index = end + 1
@@ -179,7 +200,36 @@ def verify_readable_lists(
             raise ValueError(msg)
         seen.add(identity)
         definition = _GeneratedList.model_validate(obj(tab["lists"])[identifier])
-        _verify_marker(definition.list_properties.nesting_levels[0], role=group.role)
+        marker = definition.list_properties.nesting_levels[0]
+        _verify_marker(marker, role=group.role)
+        for start, expected in zip(group.starts, group.text_styles, strict=True):
+            _verify_bullet_style(paragraphs[start], marker, expected, document=document, tab=tab)
+
+
+def _verify_bullet_style(
+    paragraph: _ListParagraph,
+    marker: _ListMarker,
+    expected: dict[str, JsonValue],
+    *,
+    document: dict[str, JsonValue],
+    tab: dict[str, JsonValue],
+) -> None:
+    if paragraph.bullet is None:
+        raise ValueError
+    observed = effective_text_style(document, tab, paragraph.paragraph_style, marker.text_style)
+    family = {
+        **_FontFamilyStyle.model_validate(observed).family,
+        **_FontFamilyStyle.model_validate(paragraph.bullet.text_style).family,
+    }
+    observed.update(paragraph.bullet.text_style)
+    if family:
+        observed["weightedFontFamily"] = family
+    # Native presets suppress marker underlines even when the source text is
+    # underlined. All other marker typography must match the source body style.
+    wanted = {**expected, "underline": False}
+    if canonical_style({"underline": False, **observed}) != canonical_style(wanted):
+        msg = "Native list marker typography changed"
+        raise ValueError(msg)
 
 
 def _bullet_id(paragraph: _ListParagraph) -> str:
