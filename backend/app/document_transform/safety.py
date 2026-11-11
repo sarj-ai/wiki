@@ -62,11 +62,12 @@ _PROTECTED_TOKEN = re.compile(
     re.MULTILINE,
 )
 _FORCE_WORD = re.compile(
-    r"\b(?:intended\s+to|aims\s+to|opportunit(?:y|ies)\s+to|"
+    r"\b(?:doesn['’]t|don['’]t|didn['’]t|intended\s+to|aims\s+to|opportunit(?:y|ies)\s+to|"
     r"must|shall|should|may|might|could|would|cannot|can't|can|will|won't|not|never|no|"
     r"each|every|all|only|both|neither|either|per)\b",
     re.IGNORECASE,
 )
+_NEGATION_CONTRACTIONS = frozenset({"doesn't", "don't", "didn't"})
 _QUOTED_SPAN = re.compile(QUOTED_SPAN_PATTERN)
 _NEGATED_TRANSFORMATION = re.compile(
     r"\b(?:not|never|cannot|can['’]t|doesn['’]t|don['’]t|didn['’]t)\s+"
@@ -352,7 +353,8 @@ def _protected_tokens(value: str) -> list[str]:
 
 
 def _force_words(value: str) -> list[str]:
-    return [" ".join(match.group(0).casefold().split()) for match in _FORCE_WORD.finditer(value)]
+    words = [" ".join(match.group(0).casefold().split()) for match in _FORCE_WORD.finditer(value)]
+    return ["not" if word.replace("’", "'") in _NEGATION_CONTRACTIONS else word for word in words]
 
 
 def _unslop_locality_code(block: TextBlock, replacement: str) -> str | None:

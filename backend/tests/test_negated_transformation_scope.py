@@ -12,6 +12,7 @@ from app.document_transform.schemas import TextPatch, TransformPhase
         ("Modern presentation does not make the figures modern benchmarks.", True),
         ("Modern presentation cannot turn the figures into modern benchmarks.", False),
         ("Modern presentation does not convert figures into modern benchmarks.", True),
+        ("Modern presentation doesn't turn the figures into modern benchmarks.", True),
     ],
 )
 def test_negated_transformation_keeps_its_relationship_and_modal_force(
