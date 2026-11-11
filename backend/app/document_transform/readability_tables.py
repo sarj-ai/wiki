@@ -348,7 +348,9 @@ def _canonical_table_run(
     if applied and run["content"] != "\n":
         _verify_table_font(text_style, text=str(run["content"]))
     if header:
-        if applied and text_style.get("bold") is not True:
+        # Font writes exclude paragraph terminators and empty cells. Docs may
+        # return their inherited styles in a separate newline-only text run.
+        if applied and run["content"] != "\n" and text_style.get("bold") is not True:
             raise ValueError
         text_style.pop("bold", None)
     text_style.pop("fontSize", None)
