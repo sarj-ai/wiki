@@ -1,0 +1,194 @@
+{
+  "revisionId": "native-import-fixture",
+  "tabs": [
+    {
+      "tabProperties": {
+        "tabId": "t.0"
+      },
+      "documentTab": {
+        "body": {
+          "content": [
+            {
+              "startIndex": 1,
+              "endIndex": 12,
+              "paragraph": {
+                "elements": [
+                  {
+                    "startIndex": 1,
+                    "endIndex": 12,
+                    "textRun": {
+                      "content": "r01-python\n",
+                      "textStyle": {
+                        "weightedFontFamily": {
+                          "fontFamily": "Nunito",
+                          "weight": 400
+                        }
+                      }
+                    }
+                  }
+                ],
+                "paragraphStyle": {
+                  "namedStyleType": "NORMAL_TEXT",
+                  "borderBottom": {
+                    "color": {},
+                    "width": {
+                      "unit": "PT"
+                    },
+                    "padding": {
+                      "unit": "PT"
+                    },
+                    "dashStyle": "SOLID"
+                  }
+                }
+              }
+            },
+            {
+              "startIndex": 12,
+              "endIndex": 24,
+              "paragraph": {
+                "elements": [
+                  {
+                    "startIndex": 12,
+                    "endIndex": 24,
+                    "textRun": {
+                      "content": "QA example:\n",
+                      "textStyle": {}
+                    }
+                  }
+                ],
+                "paragraphStyle": {
+                  "namedStyleType": "NORMAL_TEXT"
+                }
+              }
+            },
+            {
+              "startIndex": 24,
+              "endIndex": 51,
+              "paragraph": {
+                "elements": [
+                  {
+                    "startIndex": 24,
+                    "endIndex": 27,
+                    "textRun": {
+                      "content": "def",
+                      "textStyle": {
+                        "weightedFontFamily": {
+                          "fontFamily": "Courier New",
+                          "weight": 400
+                        }
+                      }
+                    }
+                  },
+                  {
+                    "startIndex": 27,
+                    "endIndex": 28,
+                    "textRun": {
+                      "content": " ",
+                      "textStyle": {
+                        "weightedFontFamily": {
+                          "fontFamily": "Courier New",
+                          "weight": 400
+                        }
+                      }
+                    }
+                  },
+                  {
+                    "startIndex": 28,
+                    "endIndex": 32,
+                    "textRun": {
+                      "content": "test",
+                      "textStyle": {
+                        "weightedFontFamily": {
+                          "fontFamily": "Courier New",
+                          "weight": 400
+                        }
+                      }
+                    }
+                  },
+                  {
+                    "startIndex": 32,
+                    "endIndex": 37,
+                    "textRun": {
+                      "content": "():\u000b\t",
+                      "textStyle": {
+                        "weightedFontFamily": {
+                          "fontFamily": "Courier New",
+                          "weight": 400
+                        }
+                      }
+                    }
+                  },
+                  {
+                    "startIndex": 37,
+                    "endIndex": 43,
+                    "textRun": {
+                      "content": "return",
+                      "textStyle": {
+                        "weightedFontFamily": {
+                          "fontFamily": "Courier New",
+                          "weight": 400
+                        }
+                      }
+                    }
+                  },
+                  {
+                    "startIndex": 43,
+                    "endIndex": 44,
+                    "textRun": {
+                      "content": " ",
+                      "textStyle": {
+                        "weightedFontFamily": {
+                          "fontFamily": "Courier New",
+                          "weight": 400
+                        }
+                      }
+                    }
+                  },
+                  {
+                    "startIndex": 44,
+                    "endIndex": 50,
+                    "textRun": {
+                      "content": "\"a  b\"",
+                      "textStyle": {
+                        "weightedFontFamily": {
+                          "fontFamily": "Courier New",
+                          "weight": 400
+                        }
+                      }
+                    }
+                  },
+                  {
+                    "startIndex": 50,
+                    "endIndex": 51,
+                    "textRun": {
+                      "content": "\n",
+                      "textStyle": {
+                        "weightedFontFamily": {
+                          "fontFamily": "Courier New",
+                          "weight": 400
+                        }
+                      }
+                    }
+                  }
+                ],
+                "paragraphStyle": {
+                  "namedStyleType": "NORMAL_TEXT",
+                  "borderBottom": {
+                    "color": {},
+                    "width": {
+                      "unit": "PT"
+                    },
+                    "padding": {
+                      "unit": "PT"
+                    },
+                    "dashStyle": "SOLID"
+                  }
+                }
+              }
+            }
+          ]
+        }
+      }
+    }
+  ]
+}
