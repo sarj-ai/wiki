@@ -68,6 +68,16 @@ _FORCE_WORD = re.compile(
     re.IGNORECASE,
 )
 _QUOTED_SPAN = re.compile(QUOTED_SPAN_PATTERN)
+_NEGATED_TRANSFORMATION = re.compile(
+    r"\b(?:not|never|cannot|can['’]t|doesn['’]t|don['’]t|didn['’]t)\s+"
+    r"(?:automatically\s+)?(?:turn|convert|transform)\b[^.!?\n]*?\binto\b",
+    re.IGNORECASE,
+)
+_RETAINED_NEGATED_TRANSFORMATION = re.compile(
+    r"\b(?:not|never|cannot|can['’]t|doesn['’]t|don['’]t|didn['’]t)\s+"
+    r"(?:automatically\s+)?(?:turn|convert|transform|make|become)\b",
+    re.IGNORECASE,
+)
 _SCOPE_QUALIFIER = re.compile(
     r"\b(?:longest|shortest|largest|smallest|highest|lowest)\s+"
     r"(?:(?:[\w-]+(?:ing|ed)|upper|lower)\s+)?[\w-]+\b|"
@@ -114,6 +124,7 @@ REPAIRABLE_REWRITE_CODES = frozenset(
         "scope_qualifier_changed",
         "document_writing_actor_changed",
         "temporal_scope_changed",
+        "negative_transformation_scope_changed",
     }
 )
 
@@ -266,6 +277,10 @@ def _aggressive_unslop_code(block: TextBlock, replacement: str) -> str | None:
         return "document_writing_actor_changed"
     if _fronted_date_scope_expanded(block.text, replacement):
         return "temporal_scope_changed"
+    if len(_NEGATED_TRANSFORMATION.findall(block.text)) > len(
+        _RETAINED_NEGATED_TRANSFORMATION.findall(replacement)
+    ):
+        return "negative_transformation_scope_changed"
     if Counter(_scope_qualifiers(block.text)) != Counter(_scope_qualifiers(replacement)):
         return "scope_qualifier_changed"
     if _quoted_spans(block.text) != _quoted_spans(replacement):

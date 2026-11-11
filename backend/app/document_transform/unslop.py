@@ -12,7 +12,7 @@ from app.document_transform.quotations import SINGLE_QUOTED_SPAN_PATTERN, quoted
 
 UNSLOP_UPSTREAM_COMMIT = "d81f5196167ded24f46fced04958c0c12d681798"
 UNSLOP_UPSTREAM_VERSION = "2.3.0"
-UNSLOP_POLICY_VERSION = "sarj-concise-v27"
+UNSLOP_POLICY_VERSION = "sarj-concise-v28"
 MAX_EDITORIAL_PASSES = 100
 MIN_CONCISION_PROSE_WORDS = 40
 CONCISION_WORD_NUMERATOR = 2
@@ -43,6 +43,9 @@ UNSLOP_QUALIFIER_ATTACHMENT_INSTRUCTION = (
     "a reporting date. Keep a qualifier local when merging sentences, or retain separate "
     "sentences. A fronted qualifier governs coordinated predicates; check each one against "
     "the source independently. Preserving its words and numbers does not preserve its scope. "
+    "Preserve negated transformation relationships: 'Modern presentation does not turn "
+    "the figures into modern benchmarks' must not become the stronger categorical claim "
+    "'The figures are not modern benchmarks.' Keep the condition and its effect explicit. "
 )
 UNSLOP_REWRITE_INSTRUCTION = (
     UNSLOP_PRESENTATION_PADDING_INSTRUCTION + UNSLOP_QUALIFIER_ATTACHMENT_INSTRUCTION
