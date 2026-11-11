@@ -17,6 +17,7 @@ from app.document_transform.custom_furniture import CustomHeaderTitleTarget
 from app.document_transform.errors import SourceTooLargeError, UnsupportedSourceError
 from app.document_transform.gateway import TabHeader
 from app.document_transform.ir import BlockKind, DocumentIR, SourceRange, TextBlock, utf16_length
+from app.document_transform.native_code import plan_native_code_styles
 from app.document_transform.native_prose import NATIVE_TEXT_STYLE_FIELDS
 from app.identifiers import DocsTabId
 
@@ -140,6 +141,7 @@ def build_copy_mutations(
     headers: tuple[TabHeader, ...],
     logo_uri: str,
     header_title: str | None = None,
+    source_document: dict[str, JsonValue] | None = None,
 ) -> list[DocsRequest]:
     requests = build_copy_text_mutations(original, transformed)
     located = _post_edit_locations(original, transformed)
@@ -163,6 +165,8 @@ def build_copy_mutations(
     requests.extend(
         _style_requests(located, profile=profile, branded=True, split_native_ids=split_native_ids)
     )
+    if source_document is not None:
+        requests.extend(plan_native_code_styles(source_document, original, transformed).requests)
     return requests
 
 
@@ -839,6 +843,10 @@ def _tab_ids(document: DocumentIR) -> tuple[DocsTabId, ...]:
         )
     )
     return located or document.tab_ids
+
+
+def copy_style_locations(original: DocumentIR, transformed: DocumentIR) -> DocumentIR:
+    return _post_edit_locations(original, transformed)
 
 
 def _post_edit_locations(original: DocumentIR, transformed: DocumentIR) -> DocumentIR:

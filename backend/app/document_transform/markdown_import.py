@@ -11,6 +11,7 @@ from app.document_transform.brand_manifest import (
     HEADER_TITLE_SEPARATOR,
     trusted_document_logo_description,
 )
+from app.document_transform.code_syntax import CodeToken, format_code
 from app.document_transform.import_manifest import (
     MarkdownImportBlock,
     MarkdownImportInline,
@@ -1527,15 +1528,53 @@ def _runs_match_brand(
         size = _effective_dimension_points(style, inherited, "fontSize")
         if abs(size - role.size) > _TOLERANCE:
             return False
-        color = style.get("foregroundColor", inherited.get("foregroundColor"))
-        run_color = CURRENT_BRAND_MANIFEST.colors.primary if _run_has_link(style) else role.color
-        if not _color_matches(color, run_color):
-            return False
         if role.bold and _effective_bool(style, inherited, "bold") is not True:
             return False
         if role.italic and _effective_bool(style, inherited, "italic") is not True:
             return False
+    return _runs_match_colors(runs, expected, inherited, role)
+
+
+def _runs_match_colors(
+    runs: tuple[tuple[str, dict[str, JsonValue]], ...],
+    expected: MarkdownImportBlock,
+    inherited: dict[str, JsonValue],
+    role: _RoleBrand,
+) -> bool:
+    syntax = (
+        format_code(expected.text, expected.code_language).tokens if expected.kind == "code" else ()
+    )
+    character_offset = 0
+    for content, style in runs:
+        color = style.get("foregroundColor", inherited.get("foregroundColor"))
+        run_color = CURRENT_BRAND_MANIFEST.colors.primary if _run_has_link(style) else role.color
+        if expected.kind == "code":
+            code_color = _code_color_for_range(
+                syntax,
+                start=character_offset,
+                end=character_offset + len(content),
+                default=role.color,
+            )
+            if code_color is None:
+                return False
+            run_color = code_color
+        if not _color_matches(color, run_color):
+            return False
+        character_offset += len(content)
     return True
+
+
+def _code_color_for_range(
+    syntax: tuple[CodeToken, ...], *, start: int, end: int, default: str
+) -> str | None:
+    offset = 0
+    colors: set[str] = set()
+    for token in syntax:
+        token_end = offset + len(token.text)
+        if start < token_end and end > offset:
+            colors.add(f"#{token.color}" if token.color is not None else default)
+        offset = token_end
+    return next(iter(colors)) if len(colors) == 1 else None
 
 
 def _expected_code_for_range(

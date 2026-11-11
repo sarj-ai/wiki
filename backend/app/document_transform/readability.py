@@ -20,6 +20,7 @@ from app.document_transform.readability_tables import (
     readable_table_requests,
 )
 from app.document_transform.readability_types import (
+    CURRENT_READABILITY_VERSION,
     PlannedReadabilityCheckpoint,
     ReadabilityCheckpoint,
     ReadabilityParagraph,
@@ -70,6 +71,7 @@ async def plan_readability(
     if not mutations.requests:
         return None
     checkpoint = PlannedReadabilityCheckpoint(
+        version=CURRENT_READABILITY_VERSION,
         source_revision_id=DocsRevisionId(str(document["revisionId"])),
         source_sha256=document_digest(document),
         invariant_sha256="",
@@ -83,7 +85,9 @@ async def plan_readability(
         passes=draft.passes,
     )
     checkpoint = checkpoint.model_copy(
-        update={"invariant_sha256": document_digest(_project(document, checkpoint, applied=False))}
+        update={
+            "invariant_sha256": readability_invariant_sha256(document, checkpoint, applied=False)
+        }
     )
     return None if verify_readability(document, checkpoint) else checkpoint
 
@@ -180,11 +184,17 @@ def _layout_burden(
 def verify_readability(document: dict[str, JsonValue], checkpoint: ReadabilityCheckpoint) -> bool:
     try:
         return (
-            document_digest(_project(document, checkpoint, applied=True))
+            readability_invariant_sha256(document, checkpoint, applied=True)
             == checkpoint.invariant_sha256
         )
     except KeyError, IndexError, TypeError, ValueError:
         return False
+
+
+def readability_invariant_sha256(
+    document: dict[str, JsonValue], checkpoint: ReadabilityCheckpoint, *, applied: bool
+) -> str:
+    return document_digest(_project(document, checkpoint, applied=applied))
 
 
 def _project(
@@ -195,7 +205,9 @@ def _project(
         verify_readable_lists(
             projected, checkpoint.paragraphs, original_lists=checkpoint.original_lists
         )
-    project_readable_tables(projected, checkpoint.tables, applied=applied)
+    project_readable_tables(
+        projected, checkpoint.tables, applied=applied, version=checkpoint.version
+    )
     project_readable_paragraphs(projected, checkpoint.paragraphs, applied=applied)
     for tab_id, tab in bodies(projected):
         original = checkpoint.original_lists[str(tab_id)]

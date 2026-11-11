@@ -89,16 +89,16 @@ describe("public sample download URL boundary", () => {
     const workbook = demoFileFor("latency-workbook");
     const slides = demoFileFor("latency-slides");
     expect(demoPreviewUrl(guide)).toBe(
-      "https://docs.google.com/document/d/1rxCll9Mkf3rI5g1t8TpngFl6s00iOielDpovzQMOox8/preview",
+      "https://docs.google.com/document/d/1VzPtXow0E-cGFSTrQCQymMer-Fa5eYVDNf_jlH44rJA/preview",
     );
     expect(demoDownloadUrl(guide)).toBe(
-      "https://docs.google.com/document/d/1rxCll9Mkf3rI5g1t8TpngFl6s00iOielDpovzQMOox8/export?format=docx&tab=t.0",
+      "https://docs.google.com/document/d/1VzPtXow0E-cGFSTrQCQymMer-Fa5eYVDNf_jlH44rJA/export?format=docx&tab=t.0",
     );
     expect(demoPreviewUrl(draft)).toBe(
-      "https://docs.google.com/document/d/1Ks_EO_8tzXNgUKLgrXgbcOSSGAXlNWKb8zeiDRqBGEo/preview",
+      "https://docs.google.com/document/d/12M9C0VB90yj2zoaowlshi7papBMfoFhJlroYr4lTDKQ/preview",
     );
     expect(demoDownloadUrl(draft)).toBe(
-      "https://docs.google.com/document/d/1Ks_EO_8tzXNgUKLgrXgbcOSSGAXlNWKb8zeiDRqBGEo/export?format=docx&tab=t.0",
+      "https://docs.google.com/document/d/12M9C0VB90yj2zoaowlshi7papBMfoFhJlroYr4lTDKQ/export?format=docx&tab=t.0",
     );
     expect(demoPreviewUrl(workbook)).toBe(
       "https://docs.google.com/spreadsheets/d/1BDbrvpKtmGG57TzGNnCxIChxztmfssUwJNxA44SwSVI/preview#gid=696566412",

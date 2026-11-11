@@ -36,7 +36,7 @@ class ReadabilityProvider:
                 validate_readable_lists(document, checkpoint.paragraphs)
                 requests = readable_paragraph_requests(
                     checkpoint.paragraphs, grouped_lists=checkpoint.version != 1
-                ) + readable_table_requests(document, checkpoint.tables)
+                ) + readable_table_requests(document, checkpoint.tables, version=checkpoint.version)
             except (KeyError, TypeError, ValueError) as error:
                 raise OutputConflictError from error
             if requests != checkpoint.requests:

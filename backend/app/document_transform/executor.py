@@ -59,6 +59,7 @@ from app.document_transform.header_provenance import HeaderIdentityFinalization
 from app.document_transform.header_recovery import recover_empty_header_postcondition
 from app.document_transform.ir import (
     MAX_DOC_TABS,
+    BlockKind,
     DocumentIR,
     parse_google_document,
     parse_markdown,
@@ -70,6 +71,7 @@ from app.document_transform.naming import (
     suggested_document_title,
     title_case_document_name,
 )
+from app.document_transform.native_code import plan_native_code_styles
 from app.document_transform.native_font_defense import (
     apply_native_font_preservation,
     defend_native_font_requests,
@@ -173,7 +175,6 @@ class _TableFontScope(NamedTuple):
 PIPELINE_VERSION = DOCUMENT_PIPELINE_VERSION
 REQUEST_BUILDER_VERSION = "google-docs-requests-v29"
 IN_PLACE_REQUEST_BUILDER_VERSION = f"{REQUEST_BUILDER_VERSION}-header-title-v1"
-_COPY_REQUEST_BUILDER_VERSION = f"{REQUEST_BUILDER_VERSION}-visual-v1"
 _MAX_OUTPUT_NAME_LENGTH = 255
 _MAX_GENERATED_NAME_SUFFIXES = 16
 _OUTPUT_SUFFIX = MappingProxyType(
@@ -897,6 +898,7 @@ class DocumentTransformExecutor(DocumentTransformRunner):
             headers=prepared_draft.headers,
             logo_uri=prepared_draft.logo_uri,
             header_title=checkpoint.output_name,
+            source_document=snapshot.google_document,
         )
         if outcome.document.copy_font_defended:
             mutations = defend_copy_fonts(
@@ -2542,9 +2544,14 @@ def _copy_visual_ids(document: DocumentIR) -> tuple[str, ...]:
 
 
 def _copy_builder_version(document: DocumentIR) -> str:
+    version = REQUEST_BUILDER_VERSION
+    if document.source_format == "google_doc" and any(
+        block.kind is BlockKind.CODE for block in document.blocks
+    ):
+        version = f"{version}-code-v2"
     if document.copy_font_defended:
-        return f"{REQUEST_BUILDER_VERSION}-copy-font-v1"
-    return _COPY_REQUEST_BUILDER_VERSION if _copy_visual_ids(document) else REQUEST_BUILDER_VERSION
+        return f"{version}-copy-font-v1"
+    return f"{version}-visual-v1" if _copy_visual_ids(document) else version
 
 
 def _new_copy_checkpoint(
@@ -2852,6 +2859,10 @@ def _copy_manifest_sha256(
                     for proof in copy_font_proofs(snapshot.google_document, transformed)
                 ],
             }
+        if branded and snapshot.google_document is not None:
+            code_plan = plan_native_code_styles(snapshot.google_document, original, transformed)
+            if code_plan.paragraphs:
+                manifest["native_code_plan_sha256"] = code_plan.sha256
     return hashlib.sha256(
         json.dumps(manifest, ensure_ascii=False, separators=(",", ":"), sort_keys=True).encode()
     ).hexdigest()
@@ -3084,6 +3095,9 @@ def _preflight_native_mutation_budget(
                 _copy_output_name(request, original)
                 if request.output_strategy is OutputStrategy.COPY
                 else None
+            ),
+            source_document=(
+                snapshot.google_document if request.output_strategy is OutputStrategy.COPY else None
             ),
         )
     if request.output_strategy is OutputStrategy.COPY and transformed.copy_font_defended:

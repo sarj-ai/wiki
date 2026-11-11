@@ -18,9 +18,9 @@ export const DEMO_SEARCH_SUGGESTION =
   "Try “guide”, “draft”, “workbook”, or “slides”.";
 
 const GUIDE_BASE =
-  "https://docs.google.com/document/d/1rxCll9Mkf3rI5g1t8TpngFl6s00iOielDpovzQMOox8";
+  "https://docs.google.com/document/d/1VzPtXow0E-cGFSTrQCQymMer-Fa5eYVDNf_jlH44rJA";
 const DRAFT_BASE =
-  "https://docs.google.com/document/d/1Ks_EO_8tzXNgUKLgrXgbcOSSGAXlNWKb8zeiDRqBGEo";
+  "https://docs.google.com/document/d/12M9C0VB90yj2zoaowlshi7papBMfoFhJlroYr4lTDKQ";
 const WORKBOOK_BASE =
   "https://docs.google.com/spreadsheets/d/1BDbrvpKtmGG57TzGNnCxIChxztmfssUwJNxA44SwSVI";
 const SLIDES_BASE =
@@ -28,13 +28,13 @@ const SLIDES_BASE =
 const WORKBOOK_PREVIEW = `${WORKBOOK_BASE}/preview#gid=696566412`;
 
 const GUIDE_FILE: DemoFile = {
-  description: "A concise guide to the Google SRE reference estimates.",
+  description: "Reference estimates, a formatted table, and code examples.",
   downloadFilename: "numbers-guide.docx",
   downloadUrl: `${GUIDE_BASE}/export?format=docx&tab=t.0`,
   format: "Document",
   id: "latency-guide",
   keywords:
-    "numbers programmer latency guide Google SRE reference estimates cache memory storage network",
+    "numbers programmer latency guide Google SRE reference estimates cache memory storage network Python TypeScript SQL code formatting",
   mimeType: MIME_DOC,
   name: "Numbers Every Programmer Should Know",
   previewUrl: `${GUIDE_BASE}/preview`,

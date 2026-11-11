@@ -3,7 +3,13 @@ from dataclasses import dataclass, replace
 import json
 from typing import Any
 
-from app.document_transform.brand import SarjBrandProfile, build_copy_mutations
+from pydantic import JsonValue
+
+from app.document_transform.brand import (
+    SarjBrandProfile,
+    build_copy_mutations,
+    copy_style_locations,
+)
 from app.document_transform.ir import DocumentIR, parse_google_document
 
 
@@ -56,14 +62,29 @@ def _planned_styles(expected: DocumentIR) -> dict[_StyleRange, dict[str, Any]]:
     requests = build_copy_mutations(
         expected, expected, profile=SarjBrandProfile(), headers=(), logo_uri=""
     )
+    source_ranges = _source_style_ranges(expected)
     styles: dict[_StyleRange, dict[str, Any]] = {}
     for request in requests:
         update = request.get("updateTextStyle", {})
         scope = update.get("range", {})
         if set(scope) == {"tabId", "startIndex", "endIndex"}:
-            key = _StyleRange(scope["tabId"], scope["startIndex"], scope["endIndex"])
-            styles.setdefault(key, {}).update(update.get("textStyle", {}))
+            emitted = _StyleRange(scope["tabId"], scope["startIndex"], scope["endIndex"])
+            if (source := source_ranges.get(emitted)) is not None:
+                styles.setdefault(source, {}).update(update.get("textStyle", {}))
     return styles
+
+
+def _source_style_ranges(expected: DocumentIR) -> dict[_StyleRange, _StyleRange]:
+    originals = {block.id: block.source_range for block in expected.blocks}
+    ranges = {}
+    for block in copy_style_locations(expected, expected).blocks:
+        source = originals[block.id]
+        target = block.source_range
+        if source is not None and target is not None:
+            ranges[_StyleRange(target.tab_id, target.start_index, target.end_index)] = _StyleRange(
+                source.tab_id, source.start_index, source.end_index
+            )
+    return ranges
 
 
 def bullet_style_diagnostics(actual: DocumentIR, expected: DocumentIR) -> dict[str, int]:
@@ -111,22 +132,7 @@ def bullet_style_diagnostics(actual: DocumentIR, expected: DocumentIR) -> dict[s
             continue
         before = json.loads(planned.native_bullet_json)
         after = json.loads(observed.native_bullet_json)
-        counts["bullet_identity_mismatch"] += int(before.get("listId") != after.get("listId"))
-        counts["bullet_nesting_mismatch"] += int(
-            before.get("nestingLevel") != after.get("nestingLevel")
-        )
-        counts["bullet_other_property_mismatch"] += int(
-            {
-                key: value
-                for key, value in before.items()
-                if key not in {"listId", "nestingLevel", "textStyle"}
-            }
-            != {
-                key: value
-                for key, value in after.items()
-                if key not in {"listId", "nestingLevel", "textStyle"}
-            }
-        )
+        _count_bullet_metadata(counts, before, after)
         source = planned.source_range
         permitted = (
             styles.get(_StyleRange(source.tab_id, source.start_index, source.end_index), {})
@@ -139,46 +145,89 @@ def bullet_style_diagnostics(actual: DocumentIR, expected: DocumentIR) -> dict[s
             and before != after
             and _only_planned_style_changes(before, after, permitted)
         )
-        before_style = before.get("textStyle", {})
-        after_style = after.get("textStyle", {})
-        if not isinstance(before_style, dict) or not isinstance(after_style, dict):
-            counts["bullet_unknown_style_mismatch"] += 1
-            continue
-        for field in before_style.keys() | after_style.keys():
-            if (
-                field in before_style
-                and field in after_style
-                and before_style[field] == after_style[field]
-            ):
-                continue
-            if (
-                field in permitted
-                and field in after_style
-                and _style_value_matches(field, after_style[field], permitted[field])
-            ):
-                continue
-            bucket = {
-                "weightedFontFamily": "bullet_font_mismatch",
-                "fontSize": "bullet_size_mismatch",
-                "foregroundColor": "bullet_color_mismatch",
-                "bold": "bullet_emphasis_mismatch",
-                "italic": "bullet_emphasis_mismatch",
-                "underline": "bullet_emphasis_mismatch",
-                "link": "bullet_link_mismatch",
-            }.get(field, "bullet_unknown_style_mismatch")
-            counts[bucket] += 1
-            if field in {"bold", "italic", "underline"}:
-                counts[f"bullet_{field}_request_present"] += int(field in permitted)
-                counts[f"bullet_{field}_request_expected_false"] += int(
-                    permitted.get(field) is False
-                )
-                dimension = "changed"
-                if field not in before_style and type(after_style.get(field)) is bool:
-                    dimension = "added_true" if after_style[field] else "added_false"
-                elif field not in after_style and type(before_style.get(field)) is bool:
-                    dimension = "removed_true" if before_style[field] else "removed_false"
-                counts[f"bullet_{field}_{dimension}"] += 1
+        _count_bullet_styles(
+            counts, before.get("textStyle", {}), after.get("textStyle", {}), permitted
+        )
     return counts
+
+
+def _count_bullet_metadata(
+    counts: dict[str, int], before: dict[str, JsonValue], after: dict[str, JsonValue]
+) -> None:
+    counts["bullet_identity_mismatch"] += int(before.get("listId") != after.get("listId"))
+    counts["bullet_nesting_mismatch"] += int(
+        before.get("nestingLevel") != after.get("nestingLevel")
+    )
+    counts["bullet_other_property_mismatch"] += int(
+        _other_bullet_properties(before) != _other_bullet_properties(after)
+    )
+
+
+def _other_bullet_properties(bullet: dict[str, JsonValue]) -> dict[str, JsonValue]:
+    return {
+        key: value
+        for key, value in bullet.items()
+        if key not in {"listId", "nestingLevel", "textStyle"}
+    }
+
+
+def _count_bullet_styles(
+    counts: dict[str, int], before: JsonValue, after: JsonValue, permitted: dict[str, JsonValue]
+) -> None:
+    if not isinstance(before, dict) or not isinstance(after, dict):
+        counts["bullet_unknown_style_mismatch"] += 1
+        return
+    for field in before.keys() | after.keys():
+        if _diagnostic_style_matches(field, before, after, permitted):
+            continue
+        bucket = {
+            "weightedFontFamily": "bullet_font_mismatch",
+            "fontSize": "bullet_size_mismatch",
+            "foregroundColor": "bullet_color_mismatch",
+            "bold": "bullet_emphasis_mismatch",
+            "italic": "bullet_emphasis_mismatch",
+            "underline": "bullet_emphasis_mismatch",
+            "link": "bullet_link_mismatch",
+        }.get(field, "bullet_unknown_style_mismatch")
+        counts[bucket] += 1
+        if field in {"bold", "italic", "underline"}:
+            _count_emphasis_direction(counts, field, before, after, permitted)
+
+
+def _diagnostic_style_matches(
+    field: str,
+    before: dict[str, JsonValue],
+    after: dict[str, JsonValue],
+    permitted: dict[str, JsonValue],
+) -> bool:
+    return (field in before and field in after and before[field] == after[field]) or (
+        field in permitted
+        and field in after
+        and _style_value_matches(field, after[field], permitted[field])
+    )
+
+
+def _count_emphasis_direction(
+    counts: dict[str, int],
+    field: str,
+    before: dict[str, JsonValue],
+    after: dict[str, JsonValue],
+    permitted: dict[str, JsonValue],
+) -> None:
+    counts[f"bullet_{field}_request_present"] += int(field in permitted)
+    counts[f"bullet_{field}_request_expected_false"] += int(permitted.get(field) is False)
+    dimension = _emphasis_direction(field, before, after)
+    counts[f"bullet_{field}_{dimension}"] += 1
+
+
+def _emphasis_direction(
+    field: str, before: dict[str, JsonValue], after: dict[str, JsonValue]
+) -> str:
+    if field not in before and type(after.get(field)) is bool:
+        return "added_true" if after[field] else "added_false"
+    if field not in after and type(before.get(field)) is bool:
+        return "removed_true" if before[field] else "removed_false"
+    return "changed"
 
 
 def project_branded_bullet_styles(document: dict[str, Any], expected: DocumentIR) -> dict[str, Any]:

@@ -4,11 +4,21 @@ from pydantic import JsonValue
 import pytest
 
 from app.document_transform.errors import ModelUnavailableError
-from app.document_transform.readability import plan_readability, verify_readability
+from app.document_transform.readability import (
+    plan_readability,
+    readability_invariant_sha256,
+    verify_readability,
+)
 from app.document_transform.readability_json import array, bodies, content, obj
 from app.document_transform.readability_provider import ReadabilityProvider
 from app.document_transform.readability_tables import plan_readable_tables, readable_table_requests
-from app.document_transform.readability_types import ReadabilityCheckpoint, ReadabilityTable
+from app.document_transform.readability_types import (
+    CURRENT_READABILITY_VERSION,
+    PlannedReadabilityCheckpoint,
+    ReadabilityCheckpoint,
+    ReadabilityTable,
+    ReadabilityVersion,
+)
 from app.identifiers import FileId
 from tests.test_document_readability import _LayoutEditor
 from tests.test_table_layout import _native_table
@@ -42,7 +52,8 @@ def test_body_tables_receive_cell_formatting_without_inventing_a_header(
     assert len(cells) == len(rows)
     for cell in cells:
         style = obj(cell["tableCellStyle"])
-        assert style["paddingLeft"] == {"magnitude": 6, "unit": "PT"}
+        assert "paddingLeft" not in style
+        assert "paddingRight" not in style
         assert style["paddingTop"] == {"magnitude": 4, "unit": "PT"}
         assert style["contentAlignment"] == "TOP"
         assert obj(style["borderBottom"])["width"] == {"magnitude": 0.5, "unit": "PT"}
@@ -97,14 +108,13 @@ def _body_readback(
                 "dashStyle": "SOLID",
             }
             cell["tableCellStyle"] = {
+                **obj(cell.get("tableCellStyle", {})),
                 **dict.fromkeys(("borderTop", "borderBottom", "borderLeft", "borderRight"), border),
                 "backgroundColor": {
                     "color": {"rgbColor": dict.fromkeys(("red", "green", "blue"), color)}
                 },
                 "paddingTop": {"magnitude": 4, "unit": "PT"},
                 "paddingBottom": {"magnitude": 4, "unit": "PT"},
-                "paddingLeft": {"magnitude": 6, "unit": "PT"},
-                "paddingRight": {"magnitude": 6, "unit": "PT"},
                 "contentAlignment": "TOP",
             }
             for value_part in array(cell["content"]):
@@ -176,3 +186,120 @@ async def test_body_table_uncertain_write_recovers_once_and_repeated_formatting_
     assert await plan_readability(document, title="Body table", generator=editor) is None
     assert writes == [plan]
     assert editor.calls == 0
+
+
+def _first_cell_style(document: dict[str, JsonValue]) -> dict[str, JsonValue]:
+    table = obj(obj(content(next(bodies(document))[1])[0])["table"])
+    cell = obj(array(obj(array(table["tableRows"])[0])["tableCells"])[0])
+    return obj(cell.setdefault("tableCellStyle", {}))
+
+
+@pytest.mark.parametrize("horizontal", [None, "paddingLeft", "paddingRight", "paddingStart"])
+async def test_new_table_plan_preserves_omitted_explicit_and_unknown_horizontal_spacing(
+    horizontal: str | None,
+) -> None:
+    document = _native_table((("Cache", "Read only"), ("Disk", "Read and write")))
+    document["revisionId"] = "r1"
+    next(bodies(document))[1]["footers"] = {
+        "source-footer": {
+            "footerId": "source-footer",
+            "content": [
+                {"paragraph": {"elements": [{"textRun": {"content": "Protected footer\n"}}]}}
+            ],
+        }
+    }
+    if horizontal is not None:
+        _first_cell_style(document)[horizontal] = {
+            "magnitude": 7,
+            "unit": "PT",
+            "sourceExtension": "preserve",
+        }
+    before = deepcopy(document)
+    plan = await plan_readability(document, title="Preserve spacing", generator=_LayoutEditor())
+    assert plan is not None
+    assert plan.version == CURRENT_READABILITY_VERSION
+    for request in plan.requests:
+        if "updateTableCellStyle" in request:
+            update = obj(request["updateTableCellStyle"])
+            assert "paddingLeft" not in obj(update["tableCellStyle"])
+            assert "paddingRight" not in str(update["fields"])
+    writes = []
+
+    async def read(_identifier: FileId) -> dict[str, JsonValue]:
+        return deepcopy(document)
+
+    async def write(_identifier: FileId, checkpoint: ReadabilityCheckpoint) -> None:
+        writes.append(checkpoint.requests)
+        after = _body_readback(document, checkpoint.tables[0])
+        document.clear()
+        document.update(after)
+
+    provider = ReadabilityProvider(read, write)
+    completed = await provider.apply(document_id=FileId("spacing"), checkpoint=plan)
+    assert completed.complete
+    assert await provider.apply(document_id=FileId("spacing"), checkpoint=completed) == completed
+    assert writes == [plan.requests]
+    assert verify_readability(document, completed)
+    altered = deepcopy(document)
+    _first_cell_style(altered)[horizontal or "paddingLeft"] = {"magnitude": 6, "unit": "PT"}
+    assert not verify_readability(altered, completed)
+    assert _first_cell_style(before).get(horizontal or "paddingLeft") == (
+        _first_cell_style(document).get(horizontal or "paddingLeft")
+    )
+    footer_changed = deepcopy(document)
+    next(bodies(footer_changed))[1]["footers"] = {}
+    assert not verify_readability(footer_changed, completed)
+
+
+@pytest.mark.parametrize("version", [1, 2])
+async def test_legacy_table_plan_retains_exact_horizontal_requests_and_strict_readback(
+    version: ReadabilityVersion,
+) -> None:
+    before = _native_table((("Cache", "Read only"), ("Disk", "Read and write")))
+    before["revisionId"] = "r1"
+    plan = await plan_readability(before, title="Legacy spacing", generator=_LayoutEditor())
+    assert plan is not None
+    requests = readable_table_requests(before, plan.tables, version=version)
+    legacy = plan.model_copy(update={"version": version, "requests": requests})
+    legacy = legacy.model_copy(
+        update={"invariant_sha256": readability_invariant_sha256(before, legacy, applied=False)}
+    )
+    after = _body_readback(before, legacy.tables[0])
+    table = obj(obj(content(next(bodies(after))[1])[0])["table"])
+    for row in array(table["tableRows"]):
+        for cell in array(obj(row)["tableCells"]):
+            style = obj(obj(cell)["tableCellStyle"])
+            style["paddingLeft"] = {"magnitude": 6, "unit": "PT"}
+            style["paddingRight"] = {"magnitude": 6, "unit": "PT"}
+    assert verify_readability(after, legacy)
+    assert legacy.requests == readable_table_requests(before, legacy.tables, version=version)
+    assert all(
+        obj(obj(request["updateTableCellStyle"])["tableCellStyle"])["paddingLeft"]
+        == {"magnitude": 6, "unit": "PT"}
+        for request in requests
+        if "updateTableCellStyle" in request
+    )
+    current = before
+    writes = []
+
+    async def read(_identifier: FileId) -> dict[str, JsonValue]:
+        return deepcopy(current)
+
+    async def write(_identifier: FileId, checkpoint: ReadabilityCheckpoint) -> None:
+        nonlocal current
+        writes.append(checkpoint.requests)
+        current = after
+
+    provider = ReadabilityProvider(read, write)
+    completed = await provider.apply(document_id=FileId("legacy-spacing"), checkpoint=legacy)
+    assert completed.complete
+    assert completed.version == version
+    assert writes == [requests]
+    assert (
+        await provider.apply(document_id=FileId("legacy-spacing"), checkpoint=legacy) == completed
+    )
+    _first_cell_style(after).pop("paddingLeft")
+    assert not verify_readability(after, legacy)
+    payload = legacy.model_dump(mode="json")
+    payload.pop("version")
+    assert PlannedReadabilityCheckpoint.model_validate(payload).version == 2

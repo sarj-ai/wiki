@@ -19,7 +19,11 @@ from app.document_transform.readability_table_style import (
     project_readable_table_cells,
     readable_table_cell_requests,
 )
-from app.document_transform.readability_types import ReadabilityTable
+from app.document_transform.readability_types import (
+    CURRENT_READABILITY_VERSION,
+    ReadabilityTable,
+    ReadabilityVersion,
+)
 from app.document_transform.table_layout import (
     numeric_columns,
     numeric_table_value,
@@ -112,7 +116,10 @@ def _rows(cells: tuple[_Cell, ...], columns: int) -> tuple[tuple[str, ...], ...]
 
 
 def readable_table_requests(
-    document: dict[str, JsonValue], targets: tuple[ReadabilityTable, ...]
+    document: dict[str, JsonValue],
+    targets: tuple[ReadabilityTable, ...],
+    *,
+    version: ReadabilityVersion = CURRENT_READABILITY_VERSION,
 ) -> list[dict[str, JsonValue]]:
     requests: list[dict[str, JsonValue]] = []
     tabs = dict(bodies(document))
@@ -122,7 +129,7 @@ def readable_table_requests(
             for value in content(tabs[target.tab_id])
             if obj(value).get("startIndex") == target.start
         )
-        requests.extend(readable_table_cell_requests(element, target))
+        requests.extend(readable_table_cell_requests(element, target, version=version))
         for column, width in enumerate(target.widths):
             requests.append(
                 {
@@ -218,7 +225,11 @@ def _cell_font_requests(
 
 
 def project_readable_tables(
-    document: dict[str, JsonValue], targets: tuple[ReadabilityTable, ...], *, applied: bool
+    document: dict[str, JsonValue],
+    targets: tuple[ReadabilityTable, ...],
+    *,
+    applied: bool,
+    version: ReadabilityVersion = CURRENT_READABILITY_VERSION,
 ) -> None:
     tabs = dict(bodies(document))
     for target in targets:
@@ -231,7 +242,12 @@ def project_readable_tables(
             msg = "Table identity changed"
             raise ValueError(msg)
         _project_table(
-            matches[0], target, document=document, tab=tabs[target.tab_id], applied=applied
+            matches[0],
+            target,
+            document=document,
+            tab=tabs[target.tab_id],
+            applied=applied,
+            version=version,
         )
 
 
@@ -242,8 +258,9 @@ def _project_table(
     document: dict[str, JsonValue],
     tab: dict[str, JsonValue],
     applied: bool,
+    version: ReadabilityVersion = CURRENT_READABILITY_VERSION,
 ) -> None:
-    project_readable_table_cells(element, target, applied=applied)
+    project_readable_table_cells(element, target, applied=applied, version=version)
     table = obj(element["table"])
     style = obj(table.get("tableStyle", {}))
     columns = array(style.get("tableColumnProperties", [{} for _ in target.widths]))

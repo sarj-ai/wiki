@@ -99,6 +99,10 @@ from app.document_transform.markdown_import import (
     verify_markdown_import,
 )
 from app.document_transform.naming import suggested_document_title
+from app.document_transform.native_code import (
+    plan_native_code_styles,
+    project_native_code_styles,
+)
 from app.document_transform.native_date_flow import (
     NativeDateCheckpoint,
     PendingNativeDateCheckpoint,
@@ -1744,13 +1748,14 @@ class GoogleDocumentGateway(DocumentGateway):
                 brand_applied=verification.brand_applied,
                 revision_id=DocsRevisionId(_required_string(output_document, "revisionId")),
             )
-        structure_document = (
-            project_branded_bullet_styles(output_document, expected)
-            if verify_brand
-            else output_document
-        )
-        parsed = parse_google_document(structure_document, title=expected.title)
         source_document = source.google_document
+        structure_document = _copy_style_projection(
+            source_document, output_document, expected, verify_brand=verify_brand
+        )
+        styles_preserved = structure_document is not None
+        if structure_document is None:
+            structure_document = output_document
+        parsed = parse_google_document(structure_document, title=expected.title)
         (
             parsed,
             structural_preserved,
@@ -1765,6 +1770,7 @@ class GoogleDocumentGateway(DocumentGateway):
             parsed,
             verify_brand=verify_brand,
         )
+        structure_preserved = structure_preserved and styles_preserved
         content_preserved = _typography_content_preserved(
             parsed, expected, verify_brand=verify_brand
         )
@@ -1797,27 +1803,7 @@ class GoogleDocumentGateway(DocumentGateway):
                     **bullet_style_diagnostics(
                         parse_google_document(output_document, title=expected.title), expected
                     ),
-                    "block_count_mismatch": len(parsed.blocks) != len(expected.blocks),
-                    "block_text_mismatches": sum(
-                        a.text != b.text
-                        for a, b in zip(parsed.blocks, expected.blocks, strict=False)
-                    ),
-                    "block_kind_mismatches": sum(
-                        (a.kind, a.level) != (b.kind, b.level)
-                        for a, b in zip(parsed.blocks, expected.blocks, strict=False)
-                    ),
-                    "block_native_content_mismatches": sum(
-                        a.native_content != b.native_content
-                        for a, b in zip(parsed.blocks, expected.blocks, strict=False)
-                    ),
-                    "block_native_style_mismatches": sum(
-                        a.native_named_style != b.native_named_style
-                        for a, b in zip(parsed.blocks, expected.blocks, strict=False)
-                    ),
-                    "block_editability_mismatches": sum(
-                        a.editable != b.editable
-                        for a, b in zip(parsed.blocks, expected.blocks, strict=False)
-                    ),
+                    **_copy_block_diagnostics(parsed, expected),
                 },
             )
         elif copy_list_identity_equivalent:
@@ -4895,6 +4881,43 @@ class _CopyStructureVerification(NamedTuple):
     protected_preserved: bool
     list_identity_equivalent: bool
     structure_preserved: bool
+
+
+def _copy_block_diagnostics(actual: DocumentIR, expected: DocumentIR) -> dict[str, JsonValue]:
+    pairs = tuple(zip(actual.blocks, expected.blocks, strict=False))
+    return {
+        "block_count_mismatch": len(actual.blocks) != len(expected.blocks),
+        "block_text_mismatches": sum(a.text != b.text for a, b in pairs),
+        "block_kind_mismatches": sum((a.kind, a.level) != (b.kind, b.level) for a, b in pairs),
+        "block_native_content_mismatches": sum(
+            a.native_content != b.native_content for a, b in pairs
+        ),
+        "block_native_style_mismatches": sum(
+            a.native_named_style != b.native_named_style for a, b in pairs
+        ),
+        "block_editability_mismatches": sum(a.editable != b.editable for a, b in pairs),
+    }
+
+
+def _copy_style_projection(
+    source: dict[str, JsonValue] | None,
+    actual: dict[str, JsonValue],
+    expected: DocumentIR,
+    *,
+    verify_brand: bool,
+) -> dict[str, JsonValue] | None:
+    if not verify_brand:
+        return actual
+    try:
+        projected = actual
+        if source is not None:
+            plan = plan_native_code_styles(
+                source, parse_google_document(source, title=expected.title), expected
+            )
+            projected = project_native_code_styles(source, actual, plan)
+        return project_branded_bullet_styles(projected, expected)
+    except KeyError, IndexError, TypeError, ValueError, AttributeError:
+        return None
 
 
 def _copy_structure_verification(
