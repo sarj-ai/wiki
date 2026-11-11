@@ -12,12 +12,16 @@ from app.document_transform.quotations import SINGLE_QUOTED_SPAN_PATTERN, quoted
 
 UNSLOP_UPSTREAM_COMMIT = "d81f5196167ded24f46fced04958c0c12d681798"
 UNSLOP_UPSTREAM_VERSION = "2.3.0"
-UNSLOP_POLICY_VERSION = "sarj-concise-v24"
+UNSLOP_POLICY_VERSION = "sarj-concise-v25"
 MAX_EDITORIAL_PASSES = 100
 MIN_CONCISION_PROSE_WORDS = 40
 CONCISION_WORD_NUMERATOR = 2
 CONCISION_WORD_DENOMINATOR = 5
 UNSLOP_PRESENTATION_PADDING_INSTRUCTION = (
+    "A sentence-initial 'It should be noted that' is removable editorial framing. "
+    "Its should directs attention to the following fact; preserve that complete fact "
+    "and all of its substantive obligations and uncertainty. This exception excludes "
+    "quoted or reported instructions and requirements to record or retain a note. "
     "Unmeasured praise of this text's presentation and imagined reader encouragement "
     "(welcoming tone, anticipation, curiosity, confidence or pleasure) are removable "
     "editorial padding; they may disappear entirely. This exception excludes actual "
@@ -205,6 +209,7 @@ HTML_ENTITY_PATTERN = r"&(?:#[0-9]+|#[xX][0-9A-Fa-f]+|[A-Za-z][A-Za-z0-9]+);"
 
 _EDITORIAL_FRAMING_PATTERN = re.compile(
     r"(?:^|(?<=[.!?\n]))[ \t]*(?:"
+    r"[Ii]t should be noted that[ \t]+|"
     r"[Ii]n today['’]s (?:increasingly )?fast[-\u2011 ]moving and ever[-\u2011 ]evolving "
     r"world of (?=[^,;:.!?\n]+,[ \t]*)|"
     r"(?:[Tt]o put it|[Pp]ut(?: it)?) another way[,:][ \t]*"

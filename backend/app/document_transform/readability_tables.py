@@ -85,17 +85,24 @@ def _table_plan(
     native_headers = _native_header_rows(element)
     header_rows = native_headers or 1
     numeric = numeric_columns(rows, header_rows=header_rows)
+    header = bool(native_headers) or any(
+        not numeric_table_value(rows[0][column]) for column in numeric
+    )
+    # Header inference needs body evidence. Once no header is detected, include
+    # the first row in quantity classification and width planning as well. This
+    # also lets a one-row body table align its quantities without inventing a header.
+    data_start = header_rows if header else 0
+    numeric = numeric_columns(rows, header_rows=data_start)
     return ReadabilityTable(
         tab_id=tab_id,
         start=integer(element["startIndex"]),
         widths=table_column_widths(
             rows,
             total=readable_table_width(document, tab, start=integer(element["startIndex"])),
-            header_rows=header_rows,
+            header_rows=data_start,
         ),
         numeric=numeric,
-        header=bool(native_headers)
-        or any(not numeric_table_value(rows[0][column]) for column in numeric),
+        header=header,
         header_rows=header_rows,
         style_cells=True,
     )
