@@ -25,6 +25,7 @@ from app.document_transform.readability_types import (
     ReadabilityVersion,
 )
 from app.document_transform.table_layout import (
+    missing_table_value,
     numeric_columns,
     numeric_table_value,
     table_column_widths,
@@ -86,7 +87,8 @@ def _table_plan(
     header_rows = native_headers or 1
     numeric = numeric_columns(rows, header_rows=header_rows)
     header = bool(native_headers) or any(
-        not numeric_table_value(rows[0][column]) for column in numeric
+        not numeric_table_value(rows[0][column]) and not missing_table_value(rows[0][column])
+        for column in numeric
     )
     # Header inference needs body evidence. Once no header is detected, include
     # the first row in quantity classification and width planning as well. This

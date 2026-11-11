@@ -39,6 +39,10 @@ def numeric_table_value(value: str) -> bool:
     return _QUANTITY.fullmatch(text) is not None
 
 
+def missing_table_value(value: str) -> bool:
+    return value.strip().casefold() in _MISSING
+
+
 def numeric_columns(rows: tuple[tuple[str, ...], ...], *, header_rows: int = 1) -> frozenset[int]:
     if not rows:
         return frozenset()
@@ -47,7 +51,7 @@ def numeric_columns(rows: tuple[tuple[str, ...], ...], *, header_rows: int = 1) 
         values = [
             row[column].strip()
             for row in rows[header_rows:]
-            if row[column].strip().casefold() not in _MISSING
+            if not missing_table_value(row[column])
         ]
         if values and all(numeric_table_value(value) for value in values):
             result.add(column)
