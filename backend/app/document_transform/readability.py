@@ -33,6 +33,9 @@ from app.performance import provider_retry_remaining_seconds
 MAX_READABILITY_PASSES = 100
 _MIN_LAYOUT_SECONDS = 180
 _MAX_LAYOUT_CHARACTERS = 60000
+# A useful group of 2-6 facts should improve on one short paragraph. Tiny
+# fragments still incur a separate penalty in the layout score.
+_LIST_ITEM_BURDEN = 8
 
 
 @dataclass(frozen=True, slots=True)
@@ -163,7 +166,7 @@ def _layout_burden(
             score += max(0, words - 45) ** 2 + (
                 60
                 if part.role == "paragraph"
-                else 20
+                else _LIST_ITEM_BURDEN
                 if part.role in {"bullet", "numbered"}
                 else 25
             )
