@@ -40,15 +40,15 @@ def test_explicit_native_header_remains_a_header_even_with_a_missing_label(missi
     assert target.numeric == {1}
 
 
-def test_a_genuine_column_label_still_allows_existing_header_inference() -> None:
+def test_label_like_body_values_do_not_authorize_new_header_emphasis() -> None:
     document = _native_table((("Operation", "Latency"), ("Disk", "10 ms")))
 
     target = plan_readable_tables(document)[0]
     requests: list[dict[str, JsonValue]] = readable_table_requests(document, (target,))
 
-    assert target.header
-    assert any(
-        obj(obj(request["updateTextStyle"])["textStyle"]).get("bold") is True
+    assert not target.header
+    assert all(
+        "bold" not in obj(obj(request["updateTextStyle"])["textStyle"])
         for request in requests
         if "updateTextStyle" in request
     )

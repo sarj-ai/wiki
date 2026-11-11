@@ -7,7 +7,7 @@ import pytest
 
 from app.document_transform.docx_renderer import render_markdown_docx
 from app.document_transform.ir import utf16_length
-from app.document_transform.readability_json import obj
+from app.document_transform.readability_json import array, bodies, content, obj
 from app.document_transform.readability_tables import plan_readable_tables, readable_table_requests
 from app.document_transform.table_layout import (
     numeric_columns,
@@ -92,6 +92,8 @@ def test_quantities_use_numeric_alignment_without_rewriting_their_representation
     assert document.tables[0].cell(1, 1).text == quantity
     assert document.tables[0].cell(1, 1).paragraphs[0].alignment == WD_ALIGN_PARAGRAPH.RIGHT
     native = _native_table(rows)
+    native_table = obj(obj(content(next(bodies(native))[1])[0])["table"])
+    obj(array(native_table["tableRows"])[0])["tableRowStyle"] = {"tableHeader": True}
     targets = plan_readable_tables(native)
     assert len(targets) == 1
     assert targets[0].numeric == {1}
