@@ -7,11 +7,12 @@ import re
 
 from app.document_transform.ir import BlockKind, DocumentIR, TextBlock
 from app.document_transform.limits import MIN_MODEL_PROSE_WORDS
+from app.document_transform.quotations import SINGLE_QUOTED_SPAN_PATTERN, quoted_block_ids
 
 
 UNSLOP_UPSTREAM_COMMIT = "d81f5196167ded24f46fced04958c0c12d681798"
 UNSLOP_UPSTREAM_VERSION = "2.3.0"
-UNSLOP_POLICY_VERSION = "sarj-concise-v23"
+UNSLOP_POLICY_VERSION = "sarj-concise-v24"
 MAX_EDITORIAL_PASSES = 100
 MIN_CONCISION_PROSE_WORDS = 40
 CONCISION_WORD_NUMERATOR = 2
@@ -198,12 +199,6 @@ RFCISH_EMAIL_PATTERN = (
     r"[A-Za-z0-9.!#$%&'*+/=?^_`{|}~-]+@"
     r"(?:[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?\.)+"
     r"[A-Za-z]{2,63}"
-)
-# An apostrophe inside a word belongs to the quoted text, not its delimiter.
-# Keep contractions and singular possessives intact in every shared quote gate.
-SINGLE_QUOTED_SPAN_PATTERN = (
-    r"(?<!\w)'(?:[^'\n]|(?<=\w)'(?=\w))+'(?!\w)|"
-    r"‘(?:[^’\n]|(?<=\w)’(?=\w))+’"
 )
 CUSTOM_URI_PATTERN = r"[A-Za-z][A-Za-z0-9+.-]*:(?://)?[^\s)>]+"
 HTML_ENTITY_PATTERN = r"&(?:#[0-9]+|#[xX][0-9A-Fa-f]+|[A-Za-z][A-Za-z0-9]+);"
@@ -496,7 +491,10 @@ def without_editorial_framing(text: str) -> str:
 
 
 def model_editable_blocks(document: DocumentIR) -> tuple[TextBlock, ...]:
-    return tuple(block for block in document.blocks if _is_model_editable(block))
+    quoted = quoted_block_ids(document)
+    return tuple(
+        block for block in document.blocks if block.id not in quoted and _is_model_editable(block)
+    )
 
 
 def _is_model_editable(block: TextBlock) -> bool:
@@ -552,9 +550,11 @@ def _has_model_rewrite_scope(block: TextBlock) -> bool:
 
 def scan_unslop_candidates(document: DocumentIR) -> tuple[UnslopCandidate, ...]:
     candidates: list[UnslopCandidate] = []
+    quoted = quoted_block_ids(document)
     for block in document.blocks:
         if (
             len(block.text) > MAX_MODEL_EDITABLE_BLOCK_CHARS
+            or block.id in quoted
             or not block.editable
             or block.kind
             in {

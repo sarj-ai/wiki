@@ -9,12 +9,12 @@ from typing import Literal
 
 from app.document_transform.ir import BlockKind, DocumentIR, TextBlock
 from app.document_transform.quantity_notation import HORIZONTAL_SPACE, UNIT_POWER, UNIT_SYMBOL
+from app.document_transform.quotations import QUOTED_SPAN_PATTERN, quoted_block_ids
 from app.document_transform.schemas import TextPatch, TransformFinding, TransformPhase
 from app.document_transform.unslop import (
     CUSTOM_URI_PATTERN,
     HTML_ENTITY_PATTERN,
     RFCISH_EMAIL_PATTERN,
-    SINGLE_QUOTED_SPAN_PATTERN,
     UnslopCandidate,
     editorial_quality,
     expanded_deletion_span,
@@ -67,7 +67,7 @@ _FORCE_WORD = re.compile(
     r"each|every|all|only|both|neither|either|per)\b",
     re.IGNORECASE,
 )
-_QUOTED_SPAN = re.compile(rf'"[^"\n]+"|“[^”\n]+”|{SINGLE_QUOTED_SPAN_PATTERN}')
+_QUOTED_SPAN = re.compile(QUOTED_SPAN_PATTERN)
 _SCOPE_QUALIFIER = re.compile(
     r"\b(?:longest|shortest|largest|smallest|highest|lowest)\s+"
     r"(?:(?:[\w-]+(?:ing|ed)|upper|lower)\s+)?[\w-]+\b|"
@@ -154,6 +154,7 @@ def validate_patches(
     accepted: dict[str, str] = {}
     findings: list[TransformFinding] = []
     seen: set[str] = set()
+    quoted = quoted_block_ids(document)
     for patch in patches:
         block = by_id.get(patch.block_id)
         code = _rejection_code(
@@ -163,6 +164,13 @@ def validate_patches(
             duplicate=patch.block_id in seen,
             aggressive_unslop=aggressive_unslop,
         )
+        if (
+            code is None
+            and patch.block_id in quoted
+            and block is not None
+            and patch.replacement != block.text
+        ):
+            code = "quoted_content_changed"
         seen.add(patch.block_id)
         if code == "concision_not_improved":
             continue

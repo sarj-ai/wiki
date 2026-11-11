@@ -25,7 +25,7 @@ async def test_table_only_receipt_reports_attempted_layout_calls_after_provider_
 async def test_budget_skipped_layout_reports_no_model_calls() -> None:
     editor = _LayoutEditor()
 
-    with provider_retry_budget(timedelta(seconds=170)):
+    with provider_retry_budget(timedelta(seconds=89)):
         plan = await plan_readability(_fixture("before"), title="Short budget", generator=editor)
 
     assert plan is not None
