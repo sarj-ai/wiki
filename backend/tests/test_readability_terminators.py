@@ -13,7 +13,7 @@ def _paragraph_ending(document: dict[str, JsonValue], end: int) -> dict[str, Jso
         obj(value)
         for _, tab in bodies(document)
         for value in content(tab)
-        if obj(value).get("endIndex") == end and "paragraph" in obj(value)
+        if obj(value)["endIndex"] == end and "paragraph" in obj(value)
     )
 
 
@@ -26,7 +26,7 @@ def _split_newline(paragraph: dict[str, JsonValue]) -> dict[str, JsonValue]:
     end = integer(last["endIndex"])
     last["endIndex"] = end - 1
     run["content"] = str(run["content"]).removesuffix("\n")
-    style = deepcopy(obj(run.get("textStyle", {})))
+    style = deepcopy(obj(run["textStyle"])) if "textStyle" in run else {}
     elements.append(
         {
             "startIndex": end - 1,
