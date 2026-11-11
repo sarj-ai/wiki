@@ -9,9 +9,13 @@ _COLORS = CURRENT_BRAND_MANIFEST.colors
 _COLOR_TOLERANCE = 0.00001
 
 
-def _row_style(row: int) -> dict[str, JsonValue]:
+def _row_style(row: int, *, header_rows: int) -> dict[str, JsonValue]:
     color = (
-        _COLORS.primary_tint if row == 0 else _COLORS.subtle if row % 2 == 0 else _COLORS.paper
+        _COLORS.primary_tint
+        if row < header_rows
+        else _COLORS.subtle
+        if row % 2 == 0
+        else _COLORS.paper
     ).removeprefix("#")
     rgb: dict[str, JsonValue] = {
         key: int(color[index : index + 2], 16) / 255
@@ -47,7 +51,7 @@ def readable_table_cell_requests(
         return []
     requests: list[dict[str, JsonValue]] = []
     for row, _value in enumerate(array(obj(element["table"])["tableRows"])):
-        style = _row_style(row)
+        style = _row_style(row, header_rows=target.header_rows)
         requests.append(
             {
                 "updateTableCellStyle": {
@@ -77,7 +81,7 @@ def project_readable_table_cells(
         for cell_value in array(obj(value)["tableCells"]):
             cell = obj(cell_value)
             style = obj(cell.get("tableCellStyle", {}))
-            for key, expected in _row_style(row).items():
+            for key, expected in _row_style(row, header_rows=target.header_rows).items():
                 if applied and not _matches(
                     style.get(key, "TOP" if key == "contentAlignment" else None), expected
                 ):

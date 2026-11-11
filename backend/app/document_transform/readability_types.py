@@ -45,6 +45,8 @@ class ReadabilityTable(BaseModel):
     widths: tuple[int, ...]
     numeric: frozenset[int]
     header: bool = False
+    # Older checkpoints formatted only the first row, even with native headers.
+    header_rows: int = Field(default=1, ge=1)
 
 
 class ReadabilityPlan(BaseModel):
