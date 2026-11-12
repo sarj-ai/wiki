@@ -81,7 +81,7 @@ class ReadabilityPlan(BaseModel):
     requests: list[dict[str, JsonValue]]
     model_invoked: bool = False
     passes: int = Field(default=0, ge=0, le=100)
-    accepted_improvements: int = Field(default=0, ge=0, le=100)
+    accepted_improvements: int | None = Field(default=None, ge=0, le=100)
     stop_reason: ReadabilityStopReason = "unrecorded"
     planning_failure_code: str | None = Field(
         default=None, pattern=r"^model_[a-z_]+$", max_length=64

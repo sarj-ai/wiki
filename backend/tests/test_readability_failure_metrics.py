@@ -3,8 +3,9 @@ from datetime import timedelta
 import pytest
 
 from app.document_transform.readability import plan_readability
+from app.document_transform.readability_types import PlannedReadabilityCheckpoint
 from app.performance import provider_retry_budget
-from tests.test_document_readability import _fixture, _LayoutEditor
+from tests.test_document_readability import _fixture, _LayoutEditor, _plan
 
 
 @pytest.mark.parametrize("outage", [True, False])
@@ -49,3 +50,15 @@ async def test_improving_pass_limit_is_distinct_from_convergence() -> None:
     assert plan is not None
     assert plan.passes == plan.accepted_improvements == editor.calls == 1
     assert plan.stop_reason == "pass_limit"
+
+
+async def test_legacy_receipt_does_not_invent_an_accepted_iteration_count() -> None:
+    plan = await _plan()
+
+    legacy = PlannedReadabilityCheckpoint.model_validate(
+        plan.model_dump(exclude={"accepted_improvements", "stop_reason"})
+    )
+
+    assert legacy.accepted_improvements is None
+    assert legacy.stop_reason == "unrecorded"
+    assert legacy.passes == plan.passes
