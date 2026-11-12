@@ -507,6 +507,8 @@ class CopyCheckpointStage(StrEnum):
 class CopyPlan(StrictTransformModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
+    # Absent in saved plans: retain their exact generated-title manifest.
+    compact_markdown: StrictBool = False
     readability: ReadabilityCheckpoint | None = None
     readability_result: DocumentTransformResult | None = None
     pagination: tuple[NativePaginationRule, ...] = Field(

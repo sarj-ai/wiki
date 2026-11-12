@@ -521,6 +521,7 @@ class DocumentTransformExecutor(DocumentTransformRunner):
         source_sha256 = _source_sha256(snapshot, original)
         recovered = await self._gateway.recover_output(operation_id)
         checkpoint = self._copy_checkpoint_or_none()
+        snapshot = _copy_snapshot_title_policy(snapshot, checkpoint)
         if recovered is not None and recovered.output.parent_folder_id != _copy_output_parent(
             request, snapshot
         ):
@@ -2408,6 +2409,7 @@ class DocumentTransformExecutor(DocumentTransformRunner):
                 header_title=output_name,
                 logo_bytes=self._logo_bytes,
                 branded=request.mode is not TransformMode.UNSLOP,
+                compact_single_paragraph=snapshot.compact_markdown,
             )
         if isinstance(request.source, DriveFileSource):
             if snapshot.media_type != "application/vnd.google-apps.document":
@@ -2593,6 +2595,7 @@ def _new_copy_checkpoint(
         logo_sha256=logo_sha256,
     )
     return PlannedCopyCheckpoint(
+        compact_markdown=snapshot.compact_markdown,
         authored_labels=authored_labels,
         pagination=pagination,
         source_title=snapshot.title,
@@ -2639,6 +2642,7 @@ def _validate_copy_checkpoint(
     current_logo_sha256: str | None,
 ) -> None:
     expected_contract = (
+        snapshot.compact_markdown,
         snapshot.title,
         source_sha256,
         snapshot.modified_time,
@@ -2655,6 +2659,7 @@ def _validate_copy_checkpoint(
         current_logo_sha256,
     )
     checkpoint_contract = (
+        checkpoint.compact_markdown,
         checkpoint.source_title,
         checkpoint.source_sha256,
         checkpoint.source_modified_time,
@@ -2697,6 +2702,17 @@ def _validate_copy_checkpoint(
         header_title=checkpoint.output_name,
     ):
         raise OutputConflictError
+
+
+def _copy_snapshot_title_policy(
+    snapshot: SourceSnapshot, checkpoint: CopyCheckpoint | None
+) -> SourceSnapshot:
+    if snapshot.markdown is None:
+        return snapshot
+    return replace(
+        snapshot,
+        compact_markdown=checkpoint.compact_markdown if checkpoint is not None else True,
+    )
 
 
 def _copy_original(snapshot: SourceSnapshot, request: DocumentTransformRequest) -> DocumentIR:
@@ -2838,7 +2854,11 @@ def _copy_manifest_sha256(
         rendered = rewrite_markdown(snapshot.markdown, original, transformed)
         manifest: object = asdict(
             markdown_import_manifest(
-                rendered, title=snapshot.title, branded=branded, header_title=header_title
+                rendered,
+                title=snapshot.title,
+                branded=branded,
+                header_title=header_title,
+                compact_single_paragraph=snapshot.compact_markdown,
             )
         )
     else:

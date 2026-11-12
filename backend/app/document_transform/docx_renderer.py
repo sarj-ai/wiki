@@ -149,6 +149,7 @@ def render_markdown_docx(
     logo_bytes: bytes | None = None,
     branded: bool = True,
     header_title: str | None = None,
+    compact_single_paragraph: bool = False,
 ) -> bytes:
     blocks = _validated_blocks(markdown, title=title)
 
@@ -164,7 +165,7 @@ def render_markdown_docx(
     if branded:
         _configure_footer(document)
 
-    if _include_display_title(blocks, title):
+    if _include_display_title(blocks, title, compact_single_paragraph=compact_single_paragraph):
         paragraph = document.add_paragraph(style="Sarj Title" if branded else "Title")
         _append_inlines(paragraph, _plain_inlines(title.strip()), branded=branded)
     _append_blocks(document, blocks, numbering, branded=branded)
@@ -262,10 +263,11 @@ def markdown_import_manifest(
     title: str,
     branded: bool,
     header_title: str | None = None,
+    compact_single_paragraph: bool = False,
 ) -> MarkdownImportManifest:
     parsed = _validated_blocks(markdown, title=title)
     blocks: list[MarkdownImportBlock] = []
-    if _include_display_title(parsed, title):
+    if _include_display_title(parsed, title, compact_single_paragraph=compact_single_paragraph):
         blocks.append(
             _manifest_block(
                 _Block(
@@ -1421,9 +1423,13 @@ def _inline_text(inlines: tuple[MarkdownImportInline, ...]) -> str:
     return "".join(inline.text for inline in inlines)
 
 
-def _include_display_title(blocks: tuple[_Block, ...], title: str) -> bool:
+def _include_display_title(
+    blocks: tuple[_Block, ...], title: str, *, compact_single_paragraph: bool = False
+) -> bool:
     # An authored leading H1 owns the visible title hierarchy. File metadata
     # remains independent; never replace authored text or inline formatting.
+    if compact_single_paragraph and len(blocks) == 1 and blocks[0].kind == "paragraph":
+        return False
     return bool(title.strip()) and not (
         blocks and blocks[0].kind == "heading" and blocks[0].level == 1
     )
