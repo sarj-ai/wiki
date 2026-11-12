@@ -36,6 +36,7 @@ _MIN_COLUMNS = 2
 _MAX_COLUMNS = 10
 _DIMENSION_TOLERANCE = 0.05
 _PARAGRAPH_FIELDS = ("alignment", "lineSpacing", "spaceAbove", "spaceBelow")
+_PARAGRAPH_FONT_CONTEXT_VERSION = 5
 
 
 @dataclass(frozen=True, slots=True)
@@ -174,6 +175,7 @@ def readable_table_requests(
                         document=document,
                         tab=tabs[target.tab_id],
                         header=target.header and cell.row < target.header_rows,
+                        version=version,
                     )
                 )
     return requests
@@ -186,9 +188,13 @@ def _cell_font_requests(
     document: dict[str, JsonValue],
     tab: dict[str, JsonValue],
     header: bool,
+    version: ReadabilityVersion,
 ) -> list[dict[str, JsonValue]]:
     requests: list[dict[str, JsonValue]] = []
     end = integer(part["endIndex"]) - 1
+    context = (
+        _non_latin_text(plain_text(part)) if version >= _PARAGRAPH_FONT_CONTEXT_VERSION else None
+    )
     for value in array(obj(part["paragraph"])["elements"]):
         run = obj(value)
         left = integer(run["startIndex"])
@@ -201,7 +207,9 @@ def _cell_font_requests(
             obj(obj(part["paragraph"])["paragraphStyle"]),
             obj(obj(run["textRun"]).get("textStyle", {})),
         )
-        preserve_family = _keep_table_family(style, text=str(obj(run["textRun"])["content"]))
+        preserve_family = _keep_table_family(
+            style, text=str(obj(run["textRun"])["content"]), script_context=context
+        )
         font: dict[str, JsonValue] = {
             "fontSize": {"magnitude": _TOKENS.table_size_pt or 10, "unit": "PT"}
         }
@@ -296,6 +304,7 @@ def _project_table(
                 tab=tab,
                 numeric=cell.column in target.numeric,
                 applied=applied,
+                version=version,
             )
 
 
@@ -307,7 +316,14 @@ def _project_paragraph(
     numeric: bool,
     header: bool,
     applied: bool,
+    version: ReadabilityVersion,
 ) -> None:
+    # Script context must survive Google's text-run splitting, including a
+    # newline split out of a non-Latin run. Preserve that paragraph's families
+    # in both requests and verification. Legacy checkpoints keep their policy.
+    context = (
+        _non_latin_text(plain_text(element)) if version >= _PARAGRAPH_FONT_CONTEXT_VERSION else None
+    )
     paragraph = obj(element["paragraph"])
     style = obj(paragraph.get("paragraphStyle", {}))
     expected = _paragraph_style(numeric=numeric)
@@ -325,7 +341,13 @@ def _project_paragraph(
     runs: list[JsonValue] = []
     for value in array(paragraph["elements"]):
         part = _canonical_table_run(
-            obj(value), document=document, tab=tab, style=style, header=header, applied=applied
+            obj(value),
+            document=document,
+            tab=tab,
+            style=style,
+            header=header,
+            applied=applied,
+            context=context,
         )
         run = obj(part["textRun"])
         text = str(run["content"])
@@ -396,13 +418,15 @@ def _canonical_table_run(
     style: dict[str, JsonValue],
     header: bool,
     applied: bool,
+    context: bool | None,
 ) -> dict[str, JsonValue]:
     part = deepcopy(value)
     run = obj(part["textRun"])
     text_style = effective_text_style(document, tab, style, obj(run.get("textStyle", {})))
     run["textStyle"] = text_style
+    text = str(run["content"])
     if applied and run["content"] != "\n":
-        _verify_table_font(text_style, text=str(run["content"]))
+        _verify_table_font(text_style, text=text, script_context=context)
     if header:
         # Font writes exclude paragraph terminators and empty cells. Docs may
         # return their inherited styles in a separate newline-only text run.
@@ -410,7 +434,7 @@ def _canonical_table_run(
             raise ValueError
         text_style.pop("bold", None)
     text_style.pop("fontSize", None)
-    if not _keep_table_family(text_style, text=str(run["content"])):
+    if not _keep_table_family(text_style, text=text, script_context=context):
         family = obj(text_style.get("weightedFontFamily", {}))
         family.pop("fontFamily", None)
         if not family:
@@ -424,7 +448,9 @@ def _canonical_table_run(
     return part
 
 
-def _verify_table_font(text_style: dict[str, JsonValue], *, text: str) -> None:
+def _verify_table_font(
+    text_style: dict[str, JsonValue], *, text: str, script_context: bool | None
+) -> None:
     if not _dimension_matches(
         text_style.get("fontSize", {}),
         {"magnitude": _TOKENS.table_size_pt or 10, "unit": "PT"},
@@ -432,15 +458,23 @@ def _verify_table_font(text_style: dict[str, JsonValue], *, text: str) -> None:
         msg = "Table font size was not applied"
         raise ValueError(msg)
     if (
-        not _keep_table_family(text_style, text=text)
+        not _keep_table_family(text_style, text=text, script_context=script_context)
         and obj(text_style.get("weightedFontFamily", {})).get("fontFamily") != _TOKENS.font_family
     ):
         msg = "Table font family was not applied"
         raise ValueError(msg)
 
 
-def _keep_table_family(style: dict[str, JsonValue], *, text: str) -> bool:
-    return _code_style(style) or any(
+def _keep_table_family(
+    style: dict[str, JsonValue], *, text: str, script_context: bool | None = None
+) -> bool:
+    return _code_style(style) or (
+        _non_latin_text(text) if script_context is None else script_context
+    )
+
+
+def _non_latin_text(text: str) -> bool:
+    return any(
         char.isalpha() and char not in "µμ" and "LATIN" not in unicodedata.name(char, "")
         for char in text
     )

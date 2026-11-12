@@ -24,8 +24,9 @@ _NUMBER = rf"(?:[+−-]?\s*(?:{_CURRENCY}\s*)?|{_CURRENCY}\s*[+−-]?)\s*{_MAGNI
 _UNIT = rf"{UNIT_SYMBOL}(?:{_POWER})?(?:{UNIT_PRODUCT}{UNIT_SYMBOL}(?:{_POWER})?)*"
 _QUANTITY_TERM = rf"{_NUMBER}(?:\s*(?:%|‰|×|x|{_CURRENCY_CODE}|{_UNIT}))?"
 _QUANTITY = re.compile(
+    rf"(?:(?:approximately|about|roughly|approx\.)\s+)?"
     rf"(?:[<>≤≥~≈]\s*)?{_QUANTITY_TERM}(?:\s*:\s*{_QUANTITY_TERM})?"
-    rf"(?:\s*(?:±|–|−|-)\s*{_QUANTITY_TERM})?",
+    rf"(?:\s*(?:±|–|−|-|\bto\b)\s*{_QUANTITY_TERM})?",
     re.IGNORECASE,
 )
 
