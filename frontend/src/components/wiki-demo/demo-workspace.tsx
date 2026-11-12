@@ -6,6 +6,7 @@ import { useEffect, useRef, useState } from "react";
 
 import { SidebarProvider, useSidebar } from "@/components/ui/sidebar";
 import { WorkspaceFrame } from "@/components/workspace-frame";
+import type { DocumentMode } from "@/lib/file-urls";
 
 import { type DemoFile, demoFileFor, demoHref } from "./demo-data";
 import { DemoPreview } from "./demo-preview";
@@ -27,8 +28,6 @@ function DemoWorkspaceContent() {
   const router = useRouter();
   const { setOpenMobile } = useSidebar();
   const [searchOpen, setSearchOpen] = useState(false);
-  const [reloadKey, setReloadKey] = useState(0);
-  const reloadButton = useRef<HTMLButtonElement | null>(null);
 
   useEffect(() => {
     document.title = `${file.name} · Wiki demo`;
@@ -57,10 +56,6 @@ function DemoWorkspaceContent() {
     closeMobile();
     router.push(demoHref(selected));
   };
-  const reload = () => {
-    reloadButton.current?.focus();
-    setReloadKey((current) => current + 1);
-  };
 
   return (
     <>
@@ -76,27 +71,7 @@ function DemoWorkspaceContent() {
         onSearch={() => setSearchOpen(true)}
       />
       <WorkspaceFrame>
-        <div
-          className="focus-visible:outline-ring flex size-full min-h-0 flex-col focus-visible:outline-2 focus-visible:-outline-offset-2"
-          id="demo-document"
-          tabIndex={-1}
-        >
-          <DemoToolbar
-            file={file}
-            key={file.id}
-            onReload={reload}
-            reloadButtonRef={reloadButton}
-          />
-          <DemoPreview
-            file={file}
-            key={`${file.id}:${reloadKey}`}
-            onReload={reload}
-          />
-          <div className="bg-background text-muted-foreground flex h-7 shrink-0 items-center gap-1.5 border-t px-3 text-xs">
-            <LockKeyhole aria-hidden className="size-3" />
-            <span>Public demo · Read only</span>
-          </div>
-        </div>
+        <DemoDocument file={file} key={file.id} />
       </WorkspaceFrame>
       <DemoSearch
         onOpenChange={setSearchOpen}
@@ -104,5 +79,40 @@ function DemoWorkspaceContent() {
         open={searchOpen}
       />
     </>
+  );
+}
+
+function DemoDocument({ file }: { file: DemoFile }) {
+  const [documentMode, setDocumentMode] = useState<DocumentMode>("preview");
+  const [reloadKey, setReloadKey] = useState(0);
+  const reloadButton = useRef<HTMLButtonElement | null>(null);
+  const reload = () => {
+    reloadButton.current?.focus();
+    setReloadKey((current) => current + 1);
+  };
+  return (
+    <div
+      className="focus-visible:outline-ring flex size-full min-h-0 flex-col focus-visible:outline-2 focus-visible:-outline-offset-2"
+      id="demo-document"
+      tabIndex={-1}
+    >
+      <DemoToolbar
+        documentMode={documentMode}
+        file={file}
+        onDocumentModeChange={setDocumentMode}
+        onReload={reload}
+        reloadButtonRef={reloadButton}
+      />
+      <DemoPreview
+        documentMode={documentMode}
+        file={file}
+        key={reloadKey}
+        onReload={reload}
+      />
+      <div className="bg-background text-muted-foreground flex h-7 shrink-0 items-center gap-1.5 border-t px-3 text-xs">
+        <LockKeyhole aria-hidden className="size-3" />
+        <span>Public demo · Read only</span>
+      </div>
+    </div>
   );
 }
