@@ -6,11 +6,12 @@ import json
 from typing import Any, Literal, NewType, Self
 
 from loguru import logger
-from pydantic import BaseModel, ConfigDict, Field, StrictBool, model_validator
+from pydantic import BaseModel, ConfigDict, Field, JsonValue, StrictBool, model_validator
 
 from app.document_transform.errors import UnsupportedSourceError
 from app.document_transform.ir import (
     MAX_DOCUMENT_BLOCKS,
+    BlockKind,
     DocumentIR,
     TextBlock,
     parse_google_document,
@@ -280,11 +281,13 @@ def _position_deltas(original: DocumentIR, transformed: DocumentIR | None) -> di
     shifts: dict[DocsTabId, int] = {}
     result: dict[str, int] = {}
     for before, after in zip(original.blocks, transformed.blocks, strict=True):
-        if (before.id, before.kind, before.source_range, before.editable) != (
+        if (before.id, before.source_range) != (
             after.id,
-            after.kind,
             after.source_range,
-            after.editable,
+        ):
+            raise ValueError
+        if (before.kind, before.editable) != (after.kind, after.editable) and not _is_deleted_prose(
+            before, after
         ):
             raise ValueError
         source = before.source_range
@@ -310,6 +313,15 @@ def _position_deltas(original: DocumentIR, transformed: DocumentIR | None) -> di
             shifts.get(source.tab_id, 0) + utf16_length(after.text) - utf16_length(before.text)
         )
     return result
+
+
+def _is_deleted_prose(before: TextBlock, after: TextBlock) -> bool:
+    return (
+        before.kind is BlockKind.PARAGRAPH
+        and before.editable
+        and before.protected_suffix is None
+        and (after.kind, after.text, after.editable) == (BlockKind.BLANK, "", False)
+    )
 
 
 def native_font_target_interval_count(document: dict[str, Any], block: TextBlock) -> int | None:
@@ -515,50 +527,25 @@ def _native_font_proof_matches(
 ) -> bool:
     bodies = _bodies(document)
     identities = {(proof.tab_id, proof.body_ordinal) for proof in proofs}
-    if not _coverage_is_complete(document, bodies, identities, preserved_block_ids):
+    if not _valid_font_bindings(proofs, preserved_family_block_ids):
+        return False
+    if not _coverage_is_complete(
+        document, bodies, identities, _unbound_coverage_ids(proofs, preserved_block_ids)
+    ):
         checks["font_proof_reason"] = "coverage"
         return False
     if len(identities) != len(proofs):
         checks["font_proof_reason"] = "duplicate_binding"
         return False
-    if (
-        len(proofs) > MAX_DOCUMENT_BLOCKS
-        or sum(len(proof.semantics.intervals) for proof in proofs if proof.semantics is not None)
-        > MAX_NATIVE_FONT_INTERVALS
-    ):
-        return False
-    blocks = (
-        {block.id: block for block in parse_google_document(document, title="").blocks}
-        if any(proof.version == _SEMANTIC_VERSION for proof in proofs)
-        else {}
-    )
-    if len(preserved_family_block_ids) != len(set(preserved_family_block_ids)) or not set(
-        preserved_family_block_ids
-    ) <= {proof.block_id for proof in proofs if proof.version == _SEMANTIC_VERSION}:
-        return False
     for ordinal, proof in enumerate(proofs):
         element = bodies[proof.tab_id][proof.body_ordinal]
         digest = native_paragraph_font_sha256(element)
         if proof.version == _SEMANTIC_VERSION:
-            semantics = proof.semantics
-            if (
-                semantics is None
-                or proof.block_id is None
-                or semantics.preserve_family != (proof.block_id in preserved_family_block_ids)
-            ):
-                return False
-            source = blocks[proof.block_id].source_range
-            if source is None or (source.tab_id, source.start_index, source.end_index + 1) != (
-                proof.tab_id,
-                element["startIndex"],
-                element["endIndex"],
-            ):
-                return False
-            digest = semantic_font_digest(
+            digest = _verified_semantic_digest(
                 document,
-                proof.tab_id,
                 element,
-                semantics,
+                proof,
+                preserved_family_block_ids=preserved_family_block_ids,
                 require_target_family=require_target_family,
             )
         elif proof.semantics is not None or proof.block_id is not None:
@@ -572,6 +559,57 @@ def _native_font_proof_matches(
         checks["font_proof_verified_count"] = min(ordinal + 1, MAX_DOCUMENT_BLOCKS)
     checks["font_proof_reason"] = "matched"
     return True
+
+
+def _valid_font_bindings(
+    proofs: tuple[NativeFontProof, ...], preserved_family_ids: tuple[str, ...]
+) -> bool:
+    if len(proofs) > MAX_DOCUMENT_BLOCKS:
+        return False
+    interval_count = 0
+    semantic_ids: set[str] = set()
+    for proof in proofs:
+        if proof.semantics is not None:
+            interval_count += len(proof.semantics.intervals)
+        if proof.version != _SEMANTIC_VERSION:
+            continue
+        if proof.block_id is None or proof.block_id in semantic_ids:
+            return False
+        semantic_ids.add(proof.block_id)
+    return (
+        interval_count <= MAX_NATIVE_FONT_INTERVALS
+        and len(preserved_family_ids) == len(set(preserved_family_ids))
+        and set(preserved_family_ids) <= semantic_ids
+    )
+
+
+def _unbound_coverage_ids(
+    proofs: tuple[NativeFontProof, ...], block_ids: tuple[str, ...]
+) -> tuple[str, ...]:
+    semantic_ids = {proof.block_id for proof in proofs if proof.version == _SEMANTIC_VERSION}
+    return tuple(block_id for block_id in block_ids if block_id not in semantic_ids)
+
+
+def _verified_semantic_digest(
+    document: dict[str, JsonValue],
+    element: dict[str, JsonValue],
+    proof: NativeFontProof,
+    *,
+    preserved_family_block_ids: tuple[str, ...],
+    require_target_family: bool,
+) -> str:
+    semantics = proof.semantics
+    if (
+        semantics is None
+        or proof.block_id is None
+        or semantics.preserve_family != (proof.block_id in preserved_family_block_ids)
+    ):
+        raise ValueError
+    # Source IR IDs can shift when an approved deletion becomes an empty
+    # provider paragraph. The body ordinal and attested UTF-16 range bind it.
+    return semantic_font_digest(
+        document, proof.tab_id, element, semantics, require_target_family=require_target_family
+    )
 
 
 def _coverage_is_complete(

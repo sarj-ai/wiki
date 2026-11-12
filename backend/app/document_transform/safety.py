@@ -18,6 +18,7 @@ from app.document_transform.unslop import (
     HTML_ENTITY_PATTERN,
     RFCISH_EMAIL_PATTERN,
     UnslopCandidate,
+    ambiguous_reference_framing,
     editorial_quality,
     expanded_deletion_span,
     reassigned_document_writing_action,
@@ -150,6 +151,7 @@ REPAIRABLE_REWRITE_CODES = frozenset(
         "scope_qualifier_changed",
         "document_writing_actor_changed",
         "measurement_actor_changed",
+        "document_reference_identity_ambiguous",
         "temporal_scope_changed",
         "negative_transformation_scope_changed",
         "unit_column_identity_changed",
@@ -176,13 +178,15 @@ class RewriteConstraints:
     temporal_scopes: tuple[str, ...] = ()
 
 
-def rewrite_constraints(text: str) -> RewriteConstraints:
+def rewrite_constraints(text: str, *, framing_source: str | None = None) -> RewriteConstraints:
     return RewriteConstraints(
         protected_tokens=tuple(_protected_tokens(text)),
-        force_language=tuple(_force_words(without_editorial_framing(text))),
+        force_language=tuple(
+            _force_words(without_editorial_framing(text, framing_source=framing_source))
+        ),
         quotations=_quoted_spans(text),
         protected_names=_protected_rewrite_names(text),
-        scope_qualifiers=tuple(_scope_qualifiers(text)),
+        scope_qualifiers=tuple(_scope_qualifiers(text, framing_source=framing_source)),
         revision_arguments=revision_arguments(text),
         temporal_scopes=_temporal_scopes(text),
     )
@@ -194,8 +198,13 @@ def validate_patches(
     *,
     phase: TransformPhase,
     aggressive_unslop: bool = False,
+    framing_source: DocumentIR | None = None,
 ) -> PatchDecision:
     by_id = {block.id: block for block in document.blocks}
+    framing_text = {
+        block.id: block.text
+        for block in (document if framing_source is None else framing_source).blocks
+    }
     accepted: dict[str, str] = {}
     findings: list[TransformFinding] = []
     seen: set[str] = set()
@@ -208,6 +217,7 @@ def validate_patches(
             phase=phase,
             duplicate=patch.block_id in seen,
             aggressive_unslop=aggressive_unslop,
+            framing_source=framing_text.get(patch.block_id),
         )
         if (
             code is None
@@ -240,6 +250,7 @@ def _rejection_code(
     phase: TransformPhase,
     duplicate: bool,
     aggressive_unslop: bool = False,
+    framing_source: str | None = None,
 ) -> str | None:
     if duplicate:
         return "duplicate_patch"
@@ -257,7 +268,13 @@ def _rejection_code(
     if phase is TransformPhase.FORMAT and patch.replacement != block.text:
         return "format_text_changed"
     if not patch.replacement.strip():
-        return "empty_replacement"
+        return _empty_replacement_code(
+            block,
+            patch,
+            phase=phase,
+            aggressive=aggressive_unslop,
+            framing_source=framing_source,
+        )
     if block.protected_suffix is not None and (
         not patch.replacement.endswith(block.protected_suffix)
         or not patch.replacement.removesuffix(block.protected_suffix).strip()
@@ -267,12 +284,13 @@ def _rejection_code(
         before=block.text,
         after=patch.replacement,
         allow_reordering=aggressive_unslop and phase is TransformPhase.UNSLOP,
+        framing_source=framing_source,
     )
     if literal_code is not None:
         return literal_code
     if phase is TransformPhase.UNSLOP:
         if aggressive_unslop:
-            return _aggressive_unslop_code(block, patch.replacement)
+            return _aggressive_unslop_code(block, patch.replacement, framing_source=framing_source)
         locality_code = _unslop_locality_code(block, patch.replacement)
         if locality_code is not None:
             return locality_code
@@ -283,8 +301,46 @@ def _rejection_code(
     return None
 
 
+def _empty_replacement_code(
+    block: TextBlock,
+    patch: TextPatch,
+    *,
+    phase: TransformPhase,
+    aggressive: bool,
+    framing_source: str | None,
+) -> str | None:
+    # A deletion still needs independent, source-bound semantic review. Keep
+    # literal and obligation guards before that review, including on short copy.
+    if (
+        not aggressive
+        or phase is not TransformPhase.UNSLOP
+        or patch.replacement
+        or block.kind is not BlockKind.PARAGRAPH
+    ):
+        return "empty_replacement"
+    if (
+        block.protected_suffix is not None
+        or block.native_content
+        or re.search(r"[\r\n\v\f\u2028\u2029]", block.text)
+    ):
+        return "empty_replacement"
+    constraints = rewrite_constraints(block.text, framing_source=framing_source)
+    if any(
+        (
+            constraints.protected_tokens,
+            constraints.quotations,
+            constraints.protected_names,
+            constraints.revision_arguments,
+            constraints.temporal_scopes,
+            set(constraints.force_language) - {"each", "every", "all", "per"},
+        )
+    ):
+        return "empty_replacement"
+    return None
+
+
 def _literal_change_code(
-    *, before: str, after: str, allow_reordering: bool
+    *, before: str, after: str, allow_reordering: bool, framing_source: str | None = None
 ) -> (
     Literal["protected_content_changed", "force_language_changed", "revision_argument_changed"]
     | None
@@ -294,8 +350,9 @@ def _literal_change_code(
     ):
         return "protected_content_changed"
     if allow_reordering:
-        before = without_editorial_framing(before)
-        after = without_editorial_framing(after)
+        origin = before if framing_source is None else framing_source
+        before = without_editorial_framing(before, framing_source=origin)
+        after = without_editorial_framing(after, framing_source=origin)
     if not _same_retained_values(
         _force_words(before), _force_words(after), allow_reordering=allow_reordering
     ):
@@ -315,8 +372,12 @@ def _same_retained_values(before: list[str], after: list[str], *, allow_reorderi
     return before == after
 
 
-def _aggressive_unslop_code(block: TextBlock, replacement: str) -> str | None:
-    if reassigned_document_writing_action(block.text, replacement):
+def _aggressive_unslop_code(
+    block: TextBlock, replacement: str, *, framing_source: str | None
+) -> str | None:
+    if ambiguous_reference_framing(block.text, replacement, framing_source=framing_source):
+        return "document_reference_identity_ambiguous"
+    if reassigned_document_writing_action(block.text, replacement, framing_source=framing_source):
         return "document_writing_actor_changed"
     if reassigned_measurement_action(block.text, replacement):
         return "measurement_actor_changed"
@@ -330,7 +391,9 @@ def _aggressive_unslop_code(block: TextBlock, replacement: str) -> str | None:
         return "negative_transformation_scope_changed"
     if column_code := _latency_column_scope_code(block.text, replacement):
         return column_code
-    if Counter(_scope_qualifiers(block.text)) != Counter(_scope_qualifiers(replacement)):
+    if Counter(_scope_qualifiers(block.text, framing_source=framing_source)) != Counter(
+        _scope_qualifiers(replacement, framing_source=framing_source)
+    ):
         return "scope_qualifier_changed"
     if _quoted_spans(block.text) != _quoted_spans(replacement):
         return "quoted_content_changed"
@@ -408,10 +471,12 @@ def _temporal_scopes(text: str) -> tuple[str, ...]:
     )
 
 
-def _scope_qualifiers(text: str) -> list[str]:
+def _scope_qualifiers(text: str, *, framing_source: str | None = None) -> list[str]:
     return [
         match.group(0).casefold()
-        for match in _SCOPE_QUALIFIER.finditer(without_editorial_framing(text))
+        for match in _SCOPE_QUALIFIER.finditer(
+            without_editorial_framing(text, framing_source=framing_source)
+        )
         if match.group(0).casefold().replace("\u2011", "-") not in _RHETORICAL_COMPOUNDS
     ]
 

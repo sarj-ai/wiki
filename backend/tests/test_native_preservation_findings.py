@@ -34,7 +34,7 @@ def _native(*, protected: bool = False) -> dict[str, Any]:
         {
             "startIndex": 1,
             "endIndex": 7,
-            "textRun": {"content": "Alpha ", "textStyle": {"bold": True}},
+            "textRun": {"content": "Alpha ", "textStyle": {"bold": True, "underline": True}},
         },
         {
             "startIndex": 7,

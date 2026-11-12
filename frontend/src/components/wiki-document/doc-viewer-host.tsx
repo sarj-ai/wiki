@@ -3,12 +3,12 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useShallow } from "zustand/react/shallow";
 
-import { DrivePreviewSurface } from "@/components/ui/drive-preview-surface";
 import {
   type ActiveDoc,
   useDocViewerStore,
 } from "@/components/wiki-document/doc-viewer-store";
 import { DocumentLoading } from "@/components/wiki-document/document-loading";
+import { DriveDocumentIframe } from "@/components/wiki-document/drive-document-iframe";
 import { useReducedMotion } from "@/hooks/use-reduced-motion";
 import { type DocumentMode, embedUrlFor } from "@/lib/file-urls";
 import { markNav } from "@/lib/perf-marks";
@@ -223,17 +223,15 @@ const DrivePreviewIframe = ({
       loading={isLoading}
       reducedMotion={reducedMotion}
     >
-      <DrivePreviewSurface mimeType={mimeType}>
-        <iframe
-          allow="clipboard-read; clipboard-write"
-          className="block size-full border-0"
-          ref={attachIframeLoadListener.bind(undefined, () => {
-            markIframeLoaded(fileId, setIsLoading);
-          })}
-          src={src}
-          title={title}
-        />
-      </DrivePreviewSurface>
+      <DriveDocumentIframe
+        mimeType={mimeType}
+        allow="clipboard-read; clipboard-write"
+        ref={attachIframeLoadListener.bind(undefined, () => {
+          markIframeLoaded(fileId, setIsLoading);
+        })}
+        src={src}
+        title={title}
+      />
     </DocumentFrame>
   );
 };

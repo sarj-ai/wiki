@@ -1,3 +1,9 @@
+import {
+  type DocumentMode,
+  embedUrlFor,
+  supportsDocumentMode,
+} from "@/lib/file-urls";
+
 import { DEMO_FILES, type DemoFile, demoHref } from "./demo-data";
 
 const GOOGLE_PREVIEW =
@@ -16,6 +22,22 @@ export function demoPreviewUrl(file: DemoFile): null | string {
     SHEET_TAB_PREVIEW.test(file.previewUrl)
     ? file.previewUrl
     : null;
+}
+
+export function demoEmbedUrl(
+  file: DemoFile,
+  mode: DocumentMode,
+): null | string {
+  const preview = demoPreviewUrl(file);
+  if (preview === null || !supportsDocumentMode(file.mimeType)) return preview;
+  const url = new URL(preview);
+  const id = url.pathname.split("/", 4)[3];
+  if (
+    id === undefined ||
+    `${url.origin}${url.pathname}` !== embedUrlFor(file.mimeType, id, "preview")
+  )
+    return null;
+  return `${embedUrlFor(file.mimeType, id, mode)}${url.hash}`;
 }
 
 export function demoHrefForDocumentPath(path: string): null | string {

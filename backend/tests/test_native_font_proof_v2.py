@@ -112,7 +112,7 @@ def test_v2_accepts_provider_canonicalized_terminal_only_family(
         ("bold", False),
         ("bold", None),
         ("italic", True),
-        ("underline", True),
+        ("underline", False),
         ("foregroundColor", {"color": {"rgbColor": {"red": 1}}}),
         ("link", {"url": "https://example.test/private"}),
         ("unknownStyle", "private"),
@@ -427,6 +427,7 @@ def _many_intervals(count: int, paragraphs: int = 1) -> dict[str, Any]:
                 },
             }
         )
+        body[-1]["paragraph"]["elements"][0]["textRun"]["textStyle"]["underline"] = True
     return source
 
 

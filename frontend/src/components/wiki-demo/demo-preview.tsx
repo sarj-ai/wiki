@@ -4,29 +4,40 @@ import { FileWarning, RefreshCw } from "lucide-react";
 import { useEffect, useEffectEvent, useRef, useState } from "react";
 
 import { Button } from "@/components/ui/button";
-import { DrivePreviewSurface } from "@/components/ui/drive-preview-surface";
 import { DocumentLoading } from "@/components/wiki-document/document-loading";
+import { DriveDocumentIframe } from "@/components/wiki-document/drive-document-iframe";
 import { useIsClient } from "@/hooks/use-is-client";
+import type { DocumentMode } from "@/lib/file-urls";
 
 import type { DemoFile } from "./demo-data";
-import { demoDownloadUrl, demoPreviewUrl } from "./demo-file-urls";
+import { demoDownloadUrl, demoEmbedUrl } from "./demo-file-urls";
 
 interface DemoPreviewProps {
+  documentMode?: DocumentMode;
   file: DemoFile;
   onReload: () => void;
 }
 
-export function DemoPreview({ file, onReload }: DemoPreviewProps) {
+export function DemoPreview({
+  documentMode = "preview",
+  file,
+  onReload,
+}: DemoPreviewProps) {
   return (
     <PreviewFrame
+      documentMode={documentMode}
       file={file}
-      key={`${file.id}:${file.previewUrl}`}
+      key={`${file.id}:${file.previewUrl}:${documentMode}`}
       onReload={onReload}
     />
   );
 }
 
-function PreviewFrame({ file, onReload }: DemoPreviewProps) {
+function PreviewFrame({
+  documentMode = "preview",
+  file,
+  onReload,
+}: DemoPreviewProps) {
   const isClient = useIsClient();
   const initialServerFrame = useRef(!isClient);
   const [loadStatus, setLoadStatus] = useState<"loading" | "ready" | "slow">(
@@ -36,7 +47,7 @@ function PreviewFrame({ file, onReload }: DemoPreviewProps) {
   const frame = useRef<HTMLIFrameElement | null>(null);
   const preview = useRef<HTMLElement | null>(null);
   const restoreFocus = useRef(false);
-  const previewUrl = demoPreviewUrl(file);
+  const previewUrl = demoEmbedUrl(file, documentMode);
   const invalidPreview = previewUrl === null;
   const status = invalidPreview ? "failed" : loadStatus;
   useEffect(() => {
@@ -101,20 +112,19 @@ function PreviewFrame({ file, onReload }: DemoPreviewProps) {
         ref={preview}
       >
         {previewUrl === null ? null : (
-          <DrivePreviewSurface mimeType={file.mimeType}>
-            <iframe
-              allowFullScreen
-              aria-hidden={status !== "ready"}
-              className="html-theme-frame absolute inset-0 size-full border-0"
-              onLoad={loaded}
-              ref={frame}
-              referrerPolicy="no-referrer"
-              sandbox="allow-scripts allow-same-origin"
-              src={previewUrl}
-              tabIndex={status === "ready" ? 0 : -1}
-              title={`${file.name} — read-only preview`}
-            />
-          </DrivePreviewSurface>
+          <DriveDocumentIframe
+            mimeType={file.mimeType}
+            allowFullScreen
+            aria-hidden={status !== "ready"}
+            className="html-theme-frame absolute inset-0 size-full border-0"
+            onLoad={loaded}
+            ref={frame}
+            referrerPolicy="no-referrer"
+            sandbox="allow-scripts allow-same-origin"
+            src={previewUrl}
+            tabIndex={status === "ready" ? 0 : -1}
+            title={`${file.name} — ${documentMode === "preview" ? "read-only preview" : "editor view"}`}
+          />
         )}
         {status === "loading" ? (
           <div className="bg-background absolute inset-0">

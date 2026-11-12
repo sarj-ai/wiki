@@ -56,7 +56,11 @@ class _ReviewedRepair:
 
 
 def _retained_approved_ids(
-    document: DocumentIR, approved: PatchDecision, repaired: PatchDecision
+    document: DocumentIR,
+    approved: PatchDecision,
+    repaired: PatchDecision,
+    *,
+    framing_source: DocumentIR | None = None,
 ) -> frozenset[str]:
     # A failed optional repair keeps an independently reviewed edit. Recheck its
     # literal constraints before discarding findings about the failed attempt.
@@ -73,6 +77,7 @@ def _retained_approved_ids(
         ],
         phase=TransformPhase.UNSLOP,
         aggressive_unslop=True,
+        framing_source=framing_source,
     )
     return frozenset(retained.accepted)
 
@@ -219,7 +224,13 @@ class TextTransformPlanner:
     ) -> TransformOutcome:
         patches = await self._generator.generate(document, phase=phase)
         aggressive = phase is TransformPhase.UNSLOP and self._allow_unslop_model
-        decision = validate_patches(document, patches, phase=phase, aggressive_unslop=aggressive)
+        decision = validate_patches(
+            document,
+            patches,
+            phase=phase,
+            aggressive_unslop=aggressive,
+            framing_source=fidelity_source,
+        )
         if aggressive and decision.accepted:
             decision = await self._review_rewrites(
                 document, decision, fidelity_source=fidelity_source
@@ -268,7 +279,9 @@ class TextTransformPlanner:
             document, patches, feedback, restricted=restricted, fidelity_source=fidelity_source
         )
         repaired = repair.decision
-        retained_ids = _retained_approved_ids(document, decision, repaired)
+        retained_ids = _retained_approved_ids(
+            document, decision, repaired, framing_source=fidelity_source
+        )
         remaining = tuple(
             finding
             for finding in decision.findings
@@ -298,7 +311,11 @@ class TextTransformPlanner:
     ) -> _ReviewedRepair:
         proposals = await self._generator.repair(document, patches, findings)
         repaired = validate_patches(
-            restricted, proposals, phase=TransformPhase.UNSLOP, aggressive_unslop=True
+            restricted,
+            proposals,
+            phase=TransformPhase.UNSLOP,
+            aggressive_unslop=True,
+            framing_source=fidelity_source,
         )
         validated_ids = frozenset(repaired.accepted)
         if repaired.accepted:

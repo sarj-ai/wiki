@@ -4,6 +4,7 @@ from copy import deepcopy
 from dataclasses import replace
 from typing import Any
 
+from pydantic import JsonValue
 import pytest
 
 from app.document_transform import google_gateway as gateway
@@ -11,6 +12,7 @@ from app.document_transform.brand import SarjBrandProfile, build_copy_mutations
 from app.document_transform.errors import UnsupportedSourceError
 from app.document_transform.ir import parse_google_document, utf16_length
 from app.document_transform.native_font_defense import defend_native_font_requests
+from app.document_transform.readability_json import obj
 
 
 def _document(runs: list[dict[str, Any]]) -> dict[str, Any]:
@@ -59,14 +61,17 @@ def _font_requests(raw: dict[str, Any]) -> list[dict[str, Any]]:
     [{"bold": True}, {"italic": True}, {"underline": True}, {"bold": False}],
     ids=["bold", "italic", "underline", "explicit-normal"],
 )
-def test_uniform_authored_body_emphasis_survives_brand_and_repeat(
+def test_uniform_body_bold_is_removed_and_other_emphasis_survives_repeat(
     emphasis: dict[str, bool],
 ) -> None:
     raw = _document([_run("A concise authored lead-in.\n", **emphasis)])
     before = parse_google_document(raw, title="Report")
     requests = _font_requests(raw)
     assert len(requests) == 1
-    assert all(requests[0]["textStyle"][key] is value for key, value in emphasis.items())
+    assert requests[0]["textStyle"]["bold"] is False
+    assert all(
+        requests[0]["textStyle"][key] is value for key, value in emphasis.items() if key != "bold"
+    )
     paragraph = raw["tabs"][0]["documentTab"]["body"]["content"][0]["paragraph"]
     paragraph["elements"][0]["textRun"]["textStyle"].update(requests[0]["textStyle"])
     assert _font_requests(raw) == requests
@@ -77,11 +82,11 @@ def test_uniform_authored_body_emphasis_survives_brand_and_repeat(
 def test_unstyled_uppercase_label_is_not_promoted_or_bolded() -> None:
     raw = _document([_run("REVIEW CHECKS\n")])
     request = _font_requests(raw)[0]
-    assert "bold" not in request["fields"]
+    assert request["textStyle"]["bold"] is False
     assert not parse_google_document(raw, title="Report").blocks[0].is_authored_lead_in
 
 
-def test_short_authored_bold_label_keeps_accent_without_becoming_heading() -> None:
+def test_short_bold_prose_uses_body_style_and_justification_without_becoming_heading() -> None:
     raw = _document([_run("REVIEW CHECKS\n", bold=True)])
     parsed = parse_google_document(raw, title="Report")
     requests = build_copy_mutations(
@@ -95,18 +100,33 @@ def test_short_authored_bold_label_keeps_accent_without_becoming_heading() -> No
     text_style = _font_requests(raw)[0]["textStyle"]
     assert paragraph_style["namedStyleType"] == "NORMAL_TEXT"
     assert paragraph_style["keepWithNext"] is False
+    assert paragraph_style["alignment"] == "JUSTIFIED"
+    assert text_style["bold"] is False
     assert (
         text_style["foregroundColor"]
-        != _font_requests(_document([_run("Ordinary prose.\n")]))[0]["textStyle"]["foregroundColor"]
+        == _font_requests(_document([_run("Ordinary prose.\n")]))[0]["textStyle"]["foregroundColor"]
     )
 
 
 def test_mixed_authored_emphasis_stays_run_scoped() -> None:
     raw = _document([_run("Strong lead-in. ", bold=True), _run("Ordinary prose.\n", italic=True)])
     assert not parse_google_document(raw, title="Report").blocks[0].authored_emphasis
-    assert all(
-        request["fields"] == "weightedFontFamily.fontFamily" for request in _font_requests(raw)
+    assert parse_google_document(raw, title="Report").blocks[0].editable
+    assert all(request["textStyle"]["bold"] is False for request in _font_requests(raw))
+    assert all("italic" not in request["fields"] for request in _font_requests(raw))
+
+
+def test_decorative_weight_and_italics_do_not_protect_a_native_filler_paragraph() -> None:
+    raw = _document(
+        [
+            _run("Keep the context.", bold=True, italic=True),
+            _run(" Distinguish latency from throughput.\n", italic=True),
+        ]
     )
+    parsed = parse_google_document(raw, title="Report")
+    assert parsed.blocks[0].editable
+    assert parsed.blocks[0].text == "Keep the context. Distinguish latency from throughput."
+    assert _font_requests(raw)[0]["textStyle"]["bold"] is False
 
 
 def test_linked_emphasized_prose_gets_font_without_rewriting_attributes() -> None:
@@ -281,7 +301,7 @@ def test_numeric_microseconds_keep_paragraph_suggestions_protected(field: str) -
 def test_numeric_microseconds_do_not_rewrite_linked_or_mixed_style_text() -> None:
     linked = _document([_run("Read the 2 µs reference.\n", link={"url": "https://example.test"})])
     mixed = _document(
-        [_run("A transfer takes "), _run("2 µs", bold=True), _run(" in this reference.\n")]
+        [_run("A transfer takes "), _run("2 µs", underline=True), _run(" in this reference.\n")]
     )
     for raw in (linked, mixed):
         before = deepcopy(raw)
@@ -351,7 +371,7 @@ def test_font_ranges_rebase_after_earlier_text_edits_using_utf16_offsets() -> No
 
 
 def test_unchanged_mixed_native_paragraph_keeps_later_style_ranges_absolute() -> None:
-    raw = {
+    raw: dict[str, JsonValue] = {
         "revisionId": "revision",
         "tabs": [
             {
@@ -442,7 +462,9 @@ def test_unchanged_mixed_native_paragraph_keeps_later_style_ranges_absolute() ->
     ]
     defended = defend_native_font_requests(requests, document=raw, original=parsed)
     assert [
-        request["updateTextStyle"]["range"] for request in defended if "updateTextStyle" in request
+        obj(request["updateTextStyle"])["range"]
+        for request in defended
+        if "updateTextStyle" in request
     ] == [
         {"startIndex": 4, "endIndex": 13, "tabId": "tab"},
         {"startIndex": 13, "endIndex": 14, "tabId": "tab"},
@@ -458,7 +480,7 @@ def test_unchanged_mixed_native_paragraph_keeps_later_style_ranges_absolute() ->
 
 def test_font_verification_accepts_coalesced_runs_but_rejects_missing_font() -> None:
     expected = parse_google_document(
-        _document([_run("One "), _run("two\n", bold=True)]), title="Report"
+        _document([_run("One "), _run("two\n", underline=True)]), title="Report"
     )
     output = _document([_run("One two\n", weightedFontFamily={"fontFamily": "Nunito"})])
     actual = parse_google_document(output, title="Report")
@@ -470,15 +492,15 @@ def test_font_verification_accepts_coalesced_runs_but_rejects_missing_font() -> 
     assert not gateway._font_only_has_brand(paragraph, adjusted.blocks[0])
 
 
-def test_typography_semantic_exception_is_narrow_and_leaves_checkpoint_hash_unchanged() -> None:
+def test_plain_run_coalescing_keeps_semantics_and_rejects_changed_text() -> None:
     expected = parse_google_document(_document([_run("One "), _run("two\n")]), title="Report")
     actual = parse_google_document(_document([_run("One two\n")]), title="Report")
-    assert expected.semantic_sha256 != actual.semantic_sha256
+    assert expected.semantic_sha256 == actual.semantic_sha256
     assert gateway._typography_content_preserved(actual, expected, verify_brand=True)
-    assert not gateway._typography_content_preserved(actual, expected, verify_brand=False)
+    assert gateway._typography_content_preserved(actual, expected, verify_brand=False)
     changed = replace(actual, blocks=(replace(actual.blocks[0], text="Different"),))
     assert not gateway._typography_content_preserved(changed, expected, verify_brand=True)
-    assert not gateway._typography_content_preserved(expected, actual, verify_brand=True)
+    assert gateway._typography_content_preserved(expected, actual, verify_brand=True)
 
 
 def test_font_verification_resolves_named_style_and_fails_on_coverage_gap() -> None:

@@ -90,6 +90,27 @@ class _CitationRun:
     link: dict[str, JsonValue] | None
 
 
+def brandable_prose(paragraph: dict[str, JsonValue], *, start: int, end: int) -> bool:
+    if type(start) is not int or type(end) is not int or start < 0 or end <= start:
+        return False
+    try:
+        parsed = _Paragraph.model_validate(paragraph)
+    except ValidationError:
+        return False
+    if not _valid_runs(parsed.elements, start=start, end=end):
+        return False
+    if any(element.text_run.text_style.link for element in parsed.elements):
+        return False
+    styles = [
+        element.text_run.text_style.model_dump(
+            exclude={"bold", "italic", "weighted_font_family"}, exclude_unset=True
+        )
+        for element in parsed.elements
+        if element.text_run.content != "\n"
+    ]
+    return bool(styles) and all(style == styles[0] for style in styles)
+
+
 def linked_prose_tail(paragraph: object, *, start: int, end: int) -> NativeProseTail | None:
     if type(start) is not int or type(end) is not int or start < 0 or end <= start:
         return None

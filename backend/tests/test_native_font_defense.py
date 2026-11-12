@@ -16,6 +16,7 @@ from app.document_transform.native_font_proof import (
     capture_native_font_proof,
     verify_native_font_proof,
 )
+from app.document_transform.readability_json import obj
 from tests.test_native_font_proof import _parts
 from tests.test_native_preservation_findings import _native
 
@@ -48,21 +49,21 @@ def test_authored_bold_survives_family_side_effect_and_terminal_scope_is_explici
         logo_uri="https://example.test/logo.png",
     )
     defended = defend_native_font_requests(requests, document=document, original=original)
-    styles = [item["updateTextStyle"] for item in defended if "updateTextStyle" in item]
+    styles = [obj(item["updateTextStyle"]) for item in defended if "updateTextStyle" in item]
     assert len(styles) == 2
-    assert [item["textStyle"]["bold"] for item in styles] == [True, False]
+    assert [obj(item["textStyle"])["bold"] for item in styles] == [True, False]
     assert all(item["fields"] == "weightedFontFamily,bold" for item in styles)
     assert all(
-        item["textStyle"]["weightedFontFamily"] == {"fontFamily": "Nunito", "weight": 400}
+        obj(item["textStyle"])["weightedFontFamily"] == {"fontFamily": "Nunito", "weight": 400}
         for item in styles
     )
-    assert styles[-1]["range"]["endIndex"] == _parts(document)[-1]["endIndex"]
+    assert obj(styles[-1]["range"])["endIndex"] == _parts(document)[-1]["endIndex"]
     # Provider double: family updates reset bold before explicitly supplied bold.
     actual = deepcopy(document)
     for item, part in zip(styles, _parts(actual), strict=True):
         style = part["textRun"]["textStyle"]
         style["bold"] = False
-        style.update(item["textStyle"])
+        style.update(obj(item["textStyle"]))
     assert _parts(actual)[0]["textRun"]["textStyle"]["bold"] is True
     assert _parts(document)[0]["textRun"]["textStyle"]["bold"] is True
     proof = capture_native_font_proof(document, original, target_font_family="Nunito")

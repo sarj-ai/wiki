@@ -60,7 +60,8 @@ def test_native_list_subranges_tile_text_without_splitting_surrogates(
     }
     assert 11 < split < second["range"]["endIndex"]
     assert first["textStyle"] == second["textStyle"]
-    assert first["fields"] == second["fields"] == "weightedFontFamily,fontSize,foregroundColor"
+    assert first["fields"] == second["fields"] == "weightedFontFamily,fontSize,foregroundColor,bold"
+    assert first["textStyle"]["bold"] is False
     encoded = text.encode("utf-16-le")
     boundary = (split - 11) * 2
     assert encoded[:boundary].decode("utf-16-le") + encoded[boundary:].decode("utf-16-le") == text
@@ -220,7 +221,10 @@ def test_in_place_preserves_provider_shaped_native_list_typography_and_replays()
     ) == mutation_sha256(in_place_requests)
 
 
-def test_distinct_visible_run_styles_remain_protected_rich_text() -> None:
+@pytest.mark.parametrize(("effect", "editable"), [("bold", True), ("underline", False)])
+def test_native_list_prose_distinguishes_decorative_and_protected_styles(
+    effect: str, *, editable: bool
+) -> None:
     raw = {
         "revisionId": "revision",
         "tabs": [
@@ -240,7 +244,7 @@ def test_distinct_visible_run_styles_remain_protected_rich_text() -> None:
                                             "endIndex": 2,
                                             "textRun": {
                                                 "content": "A",
-                                                "textStyle": {"bold": True},
+                                                "textStyle": {effect: True},
                                             },
                                         },
                                         {
@@ -248,7 +252,7 @@ def test_distinct_visible_run_styles_remain_protected_rich_text() -> None:
                                             "endIndex": 3,
                                             "textRun": {
                                                 "content": "B",
-                                                "textStyle": {"bold": False},
+                                                "textStyle": {effect: False},
                                             },
                                         },
                                         {
@@ -266,7 +270,7 @@ def test_distinct_visible_run_styles_remain_protected_rich_text() -> None:
         ],
     }
 
-    assert not parse_google_document(raw, title="Review").blocks[0].editable
+    assert parse_google_document(raw, title="Review").blocks[0].editable is editable
 
 
 def test_in_place_filter_preserves_header_and_non_list_text_styles() -> None:

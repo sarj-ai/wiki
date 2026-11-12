@@ -158,14 +158,6 @@
       "count": 2
     }
   },
-  "src/components/wiki-demo/demo-preview.tsx": {
-    "@eslint-react/dom-no-unsafe-iframe-sandbox": {
-      "count": 1
-    },
-    "react/iframe-missing-sandbox": {
-      "count": 1
-    }
-  },
   "src/components/wiki-document/doc-viewer-host.test.tsx": {
     "@sarj/no-test-comments": {
       "count": 1
@@ -173,9 +165,6 @@
   },
   "src/components/wiki-document/doc-viewer-host.tsx": {
     "@sarj/no-frontend-comments": {
-      "count": 1
-    },
-    "react/iframe-missing-sandbox": {
       "count": 1
     }
   },

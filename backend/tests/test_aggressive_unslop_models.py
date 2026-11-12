@@ -938,7 +938,7 @@ def test_conventional_framing_can_go_without_relaxing_the_following_obligation(p
     )
     assert decision.accepted == {block.id: proposed}
     assert not decision.findings
-    assert UNSLOP_POLICY_VERSION == "sarj-concise-v33"
+    assert UNSLOP_POLICY_VERSION == "sarj-concise-v35"
 
 
 @pytest.mark.parametrize(
@@ -1325,16 +1325,19 @@ async def test_short_heading_uses_trusted_role_and_bound_safety_path(
     assert not decision.findings
 
 
-async def test_concise_heading_stays_unchanged_and_short_body_stays_out_of_scope() -> None:
+async def test_concise_heading_and_short_body_both_receive_editorial_review() -> None:
     heading = parse_markdown("## Storage", title="Storage")
     block = heading.blocks[0]
     unchanged = TextPatch(block_id=block.id, expected_sha256=block.sha256, replacement=block.text)
     harness = _generator(types.GenerateContentResponse(parsed=PatchEnvelope(patches=[unchanged])))
     assert await harness.generator.generate(heading, phase=TransformPhase.UNSLOP) == [unchanged]
     body = parse_markdown("Storage overview", title="Storage")
+    block = body.blocks[0]
+    unchanged = TextPatch(block_id=block.id, expected_sha256=block.sha256, replacement=block.text)
+    harness = _generator(types.GenerateContentResponse(parsed=PatchEnvelope(patches=[unchanged])))
     before = len(harness.call.prompts)
-    assert await harness.generator.generate(body, phase=TransformPhase.UNSLOP) == []
-    assert len(harness.call.prompts) == before
+    assert await harness.generator.generate(body, phase=TransformPhase.UNSLOP) == [unchanged]
+    assert len(harness.call.prompts) == before + 1
 
 
 @pytest.mark.parametrize(

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Iterable
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime
 from io import BytesIO
 import re
@@ -30,6 +30,7 @@ from app.document_transform.brand_manifest import (
     CURRENT_BRAND_MANIFEST,
     HEADER_TITLE_SEPARATOR,
     DocumentHeaderBrandTokens,
+    fitted_title_size,
     normalize_header_title,
     trusted_document_logo_description,
 )
@@ -62,6 +63,7 @@ _PAGE_WIDTH_PT: Final = 612
 _PAGE_HEIGHT_PT: Final = 792
 _CONTENT_WIDTH_DXA: Final = int((_PAGE_WIDTH_PT - 2 * _DOCUMENT.horizontal_margin_pt) * 20)
 _MAX_LIST_LEVEL: Final = 2
+_MAX_KEPT_CODE_LINES: Final = 40
 _SARJ_PURPLE: Final = CURRENT_BRAND_MANIFEST.colors.primary.removeprefix("#")
 _SARJ_PURPLE_LIGHT: Final = CURRENT_BRAND_MANIFEST.colors.primary_tint.removeprefix("#")
 _INK: Final = CURRENT_BRAND_MANIFEST.colors.ink.removeprefix("#")
@@ -151,7 +153,7 @@ def render_markdown_docx(
     header_title: str | None = None,
     compact_single_paragraph: bool = False,
 ) -> bytes:
-    blocks = _validated_blocks(markdown, title=title)
+    blocks = _presentation_blocks(markdown, title=title, branded=branded)
 
     document = WordDocument()
     _set_metadata(document, title)
@@ -168,6 +170,8 @@ def render_markdown_docx(
     if _include_display_title(blocks, title, compact_single_paragraph=compact_single_paragraph):
         paragraph = document.add_paragraph(style="Sarj Title" if branded else "Title")
         _append_inlines(paragraph, _plain_inlines(title.strip()), branded=branded)
+        if branded:
+            _fit_title(paragraph, title.strip())
     _append_blocks(document, blocks, numbering, branded=branded)
 
     output = BytesIO()
@@ -265,7 +269,7 @@ def markdown_import_manifest(
     header_title: str | None = None,
     compact_single_paragraph: bool = False,
 ) -> MarkdownImportManifest:
-    parsed = _validated_blocks(markdown, title=title)
+    parsed = _presentation_blocks(markdown, title=title, branded=branded)
     blocks: list[MarkdownImportBlock] = []
     if _include_display_title(parsed, title, compact_single_paragraph=compact_single_paragraph):
         blocks.append(
@@ -294,6 +298,25 @@ def markdown_import_manifest(
         )
         if branded
         else None,
+    )
+
+
+def _presentation_blocks(markdown: str, *, title: str, branded: bool) -> tuple[_Block, ...]:
+    blocks = _validated_blocks(markdown, title=title)
+    if not branded:
+        return blocks
+    # Keep the render and its import proof identical. Headings and table
+    # headers receive weight from their semantic roles, not scattered **spans**.
+    return tuple(
+        replace(
+            block,
+            inlines=tuple(replace(inline, bold=False) for inline in block.inlines),
+            cell_inlines=tuple(
+                tuple(tuple(replace(inline, bold=False) for inline in cell) for cell in row)
+                for row in block.cell_inlines
+            ),
+        )
+        for block in blocks
     )
 
 
@@ -481,6 +504,7 @@ def _configure_styles(document: Document, *, branded: bool) -> None:
         _paragraph_style(styles["Normal"]),
         size=_DOCUMENT.body_size_pt,
         color=_INK,
+        bold=False,
         before=_DOCUMENT.paragraph_space_above_pt,
         after=_DOCUMENT.paragraph_space_below_pt,
         line_spacing=_DOCUMENT.line_spacing_percent / 100,
@@ -861,7 +885,8 @@ def _append_blocks(
     branded: bool,
 ) -> None:
     lists = _AppendListState({}, numbering.next_num)
-    for block in blocks:
+    ordered = tuple(blocks)
+    for index, block in enumerate(ordered):
         if block.kind == "list":
             _append_list_block(document, block, numbering, lists, branded=branded)
         elif block.kind == "check":
@@ -876,12 +901,21 @@ def _append_blocks(
         else:
             _append_nonlist_block(document, block, branded=branded)
             lists.ordered_by_level.clear()
+        if (
+            branded
+            and block.kind == "paragraph"
+            and index + 1 < len(ordered)
+            and ordered[index + 1].kind == "code"
+        ):
+            document.paragraphs[-1].paragraph_format.keep_with_next = True
 
 
 def _append_nonlist_block(document: Document, block: _Block, *, branded: bool) -> None:
     if block.kind == "heading":
         paragraph = document.add_paragraph(style=f"Heading {min(max(block.level, 1), 6)}")
         _append_inlines(paragraph, block.inlines, branded=branded)
+        if branded and block.level == 1:
+            _fit_title(paragraph, block.text)
     elif block.kind == "paragraph":
         paragraph = document.add_paragraph(style="Normal")
         _append_inlines(paragraph, block.inlines, branded=branded)
@@ -898,6 +932,16 @@ def _append_nonlist_block(document: Document, block: _Block, *, branded: bool) -
         paragraph = document.add_paragraph()
         paragraph.paragraph_format.space_after = Pt(6)
         _set_paragraph_bottom_border(paragraph)
+
+
+def _fit_title(paragraph: Paragraph, text: str) -> None:
+    size = fitted_title_size(text, _DOCUMENT.h1_size_pt)
+    if size == _DOCUMENT.h1_size_pt:
+        return
+    for part in paragraph.iter_inner_content():
+        runs = (part,) if isinstance(part, Run) else part.runs
+        for run in runs:
+            run.font.size = Pt(size)
 
 
 def _append_list_block(
@@ -1012,6 +1056,7 @@ def _append_code_block(
     _set_paragraph_direction(paragraph, text)
     if branded:
         _set_paragraph_box(paragraph, fill=_CODE_FILL)
+        paragraph.paragraph_format.keep_together = len(text.splitlines()) <= _MAX_KEPT_CODE_LINES
     tokens = format_code(text, language).tokens if branded else (CodeToken(text),)
     for token in tokens:
         # python-docx emits native line breaks and tabs, including empty lines;
@@ -1292,6 +1337,9 @@ def _format_run(
         fonts = OxmlElement("w:rFonts")
         properties.insert(0, fonts)
     fonts.set(qn("w:eastAsia"), font)
+    fonts.set(qn("w:cs"), _COMPLEX_SCRIPT_FONT if font == _DOCUMENT.font_family else font)
+    for attribute in ("w:asciiTheme", "w:hAnsiTheme", "w:eastAsiaTheme", "w:cstheme"):
+        fonts.attrib.pop(qn(attribute), None)
     _set_run_direction(run, run.text)
 
 

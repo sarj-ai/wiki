@@ -192,6 +192,7 @@ def test_custom_presentation_is_not_mistaken_for_managed_body(change: str) -> No
             style["futureEffect"] = True
         case "inherited_bold":
             native["namedStyles"]["styles"][0]["textStyle"]["bold"] = True
+            style.pop("bold")
         case "inherited_unknown_effect":
             native["namedStyles"]["styles"][0]["textStyle"]["futureEffect"] = True
         case "unknown_normal_context":
@@ -213,7 +214,7 @@ def test_superscript_remains_noneditable() -> None:
     assert visual_authority_block_ids(document, original) == ()
 
 
-def test_distinct_visible_rich_text_remains_noneditable() -> None:
+def test_underlined_visible_rich_text_remains_noneditable() -> None:
     document = _document(12)
     _apply_body_formatting(document)
     paragraph = _paragraph(document)
@@ -224,7 +225,7 @@ def test_distinct_visible_rich_text_remains_noneditable() -> None:
     first["textRun"]["content"] = _SOURCE[:split]
     remainder["startIndex"] = first["endIndex"]
     remainder["textRun"]["content"] = _SOURCE[split:]
-    remainder["textRun"]["textStyle"]["bold"] = True
+    remainder["textRun"]["textStyle"]["underline"] = True
     paragraph["elements"].insert(1, remainder)
     original = parse_google_document(document, title="Source")
     assert not original.blocks[0].editable
