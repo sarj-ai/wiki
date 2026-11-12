@@ -139,9 +139,8 @@ def _brand_run_style(*, size: int, color: str, bold: bool = False) -> dict[str, 
         "weightedFontFamily": {"fontFamily": CURRENT_BRAND_MANIFEST.document.font_family},
         "fontSize": {"magnitude": size, "unit": "PT"},
         "foregroundColor": _rgb(color),
+        "bold": bold,
     }
-    if bold:
-        style["bold"] = True
     return style
 
 
@@ -850,6 +849,11 @@ def test_brand_readback_allows_named_style_inheritance_and_complex_script_fallba
     ]["textRun"]["textStyle"]
     body_style.pop("weightedFontFamily")
     manifest = markdown_import_manifest("Body", title="Import", branded=True)
+    assert verify_markdown_import(document, manifest).brand_applied is True
+
+    body_style["bold"] = True
+    assert verify_markdown_import(document, manifest).brand_applied is False
+    body_style.pop("bold")
     assert verify_markdown_import(document, manifest).brand_applied is True
 
     body_style["weightedFontFamily"] = {"fontFamily": tokens.complex_script_font_family}

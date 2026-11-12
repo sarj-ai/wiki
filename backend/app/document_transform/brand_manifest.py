@@ -13,6 +13,9 @@ from app.identifiers import BrandProfileId
 
 
 CURRENT_BRAND_PROFILE_ID = BrandProfileId("sarj-2026-v5")
+_LONG_TITLE_CHARACTERS = 32
+_LONG_TITLE_REDUCTION_PT = 4
+_MIN_TITLE_SIZE_PT = 18
 BRAND_PROFILE_IDS = frozenset(
     {
         BrandProfileId("sarj-legacy-v1"),
@@ -161,6 +164,12 @@ def load_brand_manifest(profile_id: BrandProfileId) -> SarjBrandManifest:
 
 
 CURRENT_BRAND_MANIFEST = load_brand_manifest(CURRENT_BRAND_PROFILE_ID)
+
+
+def fitted_title_size(text: str, default_size: int) -> int:
+    if len(text) <= _LONG_TITLE_CHARACTERS:
+        return default_size
+    return max(_MIN_TITLE_SIZE_PT, default_size - _LONG_TITLE_REDUCTION_PT)
 
 
 def trusted_document_logo_description() -> str:

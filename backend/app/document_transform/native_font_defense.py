@@ -1,13 +1,25 @@
 from dataclasses import replace
 from typing import Any
 
-from app.document_transform.ir import MAX_DOC_TABS, DocumentIR, TextBlock, utf16_length
+from pydantic import JsonValue
+
+from app.document_transform.ir import (
+    MAX_DOC_TABS,
+    DocumentIR,
+    TextBlock,
+    _font_run_is_safe,
+    utf16_length,
+)
 from app.document_transform.native_font_context import resolve_native_font_values
 from app.document_transform.native_font_proof import (
     MAX_NATIVE_FONT_INTERVALS,
+    _position_deltas,
     native_font_target_interval_count,
     native_paragraph_font_sha256,
 )
+from app.document_transform.native_prose import _Element
+from app.document_transform.readability_json import obj
+from app.identifiers import DocsTabId
 
 
 def preserved_native_font_blocks(
@@ -15,12 +27,17 @@ def preserved_native_font_blocks(
 ) -> tuple[str, ...]:
     result = []
     interval_count = 0
+    try:
+        _position_deltas(original, transformed)
+        can_relocate = True
+    except ValueError:
+        can_relocate = False
     for block in original.blocks:
         if block.editable or not block.font_style_ranges:
             continue
         count = native_font_target_interval_count(document, block) if document is not None else None
         if (
-            original.blocks != transformed.blocks
+            not can_relocate
             or count is None
             or interval_count + count > MAX_NATIVE_FONT_INTERVALS
             or _defended_ranges(document, block) is None
@@ -49,30 +66,46 @@ def apply_native_font_preservation(document: DocumentIR, block_ids: tuple[str, .
 
 
 def defend_native_font_requests(
-    requests: list[dict[str, Any]], *, document: dict[str, Any] | None, original: DocumentIR
-) -> list[dict[str, Any]]:
+    requests: list[dict[str, JsonValue]],
+    *,
+    document: dict[str, JsonValue] | None,
+    original: DocumentIR,
+    transformed: DocumentIR | None = None,
+) -> list[dict[str, JsonValue]]:
+    blocks = tuple(
+        block
+        for block in original.blocks
+        if not block.editable and block.font_style_ranges and not block.preserved_font_family
+    )
+    if not blocks:
+        return requests
+    deltas = _position_deltas(original, transformed)
     replacements: dict[tuple[str, int, int], list[dict[str, Any]]] = {}
-    for block in original.blocks:
-        if block.editable or not block.font_style_ranges or block.preserved_font_family:
-            continue
+    for block in blocks:
         ranges = _defended_ranges(document, block)
         if ranges is None:
             raise ValueError
+        delta = deltas.get(block.id, 0)
         for source, defended in zip(block.font_style_ranges, ranges, strict=True):
-            replacements[source.tab_id, source.start_index, source.end_index] = defended
-    result = []
+            replacements[source.tab_id, source.start_index + delta, source.end_index + delta] = [
+                {
+                    **item,
+                    "range": {
+                        **item["range"],
+                        "startIndex": item["range"]["startIndex"] + delta,
+                        "endIndex": item["range"]["endIndex"] + delta,
+                    },
+                }
+                for item in defended
+            ]
+    result: list[dict[str, JsonValue]] = []
     for request in requests:
-        update = request.get("updateTextStyle", {})
-        location = update.get("range", {})
-        key = (location.get("tabId"), location.get("startIndex"), location.get("endIndex"))
-        if (
-            update.get("fields") != "weightedFontFamily.fontFamily"
-            or location.get("segmentId")
-            or key not in replacements
-        ):
+        update = obj(request.get("updateTextStyle", {}))
+        key = _font_request_key(update)
+        if key is None or key not in replacements:
             result.append(request)
             continue
-        family = update["textStyle"]["weightedFontFamily"]["fontFamily"]
+        family = obj(obj(update["textStyle"])["weightedFontFamily"])["fontFamily"]
         result.extend(
             {
                 "updateTextStyle": {
@@ -87,6 +120,16 @@ def defend_native_font_requests(
             for item in replacements[key]
         )
     return result
+
+
+def _font_request_key(update: dict[str, JsonValue]) -> tuple[str, int, int] | None:
+    location = obj(update.get("range", {}))
+    if update.get("fields") != "weightedFontFamily.fontFamily" or location.get("segmentId"):
+        return None
+    tab_id, start, end = (location.get(key) for key in ("tabId", "startIndex", "endIndex"))
+    if not isinstance(tab_id, str) or type(start) is not int or type(end) is not int:
+        return None
+    return tab_id, start, end
 
 
 def _defended_ranges(
@@ -110,57 +153,58 @@ def _known_ranges(document: dict[str, Any] | None, block: TextBlock) -> list[lis
     result: list[list[dict[str, Any]]] = []
     terminal: dict[str, Any] | None = None
     for part in parts:
-        if set(part) != {"startIndex", "endIndex", "textRun"} or set(part["textRun"]) - {
-            "content",
-            "textStyle",
-        }:
-            raise ValueError
-        family = part["textRun"].get("textStyle", {}).get("weightedFontFamily", {})
-        if not isinstance(family, dict) or set(family) - {"fontFamily", "weight"}:
-            raise ValueError
-        if "fontFamily" in family and (
-            not isinstance(family["fontFamily"], str) or not family["fontFamily"]
-        ):
-            raise ValueError
-        values = resolve_native_font_values(
-            document,
-            source.tab_id,
-            paragraph.get("paragraphStyle", {}),
-            part["textRun"].get("textStyle", {}),
+        item = _defended_font_run(
+            document, source.tab_id, paragraph.get("paragraphStyle", {}), part
         )
-        if values.bold is None or values.weight is None:
-            raise ValueError
-        item = {
-            "range": {
-                "tabId": source.tab_id,
-                "startIndex": part["startIndex"],
-                "endIndex": part["endIndex"],
-            },
-            "bold": values.bold,
-            "weight": values.weight,
-        }
         text = part["textRun"]["content"]
+        if part["startIndex"] != cursor:
+            raise ValueError
+        cursor = part["endIndex"]
         if text == "\n":
             terminal = item
             continue
-        if part["startIndex"] != cursor:
-            raise ValueError
+        if not _font_run_is_safe(part, part["textRun"]):
+            continue
         end = part["startIndex"] + utf16_length(text.removesuffix("\n"))
         expected = block.font_style_ranges[len(result)]
         if (expected.tab_id, expected.start_index, expected.end_index, expected.segment_id) != (
             source.tab_id,
-            cursor,
+            part["startIndex"],
             end,
             None,
         ):
             raise ValueError
         result.append([item])
-        cursor = end
-    if cursor != source.end_index or len(result) != len(block.font_style_ranges):
+    if cursor != source.end_index + 1 or len(result) != len(block.font_style_ranges):
         raise ValueError
     if terminal is not None:
         result[-1].append(terminal)
     return result
+
+
+def _defended_font_run(
+    document: dict[str, JsonValue],
+    tab_id: DocsTabId,
+    paragraph_style: dict[str, JsonValue],
+    part: dict[str, JsonValue],
+) -> dict[str, JsonValue]:
+    record = _Element.model_validate(part)
+    family = record.text_run.text_style.weighted_font_family
+    if family is not None and not family.font_family:
+        raise ValueError
+    values = resolve_native_font_values(
+        document,
+        tab_id,
+        paragraph_style,
+        record.text_run.text_style.model_dump(by_alias=True, exclude_unset=True),
+    )
+    if values.bold is None or values.weight is None:
+        raise ValueError
+    return {
+        "range": {"tabId": tab_id, "startIndex": record.start_index, "endIndex": record.end_index},
+        "bold": values.bold,
+        "weight": values.weight,
+    }
 
 
 def _native_paragraph(document: dict[str, Any], block: TextBlock) -> dict[str, Any]:

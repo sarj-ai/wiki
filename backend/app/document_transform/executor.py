@@ -173,7 +173,7 @@ class _TableFontScope(NamedTuple):
 
 
 PIPELINE_VERSION = DOCUMENT_PIPELINE_VERSION
-REQUEST_BUILDER_VERSION = "google-docs-requests-v29"
+REQUEST_BUILDER_VERSION = "google-docs-requests-v30"
 IN_PLACE_REQUEST_BUILDER_VERSION = f"{REQUEST_BUILDER_VERSION}-header-title-v1"
 _MAX_OUTPUT_NAME_LENGTH = 255
 _MAX_GENERATED_NAME_SUFFIXES = 16
@@ -2206,7 +2206,7 @@ class DocumentTransformExecutor(DocumentTransformRunner):
             font_family=self._brand.font_family,
         )
         requests = defend_native_font_requests(
-            requests, document=snapshot.google_document, original=original
+            requests, document=snapshot.google_document, original=original, transformed=transformed
         )
         requests = preserve_in_place_native_list_text_styles(
             requests, original=original, transformed=transformed
@@ -3133,7 +3133,7 @@ def _preflight_native_mutation_budget(
         and request.mode is not TransformMode.UNSLOP
     ):
         requests = defend_native_font_requests(
-            requests, document=snapshot.google_document, original=original
+            requests, document=snapshot.google_document, original=original, transformed=transformed
         )
         requests = preserve_in_place_native_list_text_styles(
             requests, original=original, transformed=transformed

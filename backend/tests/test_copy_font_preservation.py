@@ -21,7 +21,7 @@ def _rich(start: int = 1, *, formatted: bool = False) -> dict[str, Any]:
         {
             "startIndex": start,
             "endIndex": start + 6,
-            "textRun": {"content": "Alpha ", "textStyle": {"bold": True}},
+            "textRun": {"content": "Alpha ", "textStyle": {"bold": True, "underline": True}},
         },
         {
             "startIndex": start + 6,

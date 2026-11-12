@@ -54,7 +54,7 @@ def test_only_authorized_font_family_and_equivalent_provider_fragmentation_are_a
     [
         ("bold", False),
         ("italic", True),
-        ("underline", True),
+        ("underline", False),
         ("link", {"url": "https://example.test/changed"}),
         ("fontSize", {"magnitude": 18, "unit": "PT"}),
         ("unknownProperty", "changed"),

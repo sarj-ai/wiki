@@ -248,7 +248,7 @@ def test_plain_runs_inherit_bold_and_italic_from_paragraph_styles() -> None:
     assert quote.style is not None
     assert quote.style.font.italic is True
     assert quote.runs[0].italic is None
-    assert next(run for run in body.runs if run.text == "bold").bold is True
+    assert next(run for run in body.runs if run.text == "bold").bold is None
     assert next(run for run in body.runs if run.text == "italic").italic is True
 
     with ZipFile(BytesIO(rendered)) as archive:
@@ -400,7 +400,8 @@ def test_nested_link_and_emphasis_are_preserved_exactly(markdown: str) -> None:
     paragraph = document.findall(f".//{W}body/{W}p")[1]
     assert _xml_paragraph_text(paragraph) == manifest.blocks[1].text
     assert paragraph.find(f".//{W}hyperlink") is not None
-    assert paragraph.find(f".//{W}b") is not None or paragraph.find(f".//{W}i") is not None
+    assert paragraph.find(f".//{W}b") is None
+    assert (paragraph.find(f".//{W}i") is not None) == ("italic" in markdown)
     assert manifest.blocks[1].links[0][1] == "https://example.com"
     assert "https://example.com" in [item.attrib.get("Target") for item in relationships]
 

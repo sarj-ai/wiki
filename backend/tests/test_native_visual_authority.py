@@ -32,7 +32,7 @@ from tests.test_document_transform import (
     _in_place_request,
     _InPlaceGateway,
 )
-from tests.test_native_font_proof_v2 import _proofs, _source
+from tests.test_native_font_proof_v2 import _source
 
 
 def _document(size: float = 30) -> dict[str, Any]:
@@ -182,6 +182,43 @@ def test_terminal_only_overrides_and_equivalent_black_are_not_authority():
     )
 
 
+@pytest.mark.parametrize("formatted", [False, True])
+def test_inline_code_size_does_not_preserve_the_surrounding_body_presentation(*, formatted: bool):
+    document = _document(12)
+    paragraph = _paragraph(document)
+    paragraph["paragraphStyle"]["alignment"] = "JUSTIFIED" if formatted else "START"
+    body_style = (
+        {
+            "weightedFontFamily": {"fontFamily": "Nunito"},
+            "fontSize": {"magnitude": 11, "unit": "PT"},
+            "foregroundColor": {
+                "color": {"rgbColor": {"red": 10 / 255, "green": 10 / 255, "blue": 10 / 255}}
+            },
+        }
+        if formatted
+        else {}
+    )
+    paragraph["elements"] = [
+        {"startIndex": 1, "endIndex": 6, "textRun": {"content": "Call ", "textStyle": body_style}},
+        {
+            "startIndex": 6,
+            "endIndex": 10,
+            "textRun": {
+                "content": "work",
+                "textStyle": {
+                    "weightedFontFamily": {"fontFamily": "Courier New"},
+                    "fontSize": {"magnitude": 10, "unit": "PT"},
+                },
+            },
+        },
+        {"startIndex": 10, "endIndex": 12, "textRun": {"content": ".\n", "textStyle": body_style}},
+    ]
+    document["tabs"][0]["documentTab"]["body"]["content"][0]["endIndex"] = 12
+    assert (
+        visual_authority_block_ids(document, parse_google_document(document, title="Source")) == ()
+    )
+
+
 def test_unknown_explicit_presentation_is_preserved():
     document = _document()
     _paragraph(document)["elements"][0]["textRun"]["textStyle"]["fontSize"]["unit"] = "UNKNOWN"
@@ -191,10 +228,11 @@ def test_unknown_explicit_presentation_is_preserved():
 
 
 def test_existing_v25_semantic_digest_is_unchanged():
-    assert (
-        _proofs(_source())[0].sha256
-        == "4e8cf547c3575b9e71095a7761645e11e760fa9ad57b729e2528305219a69b84"
-    )
+    source = _source()
+    legacy_ir = parse_google_document(source, title="Source")
+    _paragraph(source)["elements"][0]["textRun"]["textStyle"].pop("underline")
+    proofs = capture_native_font_proof(source, legacy_ir, target_font_family="Nunito")
+    assert proofs[0].sha256 == "4e8cf547c3575b9e71095a7761645e11e760fa9ad57b729e2528305219a69b84"
 
 
 def test_visual_authority_without_font_ranges_has_exact_preservation_proof():

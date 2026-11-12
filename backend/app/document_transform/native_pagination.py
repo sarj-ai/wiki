@@ -5,10 +5,11 @@ import math
 from typing import Any, Literal
 
 from loguru import logger
-from pydantic import BaseModel, ConfigDict, Field, StrictBool
+from pydantic import BaseModel, ConfigDict, Field, JsonValue, StrictBool
 
 from app.document_transform.errors import InPlaceNeedsReviewError, OutputConflictError
 from app.document_transform.ir import BlockKind, DocumentIR, TextBlock, utf16_length
+from app.document_transform.readability_json import array, obj
 
 
 MAX_PAGINATION_RULES = 60
@@ -22,6 +23,13 @@ _MAX_SPACER_SPACE_PT = 1_000
 _KNOWN_NAMED_STYLES = frozenset(
     {"NORMAL_TEXT", "TITLE", "SUBTITLE", *(f"HEADING_{level}" for level in range(1, 7))}
 )
+
+
+class _ParagraphGrouping(BaseModel):
+    model_config = ConfigDict(strict=True, extra="ignore")
+
+    keep_with_next: JsonValue = Field(default=None, alias="keepWithNext")
+    keep_lines_together: JsonValue = Field(default=None, alias="keepLinesTogether")
 
 
 class NativePaginationRule(BaseModel):
@@ -61,30 +69,10 @@ def _plan_native_pagination(
     document: DocumentIR,
     diagnostics: dict[str, int | bool],
 ) -> tuple[NativePaginationRule, ...]:
-    # Never derive adjacency from flattened IR: it omits empty paragraphs and
-    # section boundaries. Initial scope is a single flat native body only.
-    if native is None or document.source_format != "google_doc" or len(document.tab_ids) != 1:
+    body = _pagination_body(native, document)
+    if body is None or native is None:
         return ()
-    tabs = native.get("tabs")
-    if not isinstance(tabs, list) or len(tabs) != 1 or not isinstance(tabs[0], dict):
-        return ()
-    tab = tabs[0]
-    properties = tab.get("tabProperties")
-    if (
-        tab.get("childTabs", []) != []
-        or not isinstance(properties, dict)
-        or properties.get("tabId") != document.tab_ids[0]
-    ):
-        return ()
-    body = tab.get("documentTab")
-    if not isinstance(body, dict) or not _page_boundaries_known(native, body):
-        return ()
-    native_body = body.get("body")
-    if not isinstance(native_body, dict):
-        return ()
-    content = native_body.get("content")
-    if not isinstance(content, list) or len(content) > _MAX_NATIVE_ELEMENTS:
-        return ()
+    content = array(obj(body["body"])["content"])
     located = [
         block
         for block in document.blocks
@@ -98,49 +86,9 @@ def _plan_native_pagination(
     if len(by_start) != len(located):
         return ()
     mapped = [_body_paragraph(element, by_start) for element in content]
-    rules: dict[str, NativePaginationRule] = {}
-    for first, second, third in zip(mapped, mapped[1:], mapped[2:], strict=False):
-        if first is None or second is None or third is None:
-            continue
-        if not _contiguous(first, second) or not _contiguous(second, third):
-            continue
-        group: tuple[tuple[TextBlock, bool], ...]
-        if all(
-            (
-                first.kind is BlockKind.HEADING,
-                len(first.text) <= _MAX_LEAD_CHARS,
-                second.is_authored_lead_in,
-                len(second.text) <= _MAX_LEAD_CHARS,
-                third.kind is BlockKind.PARAGRAPH,
-                not third.is_authored_lead_in,
-                len(third.text) <= _MAX_BODY_CHARS,
-            )
-        ):
-            group = ((first, True), (second, True))
-        elif all(
-            (
-                first.kind is BlockKind.HEADING or first.is_authored_lead_in,
-                len(first.text) <= _MAX_LEAD_CHARS,
-                second.kind is BlockKind.LIST_ITEM,
-                third.kind is BlockKind.LIST_ITEM,
-                len(second.text) <= _MAX_ITEM_CHARS,
-                len(third.text) <= _MAX_ITEM_CHARS,
-                _same_list(second, third),
-            )
-        ):
-            # Only the opening pair is linked. Item two explicitly ends it.
-            group = ((first, True), (second, True), (third, False))
-        else:
-            continue
-        for block, keep in group:
-            rule = NativePaginationRule(
-                block_id=block.id, text_sha256=block.sha256, keep_with_next=keep
-            )
-            if block.id in rules and rules[block.id] != rule:
-                return ()
-            rules[block.id] = rule
-        if len(rules) > MAX_PAGINATION_RULES:
-            return ()
+    rules = _group_rules(mapped)
+    if rules is None:
+        return ()
     diagnostics["spacer_scope_checked"] = True
     dependencies = _spacer_dependencies(content, mapped, document.tab_ids[0])
     diagnostics["spacer_dependency_identity_known"] = dependencies is not None
@@ -154,6 +102,88 @@ def _plan_native_pagination(
     ):
         return ()
     return tuple(rules[block.id] for block in document.blocks if block.id in rules)
+
+
+def _pagination_body(
+    native: dict[str, JsonValue] | None, document: DocumentIR
+) -> dict[str, JsonValue] | None:
+    # Never derive adjacency from flattened IR: it omits empty paragraphs and
+    # section boundaries. Initial scope is a single flat native body only.
+    if native is None or document.source_format != "google_doc" or len(document.tab_ids) != 1:
+        return None
+    tabs = native.get("tabs")
+    if not isinstance(tabs, list) or len(tabs) != 1:
+        return None
+    tab = tabs[0]
+    if not isinstance(tab, dict):
+        return None
+    properties = tab.get("tabProperties")
+    if (
+        tab.get("childTabs", []) != []
+        or not isinstance(properties, dict)
+        or properties.get("tabId") != document.tab_ids[0]
+    ):
+        return None
+    body = tab.get("documentTab")
+    if not isinstance(body, dict) or not _page_boundaries_known(native, body):
+        return None
+    native_body = body.get("body")
+    if not isinstance(native_body, dict):
+        return None
+    content = native_body.get("content")
+    if not isinstance(content, list) or len(content) > _MAX_NATIVE_ELEMENTS:
+        return None
+    return body
+
+
+def _group_rules(mapped: list[TextBlock | None]) -> dict[str, NativePaginationRule] | None:
+    rules: dict[str, NativePaginationRule] = {}
+    for first, second, third in zip(mapped, mapped[1:], mapped[2:], strict=False):
+        for block, keep in _pagination_group(first, second, third):
+            rule = NativePaginationRule(
+                block_id=block.id, text_sha256=block.sha256, keep_with_next=keep
+            )
+            if block.id in rules and rules[block.id] != rule:
+                return None
+            rules[block.id] = rule
+        if len(rules) > MAX_PAGINATION_RULES:
+            return None
+    return rules
+
+
+def _pagination_group(
+    first: TextBlock | None, second: TextBlock | None, third: TextBlock | None
+) -> tuple[tuple[TextBlock, bool], ...]:
+    if first is None or second is None or third is None:
+        return ()
+    if not _contiguous(first, second) or not _contiguous(second, third):
+        return ()
+    if all(
+        (
+            first.kind is BlockKind.HEADING,
+            len(first.text) <= _MAX_LEAD_CHARS,
+            _is_group_lead(second),
+            len(second.text) <= _MAX_LEAD_CHARS,
+            third.kind is BlockKind.PARAGRAPH,
+            not _is_group_lead(third),
+            len(third.text) <= _MAX_BODY_CHARS,
+        )
+    ):
+        return ((first, True), (second, True))
+    if all(
+        (
+            first.kind is BlockKind.HEADING or _is_group_lead(first),
+            len(first.text) <= _MAX_LEAD_CHARS,
+            second.kind is BlockKind.LIST_ITEM,
+            third.kind is BlockKind.LIST_ITEM,
+            len(second.text) <= _MAX_ITEM_CHARS,
+            len(third.text) <= _MAX_ITEM_CHARS,
+            _same_list(second, third),
+        )
+    ):
+        # Only the opening pair is linked. Item two explicitly ends it.
+        return ((first, True), (second, True), (third, False))
+    return ()
 
 
 def _add_spacer_rules(
@@ -584,6 +614,19 @@ def _body_paragraph(element: object, by_start: dict[int, TextBlock]) -> TextBloc
         return None
     if any(character in block.text for character in "\n\r\v\f\u2028\u2029"):
         return None
+    raw_text = _plain_paragraph_text(elements)
+    if raw_text is None:
+        return None
+    if (
+        hashlib.sha256(raw_text.encode()).hexdigest() != block.source_style_text_sha256
+        or utf16_length(raw_text) != end - start - 1
+        or any(character in raw_text for character in "\n\r\v\f\u2028\u2029")
+    ):
+        return None
+    return _with_existing_keep(block, style)
+
+
+def _plain_paragraph_text(elements: list[Any]) -> str | None:
     runs: list[str] = []
     for item in elements:
         if not isinstance(item, dict) or set(item) - {"startIndex", "endIndex", "textRun"}:
@@ -595,14 +638,20 @@ def _body_paragraph(element: object, by_start: dict[int, TextBlock]) -> TextBloc
         if not isinstance(text, str):
             return None
         runs.append(text)
-    raw_text = "".join(runs).removesuffix("\n")
-    if (
-        hashlib.sha256(raw_text.encode()).hexdigest() != block.source_style_text_sha256
-        or utf16_length(raw_text) != end - start - 1
-        or any(character in raw_text for character in "\n\r\v\f\u2028\u2029")
-    ):
-        return None
+    return "".join(runs).removesuffix("\n")
+
+
+def _with_existing_keep(block: TextBlock, style: dict[str, JsonValue]) -> TextBlock:
+    grouping = _ParagraphGrouping.model_validate(style)
+    if grouping.keep_with_next is True and grouping.keep_lines_together is True:
+        return replace(block, pagination_keep_with_next=True)
     return block
+
+
+def _is_group_lead(block: TextBlock) -> bool:
+    return block.is_authored_lead_in or (
+        block.kind is BlockKind.PARAGRAPH and block.pagination_keep_with_next is True
+    )
 
 
 def _contiguous(first: TextBlock, second: TextBlock) -> bool:

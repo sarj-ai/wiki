@@ -9,6 +9,7 @@ from pydantic import JsonValue
 from app.document_transform.brand_manifest import (
     CURRENT_BRAND_MANIFEST,
     HEADER_TITLE_SEPARATOR,
+    fitted_title_size,
     trusted_document_logo_description,
 )
 from app.document_transform.code_syntax import CodeToken, format_code
@@ -1539,7 +1540,7 @@ def _runs_match_brand(
         size = _effective_dimension_points(style, inherited, "fontSize")
         if abs(size - role.size) > _TOLERANCE:
             return False
-        if role.bold and _effective_bool(style, inherited, "bold") is not True:
+        if _effective_bool(style, inherited, "bold") is not role.bold:
             return False
         if role.italic and _effective_bool(style, inherited, "italic") is not True:
             return False
@@ -1614,7 +1615,7 @@ def _role_size(block: MarkdownImportBlock) -> float:
     if block.kind == "table_cell":
         return tokens.table_size_pt or tokens.body_size_pt
     if block.kind == "title" or (block.kind == "heading" and block.level == 1):
-        return tokens.h1_size_pt
+        return fitted_title_size(block.text, tokens.h1_size_pt)
     if block.kind == "heading" and block.level == _H2_LEVEL:
         return tokens.h2_size_pt
     if block.kind == "heading":

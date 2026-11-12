@@ -16,7 +16,7 @@ from app.document_transform.code_syntax import is_code_font_family
 from app.document_transform.errors import SourceTooLargeError, UnsupportedSourceError
 from app.document_transform.limits import MAX_MARKDOWN_BYTES, MIN_MODEL_PROSE_WORDS
 from app.document_transform.native_code_source import protect_native_code
-from app.document_transform.native_prose import linked_prose_tail
+from app.document_transform.native_prose import brandable_prose, linked_prose_tail
 from app.identifiers import DocsSegmentId, DocsTabId
 
 
@@ -161,7 +161,10 @@ class DocumentIR:
         return replace(
             self,
             blocks=tuple(
-                replace(block, text=replacements.get(block.id, block.text)) for block in self.blocks
+                replace(block, text=replacements[block.id], kind=BlockKind.BLANK, editable=False)
+                if block.id in replacements and not replacements[block.id]
+                else replace(block, text=replacements.get(block.id, block.text))
+                for block in self.blocks
             ),
         )
 
@@ -797,7 +800,11 @@ def _paragraph_is_editable(
         paragraph.get("suggestedParagraphStyleChanges") or paragraph.get("suggestedBulletChanges")
     )
     return (
-        (len(runs) == 1 or _terminal_text_run_shape(runs, paragraph, start=start, end=end))
+        (
+            len(runs) == 1
+            or _terminal_text_run_shape(runs, paragraph, start=start, end=end)
+            or brandable_prose(paragraph, start=start, end=end)
+        )
         and not any(run[1] for run in runs)
         and not has_suggestion
     )

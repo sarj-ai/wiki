@@ -12,12 +12,36 @@ from app.document_transform.quotations import SINGLE_QUOTED_SPAN_PATTERN, quoted
 
 UNSLOP_UPSTREAM_COMMIT = "d81f5196167ded24f46fced04958c0c12d681798"
 UNSLOP_UPSTREAM_VERSION = "2.3.0"
-UNSLOP_POLICY_VERSION = "sarj-concise-v34"
+UNSLOP_POLICY_VERSION = "sarj-concise-v35"
 MAX_EDITORIAL_PASSES = 100
 MIN_CONCISION_PROSE_WORDS = 40
 CONCISION_WORD_NUMERATOR = 2
 CONCISION_WORD_DENOMINATOR = 5
 UNSLOP_PRESENTATION_PADDING_INSTRUCTION = (
+    "Delete nonessential copy instead of polishing it into punchy slogans. Remove generic "
+    "reader advice, motivational lines, obvious cautions, scene setting, section previews "
+    "and recaps that add no document-specific information. Remove prose that merely "
+    "announces or describes the organization of the surrounding document, table or examples; "
+    "retain substantive interpretation and constraints. 'Keep the context. An operation, "
+    "data size, and network rate belong with each estimate. Distinguish latency from "
+    "throughput.' is dispensable editorial advice, not a mandatory closing paragraph. "
+    "Do not replace such padding with another maxim, imperative, takeaway or summary. "
+    'An entire ordinary paragraph containing only this material may have replacement ""; '
+    "do not keep a token sentence just to keep the paragraph alive. For whole-paragraph "
+    "deletion, generic each/every/all/per and stylistic qualifiers need not survive. "
+    "This exception never permits deleting a distinct fact, definition, measured condition, "
+    "source-specific instruction, obligation, warning, name, number, quotation or citation. "
+    "When generic advice shares a paragraph with substantive content, retain the content "
+    "and its original constraints. Evaluate short paragraphs as rigorously as long ones. "
+    "Remove obvious commentary about sample artifacts: saying examples illustrate code, "
+    "contain no output transcript or production records, or use example parameters adds "
+    "no operational information. Delete a paragraph containing only these disclaimers "
+    "rather than compressing it into a new introduction. This exception excludes actual "
+    "experimental results, function behavior, parameter values, input restrictions, "
+    "security requirements and operational warnings. Keep those facts and constraints. "
+    "Use descriptive headings instead of generic commands: 'Keep context with each "
+    "estimate' becomes 'Estimate context'. Its each is editorial framing, not a new "
+    "substantive requirement. Preserve scope in factual or procedural headings. "
     "A sentence-initial 'It should be noted that' is removable editorial framing. "
     "Its should directs attention to the following fact; preserve that complete fact "
     "and all of its substantive obligations and uncertainty. This exception excludes "
@@ -252,7 +276,20 @@ _EDITORIAL_FRAMING_PATTERN = re.compile(
     r"moment of (?:anticipation|appreciation|verbal ceremony))\b|"
     r"\bclosing lines offer another opportunity\b|"
     r"\btransition than I would otherwise choose\b|"
-    r"\bmy personal taste might otherwise favou?r\b"
+    r"\bmy personal taste might otherwise favou?r\b|"
+    r"\A[Kk]eep (?:the )?context with (?:each|every) estimate[.!?]?\Z|"
+    r"\b[Tt]he examples illustrate measurement and inspection code"
+    r"(?:, containing no measured timings, output transcript, or claim that a current "
+    r"machine reproduces the reference table)?[.!?]|"
+    r"\b[Tt]hey contain no measured timings, output transcript, or claim that a current "
+    r"machine reproduces the reference table[.!?]|"
+    r"\b(?:[Nn]umeric constants in (?:the )?snippets|[Ss]nippet numeric constants) "
+    r"are example parameters, not additional reference estimates[.!?]|"
+    r"\b[Tt]he block declares no request records, credentials, or production data[.!?]|"
+    r"\b[Tt]h(?:e|is) (?:article|document|guide|report|note) "
+    r"(?:provides|offers) (?:explanatory prose|narrative context|a smooth reading experience)"
+    r"(?: with (?:particular|special|careful) attention to "
+    r"(?:presentation continuity|readability|narrative flow))?[.!?]"
 )
 
 _CANDIDATE_PATTERNS = (
@@ -742,6 +779,8 @@ def _has_model_rewrite_scope(block: TextBlock) -> bool:
     prose = block.text.removesuffix(block.protected_suffix or "")
     if block.kind is BlockKind.HEADING:
         return bool(prose.strip())
+    if block.kind is BlockKind.PARAGRAPH:
+        return bool(_mask_ignored_spans(prose).strip())
     if len(prose.split()) >= MIN_MODEL_PROSE_WORDS:
         return True
     masked = _mask_ignored_spans(prose)
