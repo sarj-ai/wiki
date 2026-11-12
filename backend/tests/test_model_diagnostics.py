@@ -9,16 +9,50 @@ from loguru import logger
 from pydantic import ValidationError
 import pytest
 
+from app.document_transform.errors import ModelUnavailableError
 from app.document_transform.model_diagnostics import (
     ModelBindingError,
     ModelCoverageError,
     ModelEmptyResponseError,
     log_model_failure,
     log_model_response_failure,
+    model_exception_chain,
     model_failure_details,
 )
 from app.document_transform.model_failures import exhausted_model_failure
 from app.document_transform.schemas import PatchEnvelope, TransformPhase
+
+
+def test_provider_deadline_retains_safe_exception_chain_and_canonical_status() -> None:
+    provider = errors.ServerError(
+        504, {"error": {"status": "DEADLINE_EXCEEDED", "message": "PRIVATE RESPONSE"}}
+    )
+    wrapped = ModelUnavailableError()
+    wrapped.__cause__ = provider
+    captured: list[str] = []
+    sink = logger.add(captured.append, serialize=True)
+    try:
+        log_model_failure(
+            operation="review", attempt=1, model="gemini-3.1-pro-preview", error=wrapped
+        )
+    finally:
+        logger.remove(sink)
+    record = json.loads(captured[-1])["record"]["extra"]
+    assert record["model_exception_chain"] == ["ModelUnavailableError", "ServerError"]
+    assert record["model_http_status"] == 504
+    assert record["model_error_reason"] == "DEADLINE_EXCEEDED"
+    assert "PRIVATE" not in "".join(captured)
+
+
+def test_exception_chain_is_bounded_cycle_safe_and_excludes_untrusted_class_names() -> None:
+    private = type("PRIVATE_CREDENTIAL", (ValueError,), {})("PRIVATE CONTENT")
+    private.__cause__ = private
+    assert model_exception_chain(private) == ("Exception",)
+    group = ExceptionGroup("PRIVATE GROUP", [ValueError("PRIVATE VALUE") for _ in range(100)])
+    chain = model_exception_chain(group)
+    assert len(chain) == 8
+    assert chain[0] == "ExceptionGroup"
+    assert "PRIVATE" not in json.dumps(chain)
 
 
 @pytest.mark.parametrize("reason", ["SERVICE_DISABLED", "PRIVATE RESPONSE"])

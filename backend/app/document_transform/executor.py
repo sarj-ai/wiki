@@ -73,6 +73,7 @@ from app.document_transform.naming import (
 )
 from app.document_transform.native_chip_flow import (
     CompletedNativeChipCheckpoint,
+    legacy_protected_conversion_count,
     plan_native_chips,
 )
 from app.document_transform.native_code import plan_native_code_styles
@@ -421,7 +422,7 @@ class DocumentTransformExecutor(DocumentTransformRunner):
             raise OutputConflictError
         completed = await provider.apply(chips)
         if chips.complete:
-            return result
+            return _legacy_chip_review_result(result, completed)
         result = _native_chip_result(result, completed)
         checkpoint = await self._record_postprocessed_result(
             operation_id=operation_id, checkpoint=checkpoint, result=result
@@ -1964,7 +1965,7 @@ class DocumentTransformExecutor(DocumentTransformRunner):
                     )
                 )
                 if branded
-                else (),
+                else inspection.custom_header_titles_present,
                 "custom_header_title_targets": inspection.custom_header_title_targets
                 if branded
                 else (),
@@ -2165,7 +2166,7 @@ class DocumentTransformExecutor(DocumentTransformRunner):
             paragraph_layout=paragraph_layout,
             native_font_proof=native_font_proof,
             custom_furniture=inspection.custom_furniture,
-            custom_header_titles=inspection.custom_header_titles_present if branded else (),
+            custom_header_titles=inspection.custom_header_titles_present,
             custom_header_title_targets=(),
             custom_header_titles_required=branded
             and bool(any(binding.header_ids for binding in inspection.custom_furniture)),
@@ -2548,7 +2549,7 @@ def _native_chip_result(
                 severity=FindingSeverity.INFORMATIONAL,
             )
         )
-    return result.model_copy(
+    result = result.model_copy(
         update={
             "findings": findings,
             "needs_review": result.needs_review or bool(skipped),
@@ -2556,6 +2557,32 @@ def _native_chip_result(
             "output_revision_id": chips.revision_id,
             "applied_patch_count": result.applied_patch_count + converted,
             "deterministic_patch_count": result.deterministic_patch_count + converted,
+        }
+    )
+    return _legacy_chip_review_result(result, chips)
+
+
+def _legacy_chip_review_result(
+    result: DocumentTransformResult, chips: CompletedNativeChipCheckpoint
+) -> DocumentTransformResult:
+    count = legacy_protected_conversion_count(chips)
+    code = "native_legacy_protected_conversion_needs_review"
+    if not count or any(finding.code == code for finding in result.findings):
+        return result
+    return result.model_copy(
+        update={
+            "needs_review": True,
+            "findings": [
+                *result.findings,
+                TransformFinding(
+                    code=code,
+                    detail=(
+                        f"Recovered {count} already-written native conversions inside protected "
+                        "quotations or code from an older chip plan. Review those spans; new "
+                        "plans preserve their literal text."
+                    ),
+                ),
+            ],
         }
     )
 

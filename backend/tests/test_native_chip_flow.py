@@ -71,7 +71,9 @@ def test_captured_date_only_overnight_and_emoji_chips_preserve_native_semantics_
 
 
 def test_captured_table_date_conversion_preserves_effective_newline_style() -> None:
-    checkpoint = plan_native_chips(_fixture("table_style_before"), operation_id=uuid.UUID(int=2))
+    checkpoint = plan_native_chips(
+        _fixture("table_style_before"), operation_id=uuid.UUID(int=2), planner_version=1
+    )
     assert checkpoint is not None
     assert len(checkpoint.spans) == 4
     after = _fixture("table_style_after")
@@ -79,12 +81,22 @@ def test_captured_table_date_conversion_preserves_effective_newline_style() -> N
     verify_native_chips(after, checkpoint)
 
 
+def test_dates_inside_protected_quotation_remain_literal_while_other_dates_are_eligible() -> None:
+    checkpoint = plan_native_chips(_fixture("table_style_before"), operation_id=uuid.UUID(int=2))
+    assert checkpoint is not None
+    assert len(checkpoint.spans) == 3
+    assert sum(item.reason == "protected_quotation" for item in checkpoint.skipped) == 1
+    assert all(span.original_text != "November 14, 2026" for span in checkpoint.spans)
+
+
 @pytest.mark.parametrize(
     "corruption",
     ["font", "bold", "link", "unknown-style", "annotation", "parent-style", "other-paragraph"],
 )
 def test_table_date_equivalence_still_rejects_native_preservation_changes(corruption: str) -> None:
-    checkpoint = plan_native_chips(_fixture("table_style_before"), operation_id=uuid.UUID(int=2))
+    checkpoint = plan_native_chips(
+        _fixture("table_style_before"), operation_id=uuid.UUID(int=2), planner_version=1
+    )
     assert checkpoint is not None
     after = _fixture("table_style_after")
     _, tab = next(bodies(after))
@@ -180,6 +192,31 @@ async def test_interrupted_write_is_recovered_from_native_marker_without_repeati
     assert writes == 1
     assert await provider.apply(completed) == completed
     assert writes == 1
+
+
+@pytest.mark.parametrize("already_written", [False, True])
+async def test_legacy_quoted_date_write_is_blocked_or_recovered_without_repeating_it(
+    *, already_written: bool
+) -> None:
+    checkpoint = plan_native_chips(
+        _fixture("table_style_before"), operation_id=uuid.UUID(int=2), planner_version=1
+    )
+    assert checkpoint is not None
+
+    async def read(_: FileId) -> dict[str, JsonValue]:
+        return _fixture("table_style_after" if already_written else "table_style_before")
+
+    async def forbidden_write(_: FileId, __: NativeChipCheckpoint) -> None:
+        pytest.fail("Legacy protected conversions cannot write again")
+
+    provider = NativeChipProvider(read, forbidden_write)
+    if already_written:
+        completed = await provider.apply(checkpoint)
+        verify_native_chips(_fixture("table_style_after"), completed)
+        assert await provider.apply(completed) == completed
+    else:
+        with pytest.raises(InPlaceNeedsReviewError):
+            await provider.apply(checkpoint)
 
 
 async def test_revision_conflict_does_not_write_or_rebase_the_conversion() -> None:

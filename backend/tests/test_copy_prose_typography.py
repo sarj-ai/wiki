@@ -144,7 +144,7 @@ def test_copy_normalizes_inherited_body_weight_and_preserves_link_italic_and_cod
 
 
 @pytest.mark.parametrize("leading_link", [False, True])
-@pytest.mark.parametrize("change", ["bold", "weight", "link"])
+@pytest.mark.parametrize("change", ["bold", "weight", "link", "italic", "color", "annotation"])
 def test_regular_body_readback_rejects_failed_formatting_and_changed_citations(
     *, leading_link: bool, change: str
 ):
@@ -162,6 +162,12 @@ def test_regular_body_readback_rejects_failed_formatting_and_changed_citations(
             style["bold"] = True
         case "weight":
             obj(style["weightedFontFamily"])["weight"] = 700
+        case "italic":
+            style["italic"] = True
+        case "color":
+            style["foregroundColor"] = {"color": {"rgbColor": {"red": 0.25}}}
+        case "annotation":
+            parts[0]["suggestedInsertionIds"] = ["unplanned-suggestion"]
         case _:
             linked = next(
                 obj(obj(p["textRun"])["textStyle"])

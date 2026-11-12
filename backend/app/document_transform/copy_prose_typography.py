@@ -42,10 +42,9 @@ def regular_prose_requests(block: TextBlock) -> list[NativeStyleRequest]:
 
 
 def project_regular_prose(paragraph: dict[str, JsonValue], block: TextBlock) -> None:
-    # Only unchanged protected prose enters the native font proof. Retain the
-    # invisible terminator and every non-font property exactly as authored.
-    if block.editable:
-        return
+    # Unchanged editable citation paragraphs also have strict native proofs.
+    # Project only the exact planned visible font ranges, retaining the
+    # terminator and every other native property as authored.
     parts: list[JsonValue] = []
     for value in array(paragraph["elements"]):
         part = obj(value)
