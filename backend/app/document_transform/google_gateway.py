@@ -3771,6 +3771,7 @@ def _strip_location_fields(value: object) -> object:
 def _typography_content_preserved(
     actual: DocumentIR, expected: DocumentIR, *, verify_brand: bool
 ) -> bool:
+    expected = replace(expected, blocks=tuple(block for block in expected.blocks if block.text))
     if len(actual.blocks) != len(expected.blocks):
         return False
     actual = _align_shortened_native_prose(actual, expected)
@@ -3827,6 +3828,7 @@ def _native_list_block_ids(document: DocumentIR) -> frozenset[str]:
 
 
 def _typography_verification_ir(actual: DocumentIR, expected: DocumentIR) -> DocumentIR:
+    expected = replace(expected, blocks=tuple(block for block in expected.blocks if block.text))
     if len(actual.blocks) != len(expected.blocks):
         return actual
     blocks = []
@@ -3840,6 +3842,7 @@ def _typography_verification_ir(actual: DocumentIR, expected: DocumentIR) -> Doc
             blocks.append(
                 replace(
                     observed,
+                    id=planned.id,
                     pagination_keep_with_next=planned.pagination_keep_with_next,
                     suppress_space_above=planned.suppress_space_above,
                     suppress_space_below=planned.suppress_space_below,
@@ -3855,6 +3858,7 @@ def _typography_verification_ir(actual: DocumentIR, expected: DocumentIR) -> Doc
         blocks.append(
             replace(
                 observed,
+                id=planned.id,
                 editable=False,
                 preserved_font_family=planned.preserved_font_family,
                 font_style_ranges=tuple(
@@ -4738,11 +4742,15 @@ def _text_run_has_brand(
         and _color_matches(color, expected_color)
         and (
             block.kind is BlockKind.HEADING
-            or all(style.get(key, False) is value for key, value in block.authored_emphasis)
+            or all(
+                style.get(key, False) is value
+                for key, value in block.authored_emphasis
+                if key != "bold"
+            )
         )
         and (
-            block.kind is not BlockKind.HEADING
-            or style.get("bold", False) is (block.native_named_style != "SUBTITLE")
+            style.get("bold", False)
+            is (block.kind is BlockKind.HEADING and block.native_named_style != "SUBTITLE")
         )
     )
 

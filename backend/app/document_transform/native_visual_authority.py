@@ -2,12 +2,14 @@ from dataclasses import replace
 import math
 from typing import Any, TypeIs
 
-from pydantic import BaseModel, ConfigDict, Field, JsonValue, RootModel, StrictInt
+from pydantic import BaseModel, ConfigDict, Field, JsonValue, RootModel, StrictInt, ValidationError
 
 from app.document_transform.brand_manifest import CURRENT_BRAND_MANIFEST
+from app.document_transform.code_syntax import is_code_font_family
 from app.document_transform.errors import InPlaceNeedsReviewError
 from app.document_transform.ir import MAX_DOC_TABS, BlockKind, DocumentIR
 from app.document_transform.native_font_context import native_normal_text_style
+from app.document_transform.native_prose import _FontFamily
 
 
 _NORMAL_FONT_WEIGHT = 400
@@ -152,6 +154,8 @@ def _has_authored_presentation(
         if run is None or not run.content.removesuffix("\n"):
             continue
         style = run.text_style
+        if _is_inline_code_style(style):
+            continue
         if protected_suffix is not None and style.link is not None:
             continue
         if not style.model_fields_set.intersection({"font_size", "foreground_color"}):
@@ -181,9 +185,20 @@ def _has_current_body_presentation(
         for part in paragraph.elements
         if part.text_run is not None
         and part.text_run.content.removesuffix("\n")
+        and not _is_inline_code_style(part.text_run.text_style)
         and not (protected_suffix is not None and part.text_run.text_style.link is not None)
     ]
     return bool(styles) and all(_is_current_body_style(style, parent) for style in styles)
+
+
+def _is_inline_code_style(style: _VisualTextStyle) -> bool:
+    if style.weighted_font_family is None:
+        return False
+    try:
+        family = _FontFamily.model_validate(style.weighted_font_family)
+    except ValidationError:
+        return False
+    return is_code_font_family(family.font_family)
 
 
 def _is_current_body_style(style: _VisualTextStyle, parent: dict[str, JsonValue]) -> bool:

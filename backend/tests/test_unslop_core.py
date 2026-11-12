@@ -17,13 +17,13 @@ from app.document_transform.unslop import (
     [
         ("At the end of the day, ship.", True),
         ("Why should you care? Birds sing.", True),
-        ("The bird sings at dawn.", False),
-        ("Each of 19 males may sing.", False),
+        ("The bird sings at dawn.", True),
+        ("Each of 19 males may sing.", True),
         ('"At the end of the day, ship."', False),
         ("`At the end of the day, ship.`", False),
     ],
 )
-def test_short_prose_needs_an_unprotected_scanner_match_for_model_review(
+def test_short_prose_is_reviewed_while_whole_quotations_and_code_are_protected(
     source: str, *, eligible: bool
 ) -> None:
     document = parse_markdown(source, title="Short prose")

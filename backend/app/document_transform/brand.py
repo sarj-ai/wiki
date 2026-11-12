@@ -11,6 +11,7 @@ from app.document_transform.brand_manifest import (
     CURRENT_BRAND_MANIFEST,
     HEADER_TITLE_SEPARATOR,
     DocumentHeaderBrandTokens,
+    fitted_title_size,
     normalize_header_title,
 )
 from app.document_transform.custom_furniture import CustomHeaderTitleTarget
@@ -208,12 +209,9 @@ def build_copy_text_mutations(
         if source_range.segment_id is not None:
             location["segmentId"] = source_range.segment_id
             range_value["segmentId"] = source_range.segment_id
-        requests.extend(
-            [
-                {"deleteContentRange": {"range": range_value}},
-                {"insertText": {"location": location, "text": replacement}},
-            ]
-        )
+        requests.append({"deleteContentRange": {"range": range_value}})
+        if replacement:
+            requests.append({"insertText": {"location": location, "text": replacement}})
         if block.protected_suffix is not None:
             requests.append(
                 {
@@ -545,15 +543,12 @@ def _block_text_style_requests(
         "fontSize": {"magnitude": _font_size(block, profile), "unit": "PT"},
         "foregroundColor": {"color": {"rgbColor": {**_rgb_color(paragraph_color(block, profile))}}},
     }
-    fields = "weightedFontFamily,fontSize,foregroundColor"
-    if block.kind == BlockKind.HEADING:
-        text_style["bold"] = block.native_named_style != "SUBTITLE"
-        fields += ",bold"
-    elif not preserve_native_style:
-        # Explicitly retain authored body emphasis across named-style
-        # selection. Never synthesize emphasis for ordinary prose.
-        text_style.update(block.authored_emphasis)
-        fields += "".join(f",{key}" for key, _value in block.authored_emphasis)
+    fields = "weightedFontFamily,fontSize,foregroundColor,bold"
+    text_style["bold"] = block.kind is BlockKind.HEADING and block.native_named_style != "SUBTITLE"
+    if block.kind != BlockKind.HEADING and not preserve_native_style:
+        emphasis = {key: value for key, value in block.authored_emphasis if key != "bold"}
+        text_style.update(emphasis)
+        fields += "".join(f",{key}" for key in emphasis)
     ranges = [range_value]
     if preserve_native_style and block.id in split_native_ids:
         ranges = _native_text_style_ranges(block, range_value)
@@ -619,7 +614,7 @@ def _rgb_color(value: str) -> dict[str, float]:
 
 def _font_size(block: TextBlock, profile: SarjBrandProfile) -> int:
     if block.native_named_style == "TITLE":
-        return profile.h1_size_pt + profile.paragraph_space_below_pt
+        return fitted_title_size(block.text, profile.h1_size_pt + profile.paragraph_space_below_pt)
     if block.native_named_style == "SUBTITLE":
         return profile.h3_size_pt
     if block.kind != BlockKind.HEADING:
@@ -629,11 +624,12 @@ def _font_size(block: TextBlock, profile: SarjBrandProfile) -> int:
         2: profile.h2_size_pt,
         3: profile.h3_size_pt,
     }
-    return (
+    size = (
         heading_sizes.get(block.level, profile.body_size_pt)
         if block.level
         else profile.body_size_pt
     )
+    return fitted_title_size(block.text, size) if block.level == 1 else size
 
 
 def _named_style(block: TextBlock) -> str:
@@ -664,8 +660,6 @@ def _role_paragraph_spacing(block: TextBlock, profile: SarjBrandProfile) -> Para
         return ParagraphSpacing(above + below * (2 if block.level in {1, 2} else 1), below)
     if block.kind in {BlockKind.LIST_ITEM, BlockKind.CHECKLIST}:
         return ParagraphSpacing(0, CURRENT_BRAND_MANIFEST.document.list_space_below_pt or above)
-    if block.is_authored_lead_in:
-        return ParagraphSpacing(above, above)
     return ParagraphSpacing(above, below)
 
 
@@ -674,13 +668,24 @@ def paragraph_named_style(block: TextBlock) -> str:
 
 
 def paragraph_alignment(block: TextBlock) -> str:
-    if (
-        block.kind is BlockKind.PARAGRAPH
-        and block.native_named_style not in {"TITLE", "SUBTITLE"}
-        and not block.is_authored_lead_in
-    ):
+    if block.kind is BlockKind.PARAGRAPH and block.native_named_style not in {"TITLE", "SUBTITLE"}:
         return CURRENT_BRAND_MANIFEST.document.body_alignment or "START"
     return "START"
+
+
+def font_only_paragraph_alignment(block: TextBlock) -> str | None:
+    if block.kind is not BlockKind.PARAGRAPH or block.editable or not block.font_style_ranges:
+        return None
+    if any(
+        (
+            block.preserved_font_family,
+            block.preserved_visual_authority,
+            block.preserved_paragraph_style_sha256,
+            block.native_content,
+        )
+    ):
+        return None
+    return paragraph_alignment(block)
 
 
 def paragraph_line_spacing(block: TextBlock, profile: SarjBrandProfile) -> int:
@@ -711,11 +716,7 @@ def paragraph_font_size(block: TextBlock, profile: SarjBrandProfile) -> int:
 def paragraph_color(block: TextBlock, profile: SarjBrandProfile) -> str:
     if block.native_named_style == "SUBTITLE":
         return profile.muted_color
-    return (
-        profile.primary_color
-        if block.kind == BlockKind.HEADING or block.is_authored_lead_in
-        else profile.ink_color
-    )
+    return profile.primary_color if block.kind == BlockKind.HEADING else profile.ink_color
 
 
 def _brand_shell_requests(

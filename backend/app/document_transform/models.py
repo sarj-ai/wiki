@@ -1209,6 +1209,10 @@ def _prompt(
         "to the original, never to a repeatedly shrinking denominator. Shorten the current "
         "draft further and replace remaining passive voice with active verbs. Return the "
         "current draft unchanged only when no shorter or more direct faithful wording remains."
+        ' Delete an ordinary paragraph with replacement "" when it contains only dispensable '
+        "editorial advice or framing under the trusted policy; do not manufacture a punchy "
+        "substitute. Whole-paragraph deletion may omit generic each/every/all/per and "
+        "stylistic qualifiers, but never concrete obligations or protected content."
         if phase is TransformPhase.UNSLOP
         else "Formatting preserves every character of the author's text, including whitespace "
         'and punctuation. Do not propose text replacements. Return {"patches":[]}; '

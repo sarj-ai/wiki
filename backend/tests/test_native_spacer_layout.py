@@ -79,7 +79,7 @@ def test_spacer_proof_suppresses_only_generated_padding_and_preserves_heading_gr
     assert [paragraph_spacing(block, SarjBrandProfile()).below for block in expected.blocks] == [
         0,
         6,
-        0,
+        6,
         6,
     ]
     assert expected.semantic_sha256 == original.semantic_sha256
@@ -350,7 +350,7 @@ async def test_spacer_checkpoint_recomputes_proof_before_replay(tamper: str) -> 
         operation_id=task_id, request=request
     )
     checkpoint = store.checkpoints[-1]
-    assert checkpoint.request_builder_version == "google-docs-requests-v29"
+    assert checkpoint.request_builder_version == "google-docs-requests-v30"
     assert checkpoint.pagination[0].below_spacer_sha256 is not None
     if tamper in {"previous_version", "old_version", "older_version"}:
         checkpoint = checkpoint.model_copy(

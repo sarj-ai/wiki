@@ -3,13 +3,15 @@ import hashlib
 import json
 from typing import Any, Literal, NamedTuple
 
-from pydantic import BaseModel, ConfigDict, Field, StrictBool
+from pydantic import BaseModel, ConfigDict, Field, JsonValue, StrictBool
 
-from app.document_transform.ir import MAX_DOC_UTF16_UNITS, utf16_length
+from app.document_transform.ir import MAX_DOC_UTF16_UNITS, _font_run_is_safe, utf16_length
 from app.document_transform.native_font_context import (
     resolve_native_font_family,
     resolve_native_font_values,
 )
+from app.document_transform.native_visual_authority import _VisualParagraph, _VisualRun
+from app.document_transform.readability_json import array, integer, obj
 
 
 _MAX_PARAGRAPH_BYTES = 131072
@@ -119,22 +121,48 @@ def semantic_font_digest(
         for part in paragraph["elements"]
         # Docs may canonicalize the family of its invisible, provider-owned
         # paragraph terminator independently of every visible text run.
-        if part["textRun"].get("content") != "\n"
+        if part["textRun"].get("content") != "\n" and _font_run_is_safe(part, part["textRun"])
     )
     if not target and (
         require_target_family or _family_digest(element) != evidence.source_family_sha256
     ):
         raise ValueError
     payload = deepcopy(element)
-    canonical: list[dict[str, Any]] = []
+    payload["paragraph"]["elements"] = _canonical_font_runs(document, tab_id, payload, evidence)
+    return _digest({"paragraph": payload, "policy": evidence.model_dump(mode="json")})
+
+
+def _canonical_font_runs(
+    document: dict[str, JsonValue],
+    tab_id: str,
+    element: dict[str, JsonValue],
+    evidence: NativeFontSemantics,
+) -> list[dict[str, JsonValue]]:
+    paragraph = obj(element["paragraph"])
+    paragraph_style = _VisualParagraph.model_validate(paragraph).paragraph_style.model_dump(
+        by_alias=True, exclude_unset=True
+    )
+    canonical: list[dict[str, JsonValue]] = []
     interval_index = 0
-    for part in payload["paragraph"].pop("elements"):
-        start, end = part.pop("startIndex") - evidence.start, part.pop("endIndex") - evidence.start
-        run = part["textRun"]
-        content = run.pop("content")
+    for value in array(paragraph.pop("elements")):
+        part = obj(value)
+        record = _VisualRun.model_validate(part).text_run
+        if record is None:
+            raise ValueError
+        retained_family = _retained_font_family(document, tab_id, paragraph_style, part)
+        start = integer(part.pop("startIndex")) - evidence.start
+        end = integer(part.pop("endIndex")) - evidence.start
+        content = record.content
+        obj(part["textRun"]).pop("content")
         values = resolve_native_font_values(
-            document, tab_id, paragraph.get("paragraphStyle", {}), run.get("textStyle", {})
+            document,
+            tab_id,
+            paragraph_style,
+            record.text_style.model_dump(by_alias=True, exclude_unset=True),
         )
+        residual = _residual(part)
+        if retained_family is not None:
+            residual["retainedFontFamily"] = retained_family
         while start < end:
             interval = evidence.intervals[interval_index]
             stop = min(end, interval.end)
@@ -144,15 +172,33 @@ def semantic_font_digest(
             _append(
                 canonical,
                 prefix,
-                {"residual": _residual(part), "bold": values.bold, "weight": values.weight},
+                {"residual": residual, "bold": values.bold, "weight": values.weight},
             )
             start = stop
             if stop == interval.end:
                 interval_index += 1
         if content:
             raise ValueError
-    payload["paragraph"]["elements"] = canonical
-    return _digest({"paragraph": payload, "policy": evidence.model_dump(mode="json")})
+    return canonical
+
+
+def _retained_font_family(
+    document: dict[str, JsonValue],
+    tab_id: str,
+    paragraph_style: dict[str, JsonValue],
+    part: dict[str, JsonValue],
+) -> str | None:
+    if _font_run_is_safe(part, obj(part["textRun"])):
+        return None
+    run = _VisualRun.model_validate(part).text_run
+    if run is None:
+        raise ValueError
+    return resolve_native_font_family(
+        document,
+        tab_id,
+        paragraph_style,
+        run.text_style.model_dump(by_alias=True, exclude_unset=True),
+    )
 
 
 def _residual(part: dict[str, Any]) -> dict[str, Any]:

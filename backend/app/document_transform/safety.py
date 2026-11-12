@@ -268,7 +268,13 @@ def _rejection_code(
     if phase is TransformPhase.FORMAT and patch.replacement != block.text:
         return "format_text_changed"
     if not patch.replacement.strip():
-        return "empty_replacement"
+        return _empty_replacement_code(
+            block,
+            patch,
+            phase=phase,
+            aggressive=aggressive_unslop,
+            framing_source=framing_source,
+        )
     if block.protected_suffix is not None and (
         not patch.replacement.endswith(block.protected_suffix)
         or not patch.replacement.removesuffix(block.protected_suffix).strip()
@@ -292,6 +298,44 @@ def _rejection_code(
     similarity = SequenceMatcher(None, block.text, patch.replacement, autojunk=False).ratio()
     if 1 - similarity > _MAX_CHANGE_RATIO[phase]:
         return "diff_budget_exceeded"
+    return None
+
+
+def _empty_replacement_code(
+    block: TextBlock,
+    patch: TextPatch,
+    *,
+    phase: TransformPhase,
+    aggressive: bool,
+    framing_source: str | None,
+) -> str | None:
+    # A deletion still needs independent, source-bound semantic review. Keep
+    # literal and obligation guards before that review, including on short copy.
+    if (
+        not aggressive
+        or phase is not TransformPhase.UNSLOP
+        or patch.replacement
+        or block.kind is not BlockKind.PARAGRAPH
+    ):
+        return "empty_replacement"
+    if (
+        block.protected_suffix is not None
+        or block.native_content
+        or re.search(r"[\r\n\v\f\u2028\u2029]", block.text)
+    ):
+        return "empty_replacement"
+    constraints = rewrite_constraints(block.text, framing_source=framing_source)
+    if any(
+        (
+            constraints.protected_tokens,
+            constraints.quotations,
+            constraints.protected_names,
+            constraints.revision_arguments,
+            constraints.temporal_scopes,
+            set(constraints.force_language) - {"each", "every", "all", "per"},
+        )
+    ):
+        return "empty_replacement"
     return None
 
 
