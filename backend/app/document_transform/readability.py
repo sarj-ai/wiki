@@ -22,6 +22,7 @@ from app.document_transform.readability_tables import (
 )
 from app.document_transform.readability_types import (
     CURRENT_READABILITY_VERSION,
+    READABILITY_PARAGRAPH_WORD_LIMIT,
     PlannedReadabilityCheckpoint,
     ReadabilityCheckpoint,
     ReadabilityParagraph,
@@ -45,7 +46,6 @@ _LIST_ITEM_BURDEN = 8
 # A short introduction or qualification belongs to its adjacent list group.
 # Charging a full paragraph would reject useful lists for retaining that context.
 _LIST_CONTEXT_BURDEN = 4
-_PARAGRAPH_WORD_LIMIT = 45
 _KNOWN_PROJECTION_FAILURES = frozenset(
     {
         "Paragraph identity changed",
@@ -201,7 +201,7 @@ def _layout_burden(
             continue
         proposal = by_id.get(block.id)
         if proposal is None:
-            score += max(0, len(block.text.split()) - _PARAGRAPH_WORD_LIMIT) ** 2 + 60
+            score += max(0, len(block.text.split()) - READABILITY_PARAGRAPH_WORD_LIMIT) ** 2 + 60
             continue
         score += sum(
             _part_layout_burden(proposal.parts, index) for index in range(len(proposal.parts))
@@ -215,14 +215,14 @@ def _part_layout_burden(parts: tuple[ReadabilityPart, ...], index: int) -> int:
     fragments = 0
     if part.role == "paragraph":
         overhead = 60
-        if words <= _PARAGRAPH_WORD_LIMIT and _adjacent_to_list(parts, index):
+        if words <= READABILITY_PARAGRAPH_WORD_LIMIT and _adjacent_to_list(parts, index):
             overhead = _LIST_CONTEXT_BURDEN
     elif part.role in {"bullet", "numbered"}:
         overhead = _LIST_ITEM_BURDEN
         fragments = max(0, 2 - words) * 50
     else:
         overhead = 25
-    return max(0, words - _PARAGRAPH_WORD_LIMIT) ** 2 + overhead + fragments
+    return max(0, words - READABILITY_PARAGRAPH_WORD_LIMIT) ** 2 + overhead + fragments
 
 
 def _adjacent_to_list(parts: tuple[ReadabilityPart, ...], index: int) -> bool:

@@ -5,6 +5,7 @@ import hashlib
 import json
 import re
 
+from app.document_transform.inline_code import INLINE_CODE_POLICY_VERSION, mask_inline_code
 from app.document_transform.ir import BlockKind, DocumentIR, TextBlock
 from app.document_transform.limits import MIN_MODEL_PROSE_WORDS
 from app.document_transform.quotations import SINGLE_QUOTED_SPAN_PATTERN, quoted_block_ids
@@ -470,6 +471,7 @@ UNSLOP_CATALOG_SHA256 = hashlib.sha256(
     json.dumps(
         {
             "editorial_policy": UNSLOP_POLICY_VERSION,
+            "inline_code_policy": INLINE_CODE_POLICY_VERSION,
             "rewrite_instruction": UNSLOP_REWRITE_INSTRUCTION,
             "review_instruction": UNSLOP_REVIEW_INSTRUCTION,
             "concision_target": {
@@ -951,5 +953,5 @@ def _remove_contained_candidates(
 def _mask_ignored_spans(value: str) -> str:
     return _IGNORED_SPAN.sub(
         lambda match: re.sub(r"[^\n]", " ", match.group(0)),
-        value,
+        mask_inline_code(value),
     )
