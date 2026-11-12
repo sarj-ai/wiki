@@ -70,6 +70,58 @@ def test_captured_date_only_overnight_and_emoji_chips_preserve_native_semantics_
     assert not repeated.spans
 
 
+def test_captured_table_date_conversion_preserves_effective_newline_style() -> None:
+    checkpoint = plan_native_chips(_fixture("table_style_before"), operation_id=uuid.UUID(int=2))
+    assert checkpoint is not None
+    assert len(checkpoint.spans) == 4
+    after = _fixture("table_style_after")
+    assert has_chip_marker(after, checkpoint)
+    verify_native_chips(after, checkpoint)
+
+
+@pytest.mark.parametrize(
+    "corruption",
+    ["font", "bold", "link", "unknown-style", "annotation", "parent-style", "other-paragraph"],
+)
+def test_table_date_equivalence_still_rejects_native_preservation_changes(corruption: str) -> None:
+    checkpoint = plan_native_chips(_fixture("table_style_before"), operation_id=uuid.UUID(int=2))
+    assert checkpoint is not None
+    after = _fixture("table_style_after")
+    _, tab = next(bodies(after))
+    content = array(obj(tab["body"])["content"])
+    table = obj(obj(content[10])["table"])
+    row = obj(array(table["tableRows"])[2])
+    cell = obj(array(row["tableCells"])[2])
+    paragraph = obj(obj(array(cell["content"])[0])["paragraph"])
+    newline = obj(array(paragraph["elements"])[-1])
+    style = obj(obj(newline["textRun"])["textStyle"])
+    match corruption:
+        case "font":
+            style["fontSize"] = {"magnitude": 11, "unit": "PT"}
+        case "bold":
+            style["bold"] = True
+        case "link":
+            style["link"] = {"url": "https://example.test/changed"}
+        case "unknown-style":
+            style["futureDecoration"] = "changed"
+        case "annotation":
+            newline["suggestedInsertionIds"] = ["new-suggestion"]
+        case "parent-style":
+            named = obj(tab["namedStyles"])
+            normal = next(
+                obj(item)
+                for item in array(named["styles"])
+                if obj(item)["namedStyleType"] == "NORMAL_TEXT"
+            )
+            obj(normal["textStyle"])["bold"] = True
+        case _:
+            untouched = obj(obj(content[1])["paragraph"])
+            run = obj(obj(array(untouched["elements"])[0])["textRun"])
+            obj(run["textStyle"])["futureDecoration"] = "changed"
+    with pytest.raises(InPlaceNeedsReviewError):
+        verify_native_chips(after, checkpoint)
+
+
 @pytest.mark.parametrize(
     "corruption", ["date", "zone", "date-type", "existing-chip", "text", "marker", "link", "style"]
 )

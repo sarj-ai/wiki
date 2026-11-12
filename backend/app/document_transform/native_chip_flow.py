@@ -308,8 +308,20 @@ def verify_native_chips(document: dict[str, JsonValue], checkpoint: NativeChipCh
     ids: set[str] = set()
     for tab_id, tab in tabs.items():
         ids.update(_project_chip_tab(tab_id, tab, checkpoint, document, ids))
-    if document_digest(_coalesce_text_runs(projected)) != document_digest(
-        _coalesce_text_runs(checkpoint.before)
+    converted_paragraphs = frozenset(
+        (tab_id, integer(node["startIndex"]))
+        for tab_id, tab in bodies(checkpoint.before)
+        for node in _paragraphs(native_chip_node(tab).body)
+        if any(
+            span.tab_id == tab_id
+            and integer(node["startIndex"]) <= span.start < integer(node["endIndex"])
+            for span in checkpoint.spans
+        )
+    )
+    if document_digest(
+        _coalesce_text_runs(projected, converted_paragraphs=converted_paragraphs)
+    ) != document_digest(
+        _coalesce_text_runs(checkpoint.before, converted_paragraphs=converted_paragraphs)
     ):
         raise InPlaceNeedsReviewError
 
@@ -529,15 +541,24 @@ def _paragraph_text(element: dict[str, JsonValue]) -> str:
     return "".join(result)
 
 
-def _coalesce_text_runs(document: dict[str, JsonValue]) -> dict[str, JsonValue]:
+def _coalesce_text_runs(
+    document: dict[str, JsonValue],
+    *,
+    converted_paragraphs: frozenset[tuple[DocsTabId, int]] = frozenset(),
+) -> dict[str, JsonValue]:
     result = deepcopy(document)
-    for _, tab in bodies(result):
+    for tab_id, tab in bodies(result):
         if native_chip_node(tab).named_ranges == {}:
             tab.pop("namedRanges", None)
         for node in _paragraphs(native_chip_node(tab).body):
             paragraph = obj(node["paragraph"])
             merged: list[JsonValue] = []
-            for value in array(paragraph["elements"]):
+            for value in _comparison_elements(
+                result,
+                tab,
+                node,
+                converted=(tab_id, integer(node["startIndex"])) in converted_paragraphs,
+            ):
                 part = obj(value)
                 previous = obj(merged[-1]) if merged else None
                 if (
@@ -556,6 +577,33 @@ def _coalesce_text_runs(document: dict[str, JsonValue]) -> dict[str, JsonValue]:
                     merged.append(part)
             paragraph["elements"] = merged
     return result
+
+
+def _comparison_elements(
+    document: dict[str, JsonValue],
+    tab: dict[str, JsonValue],
+    node: dict[str, JsonValue],
+    *,
+    converted: bool,
+) -> list[JsonValue]:
+    paragraph = obj(node["paragraph"])
+    elements = array(paragraph["elements"])
+    if not converted:
+        return elements
+    # Inserting a chip can remove redundant inherited fields from adjacent
+    # text, including a table cell's newline. Only converted paragraphs use
+    # effective styles; the full parent styles and unknown fields stay hashed.
+    for value in elements:
+        part = obj(value)
+        if _plain_run(part):
+            run = obj(part["textRun"])
+            run["textStyle"] = effective_text_style(
+                document,
+                tab,
+                obj(native_chip_node(paragraph).paragraph_style),
+                obj(native_chip_node(run).text_style),
+            )
+    return elements
 
 
 def _plain_run(value: dict[str, JsonValue]) -> bool:
