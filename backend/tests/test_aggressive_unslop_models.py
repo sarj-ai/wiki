@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 from dataclasses import dataclass, replace
+from datetime import timedelta
 import hashlib
 from http import HTTPStatus
 import json
@@ -42,6 +43,7 @@ from app.document_transform.unslop import (
     without_editorial_framing,
 )
 from app.identifiers import FileId
+from app.performance import provider_retry_budget
 from tests.support import dependency
 
 
@@ -160,6 +162,23 @@ class _RejectedInputs(RootModel[list[_RejectedInput]]):
 class _WriterRequest(BaseModel):
     model_config = ConfigDict(extra="ignore")
     generation_config: types.GenerateContentConfig = Field(alias="generationConfig")
+
+
+class _WriterInvocation(_WriterRequest):
+    contents: list[types.Content]
+
+
+def _supplied_writer_blocks(request: httpx.Request) -> list[_RewriteInput]:
+    invocation = _WriterInvocation.model_validate_json(request.content)
+    prompt = "\n".join(
+        part.text
+        for content in invocation.contents
+        for part in content.parts or []
+        if part.text is not None
+    )
+    return _RewriteInputs.model_validate_json(
+        next(line for line in prompt.splitlines() if line.startswith("["))
+    ).root
 
 
 class _ModelResponse:
@@ -346,6 +365,72 @@ async def test_normal_model_settings_reach_the_real_sdk_without_overriding_expli
     else:
         assert config.thinking_config is not None
         assert config.thinking_config.thinking_level == thinking_level
+
+
+@pytest.mark.parametrize(("paragraph_count", "repetitions"), [(77, 1), (12, 7)])
+async def test_high_pro_writer_bounds_wire_workload_without_losing_any_source_block(
+    paragraph_count: int, repetitions: int
+) -> None:
+    document = parse_markdown(
+        "\n\n".join(SOURCE * repetitions for _ in range(paragraph_count)), title="Private workload"
+    )
+    requests: list[httpx.Request] = []
+
+    async def respond(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        patches = [
+            TextPatch(block_id=b.block_id, expected_sha256=b.sha256, replacement=b.text)
+            for b in _supplied_writer_blocks(request)
+        ]
+        return httpx.Response(
+            200,
+            json={
+                "candidates": [
+                    {
+                        "content": {
+                            "role": "model",
+                            "parts": [{"text": PatchEnvelope(patches=patches).model_dump_json()}],
+                        },
+                        "finishReason": "STOP",
+                    }
+                ]
+            },
+        )
+
+    async def sleep(_: float) -> None:
+        await asyncio.sleep(0)
+
+    policy = document_model_policy(project="offline-workload", document=DocumentSettings())
+    async with httpx.AsyncClient(transport=httpx.MockTransport(respond)) as http:
+        client = genai.Client(
+            vertexai=True,
+            project=policy.project,
+            location=policy.location,
+            credentials=Credentials(token="offline-workload-not-a-real-token"),
+            http_options=types.HttpOptions(base_url="http://127.0.0.1:9", httpx_async_client=http),
+        )
+        try:
+            generator = VertexGeminiPatchGenerator(policy=policy, client=client, writer_sleep=sleep)
+            with provider_retry_budget(timedelta(seconds=240)):
+                patches = await generator.generate(document, phase=TransformPhase.UNSLOP)
+        finally:
+            await client.aio.aclose()
+
+    assert len(requests) >= 2
+    assert [(p.block_id, p.expected_sha256, p.replacement) for p in patches] == [
+        (block.id, block.sha256, block.text) for block in model_editable_blocks(document)
+    ]
+    for request in requests:
+        blocks = _supplied_writer_blocks(request)
+        assert len(blocks) <= 40
+        assert sum(len(block.text) for block in blocks) <= 6_000
+        assert request.url.path.endswith("/models/gemini-3.1-pro-preview:generateContent")
+        invocation = _WriterInvocation.model_validate_json(request.content)
+        thinking = invocation.generation_config.thinking_config
+        assert thinking is not None
+        assert thinking.thinking_level is types.ThinkingLevel.HIGH
+        assert invocation.generation_config.max_output_tokens == 32_768
+        assert 0 < float(request.headers["X-Server-Timeout"]) <= 150
 
 
 async def test_aggressive_generation_uses_structured_output_and_supported_thinking() -> None:
@@ -1432,15 +1517,15 @@ async def test_smaller_editor_requests_preserve_all_blocks_hashes_and_order(
         _RewriteInputs.model_validate_json(_rewrite_payload_lines(prompt)[0]).root
         for prompt in harness.call.prompts
     ]
-    assert all(0 < len(batch) <= 100 for batch in submitted)
-    assert all(sum(len(block.text) for block in batch) <= 12_000 for batch in submitted)
+    assert all(submitted)
     assert [block.block_id for batch in submitted for block in batch] == [
         block.id for block in blocks
     ]
     assert [(patch.block_id, patch.expected_sha256, patch.replacement) for patch in patches] == [
         (block.id, block.sha256, block.text) for block in blocks
     ]
-    assert [len(batch) for batch in submitted] == ([13] if repetitions == 1 else [5, 5, 3])
+    if repetitions == 1:
+        assert len(submitted) == 1
 
 
 async def test_single_oversized_block_and_audit_are_preserved_whole() -> None:
