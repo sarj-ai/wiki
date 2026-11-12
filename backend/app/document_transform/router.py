@@ -32,7 +32,11 @@ from app.document_transform.dependencies import (
 )
 from app.document_transform.errors import DocumentTransformError
 from app.document_transform.gcs_uploads import UploadUnavailableError, sign_markdown_upload
-from app.document_transform.inspection import NativeDocumentInspection, inspect_native_document
+from app.document_transform.inspection import (
+    NativeDocumentInspection,
+    attach_saved_checkpoint,
+    inspect_native_document,
+)
 from app.document_transform.schemas import (
     CurrentDocumentPolish,
     DocumentTransformCapabilities,
@@ -42,7 +46,7 @@ from app.document_transform.schemas import (
     TransformMode,
 )
 from app.files.dependencies import files_service_dep
-from app.identifiers import FileId, IdempotencyKey, UserId
+from app.identifiers import FileId, IdempotencyKey, TaskId, UserId
 from app.models.user import User
 from app.openapi import authentication_responses
 from app.tasks.dependencies import task_enqueuer_dep, task_service_dep
@@ -72,14 +76,22 @@ async def inspect_document(
     response: Response,
     user: Annotated[User, Security(get_current_user)],
     runtime: Annotated[CurrentPolishRuntime, Depends(current_polish_runtime_dep)],
+    tasks: Annotated[TaskService, Depends(task_service_dep)],
+    *,
+    task_id: Annotated[TaskId | None, Query()] = None,
 ) -> NativeDocumentInspection:
     response.headers["Cache-Control"] = "private, no-store"
     if runtime.native_sources is None:
         raise HTTPException(status_code=503, detail="Native document readback is unavailable")
     try:
-        return await inspect_native_document(
+        inspection = await inspect_native_document(
             source, reader=runtime.native_sources, account_email=user.email
         )
+        if task_id is None:
+            return inspection
+        await tasks.get_for_owner(task_id, user.id)
+        record = await tasks.load_document_transform(task_id)
+        return attach_saved_checkpoint(inspection, record, owner_user_id=user.id)
     except DocumentTransformError as error:
         raise HTTPException(
             status_code=409 if error.code == "source_changed" else 422,
