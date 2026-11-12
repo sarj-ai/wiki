@@ -6,8 +6,9 @@ import uuid
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 import pytest
-from sqlalchemy import func, null, select, update
+from sqlalchemy import delete, func, null, select, update
 from sqlalchemy.engine import make_url
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import (
     AsyncEngine,
     AsyncSession,
@@ -26,16 +27,18 @@ from app.document_transform.schemas import (
 )
 from app.document_transform.unslop import UNSLOP_CATALOG_SHA256
 from app.document_transform.versions import DOCUMENT_PIPELINE_VERSION
+from app.files.schemas import FileResponse
 from app.identifiers import FileId, GoogleUserId, IdempotencyKey, TaskId, UserId
 from app.models.task import Task
 from app.models.task_replay_key import TaskReplayKey
 from app.models.user import User
+from app.smart_create.schemas import BlankSource, SmartCreateResult, SmartFileCreate
 from app.tasks.errors import (
     TaskIdempotencyConflictError,
     TaskNotClaimableError,
     TaskTargetBusyError,
 )
-from app.tasks.schemas import SucceededTaskRead, TaskKind, TaskRead, TaskStatus
+from app.tasks.schemas import DocumentTransformSucceededTaskRead, TaskKind, TaskRead, TaskStatus
 from app.tasks.service import PostgresTaskService
 
 
@@ -56,6 +59,104 @@ def _qa_engine() -> AsyncEngine:
     ):
         pytest.fail("Only a loopback PostgreSQL database named wiki_polish29_qa* is allowed")
     return create_async_engine(dsn, pool_size=12, max_overflow=0)
+
+
+@pytest.mark.parametrize(
+    "corruption",
+    ["wrong-kind", "foreign-task-id", "foreign-operation-id", "missing-marker", "hybrid"],
+)
+async def test_real_postgres_result_kind_invariants_and_rollback(corruption: str) -> None:
+    engine = _qa_engine()
+    sessions = async_sessionmaker(engine, expire_on_commit=False)
+    owner = UserId(uuid.uuid7())
+    kind = (
+        TaskKind.FILE_SMART_CREATE
+        if corruption == "foreign-task-id"
+        else TaskKind.FILE_DOCUMENT_TRANSFORM
+    )
+    payload = (
+        SmartFileCreate(
+            source=BlankSource(kind="blank", file_type="document"),
+            parent_folder_id=FileId("qa-folder"),
+            name="Result invariant fixture",
+            emoji="📄",
+            alias="qa-result",
+        )
+        if kind is TaskKind.FILE_SMART_CREATE
+        else _markdown_payload()
+    )
+    try:
+        async with sessions() as session:
+            session.add(
+                User(id=owner, email=f"qa-{owner}@sarj.ai", google_id=GoogleUserId(str(owner)))
+            )
+            await session.commit()
+            service = PostgresTaskService(db=session)
+            reservation = await service.create_or_replay(
+                kind=kind,
+                owner_user_id=owner,
+                idempotency_key=IdempotencyKey(uuid.uuid7()),
+                payload=payload,
+            )
+            task_id = reservation.task.id
+            claim = await service.claim(task_id, lease_duration=timedelta(minutes=1))
+            smart = SmartCreateResult(
+                task_id=TaskId(uuid.uuid7()) if corruption == "foreign-task-id" else task_id,
+                file=FileResponse(
+                    id=FileId("qa-created"),
+                    name="Fixture",
+                    mime_type="application/vnd.google-apps.document",
+                    parent_folder_id=FileId("qa-folder"),
+                    drive_id=None,
+                    modified_time=None,
+                ),
+                warnings=[],
+            )
+            if corruption in {"wrong-kind", "foreign-task-id"}:
+                with pytest.raises(IntegrityError):
+                    await service.succeed(task_id, lease_token=claim.lease_token, result=smart)
+                assert session.is_active, "The service must roll back a rejected transition"
+            elif corruption == "foreign-operation-id":
+                with pytest.raises(IntegrityError):
+                    await service.succeed(
+                        task_id,
+                        lease_token=claim.lease_token,
+                        result=_completed_result(TaskId(uuid.uuid7()), TransformMode.FORMAT),
+                    )
+                assert session.is_active, "The service must roll back a rejected transition"
+            else:
+                invalid = _completed_result(task_id, TransformMode.FORMAT).model_dump(mode="json")
+                if corruption == "missing-marker":
+                    invalid.pop("operation_id")
+                else:
+                    invalid["file"] = {}
+                with pytest.raises(IntegrityError):
+                    await session.execute(
+                        update(Task)
+                        .where(Task.id == task_id)
+                        .values(
+                            status=TaskStatus.SUCCEEDED,
+                            result=invalid,
+                            finished_at=func.now(),
+                            lease_token=None,
+                            lease_expires_at=None,
+                        )
+                    )
+                await session.rollback()
+            retained = await service.get_for_owner(task_id, owner)
+            assert retained.status is TaskStatus.RUNNING
+            valid = (
+                SmartCreateResult(task_id=task_id, file=smart.file, warnings=[])
+                if kind is TaskKind.FILE_SMART_CREATE
+                else _completed_result(task_id, TransformMode.FORMAT)
+            )
+            completed = await service.succeed(task_id, lease_token=claim.lease_token, result=valid)
+            assert completed.status is TaskStatus.SUCCEEDED
+    finally:
+        async with sessions() as session:
+            await session.execute(delete(User).where(User.id == owner))
+            await session.commit()
+        await engine.dispose()
 
 
 @pytest.mark.parametrize("source_kind", ["drive", "markdown", "uploaded_markdown"])
@@ -914,7 +1015,7 @@ async def test_real_postgres_terminal_replay_requires_current_editor_catalog(
             )
             assert retried.task.id == canonical
             assert not retried.created
-            assert isinstance(retried.task, SucceededTaskRead)
+            assert isinstance(retried.task, DocumentTransformSucceededTaskRead)
             assert isinstance(retried.task.result, DocumentTransformResult)
             assert retried.task.result.tool_versions.get("unslop_catalog_sha256") == catalog_sha256
 
@@ -953,7 +1054,7 @@ async def test_real_postgres_terminal_replay_requires_current_editor_catalog(
                         )
                         assert not historical.created
                         assert historical.task.id == canonical
-                        assert isinstance(historical.task, SucceededTaskRead)
+                        assert isinstance(historical.task, DocumentTransformSucceededTaskRead)
                         assert isinstance(historical.task.result, DocumentTransformResult)
                         assert historical.task.result.needs_review is True
     finally:

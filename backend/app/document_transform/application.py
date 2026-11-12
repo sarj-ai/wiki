@@ -22,7 +22,6 @@ from app.document_transform.ir import parse_markdown
 from app.document_transform.schemas import (
     CurrentDocumentPolish,
     DocumentTransformRequest,
-    DocumentTransformResult,
     DriveFileSource,
     MarkdownSource,
     OutputStrategy,
@@ -36,9 +35,9 @@ from app.files.schemas import FileResponse
 from app.identifiers import DocsRevisionId, FileId, IdempotencyKey, UserId
 from app.tasks.queue import TaskEnqueuer
 from app.tasks.schemas import (
+    DocumentTransformSucceededTaskRead,
     PendingTaskRead,
     RunningTaskRead,
-    SucceededTaskRead,
     TaskKind,
     TaskRead,
 )
@@ -162,9 +161,7 @@ def _validate_markdown_source(source: MarkdownSource) -> None:
 
 
 async def retained_transform_output_available(task: TaskRead, files: DestinationFileReader) -> bool:
-    if not isinstance(task, SucceededTaskRead) or not isinstance(
-        task.result, DocumentTransformResult
-    ):
+    if not isinstance(task, DocumentTransformSucceededTaskRead):
         return False
     if task.result.output_strategy is OutputStrategy.IN_PLACE:
         return True

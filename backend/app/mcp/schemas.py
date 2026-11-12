@@ -17,7 +17,6 @@ from app.aliases.schemas import DocumentAliasValue
 from app.document_transform.schemas import (
     DocumentTransformCapabilities,
     DocumentTransformRequest,
-    DocumentTransformResult,
     DriveFileSource,
     MarkdownContent,
     MarkdownSource,
@@ -211,11 +210,6 @@ class TaskResponse(McpResponse):
     def require_transform_task(self) -> Self:
         if self.task.kind is not TaskKind.FILE_DOCUMENT_TRANSFORM:
             msg = "Only document transformation tasks are exposed"
-            raise ValueError(msg)
-        if self.task.result is not None and not isinstance(
-            self.task.result, DocumentTransformResult
-        ):
-            msg = "Only document transformation results are exposed"
             raise ValueError(msg)
         return self
 

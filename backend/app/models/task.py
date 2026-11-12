@@ -25,6 +25,10 @@ class Task(Base):
     __tablename__ = "tasks"
     __table_args__ = (
         CheckConstraint(
+            "kind IN ('file.smart_create', 'file.document_transform')",
+            name="ck_tasks_kind",
+        ),
+        CheckConstraint(
             "status IN ('pending', 'running', 'succeeded', 'failed', 'cancelled')",
             name="ck_tasks_status",
         ),
@@ -33,6 +37,20 @@ class Task(Base):
         CheckConstraint(
             "result IS NULL OR jsonb_typeof(result) = 'object'",
             name="ck_tasks_result_object",
+        ),
+        CheckConstraint(
+            "status != 'succeeded' OR (("
+            "kind = 'file.smart_create' AND result ->> 'task_id' = id::text "
+            "AND jsonb_typeof(result -> 'file') = 'object' "
+            "AND NOT (result ? 'operation_id') AND NOT (result ? 'output')"
+            ") OR ("
+            "kind = 'file.document_transform' "
+            "AND jsonb_typeof(result -> 'operation_id') = 'string' "
+            "AND result ->> 'operation_id' = id::text "
+            "AND jsonb_typeof(result -> 'output') = 'object' "
+            "AND NOT (result ? 'task_id') AND NOT (result ? 'file')"
+            ")) IS TRUE",
+            name="ck_tasks_result_kind",
         ),
         CheckConstraint("attempt_count >= 0", name="ck_tasks_attempt_count_nonnegative"),
         CheckConstraint(

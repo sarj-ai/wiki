@@ -54,14 +54,15 @@ from app.tasks.errors import (
 )
 from app.tasks.schemas import (
     DocumentTransformAdmission,
+    DocumentTransformSucceededTaskRead,
     DocumentTransformTaskRecord,
     RunningTaskRead,
     SmartCreateTaskRecord,
-    SucceededTaskRead,
     TaskClaim,
     TaskKind,
     TaskRead,
     TaskReservation,
+    TaskResult,
     TaskStatus,
 )
 
@@ -163,7 +164,7 @@ class TaskService(ABC):
         task_id: TaskId,
         *,
         lease_token: uuid.UUID,
-        result: BaseModel,
+        result: TaskResult,
     ) -> TaskRead: ...
 
     @abstractmethod
@@ -250,9 +251,7 @@ class PostgresTaskService(TaskService):
         if row is None:
             return None
         task = _to_read(row)
-        if not isinstance(task, SucceededTaskRead) or not isinstance(
-            task.result, DocumentTransformResult
-        ):
+        if not isinstance(task, DocumentTransformSucceededTaskRead):
             return None
         return task.result if task.result.output_revision_id == revision_id else None
 
@@ -687,7 +686,7 @@ class PostgresTaskService(TaskService):
         task_id: TaskId,
         *,
         lease_token: uuid.UUID,
-        result: BaseModel,
+        result: TaskResult,
     ) -> TaskRead:
         now = datetime.now(UTC)
         return await self._owned_lease_update(
@@ -1115,18 +1114,18 @@ class PostgresTaskService(TaskService):
             )
         else:
             statement = statement.options(_PUBLIC_TASK_LOAD)
-        task = (await self._db.execute(statement)).scalar_one_or_none()
-        if task is None:
-            await self._db.rollback()
-            raise TaskLeaseLostError
         try:
+            task = _require_owned_task((await self._db.execute(statement)).scalar_one_or_none())
+            # Validate the prospective state while the transaction can still roll back.
+            # A wrong result kind must never become a committed successful task.
+            task_read = _to_read(task)
             if header_result is not None and header_result.header_identity is not None:
                 await self._persist_header_identity(task, header_result)
-        except Exception:
+        except Exception, asyncio.CancelledError:
             await self._db.rollback()
             raise
         await self._db.commit()
-        return _to_read(task)
+        return task_read
 
     async def _persist_header_identity(self, task: Task, result: DocumentTransformResult) -> None:
         try:
@@ -1429,3 +1428,9 @@ def _request_hash(payload: dict[str, JsonValue]) -> str:
 
 def _to_read(task: Task) -> TaskRead:
     return _TaskReadPayload.model_validate(task, from_attributes=True).root
+
+
+def _require_owned_task(task: Task | None) -> Task:
+    if task is None:
+        raise TaskLeaseLostError
+    return task

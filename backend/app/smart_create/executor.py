@@ -22,7 +22,13 @@ from app.sidebar.cache import PostgresSidebarCacheService, SidebarCacheService
 from app.sidebar.singleflight import Singleflight
 from app.smart_create.creation import DriveSmartFileCreationService
 from app.tasks.errors import TaskExecutionDeferredError, TaskNotClaimableError
-from app.tasks.schemas import CancelledTaskRead, FailedTaskRead, SucceededTaskRead, TaskRead
+from app.tasks.schemas import (
+    CancelledTaskRead,
+    DocumentTransformSucceededTaskRead,
+    FailedTaskRead,
+    SmartCreateSucceededTaskRead,
+    TaskRead,
+)
 from app.tasks.service import TaskService
 from app.templates.service import DriveTemplateCatalogService
 
@@ -140,4 +146,10 @@ class DriveSmartCreateTaskExecutor(SmartCreateTaskExecutor):
 
 
 def _is_terminal(task: TaskRead) -> bool:
-    return isinstance(task, SucceededTaskRead | FailedTaskRead | CancelledTaskRead)
+    return isinstance(
+        task,
+        SmartCreateSucceededTaskRead
+        | DocumentTransformSucceededTaskRead
+        | FailedTaskRead
+        | CancelledTaskRead,
+    )

@@ -115,7 +115,8 @@
       "decision": "retain",
       "runtime": "backend/app/tasks/service.py",
       "reason": "Durable execution, leases, checkpoints, dispatch and results for active document operations.",
-      "lifecycleEvidence": "backend/app/tasks/service.py"
+      "lifecycleEvidence": "backend/app/tasks/service.py",
+      "currentChange": "Proposed migration 0028 enforces allowed task kinds and succeeded result identity/shape. Runtime DTOs correlate result with kind and Smart Create task ID; validate before committing a transition. Existing JSON and failure/checkpoint evidence are retained."
     },
     {
       "table": "user_drive_tree_cache",
@@ -1152,5 +1153,126 @@
         "status": "succeeded"
       }
     ]
+  },
+  "currentProductionVerification": {
+    "date": "2026-11-11",
+    "source": "0a4d677d6908d134b302cc41c6362f5aeaf87645",
+    "transaction": "read-only",
+    "migration": [
+      "0027_google_token_invariants"
+    ],
+    "tables": [
+      "alembic_version",
+      "cache_entries",
+      "doc_icons",
+      "document_aliases",
+      "document_header_provenance",
+      "mcp_grants",
+      "mcp_oauth_entries",
+      "task_replay_keys",
+      "tasks",
+      "user_drive_tree_cache",
+      "user_sessions",
+      "users"
+    ],
+    "counts": {
+      "alembic_version": 1,
+      "cache_entries": 1,
+      "doc_icons": 64,
+      "document_aliases": 117,
+      "document_header_provenance": 35,
+      "mcp_grants": 3,
+      "mcp_oauth_entries": 14,
+      "task_replay_keys": 1,
+      "tasks": 52,
+      "user_drive_tree_cache": 51,
+      "user_sessions": 181,
+      "users": 54
+    },
+    "schemaReceiptSha256": "4373abe960dcc143e99187574c873f37c9ce2fcd5dc5d9a440dfa36117e781ef",
+    "taskResultPairs": {
+      "audit": "explicit-systems-task-result-pairs",
+      "invalid_command_result_pairs": {},
+      "rows": 52,
+      "states": {
+        "file.document_transform:failed": 26,
+        "file.document_transform:running": 4,
+        "file.document_transform:succeeded": 22
+      },
+      "transaction": "read-only",
+      "valid_command_result_pairs": {
+        "file.document_transform": 22
+      }
+    },
+    "taskResultReceiptSha256": "634df5d5fa663ea9b16e237ce2c893a134302c28f9bd161df8e5abf736bf62f3",
+    "schemaChangesForResultTyping": "None. All 22 persisted succeeded records match their command kind. Existing failed and running records remain unchanged."
+  },
+  "taskResultInvariantChange": {
+    "migration": "0028_task_result_invariants",
+    "status": "implementation-unverified; exact strengthened SQL production preflight passed; migration not applied",
+    "liveImage": "055b9691f2126497524c267fec1470f2713d7397",
+    "unresolvedProductionFinding": "Four running tasks have expired leases; oldest expiry is about 32 hours before the preflight. Retain checkpoint and external-effect evidence while tracing authenticated queue recovery.",
+    "initialPreflightMigrationSha256": "7c4b5808abf5eca51945011368743de9663b11789067c5fc2d5c32530c219e5a",
+    "initialProductionReadOnlyPreflight": {
+      "audit": "explicit-systems-0028-preflight",
+      "invalid": {
+        "ck_tasks_kind": 0,
+        "ck_tasks_result_kind": 0
+      },
+      "leases": {
+        "expired_running": 4,
+        "oldest_expired_lease_seconds": "115613.565695"
+      },
+      "migration": "0027_google_token_invariants",
+      "states": [
+        {
+          "count": 33,
+          "kind": "file.document_transform",
+          "status": "failed"
+        },
+        {
+          "count": 4,
+          "kind": "file.document_transform",
+          "status": "running"
+        },
+        {
+          "count": 23,
+          "kind": "file.document_transform",
+          "status": "succeeded"
+        }
+      ],
+      "transaction": "repeatable-read read-only"
+    },
+    "migrationSha256": "bbe3d4e891340b057ab3e6630ad4ab5011182e35de0746f5b67a83e3d768c749",
+    "productionReadOnlyPreflight": {
+      "audit": "explicit-systems-0028-preflight",
+      "invalid": {
+        "ck_tasks_kind": 0,
+        "ck_tasks_result_kind": 0
+      },
+      "leases": {
+        "expired_running": 4,
+        "oldest_expired_lease_seconds": "117944.258521"
+      },
+      "migration": "0027_google_token_invariants",
+      "states": [
+        {
+          "count": 32,
+          "kind": "file.document_transform",
+          "status": "failed"
+        },
+        {
+          "count": 4,
+          "kind": "file.document_transform",
+          "status": "running"
+        },
+        {
+          "count": 24,
+          "kind": "file.document_transform",
+          "status": "succeeded"
+        }
+      ],
+      "transaction": "repeatable-read read-only"
+    }
   }
 }

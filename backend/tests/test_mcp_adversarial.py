@@ -22,7 +22,7 @@ from app.mcp.schemas import McpCapability, PolishInput
 from app.mcp.server import create_mcp_server
 from app.tasks.errors import TaskNotFoundError
 from app.tasks.queue import TaskEnqueuer
-from app.tasks.schemas import SucceededTaskRead
+from app.tasks.schemas import DocumentTransformSucceededTaskRead
 
 
 class NoQueue(TaskEnqueuer):
@@ -152,9 +152,10 @@ async def test_completed_replay_rechecks_output_acl_before_return(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     now = datetime.now(UTC)
-    task = SucceededTaskRead.model_validate(
+    task_id = TaskId(uuid.uuid7())
+    task = DocumentTransformSucceededTaskRead.model_validate(
         {
-            "id": str(uuid.uuid7()),
+            "id": str(task_id),
             "kind": "file.document_transform",
             "status": "succeeded",
             "created_at": now,
@@ -165,7 +166,7 @@ async def test_completed_replay_rechecks_output_acl_before_return(
             "error_code": None,
             "error_detail": None,
             "result": {
-                "operation_id": str(uuid.uuid7()),
+                "operation_id": str(task_id),
                 "source_sha256": "source",
                 "output": {
                     "file_id": "private-output",
@@ -192,7 +193,9 @@ async def test_completed_replay_rechecks_output_acl_before_return(
     reads: list[str] = []
 
     class Services:
-        async def get_for_owner(self, task_id: TaskId, user_id: uuid.UUID) -> SucceededTaskRead:
+        async def get_for_owner(
+            self, task_id: TaskId, user_id: uuid.UUID
+        ) -> DocumentTransformSucceededTaskRead:
             assert task_id == task.id
             assert user_id == owner
             return task

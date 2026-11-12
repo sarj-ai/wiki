@@ -5,7 +5,13 @@
       "id": "document-copy",
       "oldRepresentation": "stage plus optional output/revision/result",
       "authoritativeReplacement": "PlannedCopyCheckpoint | CreatingCopyCheckpoint | CreatedCopyCheckpoint | VerifiedCopyCheckpoint",
-      "events": ["plan", "persist creation intent", "dispatch", "bind readback", "verify"],
+      "events": [
+        "plan",
+        "persist creation intent",
+        "dispatch",
+        "bind readback",
+        "verify"
+      ],
       "guards": [
         "strict closed runtime union",
         "reserved operation identity",
@@ -24,8 +30,18 @@
       "id": "word-copy",
       "oldRepresentation": "stage plus optional output/result",
       "authoritativeReplacement": "PlannedWordCheckpoint | CreatingWordCheckpoint | CreatedWordCheckpoint | VerifiedWordCheckpoint",
-      "events": ["plan", "intent", "upload", "readback", "verify"],
-      "guards": ["reserved distinct output ID", "hashes", "lease/checkpoint CAS"],
+      "events": [
+        "plan",
+        "intent",
+        "upload",
+        "readback",
+        "verify"
+      ],
+      "guards": [
+        "reserved distinct output ID",
+        "hashes",
+        "lease/checkpoint CAS"
+      ],
       "recovery": "Never create a second document for an ambiguous upload; match reserved ID, source binding and exact content.",
       "decision": "convert",
       "sources": [
@@ -37,7 +53,12 @@
       "id": "in-place-format",
       "oldRepresentation": "stage plus optional marker/digest/requests",
       "authoritativeReplacement": "HeaderInPlaceCheckpoint | ContentInPlaceCheckpoint | NoopContentInPlaceCheckpoint | CompletedInPlaceCheckpoint; transition_in_place",
-      "events": ["headers verified", "content verified", "complete", "resume"],
+      "events": [
+        "headers verified",
+        "content verified",
+        "complete",
+        "resume"
+      ],
       "guards": [
         "required marker/digest/nonempty mutation batch",
         "completed/noop states cannot carry requests",
@@ -56,7 +77,13 @@
       "id": "native-tab-structure",
       "oldRepresentation": "stage, empty revision sentinel and created-ID bag",
       "authoritativeReplacement": "Planned/Creating/Created/Moving/VerifiedStructureCheckpoint; stage-specific functions",
-      "events": ["intent", "native create", "bind exact IDs", "move intent", "verify"],
+      "events": [
+        "intent",
+        "native create",
+        "bind exact IDs",
+        "move intent",
+        "verify"
+      ],
       "guards": [
         "creating has no invented IDs",
         "bound states require revision/IDs",
@@ -65,7 +92,9 @@
       ],
       "recovery": "Creating/moving is durable before mutation. Ambiguous tab creation is not repeated; exact topology/marker/content readback required.",
       "decision": "convert",
-      "sources": ["backend/app/document_transform/tab_structure_execution.py"]
+      "sources": [
+        "backend/app/document_transform/tab_structure_execution.py"
+      ]
     },
     {
       "id": "native-footer",
@@ -94,17 +123,32 @@
       "id": "native-date",
       "oldRepresentation": "completion boolean with nullable decline reason",
       "authoritativeReplacement": "PendingNativeDateCheckpoint | DeclinedNativeDateCheckpoint | CompletedNativeDateCheckpoint",
-      "events": ["apply", "provider rejection with unchanged preimage", "verify"],
-      "guards": ["closed literal combinations", "revision CAS", "marker and invariant projection"],
+      "events": [
+        "apply",
+        "provider rejection with unchanged preimage",
+        "verify"
+      ],
+      "guards": [
+        "closed literal combinations",
+        "revision CAS",
+        "marker and invariant projection"
+      ],
       "recovery": "Decline persists before continuation; replay can only reattempt rejected CAS with exact unchanged preimage. Complete and declined cannot coexist.",
       "decision": "convert",
-      "sources": ["backend/app/document_transform/native_date_flow.py"]
+      "sources": [
+        "backend/app/document_transform/native_date_flow.py"
+      ]
     },
     {
       "id": "readability",
       "oldRepresentation": "complete boolean and optional revision",
       "authoritativeReplacement": "PlannedReadabilityCheckpoint | CompletedReadabilityCheckpoint",
-      "events": ["plan", "apply", "exact readback", "resume"],
+      "events": [
+        "plan",
+        "apply",
+        "exact readback",
+        "resume"
+      ],
       "guards": [
         "completed revision required",
         "planned revision absent",
@@ -137,7 +181,10 @@
       ],
       "recovery": "Expired workers cannot overwrite renewed grants. Rotation/revocation refetches identity and preserves refresh credentials; unusable orphan access tokens cleared by migration.",
       "decision": "convert",
-      "sources": ["backend/app/auth/google_token_state.py", "backend/app/auth/google_tokens.py"]
+      "sources": [
+        "backend/app/auth/google_token_state.py",
+        "backend/app/auth/google_tokens.py"
+      ]
     },
     {
       "id": "polish-dialog",
@@ -194,13 +241,27 @@
         "backend/app/tasks/service.py",
         "backend/app/tasks/schemas.py",
         "backend/app/models/task.py"
-      ]
+      ],
+      "resultTyping": {
+        "previous": "SucceededTaskRead accepted either command kind with either result type.",
+        "replacement": "SmartCreateSucceededTaskRead(kind=file.smart_create, result=SmartCreateResult) | DocumentTransformSucceededTaskRead(kind=file.document_transform, result=DocumentTransformResult), nested under the status discriminator.",
+        "invalidTransitions": "Runtime validation rejects a result for another command kind or a result whose task/operation ID differs from its enclosing task. The transition validates the returned state before commit; errors and cancellation roll back.",
+        "migration": "Proposed 0028_task_result_invariants enforces allowed kinds, kind-specific result shape and matching task/operation identity in PostgreSQL. All 60 production records pass its exact SQL read-only preflight. Applying the migration remains pending.",
+        "verification": "Focused native checks, real PostgreSQL negative cases, generated OpenAPI/client update and deployment verification pending."
+      }
     },
     {
       "id": "checkpoint-worker-and-cloud-dispatch",
       "oldRepresentation": "task plus Cloud Tasks delivery and transient execution",
       "authoritativeReplacement": "durable task lease/checkpoint protocol and owned worker cancellation",
-      "events": ["dispatch", "duplicate delivery", "heartbeat", "timeout", "cancel", "crash"],
+      "events": [
+        "dispatch",
+        "duplicate delivery",
+        "heartbeat",
+        "timeout",
+        "cancel",
+        "crash"
+      ],
       "guards": [
         "authenticated delivery",
         "exact task identity",
@@ -209,23 +270,48 @@
       ],
       "recovery": "A crash does not prove provider mutation absent. Recovery checks provider markers/IDs/content; uncertain irreversible writes require review.",
       "decision": "retain-explicit",
-      "sources": ["backend/app/document_transform/task_executor.py", "backend/app/tasks/queue.py"]
+      "sources": [
+        "backend/app/document_transform/task_executor.py",
+        "backend/app/tasks/queue.py"
+      ]
     },
     {
       "id": "wiki-session",
       "oldRepresentation": "session ID/revoked timestamp/token version",
       "authoritativeReplacement": "UserSession identity and canonical session revoke/refresh SQL",
-      "events": ["OAuth completion", "session create", "refresh", "logout", "revoke-all"],
-      "guards": ["signed JWT claims", "session lookup", "token-version CAS", "domain validation"],
+      "events": [
+        "OAuth completion",
+        "session create",
+        "refresh",
+        "logout",
+        "revoke-all"
+      ],
+      "guards": [
+        "signed JWT claims",
+        "session lookup",
+        "token-version CAS",
+        "domain validation"
+      ],
       "recovery": "revoked_at is an Option timestamp with two valid alternatives; no contradictory dependent payload. DB is authoritative, not a cached auth boolean.",
       "decision": "retain-explicit",
-      "sources": ["backend/app/auth/service.py", "backend/app/auth/jwt.py"]
+      "sources": [
+        "backend/app/auth/service.py",
+        "backend/app/auth/jwt.py"
+      ]
     },
     {
       "id": "native-mcp-oauth",
       "oldRepresentation": "intent/code/access/refresh collections and grants",
       "authoritativeReplacement": "native issuer typed request/response models, encrypted collection purpose and PostgresOAuthOperations",
-      "events": ["register", "authorize", "consent", "redeem once", "rotate", "revoke", "expire"],
+      "events": [
+        "register",
+        "authorize",
+        "consent",
+        "redeem once",
+        "rotate",
+        "revoke",
+        "expire"
+      ],
       "guards": [
         "one-time transactional consume",
         "PKCE/client/resource binding",
@@ -235,23 +321,41 @@
       ],
       "recovery": "Code/refresh replay fails; revocation binds grants across tokens. OAuth proxy, its adapter, tables and compatibility paths were already retired by migration 0026.",
       "decision": "retain-explicit",
-      "sources": ["backend/app/mcp/native_state.py", "backend/app/mcp/grants.py"]
+      "sources": [
+        "backend/app/mcp/native_state.py",
+        "backend/app/mcp/grants.py"
+      ]
     },
     {
       "id": "alias-reservation",
       "oldRepresentation": "active/retired row and requested slug",
       "authoritativeReplacement": "canonical alias service transactions and permanent retired name reservations",
-      "events": ["reserve", "rename", "retire", "resolve"],
-      "guards": ["unique normalized slug", "owner Drive authorization", "transaction lock"],
+      "events": [
+        "reserve",
+        "rename",
+        "retire",
+        "resolve"
+      ],
+      "guards": [
+        "unique normalized slug",
+        "owner Drive authorization",
+        "transaction lock"
+      ],
       "recovery": "Retired slugs remain audit/identity evidence and cannot be reassigned; timestamp Option is sufficient explicit state.",
       "decision": "retain-explicit",
-      "sources": ["backend/app/aliases/service.py"]
+      "sources": [
+        "backend/app/aliases/service.py"
+      ]
     },
     {
       "id": "header-provenance",
       "oldRepresentation": "task result plus durable proof",
       "authoritativeReplacement": "typed HeaderIdentityEvidence/HeaderIdentityFinalization and independent provenance record",
-      "events": ["verify output", "finalize", "subsequent in-place authorization"],
+      "events": [
+        "verify output",
+        "finalize",
+        "subsequent in-place authorization"
+      ],
       "guards": [
         "exact header/document/brand identity",
         "verified revision/hash",
@@ -284,7 +388,10 @@
       ],
       "recovery": "Cached data is a materialized view, never authorization. Independent loading/error/data snapshots are React/query framework boundary states; mutation outcomes retain their typed result contracts.",
       "decision": "retain-explicit",
-      "sources": ["backend/app/sidebar/cache.py", "frontend/src/lib/wiki-cache.ts"]
+      "sources": [
+        "backend/app/sidebar/cache.py",
+        "frontend/src/lib/wiki-cache.ts"
+      ]
     },
     {
       "id": "provider-planning",
@@ -303,13 +410,21 @@
       ],
       "recovery": "Independent observed capabilities are facts, not workflow phases. Optional plan means no selected operation; omitted plans never authorize provider effects.",
       "decision": "retain-explicit",
-      "sources": ["backend/app/document_transform/gateway.py"]
+      "sources": [
+        "backend/app/document_transform/gateway.py"
+      ]
     },
     {
       "id": "deployment-and-recovery",
       "oldRepresentation": "build, migration job, revision and release artifacts",
       "authoritativeReplacement": "canonical release gate/immutable image identity and migration command contract",
-      "events": ["CI qualify", "migrate", "deploy revision", "smoke readback", "release"],
+      "events": [
+        "CI qualify",
+        "migrate",
+        "deploy revision",
+        "smoke readback",
+        "release"
+      ],
       "guards": [
         "required exact-head checks",
         "trusted release workflow",
@@ -318,17 +433,27 @@
       ],
       "recovery": "Deployment failures remain failures; migration job cannot be repurposed as arbitrary diagnostics. Temporary read-only audit job is removed after production verification.",
       "decision": "retain-explicit",
-      "sources": [".github/workflows/release-main.yml", "scripts/github/release_gate.py"]
+      "sources": [
+        ".github/workflows/release-main.yml",
+        "scripts/github/release_gate.py"
+      ]
     },
     {
       "id": "deferred-dialog",
       "oldRepresentation": "mounted/open booleans with one invalid combination",
       "authoritativeReplacement": "DeferredDialogState = unmounted | open | closed",
-      "events": ["open", "close"],
-      "guards": ["unmounted can never be open"],
+      "events": [
+        "open",
+        "close"
+      ],
+      "guards": [
+        "unmounted can never be open"
+      ],
       "recovery": "Closing retains mounting for resource reuse; reset follows React component lifetime.",
       "decision": "convert",
-      "sources": ["frontend/src/hooks/use-deferred-dialog.ts"]
+      "sources": [
+        "frontend/src/hooks/use-deferred-dialog.ts"
+      ]
     }
   ],
   "exceptions": [

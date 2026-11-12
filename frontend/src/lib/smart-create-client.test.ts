@@ -7,11 +7,11 @@ import {
 } from "@/lib/browser-session";
 import { smartCreateApi } from "@/lib/smart-create-client";
 
-const RequestTextSchema = z.string();
-
-function isRequestText(input: Parameters<typeof fetch>[0]): input is string {
-  return RequestTextSchema.safeParse(input).success;
-}
+const RequestUrlSchema = z.union([
+  z.string(),
+  z.instanceof(URL).transform((input) => input.href),
+  z.instanceof(Request).transform((input) => input.url),
+]);
 
 const ACTION_MOCKS = vi.hoisted(() => ({ create: vi.fn(), propose: vi.fn() }));
 const FETCH_MOCK = vi.fn<typeof fetch>();
@@ -19,51 +19,51 @@ const TASK_ID = "55555555-5555-4555-8555-555555555555";
 const CATALOG = {
   templates: [
     {
-      category_path: ["Product", "PRDs"],
+      "category_path": ["Product", "PRDs"],
       description: "Requirements",
-      drive_id: "drive-1",
-      drive_name: "Product",
-      file_id: "template-1",
-      mime_type: "application/vnd.google-apps.document",
-      modified_time: "2026-08-02T12:00:00Z",
+      "drive_id": "drive-1",
+      "drive_name": "Product",
+      "file_id": "template-1",
+      "mime_type": "application/vnd.google-apps.document",
+      "modified_time": "2026-08-02T12:00:00Z",
       name: "PRD",
     },
   ],
 };
 const PENDING_TASK = {
-  attempt_count: 0,
-  created_at: "2026-08-02T12:00:00Z",
-  error_code: null,
-  error_detail: null,
-  finished_at: null,
+  "attempt_count": 0,
+  "created_at": "2026-08-02T12:00:00Z",
+  "error_code": null,
+  "error_detail": null,
+  "finished_at": null,
   id: TASK_ID,
   kind: "file.smart_create",
-  resource_id: null,
+  "resource_id": null,
   result: null,
-  started_at: null,
+  "started_at": null,
   status: "pending",
 };
 const SUCCEEDED_TASK = {
   ...PENDING_TASK,
-  attempt_count: 1,
-  finished_at: "2026-08-02T12:00:02Z",
-  resource_id: "file-1",
+  "attempt_count": 1,
+  "finished_at": "2026-08-02T12:00:02Z",
+  "resource_id": "file-1",
   result: {
     file: {
-      can_add_children: false,
-      can_edit: true,
+      "can_add_children": false,
+      "can_edit": true,
       description: "Created from the selected Drive template",
-      drive_id: "drive-1",
+      "drive_id": "drive-1",
       id: "file-1",
-      mime_type: "application/vnd.google-apps.document",
-      modified_time: null,
+      "mime_type": "application/vnd.google-apps.document",
+      "modified_time": null,
       name: "Launch brief",
-      parent_folder_id: "folder-1",
+      "parent_folder_id": "folder-1",
     },
-    task_id: TASK_ID,
+    "task_id": TASK_ID,
     warnings: [],
   },
-  started_at: "2026-08-02T12:00:01Z",
+  "started_at": "2026-08-02T12:00:01Z",
   status: "succeeded",
 };
 
@@ -92,8 +92,8 @@ describe("smartCreateApi", () => {
     FETCH_MOCK.mockResolvedValue(
       Response.json({
         ...PENDING_TASK,
-        error_code: "stopped",
-        error_detail: null,
+        "error_code": "stopped",
+        "error_detail": null,
         status: "failed",
       }),
     );
@@ -141,11 +141,7 @@ describe("smartCreateApi", () => {
     const gate = Promise.withResolvers<undefined>();
     FETCH_MOCK.mockImplementation(async (input) => {
       await gate.promise;
-      const url = isRequestText(input)
-        ? input
-        : "href" in input
-          ? input.href
-          : input.url;
+      const url = RequestUrlSchema.parse(input);
       return Response.json(url.includes("/templates") ? CATALOG : PENDING_TASK);
     });
 
@@ -192,6 +188,22 @@ describe("smartCreateApi", () => {
     await expect(smartCreateApi.getTask(TASK_ID)).rejects.toThrow();
   });
 
+  it.each([
+    { ...PENDING_TASK, kind: "file.document_transform" },
+    { ...SUCCEEDED_TASK, kind: "file.document_transform" },
+    {
+      ...SUCCEEDED_TASK,
+      result: {
+        ...SUCCEEDED_TASK.result,
+        "task_id": "66666666-6666-4666-8666-666666666666",
+      },
+    },
+  ])("rejects task kind and result identity mismatches: %j", async (task) => {
+    FETCH_MOCK.mockResolvedValue(Response.json(task));
+
+    await expect(smartCreateApi.getTask(TASK_ID)).rejects.toThrow();
+  });
+
   it("sends the idempotency key with the normalized creation plan", async () => {
     ACTION_MOCKS.create.mockResolvedValue({
       data: JSON.stringify(PENDING_TASK),
@@ -221,8 +233,8 @@ describe("smartCreateApi", () => {
         alias: "launch-brief",
         emoji: "🚀",
         name: "Launch brief",
-        parent_folder_id: "folder-1",
-        source: { file_type: "document", kind: "blank" },
+        "parent_folder_id": "folder-1",
+        source: { "file_type": "document", kind: "blank" },
       }),
       TASK_ID,
     );
@@ -233,17 +245,17 @@ describe("smartCreateApi", () => {
       data: JSON.stringify({
         alias: "launch-brief",
         destination: {
-          drive_id: "drive-1",
-          drive_name: "Product",
-          folder_id: "folder-1",
-          folder_path: ["Product"],
+          "drive_id": "drive-1",
+          "drive_name": "Product",
+          "folder_id": "folder-1",
+          "folder_path": ["Product"],
         },
         emoji: "🚀",
         name: "Launch brief",
         source: {
-          file_type: "document",
+          "file_type": "document",
           kind: "blank",
-          template_file_id: "illegal-template-field",
+          "template_file_id": "illegal-template-field",
         },
       }),
       ok: true,
