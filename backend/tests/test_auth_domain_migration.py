@@ -86,7 +86,7 @@ def test_seed_revision_preserves_history_without_seeding_or_deleting_aliases() -
     assert scripts.get_heads() == [_HEAD]
     head = scripts.get_revision(_HEAD)
     assert head is not None
-    assert head.down_revision == "0026_retire_oauth_proxy"
+    assert head.down_revision == "0027_google_token_invariants"
 
 
 def _drop_obsolete_check_again(connection: Connection) -> None:
