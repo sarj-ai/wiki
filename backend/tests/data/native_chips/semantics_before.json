@@ -1,0 +1,846 @@
+{
+  "documentId": "native-date-semantics-fixture",
+  "title": "NYC native date semantics 2026",
+  "revisionId": "r1",
+  "tabs": [
+    {
+      "tabProperties": {
+        "tabId": "t.0",
+        "title": "Tab 1",
+        "index": 0
+      },
+      "documentTab": {
+        "body": {
+          "content": [
+            {
+              "endIndex": 1,
+              "sectionBreak": {
+                "sectionStyle": {
+                  "columnSeparatorStyle": "NONE",
+                  "contentDirection": "LEFT_TO_RIGHT",
+                  "sectionType": "CONTINUOUS"
+                }
+              }
+            },
+            {
+              "startIndex": 1,
+              "endIndex": 40,
+              "paragraph": {
+                "elements": [
+                  {
+                    "startIndex": 1,
+                    "endIndex": 2,
+                    "dateElement": {
+                      "dateId": "kix.ds1h5urwkgzi",
+                      "textStyle": {},
+                      "dateElementProperties": {
+                        "timestamp": "2026-11-15T00:30:00Z",
+                        "timeZoneId": "America/New_York",
+                        "locale": "en",
+                        "dateFormat": "DATE_FORMAT_MONTH_DAY_YEAR_ABBREVIATED",
+                        "timeFormat": "TIME_FORMAT_HOUR_MINUTE_TIMEZONE",
+                        "displayText": "Nov 14, 2026 7:30 PM EST"
+                      }
+                    }
+                  },
+                  {
+                    "startIndex": 2,
+                    "endIndex": 40,
+                    "textRun": {
+                      "content": "NYC native smart-chip capability test\n",
+                      "textStyle": {}
+                    }
+                  }
+                ],
+                "paragraphStyle": {
+                  "namedStyleType": "NORMAL_TEXT",
+                  "direction": "LEFT_TO_RIGHT"
+                }
+              }
+            },
+            {
+              "startIndex": 40,
+              "endIndex": 66,
+              "paragraph": {
+                "elements": [
+                  {
+                    "startIndex": 40,
+                    "endIndex": 64,
+                    "textRun": {
+                      "content": "Native place UI canary: ",
+                      "textStyle": {}
+                    }
+                  },
+                  {
+                    "startIndex": 64,
+                    "endIndex": 65,
+                    "richLink": {
+                      "richLinkId": "kix.kghfz9ca22v9",
+                      "textStyle": {},
+                      "richLinkProperties": {
+                        "title": "533 W 19th St",
+                        "uri": "https://www.google.com/maps/place/533+W+19th+St/data=!4m2!3m1!19sChIJeWYmd8dZwokRu495W6PjDtk"
+                      }
+                    }
+                  },
+                  {
+                    "startIndex": 65,
+                    "endIndex": 66,
+                    "textRun": {
+                      "content": "\n",
+                      "textStyle": {}
+                    }
+                  }
+                ],
+                "paragraphStyle": {
+                  "namedStyleType": "NORMAL_TEXT",
+                  "direction": "LEFT_TO_RIGHT"
+                }
+              }
+            },
+            {
+              "startIndex": 66,
+              "endIndex": 113,
+              "paragraph": {
+                "elements": [
+                  {
+                    "startIndex": 66,
+                    "endIndex": 113,
+                    "textRun": {
+                      "content": "533 W. 19th St. and 537 W. 20th St. Exhibition\n",
+                      "textStyle": {}
+                    }
+                  }
+                ],
+                "paragraphStyle": {
+                  "namedStyleType": "NORMAL_TEXT",
+                  "direction": "LEFT_TO_RIGHT"
+                }
+              }
+            },
+            {
+              "startIndex": 113,
+              "endIndex": 127,
+              "paragraph": {
+                "elements": [
+                  {
+                    "startIndex": 113,
+                    "endIndex": 123,
+                    "textRun": {
+                      "content": "Saturday, ",
+                      "textStyle": {}
+                    }
+                  },
+                  {
+                    "startIndex": 123,
+                    "endIndex": 124,
+                    "dateElement": {
+                      "dateId": "kix.sit13070zidt",
+                      "textStyle": {},
+                      "dateElementProperties": {
+                        "timestamp": "2026-11-15T00:30:00Z",
+                        "timeZoneId": "America/New_York",
+                        "locale": "en",
+                        "dateFormat": "DATE_FORMAT_ISO8601",
+                        "timeFormat": "TIME_FORMAT_HOUR_MINUTE_TIMEZONE",
+                        "displayText": "2026-11-14 7:30 PM EST"
+                      }
+                    }
+                  },
+                  {
+                    "startIndex": 124,
+                    "endIndex": 125,
+                    "textRun": {
+                      "content": "–",
+                      "textStyle": {}
+                    }
+                  },
+                  {
+                    "startIndex": 125,
+                    "endIndex": 126,
+                    "dateElement": {
+                      "dateId": "kix.ck08tvg840j7",
+                      "textStyle": {},
+                      "dateElementProperties": {
+                        "timestamp": "2026-11-15T02:00:00Z",
+                        "timeZoneId": "America/New_York",
+                        "locale": "en",
+                        "dateFormat": "DATE_FORMAT_ISO8601",
+                        "timeFormat": "TIME_FORMAT_HOUR_MINUTE_TIMEZONE",
+                        "displayText": "2026-11-14 9:00 PM EST"
+                      }
+                    }
+                  },
+                  {
+                    "startIndex": 126,
+                    "endIndex": 127,
+                    "textRun": {
+                      "content": "\n",
+                      "textStyle": {}
+                    }
+                  }
+                ],
+                "paragraphStyle": {
+                  "namedStyleType": "NORMAL_TEXT",
+                  "direction": "LEFT_TO_RIGHT"
+                }
+              }
+            },
+            {
+              "startIndex": 127,
+              "endIndex": 128,
+              "paragraph": {
+                "elements": [
+                  {
+                    "startIndex": 127,
+                    "endIndex": 128,
+                    "textRun": {
+                      "content": "\n",
+                      "textStyle": {}
+                    }
+                  }
+                ],
+                "paragraphStyle": {
+                  "namedStyleType": "NORMAL_TEXT",
+                  "direction": "LEFT_TO_RIGHT"
+                }
+              }
+            },
+            {
+              "startIndex": 128,
+              "endIndex": 158,
+              "paragraph": {
+                "elements": [
+                  {
+                    "startIndex": 128,
+                    "endIndex": 158,
+                    "textRun": {
+                      "content": "Native date semantics fixture\n",
+                      "textStyle": {}
+                    }
+                  }
+                ],
+                "paragraphStyle": {
+                  "namedStyleType": "NORMAL_TEXT",
+                  "direction": "LEFT_TO_RIGHT"
+                }
+              }
+            },
+            {
+              "startIndex": 158,
+              "endIndex": 181,
+              "paragraph": {
+                "elements": [
+                  {
+                    "startIndex": 158,
+                    "endIndex": 181,
+                    "textRun": {
+                      "content": "NYC • America/New_York\n",
+                      "textStyle": {}
+                    }
+                  }
+                ],
+                "paragraphStyle": {
+                  "namedStyleType": "NORMAL_TEXT",
+                  "direction": "LEFT_TO_RIGHT"
+                }
+              }
+            },
+            {
+              "startIndex": 181,
+              "endIndex": 211,
+              "paragraph": {
+                "elements": [
+                  {
+                    "startIndex": 181,
+                    "endIndex": 211,
+                    "textRun": {
+                      "content": "Date only: November 14, 2026.\n",
+                      "textStyle": {}
+                    }
+                  }
+                ],
+                "paragraphStyle": {
+                  "namedStyleType": "NORMAL_TEXT",
+                  "direction": "LEFT_TO_RIGHT"
+                }
+              }
+            },
+            {
+              "startIndex": 211,
+              "endIndex": 253,
+              "paragraph": {
+                "elements": [
+                  {
+                    "startIndex": 211,
+                    "endIndex": 253,
+                    "textRun": {
+                      "content": "Overnight: November 14, 2026, 11 pm–1 am.\n",
+                      "textStyle": {}
+                    }
+                  }
+                ],
+                "paragraphStyle": {
+                  "namedStyleType": "NORMAL_TEXT",
+                  "direction": "LEFT_TO_RIGHT"
+                }
+              }
+            },
+            {
+              "startIndex": 253,
+              "endIndex": 289,
+              "paragraph": {
+                "elements": [
+                  {
+                    "startIndex": 253,
+                    "endIndex": 289,
+                    "textRun": {
+                      "content": "Spring gap: March 8, 2026, 2:30 am.\n",
+                      "textStyle": {}
+                    }
+                  }
+                ],
+                "paragraphStyle": {
+                  "namedStyleType": "NORMAL_TEXT",
+                  "direction": "LEFT_TO_RIGHT"
+                }
+              }
+            },
+            {
+              "startIndex": 289,
+              "endIndex": 327,
+              "paragraph": {
+                "elements": [
+                  {
+                    "startIndex": 289,
+                    "endIndex": 327,
+                    "textRun": {
+                      "content": "Fall fold: November 1, 2026, 1:30 am.\n",
+                      "textStyle": {}
+                    }
+                  }
+                ],
+                "paragraphStyle": {
+                  "namedStyleType": "NORMAL_TEXT",
+                  "direction": "LEFT_TO_RIGHT"
+                }
+              }
+            },
+            {
+              "startIndex": 327,
+              "endIndex": 354,
+              "paragraph": {
+                "elements": [
+                  {
+                    "startIndex": 327,
+                    "endIndex": 354,
+                    "textRun": {
+                      "content": "Hours: Tue–Sat 10 am–6 pm.\n",
+                      "textStyle": {}
+                    }
+                  }
+                ],
+                "paragraphStyle": {
+                  "namedStyleType": "NORMAL_TEXT",
+                  "direction": "LEFT_TO_RIGHT"
+                }
+              }
+            },
+            {
+              "startIndex": 354,
+              "endIndex": 371,
+              "paragraph": {
+                "elements": [
+                  {
+                    "startIndex": 354,
+                    "endIndex": 371,
+                    "textRun": {
+                      "content": "Bare time: 7 pm.\n",
+                      "textStyle": {}
+                    }
+                  }
+                ],
+                "paragraphStyle": {
+                  "namedStyleType": "NORMAL_TEXT",
+                  "direction": "LEFT_TO_RIGHT"
+                }
+              }
+            },
+            {
+              "startIndex": 371,
+              "endIndex": 407,
+              "paragraph": {
+                "elements": [
+                  {
+                    "startIndex": 371,
+                    "endIndex": 407,
+                    "textRun": {
+                      "content": "Ambiguous numeric date: 04/09/2026.\n",
+                      "textStyle": {}
+                    }
+                  }
+                ],
+                "paragraphStyle": {
+                  "namedStyleType": "NORMAL_TEXT",
+                  "direction": "LEFT_TO_RIGHT"
+                }
+              }
+            },
+            {
+              "startIndex": 407,
+              "endIndex": 442,
+              "paragraph": {
+                "elements": [
+                  {
+                    "startIndex": 407,
+                    "endIndex": 442,
+                    "textRun": {
+                      "content": "Emoji 😀: November 15, 2026, 7 pm.\n",
+                      "textStyle": {}
+                    }
+                  }
+                ],
+                "paragraphStyle": {
+                  "namedStyleType": "NORMAL_TEXT",
+                  "direction": "LEFT_TO_RIGHT"
+                }
+              }
+            },
+            {
+              "startIndex": 442,
+              "endIndex": 443,
+              "paragraph": {
+                "elements": [
+                  {
+                    "startIndex": 442,
+                    "endIndex": 443,
+                    "textRun": {
+                      "content": "\n",
+                      "textStyle": {}
+                    }
+                  }
+                ],
+                "paragraphStyle": {
+                  "namedStyleType": "NORMAL_TEXT",
+                  "direction": "LEFT_TO_RIGHT"
+                }
+              }
+            }
+          ]
+        },
+        "documentStyle": {
+          "background": {
+            "color": {}
+          },
+          "pageNumberStart": 1,
+          "marginTop": {
+            "magnitude": 72,
+            "unit": "PT"
+          },
+          "marginBottom": {
+            "magnitude": 72,
+            "unit": "PT"
+          },
+          "marginRight": {
+            "magnitude": 72,
+            "unit": "PT"
+          },
+          "marginLeft": {
+            "magnitude": 72,
+            "unit": "PT"
+          },
+          "pageSize": {
+            "height": {
+              "magnitude": 792,
+              "unit": "PT"
+            },
+            "width": {
+              "magnitude": 612,
+              "unit": "PT"
+            }
+          },
+          "marginHeader": {
+            "magnitude": 36,
+            "unit": "PT"
+          },
+          "marginFooter": {
+            "magnitude": 36,
+            "unit": "PT"
+          },
+          "useCustomHeaderFooterMargins": true,
+          "documentFormat": {
+            "documentMode": "PAGES"
+          }
+        },
+        "namedStyles": {
+          "styles": [
+            {
+              "namedStyleType": "NORMAL_TEXT",
+              "textStyle": {
+                "bold": false,
+                "italic": false,
+                "underline": false,
+                "strikethrough": false,
+                "smallCaps": false,
+                "backgroundColor": {},
+                "foregroundColor": {
+                  "color": {
+                    "rgbColor": {}
+                  }
+                },
+                "fontSize": {
+                  "magnitude": 11,
+                  "unit": "PT"
+                },
+                "weightedFontFamily": {
+                  "fontFamily": "Arial",
+                  "weight": 400
+                },
+                "baselineOffset": "NONE"
+              },
+              "paragraphStyle": {
+                "namedStyleType": "NORMAL_TEXT",
+                "alignment": "START",
+                "lineSpacing": 115,
+                "direction": "LEFT_TO_RIGHT",
+                "spacingMode": "COLLAPSE_LISTS",
+                "spaceAbove": {
+                  "unit": "PT"
+                },
+                "spaceBelow": {
+                  "unit": "PT"
+                },
+                "borderBetween": {
+                  "color": {},
+                  "width": {
+                    "unit": "PT"
+                  },
+                  "padding": {
+                    "unit": "PT"
+                  },
+                  "dashStyle": "SOLID"
+                },
+                "borderTop": {
+                  "color": {},
+                  "width": {
+                    "unit": "PT"
+                  },
+                  "padding": {
+                    "unit": "PT"
+                  },
+                  "dashStyle": "SOLID"
+                },
+                "borderBottom": {
+                  "color": {},
+                  "width": {
+                    "unit": "PT"
+                  },
+                  "padding": {
+                    "unit": "PT"
+                  },
+                  "dashStyle": "SOLID"
+                },
+                "borderLeft": {
+                  "color": {},
+                  "width": {
+                    "unit": "PT"
+                  },
+                  "padding": {
+                    "unit": "PT"
+                  },
+                  "dashStyle": "SOLID"
+                },
+                "borderRight": {
+                  "color": {},
+                  "width": {
+                    "unit": "PT"
+                  },
+                  "padding": {
+                    "unit": "PT"
+                  },
+                  "dashStyle": "SOLID"
+                },
+                "indentFirstLine": {
+                  "unit": "PT"
+                },
+                "indentStart": {
+                  "unit": "PT"
+                },
+                "indentEnd": {
+                  "unit": "PT"
+                },
+                "keepLinesTogether": false,
+                "keepWithNext": false,
+                "avoidWidowAndOrphan": true,
+                "shading": {
+                  "backgroundColor": {}
+                },
+                "pageBreakBefore": false
+              }
+            },
+            {
+              "namedStyleType": "HEADING_1",
+              "textStyle": {
+                "fontSize": {
+                  "magnitude": 20,
+                  "unit": "PT"
+                }
+              },
+              "paragraphStyle": {
+                "namedStyleType": "NORMAL_TEXT",
+                "direction": "LEFT_TO_RIGHT",
+                "spaceAbove": {
+                  "magnitude": 20,
+                  "unit": "PT"
+                },
+                "spaceBelow": {
+                  "magnitude": 6,
+                  "unit": "PT"
+                },
+                "keepLinesTogether": true,
+                "keepWithNext": true,
+                "pageBreakBefore": false
+              }
+            },
+            {
+              "namedStyleType": "HEADING_2",
+              "textStyle": {
+                "bold": false,
+                "fontSize": {
+                  "magnitude": 16,
+                  "unit": "PT"
+                }
+              },
+              "paragraphStyle": {
+                "namedStyleType": "NORMAL_TEXT",
+                "direction": "LEFT_TO_RIGHT",
+                "spaceAbove": {
+                  "magnitude": 18,
+                  "unit": "PT"
+                },
+                "spaceBelow": {
+                  "magnitude": 6,
+                  "unit": "PT"
+                },
+                "keepLinesTogether": true,
+                "keepWithNext": true,
+                "pageBreakBefore": false
+              }
+            },
+            {
+              "namedStyleType": "HEADING_3",
+              "textStyle": {
+                "bold": false,
+                "foregroundColor": {
+                  "color": {
+                    "rgbColor": {
+                      "red": 0.2627451,
+                      "green": 0.2627451,
+                      "blue": 0.2627451
+                    }
+                  }
+                },
+                "fontSize": {
+                  "magnitude": 14,
+                  "unit": "PT"
+                }
+              },
+              "paragraphStyle": {
+                "namedStyleType": "NORMAL_TEXT",
+                "direction": "LEFT_TO_RIGHT",
+                "spaceAbove": {
+                  "magnitude": 16,
+                  "unit": "PT"
+                },
+                "spaceBelow": {
+                  "magnitude": 4,
+                  "unit": "PT"
+                },
+                "keepLinesTogether": true,
+                "keepWithNext": true,
+                "pageBreakBefore": false
+              }
+            },
+            {
+              "namedStyleType": "HEADING_4",
+              "textStyle": {
+                "foregroundColor": {
+                  "color": {
+                    "rgbColor": {
+                      "red": 0.4,
+                      "green": 0.4,
+                      "blue": 0.4
+                    }
+                  }
+                },
+                "fontSize": {
+                  "magnitude": 12,
+                  "unit": "PT"
+                }
+              },
+              "paragraphStyle": {
+                "namedStyleType": "NORMAL_TEXT",
+                "direction": "LEFT_TO_RIGHT",
+                "spaceAbove": {
+                  "magnitude": 14,
+                  "unit": "PT"
+                },
+                "spaceBelow": {
+                  "magnitude": 4,
+                  "unit": "PT"
+                },
+                "keepLinesTogether": true,
+                "keepWithNext": true,
+                "pageBreakBefore": false
+              }
+            },
+            {
+              "namedStyleType": "HEADING_5",
+              "textStyle": {
+                "foregroundColor": {
+                  "color": {
+                    "rgbColor": {
+                      "red": 0.4,
+                      "green": 0.4,
+                      "blue": 0.4
+                    }
+                  }
+                },
+                "fontSize": {
+                  "magnitude": 11,
+                  "unit": "PT"
+                }
+              },
+              "paragraphStyle": {
+                "namedStyleType": "NORMAL_TEXT",
+                "direction": "LEFT_TO_RIGHT",
+                "spaceAbove": {
+                  "magnitude": 12,
+                  "unit": "PT"
+                },
+                "spaceBelow": {
+                  "magnitude": 4,
+                  "unit": "PT"
+                },
+                "keepLinesTogether": true,
+                "keepWithNext": true,
+                "pageBreakBefore": false
+              }
+            },
+            {
+              "namedStyleType": "HEADING_6",
+              "textStyle": {
+                "italic": true,
+                "foregroundColor": {
+                  "color": {
+                    "rgbColor": {
+                      "red": 0.4,
+                      "green": 0.4,
+                      "blue": 0.4
+                    }
+                  }
+                },
+                "fontSize": {
+                  "magnitude": 11,
+                  "unit": "PT"
+                }
+              },
+              "paragraphStyle": {
+                "namedStyleType": "NORMAL_TEXT",
+                "direction": "LEFT_TO_RIGHT",
+                "spaceAbove": {
+                  "magnitude": 12,
+                  "unit": "PT"
+                },
+                "spaceBelow": {
+                  "magnitude": 4,
+                  "unit": "PT"
+                },
+                "keepLinesTogether": true,
+                "keepWithNext": true,
+                "pageBreakBefore": false
+              }
+            },
+            {
+              "namedStyleType": "TITLE",
+              "textStyle": {
+                "fontSize": {
+                  "magnitude": 26,
+                  "unit": "PT"
+                }
+              },
+              "paragraphStyle": {
+                "namedStyleType": "NORMAL_TEXT",
+                "direction": "LEFT_TO_RIGHT",
+                "spaceAbove": {
+                  "unit": "PT"
+                },
+                "spaceBelow": {
+                  "magnitude": 3,
+                  "unit": "PT"
+                },
+                "keepLinesTogether": true,
+                "keepWithNext": true,
+                "pageBreakBefore": false
+              }
+            },
+            {
+              "namedStyleType": "SUBTITLE",
+              "textStyle": {
+                "italic": false,
+                "foregroundColor": {
+                  "color": {
+                    "rgbColor": {
+                      "red": 0.4,
+                      "green": 0.4,
+                      "blue": 0.4
+                    }
+                  }
+                },
+                "fontSize": {
+                  "magnitude": 15,
+                  "unit": "PT"
+                },
+                "weightedFontFamily": {
+                  "fontFamily": "Arial",
+                  "weight": 400
+                }
+              },
+              "paragraphStyle": {
+                "namedStyleType": "NORMAL_TEXT",
+                "direction": "LEFT_TO_RIGHT",
+                "spaceAbove": {
+                  "unit": "PT"
+                },
+                "spaceBelow": {
+                  "magnitude": 16,
+                  "unit": "PT"
+                },
+                "keepLinesTogether": true,
+                "keepWithNext": true,
+                "pageBreakBefore": false
+              }
+            }
+          ]
+        },
+        "namedRanges": {
+          "sarj_native_date_range_canary_20261112": {
+            "name": "sarj_native_date_range_canary_20261112",
+            "namedRanges": [
+              {
+                "namedRangeId": "kix.unnkkmredgem",
+                "name": "sarj_native_date_range_canary_20261112",
+                "ranges": [
+                  {
+                    "startIndex": 442,
+                    "endIndex": 443
+                  }
+                ]
+              }
+            ]
+          }
+        }
+      }
+    }
+  ]
+}

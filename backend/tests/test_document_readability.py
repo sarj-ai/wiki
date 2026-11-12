@@ -379,14 +379,29 @@ async def test_layout_can_run_all_100_improving_passes_and_keeps_every_source_ch
     )
 
 
-async def test_repeated_formatting_is_a_zero_write_noop_when_the_layout_already_matches() -> None:
+async def test_repeated_formatting_preserves_layout_and_reports_failed_model_work_without_writes() -> (
+    None
+):
     document = _fixture("after")
-    assert (
-        await plan_readability(
-            document, title="Readability fixture", generator=_LayoutEditor(unavailable=True)
-        )
-        is None
+    plan = await plan_readability(
+        document, title="Readability fixture", generator=_LayoutEditor(unavailable=True)
     )
+    assert plan is not None
+    assert not plan.requests
+    assert plan.model_invoked
+    assert plan.planning_failure_code == "model_unavailable"
+
+    async def read(_document_id: FileId) -> dict[str, JsonValue]:
+        return deepcopy(document)
+
+    async def write(_document_id: FileId, _checkpoint: ReadabilityCheckpoint) -> None:
+        pytest.fail("An unchanged native layout must not be written")
+
+    completed = await ReadabilityProvider(read, write).apply(
+        document_id=FileId("readability-fixture"), checkpoint=plan
+    )
+    assert completed.complete
+    assert completed.revision_id == document["revisionId"]
 
 
 async def test_inherited_typography_and_paragraph_layout_are_eligible_and_verify() -> None:

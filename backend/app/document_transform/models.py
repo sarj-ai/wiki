@@ -20,7 +20,11 @@ from google import genai
 from google.genai import errors as genai_errors, types as genai_types
 from loguru import logger
 
-from app.document_transform.errors import ModelDeadlineError, ModelUnavailableError
+from app.document_transform.errors import (
+    ModelDeadlineError,
+    ModelOutputTruncatedError,
+    ModelUnavailableError,
+)
 from app.document_transform.ir import BlockKind, DocumentIR, TextBlock
 from app.document_transform.model_diagnostics import (
     ModelBindingError,
@@ -87,8 +91,8 @@ _TRANSIENT_MODEL_STATUSES = frozenset(
     }
 )
 _REVIEW_FALLBACK_STATUSES = _TRANSIENT_MODEL_STATUSES
-_MAX_REVIEW_BATCH_CHARACTERS = 12_000
-_MAX_REVIEW_BATCH_PAIRS = 12
+_MAX_REVIEW_BATCH_CHARACTERS = 32_000
+_MAX_REVIEW_BATCH_PAIRS = 32
 _phase_denied_review_models_var: ContextVar[set[str] | None] = ContextVar(
     "document_phase_denied_review_models", default=None
 )
@@ -127,7 +131,7 @@ _NAMED_PURPOSE = re.compile(
     rf"\b{_NAMED_SUBJECT_PATTERN}[ \t]+"
     r"(?:(?:is|was)[ \t]+(?:intended|designed)[ \t]+)?to[ \t]+[a-z][a-z'-]*\b"
 )
-_STRUCTURED_RESPONSE_TOKEN_LIMIT = 16_384
+_STRUCTURED_RESPONSE_TOKEN_LIMIT = 32_768
 _SEMANTIC_REVIEW_RESPONSE_TOKEN_LIMIT = 32_768
 _DRAFT_WORD_NUMERATOR = 1
 _DRAFT_WORD_DENOMINATOR = 2
@@ -467,6 +471,12 @@ class VertexGeminiPatchGenerator(PatchGenerator):
             model_operation=str(operation),
             model_duration_ms=round((monotonic() - started) * 1000),
         )
+        if any(
+            candidate.finish_reason == genai_types.FinishReason.MAX_TOKENS
+            for candidate in response.candidates or []
+        ):
+            log_model_response_failure(model=model, response=response, operation=operation)
+            raise ModelOutputTruncatedError
         return response
 
     @property
@@ -638,7 +648,11 @@ class VertexGeminiPatchGenerator(PatchGenerator):
         phase: TransformPhase,
         repair: bool,
     ) -> genai_types.ThinkingConfig | None:
-        if phase is TransformPhase.UNSLOP and model == primary_model == "gemini-3.8-flash":
+        if (
+            phase is TransformPhase.UNSLOP
+            and model == primary_model
+            and model in {"gemini-3.8-flash", "gemini-3.1-pro-preview"}
+        ):
             return genai_types.ThinkingConfig(
                 thinking_level=genai_types.ThinkingLevel.HIGH
                 if repair

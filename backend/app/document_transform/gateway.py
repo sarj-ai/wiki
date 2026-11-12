@@ -22,6 +22,7 @@ from app.identifiers import DocsRevisionId, DocsSegmentId, DocsTabId, DriveId, F
 
 
 if TYPE_CHECKING:
+    from app.document_transform.native_chip_flow import NativeChipProvider
     from app.document_transform.readability_provider import ReadabilityProvider
 
 
@@ -118,6 +119,7 @@ class HeaderIdentityCapture(Protocol):
 
 class DocumentGateway(ABC):
     readability_provider: ReadabilityProvider | None = None
+    native_chip_provider: NativeChipProvider | None = None
     supports_native_footer = False
     supports_native_dates = False
     structure_provider: StructureProvider | None = None

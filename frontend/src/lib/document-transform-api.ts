@@ -135,6 +135,8 @@ const TASK_FAILURE_FALLBACKS: Readonly<Record<string, string>> = {
     "The model provider denied access. Contact support with this task ID.",
   "model_output_invalid":
     "The model returned invalid output. No unverified rewrite was applied.",
+  "model_output_truncated":
+    "The model reached its response limit. Review this task before retrying a smaller document.",
   "model_deadline_exhausted":
     "The model could not finish within the execution budget. Review this task before retrying.",
   "execution_deadline_exhausted":

@@ -237,7 +237,7 @@ def log_model_response_failure(
     *,
     model: str,
     response: genai_types.GenerateContentResponse,
-    operation: TransformPhase | Literal["review"] = "review",
+    operation: TransformPhase | Literal["review", "readability"] = "review",
 ) -> None:
     finish_reason = response.candidates[0].finish_reason if response.candidates else None
     metadata: dict[str, str | int] = {

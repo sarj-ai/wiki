@@ -71,6 +71,10 @@ from app.document_transform.naming import (
     suggested_document_title,
     title_case_document_name,
 )
+from app.document_transform.native_chip_flow import (
+    CompletedNativeChipCheckpoint,
+    plan_native_chips,
+)
 from app.document_transform.native_code import plan_native_code_styles
 from app.document_transform.native_font_defense import (
     apply_native_font_preservation,
@@ -339,6 +343,24 @@ class DocumentTransformExecutor(DocumentTransformRunner):
         if (
             self._checkpoint is not None
             and self._checkpoint.kind != "word_copy"
+            and self._checkpoint.native_chips is not None
+        ):
+            result = self._checkpoint.native_chip_result
+            if (
+                result is None
+                or result.operation_id != operation_id
+                or result.mode != request.mode
+                or result.output_strategy != request.output_strategy
+                or request.mode is TransformMode.UNSLOP
+            ):
+                raise OutputConflictError
+            await self._verify_readability_source(request, self._checkpoint)
+            return await self._finish_native_chips(
+                operation_id=operation_id, request=request, result=result
+            )
+        if (
+            self._checkpoint is not None
+            and self._checkpoint.kind != "word_copy"
             and self._checkpoint.readability is not None
         ):
             result = self._checkpoint.readability_result
@@ -354,9 +376,60 @@ class DocumentTransformExecutor(DocumentTransformRunner):
             result = await self._execute_in_place(operation_id=operation_id, request=request)
         else:
             result = await self._execute_copy(operation_id=operation_id, request=request)
-        return await self._finish_readability(
+        result = await self._finish_readability(
             operation_id=operation_id, request=request, result=result
         )
+        return await self._finish_native_chips(
+            operation_id=operation_id, request=request, result=result
+        )
+
+    async def _finish_native_chips(
+        self,
+        *,
+        operation_id: uuid.UUID,
+        request: DocumentTransformRequest,
+        result: DocumentTransformResult,
+    ) -> DocumentTransformResult:
+        checkpoint = self._checkpoint
+        provider = self._gateway.native_chip_provider
+        if (
+            request.mode is TransformMode.UNSLOP
+            or provider is None
+            or checkpoint is None
+            or checkpoint.kind == "word_copy"
+            or self._checkpoint_store is None
+        ):
+            return result
+        chips = checkpoint.native_chips
+        if chips is None:
+            document = await provider.read(result.output.file_id)
+            if document.get("revisionId") != result.output_revision_id:
+                raise OutputConflictError
+            chips = plan_native_chips(document, operation_id=operation_id)
+            if chips is None:
+                return result
+            checkpoint = await self._save_readability_checkpoint(
+                checkpoint.model_copy(update={"native_chips": chips, "native_chip_result": result})
+            )
+        await self._verify_readability_source(request, checkpoint)
+        if (
+            chips.document_id != result.output.file_id
+            or chips.marker_name != f"sarj_native_chips_{operation_id.hex}"
+            or (chips.revision_id if chips.complete else chips.source_revision_id)
+            != result.output_revision_id
+        ):
+            raise OutputConflictError
+        completed = await provider.apply(chips)
+        if chips.complete:
+            return result
+        result = _native_chip_result(result, completed)
+        checkpoint = await self._record_postprocessed_result(
+            operation_id=operation_id, checkpoint=checkpoint, result=result
+        )
+        await self._save_readability_checkpoint(
+            checkpoint.model_copy(update={"native_chips": completed, "native_chip_result": result})
+        )
+        return result
 
     async def _verify_readability_source(
         self, request: DocumentTransformRequest, checkpoint: CopyCheckpoint | InPlaceCheckpoint
@@ -431,6 +504,21 @@ class DocumentTransformExecutor(DocumentTransformRunner):
             completed,
             model_ids=tuple(ModelId(value) for value in self._generator.model_ids),
         )
+        checkpoint = await self._record_postprocessed_result(
+            operation_id=operation_id, checkpoint=checkpoint, result=result
+        )
+        await self._save_readability_checkpoint(
+            checkpoint.model_copy(update={"readability": completed, "readability_result": result})
+        )
+        return result
+
+    async def _record_postprocessed_result(
+        self,
+        *,
+        operation_id: uuid.UUID,
+        checkpoint: CopyCheckpoint | InPlaceCheckpoint,
+        result: DocumentTransformResult,
+    ) -> CopyCheckpoint | InPlaceCheckpoint:
         match checkpoint:
             case (
                 PlannedCopyCheckpoint()
@@ -462,10 +550,7 @@ class DocumentTransformExecutor(DocumentTransformRunner):
                 checkpoint = checkpoint.model_copy(
                     update={"current_revision_id": result.output_revision_id}
                 )
-        await self._save_readability_checkpoint(
-            checkpoint.model_copy(update={"readability": completed, "readability_result": result})
-        )
-        return result
+        return checkpoint
 
     async def _save_readability_checkpoint(
         self, checkpoint: InPlaceCheckpoint | CopyCheckpoint
@@ -2437,6 +2522,44 @@ class DocumentTransformExecutor(DocumentTransformRunner):
         )
 
 
+def _native_chip_result(
+    result: DocumentTransformResult, chips: CompletedNativeChipCheckpoint
+) -> DocumentTransformResult:
+    skipped = [
+        TransformFinding(
+            code=f"native_{item.kind}_skipped_{item.reason}",
+            detail=(
+                f"Preserved the original {item.kind} text in tab {item.tab_id}, "
+                f"UTF-16 range {item.start}:{item.end}: {item.reason.replace('_', ' ')}."
+            ),
+        )
+        for item in chips.skipped
+    ]
+    converted = len(chips.spans)
+    findings = [*result.findings, *skipped]
+    if converted:
+        findings.append(
+            TransformFinding(
+                code="native_dates_converted",
+                detail=(
+                    f"Converted {converted} explicit date/time spans to native Google Docs "
+                    "date chips. Verified their date/time meaning and every surrounding native element."
+                ),
+                severity=FindingSeverity.INFORMATIONAL,
+            )
+        )
+    return result.model_copy(
+        update={
+            "findings": findings,
+            "needs_review": result.needs_review or bool(skipped),
+            "changed": result.changed or bool(converted),
+            "output_revision_id": chips.revision_id,
+            "applied_patch_count": result.applied_patch_count + converted,
+            "deterministic_patch_count": result.deterministic_patch_count + converted,
+        }
+    )
+
+
 def _readability_result(
     result: DocumentTransformResult,
     layout: ReadabilityCheckpoint,
@@ -2462,16 +2585,33 @@ def _readability_result(
             if layout.model_invoked
             else result.model_ids,
             "changed": result.changed or bool(layout.requests),
-            "findings": [
-                *result.findings,
-                TransformFinding(
-                    code="document_readability_improved",
-                    detail=f"Improved paragraph/list structure in {len(layout.paragraphs)} passages and fitted {len(layout.tables)} tables to their content. Numeric values and precision were preserved.",
-                    severity=FindingSeverity.INFORMATIONAL,
-                ),
-            ],
+            "needs_review": result.needs_review or layout.planning_failure_code is not None,
+            "findings": [*result.findings, *_readability_findings(layout)],
         }
     )
+
+
+def _readability_findings(layout: ReadabilityCheckpoint) -> list[TransformFinding]:
+    findings: list[TransformFinding] = []
+    if layout.requests:
+        findings.append(
+            TransformFinding(
+                code="document_readability_improved",
+                detail=f"Improved paragraph/list structure in {len(layout.paragraphs)} passages and fitted {len(layout.tables)} tables to their content. Numeric values and precision were preserved.",
+                severity=FindingSeverity.INFORMATIONAL,
+            )
+        )
+    if layout.planning_failure_code is not None:
+        findings.append(
+            TransformFinding(
+                code=f"document_readability_incomplete_{layout.planning_failure_code}",
+                detail=(
+                    f"Paragraph layout could not be completed ({layout.planning_failure_code}). "
+                    "Existing wording and native structure were verified; review this task before retrying."
+                ),
+            )
+        )
+    return findings
 
 
 def _copy_output_name(request: DocumentTransformRequest, original: DocumentIR) -> str:

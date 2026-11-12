@@ -1800,53 +1800,60 @@ describe("DocumentPolishDialog", () => {
     });
   });
 
-  it("warns that the original may have changed after post-mutation verification fails", async () => {
-    vi.mocked(DOCUMENT_TRANSFORM_API.capabilities).mockResolvedValue({
-      copy: true,
-      inPlace: true,
-      presentationCopy: true,
-      presentationInPlace: false,
-    });
-    vi.spyOn(DOCUMENT_TRANSFORM_API, "create").mockResolvedValue({
-      id: "55555555-5555-4555-8555-555555555555",
-      status: "pending",
-    });
-    vi.spyOn(DOCUMENT_TRANSFORM_API, "waitForCompletion").mockRejectedValue(
-      new DocumentTransformTerminalError(
-        "Google Docs accepted changes, but safety verification failed.",
-        {
-          code: "in_place_verification_failed",
-          unverifiedOutputId: "original-document",
-        },
-      ),
-    );
-    renderDialog(root, {
-      allowInPlace: true,
-      expectedModifiedTime: "2026-09-03T12:00:00Z",
-      fileId: "original-document",
-      kind: "drive_file",
-      mimeType: MIME_DOC,
-      name: "Architecture review",
-    });
-
-    await vi.waitFor(() =>
-      expect(findButtonNow("Edit original")).toBeEnabled(),
-    );
-    clickButton(findButtonNow("Edit original"));
-    await vi.waitFor(() =>
-      expect(findButtonNow("Polish original")).toBeEnabled(),
-    );
-    clickButton(findButtonNow("Polish original"));
-
-    await vi.waitFor(() => {
-      expect(document.querySelector('[role="alert"]')).toHaveTextContent(
-        "The original document may have changed",
+  it.each([
+    "in_place_verification_failed",
+    "model_deadline_exhausted",
+    "document_provider_unavailable",
+  ])(
+    "warns that the original may have changed after a checkpointed failure: %s",
+    async (code) => {
+      vi.mocked(DOCUMENT_TRANSFORM_API.capabilities).mockResolvedValue({
+        copy: true,
+        inPlace: true,
+        presentationCopy: true,
+        presentationInPlace: false,
+      });
+      vi.spyOn(DOCUMENT_TRANSFORM_API, "create").mockResolvedValue({
+        id: "55555555-5555-4555-8555-555555555555",
+        status: "pending",
+      });
+      vi.spyOn(DOCUMENT_TRANSFORM_API, "waitForCompletion").mockRejectedValue(
+        new DocumentTransformTerminalError(
+          "Google Docs accepted changes, but safety verification failed.",
+          {
+            code,
+            unverifiedOutputId: "original-document",
+          },
+        ),
       );
-      expect(
-        document.querySelector('a[href="/d/original-document"]'),
-      ).toHaveTextContent("Open original document for review");
-    });
-  });
+      renderDialog(root, {
+        allowInPlace: true,
+        expectedModifiedTime: "2026-09-03T12:00:00Z",
+        fileId: "original-document",
+        kind: "drive_file",
+        mimeType: MIME_DOC,
+        name: "Architecture review",
+      });
+
+      await vi.waitFor(() =>
+        expect(findButtonNow("Edit original")).toBeEnabled(),
+      );
+      clickButton(findButtonNow("Edit original"));
+      await vi.waitFor(() =>
+        expect(findButtonNow("Polish original")).toBeEnabled(),
+      );
+      clickButton(findButtonNow("Polish original"));
+
+      await vi.waitFor(() => {
+        expect(document.querySelector('[role="alert"]')).toHaveTextContent(
+          "The original document may have changed",
+        );
+        expect(
+          document.querySelector('a[href="/d/original-document"]'),
+        ).toHaveTextContent("Open original document for review");
+      });
+    },
+  );
 
   it.each([false, true])(
     "enriches terminal create replay and retains its task when read fails=%s",
