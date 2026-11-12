@@ -8,6 +8,7 @@ from types import MappingProxyType
 from typing import Final, Literal
 
 from app.document_transform.ir import BlockKind, DocumentIR, TextBlock
+from app.document_transform.measurement_actor import reassigned_measurement_action
 from app.document_transform.quantity_notation import HORIZONTAL_SPACE, UNIT_POWER, UNIT_SYMBOL
 from app.document_transform.quotations import QUOTED_SPAN_PATTERN, quoted_block_ids
 from app.document_transform.revision_arguments import revision_arguments
@@ -148,6 +149,7 @@ REPAIRABLE_REWRITE_CODES = frozenset(
         "semantic_review_rejected",
         "scope_qualifier_changed",
         "document_writing_actor_changed",
+        "measurement_actor_changed",
         "temporal_scope_changed",
         "negative_transformation_scope_changed",
         "unit_column_identity_changed",
@@ -316,6 +318,8 @@ def _same_retained_values(before: list[str], after: list[str], *, allow_reorderi
 def _aggressive_unslop_code(block: TextBlock, replacement: str) -> str | None:
     if reassigned_document_writing_action(block.text, replacement):
         return "document_writing_actor_changed"
+    if reassigned_measurement_action(block.text, replacement):
+        return "measurement_actor_changed"
     if _fronted_date_scope_expanded(block.text, replacement) or Counter(
         _temporal_scopes(block.text)
     ) != Counter(_temporal_scopes(replacement)):

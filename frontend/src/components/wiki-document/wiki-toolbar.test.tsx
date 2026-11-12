@@ -1,3 +1,10 @@
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  within,
+} from "@testing-library/react";
 import { flushSync } from "react-dom";
 import { createRoot } from "react-dom/client";
 import { renderToStaticMarkup } from "react-dom/server";
@@ -7,6 +14,7 @@ import {
   MIME_MARKDOWN,
   MIME_PDF,
   MIME_PPTX,
+  MIME_SHEET,
   MIME_SLIDE,
 } from "@/types/wiki";
 
@@ -30,7 +38,99 @@ vi.mock("./lazy-document-polish-dialog", () => ({
   }) => `polish:${source.fileId}:in-place-${String(source.allowInPlace)}`,
 }));
 
+afterEach(cleanup);
+
 describe("WikiToolbar", () => {
+  it.each([MIME_DOC, MIME_SHEET, MIME_SLIDE])(
+    "keeps labeled preview/edit controls visible and marks the active mode for %s",
+    (mimeType) => {
+      const onDocumentModeChange = vi.fn();
+      const props = {
+        breadcrumb: [],
+        canEdit: true,
+        driveId: "drive",
+        fileId: "file",
+        mimeType,
+        onDocumentModeChange,
+        onReload: vi.fn(),
+        parentFolderId: "folder",
+        title: "Document",
+      };
+      const view = render(<WikiToolbar {...props} documentMode="edit" />);
+      const group = screen.getByRole("group", { name: "Document mode" });
+      const preview = within(group).getByRole("button", { name: "Preview" });
+      const edit = within(group).getByRole("button", { name: "Edit" });
+      expect(edit).toHaveAttribute("aria-pressed", "true");
+      expect(preview).toHaveAttribute("aria-pressed", "false");
+      fireEvent.click(preview);
+      expect(onDocumentModeChange).toHaveBeenLastCalledWith("preview");
+      view.rerender(<WikiToolbar {...props} documentMode="preview" />);
+      expect(preview).toHaveAttribute("aria-pressed", "true");
+      expect(edit).toHaveAttribute("aria-pressed", "false");
+      fireEvent.click(edit);
+      expect(onDocumentModeChange).toHaveBeenLastCalledWith("edit");
+    },
+  );
+
+  it.each([
+    {
+      authority: "pending" as const,
+      canEdit: false,
+      mimeType: MIME_DOC,
+    },
+    {
+      authority: "resolved" as const,
+      canEdit: true,
+      mimeType: MIME_PDF,
+    },
+  ])(
+    "gates editing on verified permissions: $authority / $mimeType",
+    ({ authority, canEdit, mimeType }) => {
+      render(
+        <WikiToolbar
+          authority={authority}
+          breadcrumb={[]}
+          canEdit={canEdit}
+          documentMode="preview"
+          driveId="drive"
+          fileId="file"
+          mimeType={mimeType}
+          onDocumentModeChange={vi.fn()}
+          onReload={vi.fn()}
+          parentFolderId="folder"
+          title="Document"
+        />,
+      );
+      expect(screen.queryByRole("group", { name: "Document mode" })).toBeNull();
+    },
+  );
+
+  it("shows the selected preview with editing disabled for readers", () => {
+    const onDocumentModeChange = vi.fn();
+    render(
+      <WikiToolbar
+        breadcrumb={[]}
+        canEdit={false}
+        documentMode="preview"
+        driveId="drive"
+        fileId="file"
+        mimeType={MIME_DOC}
+        onDocumentModeChange={onDocumentModeChange}
+        onReload={vi.fn()}
+        parentFolderId="folder"
+        title="Document"
+      />,
+    );
+    expect(screen.getByRole("button", { name: "Preview" })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+    const edit = screen.getByRole("button", { name: "Edit" });
+    expect(edit).toBeDisabled();
+    fireEvent.click(edit);
+    expect(onDocumentModeChange).not.toHaveBeenCalled();
+  });
+
   it("routes readers to the read-only short-link view", () => {
     const view = renderToStaticMarkup(
       <WikiToolbar
@@ -39,6 +139,8 @@ describe("WikiToolbar", () => {
         driveId="drive"
         fileId="read-only-file"
         mimeType={MIME_DOC}
+        documentMode="edit"
+        onDocumentModeChange={vi.fn()}
         onReload={vi.fn()}
         parentFolderId="folder"
         title="Read-only document"
@@ -58,6 +160,8 @@ describe("WikiToolbar", () => {
         driveId="drive"
         fileId="editable-file"
         mimeType={MIME_DOC}
+        documentMode="edit"
+        onDocumentModeChange={vi.fn()}
         onReload={vi.fn()}
         parentFolderId="folder"
         title="Editable document"
@@ -77,6 +181,8 @@ describe("WikiToolbar", () => {
         driveId="drive"
         fileId="pdf-file"
         mimeType={MIME_PDF}
+        documentMode="edit"
+        onDocumentModeChange={vi.fn()}
         onReload={vi.fn()}
         parentFolderId="folder"
         title="Quarterly Report.pdf"
@@ -96,6 +202,8 @@ describe("WikiToolbar", () => {
         fileId="doc-file"
         mimeType={MIME_DOC}
         modifiedTime="2026-09-03T12:00:00Z"
+        documentMode="edit"
+        onDocumentModeChange={vi.fn()}
         onReload={vi.fn()}
         parentFolderId="folder"
         title="Technical review"
@@ -115,6 +223,8 @@ describe("WikiToolbar", () => {
         fileId="read-only-doc"
         mimeType={MIME_DOC}
         modifiedTime="2026-09-03T12:00:00Z"
+        documentMode="edit"
+        onDocumentModeChange={vi.fn()}
         onReload={vi.fn()}
         parentFolderId="folder"
         title="Read-only review"
@@ -133,6 +243,8 @@ describe("WikiToolbar", () => {
         fileId="markdown-file"
         mimeType={MIME_MARKDOWN}
         modifiedTime="2026-09-03T12:00:00Z"
+        documentMode="edit"
+        onDocumentModeChange={vi.fn()}
         onReload={vi.fn()}
         parentFolderId="folder"
         title="Review.md"
@@ -153,6 +265,8 @@ describe("WikiToolbar", () => {
           fileId="deck-file"
           mimeType={mimeType}
           modifiedTime="2026-09-04T12:00:00Z"
+          documentMode="edit"
+          onDocumentModeChange={vi.fn()}
           onReload={vi.fn()}
           parentFolderId="folder"
           title="Quarterly review"
@@ -183,6 +297,8 @@ describe("WikiToolbar", () => {
             fileId="deferred-file"
             mimeType={mimeType}
             modifiedTime="2026-09-03T12:00:00Z"
+            documentMode="edit"
+            onDocumentModeChange={vi.fn()}
             onReload={vi.fn()}
             parentFolderId="folder"
             title="Review"

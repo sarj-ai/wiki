@@ -1732,6 +1732,7 @@ class GoogleDocumentGateway(DocumentGateway):
                 title=source.title,
                 branded=verify_brand,
                 header_title=header_title,
+                compact_single_paragraph=source.compact_markdown,
             )
             verification = verify_markdown_import(output_document, manifest)
             logger.info(

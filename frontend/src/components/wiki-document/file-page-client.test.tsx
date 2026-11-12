@@ -3,6 +3,7 @@ import { flushSync } from "react-dom";
 import { createRoot, type Root } from "react-dom/client";
 
 import { ApiError } from "@/lib/api-error";
+import type { DocumentMode } from "@/lib/file-urls";
 import { MIME_DOC, MIME_HTML } from "@/types/wiki";
 
 import { useDocViewerStore } from "./doc-viewer-store";
@@ -35,8 +36,29 @@ function resolvedFile(mimeType = MIME_HTML, id = "html-file") {
   };
 }
 
-function WikiToolbar() {
-  return <span />;
+function WikiToolbar({
+  documentMode,
+  onDocumentModeChange,
+  onReload,
+}: {
+  documentMode: DocumentMode;
+  onDocumentModeChange: (mode: DocumentMode) => void;
+  onReload: () => void;
+}) {
+  return (
+    <>
+      <button onClick={() => onDocumentModeChange("preview")} type="button">
+        Preview
+      </button>
+      <button onClick={() => onDocumentModeChange("edit")} type="button">
+        Edit
+      </button>
+      <button onClick={onReload} type="button">
+        Reload
+      </button>
+      <span>{documentMode}</span>
+    </>
+  );
 }
 
 function renderFile(root: Root, client: QueryClient, fileId: string) {
@@ -135,5 +157,46 @@ describe("document authority and revision checks", () => {
     renderFile(root, client, "doc-a");
     expect(container.querySelector('a[href*="mobilebasic"]')).toBeNull();
     expect(useDocViewerStore.getState().active).toBeNull();
+  });
+
+  it("switches the verified document, preserves its mode on reload, and resets on navigation", () => {
+    const file = resolvedFile(MIME_DOC, "doc-a");
+    file.data.canEdit = true;
+    fileQuery.mockReturnValue(file);
+    renderFile(root, client, "doc-a");
+    expect(useDocViewerStore.getState().active?.documentMode).toBe("edit");
+    const [preview, edit, reload] = container.querySelectorAll("button");
+    if (!preview || !edit || !reload)
+      throw new Error("Missing viewer controls");
+    flushSync(() => preview.click());
+    expect(useDocViewerStore.getState().active?.documentMode).toBe("preview");
+    flushSync(() => reload.click());
+    expect(useDocViewerStore.getState().active).toMatchObject({
+      documentMode: "preview",
+      reloadKey: 1,
+    });
+    flushSync(() => edit.click());
+    expect(useDocViewerStore.getState().active?.documentMode).toBe("edit");
+    flushSync(() => preview.click());
+    fileQuery.mockReturnValue({ ...file, data: { ...file.data, id: "doc-b" } });
+    renderFile(root, client, "doc-b");
+    expect(useDocViewerStore.getState().active).toMatchObject({
+      documentMode: "edit",
+      fileId: "doc-b",
+    });
+  });
+
+  it("forces preview when editing permission is absent or revoked", () => {
+    const file = resolvedFile(MIME_DOC, "doc-a");
+    file.data.canEdit = true;
+    fileQuery.mockReturnValue(file);
+    renderFile(root, client, "doc-a");
+    expect(useDocViewerStore.getState().active?.documentMode).toBe("edit");
+    fileQuery.mockReturnValue({
+      ...file,
+      data: { ...file.data, canEdit: false },
+    });
+    renderFile(root, client, "doc-a");
+    expect(useDocViewerStore.getState().active?.documentMode).toBe("preview");
   });
 });

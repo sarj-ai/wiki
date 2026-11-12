@@ -76,6 +76,20 @@ describe("document viewer lifecycle", () => {
     expect(useDocViewerStore.getState().pool[0]?.title).toBe("New title");
   });
 
+  it("replaces the pooled document when its mode changes", () => {
+    const store = useDocViewerStore.getState();
+    const owner = Symbol("owner");
+    store.setActive(doc("a"), owner);
+    store.setActive({ ...doc("a"), documentMode: "preview" }, owner);
+    expect(useDocViewerStore.getState().pool).toEqual([
+      { ...doc("a"), documentMode: "preview" },
+    ]);
+    store.setActive({ ...doc("a"), documentMode: "edit" }, owner);
+    expect(useDocViewerStore.getState().pool).toEqual([
+      { ...doc("a"), documentMode: "edit" },
+    ]);
+  });
+
   it("consumes only the prewarm target that becomes active, in the same publication", () => {
     const store = useDocViewerStore.getState();
     const owner = Symbol("owner");

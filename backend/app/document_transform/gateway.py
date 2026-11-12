@@ -39,6 +39,7 @@ class SourceSnapshot:
     is_personal_drive: bool = False
     shared_drive_id: DriveId | None = None
     web_url: str | None = None
+    compact_markdown: bool = False
 
 
 @dataclass(frozen=True, slots=True)

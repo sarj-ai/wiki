@@ -20,9 +20,12 @@ import {
   type ActiveDoc,
   useDocViewerStore,
 } from "@/components/wiki-document/doc-viewer-store";
+import { embedUrlFor } from "@/lib/file-urls";
 import { MIME_DOC, MIME_HTML } from "@/types/wiki";
 
-vi.mock("@/lib/file-urls", () => ({ embedUrlFor: () => "about:blank" }));
+vi.mock("@/lib/file-urls", () => ({
+  embedUrlFor: vi.fn(() => "about:blank"),
+}));
 
 let nextFrameId = 0;
 let reducedMotion = false;
@@ -100,6 +103,22 @@ describe("pooled viewer identity", () => {
     expect(viewerKey({ ...base, mimeType: MIME_DOC, reloadKey: 0 })).not.toBe(
       viewerKey({ ...base, mimeType: MIME_DOC, reloadKey: 1 }),
     );
+  });
+
+  it("reloads the iframe into the selected mode and keeps metadata refreshes stable", () => {
+    const view = renderViewer(doc("a"));
+    const editor = iframe("a");
+    expect(embedUrlFor).toHaveBeenLastCalledWith(MIME_DOC, "a", "edit");
+    activate({ ...doc("a"), documentMode: "preview" });
+    const preview = iframe("a");
+    expect(preview).not.toBe(editor);
+    expect(embedUrlFor).toHaveBeenLastCalledWith(MIME_DOC, "a", "preview");
+    activate({ ...doc("a"), documentMode: "preview", version: "new" });
+    expect(iframe("a")).toBe(preview);
+    activate({ ...doc("a"), documentMode: "edit" });
+    expect(iframe("a")).not.toBe(preview);
+    expect(embedUrlFor).toHaveBeenLastCalledWith(MIME_DOC, "a", "edit");
+    view.unmount();
   });
 
   it("shares one reduced-motion subscription across four mounted viewers", () => {

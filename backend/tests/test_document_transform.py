@@ -1222,6 +1222,7 @@ async def test_markdown_render_keeps_worker_event_loop_responsive(
         logo_bytes: bytes | None = None,
         branded: bool = True,
         header_title: str | None = None,
+        compact_single_paragraph: bool = False,
     ) -> bytes:
         started.set()
         assert release.wait(2)
@@ -1231,6 +1232,7 @@ async def test_markdown_render_keeps_worker_event_loop_responsive(
             logo_bytes=logo_bytes,
             branded=branded,
             header_title=header_title,
+            compact_single_paragraph=compact_single_paragraph,
         )
 
     monkeypatch.setattr(threaded_executor_module, "render_markdown_docx", delayed_render)
@@ -1330,8 +1332,8 @@ async def test_unslop_clean_document_is_exact_content_noop_without_model_call() 
     assert gateway.requests == []
     assert gateway.imported_docx is not None
     imported = WordDocument(BytesIO(gateway.imported_docx))
+    assert imported.core_properties.title == "Decision"
     assert [paragraph.text for paragraph in imported.paragraphs] == [
-        "Decision",
         "The team approved the proposal.",
     ]
     assert gateway.brand_prepares == 0
