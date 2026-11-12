@@ -85,6 +85,12 @@ from app.document_transform.table_layout import (
         "Approx. 2 GiB",
         "10 ms to 12 ms",
         "approximately −3 to −1 °C",
+        "50 Mbit/s",
+        "200 Mbit/s",
+        "100 Mbit/s",
+        "1 bit/s",
+        "64 Kibit/s",
+        "2 Gbit/s",
     ],
 )
 def test_quantities_use_numeric_alignment_without_rewriting_their_representation(
@@ -215,6 +221,11 @@ def _native_table(rows: tuple[tuple[str, ...], ...]) -> dict[str, JsonValue]:
         "Approximately 2 tasks remain",
         "2 GiB to warm the cache",
         "The cache takes approximately 2 GiB.",
+        "Mbit/s",
+        "50 Mbit/s extra",
+        "1 bit flip",
+        "50 Mbit/s; retry",
+        "2 requests/s",
     ],
 )
 def test_dates_versions_identifiers_and_unrecognized_quantities_are_not_numbers(text: str) -> None:

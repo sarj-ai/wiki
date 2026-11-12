@@ -37,6 +37,10 @@ _MAX_COLUMNS = 10
 _DIMENSION_TOLERANCE = 0.05
 _PARAGRAPH_FIELDS = ("alignment", "lineSpacing", "spaceAbove", "spaceBelow")
 _PARAGRAPH_FONT_CONTEXT_VERSION = 5
+_REGULAR_TABLE_FONT_VERSION = 6
+_REGULAR_TABLE_WEIGHT = 400
+# Provider-defined text styles remain extensible JSON objects.
+type _TableFontStyle = dict[str, JsonValue]
 
 
 @dataclass(frozen=True, slots=True)
@@ -210,13 +214,15 @@ def _cell_font_requests(
         preserve_family = _keep_table_family(
             style, text=str(obj(run["textRun"])["content"]), script_context=context
         )
-        font: dict[str, JsonValue] = {
-            "fontSize": {"magnitude": _TOKENS.table_size_pt or 10, "unit": "PT"}
-        }
-        if header:
-            font["bold"] = True
+        regular_font = version >= _REGULAR_TABLE_FONT_VERSION and not preserve_family
+        font = _table_font_style(
+            header=header, preserve_family=preserve_family, regular_font=regular_font
+        )
+        fields = ["fontSize"]
         if not preserve_family:
-            font["weightedFontFamily"] = {"fontFamily": _TOKENS.font_family}
+            fields.append("weightedFontFamily" if regular_font else "weightedFontFamily.fontFamily")
+        if header or regular_font:
+            fields.append("bold")
         requests.append(
             {
                 "updateTextStyle": {
@@ -226,14 +232,25 @@ def _cell_font_requests(
                         "tabId": target.tab_id,
                     },
                     "textStyle": font,
-                    "fields": (
-                        "fontSize" if preserve_family else "fontSize,weightedFontFamily.fontFamily"
-                    )
-                    + (",bold" if header else ""),
+                    "fields": ",".join(fields),
                 }
             }
         )
     return requests
+
+
+def _table_font_style(
+    *, header: bool, preserve_family: bool, regular_font: bool
+) -> _TableFontStyle:
+    font: _TableFontStyle = {"fontSize": {"magnitude": _TOKENS.table_size_pt or 10, "unit": "PT"}}
+    if header or regular_font:
+        font["bold"] = header
+    if not preserve_family:
+        family: dict[str, JsonValue] = {"fontFamily": _TOKENS.font_family}
+        if regular_font:
+            family["weight"] = _REGULAR_TABLE_WEIGHT
+        font["weightedFontFamily"] = family
+    return font
 
 
 def project_readable_tables(
@@ -348,6 +365,7 @@ def _project_paragraph(
             header=header,
             applied=applied,
             context=context,
+            version=version,
         )
         run = obj(part["textRun"])
         text = str(run["content"])
@@ -419,6 +437,7 @@ def _canonical_table_run(
     header: bool,
     applied: bool,
     context: bool | None,
+    version: ReadabilityVersion,
 ) -> dict[str, JsonValue]:
     part = deepcopy(value)
     run = obj(part["textRun"])
@@ -427,15 +446,19 @@ def _canonical_table_run(
     text = str(run["content"])
     if applied and run["content"] != "\n":
         _verify_table_font(text_style, text=text, script_context=context)
-    if header:
+    preserve_family = _keep_table_family(text_style, text=text, script_context=context)
+    regular_font = version >= _REGULAR_TABLE_FONT_VERSION and not preserve_family
+    if header or regular_font:
         # Font writes exclude paragraph terminators and empty cells. Docs may
         # return their inherited styles in a separate newline-only text run.
-        if applied and run["content"] != "\n" and text_style.get("bold") is not True:
+        if applied and text != "\n" and text_style.get("bold", False) is not header:
             raise ValueError
         text_style.pop("bold", None)
     text_style.pop("fontSize", None)
-    if not _keep_table_family(text_style, text=text, script_context=context):
+    if not preserve_family:
         family = obj(text_style.get("weightedFontFamily", {}))
+        if regular_font:
+            _project_regular_table_weight(family, applied=applied, visible=text != "\n")
         family.pop("fontFamily", None)
         if not family:
             text_style.pop("weightedFontFamily", None)
@@ -446,6 +469,14 @@ def _canonical_table_run(
     part.pop("startIndex", None)
     part.pop("endIndex", None)
     return part
+
+
+def _project_regular_table_weight(
+    family: dict[str, JsonValue], *, applied: bool, visible: bool
+) -> None:
+    if applied and visible and family.get("weight", _REGULAR_TABLE_WEIGHT) != _REGULAR_TABLE_WEIGHT:
+        raise ValueError
+    family.pop("weight", None)
 
 
 def _verify_table_font(

@@ -13,7 +13,7 @@ from app.document_transform.quotations import SINGLE_QUOTED_SPAN_PATTERN, quoted
 
 UNSLOP_UPSTREAM_COMMIT = "d81f5196167ded24f46fced04958c0c12d681798"
 UNSLOP_UPSTREAM_VERSION = "2.3.0"
-UNSLOP_POLICY_VERSION = "sarj-concise-v38"
+UNSLOP_POLICY_VERSION = "sarj-concise-v39"
 MAX_EDITORIAL_PASSES = 100
 MIN_CONCISION_PROSE_WORDS = 40
 CONCISION_WORD_NUMERATOR = 2
@@ -27,6 +27,12 @@ UNSLOP_PRESENTATION_PADDING_INSTRUCTION = (
     "data size, and network rate belong with each estimate. Distinguish latency from "
     "throughput.' is dispensable editorial advice, not a mandatory closing paragraph. "
     "Do not replace such padding with another maxim, imperative, takeaway or summary. "
+    "A generic maxim such as 'Every detail matters' is not an operational requirement. "
+    "Delete unmeasured claims that this overview provides a useful foundation or that a "
+    "table offers a useful overview. A preview saying that a table details observed "
+    "conditions does not itself report an observation: delete the preview, keeping actual "
+    "observations and their qualifications. Do not carry its stylistic qualifiers into "
+    "a shorter slogan. Source-specific instructions and substantive goals still survive. "
     'An entire ordinary paragraph containing only this material may have replacement ""; '
     "do not keep a token sentence just to keep the paragraph alive. For whole-paragraph "
     "deletion, generic each/every/all/per and stylistic qualifiers need not survive. "
@@ -84,6 +90,23 @@ UNSLOP_QUALIFIER_ATTACHMENT_INSTRUCTION = (
     "cells or ms cells preserve a millisecond column's identity; unnamed blank columns "
     "do not. When conversions include entries whose source cells are blank, preserve "
     "entries as the inclusion object. Do not claim the conversions include blank columns. "
+    "Keep a measurement's dimension explicit: 'at a depth of 0.5 m' must not become "
+    "'at 0.5 m', which no longer identifies depth. Preserve the dimension and its "
+    "attachment as well as the number and unit. Keep protected plural quantities in "
+    "grammatical prose: use 'retention defaults to 30 days', not '30 days default retention'. "
+    "Do not turn a protected plural quantity into an ungrammatical adjective: retain "
+    "'a queue depth of 640 jobs', not 'a 640 jobs queue depth'. Rephrase around the literal "
+    "rather than singularizing or hyphenating it. "
+    "A stated purpose qualifies only its original action. 'To ensure successful recovery, "
+    "the operator must retain the snapshot. The operator may retry only if the lease "
+    "expired' must not merge into 'To ensure successful recovery, the operator must retain "
+    "the snapshot and may retry only if the lease expired': that expands the purpose onto "
+    "the retry. Keep separate sentences when needed to preserve purpose attachment. "
+    "Keep attribution explicit when shortening a reported measurement. 'According to the "
+    "field log, the calibration uncertainty was ±0.2 °C' may become 'The field log reports "
+    "a calibration uncertainty of ±0.2 °C'. Do not write 'Field log calibration uncertainty': "
+    "that turns the reporting source into an ambiguous modifier of the quantity. Preserve "
+    "the original source, quantity, uncertainty and reporting relationship. "
 )
 UNSLOP_REWRITE_INSTRUCTION = (
     UNSLOP_PRESENTATION_PADDING_INSTRUCTION + UNSLOP_QUALIFIER_ATTACHMENT_INSTRUCTION
@@ -754,6 +777,59 @@ def model_editable_blocks(document: DocumentIR) -> tuple[TextBlock, ...]:
     quoted = quoted_block_ids(document)
     return tuple(
         block for block in document.blocks if block.id not in quoted and _is_model_editable(block)
+    )
+
+
+_GENERIC_SECTION_HEADINGS = frozenset(
+    {
+        "introduction",
+        "overview",
+        "reading guide",
+        "summary",
+        "recap",
+        "conclusion",
+        "closing thoughts",
+        "final thoughts",
+        "takeaways",
+    }
+)
+
+
+def emptied_section_headings(original: DocumentIR, transformed: DocumentIR) -> tuple[str, ...]:
+    current = {block.id: block for block in transformed.blocks}
+    removed: set[str] = set()
+    for index in range(len(original.blocks) - 1, -1, -1):
+        heading = original.blocks[index]
+        if not _generic_section_heading(heading) or not _generic_section_heading(
+            current[heading.id]
+        ):
+            continue
+        following = _section_body(original, index)
+        if any(current[block.id].text.strip() and block.id not in removed for block in following):
+            continue
+        removed.add(heading.id)
+    return tuple(block.id for block in original.blocks if block.id in removed)
+
+
+def _section_body(document: DocumentIR, heading_index: int) -> tuple[TextBlock, ...]:
+    level = document.blocks[heading_index].level or 1
+    following = []
+    for block in document.blocks[heading_index + 1 :]:
+        if block.kind is BlockKind.HEADING and (block.level or 1) <= level:
+            break
+        following.append(block)
+    return tuple(following)
+
+
+def _generic_section_heading(block: TextBlock) -> bool:
+    return (
+        block.kind is BlockKind.HEADING
+        and block.editable
+        and block.level is not None
+        and block.level > 1
+        and not block.native_content
+        and block.protected_suffix is None
+        and " ".join(block.text.casefold().split()) in _GENERIC_SECTION_HEADINGS
     )
 
 
