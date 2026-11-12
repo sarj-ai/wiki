@@ -5,8 +5,14 @@ from pydantic import JsonValue
 from app.document_transform.errors import SourceChangedError, UnsupportedSourceError
 from app.document_transform.gateway import SourceSnapshot
 from app.document_transform.ir import parse_google_document
-from app.document_transform.schemas import DriveFileSource, StrictTransformModel
-from app.identifiers import DocsRevisionId, FileId
+from app.document_transform.schemas import (
+    DocumentTransformCheckpoint,
+    DriveFileSource,
+    StrictTransformModel,
+)
+from app.identifiers import DocsRevisionId, FileId, UserId
+from app.tasks.errors import TaskNotFoundError
+from app.tasks.schemas import DocumentTransformTaskRecord
 
 
 class NativeSourceReader(Protocol):
@@ -18,6 +24,8 @@ class NativeDocumentInspection(StrictTransformModel):
     file_id: FileId
     revision_id: DocsRevisionId
     document: dict[str, JsonValue]
+    checkpoint: DocumentTransformCheckpoint | None = None
+    checkpoint_generation: int | None = None
 
 
 async def inspect_native_document(
@@ -35,4 +43,20 @@ async def inspect_native_document(
         file_id=source.file_id,
         revision_id=snapshot.revision_id,
         document=snapshot.google_document,
+    )
+
+
+def attach_saved_checkpoint(
+    inspection: NativeDocumentInspection,
+    record: DocumentTransformTaskRecord,
+    *,
+    owner_user_id: UserId,
+) -> NativeDocumentInspection:
+    if record.owner_user_id != owner_user_id or record.task.resource_id != inspection.file_id:
+        raise TaskNotFoundError
+    return inspection.model_copy(
+        update={
+            "checkpoint": record.checkpoint,
+            "checkpoint_generation": record.checkpoint_generation,
+        }
     )
