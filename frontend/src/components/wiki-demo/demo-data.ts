@@ -18,13 +18,13 @@ export const DEMO_SEARCH_SUGGESTION =
   "Try “guide”, “draft”, “workbook”, or “slides”.";
 
 const GUIDE_BASE =
-  "https://docs.google.com/document/d/1VzPtXow0E-cGFSTrQCQymMer-Fa5eYVDNf_jlH44rJA";
+  "https://docs.google.com/document/d/1kdnYpl3uHMASWYA0Pd92RhXpOoTFrJdYEspn6TTmQ74";
 const DRAFT_BASE =
-  "https://docs.google.com/document/d/12M9C0VB90yj2zoaowlshi7papBMfoFhJlroYr4lTDKQ";
+  "https://docs.google.com/document/d/1OABiTptZ9hM6NOoa5FCLR8OoTEVg7VU6EdE0JTZIt4I";
 const WORKBOOK_BASE =
-  "https://docs.google.com/spreadsheets/d/1BDbrvpKtmGG57TzGNnCxIChxztmfssUwJNxA44SwSVI";
+  "https://docs.google.com/spreadsheets/d/1YdtEf6kXaO5t9-hg9BD4o7QExJsikqfmhoiTSDP0oP0";
 const SLIDES_BASE =
-  "https://docs.google.com/presentation/d/1JEdWZnuH9oIZ3JYv95k6a516hE2w5fzv9fiGhEtGjWY";
+  "https://docs.google.com/presentation/d/1tPlL5sQBQtfRzOcHTe8F0BYZ70RNMAo5a5E_G-D1tgs";
 const WORKBOOK_PREVIEW = `${WORKBOOK_BASE}/preview#gid=696566412`;
 
 const GUIDE_FILE: DemoFile = {
@@ -44,7 +44,7 @@ const GUIDE_FILE: DemoFile = {
 export const DEMO_FILES: readonly DemoFile[] = [
   GUIDE_FILE,
   {
-    description: "A verbose working draft of the Google SRE reference.",
+    description: "An AI draft refined into a concise Google SRE reference.",
     downloadFilename: "numbers-ai-draft.docx",
     downloadUrl: `${DRAFT_BASE}/export?format=docx&tab=t.0`,
     format: "Document",

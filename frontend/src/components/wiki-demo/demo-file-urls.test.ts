@@ -87,6 +87,32 @@ describe("public sample view switching", () => {
 });
 
 describe("public sample document links", () => {
+  it.each([
+    [
+      "1VzPtXow0E-cGFSTrQCQymMer-Fa5eYVDNf_jlH44rJA",
+      "/demo?file=latency-guide",
+    ],
+    ["12M9C0VB90yj2zoaowlshi7papBMfoFhJlroYr4lTDKQ", "/demo?file=ai-draft"],
+    [
+      "1BDbrvpKtmGG57TzGNnCxIChxztmfssUwJNxA44SwSVI",
+      "/demo?file=latency-workbook",
+    ],
+    [
+      "1JEdWZnuH9oIZ3JYv95k6a516hE2w5fzv9fiGhEtGjWY",
+      "/demo?file=latency-slides",
+    ],
+    [
+      "1EJbR3gurhRRvIB1RFhVoKxiBtyLHHqu4WcATUSa3M74",
+      "/demo?file=latency-guide",
+    ],
+    [
+      "1ABWhf8XI2pxgC_uvAjkhSTapxAwD10iRgtpEJHSic0w",
+      "/demo?file=latency-slides",
+    ],
+  ])("preserves the published public link /d/%s", (id, expected) => {
+    expect(demoHrefForDocumentPath(`/d/${id}`)).toBe(expected);
+  });
+
   it.each(DEMO_FILES)(
     "opens the known public $id in the anonymous demo",
     (file) => {
@@ -118,29 +144,29 @@ describe("public sample download URL boundary", () => {
     const workbook = demoFileFor("latency-workbook");
     const slides = demoFileFor("latency-slides");
     expect(demoPreviewUrl(guide)).toBe(
-      "https://docs.google.com/document/d/1VzPtXow0E-cGFSTrQCQymMer-Fa5eYVDNf_jlH44rJA/preview",
+      "https://docs.google.com/document/d/1kdnYpl3uHMASWYA0Pd92RhXpOoTFrJdYEspn6TTmQ74/preview",
     );
     expect(demoDownloadUrl(guide)).toBe(
-      "https://docs.google.com/document/d/1VzPtXow0E-cGFSTrQCQymMer-Fa5eYVDNf_jlH44rJA/export?format=docx&tab=t.0",
+      "https://docs.google.com/document/d/1kdnYpl3uHMASWYA0Pd92RhXpOoTFrJdYEspn6TTmQ74/export?format=docx&tab=t.0",
     );
     expect(demoPreviewUrl(draft)).toBe(
-      "https://docs.google.com/document/d/12M9C0VB90yj2zoaowlshi7papBMfoFhJlroYr4lTDKQ/preview",
+      "https://docs.google.com/document/d/1OABiTptZ9hM6NOoa5FCLR8OoTEVg7VU6EdE0JTZIt4I/preview",
     );
     expect(demoDownloadUrl(draft)).toBe(
-      "https://docs.google.com/document/d/12M9C0VB90yj2zoaowlshi7papBMfoFhJlroYr4lTDKQ/export?format=docx&tab=t.0",
+      "https://docs.google.com/document/d/1OABiTptZ9hM6NOoa5FCLR8OoTEVg7VU6EdE0JTZIt4I/export?format=docx&tab=t.0",
     );
     expect(demoPreviewUrl(workbook)).toBe(
-      "https://docs.google.com/spreadsheets/d/1BDbrvpKtmGG57TzGNnCxIChxztmfssUwJNxA44SwSVI/preview#gid=696566412",
+      "https://docs.google.com/spreadsheets/d/1YdtEf6kXaO5t9-hg9BD4o7QExJsikqfmhoiTSDP0oP0/preview#gid=696566412",
     );
     expect(demoViewUrl(workbook)).toBe(workbook.previewUrl);
     expect(demoDownloadUrl(workbook)).toBe(
-      "https://docs.google.com/spreadsheets/d/1BDbrvpKtmGG57TzGNnCxIChxztmfssUwJNxA44SwSVI/export?format=xlsx",
+      "https://docs.google.com/spreadsheets/d/1YdtEf6kXaO5t9-hg9BD4o7QExJsikqfmhoiTSDP0oP0/export?format=xlsx",
     );
     expect(demoPreviewUrl(slides)).toBe(
-      "https://docs.google.com/presentation/d/1JEdWZnuH9oIZ3JYv95k6a516hE2w5fzv9fiGhEtGjWY/preview",
+      "https://docs.google.com/presentation/d/1tPlL5sQBQtfRzOcHTe8F0BYZ70RNMAo5a5E_G-D1tgs/preview",
     );
     expect(demoDownloadUrl(slides)).toBe(
-      "https://docs.google.com/presentation/d/1JEdWZnuH9oIZ3JYv95k6a516hE2w5fzv9fiGhEtGjWY/export/pptx",
+      "https://docs.google.com/presentation/d/1tPlL5sQBQtfRzOcHTe8F0BYZ70RNMAo5a5E_G-D1tgs/export/pptx",
     );
   });
 
