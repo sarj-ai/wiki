@@ -69,7 +69,11 @@ def plan_readable_tables(document: dict[str, JsonValue]) -> tuple[ReadabilityTab
                 _project_table(deepcopy(element), target, document=document, tab=tab, applied=False)
             except KeyError, ValueError, TypeError:
                 continue
-            result.append(target)
+            # A repeated run must prove the complete layout before skipping its writes.
+            try:
+                _project_table(deepcopy(element), target, document=document, tab=tab, applied=True)
+            except KeyError, ValueError, TypeError:
+                result.append(target)
     return tuple(result)
 
 

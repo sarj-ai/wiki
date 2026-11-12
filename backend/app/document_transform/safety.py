@@ -63,21 +63,24 @@ _PROTECTED_TOKEN = re.compile(
     re.MULTILINE,
 )
 _FORCE_WORD = re.compile(
-    r"\b(?:doesn['’]t|don['’]t|didn['’]t|intended\s+to|aims\s+to|opportunit(?:y|ies)\s+to|"
-    r"must|shall|should|may|might|could|would|cannot|can't|can|will|won't|not|never|no|"
+    r"\b(?:[^\W\d_]+n['\u2018\u2019\u02bc\uff07]t|"
+    r"intended\s+to|aims\s+to|opportunit(?:y|ies)\s+to|"
+    r"must|shall|should|may|might|could|would|cannot|can|will|not|never|no|"
     r"each|every|all|only|both|neither|either|per)\b",
     re.IGNORECASE,
 )
-_NEGATION_CONTRACTIONS = frozenset({"doesn't", "don't", "didn't"})
+_CANONICAL_APOSTROPHES = str.maketrans("\u2018\u2019\u02bc\uff07", "''''")
 _QUOTED_SPAN = re.compile(QUOTED_SPAN_PATTERN)
+_NEGATED_TRANSFORMATION_PREFIX = (
+    r"\b(?:not|never|cannot|[^\W\d_]+n't)\s+"
+    r"(?:to\s+automatically\s+|automatically\s+to\s+|to\s+|automatically\s+)?"
+)
 _NEGATED_TRANSFORMATION = re.compile(
-    r"\b(?:not|never|cannot|can['’]t|doesn['’]t|don['’]t|didn['’]t)\s+"
-    r"(?:automatically\s+)?(?:turn|convert|transform)\b[^.!?\n]*?\binto\b",
+    _NEGATED_TRANSFORMATION_PREFIX + r"(?:turn|convert|transform)\b[^.!?\n]*?\binto\b",
     re.IGNORECASE,
 )
 _RETAINED_NEGATED_TRANSFORMATION = re.compile(
-    r"\b(?:not|never|cannot|can['’]t|doesn['’]t|don['’]t|didn['’]t)\s+"
-    r"(?:automatically\s+)?(?:turn|convert|transform|make|become)\b",
+    _NEGATED_TRANSFORMATION_PREFIX + r"(?:turn|convert|transform|make|become)\b",
     re.IGNORECASE,
 )
 _LATENCY_COLUMN = re.compile(
@@ -317,8 +320,8 @@ def _aggressive_unslop_code(block: TextBlock, replacement: str) -> str | None:
         _temporal_scopes(block.text)
     ) != Counter(_temporal_scopes(replacement)):
         return "temporal_scope_changed"
-    if len(_NEGATED_TRANSFORMATION.findall(block.text)) > len(
-        _RETAINED_NEGATED_TRANSFORMATION.findall(replacement)
+    if len(_NEGATED_TRANSFORMATION.findall(block.text.translate(_CANONICAL_APOSTROPHES))) > len(
+        _RETAINED_NEGATED_TRANSFORMATION.findall(replacement.translate(_CANONICAL_APOSTROPHES))
     ):
         return "negative_transformation_scope_changed"
     if column_code := _latency_column_scope_code(block.text, replacement):
@@ -431,8 +434,32 @@ def _protected_tokens(value: str) -> list[str]:
 
 
 def _force_words(value: str) -> list[str]:
-    words = [" ".join(match.group(0).casefold().split()) for match in _FORCE_WORD.finditer(value)]
-    return ["not" if word.replace("’", "'") in _NEGATION_CONTRACTIONS else word for word in words]
+    result: list[str] = []
+    modals = {"ca": "can", "wo": "will", "sha": "shall"}
+    for match in _FORCE_WORD.finditer(value):
+        word = " ".join(match.group(0).casefold().split())
+        word = word.translate(_CANONICAL_APOSTROPHES)
+        if word == "cannot":
+            result.extend(("can", "not"))
+        elif word.endswith("n't"):
+            stem = word[:-3]
+            modal = modals.get(stem, stem)
+            if modal in {
+                "can",
+                "will",
+                "shall",
+                "could",
+                "should",
+                "would",
+                "must",
+                "might",
+                "may",
+            }:
+                result.append(modal)
+            result.append("not")
+        else:
+            result.append(word)
+    return result
 
 
 def _unslop_locality_code(block: TextBlock, replacement: str) -> str | None:
