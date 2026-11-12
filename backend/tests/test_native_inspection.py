@@ -1,4 +1,5 @@
 from dataclasses import replace
+import uuid
 
 from httpx import ASGITransport, AsyncClient
 import pytest
@@ -7,13 +8,18 @@ from app.auth.dependencies import auth_service_dep, get_current_user
 from app.document_transform.dependencies import CurrentPolishRuntime, current_polish_runtime_dep
 from app.document_transform.errors import SourceChangedError
 from app.document_transform.gateway import SourceSnapshot
-from app.document_transform.inspection import inspect_native_document
+from app.document_transform.inspection import attach_saved_checkpoint, inspect_native_document
 from app.document_transform.schemas import DriveFileSource
-from app.identifiers import DocsRevisionId, FileId
+from app.identifiers import DocsRevisionId, FileId, TaskId, UserId
 from app.main import app
+from app.tasks.dependencies import task_service_dep
+from app.tasks.errors import TaskNotFoundError
+from app.tasks.schemas import DocumentTransformTaskRecord, FailedTaskRead
+from tests.advanced_round6_support import in_place_checkpoint
 from tests.support import dependency
 from tests.test_document_readability import _fixture
 from tests.test_files_service import _user
+from tests.test_task_unverified_output import _failed_task
 
 
 class _Reader:
@@ -74,3 +80,80 @@ async def test_native_inspection_requires_wiki_auth_and_disables_response_cachin
         app.dependency_overrides.pop(current_polish_runtime_dep, None)
         app.dependency_overrides.pop(get_current_user, None)
         app.dependency_overrides.pop(auth_service_dep, None)
+
+
+class _SavedTaskReader:
+    def __init__(
+        self, *, hidden: bool = False, wrong_owner: bool = False, wrong_file: bool = False
+    ) -> None:
+        self.user = _user()
+        self.record = DocumentTransformTaskRecord(
+            owner_user_id=uuid.uuid7() if wrong_owner else self.user.id,
+            task=_failed_task(resource_id=FileId("another-file" if wrong_file else "private")),
+            payload=None,
+            checkpoint=in_place_checkpoint(),
+            checkpoint_generation=3,
+        )
+        self.hidden = hidden
+        self.loads: list[TaskId] = []
+
+    async def get_for_owner(self, task_id: TaskId, owner_user_id: UserId) -> FailedTaskRead:
+        if self.hidden or owner_user_id != self.record.owner_user_id:
+            raise TaskNotFoundError
+        assert task_id == self.record.task.id
+        assert isinstance(self.record.task, FailedTaskRead)
+        return self.record.task
+
+    async def load_document_transform(self, task_id: TaskId) -> DocumentTransformTaskRecord:
+        self.loads.append(task_id)
+        assert task_id == self.record.task.id
+        return self.record
+
+
+@pytest.mark.parametrize("mismatch", ["owner", "file"])
+async def test_saved_checkpoint_cannot_be_attached_to_another_owner_or_file(mismatch: str) -> None:
+    inspection = await inspect_native_document(
+        _source(), reader=_Reader(), account_email="owner@sarj.ai"
+    )
+    tasks = _SavedTaskReader(wrong_owner=mismatch == "owner", wrong_file=mismatch == "file")
+    with pytest.raises(TaskNotFoundError):
+        attach_saved_checkpoint(inspection, tasks.record, owner_user_id=UserId(tasks.user.id))
+
+
+@pytest.mark.parametrize("scenario", ["visible", "hidden_task", "wrong_file", "changed_source"])
+async def test_saved_checkpoint_requires_owner_and_fresh_native_document_access(
+    scenario: str,
+) -> None:
+    reader = _Reader()
+    if scenario == "changed_source":
+        reader.snapshot = replace(reader.snapshot, modified_time="2026-11-12T14:00:00Z")
+    tasks = _SavedTaskReader(hidden=scenario == "hidden_task", wrong_file=scenario == "wrong_file")
+    runtime = CurrentPolishRuntime(
+        files=dependency(reader), revisions=dependency(reader), native_sources=reader
+    )
+    app.dependency_overrides[current_polish_runtime_dep] = lambda: runtime
+    app.dependency_overrides[get_current_user] = lambda: tasks.user
+    app.dependency_overrides[task_service_dep] = lambda: tasks
+    try:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            response = await client.post(
+                "/document-transforms/inspect",
+                params={"task_id": str(tasks.record.task.id)},
+                json=_source().model_dump(),
+            )
+        if scenario == "visible":
+            assert response.status_code == 200
+            assert response.headers["cache-control"] == "private, no-store"
+            assert tasks.record.checkpoint is not None
+            assert response.json()["checkpoint"] == tasks.record.checkpoint.model_dump(mode="json")
+            assert response.json()["checkpoint_generation"] == 3
+        else:
+            assert response.status_code == (409 if scenario == "changed_source" else 404)
+            assert "checkpoint" not in response.json()
+        assert tasks.loads == (
+            [tasks.record.task.id] if scenario in {"visible", "wrong_file"} else []
+        )
+    finally:
+        app.dependency_overrides.pop(current_polish_runtime_dep, None)
+        app.dependency_overrides.pop(get_current_user, None)
+        app.dependency_overrides.pop(task_service_dep, None)
