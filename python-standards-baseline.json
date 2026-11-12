@@ -789,7 +789,7 @@
     "SARJ528": 5
   },
   "backend/tests/test_tasks.py": {
-    "SARJ528": 4
+    "SARJ528": 3
   },
   "backend/tests/test_templates.py": {
     "SARJ093": 1
