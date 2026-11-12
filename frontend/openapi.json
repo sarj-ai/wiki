@@ -208,8 +208,8 @@
         },
         "required": [
           "id",
-          "kind",
           "created_at",
+          "kind",
           "status",
           "result",
           "resource_id",
@@ -697,6 +697,82 @@
         "title": "DocumentTransformResult",
         "type": "object"
       },
+      "DocumentTransformSucceededTaskRead": {
+        "properties": {
+          "attempt_count": {
+            "exclusiveMinimum": 0.0,
+            "title": "Attempt Count",
+            "type": "integer"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "error_code": {
+            "title": "Error Code",
+            "type": "null"
+          },
+          "error_detail": {
+            "title": "Error Detail",
+            "type": "null"
+          },
+          "finished_at": {
+            "format": "date-time",
+            "title": "Finished At",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "kind": {
+            "const": "file.document_transform",
+            "title": "Kind",
+            "type": "string"
+          },
+          "resource_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Resource Id"
+          },
+          "result": {
+            "$ref": "#/components/schemas/DocumentTransformResult"
+          },
+          "started_at": {
+            "format": "date-time",
+            "title": "Started At",
+            "type": "string"
+          },
+          "status": {
+            "const": "succeeded",
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "created_at",
+          "status",
+          "resource_id",
+          "error_code",
+          "error_detail",
+          "attempt_count",
+          "started_at",
+          "finished_at",
+          "kind",
+          "result"
+        ],
+        "title": "DocumentTransformSucceededTaskRead",
+        "type": "object"
+      },
       "DriveFileSource": {
         "additionalProperties": false,
         "properties": {
@@ -1140,8 +1216,8 @@
         },
         "required": [
           "id",
-          "kind",
           "created_at",
+          "kind",
           "status",
           "result",
           "resource_id",
@@ -1704,8 +1780,8 @@
         },
         "required": [
           "id",
-          "kind",
           "created_at",
+          "kind",
           "status",
           "result",
           "resource_id",
@@ -2007,8 +2083,8 @@
         },
         "required": [
           "id",
-          "kind",
           "created_at",
+          "kind",
           "status",
           "result",
           "resource_id",
@@ -2155,6 +2231,82 @@
           "warnings"
         ],
         "title": "SmartCreateResult",
+        "type": "object"
+      },
+      "SmartCreateSucceededTaskRead": {
+        "properties": {
+          "attempt_count": {
+            "exclusiveMinimum": 0.0,
+            "title": "Attempt Count",
+            "type": "integer"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "error_code": {
+            "title": "Error Code",
+            "type": "null"
+          },
+          "error_detail": {
+            "title": "Error Detail",
+            "type": "null"
+          },
+          "finished_at": {
+            "format": "date-time",
+            "title": "Finished At",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "kind": {
+            "const": "file.smart_create",
+            "title": "Kind",
+            "type": "string"
+          },
+          "resource_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Resource Id"
+          },
+          "result": {
+            "$ref": "#/components/schemas/SmartCreateResult"
+          },
+          "started_at": {
+            "format": "date-time",
+            "title": "Started At",
+            "type": "string"
+          },
+          "status": {
+            "const": "succeeded",
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "created_at",
+          "status",
+          "resource_id",
+          "error_code",
+          "error_detail",
+          "attempt_count",
+          "started_at",
+          "finished_at",
+          "kind",
+          "result"
+        ],
+        "title": "SmartCreateSucceededTaskRead",
         "type": "object"
       },
       "SmartCreateWarning": {
@@ -2391,86 +2543,21 @@
         "type": "object"
       },
       "SucceededTaskRead": {
-        "properties": {
-          "attempt_count": {
-            "exclusiveMinimum": 0.0,
-            "title": "Attempt Count",
-            "type": "integer"
+        "discriminator": {
+          "mapping": {
+            "file.document_transform": "#/components/schemas/DocumentTransformSucceededTaskRead",
+            "file.smart_create": "#/components/schemas/SmartCreateSucceededTaskRead"
           },
-          "created_at": {
-            "format": "date-time",
-            "title": "Created At",
-            "type": "string"
-          },
-          "error_code": {
-            "title": "Error Code",
-            "type": "null"
-          },
-          "error_detail": {
-            "title": "Error Detail",
-            "type": "null"
-          },
-          "finished_at": {
-            "format": "date-time",
-            "title": "Finished At",
-            "type": "string"
-          },
-          "id": {
-            "format": "uuid",
-            "title": "Id",
-            "type": "string"
-          },
-          "kind": {
-            "$ref": "#/components/schemas/TaskKind"
-          },
-          "resource_id": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Resource Id"
-          },
-          "result": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/SmartCreateResult"
-              },
-              {
-                "$ref": "#/components/schemas/DocumentTransformResult"
-              }
-            ],
-            "title": "Result"
-          },
-          "started_at": {
-            "format": "date-time",
-            "title": "Started At",
-            "type": "string"
-          },
-          "status": {
-            "const": "succeeded",
-            "title": "Status",
-            "type": "string"
-          }
+          "propertyName": "kind"
         },
-        "required": [
-          "id",
-          "kind",
-          "created_at",
-          "status",
-          "result",
-          "resource_id",
-          "error_code",
-          "error_detail",
-          "attempt_count",
-          "started_at",
-          "finished_at"
-        ],
-        "title": "SucceededTaskRead",
-        "type": "object"
+        "oneOf": [
+          {
+            "$ref": "#/components/schemas/SmartCreateSucceededTaskRead"
+          },
+          {
+            "$ref": "#/components/schemas/DocumentTransformSucceededTaskRead"
+          }
+        ]
       },
       "TaskKind": {
         "enum": [

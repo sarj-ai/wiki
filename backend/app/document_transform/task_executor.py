@@ -67,9 +67,10 @@ from app.models.wiki import DocumentHeaderProvenance
 from app.tasks.errors import TaskExecutionDeferredError, TaskNotClaimableError
 from app.tasks.schemas import (
     CancelledTaskRead,
+    DocumentTransformSucceededTaskRead,
     DocumentTransformTaskRecord,
     FailedTaskRead,
-    SucceededTaskRead,
+    SmartCreateSucceededTaskRead,
     TaskClaim,
     TaskRead,
 )
@@ -194,7 +195,11 @@ class DriveDocumentTransformTaskExecutor(DocumentTransformTaskExecutor):
             # worker from claiming the task and recording a terminal failure.
             record = None
         if record is not None and isinstance(
-            record.task, SucceededTaskRead | FailedTaskRead | CancelledTaskRead
+            record.task,
+            SmartCreateSucceededTaskRead
+            | DocumentTransformSucceededTaskRead
+            | FailedTaskRead
+            | CancelledTaskRead,
         ):
             return record.task
         try:

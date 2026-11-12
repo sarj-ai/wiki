@@ -1,12 +1,13 @@
 from __future__ import annotations
 
+import asyncio
 from datetime import UTC, datetime, timedelta
 import hashlib
 import json
-from typing import Any
+from typing import Any, Never, override
 import uuid
 
-from pydantic import BaseModel
+from pydantic import BaseModel, RootModel, ValidationError
 import pytest
 from sqlalchemy import Table
 from sqlalchemy.sql.elements import ClauseElement
@@ -44,6 +45,10 @@ class _Payload(BaseModel):
     destination: str
 
 
+class _TaskReadModel(RootModel[TaskRead]):
+    pass
+
+
 class _Result:
     def __init__(self, row: object) -> None:
         self._row = row
@@ -68,12 +73,12 @@ class _Session:
         self._rows = iter(rows)
         self.commits = 0
         self.rollbacks = 0
-        self.statements: list[object] = []
+        self.statements: list[ClauseElement] = []
         self.new: set[object] = set()
         self.dirty: set[object] = set()
         self.deleted: set[object] = set()
 
-    async def execute(self, statement: object) -> _Result:
+    async def execute(self, statement: ClauseElement) -> _Result:
         self.statements.append(statement)
         return _Result(next(self._rows))
 
@@ -82,6 +87,12 @@ class _Session:
 
     async def rollback(self) -> None:
         self.rollbacks += 1
+
+
+class _InterruptedSession(_Session):
+    @override
+    async def execute(self, statement: ClauseElement) -> Never:
+        raise asyncio.CancelledError
 
 
 def _task(*, request_hash: str, status: TaskStatus = TaskStatus.PENDING) -> Task:
@@ -1022,7 +1033,7 @@ async def test_stale_executor_cannot_complete_a_reclaimed_task() -> None:
         await _service(session).succeed(
             row.id,
             lease_token=uuid.uuid7(),
-            result=_Payload(name="PRD", destination="folder-1"),
+            result=_success_result(row.id),
         )
 
     assert session.rollbacks == 1
@@ -1060,7 +1071,7 @@ async def test_success_redacts_document_transform_payload_and_terminal_load_skip
     row.attempt_count = 1
     row.started_at = now
     row.finished_at = now
-    result = _success_result(row.id)
+    result = _transform_success_result(row.id, TransformMode.FORMAT)
     row.result = result.model_dump(mode="json")
     session = _Session(row)
 
@@ -1078,6 +1089,37 @@ async def test_success_redacts_document_transform_payload_and_terminal_load_skip
     row.payload = redacted_payload
     terminal = await _service(_Session(row)).load_document_transform(row.id)
     assert terminal.payload is None
+
+
+@pytest.mark.parametrize("mismatch", ["kind", "identity", "operation-identity"])
+async def test_incompatible_success_rolls_back_before_commit(mismatch: str) -> None:
+    row = _task(request_hash="0" * 64, status=TaskStatus.SUCCEEDED)
+    row.attempt_count = 1
+    row.started_at = row.finished_at = datetime.now(UTC)
+    result = (
+        _transform_success_result(TaskId(uuid.uuid7()), TransformMode.FORMAT)
+        if mismatch == "operation-identity"
+        else _success_result(TaskId(uuid.uuid7()) if mismatch == "identity" else row.id)
+    )
+    row.result = result.model_dump(mode="json")
+    if mismatch in {"kind", "operation-identity"}:
+        row.kind = TaskKind.FILE_DOCUMENT_TRANSFORM
+    session = _Session(row)
+    with pytest.raises(ValidationError):
+        await _service(session).succeed(row.id, lease_token=uuid.uuid7(), result=result)
+    assert session.commits == 0
+    assert session.rollbacks == 1
+
+
+async def test_cancelled_transition_rolls_back_without_claiming_success() -> None:
+    row = _task(request_hash="0" * 64, status=TaskStatus.RUNNING)
+    session = _InterruptedSession()
+    with pytest.raises(asyncio.CancelledError):
+        await _service(session).succeed(
+            row.id, lease_token=uuid.uuid7(), result=_success_result(row.id)
+        )
+    assert session.commits == 0
+    assert session.rollbacks == 1
 
 
 async def test_failed_task_persists_only_bounded_public_detail() -> None:
@@ -1202,3 +1244,32 @@ async def test_admission_limits_share_one_count_query(
     assert len(session.statements) == 1
     assert "FILTER" in str(session.statements[0])
     assert session.rollbacks == int(rejected)
+
+
+@pytest.mark.parametrize("kind", list(TaskKind))
+def test_successful_task_requires_the_result_for_its_command_kind(kind: TaskKind) -> None:
+    task_id = TaskId(uuid.uuid7())
+    now = datetime.now(UTC)
+    for result in (
+        _success_result(task_id),
+        _transform_success_result(task_id, TransformMode.FORMAT),
+    ):
+        payload = {
+            "id": task_id,
+            "kind": kind,
+            "status": TaskStatus.SUCCEEDED,
+            "created_at": now,
+            "started_at": now,
+            "finished_at": now,
+            "attempt_count": 1,
+            "resource_id": None,
+            "error_code": None,
+            "error_detail": None,
+            "result": result.model_dump(),
+        }
+        if (kind is TaskKind.FILE_SMART_CREATE) is isinstance(result, SmartCreateResult):
+            parsed = _TaskReadModel.model_validate(payload).root
+            assert parsed.kind is kind
+        else:
+            with pytest.raises(ValidationError):
+                _TaskReadModel.model_validate(payload)

@@ -17,9 +17,9 @@ import {
   zProposalDestination,
   zRunningTaskRead,
   zSmartCreateResult,
+  zSmartCreateSucceededTaskRead,
   zSmartCreateWarning,
   zSmartProposalRead,
-  zSucceededTaskRead,
   zTemplateCatalogRead,
   zTemplateRead,
   zTemplateSource,
@@ -53,13 +53,23 @@ const ProposalSchema = zSmartProposalRead
 const TemplateCatalogSchema = zTemplateCatalogRead
   .extend({ templates: z.array(zTemplateRead.strict()) })
   .strict();
-const TaskSchema = z.discriminatedUnion("status", [
-  zPendingTaskRead.strict(),
-  zRunningTaskRead.strict(),
-  zSucceededTaskRead.extend({ result: CreateResultSchema }).strict(),
-  zFailedTaskRead.strict(),
-  zCancelledTaskRead.strict(),
-]);
+const TaskSchema = z
+  .discriminatedUnion("status", [
+    zPendingTaskRead.strict(),
+    zRunningTaskRead.strict(),
+    zSmartCreateSucceededTaskRead
+      .extend({ result: CreateResultSchema })
+      .strict(),
+    zFailedTaskRead.strict(),
+    zCancelledTaskRead.strict(),
+  ])
+  .refine((task) => task.kind === "file.smart_create", {
+    message: "Expected a smart-create task",
+  })
+  .refine(
+    (task) => task.status !== "succeeded" || task.result["task_id"] === task.id,
+    { message: "Task result belongs to a different task" },
+  );
 
 const DEFAULT_TASK_POLL_MS = 1_000;
 
@@ -79,7 +89,7 @@ const SmartCreateApi = {
       alias: plan.alias,
       emoji: plan.emoji,
       name: plan.name,
-      parent_folder_id: plan.destination.folderId,
+      "parent_folder_id": plan.destination.folderId,
       source: serializeSource(plan.source),
     });
     const responseBody = await runAction(
@@ -112,15 +122,15 @@ const SmartCreateApi = {
       signal,
     );
     return result.templates.map((template) => ({
-      categoryPath: template.category_path,
+      categoryPath: template["category_path"],
       ...(!(template.description === null) && {
         description: template.description,
       }),
-      driveId: template.drive_id,
-      driveName: template.drive_name,
-      fileId: template.file_id,
-      mimeType: template.mime_type,
-      modifiedTime: template.modified_time,
+      driveId: template["drive_id"],
+      driveName: template["drive_name"],
+      fileId: template["file_id"],
+      mimeType: template["mime_type"],
+      modifiedTime: template["modified_time"],
       name: template.name,
     }));
   },
@@ -128,9 +138,9 @@ const SmartCreateApi = {
   propose: async (input: SmartProposalInput): Promise<SmartCreationPlan> => {
     const body = JSON.stringify({
       description: input.description,
-      file_type: input.fileType,
-      invoking_drive_id: input.invokingDriveId ?? null,
-      invoking_folder_id: input.invokingFolderId ?? null,
+      "file_type": input.fileType,
+      "invoking_drive_id": input.invokingDriveId ?? null,
+      "invoking_folder_id": input.invokingFolderId ?? null,
       kind: "ai",
     });
     const responseBody = await runAction(
@@ -140,10 +150,10 @@ const SmartCreateApi = {
     return {
       alias: result.alias,
       destination: {
-        driveId: result.destination.drive_id,
-        driveName: result.destination.drive_name,
-        folderId: result.destination.folder_id,
-        folderPath: result.destination.folder_path,
+        driveId: result.destination["drive_id"],
+        driveName: result.destination["drive_name"],
+        folderId: result.destination["folder_id"],
+        folderPath: result.destination["folder_path"],
       },
       emoji: result.emoji,
       name: result.name,
@@ -197,9 +207,9 @@ function parseTask(task: z.infer<typeof TaskSchema>): SmartCreateTask {
       return { id: task.id, status: "cancelled" };
     case "failed":
       return {
-        errorCode: task.error_code,
-        ...(!(task.error_detail === null) && {
-          errorDetail: task.error_detail,
+        errorCode: task["error_code"],
+        ...(!(task["error_detail"] === null) && {
+          errorDetail: task["error_detail"],
         }),
         id: task.id,
         status: "failed",
@@ -221,31 +231,31 @@ function parseCreateResult(
 ): SmartCreateResult {
   return {
     file: toFileResponse(result.file),
-    taskId: result.task_id,
+    taskId: result["task_id"],
     warnings: result.warnings,
   };
 }
 
 function parseSource(source: z.infer<typeof SourceSchema>): CreationSource {
   return source.kind === "blank"
-    ? { fileType: source.file_type, kind: "blank" }
+    ? { fileType: source["file_type"], kind: "blank" }
     : {
         kind: "template",
-        mimeType: source.mime_type,
-        templateDriveId: source.template_drive_id,
-        templateFileId: source.template_file_id,
-        templateModifiedTime: source.template_modified_time,
+        mimeType: source["mime_type"],
+        templateDriveId: source["template_drive_id"],
+        templateFileId: source["template_file_id"],
+        templateModifiedTime: source["template_modified_time"],
       };
 }
 
 function serializeSource(source: CreationSource): z.input<typeof SourceSchema> {
   return source.kind === "blank"
-    ? { file_type: source.fileType, kind: "blank" }
+    ? { "file_type": source.fileType, kind: "blank" }
     : {
         kind: "template",
-        mime_type: source.mimeType,
-        template_drive_id: source.templateDriveId,
-        template_file_id: source.templateFileId,
-        template_modified_time: source.templateModifiedTime,
+        "mime_type": source.mimeType,
+        "template_drive_id": source.templateDriveId,
+        "template_file_id": source.templateFileId,
+        "template_modified_time": source.templateModifiedTime,
       };
 }

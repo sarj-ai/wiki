@@ -30,7 +30,7 @@ from app.models.wiki import DocumentAlias
 
 
 _BACKEND = Path(__file__).parents[1]
-_HEAD = "0027_google_token_invariants"
+_HEAD = "0028_task_result_invariants"
 
 
 @runtime_checkable

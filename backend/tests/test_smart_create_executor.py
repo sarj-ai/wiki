@@ -18,8 +18,8 @@ from app.tasks.errors import TaskExecutionDeferredError, TaskNotClaimableError
 from app.tasks.schemas import (
     PendingTaskRead,
     RunningTaskRead,
+    SmartCreateSucceededTaskRead,
     SmartCreateTaskRecord,
-    SucceededTaskRead,
     TaskClaim,
     TaskKind,
     TaskRead,
@@ -64,7 +64,7 @@ class _Tasks(TaskService):
         now = datetime.now(UTC)
         if self.status == TaskStatus.SUCCEEDED:
             assert self.result is not None
-            return SucceededTaskRead(
+            return SmartCreateSucceededTaskRead(
                 id=self.task_id,
                 kind=TaskKind.FILE_SMART_CREATE,
                 status=TaskStatus.SUCCEEDED,
@@ -254,7 +254,7 @@ async def test_executor_claims_runs_and_returns_typed_success() -> None:
 
     result = await executor.execute(tasks.task_id)
 
-    assert isinstance(result, SucceededTaskRead)
+    assert isinstance(result, SmartCreateSucceededTaskRead)
     assert creation.calls == 1
     assert tasks.lease_duration == timedelta(minutes=6)
     assert sidebar.invalidated == DriveId("drive")

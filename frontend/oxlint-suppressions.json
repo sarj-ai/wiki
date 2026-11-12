@@ -612,17 +612,9 @@
       "count": 1
     }
   },
-  "src/lib/smart-create-client.test.ts": {
-    "@sarj/require-camelcase-properties": {
-      "count": 34
-    }
-  },
   "src/lib/smart-create-client.ts": {
     "@sarj/no-frontend-comments": {
       "count": 2
-    },
-    "@sarj/require-camelcase-properties": {
-      "count": 28
     },
     "@sarj/sole-export-matches-filename": {
       "count": 1

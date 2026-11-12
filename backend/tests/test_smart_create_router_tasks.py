@@ -30,7 +30,7 @@ from app.smart_create.schemas import BlankSource, SmartCreateResult, SmartFileCr
 from app.tasks.queue import TaskEnqueuer
 from app.tasks.schemas import (
     PendingTaskRead,
-    SucceededTaskRead,
+    SmartCreateSucceededTaskRead,
     TaskKind,
     TaskRead,
     TaskReservation,
@@ -84,9 +84,9 @@ def _pending(
     )
 
 
-def _succeeded(task_id: TaskId) -> SucceededTaskRead:
+def _succeeded(task_id: TaskId) -> SmartCreateSucceededTaskRead:
     result = _result(task_id)
-    return SucceededTaskRead(
+    return SmartCreateSucceededTaskRead(
         id=task_id,
         kind=TaskKind.FILE_SMART_CREATE,
         status=TaskStatus.SUCCEEDED,
@@ -356,7 +356,7 @@ async def test_succeeded_replay_returns_typed_result_without_enqueue() -> None:
         enqueuer=enqueuer,
     )
 
-    assert isinstance(task, SucceededTaskRead)
+    assert isinstance(task, SmartCreateSucceededTaskRead)
     assert task.result.file.id == FileId("created")
     assert enqueuer.task_ids == []
 

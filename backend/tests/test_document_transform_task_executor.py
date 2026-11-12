@@ -49,10 +49,10 @@ from app.tasks import service as task_service_module
 from app.tasks.errors import TaskExecutionDeferredError
 from app.tasks.internal_router import execute_document_transform_task
 from app.tasks.schemas import (
+    DocumentTransformSucceededTaskRead,
     DocumentTransformTaskRecord,
     FailedTaskRead,
     RunningTaskRead,
-    SucceededTaskRead,
     TaskClaim,
     TaskDispatchRequest,
     TaskKind,
@@ -308,7 +308,7 @@ class _SuccessTasks(_RetryTasks):
         del lease_token
         assert isinstance(result, DocumentTransformResult)
         now = datetime.now(UTC)
-        return SucceededTaskRead(
+        return DocumentTransformSucceededTaskRead(
             id=task_id,
             kind=TaskKind.FILE_DOCUMENT_TRANSFORM,
             status=TaskStatus.SUCCEEDED,
@@ -384,7 +384,7 @@ async def test_success_records_automatic_short_link_without_replaying_transform(
         payload=payload,
         short_links=links,
     )
-    assert isinstance(completed, SucceededTaskRead)
+    assert isinstance(completed, DocumentTransformSucceededTaskRead)
     assert isinstance(completed.result, DocumentTransformResult)
     assert completed.result.short_link_alias == alias
     assert completed.result.short_link_status == ("ready" if alias else "unavailable")
@@ -414,7 +414,7 @@ async def test_preserved_review_output_gets_automatic_link_without_approving_fin
         payload=payload,
         short_links=links,
     )
-    assert isinstance(completed, SucceededTaskRead)
+    assert isinstance(completed, DocumentTransformSucceededTaskRead)
     assert isinstance(completed.result, DocumentTransformResult)
     assert completed.result.short_link_status == ("ready" if alias else "unavailable")
     assert completed.result.short_link_alias == alias
@@ -443,7 +443,7 @@ async def test_unpreserved_review_output_never_gets_automatic_link(
         payload=payload,
         short_links=links,
     )
-    assert isinstance(completed, SucceededTaskRead)
+    assert isinstance(completed, DocumentTransformSucceededTaskRead)
     assert isinstance(completed.result, DocumentTransformResult)
     assert completed.result.short_link_status is None
     assert completed.result.needs_review is True
@@ -472,7 +472,7 @@ async def test_successful_in_place_output_links_despite_expected_source_change()
         payload=payload,
         short_links=links,
     )
-    assert isinstance(completed, SucceededTaskRead)
+    assert isinstance(completed, DocumentTransformSucceededTaskRead)
     assert isinstance(completed.result, DocumentTransformResult)
     assert completed.result.validation.source_unchanged is False
     assert completed.result.short_link_alias == "output-document"
@@ -714,7 +714,7 @@ async def test_encrypted_markdown_is_decrypted_only_for_successful_worker_execut
         payload=decrypted,
     )
 
-    assert isinstance(result, SucceededTaskRead)
+    assert isinstance(result, DocumentTransformSucceededTaskRead)
     assert transform.markdown == payload.source.content
     assert tasks.recorded_resource == FileId("output")
 
