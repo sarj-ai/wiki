@@ -1,6 +1,7 @@
 HORIZONTAL_SPACE = r"[^\S\r\n\v\f\u0085\u2028\u2029]"
 UNIT_SYMBOL = (
-    r"(?:ns|[µμu]s|ms|s|min|h|d|B|[KMGTPE]i?B|[kKMGT]bps|Hz|[kMGT]Hz|"
+    r"(?:ns|[µμu]s|ms|s|min|h|d|bit|[kKMGTPE]i?bit|B|[KMGTPE]i?B|"
+    r"[kKMGT]bps|Hz|[kMGT]Hz|"
     r"mm|cm|m|km|mg|g|kg|mL|L|°[CF]|mol|mmol|Pa|[kMGT]Pa|W|[kMGT]W|"
     r"J|[kMGT]J|V|mV|A|mA|Ω|kΩ|N)"
 )

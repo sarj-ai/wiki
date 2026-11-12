@@ -1167,6 +1167,8 @@ def _append_table(document: Document, block: _Block, *, branded: bool) -> None:
             branded=branded,
         )
     spacer = document.add_paragraph()
+    # Separate adjacent tables without inheriting a full body-text line.
+    spacer.paragraph_format.line_spacing = Pt(1)
     spacer.paragraph_format.space_after = Pt(4)
 
 

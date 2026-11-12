@@ -5,11 +5,16 @@ from typing import Any
 
 from pydantic import JsonValue
 
-from app.document_transform.brand import font_only_paragraph_alignment
+from app.document_transform.brand import copy_style_locations, font_only_paragraph_alignment
 from app.document_transform.brand_manifest import CURRENT_BRAND_MANIFEST
 from app.document_transform.copy_identity import (
     align_verified_copy_list_metadata,
     normalize_copy_list_identity,
+)
+from app.document_transform.copy_prose_typography import (
+    project_regular_prose,
+    regular_prose_requests,
+    verify_regular_copy_prose,
 )
 from app.document_transform.errors import UnsupportedSourceError
 from app.document_transform.ir import DocumentIR, parse_google_document
@@ -122,14 +127,18 @@ def _verify(
         )
     proofs = copy_font_proofs(source, expected)
     preserved = tuple(block.id for block in expected.blocks if block.preserved_font_family)
-    return verify_native_font_proof(
-        actual,
-        proofs,
-        font_policy=NativeFontVerificationPolicy(
-            preserved_family_block_ids=preserved, require_target_family=True
-        ),
-    ) and verify_native_unstyled_text(
-        source, actual, parse_google_document(source, title=expected.title)
+    return (
+        verify_native_font_proof(
+            actual,
+            proofs,
+            font_policy=NativeFontVerificationPolicy(
+                preserved_family_block_ids=preserved, require_target_family=True
+            ),
+        )
+        and verify_native_unstyled_text(
+            source, actual, parse_google_document(source, title=expected.title)
+        )
+        and verify_regular_copy_prose(source, actual, expected)
     )
 
 
@@ -178,6 +187,7 @@ def _copy_font_layout(
     if not targets:
         return _CopyFontLayout(document, [])
     projected = deepcopy(document)
+    located = {block.id: block for block in copy_style_locations(original, expected).blocks}
     deltas = _position_deltas(original, expected)
     requests: list[dict[str, JsonValue]] = []
     for tab_id, start, element, paragraph in _font_paragraphs(projected):
@@ -185,8 +195,6 @@ def _copy_font_layout(
         if block is None:
             continue
         alignment = font_only_paragraph_alignment(block)
-        if paragraph.paragraph_style.alignment == alignment:
-            continue
         source = block.source_range
         if source is None:
             raise ValueError
@@ -194,22 +202,25 @@ def _copy_font_layout(
         style = (
             obj(raw["paragraphStyle"]) if "paragraph_style" in paragraph.model_fields_set else {}
         )
-        style["alignment"] = alignment
-        raw["paragraphStyle"] = style
+        project_regular_prose(raw, block)
         delta = deltas.get(block.id, 0)
-        requests.append(
-            {
-                "updateParagraphStyle": {
-                    "range": {
-                        "tabId": tab_id,
-                        "startIndex": start + delta,
-                        "endIndex": source.end_index + delta,
-                    },
-                    "paragraphStyle": {"alignment": alignment},
-                    "fields": "alignment",
+        if paragraph.paragraph_style.alignment != alignment:
+            style["alignment"] = alignment
+            raw["paragraphStyle"] = style
+            requests.append(
+                {
+                    "updateParagraphStyle": {
+                        "range": {
+                            "tabId": tab_id,
+                            "startIndex": start + delta,
+                            "endIndex": source.end_index + delta,
+                        },
+                        "paragraphStyle": {"alignment": alignment},
+                        "fields": "alignment",
+                    }
                 }
-            }
-        )
+            )
+        requests.extend(regular_prose_requests(located[block.id]))
     return _CopyFontLayout(projected, requests)
 
 
