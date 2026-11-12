@@ -4,6 +4,7 @@ from collections.abc import Iterable
 from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime
 from io import BytesIO
+from itertools import pairwise
 import re
 from typing import Final, Literal, override
 from urllib.parse import urlparse
@@ -85,6 +86,11 @@ class _CommonMarkParser(MarkdownIt):
 
 
 _MARKDOWN = _CommonMarkParser("commonmark").enable("table").enable("strikethrough")
+_MIN_SHORT_ORDERED_ITEMS = 2
+_MAX_SHORT_ORDERED_ITEMS = 6
+_MAX_SHORT_ORDERED_CHARACTERS = 600
+_MAX_SHORT_ORDERED_ITEM_CHARACTERS = 240
+_MAX_ORDERED_INTRO_CHARACTERS = 180
 
 
 def _current_header_tokens() -> DocumentHeaderBrandTokens:
@@ -609,14 +615,16 @@ def _configure_styles(document: Document, *, branded: bool) -> None:
     )
     code.paragraph_format.left_indent = Inches(0.125)
     code.paragraph_format.right_indent = Inches(0.125)
-    _set_style(
-        _paragraph_style(styles.add_style("Sarj Table Text", WD_STYLE_TYPE.PARAGRAPH)),
-        size=_DOCUMENT.table_size_pt or _DOCUMENT.body_size_pt,
-        color=_INK,
-        before=_DOCUMENT.paragraph_space_above_pt,
-        after=2,
-        line_spacing=1,
-    )
+    for name, bold in (("Sarj Table Text", False), ("Sarj Table Header", True)):
+        _set_style(
+            _paragraph_style(styles.add_style(name, WD_STYLE_TYPE.PARAGRAPH)),
+            size=_DOCUMENT.table_size_pt or _DOCUMENT.body_size_pt,
+            color=_INK,
+            bold=bold,
+            before=_DOCUMENT.paragraph_space_above_pt,
+            after=2,
+            line_spacing=1,
+        )
 
 
 def _paragraph_style(style: BaseStyle) -> ParagraphStyle:
@@ -901,6 +909,7 @@ def _append_blocks(
 ) -> None:
     lists = _AppendListState({}, numbering.next_num)
     ordered = tuple(blocks)
+    keep_next = _pagination_links(ordered) if branded else frozenset()
     for index, block in enumerate(ordered):
         if block.kind == "list":
             _append_list_block(document, block, numbering, lists, branded=branded)
@@ -916,13 +925,63 @@ def _append_blocks(
         else:
             _append_nonlist_block(document, block, branded=branded)
             lists.ordered_by_level.clear()
-        if (
-            branded
-            and block.kind == "paragraph"
-            and index + 1 < len(ordered)
-            and ordered[index + 1].kind == "code"
-        ):
+        if index in keep_next:
             document.paragraphs[-1].paragraph_format.keep_with_next = True
+
+
+def _pagination_links(blocks: tuple[_Block, ...]) -> frozenset[int]:
+    links = {
+        index
+        for index, (current, following) in enumerate(pairwise(blocks))
+        if current.kind == "paragraph" and following.kind == "code"
+    }
+    links.update(_short_ordered_list_links(blocks))
+    return frozenset(links)
+
+
+def _short_ordered_list_links(blocks: tuple[_Block, ...]) -> set[int]:
+    # Bound whole groups so a long, nested or whitespace-sensitive procedure
+    # cannot force oversized keep-together regions. Scan each list run once.
+    links: set[int] = set()
+    start = 0
+    while start < len(blocks):
+        if blocks[start].kind != "list":
+            start += 1
+            continue
+        stop = start + 1
+        while stop < len(blocks) and blocks[stop].kind == "list":
+            stop += 1
+        group = blocks[start:stop]
+        if _is_short_ordered_group(group):
+            links.update(range(start, stop - 1))
+            if (
+                start
+                and blocks[start - 1].kind == "paragraph"
+                and _is_short_pagination_text(blocks[start - 1].text, _MAX_ORDERED_INTRO_CHARACTERS)
+            ):
+                links.add(start - 1)
+        start = stop
+    return links
+
+
+def _is_short_ordered_group(group: tuple[_Block, ...]) -> bool:
+    return (
+        _MIN_SHORT_ORDERED_ITEMS <= len(group) <= _MAX_SHORT_ORDERED_ITEMS
+        and sum(len(block.text) for block in group) <= _MAX_SHORT_ORDERED_CHARACTERS
+        and all(
+            block.ordered
+            and block.level == 0
+            and block.start == group[0].start + offset
+            and _is_short_pagination_text(block.text, _MAX_SHORT_ORDERED_ITEM_CHARACTERS)
+            for offset, block in enumerate(group)
+        )
+    )
+
+
+def _is_short_pagination_text(text: str, limit: int) -> bool:
+    return 0 < len(text) <= limit and not any(
+        character in text for character in "\r\n\t\v\f\u2028\u2029"
+    )
 
 
 def _append_nonlist_block(document: Document, block: _Block, *, branded: bool) -> None:
@@ -1142,7 +1201,9 @@ def _append_table_row(
             _set_cell_fill(cell, _CODE_FILL)
         paragraph = cell.paragraphs[0]
         paragraph.style = _paragraph_style(
-            document.styles["Sarj Table Text" if branded else "Normal"]
+            document.styles[
+                ("Sarj Table Header" if header else "Sarj Table Text") if branded else "Normal"
+            ]
         )
         _append_inlines(paragraph, inlines, force_bold=header, branded=branded)
         if branded and column_index in numeric_columns:
