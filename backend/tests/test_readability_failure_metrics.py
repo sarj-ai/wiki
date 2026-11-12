@@ -20,6 +20,8 @@ async def test_table_only_receipt_reports_attempted_layout_calls_after_provider_
     assert plan.tables
     assert plan.model_invoked
     assert plan.passes == editor.calls == (1 if outage else 2)
+    assert plan.accepted_improvements == 0
+    assert plan.stop_reason == ("provider_unavailable" if outage else "invalid_proposal")
 
 
 async def test_budget_skipped_layout_reports_no_model_calls() -> None:
@@ -33,3 +35,17 @@ async def test_budget_skipped_layout_reports_no_model_calls() -> None:
     assert not plan.paragraphs
     assert not plan.model_invoked
     assert plan.passes == editor.calls == 0
+    assert plan.accepted_improvements == 0
+    assert plan.stop_reason == "deadline_reserve"
+
+
+async def test_improving_pass_limit_is_distinct_from_convergence() -> None:
+    editor = _LayoutEditor()
+
+    plan = await plan_readability(
+        _fixture("before"), title="One improving pass", generator=editor, max_passes=1
+    )
+
+    assert plan is not None
+    assert plan.passes == plan.accepted_improvements == editor.calls == 1
+    assert plan.stop_reason == "pass_limit"
