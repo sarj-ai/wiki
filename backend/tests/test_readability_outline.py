@@ -5,7 +5,7 @@ from pydantic import JsonValue
 import pytest
 
 from app.document_transform.ir import DocumentIR, utf16_length
-from app.document_transform.readability import plan_readability
+from app.document_transform.readability import plan_readability, verify_readability
 from app.document_transform.readability_json import array, bodies, content, integer, obj
 from app.document_transform.readability_paragraphs import (
     readability_document,
@@ -180,5 +180,11 @@ async def test_refinement_rejects_a_document_with_only_new_headings() -> None:
     document = _document(("Replay requires a valid lease", "Rollback requires a checkpoint"))
     editor = _AllHeadingEditor()
 
-    assert await plan_readability(document, title="QA reference", generator=editor) is None
+    plan = await plan_readability(document, title="QA reference", generator=editor)
+    assert plan is not None
+    assert not plan.requests
+    assert not plan.paragraphs
+    assert plan.model_invoked
+    assert plan.planning_failure_code == "model_output_invalid"
+    assert verify_readability(document, plan)
     assert editor.calls == 2

@@ -23,7 +23,10 @@ class ReadabilityProvider:
     ) -> ReadabilityCheckpoint:
         document = await self.read(document_id)
         if verify_readability(document, checkpoint):
-            if checkpoint.complete and document.get("revisionId") != checkpoint.revision_id:
+            if (checkpoint.complete and document.get("revisionId") != checkpoint.revision_id) or (
+                not checkpoint.requests
+                and document.get("revisionId") != checkpoint.source_revision_id
+            ):
                 raise OutputConflictError
         else:
             if (

@@ -168,9 +168,11 @@ async def test_failed_copy_review_descriptor_checks_owner_and_live_access(scenar
         "revoked",
         "wrong_owner",
         "wrong_resource",
-        "wrong_error",
+        "missing_checkpoint",
         "wrong_id",
         "wrong_payload_source",
+        "late_provider_failure",
+        "interrupted_write",
     ],
 )
 async def test_post_mutation_failure_exposes_only_owner_verified_original(
@@ -181,9 +183,19 @@ async def test_post_mutation_failure_exposes_only_owner_verified_original(
     source_id = FileId("original-document")
     task = _failed_task(
         resource_id=FileId("different-resource") if scenario == "wrong_resource" else source_id,
-        error_code="needs_review" if scenario == "wrong_error" else "in_place_verification_failed",
+        error_code="model_deadline_exhausted"
+        if scenario == "late_provider_failure"
+        else "document_provider_unavailable"
+        if scenario == "interrupted_write"
+        else "needs_review"
+        if scenario == "missing_checkpoint"
+        else "in_place_verification_failed",
     )
-    checkpoint = in_place_checkpoint().model_copy(update={"document_id": source_id})
+    checkpoint = (
+        None
+        if scenario == "missing_checkpoint"
+        else in_place_checkpoint().model_copy(update={"document_id": source_id})
+    )
     payload = DocumentTransformRequest(
         source=DriveFileSource(
             kind="drive_file",
@@ -215,7 +227,20 @@ async def test_post_mutation_failure_exposes_only_owner_verified_original(
     result = await get_task(task.id, service, user, Response(), files)
 
     assert isinstance(result, FailedTaskRead)
-    assert (result.unverified_output is not None) is (scenario in {"visible", "redacted"})
+    assert (result.unverified_output is not None) is (
+        scenario in {"visible", "redacted", "late_provider_failure", "interrupted_write"}
+    )
+    assert result.error_code == task.error_code
     assert files.requests == (
-        [source_id] if scenario in {"visible", "redacted", "revoked", "wrong_id"} else []
+        [source_id]
+        if scenario
+        in {
+            "visible",
+            "redacted",
+            "revoked",
+            "wrong_id",
+            "late_provider_failure",
+            "interrupted_write",
+        }
+        else []
     )

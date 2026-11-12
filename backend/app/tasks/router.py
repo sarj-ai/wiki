@@ -79,9 +79,11 @@ async def _with_unverified_output(
     payload = record.payload
     if record.owner_user_id != user.id:
         return task
-    if task.error_code == "in_place_verification_failed":
-        if checkpoint is None or checkpoint.kind != "in_place":
-            return task
+    # A later model/provider failure can follow an already accepted in-place
+    # stage. Preserve its error category while exposing a scoped recovery link.
+    # A saved mutation intent may also have an ambiguous write outcome: the UI
+    # deliberately says the original may have changed, never that it succeeded.
+    if checkpoint is not None and checkpoint.kind == "in_place":
         payload_matches_original = payload is None or (
             payload.output_strategy is OutputStrategy.IN_PLACE
             and isinstance(payload.source, DriveFileSource)
@@ -93,7 +95,7 @@ async def _with_unverified_output(
     else:
         if (
             (payload is not None and payload.output_strategy is not OutputStrategy.COPY)
-            or (checkpoint is None or checkpoint.kind == "in_place")
+            or checkpoint is None
             or checkpoint.output is None
         ):
             return task

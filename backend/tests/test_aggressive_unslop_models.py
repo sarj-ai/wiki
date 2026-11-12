@@ -273,7 +273,7 @@ async def _yield_writer_sleep(_delay: float) -> None:
 @pytest.mark.parametrize(
     ("model_override", "expected_model", "thinking_level"),
     [
-        pytest.param(None, "gemini-3.1-pro-preview", types.ThinkingLevel.HIGH, id="normal-default"),
+        pytest.param(None, "gemini-3.1-pro-preview", types.ThinkingLevel.LOW, id="normal-default"),
         pytest.param(
             "gemini-3.8-flash",
             "gemini-3.8-flash",
@@ -340,7 +340,7 @@ async def test_normal_model_settings_reach_the_real_sdk_without_overriding_expli
 
     assert models == [expected_model]
     (config,) = configurations
-    assert config.max_output_tokens == 16_384
+    assert config.max_output_tokens == 32_768
     if thinking_level is None:
         assert config.thinking_config is None
     else:
@@ -362,7 +362,7 @@ async def test_aggressive_generation_uses_structured_output_and_supported_thinki
     config = harness.call.configurations[0]
     assert config.response_schema is None
     assert config.response_json_schema is not None
-    assert config.max_output_tokens == 16_384
+    assert config.max_output_tokens == 32_768
     assert config.response_json_schema["additionalProperties"] is False
     assert "patches" in config.response_json_schema["properties"]
     assert config.thinking_config is not None
@@ -762,7 +762,7 @@ async def test_sparse_proposals_share_a_review_batch_without_unchanged_prose() -
 
 
 async def test_review_batches_bound_paired_text_without_losing_or_duplicating_verdicts() -> None:
-    document = parse_markdown("\n\n".join(SOURCE for _ in range(13)), title="Article")
+    document = parse_markdown("\n\n".join(SOURCE for _ in range(33)), title="Article")
     patches = [
         TextPatch(block_id=block.id, expected_sha256=block.sha256, replacement=REPLACEMENT)
         for block in document.blocks
@@ -775,8 +775,8 @@ async def test_review_batches_bound_paired_text_without_losing_or_duplicating_ve
     }
     submitted = [_ReviewInput.model_validate_json(prompt) for prompt in harness.call.prompts]
     assert len(submitted) > 1
-    assert all(len(batch.sentence_audits) <= 12 for batch in submitted)
-    assert all(len(prompt) <= 12_000 for prompt in harness.call.prompts)
+    assert all(len(batch.sentence_audits) <= 32 for batch in submitted)
+    assert all(len(prompt) <= 32_000 for prompt in harness.call.prompts)
     assert [pair.block_id for batch in submitted for pair in batch.sentence_audits] == [
         patch.block_id for patch in patches
     ]
@@ -818,8 +818,8 @@ async def test_sre_review_batching_reduces_requests_with_identical_complete_audi
     assert len(wide) < len(narrow)
     assert bindings(wide_prompts) == bindings(narrow_prompts)
     assert len(bindings(wide_prompts)) == len(set(bindings(wide_prompts)))
-    assert all(len(prompt) <= 12_000 for prompt in wide_prompts)
-    assert all(len(batch) <= 12 for batch in wide)
+    assert all(len(prompt) <= 32_000 for prompt in wide_prompts)
+    assert all(len(batch) <= 32 for batch in wide)
 
     harness = _generator(types.GenerateContentResponse())
     harness.call.review_input = True
@@ -906,8 +906,8 @@ async def test_sentence_checks_share_paragraph_context_without_losing_full_cover
     payloads = [_ReviewInput.model_validate_json(prompt) for prompt in harness.call.prompts]
     assert sum(len(payload.sentence_audits) for payload in payloads) == 60
     assert len(payloads) <= 6
-    assert all(0 < len(payload.sentence_audits) <= 12 for payload in payloads)
-    assert all(len(prompt) <= 12_000 for prompt in harness.call.prompts)
+    assert all(0 < len(payload.sentence_audits) <= 32 for payload in payloads)
+    assert all(len(prompt) <= 32_000 for prompt in harness.call.prompts)
     for payload in payloads:
         contexts = {context.context_id: context for context in payload.document_contexts}
         assert len(contexts) == len(payload.document_contexts)

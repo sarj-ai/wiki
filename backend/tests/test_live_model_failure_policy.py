@@ -1,8 +1,9 @@
 import asyncio
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import timedelta
+import json
 from time import monotonic
 
 from google import genai
@@ -12,9 +13,9 @@ from google.oauth2.credentials import Credentials
 import httpx
 import pytest
 
-from app.document_transform.errors import ModelUnavailableError
+from app.document_transform.errors import ModelPermissionError, ModelUnavailableError
 from app.document_transform.ir import parse_markdown
-from app.document_transform.model_failures import classify_model_failure
+from app.document_transform.model_failures import classify_model_failure, grouped_model_failure
 from app.document_transform.models import GeminiModelPolicy, VertexGeminiPatchGenerator
 from app.document_transform.schemas import PatchEnvelope, TextPatch, TransformPhase
 from app.performance import provider_retry_budget, provider_retry_remaining_seconds
@@ -31,9 +32,29 @@ class _Run:
     sleeps: list[float]
 
 
+@dataclass(frozen=True)
+class _ProviderConfig:
+    model_id: str
+    location: str
+    endpoint: str
+    token: str
+
+
+_NORMAL_PROVIDER = _ProviderConfig(
+    model_id="configured-writer",
+    location="global",
+    endpoint="http://127.0.0.1:9",
+    token="offline-credential",
+)
+
+
 @asynccontextmanager
 async def _provider(
-    failures: tuple[int | str, ...], *, retry_after: str | None = None, call_seconds: float = 5
+    failures: tuple[int | str, ...],
+    *,
+    retry_after: str | None = None,
+    call_seconds: float = 5,
+    config: _ProviderConfig = _NORMAL_PROVIDER,
 ) -> AsyncGenerator[_Run]:
     requests: list[httpx.Request] = []
     sleeps: list[float] = []
@@ -66,12 +87,12 @@ async def _provider(
                             "parts": [
                                 {
                                     "text": "malformed output"
-                                    if failure == "malformed"
+                                    if failure in {"malformed", "truncated"}
                                     else envelope.model_dump_json()
                                 }
                             ],
                         },
-                        "finishReason": "STOP",
+                        "finishReason": "MAX_TOKENS" if failure == "truncated" else "STOP",
                     }
                 ]
             },
@@ -84,7 +105,7 @@ async def _provider(
     policy = GeminiModelPolicy(
         project="offline-fault-injection",
         location="global",
-        unslop_model="configured-writer",
+        unslop_model=config.model_id,
         fallback_model="configured-fallback",
         restyle_model="configured-reviewer",
         timeout=timedelta(seconds=call_seconds),
@@ -93,9 +114,9 @@ async def _provider(
         client = genai.Client(
             vertexai=True,
             project=policy.project,
-            location=policy.location,
-            credentials=Credentials(token="offline-credential"),
-            http_options=types.HttpOptions(base_url="http://127.0.0.1:9", httpx_async_client=http),
+            location=config.location,
+            credentials=Credentials(token=config.token),
+            http_options=types.HttpOptions(base_url=config.endpoint, httpx_async_client=http),
         )
         try:
             yield _Run(
@@ -141,6 +162,38 @@ async def test_permanent_provider_rejection_stops_before_fallback_or_queue_retry
         assert _SECRET_SENTINEL not in str(caught.value)
 
 
+@pytest.mark.parametrize("fault", ["model", "credential", "endpoint", "region"])
+async def test_injected_provider_configuration_reaches_the_actual_sdk_request_and_fails_once(
+    fault: str,
+) -> None:
+    match fault:
+        case "model":
+            config = replace(_NORMAL_PROVIDER, model_id="model-does-not-exist-for-qa")
+            status, code = 404, "model_configuration_invalid"
+        case "credential":
+            config = replace(_NORMAL_PROVIDER, token="invalid-offline-credential")
+            status, code = 401, "model_authentication_failed"
+        case "endpoint":
+            config = replace(
+                _NORMAL_PROVIDER, endpoint="https://incorrect-provider-endpoint.invalid"
+            )
+            status, code = 400, "model_configuration_invalid"
+        case _:
+            config = replace(_NORMAL_PROVIDER, location="invalid-region-qa")
+            status, code = 400, "model_configuration_invalid"
+    async with _provider((status,), config=config) as run:
+        with pytest.raises(ModelUnavailableError) as caught:
+            await _generate(run)
+        assert caught.value.code == code
+        assert not caught.value.retryable
+        (request,) = run.requests
+        assert f"/locations/{config.location}/" in request.url.path
+        assert request.url.path.endswith(f"/models/{config.model_id}:generateContent")
+        assert request.url.host in {"127.0.0.1", "incorrect-provider-endpoint.invalid"}
+        assert request.headers["authorization"] == f"Bearer {config.token}"
+        assert config.token not in str(caught.value)
+
+
 async def test_16_quota_retry_after_reaches_the_scheduler_without_sdk_retry_multiplication() -> (
     None
 ):
@@ -155,6 +208,51 @@ async def test_17_server_errors_use_at_most_three_total_http_attempts() -> None:
         assert len(await _generate(run)) == 1
         assert len(run.requests) == 3
         assert sum(run.sleeps) >= 6
+
+
+async def test_exhausted_quota_attempts_do_not_allow_queue_delivery_to_reset_provider_backoff() -> (
+    None
+):
+    async with _provider((429, 429, 429), retry_after="8") as run:
+        with pytest.raises(ModelUnavailableError) as caught:
+            await _generate(run)
+        assert len(run.requests) == 3
+        assert not caught.value.retryable
+        assert caught.value.retry_after == 8
+
+
+async def test_token_limited_provider_response_is_terminal_without_identical_retry() -> None:
+    async with _provider(("truncated",)) as run:
+        with pytest.raises(ModelUnavailableError) as caught:
+            await _generate(run)
+        assert caught.value.code == "model_output_truncated"
+        assert not caught.value.retryable
+        assert len(run.requests) == 1
+
+
+async def test_primary_pro_request_leaves_room_for_complete_json_and_keeps_independent_review_separate() -> (
+    None
+):
+    config = replace(_NORMAL_PROVIDER, model_id="gemini-3.1-pro-preview")
+    async with _provider((), config=config) as run:
+        assert await _generate(run)
+        request = json.loads(run.requests[0].content)
+        assert request["generationConfig"]["maxOutputTokens"] == 32_768
+        generation = types.GenerateContentConfig.model_validate(request["generationConfig"])
+        assert generation.thinking_config is not None
+        assert generation.thinking_config.thinking_level == types.ThinkingLevel.LOW
+
+
+def test_known_permanent_batch_failure_retains_actionable_category_after_other_attempts_exhaust() -> (
+    None
+):
+    failure = grouped_model_failure(
+        ExceptionGroup(
+            "parallel batches", [ModelUnavailableError(retryable=False), ModelPermissionError()]
+        )
+    )
+    assert failure.code == "model_permission_denied"
+    assert not failure.retryable
 
 
 async def test_18_transport_failure_is_classified_and_retried_with_no_local_rewrite() -> None:

@@ -30,6 +30,7 @@ from app.document_transform.header_provenance import (
 )
 from app.document_transform.ir import MAX_DOC_TABS, MAX_DOCUMENT_BLOCKS
 from app.document_transform.limits import MAX_MARKDOWN_BYTES
+from app.document_transform.native_chip_flow import NativeChipCheckpoint
 from app.document_transform.native_date_flow import NativeDateCheckpoint
 from app.document_transform.native_font_proof import NativeFontBlockId, NativeFontProof
 from app.document_transform.native_footer_flow import NativeFooterCheckpoint
@@ -312,6 +313,8 @@ class InPlacePlan(StrictTransformModel):
 
     readability: ReadabilityCheckpoint | None = None
     readability_result: DocumentTransformResult | None = None
+    native_chips: NativeChipCheckpoint | None = None
+    native_chip_result: DocumentTransformResult | None = None
     visual_authority_block_ids: tuple[
         Annotated[NativeFontBlockId, StringConstraints(pattern=r"^b[0-9]+$", max_length=12)], ...
     ] = Field(default=(), max_length=MAX_DOCUMENT_BLOCKS)
@@ -511,6 +514,8 @@ class CopyPlan(StrictTransformModel):
     compact_markdown: StrictBool = False
     readability: ReadabilityCheckpoint | None = None
     readability_result: DocumentTransformResult | None = None
+    native_chips: NativeChipCheckpoint | None = None
+    native_chip_result: DocumentTransformResult | None = None
     pagination: tuple[NativePaginationRule, ...] = Field(
         default=(), max_length=MAX_PAGINATION_RULES
     )
