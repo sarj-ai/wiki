@@ -2157,7 +2157,7 @@ async def test_sdk_pro_primary_reserves_output_and_format_keeps_high_thinking(
     assert [
         config.thinking_config.thinking_level for config in received if config.thinking_config
     ] == [
-        types.ThinkingLevel.LOW if model == "gemini-3.1-pro-preview" else types.ThinkingLevel.HIGH,
+        types.ThinkingLevel.HIGH,
         types.ThinkingLevel.HIGH,
     ]
 
@@ -3058,7 +3058,7 @@ async def test_cancelled_writer_wait_releases_admission_lock_and_rpc_capacity(
         ),
         pytest.param(
             ModelId("gemini-3.1-pro-preview"),
-            types.ThinkingLevel.LOW,
+            types.ThinkingLevel.HIGH,
             types.ThinkingLevel.HIGH,
             id="explicit-pro-editor",
         ),
@@ -3232,9 +3232,7 @@ async def test_pro_defaults_and_explicit_override_recover_capacity_with_full_sou
             return httpx.Response(HTTPStatus.TOO_MANY_REQUESTS, json={"error": {"code": 429}})
         assert model == "gemini-3.1-pro-preview"
         assert config.thinking_config is not None
-        assert config.thinking_config.thinking_level == (
-            types.ThinkingLevel.HIGH if explicit_flash else types.ThinkingLevel.LOW
-        )
+        assert config.thinking_config.thinking_level == types.ThinkingLevel.HIGH
         if not explicit_flash and len(writers) < 3:
             return httpx.Response(HTTPStatus.TOO_MANY_REQUESTS, json={"error": {"code": 429}})
         return _review_response(PatchEnvelope(patches=[patch]))
@@ -3759,12 +3757,7 @@ class _ReviewThinkingRoleCase:
                     model,
                     model,
                     model,
-                    (
-                        types.ThinkingLevel.LOW
-                        if model == "gemini-3.1-pro-preview"
-                        else types.ThinkingLevel.HIGH,
-                        *([types.ThinkingLevel.HIGH] * 3),
-                    ),
+                    (types.ThinkingLevel.HIGH,) * 4,
                 ),
                 id=label,
             )
