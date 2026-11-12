@@ -107,6 +107,7 @@ _PUBLIC_TASK_COLUMNS = (
     Task.started_at,
     Task.finished_at,
     Task.created_at,
+    Task.lease_expires_at,
 )
 _PUBLIC_TASK_LOAD = load_only(*_PUBLIC_TASK_COLUMNS, raiseload=True)
 _REPLAY_TASK_LOAD = load_only(*_PUBLIC_TASK_COLUMNS, Task.request_hash, raiseload=True)
@@ -1427,7 +1428,19 @@ def _request_hash(payload: dict[str, JsonValue]) -> str:
 
 
 def _to_read(task: Task) -> TaskRead:
-    return _TaskReadPayload.model_validate(task, from_attributes=True).root
+    result = _TaskReadPayload.model_validate(task, from_attributes=True).root
+    match result:
+        case RunningTaskRead():
+            expiry = task.lease_expires_at
+            return result.model_copy(
+                update={
+                    "execution_state": "retrying"
+                    if expiry is not None and expiry <= datetime.now(UTC)
+                    else "running"
+                }
+            )
+        case _:
+            return result
 
 
 def _require_owned_task(task: Task | None) -> Task:

@@ -82,6 +82,8 @@ export type DocumentTransformTask = (
   | {
       id: string;
       status: "cancelled" | "pending" | "running";
+      attemptCount?: number;
+      executionState?: "running" | "retrying";
     }
 ) & { replayed?: boolean };
 

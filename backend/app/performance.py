@@ -124,13 +124,20 @@ def provider_retry_remaining_seconds() -> float | None:
 
 @contextmanager
 def provider_retry_budget(
-    duration: timedelta, *, clock: Callable[[], float] | None = None
+    duration: timedelta,
+    *,
+    clock: Callable[[], float] | None = None,
+    independent_execution: bool = False,
 ) -> Generator[None]:
     seconds = duration.total_seconds()
     if seconds < 1:
         msg = "Provider retry budget must allow at least one request attempt"
         raise ValueError(msg)
-    token = _provider_retry_deadline_var.set(_new_provider_retry_budget(seconds, clock=clock))
+    token = _provider_retry_deadline_var.set(
+        _new_provider_retry_budget(
+            seconds, clock=clock, independent_execution=independent_execution
+        )
+    )
     try:
         yield
     finally:
@@ -138,10 +145,14 @@ def provider_retry_budget(
 
 
 def _new_provider_retry_budget(
-    seconds: float, *, clock: Callable[[], float] | None = None
+    seconds: float, *, clock: Callable[[], float] | None = None, independent_execution: bool = False
 ) -> _ProviderRetryBudget:
     active = _provider_retry_deadline_var.get()
     if clock is None and active is not None:
         clock = active.clock
     read_clock = perf_counter if clock is None else clock
+    if active is not None and not independent_execution:
+        remaining = provider_retry_remaining_seconds()
+        if remaining is not None:
+            seconds = min(seconds, remaining)
     return _ProviderRetryBudget(deadline=read_clock() + seconds, clock=clock)

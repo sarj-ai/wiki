@@ -464,7 +464,7 @@ async def test_semantic_verdict_with_the_wrong_output_hash_fails_closed() -> Non
     assert harness.call.models == ["gemini-3.1-pro-preview"] * 3
 
 
-async def test_missing_rewrite_proposals_retry_instead_of_silently_returning_no_edits() -> None:
+async def test_missing_rewrite_proposals_fail_instead_of_silently_returning_no_edits() -> None:
     document = parse_markdown(SOURCE, title="Bird")
     harness = _generator(types.GenerateContentResponse(parsed=PatchEnvelope(patches=[])))
     with pytest.raises(ModelUnavailableError):
@@ -630,6 +630,13 @@ async def test_review_failover_uses_the_configured_fallback_within_its_attempt_b
     harness.call.timeout_failures = status is None
     if status is not None:
         harness.call.failure_status = status
+    if status == HTTPStatus.FORBIDDEN:
+        with pytest.raises(ModelUnavailableError) as caught:
+            await harness.generator.verify(document, [patch])
+        assert caught.value.code == "model_permission_denied"
+        assert not caught.value.retryable
+        assert harness.call.models == ["gemini-3.1-pro-preview"]
+        return
     if failures == 3:
         with pytest.raises(ModelUnavailableError):
             await harness.generator.verify(document, [patch])
@@ -714,7 +721,7 @@ async def test_transient_review_fallback_rejects_forged_bindings(
         HTTPStatus.UNPROCESSABLE_CONTENT,
     ],
 )
-async def test_permanent_provider_errors_keep_the_configured_reviewer(status: HTTPStatus) -> None:
+async def test_permanent_provider_errors_stop_the_configured_reviewer(status: HTTPStatus) -> None:
     document = parse_markdown(SOURCE, title="Bird")
     block = document.blocks[0]
     patch = TextPatch(block_id=block.id, expected_sha256=block.sha256, replacement=REPLACEMENT)
@@ -723,8 +730,10 @@ async def test_permanent_provider_errors_keep_the_configured_reviewer(status: HT
     harness.call.failures = 1
     harness.call.failure_status = status
 
-    assert (await harness.generator.review(document, [patch])).approved == {block.id}
-    assert harness.call.models == ["gemini-3.1-pro-preview"] * 2
+    with pytest.raises(ModelUnavailableError) as caught:
+        await harness.generator.review(document, [patch])
+    assert not caught.value.retryable
+    assert harness.call.models == ["gemini-3.1-pro-preview"]
 
 
 async def test_sparse_proposals_share_a_review_batch_without_unchanged_prose() -> None:
@@ -1423,17 +1432,15 @@ async def test_smaller_editor_requests_preserve_all_blocks_hashes_and_order(
         _RewriteInputs.model_validate_json(_rewrite_payload_lines(prompt)[0]).root
         for prompt in harness.call.prompts
     ]
-    assert all(0 < len(batch) <= 6 for batch in submitted)
-    assert all(sum(len(block.text) for block in batch) <= 4_000 for batch in submitted)
+    assert all(0 < len(batch) <= 100 for batch in submitted)
+    assert all(sum(len(block.text) for block in batch) <= 12_000 for batch in submitted)
     assert [block.block_id for batch in submitted for block in batch] == [
         block.id for block in blocks
     ]
     assert [(patch.block_id, patch.expected_sha256, patch.replacement) for patch in patches] == [
         (block.id, block.sha256, block.text) for block in blocks
     ]
-    assert [len(batch) for batch in submitted] == (
-        [6, 6, 1] if repetitions == 1 else [1] * len(blocks)
-    )
+    assert [len(batch) for batch in submitted] == ([13] if repetitions == 1 else [5, 5, 3])
 
 
 async def test_single_oversized_block_and_audit_are_preserved_whole() -> None:

@@ -1013,17 +1013,19 @@ async def test_review_collision_uses_a_sticky_configured_fallback_effort(
             client=client,
         )
         try:
-            decision = await generator.review(document, [patch])
+            if status is HTTPStatus.FORBIDDEN:
+                with pytest.raises(ModelUnavailableError) as caught:
+                    await generator.review(document, [patch])
+                assert caught.value.code == "model_permission_denied"
+                assert not caught.value.retryable
+                assert models == [reviewer]
+            else:
+                decision = await generator.review(document, [patch])
+                assert decision.approved == {block.id}
+                assert not decision.rejected
+                assert models == [reviewer, primary, primary]
         finally:
             await client.aio.aclose()
-
-    assert decision.approved == {block.id}
-    assert not decision.rejected
-    assert models == [
-        reviewer,
-        primary,
-        primary,
-    ]
 
 
 @pytest.mark.parametrize(
@@ -1031,7 +1033,7 @@ async def test_review_collision_uses_a_sticky_configured_fallback_effort(
     [ModelId("gemini-4-argon"), ModelId("gemini-3.1-flash-lite")],
     ids=["default-flash-fallback", "custom-fallback-none"],
 )
-async def test_queued_review_batches_share_forbidden_models_only_within_one_invocation(
+async def test_queued_review_batches_terminate_on_permission_denial_without_fallback(
     sdk_client_factory: Callable[[httpx.AsyncClient], genai.Client], fallback: ModelId
 ) -> None:
     document = parse_markdown(
@@ -1044,36 +1046,15 @@ async def test_queued_review_batches_share_forbidden_models_only_within_one_invo
         TextPatch(block_id=block.id, expected_sha256=block.sha256, replacement=block.text)
         for block in model_editable_blocks(document)
     ]
-    assert len(patches) == 49
-    models: list[ModelId] = []
-    submitted: list[_WireReview] = []
+    models: list[str] = []
     started = asyncio.Event()
-    fallback_model = ModelId("gemini-3.8-flash") if fallback == "gemini-4-argon" else fallback
 
     async def respond(request: httpx.Request) -> httpx.Response:
-        model = ModelId(request.url.path.rsplit("/", 1)[-1].removesuffix(":generateContent"))
-        models.append(model)
-        config = _VendorRequest.model_validate_json(request.content).generation_config
-        assert config.max_output_tokens == 32_768
-        assert request.headers.get("X-Server-Timeout") == "120"
-        if model == "gemini-4-argon":
-            assert config.thinking_config is not None
-            assert config.thinking_config.thinking_level == types.ThinkingLevel.HIGH
-            if models.count(ModelId("gemini-4-argon")) % 2 == 0:
-                started.set()
-            await started.wait()
-            return httpx.Response(HTTPStatus.FORBIDDEN, json={"error": {"code": 403}})
-        assert model == fallback_model
-        if model == "gemini-3.1-flash-lite":
-            assert config.thinking_config is None
-        else:
-            assert config.thinking_config is not None
-            assert config.thinking_config.thinking_level == types.ThinkingLevel.MEDIUM
-        wire = _WireReview.model_validate_json(
-            _WireReviewRequest.model_validate_json(request.content).contents[0].parts[0].text
-        )
-        submitted.append(wire)
-        return _review_response(_functional_audit_envelope(wire))
+        models.append(request.url.path.rsplit("/", 1)[-1].removesuffix(":generateContent"))
+        if len(models) % 2 == 0:
+            started.set()
+        await started.wait()
+        return httpx.Response(HTTPStatus.FORBIDDEN, json={"error": {"code": 403}})
 
     async with httpx.AsyncClient(transport=httpx.MockTransport(respond)) as http:
         client = sdk_client_factory(http)
@@ -1084,29 +1065,23 @@ async def test_queued_review_batches_share_forbidden_models_only_within_one_invo
                 unslop_model="gemini-3.8-flash",
                 fallback_model=fallback,
                 restyle_model="gemini-4-argon",
-                review_timeout=timedelta(seconds=120),
             ),
             client=client,
         )
         try:
             for invocation in range(1, 3):
                 started.clear()
-                decision = await generator.review(document, patches)
-                assert decision.approved == {patch.block_id for patch in patches}
-                assert not decision.rejected
-                assert models.count(ModelId("gemini-4-argon")) == invocation * 2
-                assert models.count(fallback_model) == len(submitted)
-                assert len(submitted) > 2
-                assert sorted(
-                    audit.block_id for wire in submitted for audit in wire.sentence_audits
-                ) == sorted([patch.block_id for patch in patches] * invocation)
-                assert all(0 < len(wire.sentence_audits) <= 12 for wire in submitted)
+                with pytest.raises(ModelUnavailableError) as caught:
+                    await generator.review(document, patches)
+                assert caught.value.code == "model_permission_denied"
+                assert not caught.value.retryable
+                assert models == ["gemini-4-argon"] * (invocation * 2)
         finally:
             await client.aio.aclose()
 
 
 @pytest.mark.parametrize("phase_count", [1, 2], ids=["initial-and-repair", "concurrent-isolation"])
-async def test_model_phase_shares_forbidden_reviewer_only_with_its_own_repair(
+async def test_model_phase_transient_reviewer_failure_stays_isolated_during_repair(
     normal_sdk_client_factory: Callable[[httpx.AsyncClient], genai.Client], phase_count: int
 ) -> None:
     source = "The hidden bird can sing from dense scrub beside the path while remaining unseen by observers."
@@ -1122,7 +1097,7 @@ async def test_model_phase_shares_forbidden_reviewer_only_with_its_own_repair(
             subject = "robin" if "robin" in payload.document_contexts[0].source_block else "bird"
             review_models[subject].append(model)
             if model == "gemini-4-argon":
-                return httpx.Response(HTTPStatus.FORBIDDEN, json={"error": {"code": 403}})
+                return httpx.Response(HTTPStatus.SERVICE_UNAVAILABLE, json={"error": {"code": 503}})
             assert model == "gemini-3.7-flash"
             if subject == "bird":
                 first_fallback.set()
@@ -1186,6 +1161,7 @@ async def test_model_phase_shares_forbidden_reviewer_only_with_its_own_repair(
             assert review_models[subject] == [
                 "gemini-4-argon",
                 "gemini-3.7-flash",
+                "gemini-4-argon",
                 "gemini-3.7-flash",
             ]
 
@@ -1631,7 +1607,7 @@ async def test_sdk_writer_batches_share_cap_preserve_order_and_reap_cancellation
     sdk_client_factory: Callable[[httpx.AsyncClient], genai.Client], *, fail: bool
 ) -> None:
     source = "The hidden bird can sing unseen from dense scrub beside the path."
-    document = parse_markdown("\n\n".join(source for _ in range(13)), title="Writer concurrency")
+    document = parse_markdown("\n\n".join(source for _ in range(201)), title="Writer concurrency")
     blocks = [block for block in document.blocks if block.text]
     first_id = blocks[0].id
     started = asyncio.Event()
@@ -1836,7 +1812,9 @@ async def test_sdk_document_budget_is_shared_across_separate_editor_batches(
         "The logger records temperature at night, stores the readings in its archive, "
         "and sends the complete log to the laboratory."
     )
-    padding = " The account restates this description in extended and repetitive wording."
+    padding = (
+        " The account restates this " + "description" * 30 + " in extended and repetitive wording."
+    )
     source = "\n\n".join(fact + padding * 8 for _ in range(7))
     document = parse_markdown(source, title="Batch allocation")
     blocks = model_editable_blocks(document)
@@ -2629,7 +2607,7 @@ async def test_model_deadline_or_cancellation_reaps_active_and_queued_sdk_batche
     external_cancel: bool,
 ) -> None:
     document = parse_markdown(
-        "\n\n".join(deadline_document.patch.replacement for _ in range(13)),
+        "\n\n".join(deadline_document.patch.replacement for _ in range(201)),
         title="Deadline cancellation",
     )
     started = asyncio.Event()
@@ -2857,7 +2835,7 @@ async def test_paced_writer_starts_keep_two_real_sdk_requests_active_and_ordered
     writer_admission_wait: _WriterAdmissionWait,
 ) -> None:
     document = parse_markdown(
-        "\n\n".join(deadline_document.patch.replacement for _ in range(13)),
+        "\n\n".join(deadline_document.patch.replacement for _ in range(201)),
         title="Paced writer admission",
     )
     first = asyncio.Event()
@@ -2957,6 +2935,18 @@ async def test_writer_backoff_only_follows_transient_errors_without_extra_attemp
     async with _deadline_generator(
         sdk_client_factory, respond, writer_sleep=writer_admission_wait
     ) as generator:
+        if status in {HTTPStatus.BAD_REQUEST, HTTPStatus.FORBIDDEN}:
+            with pytest.raises(ModelUnavailableError) as failure:
+                await generator.generate(deadline_document.document, phase=TransformPhase.UNSLOP)
+            assert failure.value.code == (
+                "model_permission_denied"
+                if status == HTTPStatus.FORBIDDEN
+                else "model_configuration_invalid"
+            )
+            assert not failure.value.retryable
+            assert len(requests) == 1
+            assert not writer_admission_wait.delays
+            return
         async with asyncio.TaskGroup() as group:
             operation = group.create_task(
                 generator.generate(deadline_document.document, phase=TransformPhase.UNSLOP)
@@ -2964,7 +2954,7 @@ async def test_writer_backoff_only_follows_transient_errors_without_extra_attemp
             try:
                 if transient:
                     delay = await writer_admission_wait.entered.get()
-                    assert 1 <= delay <= 1.25
+                    assert 2 <= delay <= 2.5
                     assert len(requests) == 1
             finally:
                 writer_admission_wait.release.set()
@@ -3222,7 +3212,7 @@ async def test_pro_defaults_and_explicit_override_recover_capacity_with_full_sou
             assert config.thinking_config is not None
             assert config.thinking_config.thinking_level == types.ThinkingLevel.HIGH
             if len(reviews) == 1:
-                status = HTTPStatus.FORBIDDEN if explicit_flash else HTTPStatus.TOO_MANY_REQUESTS
+                status = HTTPStatus.TOO_MANY_REQUESTS
                 return httpx.Response(status, json={"error": {"code": status.value}})
             assert model == "gemini-3.1-pro-preview"
             return _review_response(_functional_audit_envelope(payload))
@@ -3258,8 +3248,6 @@ async def test_pro_defaults_and_explicit_override_recover_capacity_with_full_sou
     assert models == (
         [
             ModelId("gemini-3.5-flash"),
-            ModelId("gemini-3.5-flash"),
-            ModelId("gemini-3.5-flash"),
             ModelId("gemini-3.1-pro-preview"),
             ModelId("gemini-3.5-flash"),
             ModelId("gemini-3.1-pro-preview"),
@@ -3267,7 +3255,7 @@ async def test_pro_defaults_and_explicit_override_recover_capacity_with_full_sou
         if explicit_flash
         else [ModelId("gemini-3.1-pro-preview")] * 5
     )
-    assert len(writers) == (4 if explicit_flash else 3)
+    assert len(writers) == (2 if explicit_flash else 3)
     assert len(reviews) == 2
     assert reviews[0] == reviews[1]
     assert [
@@ -3509,7 +3497,7 @@ async def test_real_sdk_retries429_within_same_model_request_deadline(
         finally:
             await client.aio.aclose()
     assert len(requests) == (2 if recover else 3)
-    assert len({str(request.url) for request in requests}) == 1
+    assert len({str(request.url) for request in requests}) == (2 if recover else 1)
 
 
 @pytest.mark.parametrize("operation", ["writer", "review"])
@@ -3553,7 +3541,7 @@ async def test_real_sdk_backoff_is_cancelled_by_the_unchanged_per_call_timeout(
                     await call
         finally:
             await client.aio.aclose()
-    assert len(requests) == (2 if operation == "writer" else 3)
+    assert len(requests) == 3
 
 
 @pytest.mark.parametrize("phase", [TransformPhase.UNSLOP, TransformPhase.FORMAT])
@@ -3620,7 +3608,7 @@ async def test_sdk_invalid_writer_logs_only_bounded_metadata_and_preserves_parse
         for record in records
         if record["message"].startswith("document model response payload invalid")
     ]
-    assert len(metadata) == len(requests) == (3 if phase is TransformPhase.UNSLOP else 2)
+    assert len(metadata) == len(requests) == 3
     assert all(
         set(item)
         == {

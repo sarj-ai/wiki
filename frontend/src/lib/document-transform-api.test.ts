@@ -152,7 +152,7 @@ describe("documentTransformApi", () => {
         "both",
         "66666666-6666-4666-8666-666666666666",
       ),
-    ).resolves.toEqual({ id: TASK_ID, status: "pending" });
+    ).resolves.toEqual({ id: TASK_ID, status: "pending", attemptCount: 0 });
 
     expect(ACTION_MOCKS.create).toHaveBeenCalledWith(
       JSON.stringify({
@@ -187,7 +187,12 @@ describe("documentTransformApi", () => {
         "both",
         "66666666-6666-4666-8666-666666666666",
       ),
-    ).resolves.toEqual({ id: TASK_ID, replayed: true, status: "pending" });
+    ).resolves.toEqual({
+      id: TASK_ID,
+      replayed: true,
+      status: "pending",
+      attemptCount: 0,
+    });
   });
 
   it("sends the explicit copy name without changing the source", async () => {

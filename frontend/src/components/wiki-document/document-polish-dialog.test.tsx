@@ -212,6 +212,9 @@ describe("DocumentPolishDialog", () => {
     expect(DOCUMENT_TRANSFORM_API.waitForCompletion).toHaveBeenCalledWith(
       pending,
       expect.any(AbortSignal),
+      undefined,
+      undefined,
+      expect.any(Function),
     );
 
     completion.resolve(transformResult());
@@ -1902,7 +1905,13 @@ describe("DocumentPolishDialog", () => {
           `Task reference: ${failed.id}`,
         );
       });
-      expect(wait).toHaveBeenCalledWith(enriched, expect.any(AbortSignal));
+      expect(wait).toHaveBeenCalledWith(
+        enriched,
+        expect.any(AbortSignal),
+        undefined,
+        undefined,
+        expect.any(Function),
+      );
       expect(getTask).toHaveBeenCalledWith(failed.id, expect.any(AbortSignal));
       expect(create).toHaveBeenCalledOnce();
     },
