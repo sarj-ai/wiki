@@ -1,6 +1,6 @@
 from copy import deepcopy
 from dataclasses import replace
-from typing import Any
+from typing import Any, override
 import uuid
 
 import pytest
@@ -10,14 +10,16 @@ from app.document_transform.errors import DocumentGatewayError, InPlaceNeedsRevi
 from app.document_transform.executor import DocumentTransformExecutor
 from app.document_transform.gateway import InPlaceStageResult
 from app.document_transform.google_gateway import GoogleDocumentGateway
-from app.document_transform.ir import parse_google_document
+from app.document_transform.ir import DocumentIR, parse_google_document
 from app.document_transform.native_preservation import preserved_native_findings
 from app.document_transform.schemas import (
     DocumentTransformCheckpoint,
     FindingSeverity,
     InPlaceCheckpointPayload,
+    TextPatch,
     TransformFinding,
     TransformMode,
+    TransformPhase,
 )
 from app.identifiers import DocsRevisionId, TaskId
 from tests.test_document_transform import (
@@ -27,6 +29,73 @@ from tests.test_document_transform import (
     _InPlaceGateway,
 )
 from tests.test_document_transform_header_provenance import _snapshot
+
+
+@pytest.mark.parametrize(
+    ("mode", "unsafe"),
+    [(TransformMode.UNSLOP, False), (TransformMode.BOTH, False), (TransformMode.UNSLOP, True)],
+)
+async def test_reviewed_in_place_edit_survives_an_unmet_editorial_target(
+    mode: TransformMode,
+    *,
+    unsafe: bool,
+) -> None:
+    source = "The room contains 3 seats. " + (
+        "The team discussed the arrangement and described the plan. " * 10
+    )
+    replacement = "The room contains 3 seats. " + (
+        "The team discussed the arrangement and described the plan. " * 9
+    )
+    source = source.rstrip()
+    replacement = replacement.rstrip()
+    if unsafe:
+        replacement = replacement.replace("3 seats", "4 seats")
+
+    class ReviewedGenerator(_Generator):
+        supports_semantic_rewrite = True
+
+        @override
+        async def generate(self, document: DocumentIR, *, phase: TransformPhase) -> list[TextPatch]:
+            self.calls.append(phase)
+            block = next(block for block in document.blocks if block.editable)
+            return [
+                TextPatch(
+                    block_id=block.id,
+                    expected_sha256=block.sha256,
+                    replacement=replacement.rstrip(),
+                )
+            ]
+
+        @override
+        async def verify(self, document: DocumentIR, patches: list[TextPatch]) -> frozenset[str]:
+            return frozenset(patch.block_id for patch in patches)
+
+    gateway = _InPlaceGateway(source)
+    store = _CheckpointStore(gateway.events)
+    result = await DocumentTransformExecutor(
+        gateway=gateway,
+        generator=ReviewedGenerator(),
+        checkpoint_store=store,
+        task_id=TaskId(uuid.uuid7()),
+        lease_token=uuid.uuid7(),
+    ).execute(operation_id=uuid.uuid7(), request=_in_place_request(mode))
+    if unsafe:
+        assert result.model_patch_count == 0
+        assert result.needs_review
+        assert "protected_content_changed" in {finding.code for finding in result.findings}
+        if mode is TransformMode.UNSLOP:
+            assert not result.changed
+    else:
+        assert result.changed
+        assert result.model_patch_count == 1
+        assert not result.needs_review
+        assert "concision_target_unmet" in {finding.code for finding in result.findings}
+        assert all(finding.severity is FindingSeverity.INFORMATIONAL for finding in result.findings)
+    assert "complex_native_structure_preserved" not in {finding.code for finding in result.findings}
+    assert (
+        parse_google_document(gateway.document, title="Source").blocks[0].text
+        == (source if unsafe else replacement).rstrip()
+    )
 
 
 def _native(*, protected: bool = False) -> dict[str, Any]:
@@ -149,7 +218,6 @@ def test_exact_preserved_blocks_receive_truthful_persistable_findings(
         "wrong_tab",
         "unknown_finding",
         "unknown_block",
-        "unslop",
     ],
 )
 def test_allowance_never_covers_unproven_or_modified_blocks(change: str):
@@ -182,7 +250,7 @@ def test_allowance_never_covers_unproven_or_modified_blocks(change: str):
         case "unknown_block":
             findings = (_finding().model_copy(update={"block_id": "other"}),)
         case _:
-            mode = TransformMode.UNSLOP
+            raise AssertionError(change)
     assert (
         preserved_native_findings(
             original=original,
@@ -190,6 +258,41 @@ def test_allowance_never_covers_unproven_or_modified_blocks(change: str):
             findings=findings,
             native_document=native,
             mode=mode,
+        )
+        is None
+    )
+
+
+def test_unslop_retains_review_for_untouched_native_span_without_blocking_other_edits() -> None:
+    native = _native(protected=True)
+    original = parse_google_document(native, title="Source")
+    finding = _finding()
+    result = preserved_native_findings(
+        original=original,
+        transformed=original,
+        findings=(finding,),
+        native_document=native,
+        mode=TransformMode.UNSLOP,
+    )
+    assert result is not None
+    assert result == (finding,)
+    assert result[0].severity is FindingSeverity.REVIEW
+
+
+def test_editorial_finding_for_unknown_source_block_does_not_authorize_mutation() -> None:
+    native = _native()
+    original = parse_google_document(native, title="Source")
+    assert (
+        preserved_native_findings(
+            original=original,
+            transformed=original,
+            findings=(
+                TransformFinding(
+                    code="concision_target_unmet", block_id="unknown", detail="Review"
+                ),
+            ),
+            native_document=native,
+            mode=TransformMode.UNSLOP,
         )
         is None
     )
