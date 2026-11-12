@@ -20,7 +20,7 @@ export const DEMO_SEARCH_SUGGESTION =
 const GUIDE_BASE =
   "https://docs.google.com/document/d/1kdnYpl3uHMASWYA0Pd92RhXpOoTFrJdYEspn6TTmQ74";
 const DRAFT_BASE =
-  "https://docs.google.com/document/d/1OABiTptZ9hM6NOoa5FCLR8OoTEVg7VU6EdE0JTZIt4I";
+  "https://docs.google.com/document/d/1ld4ojYAI6fZwS0NTqkz6DVNx12Mdypsv8kWhA6zVco8";
 const WORKBOOK_BASE =
   "https://docs.google.com/spreadsheets/d/1YdtEf6kXaO5t9-hg9BD4o7QExJsikqfmhoiTSDP0oP0";
 const SLIDES_BASE =
