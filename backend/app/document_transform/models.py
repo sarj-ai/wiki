@@ -547,7 +547,10 @@ class VertexGeminiPatchGenerator(PatchGenerator):
                 block_id=patch.block_id,
                 proposed=patch.replacement,
                 rejected_by=tuple(sorted(codes[patch.block_id])),
-                rejected_constraints=rewrite_constraints(patch.replacement),
+                rejected_constraints=rewrite_constraints(
+                    patch.replacement,
+                    framing_source=_original_block(current[patch.block_id]).text,
+                ),
                 review_feedback=tuple(notes.get(patch.block_id, ()))
                 + _constraint_repair_feedback(current[patch.block_id], patch),
             )
@@ -755,7 +758,9 @@ class VertexGeminiPatchGenerator(PatchGenerator):
 
 
 def _constraint_repair_feedback(block: TextBlock, patch: TextPatch) -> tuple[str, ...]:
-    original, proposed = rewrite_constraints(block.text), rewrite_constraints(patch.replacement)
+    framing_source = _original_block(block).text
+    original = rewrite_constraints(block.text, framing_source=framing_source)
+    proposed = rewrite_constraints(patch.replacement, framing_source=framing_source)
     expected = {
         "protected_tokens": Counter(original.protected_tokens),
         "force_language": Counter(original.force_language),
@@ -1177,7 +1182,9 @@ def _prompt(
             "text": block.text,
             "original_text": _original_block(block).text,
             "protected_suffix": block.protected_suffix,
-            "rewrite_constraints": asdict(rewrite_constraints(block.text)),
+            "rewrite_constraints": asdict(
+                rewrite_constraints(block.text, framing_source=_original_block(block).text)
+            ),
             "concision_target": (
                 _concision_metadata(block) if phase is TransformPhase.UNSLOP else None
             ),
