@@ -9,6 +9,17 @@ type ReadabilityVersion = Literal[1, 2, 3, 4, 5, 6]
 
 CURRENT_READABILITY_VERSION: Literal[6] = 6
 
+type ReadabilityStopReason = Literal[
+    "unrecorded",
+    "not_eligible",
+    "converged",
+    "no_improvement",
+    "invalid_proposal",
+    "provider_unavailable",
+    "deadline_reserve",
+    "pass_limit",
+]
+
 
 class ReadabilityPart(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
@@ -70,6 +81,8 @@ class ReadabilityPlan(BaseModel):
     requests: list[dict[str, JsonValue]]
     model_invoked: bool = False
     passes: int = Field(default=0, ge=0, le=100)
+    accepted_improvements: int | None = Field(default=None, ge=0, le=100)
+    stop_reason: ReadabilityStopReason = "unrecorded"
     planning_failure_code: str | None = Field(
         default=None, pattern=r"^model_[a-z_]+$", max_length=64
     )

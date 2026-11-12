@@ -582,17 +582,25 @@ class DocumentTransformExecutor(DocumentTransformRunner):
             or result.output_revision_id is None
         ):
             raise OutputConflictError
+        payload = result.model_dump(mode="json")
+        result_sha256 = _json_sha256(payload)
+        revision_sha256 = hashlib.sha256(result.output_revision_id.encode()).hexdigest()
+        if (
+            draft.completed
+            and draft.result_sha256 == result_sha256
+            and draft.verified_revision_sha256 == revision_sha256
+        ):
+            return
         await self._gateway.complete(
             operation_id=operation_id,
             draft=replace(draft, revision_id=result.output_revision_id),
-            result=result.model_dump(mode="json"),
+            result=payload,
         )
         recovered = await self._gateway.recover_output(operation_id)
         if (
             recovered is None
-            or recovered.result_sha256 != _json_sha256(result.model_dump(mode="json"))
-            or recovered.verified_revision_sha256
-            != hashlib.sha256(result.output_revision_id.encode()).hexdigest()
+            or recovered.result_sha256 != result_sha256
+            or recovered.verified_revision_sha256 != revision_sha256
         ):
             raise OutputConflictError
 

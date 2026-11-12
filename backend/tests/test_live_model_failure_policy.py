@@ -240,7 +240,7 @@ async def test_primary_pro_request_leaves_room_for_complete_json_and_keeps_indep
         assert request["generationConfig"]["maxOutputTokens"] == 32_768
         generation = types.GenerateContentConfig.model_validate(request["generationConfig"])
         assert generation.thinking_config is not None
-        assert generation.thinking_config.thinking_level == types.ThinkingLevel.LOW
+        assert generation.thinking_config.thinking_level == types.ThinkingLevel.HIGH
 
 
 def test_known_permanent_batch_failure_retains_actionable_category_after_other_attempts_exhaust() -> (
