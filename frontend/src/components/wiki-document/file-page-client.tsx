@@ -14,7 +14,11 @@ import { useFile } from "@/hooks/use-wiki-tree";
 import { ApiError } from "@/lib/api-error";
 import { useBrowserUserId } from "@/lib/browser-user-context";
 import { displayFileName } from "@/lib/file-icons";
-import { mobileReadUrlFor } from "@/lib/file-urls";
+import {
+  type DocumentMode,
+  mobileReadUrlFor,
+  supportsDocumentMode,
+} from "@/lib/file-urls";
 import { saveLastDoc } from "@/lib/last-doc";
 import { markNav, markPaint } from "@/lib/perf-marks";
 import { findCachedNodeMeta } from "@/lib/wiki-cache";
@@ -72,6 +76,7 @@ export function FilePageClient({ driveId }: { driveId: string }) {
         canEdit={false}
         driveId={undefined}
         fileId={driveId}
+        key={driveId}
         mimeType={hint.mimeType}
         onReload={() => {
           reloadCurrent();
@@ -112,6 +117,7 @@ export function FilePageClient({ driveId }: { driveId: string }) {
       canEdit={file.canEdit}
       driveId={file.driveId}
       fileId={file.id}
+      key={file.id}
       mimeType={file.mimeType}
       onReload={() => {
         reloadCurrent();
@@ -174,6 +180,8 @@ function FilePageBody({
     setSlot(slot, viewerOwner.current);
   };
   const displayTitle = displayFileName(title, mimeType);
+  const [selectedMode, setSelectedMode] = useState<DocumentMode>("edit");
+  const documentMode = canEdit ? selectedMode : "preview";
   const mobileReadUrl =
     authority === "resolved" ? mobileReadUrlFor(mimeType, fileId) : null;
   useDocumentTitle(displayTitle);
@@ -189,6 +197,7 @@ function FilePageBody({
     }
     setActive(
       {
+        ...(supportsDocumentMode(mimeType) && { documentMode }),
         fileId,
         mimeType,
         reloadKey,
@@ -204,6 +213,7 @@ function FilePageBody({
     authority,
     clearActive,
     displayTitle,
+    documentMode,
     fileId,
     mimeType,
     reloadKey,
@@ -222,9 +232,11 @@ function FilePageBody({
         authority={authority}
         breadcrumb={breadcrumb}
         canEdit={canEdit}
+        documentMode={documentMode}
         driveId={driveId}
         fileId={fileId}
         mimeType={mimeType}
+        onDocumentModeChange={setSelectedMode}
         {...(version === undefined ? {} : { modifiedTime: version })}
         onReload={onReload}
         parentFolderId={parentFolderId}

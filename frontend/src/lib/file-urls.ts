@@ -14,8 +14,25 @@ const EDITOR_PATHS: Record<string, string> = {
   [MIME_SLIDE]: "presentation",
 };
 
-export function embedUrlFor(mimeType: string, id: string): string {
-  return workspaceUrl(mimeType, id, "preview");
+export type DocumentMode = "edit" | "preview";
+
+export function supportsDocumentMode(mimeType: string): boolean {
+  return (
+    mimeType === MIME_DOC || mimeType === MIME_SHEET || mimeType === MIME_SLIDE
+  );
+}
+
+export function embedUrlFor(
+  mimeType: string,
+  id: string,
+  mode: DocumentMode = "edit",
+): string {
+  return workspaceUrl(
+    mimeType,
+    id,
+    "preview",
+    supportsDocumentMode(mimeType) ? mode : "edit",
+  );
 }
 
 export function openUrlFor(mimeType: string, id: string): string {
@@ -36,7 +53,7 @@ function workspaceUrl(
   mimeType: string,
   id: string,
   driveFallback: "preview" | "view",
-  editorMode: "edit" | "mobilebasic" = "edit",
+  editorMode: DocumentMode | "mobilebasic" = "edit",
 ): string {
   const encoded = encodeURIComponent(id);
   const path = EDITOR_PATHS[mimeType];
