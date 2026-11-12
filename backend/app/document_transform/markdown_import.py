@@ -2,7 +2,8 @@ from __future__ import annotations
 
 from collections.abc import Iterable
 from dataclasses import dataclass
-from typing import Any, NamedTuple
+import hashlib
+from typing import Any, NamedTuple, TypedDict
 
 from pydantic import JsonValue
 
@@ -40,6 +41,7 @@ _MAX_HEADER_NAMED_STYLES = 60
 _NORMAL_FONT_WEIGHT = 400
 _BOLD_FONT_WEIGHT = 700
 _FONT_WEIGHT_STEP = 100
+_MAX_STRUCTURE_DIAGNOSTICS = 10
 _HEADER_RUN_STYLE_FIELDS = frozenset(
     {
         "weightedFontFamily",
@@ -61,6 +63,13 @@ class MarkdownImportVerification:
     brand_applied: bool
     content_preserved: bool
     structure_preserved: bool
+
+
+class MarkdownImportStructureDiagnostics(TypedDict):
+    observed_blocks: int
+    expected_blocks: int
+    topology_matches: bool
+    differences: list[JsonValue]
 
 
 @dataclass(frozen=True, slots=True)
@@ -102,6 +111,47 @@ def verify_markdown_import(
         ),
         brand_applied=not expected.branded or _brand_matches(document, expected, observed),
     )
+
+
+def markdown_import_structure_diagnostics(
+    document: dict[str, JsonValue], expected: MarkdownImportManifest
+) -> MarkdownImportStructureDiagnostics:
+    # Only field identities and hashes may enter support logs, never text or URLs.
+    observed = _observed_blocks(document, expected)
+    differences: list[JsonValue] = []
+    for ordinal, (actual, wanted) in enumerate(zip(observed, expected.blocks, strict=False)):
+        comparisons = (
+            ("kind", actual.kind, wanted.kind),
+            ("level", actual.level, wanted.level),
+            ("ordered", actual.ordered, wanted.ordered),
+            ("start", actual.start, wanted.start),
+            ("list_group", actual.list_group, wanted.list_group),
+            ("checked", actual.checked, wanted.checked),
+            ("inline_signature", actual.inline_signature, wanted.inline_signature),
+            ("cell_signatures", actual.cell_signatures, wanted.cell_signatures),
+        )
+        for field, left, right in comparisons:
+            if field in {"start", "list_group"} and not wanted.ordered:
+                continue
+            if left != right:
+                differences.append(
+                    {
+                        "ordinal": ordinal,
+                        "field": field,
+                        "expected_sha256": hashlib.sha256(repr(right).encode()).hexdigest(),
+                        "observed_sha256": hashlib.sha256(repr(left).encode()).hexdigest(),
+                    }
+                )
+            if len(differences) >= _MAX_STRUCTURE_DIAGNOSTICS:
+                break
+        if len(differences) >= _MAX_STRUCTURE_DIAGNOSTICS:
+            break
+    return {
+        "observed_blocks": len(observed),
+        "expected_blocks": len(expected.blocks),
+        "topology_matches": _topology_matches(document, expected),
+        "differences": differences,
+    }
 
 
 def _content_signature(

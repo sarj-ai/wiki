@@ -24,6 +24,7 @@ from app.document_transform.application import CurrentDocumentRevisionReader, De
 from app.document_transform.google_gateway import (
     GoogleDocumentRevisionReader,
 )
+from app.document_transform.inspection import NativeSourceReader
 from app.document_transform.models import (
     GeminiModelPolicy,
     PatchGenerator,
@@ -45,6 +46,7 @@ from app.tasks.service import TaskService
 class CurrentPolishRuntime:
     files: DestinationFileReader
     revisions: CurrentDocumentRevisionReader
+    native_sources: NativeSourceReader | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -88,7 +90,7 @@ async def current_polish_runtime_dep(
         logo_uri="",
         refresh_handler=prepared.refresh_handler,
     )
-    return CurrentPolishRuntime(files=files, revisions=revisions)
+    return CurrentPolishRuntime(files=files, revisions=revisions, native_sources=revisions)
 
 
 async def current_polish_context_dep(
