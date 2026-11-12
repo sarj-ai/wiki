@@ -44,7 +44,13 @@ def _headings(ir: DocumentIR, roles: tuple[str, ...]) -> list[ReadabilityProposa
     ]
 
 
-@pytest.mark.parametrize("texts", [("Replay requires a valid lease",), ("Overview", "Recovery")])
+@pytest.mark.parametrize(
+    "texts",
+    [
+        pytest.param(("Replay requires a valid lease",), id="single-orphan"),
+        pytest.param(("Overview", "Recovery"), id="sibling-orphans"),
+    ],
+)
 def test_new_headings_require_following_content(texts: tuple[str, ...]) -> None:
     document = _document(texts)
     ir = readability_document(document, title="QA reference")
@@ -91,6 +97,33 @@ def test_existing_authored_orphan_heading_is_preserved() -> None:
     ir = readability_document(document, title="QA reference")
 
     assert not validated_readability_paragraphs(document, ir, [])
+
+
+@pytest.mark.parametrize(
+    ("parent", "proposed", "accepted"),
+    [
+        ("HEADING_1", "heading2", True),
+        ("HEADING_2", "heading2", False),
+        ("HEADING_2", "heading3", True),
+    ],
+)
+@pytest.mark.parametrize("table_content", [False, True])
+def test_new_heading_cannot_empty_an_originally_contentful_authored_section(
+    parent: str, proposed: str, accepted: bool, table_content: bool
+) -> None:
+    document = _document(("Authored section", "Native records", "The worker saves the checkpoint."))
+    elements = content(next(bodies(document))[1])
+    obj(obj(obj(elements[0])["paragraph"])["paragraphStyle"])["namedStyleType"] = parent
+    if table_content:
+        elements[2] = deepcopy(_paragraph(_fixture("before"), 247))
+    ir = readability_document(document, title="QA reference")
+    proposals = _headings(ir, ("paragraph", proposed))[1:]
+
+    if accepted:
+        assert len(validated_readability_paragraphs(document, ir, proposals)) == 1
+    else:
+        with pytest.raises(ValueError, match="must introduce content"):
+            validated_readability_paragraphs(document, ir, proposals)
 
 
 @pytest.mark.parametrize("next_heading", [False, True])
