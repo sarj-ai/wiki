@@ -12,7 +12,7 @@ from app.document_transform.quotations import SINGLE_QUOTED_SPAN_PATTERN, quoted
 
 UNSLOP_UPSTREAM_COMMIT = "d81f5196167ded24f46fced04958c0c12d681798"
 UNSLOP_UPSTREAM_VERSION = "2.3.0"
-UNSLOP_POLICY_VERSION = "sarj-concise-v36"
+UNSLOP_POLICY_VERSION = "sarj-concise-v37"
 MAX_EDITORIAL_PASSES = 100
 MIN_CONCISION_PROSE_WORDS = 40
 CONCISION_WORD_NUMERATOR = 2
@@ -42,8 +42,11 @@ UNSLOP_PRESENTATION_PADDING_INSTRUCTION = (
     "Use descriptive headings instead of generic commands: 'Keep context with each "
     "estimate' becomes 'Estimate context'. Its each is editorial framing, not a new "
     "substantive requirement. Preserve scope in factual or procedural headings. "
-    "A sentence-initial 'It should be noted that' is removable editorial framing. "
-    "Its should directs attention to the following fact; preserve that complete fact "
+    "An attention-only 'It should be noted that' may go at sentence start or after "
+    "table-reading prefaces such as 'To interpret the table,' and 'For the purposes "
+    "of interpreting the table,'. Those frames may omit 'that' before a declarative "
+    "fact. In that frame, 'should' directs attention to the following fact; preserve "
+    "that complete fact "
     "and all of its substantive obligations and uncertainty. This exception excludes "
     "quoted or reported instructions and requirements to record or retain a note. "
     "Unmeasured praise of this text's presentation and imagined reader encouragement "
@@ -67,6 +70,10 @@ UNSLOP_QUALIFIER_ATTACHMENT_INSTRUCTION = (
     "a reporting date. Keep a qualifier local when merging sentences, or retain separate "
     "sentences. A fronted qualifier governs coordinated predicates; check each one against "
     "the source independently. Preserving its words and numbers does not preserve its scope. "
+    "Recurring conditions stay local too. 'The team reviews the checklist before each "
+    "deployment. The team checks the quota' must not become 'Before each deployment, "
+    "the team reviews the checklist and checks the quota': that invents a quota-check "
+    "schedule. Keep unrelated actions in separate sentences when fronting a condition. "
     "Preserve negated transformation relationships: 'Modern presentation does not turn "
     "the figures into modern benchmarks' must not become the stronger categorical claim "
     "'The figures are not modern benchmarks.' Keep the condition and its effect explicit. "
@@ -83,8 +90,11 @@ UNSLOP_REWRITE_INSTRUCTION = (
     "Edit ruthlessly. Rewrite every supplied block into its shortest faithful, grammatical "
     "form. Lead with the concrete subject and a strong active verb. Convert passive voice "
     "to active voice whenever the source identifies the actor; never invent an actor. "
-    "Replace nominalizations and verb scaffolding with direct verbs: 'conduct an analysis "
-    "of' becomes 'analyze'; 'is responsible for managing' becomes 'manages'. Cut throat "
+    "Replace nominalizations and verb scaffolding with direct verbs when the source "
+    "establishes the action: 'conduct an analysis of' becomes 'analyze'. Preserve "
+    "assignments of responsibility: 'is responsible for checking the quota' does not "
+    "establish that the check happens. Keep that duty, for example 'is responsible for "
+    "quota checks'. Cut throat "
     "clearing, document-purpose preambles, redundant modifiers, empty transitions, "
     "restatements and conclusions that merely repeat the paragraph. Prefer familiar, "
     "specific words over inflated vocabulary. Keep necessary technical terms. A shorter "
@@ -179,6 +189,9 @@ UNSLOP_REVIEW_INSTRUCTION = (
     "list and list member, name, quantity, date, citation and exact quotation survives with the same "
     "meaning, scope, negation and modal force. "
     "An opportunity or potential to act is not evidence that the action has been achieved. "
+    "An assignment of responsibility is not evidence that the assigned action occurs. "
+    "Preserve that duty and its actor; 'is responsible for checking' cannot become "
+    "a claim that the actor checks. "
     "Self-referential document-purpose scaffolding may become direct active prose: a "
     "document's announcement that it brings together facts may disappear when every "
     "attributed fact survives elsewhere in the proposed block. A retained writing action "
@@ -252,9 +265,17 @@ RFCISH_EMAIL_PATTERN = (
 CUSTOM_URI_PATTERN = r"[A-Za-z][A-Za-z0-9+.-]*:(?://)?[^\s)>]+"
 HTML_ENTITY_PATTERN = r"&(?:#[0-9]+|#[xX][0-9A-Fa-f]+|[A-Za-z][A-Za-z0-9]+);"
 
+_TABLE_ATTENTION_CONTEXT = (
+    r"(?:[Tt]o interpret|[Ff]or the purposes of interpreting) (?:the|this) table,[ \t]+"
+)
+_DEFINITE_FACT_CLAUSE = (
+    r"[Tt]he[ \t]+(?:[A-Za-z][A-Za-z-]*[ \t]+){1,6}"
+    r"(?:is|are|was|were|has|have|must|shall|should|can|could|may|might|will|would)\b"
+)
 _EDITORIAL_FRAMING_PATTERN = re.compile(
     r"(?:^|(?<=[.!?\n]))[ \t]*(?:"
-    r"[Ii]t should be noted that[ \t]+|"
+    rf"(?:{_TABLE_ATTENTION_CONTEXT})?[Ii]t should be noted that[ \t]+|"
+    rf"{_TABLE_ATTENTION_CONTEXT}[Ii]t should be noted[ \t]+(?={_DEFINITE_FACT_CLAUSE})|"
     r"[Ii]n today['’]s (?:increasingly )?fast[-\u2011 ]moving and ever[-\u2011 ]evolving "
     r"world of (?=[^,;:.!?\n]+,[ \t]*)|"
     r"(?:[Tt]o put it|[Pp]ut(?: it)?) another way[,:][ \t]*"

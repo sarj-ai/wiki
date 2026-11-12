@@ -70,3 +70,50 @@ async def test_one_word_fragments_do_not_beat_a_readable_paragraph() -> None:
 
     assert await plan_readability(document, title="Fragments", generator=editor) is None
     assert editor.calls == 1
+
+
+@pytest.mark.parametrize("count", [2, 3, 6])
+@pytest.mark.parametrize("role", ["bullet", "numbered"])
+@pytest.mark.parametrize("context_position", ["before", "after", "both"])
+async def test_short_lists_keep_their_qualifying_context(
+    count: int, role: Literal["bullet", "numbered"], context_position: str
+) -> None:
+    facts = (
+        (
+            "Cache reads take 1 µs.",
+            "Memory reads take 100 ns.",
+            "Disk reads take 10 ms.",
+            "Queue depth stays below 20.",
+            "Requests use at most 4 retries.",
+            "Samples retain 12.3 ± 0.4 ms.",
+        )
+        if role == "bullet"
+        else (
+            "First measure the baseline.",
+            "Then change one variable.",
+            "Finally record the uncertainty.",
+            "Keep the original configuration.",
+            "Retain the exact measurement.",
+            "Record the operating conditions.",
+        )
+    )[:count]
+    parts = tuple(ReadabilityPart(text=text, role=role) for text in facts)
+    if context_position in {"before", "both"}:
+        parts = (ReadabilityPart(text="These figures are estimates.", role="paragraph"), *parts)
+    if context_position in {"after", "both"}:
+        parts = (
+            *parts,
+            ReadabilityPart(text="They are not production measurements.", role="paragraph"),
+        )
+    source = " ".join(part.text for part in parts)
+    editor = _ParallelFactsEditor(parts)
+
+    plan = await plan_readability(
+        _prose_document((source,)), title="Qualified facts", generator=editor
+    )
+
+    assert plan is not None
+    assert plan.paragraphs[0].parts == parts
+    assert " ".join(part.text for part in plan.paragraphs[0].parts) == source
+    assert plan.passes == editor.calls == 2
+    assert sum("createParagraphBullets" in request for request in plan.requests) == 1
