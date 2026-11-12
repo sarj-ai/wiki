@@ -32,6 +32,50 @@ _HTTP_STATUS_MAX = 599
 _MAX_VALIDATION_ISSUES = 5
 _MAX_VALIDATION_LOCATION_PARTS = 4
 _MAX_MODEL_TOKEN_COUNT = 1_000_000
+_MAX_EXCEPTION_CHAIN = 8
+_SAFE_EXCEPTION_NAMES = frozenset(
+    {
+        "ModelUnavailableError",
+        "ModelDeadlineError",
+        "ModelProviderRetryExhaustedError",
+        "ModelOutputTruncatedError",
+        "ModelEmptyResponseError",
+        "ModelCoverageError",
+        "ModelBindingError",
+        "TimeoutError",
+        "CancelledError",
+        "ServerError",
+        "ClientError",
+        "APIError",
+        "RefreshError",
+        "DefaultCredentialsError",
+        "TransportError",
+        "ReadTimeout",
+        "ConnectTimeout",
+        "ConnectError",
+        "NetworkError",
+        "RemoteProtocolError",
+        "HTTPStatusError",
+        "PoolTimeout",
+        "ValidationError",
+        "ValueError",
+        "Exception",
+        "ExceptionGroup",
+        "BaseExceptionGroup",
+    }
+)
+_SAFE_PROVIDER_STATUSES = frozenset(
+    {
+        "DEADLINE_EXCEEDED",
+        "UNAVAILABLE",
+        "RESOURCE_EXHAUSTED",
+        "NOT_FOUND",
+        "UNAUTHENTICATED",
+        "INVALID_ARGUMENT",
+        "INTERNAL",
+        "PERMISSION_DENIED",
+    }
+)
 _SAFE_FINISH_REASONS = frozenset(
     {
         "FINISH_REASON_UNSPECIFIED",
@@ -117,6 +161,7 @@ class _ProviderDetail(BaseModel):
 class _ProviderError(BaseModel):
     model_config = ConfigDict(extra="ignore", strict=True)
     details: list[_ProviderDetail] = Field(default_factory=list, max_length=20)
+    status: str | None = Field(default=None, max_length=40)
 
 
 class _ProviderResponse(BaseModel):
@@ -200,8 +245,29 @@ def _provider_reason(error: genai_errors.APIError) -> str:
             and detail.reason is not None
             and detail.reason in _KNOWN_REASONS
         ),
-        "unknown",
+        response.error.status if response.error.status in _SAFE_PROVIDER_STATUSES else "unknown",
     )
+
+
+def model_exception_chain(error: BaseException) -> tuple[str, ...]:
+    result: list[str] = []
+    pending = [error]
+    seen: set[int] = set()
+    while pending and len(result) < _MAX_EXCEPTION_CHAIN:
+        current = pending.pop()
+        if id(current) in seen:
+            continue
+        seen.add(id(current))
+        name = type(current).__name__
+        result.append(name if name in _SAFE_EXCEPTION_NAMES else "Exception")
+        if isinstance(current, BaseExceptionGroup):
+            pending.extend(reversed(current.exceptions[:_MAX_EXCEPTION_CHAIN]))
+        cause = current.__cause__
+        if cause is None and not current.__suppress_context__:
+            cause = current.__context__
+        if cause is not None:
+            pending.append(cause)
+    return tuple(result)
 
 
 def log_model_failure(
@@ -219,6 +285,7 @@ def log_model_failure(
         model_id=model,
         model_payload_category=failure.payload_category,
         model_validation_issues=[asdict(issue) for issue in failure.validation_issues],
+        model_exception_chain=model_exception_chain(error),
         model_attempt=attempt,
         model_error_kind=failure.kind,
         model_http_status=failure.http_status,
