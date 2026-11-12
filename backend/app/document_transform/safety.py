@@ -11,6 +11,7 @@ from app.document_transform.ir import BlockKind, DocumentIR, TextBlock
 from app.document_transform.measurement_actor import reassigned_measurement_action
 from app.document_transform.quantity_notation import HORIZONTAL_SPACE, UNIT_POWER, UNIT_SYMBOL
 from app.document_transform.quotations import QUOTED_SPAN_PATTERN, quoted_block_ids
+from app.document_transform.recurring_scope import fronted_recurring_scope_expanded
 from app.document_transform.revision_arguments import revision_arguments
 from app.document_transform.schemas import TextPatch, TransformFinding, TransformPhase
 from app.document_transform.unslop import (
@@ -66,7 +67,7 @@ _PROTECTED_TOKEN = re.compile(
 )
 _FORCE_WORD = re.compile(
     r"\b(?:[^\W\d_]+n['\u2018\u2019\u02bc\uff07]t|"
-    r"intended\s+to|aims\s+to|opportunit(?:y|ies)\s+to|"
+    r"intended\s+to|aims\s+to|opportunit(?:y|ies)\s+to|responsible\s+for|"
     r"must|shall|should|may|might|could|would|cannot|can|will|not|never|no|"
     r"each|every|all|only|both|neither|either|per)\b",
     re.IGNORECASE,
@@ -382,9 +383,11 @@ def _aggressive_unslop_code(
         return "document_writing_actor_changed"
     if reassigned_measurement_action(block.text, replacement):
         return "measurement_actor_changed"
-    if _fronted_date_scope_expanded(block.text, replacement) or Counter(
-        _temporal_scopes(block.text)
-    ) != Counter(_temporal_scopes(replacement)):
+    if (
+        _fronted_date_scope_expanded(block.text, replacement)
+        or fronted_recurring_scope_expanded(block.text, replacement)
+        or Counter(_temporal_scopes(block.text)) != Counter(_temporal_scopes(replacement))
+    ):
         return "temporal_scope_changed"
     if len(_NEGATED_TRANSFORMATION.findall(block.text.translate(_CANONICAL_APOSTROPHES))) > len(
         _RETAINED_NEGATED_TRANSFORMATION.findall(replacement.translate(_CANONICAL_APOSTROPHES))

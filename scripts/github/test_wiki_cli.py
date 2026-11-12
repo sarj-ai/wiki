@@ -225,6 +225,28 @@ def test_full_qualification_keeps_one_repository_audit_and_required_gates() -> N
     assert commands[-1].arguments == ("bash", "scripts/check-terraform.sh")
 
 
+def test_macos_serializes_quality_engines_without_changing_checks() -> None:
+    linux = wiki.checks(wiki.Check.QUALITY, platform="linux")
+    macos = wiki.checks(wiki.Check.QUALITY, platform="darwin")
+
+    changes = [
+        (before, after) for before, after in zip(linux, macos, strict=True) if before != after
+    ]
+    assert len(changes) == 1
+    before, after = changes[0]
+    assert before.environment == after.environment
+    jobs = before.arguments.index("--jobs") + 1
+    assert before.arguments[jobs] == "2"
+    assert after.arguments[jobs] == "1"
+    assert before.arguments[:jobs] == after.arguments[:jobs]
+    assert before.arguments[jobs + 1 :] == after.arguments[jobs + 1 :]
+    assert after.arguments[jobs + 1 :] == (
+        "--trust-repository-code",
+        "--skip-python-type-check",
+        ".",
+    )
+
+
 def test_explicit_branch_policy_arguments_reach_the_original_guard(
     native_tool: Path,
 ) -> None:

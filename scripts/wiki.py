@@ -122,7 +122,7 @@ def _repository_checks() -> tuple[Command, ...]:
     )
 
 
-def checks(scope: Check) -> tuple[Command, ...]:
+def checks(scope: Check, *, platform: str = sys.platform) -> tuple[Command, ...]:
     if scope is Check.ALL:
         return tuple(
             command
@@ -133,12 +133,12 @@ def checks(scope: Check) -> tuple[Command, ...]:
                 Check.FRONTEND,
                 Check.IAC,
             )
-            for command in checks(part)
+            for command in checks(part, platform=platform)
         )
     if scope is Check.NODE:
         return (Command(arguments=(sys.executable, "scripts/repository_checks.py", "node")),)
     if scope is Check.QUALITY:
-        return _quality_checks()
+        return _quality_checks(platform=platform)
     if scope is Check.REPOSITORY:
         return _repository_checks()
     if scope is Check.IAC:
@@ -181,12 +181,16 @@ def checks(scope: Check) -> tuple[Command, ...]:
     )
 
 
-def _quality_checks() -> tuple[Command, ...]:
+def _quality_checks(*, platform: str) -> tuple[Command, ...]:
     return (
         *_repository_checks(),
         _standards("doctor"),
         _standards(
             "check",
+            # Overlapping engines repeatedly exceeded the native TypeScript
+            # deadline on macOS; serial execution retains every check and limit.
+            "--jobs",
+            "1" if platform == "darwin" else "2",
             "--trust-repository-code",
             "--skip-python-type-check",
             ".",
