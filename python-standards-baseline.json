@@ -68,9 +68,9 @@
   "backend/app/document_transform/google_gateway.py": {
     "SARJ430": 1,
     "SARJ442": 4,
-    "SARJ447": 114,
+    "SARJ447": 111,
     "SARJ477": 2,
-    "SARJ528": 25
+    "SARJ528": 23
   },
   "backend/app/document_transform/google_presentation_gateway.py": {
     "SARJ447": 19,

@@ -556,6 +556,22 @@ describe("documentTransformApi", () => {
     });
   });
 
+  it("reports model response truncation without retrying or implying that preservation succeeded", async () => {
+    await expect(
+      DOCUMENT_TRANSFORM_API.waitForCompletion({
+        errorCode: "model_output_truncated",
+        errorDetail: "Task could not be completed",
+        id: TASK_ID,
+        status: "failed",
+      }),
+    ).rejects.toMatchObject({
+      code: "model_output_truncated",
+      message:
+        "The model reached its response limit. Review this task before retrying a smaller document.",
+      name: "DocumentTransformTerminalError",
+    });
+  });
+
   it("truthfully identifies an original that may have changed after verification", async () => {
     const result = DOCUMENT_TRANSFORM_API.waitForCompletion({
       errorCode: "in_place_verification_failed",

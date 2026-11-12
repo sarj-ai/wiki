@@ -3,7 +3,7 @@ from typing import Literal, override
 import pytest
 
 from app.document_transform.ir import DocumentIR
-from app.document_transform.readability import plan_readability
+from app.document_transform.readability import plan_readability, verify_readability
 from app.document_transform.readability_types import ReadabilityPart, ReadabilityProposal
 from tests.test_document_readability import _LayoutEditor
 from tests.test_readability_lists import _prose_document
@@ -68,7 +68,13 @@ async def test_one_word_fragments_do_not_beat_a_readable_paragraph() -> None:
         tuple(ReadabilityPart(text=text, role="bullet") for text in facts)
     )
 
-    assert await plan_readability(document, title="Fragments", generator=editor) is None
+    plan = await plan_readability(document, title="Fragments", generator=editor)
+    assert plan is not None
+    assert not plan.requests
+    assert not plan.paragraphs
+    assert plan.model_invoked
+    assert plan.planning_failure_code is None
+    assert verify_readability(document, plan)
     assert editor.calls == 1
 
 

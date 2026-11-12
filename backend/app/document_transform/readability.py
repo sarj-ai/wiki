@@ -1,5 +1,5 @@
 from copy import deepcopy
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
 from loguru import logger
 from pydantic import JsonValue
@@ -65,6 +65,7 @@ class _LayoutDraft:
     proposals: list[ReadabilityProposal]
     paragraphs: tuple[ReadabilityParagraph, ...]
     passes: int
+    planning_failure_code: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -86,7 +87,7 @@ async def plan_readability(
         raise ValueError(msg)
     draft = await _refine_layout(document, title=title, generator=generator, max_passes=max_passes)
     mutations = _bounded_readability_mutations(document, draft.paragraphs)
-    if not mutations.requests:
+    if not mutations.requests and not draft.passes and draft.planning_failure_code is None:
         return None
     checkpoint = PlannedReadabilityCheckpoint(
         version=CURRENT_READABILITY_VERSION,
@@ -101,13 +102,26 @@ async def plan_readability(
         requests=mutations.requests,
         model_invoked=bool(draft.passes),
         passes=draft.passes,
+        planning_failure_code=draft.planning_failure_code,
     )
     checkpoint = checkpoint.model_copy(
         update={
             "invariant_sha256": readability_invariant_sha256(document, checkpoint, applied=False)
         }
     )
-    return None if verify_readability(document, checkpoint) else checkpoint
+    if not verify_readability(document, checkpoint):
+        return checkpoint
+    if not draft.passes and draft.planning_failure_code is None:
+        return None
+    # Retain the attempted model outcome even when no native edits are needed.
+    # A pending zero-request plan is durably saved and strictly read back by the
+    # ordinary provider path, which performs no write for an already exact match.
+    unchanged = checkpoint.model_copy(update={"paragraphs": (), "tables": (), "requests": []})
+    return unchanged.model_copy(
+        update={
+            "invariant_sha256": readability_invariant_sha256(document, unchanged, applied=False)
+        }
+    )
 
 
 def _bounded_readability_mutations(
@@ -151,6 +165,7 @@ async def _refine_layout(
     for number in range(1, max_passes + 1):
         remaining = provider_retry_remaining_seconds()
         if remaining is not None and remaining < _MIN_LAYOUT_SECONDS:
+            best = replace(best, planning_failure_code="model_deadline_exhausted")
             break
         # Failed provider calls still count as attempts in table-only receipts.
         best = _LayoutDraft(best.proposals, best.paragraphs, number)
@@ -159,10 +174,12 @@ async def _refine_layout(
                 ir, previous=best.proposals, feedback=feedback
             )
             paragraphs = validated_readability_paragraphs(document, ir, proposals)
-        except ModelUnavailableError:
+        except ModelUnavailableError as error:
+            best = replace(best, planning_failure_code=error.code)
             break
         except ValueError as error:
             if feedback:
+                best = replace(best, planning_failure_code="model_output_invalid")
                 break
             feedback = str(error)
             continue

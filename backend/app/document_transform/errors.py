@@ -109,6 +109,18 @@ class ModelDeadlineError(ModelUnavailableError):
         super().__init__(retryable=False)
 
 
+class ModelOutputTruncatedError(ModelOutputError):
+    code = "model_output_truncated"
+    public_detail = (
+        "The model reached its response limit. Review this task before retrying a smaller document."
+    )
+
+    @property
+    @override
+    def retry_within_operation(self) -> bool:
+        return False
+
+
 class ConcisionTargetUnmetError(DocumentTransformError):
     public_detail = "Unslop couldn't meet the word limit safely. The source was not changed."
 

@@ -732,7 +732,8 @@ export function DocumentPolishDialog({
             output: error.unverifiedOutputId
               ? {
                   kind:
-                    error.code === "in_place_verification_failed"
+                    operation.outputStrategy === "in_place" &&
+                    operation.source?.fileId === error.unverifiedOutputId
                       ? "original"
                       : "copy",
                   fileId: error.unverifiedOutputId,

@@ -84,7 +84,15 @@ def grouped_model_failure(error: BaseExceptionGroup) -> ModelUnavailableError:
                 failures.append(child)
 
     visit(error)
-    chosen = next(
+    permanent = next(
+        (
+            failure
+            for failure in failures
+            if not failure.retryable and failure.code != ModelUnavailableError.code
+        ),
+        None,
+    )
+    chosen = permanent or next(
         (failure for failure in failures if not failure.retryable), ModelUnavailableError()
     )
     return exhausted_model_failure(chosen)
@@ -93,11 +101,13 @@ def grouped_model_failure(error: BaseExceptionGroup) -> ModelUnavailableError:
 def exhausted_model_failure(error: Exception | None) -> ModelUnavailableError:
     failure = classify_model_failure(error) if error is not None else None
     if failure is None:
-        return ModelUnavailableError()
+        return ModelUnavailableError(retryable=False)
     # A new exception must wrap the group. Re-raising one of the group's own
     # children with the group as its cause would create a cyclic cause graph.
     result = type(failure)()
-    result.retryable = failure.retryable
+    # This operation already consumed its bounded provider attempts. A new
+    # queue delivery must not reset that budget or bypass the last Retry-After.
+    result.retryable = False
     result.retry_after = failure.retry_after
     return result
 
