@@ -153,6 +153,8 @@ async def test_google_docs_readback_verifies_native_lists_heading_and_content_fi
     editor = _LayoutEditor()
     plan = await _plan(editor)
     assert editor.calls == plan.passes == 2
+    assert plan.accepted_improvements == 1
+    assert plan.stop_reason == "converged"
     assert len(plan.paragraphs) == 3
     assert len(plan.tables) == 1
     assert plan.tables[0].numeric == {1}
@@ -373,6 +375,8 @@ async def test_layout_can_run_all_100_improving_passes_and_keeps_every_source_ch
     plan = await plan_readability(document, title="Parallel facts", generator=editor)
     assert plan is not None
     assert plan.passes == editor.calls == 100
+    assert plan.accepted_improvements == 100
+    assert plan.stop_reason == "pass_limit"
     assert len(plan.paragraphs) == 100
     assert all(
         " ".join(part.text for part in item.parts) + "\n" == source for item in plan.paragraphs

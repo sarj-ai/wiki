@@ -4275,15 +4275,6 @@ def _paragraph_brand_diagnostics(
         return {"named_style": False, "layout": False, "text_style": False}
     expected_named_style = paragraph_named_style(block)
     spacing = paragraph_spacing(block, SarjBrandProfile())
-    text_runs = [
-        item["textRun"]
-        for item in elements
-        if isinstance(item, dict)
-        and isinstance(item.get("textRun"), dict)
-        and isinstance(item["textRun"].get("content"), str)
-        and item["textRun"]["content"].strip()
-    ]
-    expected_color = paragraph_color(block, SarjBrandProfile())
     return {
         "named_style": (allow_preserved_visual_authority and block.preserved_visual_authority)
         or _preserved_layout_matches(paragraph, block)
@@ -4311,13 +4302,7 @@ def _paragraph_brand_diagnostics(
         ),
         "text_style": preserve_text_style
         or (allow_preserved_visual_authority and block.preserved_visual_authority)
-        or (
-            bool(text_runs)
-            and all(
-                _text_run_has_brand(run, _brand_font_size(block), expected_color, block)
-                for run in text_runs
-            )
-        ),
+        or _paragraph_text_styles_have_brand(elements, block),
     }
 
 
@@ -4756,15 +4741,29 @@ def _paragraph_has_brand(
         return False
     if preserve_text_style:
         return True
+    return _paragraph_text_styles_have_brand(elements, block)
+
+
+def _paragraph_text_styles_have_brand(elements: list[JsonValue], block: TextBlock) -> bool:
+    if block.protected_suffix is not None:
+        source = block.source_range
+        return source is not None and _font_range_has_brand(
+            elements, source.start_index, source.end_index
+        )
     expected_size = _brand_font_size(block)
     expected_color = paragraph_color(block, SarjBrandProfile())
-    return all(
-        _text_run_has_brand(part["textRun"], expected_size, expected_color, block)
-        for part in elements
-        if isinstance(part, dict)
-        and isinstance(part.get("textRun"), dict)
-        and isinstance(part["textRun"].get("content"), str)
-        and part["textRun"]["content"].strip()
+    runs: list[dict[str, JsonValue]] = []
+    for part in elements:
+        if not isinstance(part, dict):
+            continue
+        run = part.get("textRun")
+        if not isinstance(run, dict):
+            continue
+        content = run.get("content")
+        if isinstance(content, str) and content.strip():
+            runs.append(run)
+    return bool(runs) and all(
+        _text_run_has_brand(run, expected_size, expected_color, block) for run in runs
     )
 
 

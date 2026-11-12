@@ -3240,7 +3240,9 @@ async def test_pro_defaults_and_explicit_override_recover_capacity_with_full_sou
     async with httpx.AsyncClient(transport=httpx.MockTransport(respond)) as http:
         client = normal_sdk_client_factory(http)
         try:
-            generator = VertexGeminiPatchGenerator(policy=policy, client=client)
+            generator = VertexGeminiPatchGenerator(
+                policy=policy, client=client, writer_sleep=_yield_writer_sleep
+            )
             async with asyncio.timeout(30):
                 result = await TextTransformPlanner(
                     max_editorial_passes=1, generator=generator, allow_unslop_model=True

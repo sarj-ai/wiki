@@ -17,6 +17,10 @@ from app.document_transform.native_chip_detection import (
     native_chip_context,
 )
 from app.document_transform.native_chip_nodes import native_chip_node
+from app.document_transform.native_chip_protection import (
+    protect_native_chip_candidates,
+    protected_native_chip_ranges,
+)
 from app.document_transform.readability_json import (
     array,
     bodies,
@@ -71,6 +75,7 @@ class NativeChipSkip(BaseModel):
 
 class NativeChipPlan(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
+    planner_version: Literal[1, 2] = 1
     document_id: FileId
     source_revision_id: DocsRevisionId
     source_sha256: str
@@ -113,24 +118,32 @@ def _paragraphs(value: JsonValue) -> Iterator[dict[str, JsonValue]]:
 
 
 def plan_native_chips(
-    document: dict[str, JsonValue], *, operation_id: uuid.UUID
+    document: dict[str, JsonValue], *, operation_id: uuid.UUID, planner_version: Literal[1, 2] = 2
 ) -> NativeChipCheckpoint | None:
-    parse_google_document(document, title=native_chip_node(document).title)
+    protected = protected_native_chip_ranges(
+        parse_google_document(document, title=native_chip_node(document).title)
+    )
     tabs = dict(bodies(document))
-    title = str(native_chip_node(document).title)
     context_text = "\n".join(
         _paragraph_text(p) for tab in tabs.values() for p in _paragraphs(native_chip_node(tab).body)
     )
-    context = native_chip_context(title, context_text)
+    context = native_chip_context(str(native_chip_node(document).title), context_text)
     spans: list[NativeChipSpan] = []
     skipped: list[NativeChipSkip] = []
     for tab_id, tab in tabs.items():
         for paragraph in _paragraphs(native_chip_node(tab).body):
             text = _paragraph_text(paragraph)
             start = integer(paragraph["startIndex"])
-            candidates = (
-                *detect_address_spans(text, context=context),
-                *detect_date_spans(text, context=context),
+            candidates = protect_native_chip_candidates(
+                (
+                    *detect_address_spans(text, context=context),
+                    *detect_date_spans(text, context=context),
+                ),
+                text=text,
+                tab_id=tab_id,
+                paragraph_start=start,
+                protected=protected,
+                enabled=planner_version != 1,
             )
             for candidate in candidates:
                 conversion = _candidate_conversion(tab_id, tab, paragraph, candidate)
@@ -155,6 +168,7 @@ def plan_native_chips(
     terminal_end = integer(obj(terminal)["endIndex"])
     ordered = tuple(sorted(spans, key=lambda span: (span.tab_id, -span.start)))
     return PendingNativeChipCheckpoint(
+        planner_version=planner_version,
         document_id=FileId(str(document["documentId"])),
         source_revision_id=DocsRevisionId(str(document["revisionId"])),
         source_sha256=document_digest(document),
@@ -483,16 +497,22 @@ class NativeChipProvider:
             ):
                 raise SourceChangedError
             if checkpoint.requests:
-                await self.write(checkpoint.document_id, checkpoint)
-                document = await self.read(checkpoint.document_id)
-                if not has_chip_marker(document, checkpoint):
-                    raise InPlaceNeedsReviewError
-                verify_native_chips(document, checkpoint)
+                document = await self._write_and_verify(checkpoint)
         if checkpoint.complete and native_chip_node(document).revision_id != checkpoint.revision_id:
             raise SourceChangedError
         return CompletedNativeChipCheckpoint.model_validate(
             {**checkpoint.model_dump(), "complete": True, "revision_id": document["revisionId"]}
         )
+
+    async def _write_and_verify(self, checkpoint: NativeChipCheckpoint) -> dict[str, JsonValue]:
+        if legacy_protected_conversion_count(checkpoint):
+            raise InPlaceNeedsReviewError
+        await self.write(checkpoint.document_id, checkpoint)
+        document = await self.read(checkpoint.document_id)
+        if not has_chip_marker(document, checkpoint):
+            raise InPlaceNeedsReviewError
+        verify_native_chips(document, checkpoint)
+        return document
 
 
 def _validate_chip_checkpoint(checkpoint: NativeChipCheckpoint) -> None:
@@ -505,7 +525,11 @@ def _validate_chip_checkpoint(checkpoint: NativeChipCheckpoint) -> None:
         or len(checkpoint.marker_name) > _MAX_MARKER_NAME
     ):
         raise InPlaceNeedsReviewError
-    planned = plan_native_chips(checkpoint.before, operation_id=uuid.UUID(int=0))
+    planned = plan_native_chips(
+        checkpoint.before,
+        operation_id=uuid.UUID(int=0),
+        planner_version=checkpoint.planner_version,
+    )
     if (
         planned is None
         or planned.spans != checkpoint.spans
@@ -514,6 +538,14 @@ def _validate_chip_checkpoint(checkpoint: NativeChipCheckpoint) -> None:
         or planned.marker_range != checkpoint.marker_range
     ):
         raise InPlaceNeedsReviewError
+
+
+def legacy_protected_conversion_count(checkpoint: NativeChipCheckpoint) -> int:
+    if checkpoint.planner_version != 1:
+        return 0
+    current = plan_native_chips(checkpoint.before, operation_id=uuid.UUID(int=0))
+    current_spans = current.spans if current is not None else ()
+    return sum(span not in current_spans for span in checkpoint.spans)
 
 
 def _paragraph_text(element: dict[str, JsonValue]) -> str:

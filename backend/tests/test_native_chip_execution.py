@@ -7,7 +7,12 @@ import pytest
 
 from app.document_transform.executor import DocumentTransformExecutor
 from app.document_transform.gateway import DocumentGateway
-from app.document_transform.native_chip_flow import NativeChipCheckpoint, NativeChipProvider
+from app.document_transform.native_chip_flow import (
+    NativeChipCheckpoint,
+    NativeChipProvider,
+    PendingNativeChipCheckpoint,
+    plan_native_chips,
+)
 from app.document_transform.schemas import (
     DocumentTransformRequest,
     MarkdownSource,
@@ -148,3 +153,59 @@ async def test_unslop_does_not_plan_or_write_native_conversions() -> None:
     gateway.native_chip_provider = NativeChipProvider(forbidden_read, forbidden_write)
     await _executor(gateway, store, task_id).execute(operation_id=task_id, request=request)
     assert all(checkpoint.native_chips is None for checkpoint in store.checkpoints)
+
+
+async def test_already_written_legacy_quoted_conversions_recover_with_review_and_exactly_once_counts() -> (
+    None
+):
+    gateway, store, request = _setup(OutputStrategy.COPY, TransformMode.FORMAT)
+    task_id = TaskId(uuid.uuid7())
+    executor = _executor(gateway, store, task_id)
+    base = await executor.execute(operation_id=task_id, request=request)
+    before = _fixture("table_style_before")
+    before.update({"documentId": base.output.file_id, "revisionId": base.output_revision_id})
+    legacy = plan_native_chips(before, operation_id=task_id, planner_version=1)
+    assert legacy is not None
+    payload = legacy.model_dump()
+    payload.pop("planner_version")
+    legacy = PendingNativeChipCheckpoint.model_validate(payload)
+    assert legacy.planner_version == 1
+    after = json.loads(
+        json.dumps(_fixture("table_style_after")).replace(
+            "sarj_native_chips_00000000000000000000000000000002", legacy.marker_name
+        )
+    )
+    after["documentId"] = base.output.file_id
+
+    async def read(_: FileId) -> dict[str, JsonValue]:
+        return deepcopy(after)
+
+    async def forbidden_write(_: FileId, __: NativeChipCheckpoint) -> None:
+        pytest.fail("Already-written legacy chip conversion cannot be repeated")
+
+    gateway.native_chip_provider = NativeChipProvider(read, forbidden_write)
+    await executor._save_readability_checkpoint(
+        store.checkpoints[-1].model_copy(
+            update={
+                "native_chips": legacy,
+                "native_chip_result": base,
+            }
+        )
+    )
+    result = await executor._finish_native_chips(operation_id=task_id, request=request, result=base)
+    assert result.needs_review
+    assert result.applied_patch_count == base.applied_patch_count + 4
+    assert (
+        sum(
+            finding.code == "native_legacy_protected_conversion_needs_review"
+            for finding in result.findings
+        )
+        == 1
+    )
+    assert (
+        await _executor(gateway, store, task_id, resume=True).execute(
+            operation_id=task_id,
+            request=request,
+        )
+        == result
+    )

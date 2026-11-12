@@ -28,6 +28,7 @@ from app.document_transform.readability_types import (
     ReadabilityParagraph,
     ReadabilityPart,
     ReadabilityProposal,
+    ReadabilityStopReason,
     ReadabilityTable,
 )
 from app.identifiers import DocsRevisionId
@@ -66,6 +67,8 @@ class _LayoutDraft:
     paragraphs: tuple[ReadabilityParagraph, ...]
     passes: int
     planning_failure_code: str | None = None
+    accepted_improvements: int = 0
+    stop_reason: ReadabilityStopReason = "not_eligible"
 
 
 @dataclass(frozen=True, slots=True)
@@ -102,6 +105,8 @@ async def plan_readability(
         requests=mutations.requests,
         model_invoked=bool(draft.passes),
         passes=draft.passes,
+        accepted_improvements=draft.accepted_improvements,
+        stop_reason=draft.stop_reason,
         planning_failure_code=draft.planning_failure_code,
     )
     checkpoint = checkpoint.model_copy(
@@ -162,33 +167,61 @@ async def _refine_layout(
         return best
     score = _layout_burden([], document, title=title)
     feedback = ""
+    best = replace(best, stop_reason="pass_limit")
     for number in range(1, max_passes + 1):
         remaining = provider_retry_remaining_seconds()
         if remaining is not None and remaining < _MIN_LAYOUT_SECONDS:
-            best = replace(best, planning_failure_code="model_deadline_exhausted")
+            best = replace(
+                best,
+                planning_failure_code="model_deadline_exhausted",
+                stop_reason="deadline_reserve",
+            )
             break
         # Failed provider calls still count as attempts in table-only receipts.
-        best = _LayoutDraft(best.proposals, best.paragraphs, number)
+        best = replace(best, passes=number)
         try:
             proposals = await generator.plan_readability(
                 ir, previous=best.proposals, feedback=feedback
             )
             paragraphs = validated_readability_paragraphs(document, ir, proposals)
         except ModelUnavailableError as error:
-            best = replace(best, planning_failure_code=error.code)
+            best = _provider_stopped_draft(best, error)
             break
         except ValueError as error:
             if feedback:
-                best = replace(best, planning_failure_code="model_output_invalid")
+                best = replace(
+                    best,
+                    planning_failure_code="model_output_invalid",
+                    stop_reason="invalid_proposal",
+                )
                 break
             feedback = str(error)
             continue
         candidate_score = _layout_burden(proposals, document, title=title)
         if candidate_score >= score:
+            best = replace(
+                best,
+                stop_reason="converged" if proposals == best.proposals else "no_improvement",
+            )
             break
-        best, score = _LayoutDraft(proposals, paragraphs, number), candidate_score
+        best, score = (
+            replace(
+                best,
+                proposals=proposals,
+                paragraphs=paragraphs,
+                accepted_improvements=best.accepted_improvements + 1,
+            ),
+            candidate_score,
+        )
         feedback = "Further improve the previous layout only if it makes the whole document easier to read. Keep text exact."
     return best
+
+
+def _provider_stopped_draft(best: _LayoutDraft, error: ModelUnavailableError) -> _LayoutDraft:
+    reason: ReadabilityStopReason = "provider_unavailable"
+    if error.code == "model_deadline_exhausted":
+        reason = "deadline_reserve"
+    return replace(best, planning_failure_code=error.code, stop_reason=reason)
 
 
 def _layout_burden(

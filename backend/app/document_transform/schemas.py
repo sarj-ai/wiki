@@ -394,11 +394,14 @@ class InPlacePlan(StrictTransformModel):
         if not targets <= titles:
             msg = "custom header title targets must belong to the verified title set"
             raise ValueError(msg)
+        if not titles <= furniture_headers:
+            msg = "custom header title proofs must belong to preserved custom headers"
+            raise ValueError(msg)
         if self.custom_header_titles_required and titles != furniture_headers:
             msg = "every preserved custom header must have a verified native title"
             raise ValueError(msg)
-        if not self.custom_header_titles_required and (titles or targets):
-            msg = "unbranded transforms cannot manage custom header titles"
+        if not self.custom_header_titles_required and targets:
+            msg = "unbranded transforms cannot create custom header titles"
             raise ValueError(msg)
         return self
 
