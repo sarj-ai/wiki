@@ -104,4 +104,5 @@ def _render_rewritten_markdown(
         header_title=output_name,
         logo_bytes=logo_bytes,
         branded=branded,
+        compact_single_paragraph=snapshot.compact_markdown,
     )
