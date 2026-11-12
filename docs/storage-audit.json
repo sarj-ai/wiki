@@ -116,7 +116,7 @@
       "runtime": "backend/app/tasks/service.py",
       "reason": "Durable execution, leases, checkpoints, dispatch and results for active document operations.",
       "lifecycleEvidence": "backend/app/tasks/service.py",
-      "currentChange": "Proposed migration 0028 enforces allowed task kinds and succeeded result identity/shape. Runtime DTOs correlate result with kind and Smart Create task ID; validate before committing a transition. Existing JSON and failure/checkpoint evidence are retained."
+      "currentChange": "Deployed migration 0028 enforces allowed task kinds and succeeded result identity/shape. Runtime DTOs correlate result with kind and Smart Create task ID; validate before committing a transition. Existing JSON and failure/checkpoint evidence are retained."
     },
     {
       "table": "user_drive_tree_cache",
@@ -210,7 +210,7 @@
     "Unused alias attribution columns, foreign keys, indexes and service injection.",
     "Legacy disposable provider-cache cleanup branch and index."
   ],
-  "currentMigration": "0027_google_token_invariants",
+  "currentMigration": "0028_task_result_invariants",
   "currentApplicationTableCount": 11,
   "productionPreflight": {
     "credentialInvariants": {
@@ -1155,11 +1155,12 @@
     ]
   },
   "currentProductionVerification": {
-    "date": "2026-11-11",
-    "source": "0a4d677d6908d134b302cc41c6362f5aeaf87645",
+    "date": "2026-11-12",
+    "source": "dcb6e9a4a774d5a20b51595bb2f7cad42da0d1ab",
     "transaction": "read-only",
+    "execution": "sarj-wiki-schema-audit-20261112-094127-plhdb",
     "migration": [
-      "0027_google_token_invariants"
+      "0028_task_result_invariants"
     ],
     "tables": [
       "alembic_version",
@@ -1177,40 +1178,29 @@
     ],
     "counts": {
       "alembic_version": 1,
-      "cache_entries": 1,
+      "cache_entries": 6,
       "doc_icons": 64,
-      "document_aliases": 117,
-      "document_header_provenance": 35,
+      "document_aliases": 123,
+      "document_header_provenance": 36,
       "mcp_grants": 3,
       "mcp_oauth_entries": 14,
       "task_replay_keys": 1,
-      "tasks": 52,
-      "user_drive_tree_cache": 51,
-      "user_sessions": 181,
+      "tasks": 62,
+      "user_drive_tree_cache": 47,
+      "user_sessions": 183,
       "users": 54
     },
-    "schemaReceiptSha256": "4373abe960dcc143e99187574c873f37c9ce2fcd5dc5d9a440dfa36117e781ef",
-    "taskResultPairs": {
-      "audit": "explicit-systems-task-result-pairs",
-      "invalid_command_result_pairs": {},
-      "rows": 52,
-      "states": {
-        "file.document_transform:failed": 26,
-        "file.document_transform:running": 4,
-        "file.document_transform:succeeded": 22
-      },
-      "transaction": "read-only",
-      "valid_command_result_pairs": {
-        "file.document_transform": 22
-      }
-    },
-    "taskResultReceiptSha256": "634df5d5fa663ea9b16e237ce2c893a134302c28f9bd161df8e5abf736bf62f3",
-    "schemaChangesForResultTyping": "None. All 22 persisted succeeded records match their command kind. Existing failed and running records remain unchanged."
+    "schemaReceiptSha256": "044fecc0ce6edaae059b473c23f5abe05f1a0a76a6e82d03c2e8603492491504",
+    "taskResultConstraints": [
+      "ck_tasks_kind",
+      "ck_tasks_result_kind"
+    ],
+    "temporaryAuditJob": "deleted after successful readback; retained private execution and schema receipts"
   },
   "taskResultInvariantChange": {
     "migration": "0028_task_result_invariants",
-    "status": "implementation-unverified; exact strengthened SQL production preflight passed; migration not applied",
-    "liveImage": "055b9691f2126497524c267fec1470f2713d7397",
+    "status": "applied and verified in production; exact PostgreSQL kind/result constraints present",
+    "liveImage": "dcb6e9a4a774d5a20b51595bb2f7cad42da0d1ab",
     "unresolvedProductionFinding": "Four running tasks have expired leases; oldest expiry is about 32 hours before the preflight. Retain checkpoint and external-effect evidence while tracing authenticated queue recovery.",
     "initialPreflightMigrationSha256": "7c4b5808abf5eca51945011368743de9663b11789067c5fc2d5c32530c219e5a",
     "initialProductionReadOnlyPreflight": {
@@ -1273,6 +1263,12 @@
         }
       ],
       "transaction": "repeatable-read read-only"
+    },
+    "verification": {
+      "frontend": "1391 tests; lint, type checks, dependency audit and production build passed",
+      "backend": "6307 passed with disposable PostgreSQL enabled; 65 MCP fixtures initially rejected the database name, all 69 MCP tests passed after using the required wiki_mcp_qa prefix",
+      "configuredDomainMigration": "2 passed against a separate fresh PostgreSQL 18 database",
+      "migration": "Actual fresh Alembic head 0028 applied; production native migration receipt and constraint catalog verified"
     }
   }
 }
