@@ -72,6 +72,13 @@ from app.document_transform.table_layout import (
         "3 kg m s⁻²",
         "12.3 ms ± 0.4 ms",
         "1.2 ms–2.4 ms",
+        "Approximately 2 GiB",
+        "−3 to −1 °C",
+        "about 1.2300 ms",
+        "roughly 1/2 µs",
+        "Approx. 2 GiB",
+        "10 ms to 12 ms",
+        "approximately −3 to −1 °C",
     ],
 )
 def test_quantities_use_numeric_alignment_without_rewriting_their_representation(
@@ -199,6 +206,9 @@ def _native_table(rows: tuple[tuple[str, ...], ...]) -> dict[str, JsonValue]:
         "SAR123",
         "USD -$1.00",
         "12 USD notes",
+        "Approximately 2 tasks remain",
+        "2 GiB to warm the cache",
+        "The cache takes approximately 2 GiB.",
     ],
 )
 def test_dates_versions_identifiers_and_unrecognized_quantities_are_not_numbers(text: str) -> None:
