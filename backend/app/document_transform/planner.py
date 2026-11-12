@@ -28,6 +28,7 @@ from app.document_transform.unslop import (
     UnslopCandidate,
     concision_target,
     deterministic_unslop_replacement,
+    emptied_section_headings,
     model_editable_blocks,
     prose_word_count,
     scan_unslop_candidates,
@@ -156,6 +157,13 @@ class TextTransformPlanner:
                     outcome = await self._refine_unslop(
                         outcome, original=original, concision_source=concision_source
                     )
+                emptied = emptied_section_headings(original, outcome.document)
+                outcome = replace(
+                    outcome,
+                    document=outcome.document.replace_blocks(dict.fromkeys(emptied, "")),
+                    applied_count=outcome.applied_count + len(emptied),
+                    deterministic_count=outcome.deterministic_count + len(emptied),
+                )
             else:
                 outcome = replace(
                     outcome,

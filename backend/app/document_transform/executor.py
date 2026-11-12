@@ -2552,7 +2552,7 @@ def _copy_builder_version(document: DocumentIR) -> str:
     ):
         version = f"{version}-code-v2"
     if document.copy_font_defended:
-        return f"{version}-copy-font-v1"
+        return f"{version}-copy-font-v2"
     return f"{version}-visual-v1" if _copy_visual_ids(document) else version
 
 
@@ -2726,7 +2726,9 @@ def _copy_original(snapshot: SourceSnapshot, request: DocumentTransformRequest) 
     return replace(
         original,
         copy_font_defended=request.mode is not TransformMode.UNSLOP
-        and any(not block.editable and block.font_style_ranges for block in original.blocks),
+        and any(
+            block.requires_font_only_format and block.font_style_ranges for block in original.blocks
+        ),
     )
 
 
@@ -2876,7 +2878,11 @@ def _copy_manifest_sha256(
                 **manifest,
                 "copy_font_proofs": [
                     proof.model_dump(mode="json")
-                    for proof in copy_font_proofs(snapshot.google_document, transformed)
+                    # Bind authored source styles even when the output deliberately
+                    # normalizes their weight. Output verification owns that projection.
+                    for proof in copy_font_proofs(
+                        snapshot.google_document, replace(transformed, copy_font_defended=False)
+                    )
                 ],
             }
         if branded and snapshot.google_document is not None:

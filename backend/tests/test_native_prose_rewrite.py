@@ -171,7 +171,12 @@ def test_both_formats_shortened_prefix_and_leaves_citation_at_its_new_location()
     prefix = "The hidden bird can sing from scrub. "
     transformed = original.replace_blocks({original.blocks[0].id: prefix + SUFFIX})
     assert transformed.blocks[0].editable
-    assert not parse_google_document(_document(prefix), title="Bird").blocks[0].editable
+    shortened = parse_google_document(_document(prefix), title="Bird").blocks[0]
+    assert shortened.editable
+    assert shortened.protected_suffix == SUFFIX
+    assert (
+        shortened.protected_suffix_links_sha256 == original.blocks[0].protected_suffix_links_sha256
+    )
     assert (
         capture_native_font_proof(
             _document(), original, transformed=transformed, target_font_family="Nunito"

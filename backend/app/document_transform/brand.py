@@ -430,6 +430,14 @@ def _style_requests(
     for block in document.blocks:
         source_range = block.source_range
         if (
+            branded
+            and source_range is not None
+            and block.kind is BlockKind.BLANK
+            and source_range.start_index == source_range.end_index
+        ):
+            requests.extend(_removed_paragraph_requests(source_range, profile))
+            continue
+        if (
             source_range is None
             or block.kind == BlockKind.BLANK
             or block.preserved_visual_authority
@@ -473,6 +481,45 @@ def _style_requests(
                 )
             )
     return requests
+
+
+def _removed_paragraph_requests(
+    source: SourceRange, profile: SarjBrandProfile
+) -> list[DocsRequest]:
+    # Text deletion leaves the provider-owned paragraph terminator in place.
+    # Compact that empty paragraph without joining protected neighboring text.
+    range_value = {
+        "startIndex": source.start_index,
+        "endIndex": source.start_index + 1,
+        "tabId": source.tab_id,
+    }
+    return [
+        {
+            "updateParagraphStyle": {
+                "range": range_value,
+                "paragraphStyle": {
+                    "namedStyleType": "NORMAL_TEXT",
+                    "alignment": "JUSTIFIED",
+                    "lineSpacing": 100,
+                    "spaceAbove": {"magnitude": 0, "unit": "PT"},
+                    "spaceBelow": {"magnitude": 0, "unit": "PT"},
+                    "keepWithNext": False,
+                },
+                "fields": "namedStyleType,alignment,lineSpacing,spaceAbove,spaceBelow,keepWithNext",
+            }
+        },
+        {
+            "updateTextStyle": {
+                "range": range_value,
+                "textStyle": {
+                    "fontSize": {"magnitude": 1, "unit": "PT"},
+                    "weightedFontFamily": {"fontFamily": profile.font_family, "weight": 400},
+                    "bold": False,
+                },
+                "fields": "fontSize,weightedFontFamily,bold",
+            }
+        },
+    ]
 
 
 def _bullet_requests(block: TextBlock, range_value: DocsRequest) -> list[DocsRequest]:
@@ -674,7 +721,11 @@ def paragraph_alignment(block: TextBlock) -> str:
 
 
 def font_only_paragraph_alignment(block: TextBlock) -> str | None:
-    if block.kind is not BlockKind.PARAGRAPH or block.editable or not block.font_style_ranges:
+    if (
+        block.kind is not BlockKind.PARAGRAPH
+        or not block.requires_font_only_format
+        or not block.font_style_ranges
+    ):
         return None
     if any(
         (

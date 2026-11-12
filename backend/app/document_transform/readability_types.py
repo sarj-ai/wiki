@@ -5,9 +5,9 @@ from pydantic import BaseModel, ConfigDict, Field, JsonValue
 from app.identifiers import DocsRevisionId, DocsTabId
 
 
-type ReadabilityVersion = Literal[1, 2, 3, 4, 5]
+type ReadabilityVersion = Literal[1, 2, 3, 4, 5, 6]
 
-CURRENT_READABILITY_VERSION: Literal[5] = 5
+CURRENT_READABILITY_VERSION: Literal[6] = 6
 
 
 class ReadabilityPart(BaseModel):

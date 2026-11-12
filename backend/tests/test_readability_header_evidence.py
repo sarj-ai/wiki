@@ -17,8 +17,8 @@ def test_body_values_do_not_authorize_header_formatting(first_value: str) -> Non
     requests = readable_table_requests(document, (target,))
 
     assert not target.header
-    assert not any(
-        "bold" in obj(obj(request["updateTextStyle"])["textStyle"])
+    assert all(
+        obj(obj(request["updateTextStyle"])["textStyle"])["bold"] is False
         for request in requests
         if "updateTextStyle" in request
     )
@@ -68,7 +68,7 @@ def test_unclassified_first_row_keeps_authored_emphasis() -> None:
     target = plan_readable_tables(document)[0]
     fonts = [
         obj(request["updateTextStyle"])
-        for request in readable_table_requests(document, (target,))
+        for request in readable_table_requests(document, (target,), version=5)
         if "updateTextStyle" in request
     ]
 

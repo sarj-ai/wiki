@@ -138,7 +138,8 @@ def test_linked_emphasized_prose_gets_font_without_rewriting_attributes() -> Non
     )
     before = deepcopy(raw)
     parsed = parse_google_document(raw, title="Report")
-    assert not parsed.blocks[0].editable
+    assert parsed.blocks[0].editable
+    assert parsed.blocks[0].protected_suffix == "our review"
     requests = _font_requests(raw)
     assert len(requests) == 2
     assert all(item["fields"] == "weightedFontFamily.fontFamily" for item in requests)
