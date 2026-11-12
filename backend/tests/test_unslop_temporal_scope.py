@@ -59,6 +59,24 @@ def test_existing_shared_date_can_stay_shared_when_edited() -> None:
     assert _decision(source, replacement).accepted == {"b0": replacement}
 
 
+@pytest.mark.parametrize("current", ["", "current "])
+def test_current_hardware_scope_cannot_disappear_in_the_live_pro_rewrite(current: str) -> None:
+    source = (
+        "The figures are rules of thumb rather than a new set of measurements of current hardware."
+    )
+    replacement = (
+        f"The figures are rules of thumb rather than new measurements of {current}hardware."
+    )
+
+    decision = _decision(source, replacement)
+
+    if current:
+        assert decision.accepted == {"b0": replacement}
+    else:
+        assert not decision.accepted
+        assert [finding.code for finding in decision.findings] == ["scope_qualifier_changed"]
+
+
 @pytest.fixture
 def temporal_editor_factory() -> Callable[[tuple[str, ...]], _RefiningEditor]:
     return _RefiningEditor

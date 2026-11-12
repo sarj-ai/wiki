@@ -12,7 +12,7 @@ from app.document_transform.quotations import SINGLE_QUOTED_SPAN_PATTERN, quoted
 
 UNSLOP_UPSTREAM_COMMIT = "d81f5196167ded24f46fced04958c0c12d681798"
 UNSLOP_UPSTREAM_VERSION = "2.3.0"
-UNSLOP_POLICY_VERSION = "sarj-concise-v26"
+UNSLOP_POLICY_VERSION = "sarj-concise-v31"
 MAX_EDITORIAL_PASSES = 100
 MIN_CONCISION_PROSE_WORDS = 40
 CONCISION_WORD_NUMERATOR = 2
@@ -43,6 +43,15 @@ UNSLOP_QUALIFIER_ATTACHMENT_INSTRUCTION = (
     "a reporting date. Keep a qualifier local when merging sentences, or retain separate "
     "sentences. A fronted qualifier governs coordinated predicates; check each one against "
     "the source independently. Preserving its words and numbers does not preserve its scope. "
+    "Preserve negated transformation relationships: 'Modern presentation does not turn "
+    "the figures into modern benchmarks' must not become the stronger categorical claim "
+    "'The figures are not modern benchmarks.' Keep the condition and its effect explicit. "
+    "Equivalent do not/don't, does not/doesn't and did not/didn't forms satisfy the same "
+    "not constraint. Preserve the source subject, tense and complete negated predicate. "
+    "Keep named latency columns identifiable as fields when shortening: millisecond "
+    "cells or ms cells preserve a millisecond column's identity; unnamed blank columns "
+    "do not. When conversions include entries whose source cells are blank, preserve "
+    "entries as the inclusion object. Do not claim the conversions include blank columns. "
 )
 UNSLOP_REWRITE_INSTRUCTION = (
     UNSLOP_PRESENTATION_PADDING_INSTRUCTION + UNSLOP_QUALIFIER_ATTACHMENT_INSTRUCTION
@@ -58,10 +67,11 @@ UNSLOP_REWRITE_INSTRUCTION = (
     "fragment is not an improvement over a grammatical sentence. Make separate private "
     "passes for concision, active voice, plain language and grammar before returning. "
     "Do not stop merely because a numerical word target has been met. "
-    "Self-referential writing intentions are editorial framing: 'This working note is "
-    "intended to bring together latency estimates from the Google SRE reference so the "
-    "same information can be read in one place' becomes 'This document brings together "
-    "latency estimates from the Google SRE reference.' This exception applies to the "
+    "Self-referential writing intentions and announcements of what this document collects "
+    "are editorial framing. State the attributed facts directly: 'This note is intended "
+    "to bring together latency estimates from the Google SRE reference. The figures are "
+    "rules of thumb' becomes 'Google SRE reference latency estimates are rules of thumb.' "
+    "Retain every substantive fact when removing that announcement. This exception applies to the "
     "document describing its own writing, not substantive plans, desired outcomes, "
     "requirements, capabilities or uncertainty. Keep a retained writing action attached "
     "to the document. Never turn 'This note brings together estimates. The team measured "
@@ -138,6 +148,9 @@ UNSLOP_REVIEW_INSTRUCTION = (
     "meaning, scope, negation and modal force. "
     "An opportunity or potential to act is not evidence that the action has been achieved. "
     "Self-referential document-purpose scaffolding may become direct active prose: a "
+    "document's announcement that it brings together facts may disappear when every "
+    "attributed fact survives elsewhere in the proposed block. A retained writing action "
+    "must still belong to the document. For example, a "
     "note 'intended to bring together estimates' may 'bring together estimates'. A "
     "retained writing action still belongs to the document. Reject 'Bringing together "
     "estimates, the team measured latency' when only the note brought estimates together. "
@@ -328,7 +341,7 @@ _RECAP_PROTECTED_SPAN = re.compile(
 _RECAP_PROTECTED_LEADING = frozenset("@/#_`'\"‘“[")
 _FRAMING_REFERENCE_SPAN = re.compile(rf"{CUSTOM_URI_PATTERN}|\[[^\]\n]*\]")
 
-# Only the modality of a document describing its own writing is expendable.
+# A document's announcement of its own writing is editorial framing.
 # Keep substantive intentions ("the plan aims to reduce outages") constrained.
 _DOCUMENT_SUBJECT_PATTERN = (
     r"\b(?:this|the|our|a)\s+(?:working\s+)?"
@@ -357,6 +370,11 @@ _DOCUMENT_WRITING_FRAME = re.compile(
     _DOCUMENT_SUBJECT_PATTERN + rf"(?P<framing>{_DOCUMENT_WRITING_MODAL_PATTERN}\s+)"
     r"(?=bring\s+together\b|collect\b|summari[sz]e\b|describe\b|explain\b|present\b|"
     r"consolidate\b|outline\b|list\b|catalog(?:ue)?\b|cover\b)",
+    re.IGNORECASE,
+)
+_DOCUMENT_GATHERING_FRAME = re.compile(
+    _DOCUMENT_SUBJECT_PATTERN + rf"(?:{_DOCUMENT_WRITING_MODAL_PATTERN}\s+)?"
+    r"(?:brings?|bringing|brought)\s+(?P<framing>together)\b",
     re.IGNORECASE,
 )
 _READER_CONVENIENCE_FRAME = re.compile(
@@ -482,6 +500,9 @@ def without_editorial_framing(text: str) -> str:
     )
     for match in _EDITORIAL_FRAMING_PATTERN.finditer(masked):
         characters[match.start() : match.end()] = " " * (match.end() - match.start())
+    for match in _DOCUMENT_GATHERING_FRAME.finditer(masked):
+        start, end = match.span("framing")
+        characters[start:end] = " " * (end - start)
     writing_frames = tuple(_DOCUMENT_WRITING_FRAME.finditer(masked))
     for match in writing_frames:
         start, end = match.span("framing")

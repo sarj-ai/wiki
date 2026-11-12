@@ -31,6 +31,7 @@ from app.document_transform.readability_lists import (
     validate_readable_lists,
 )
 from app.document_transform.readability_outline import validate_proposed_outline
+from app.document_transform.readability_terminators import verify_readable_terminator
 from app.document_transform.readability_types import (
     ReadabilityParagraph,
     ReadabilityPart,
@@ -469,6 +470,7 @@ def _verify_part_text_style(
         if run["content"] != "\n" and canonical_style(observed) != canonical_style(wanted):
             msg = "Unplanned inline formatting changed"
             raise ValueError(msg)
+    verify_readable_terminator(document, tab, element, target=target, planned_style=wanted)
 
 
 def _part_text_style(target: ReadabilityParagraph, part: ReadabilityPart) -> dict[str, JsonValue]:

@@ -5,7 +5,7 @@ from dataclasses import dataclass
 from difflib import SequenceMatcher
 import re
 from types import MappingProxyType
-from typing import Literal
+from typing import Final, Literal
 
 from app.document_transform.ir import BlockKind, DocumentIR, TextBlock
 from app.document_transform.quantity_notation import HORIZONTAL_SPACE, UNIT_POWER, UNIT_SYMBOL
@@ -63,12 +63,37 @@ _PROTECTED_TOKEN = re.compile(
     re.MULTILINE,
 )
 _FORCE_WORD = re.compile(
-    r"\b(?:intended\s+to|aims\s+to|opportunit(?:y|ies)\s+to|"
+    r"\b(?:doesn['’]t|don['’]t|didn['’]t|intended\s+to|aims\s+to|opportunit(?:y|ies)\s+to|"
     r"must|shall|should|may|might|could|would|cannot|can't|can|will|won't|not|never|no|"
     r"each|every|all|only|both|neither|either|per)\b",
     re.IGNORECASE,
 )
+_NEGATION_CONTRACTIONS = frozenset({"doesn't", "don't", "didn't"})
 _QUOTED_SPAN = re.compile(QUOTED_SPAN_PATTERN)
+_NEGATED_TRANSFORMATION = re.compile(
+    r"\b(?:not|never|cannot|can['’]t|doesn['’]t|don['’]t|didn['’]t)\s+"
+    r"(?:automatically\s+)?(?:turn|convert|transform)\b[^.!?\n]*?\binto\b",
+    re.IGNORECASE,
+)
+_RETAINED_NEGATED_TRANSFORMATION = re.compile(
+    r"\b(?:not|never|cannot|can['’]t|doesn['’]t|don['’]t|didn['’]t)\s+"
+    r"(?:automatically\s+)?(?:turn|convert|transform|make|become)\b",
+    re.IGNORECASE,
+)
+_LATENCY_COLUMN = re.compile(
+    r"\b(?P<unit>nano|micro|milli)seconds?\s+(?:columns?|cells?)\b", re.IGNORECASE
+)
+_LATENCY_FIELD_ALIASES: Final[dict[str, str]] = {
+    "nano": r"(?:(?i:nanoseconds?)|ns)",
+    "micro": r"(?:(?i:microseconds?)|[µμ]s)",
+    "milli": r"(?:(?i:milliseconds?)|ms)",
+}
+_INCLUDED_ENTRIES = re.compile(r"\bincluding\b[^.;!?\n]*\bentries\b", re.IGNORECASE)
+_INCLUDED_BLANK_COLUMNS = re.compile(
+    r"\bincluding\b[^.;!?\n]*\bblank\s+"
+    r"(?:(?:(?:nano|micro|milli)seconds?|ns|[µμ]s|ms)\s+)?columns?\b",
+    re.IGNORECASE,
+)
 _SCOPE_QUALIFIER = re.compile(
     r"\b(?:longest|shortest|largest|smallest|highest|lowest)\s+"
     r"(?:(?:[\w-]+(?:ing|ed)|upper|lower)\s+)?[\w-]+\b|"
@@ -76,7 +101,7 @@ _SCOPE_QUALIFIER = re.compile(
     r"\b(?:generally|usual|usually|typically|often|sometimes|rarely|mostly|mainly|rounded|"
     r"at least|at most|no more than|up to|same|helps?|appears?|suggests?|interpreted|evidence|"
     r"particular|specific|within|together|available|still|other|another|different|earlier|later|"
-    r"successive|sample|useful|essential|necessary|shape|maintain|rare|young|older|younger|"
+    r"successive|current|sample|useful|essential|necessary|shape|maintain|rare|young|older|younger|"
     r"observed|recorded|studied|measured|estimated|reported|inferred|concluded|proved|"
     r"national|confidence intervals?|as (?:clearly|often|likely|many|much) as)\b|"
     r"\b(?:about|around|roughly|approximately|nearly)\b(?=\s+\d)|"
@@ -121,6 +146,9 @@ REPAIRABLE_REWRITE_CODES = frozenset(
         "scope_qualifier_changed",
         "document_writing_actor_changed",
         "temporal_scope_changed",
+        "negative_transformation_scope_changed",
+        "unit_column_identity_changed",
+        "source_entry_relationship_changed",
         "revision_argument_changed",
     }
 )
@@ -289,6 +317,12 @@ def _aggressive_unslop_code(block: TextBlock, replacement: str) -> str | None:
         _temporal_scopes(block.text)
     ) != Counter(_temporal_scopes(replacement)):
         return "temporal_scope_changed"
+    if len(_NEGATED_TRANSFORMATION.findall(block.text)) > len(
+        _RETAINED_NEGATED_TRANSFORMATION.findall(replacement)
+    ):
+        return "negative_transformation_scope_changed"
+    if column_code := _latency_column_scope_code(block.text, replacement):
+        return column_code
     if Counter(_scope_qualifiers(block.text)) != Counter(_scope_qualifiers(replacement)):
         return "scope_qualifier_changed"
     if _quoted_spans(block.text) != _quoted_spans(replacement):
@@ -306,6 +340,34 @@ def _aggressive_unslop_code(block: TextBlock, replacement: str) -> str | None:
         block, block.text
     ):
         return "concision_not_improved"
+    return None
+
+
+def _latency_column_scope_code(source: str, replacement: str) -> str | None:
+    columns = tuple(_LATENCY_COLUMN.finditer(source))
+    for column in columns:
+        unit = column["unit"].casefold()
+        if unit not in _LATENCY_FIELD_ALIASES:
+            return "unit_column_identity_changed"
+        aliases = _LATENCY_FIELD_ALIASES[unit]
+        field = (
+            rf"(?<!\w)(?:{aliases}\s+(?i:cells?|columns?)|"
+            rf"(?i:cells?|columns?)\s+(?i:in|of)\s+{aliases})(?!\w)"
+        )
+        if not re.search(field, replacement):
+            return "unit_column_identity_changed"
+    if (
+        columns
+        and _INCLUDED_ENTRIES.search(source)
+        and (
+            not _INCLUDED_ENTRIES.search(replacement)
+            or (
+                not _INCLUDED_BLANK_COLUMNS.search(source)
+                and _INCLUDED_BLANK_COLUMNS.search(replacement)
+            )
+        )
+    ):
+        return "source_entry_relationship_changed"
     return None
 
 
@@ -369,7 +431,8 @@ def _protected_tokens(value: str) -> list[str]:
 
 
 def _force_words(value: str) -> list[str]:
-    return [" ".join(match.group(0).casefold().split()) for match in _FORCE_WORD.finditer(value)]
+    words = [" ".join(match.group(0).casefold().split()) for match in _FORCE_WORD.finditer(value)]
+    return ["not" if word.replace("’", "'") in _NEGATION_CONTRACTIONS else word for word in words]
 
 
 def _unslop_locality_code(block: TextBlock, replacement: str) -> str | None:
