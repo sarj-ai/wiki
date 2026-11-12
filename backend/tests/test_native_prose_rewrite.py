@@ -1,10 +1,14 @@
 from __future__ import annotations
 
+from copy import deepcopy
+import json
+from pathlib import Path
 from typing import override
 
 from pydantic import JsonValue
 import pytest
 
+from app.document_transform import google_gateway as native_gateway
 from app.document_transform.brand import (
     SarjBrandProfile,
     build_copy_mutations,
@@ -13,7 +17,11 @@ from app.document_transform.brand import (
 from app.document_transform.gateway import OutputDraft, SourceSnapshot
 from app.document_transform.google_gateway import GoogleDocumentGateway
 from app.document_transform.ir import parse_google_document, utf16_length
-from app.document_transform.native_font_proof import capture_native_font_proof
+from app.document_transform.native_font_proof import (
+    NativeFontVerificationPolicy,
+    capture_native_font_proof,
+    verify_native_font_proof,
+)
 from app.document_transform.safety import validate_patches
 from app.document_transform.schemas import DocumentOutput, TextPatch, TransformPhase
 from app.identifiers import DocsRevisionId, DocsTabId, FileId
@@ -202,3 +210,67 @@ def test_both_formats_shortened_prefix_and_leaves_citation_at_its_new_location()
 def test_suggestions_keep_rich_paragraph_protected() -> None:
     source = _document(suggested=True)
     assert not parse_google_document(source, title="Bird").blocks[0].editable
+
+
+def _captured_citation_document() -> dict[str, JsonValue]:
+    return json.loads(
+        (Path(__file__).parent / "data/native_chips/table_style_after.json").read_text()
+    )
+
+
+def test_preserved_native_citation_receives_the_planned_font_only_brand_check() -> None:
+    document = _captured_citation_document()
+    parsed = parse_google_document(document, title=str(document["title"]))
+    block = next(block for block in parsed.blocks if block.editable and block.protected_suffix)
+    assert block.source_range is not None
+    source = block.source_range
+    paragraph = native_gateway._paragraphs_by_range(tuple(native_gateway._document_tabs(document)))[
+        native_gateway.ParagraphRangeKey(
+            tab_id=source.tab_id, start_index=source.start_index, end_index=source.end_index
+        )
+    ]
+    checks = native_gateway._paragraph_brand_diagnostics(paragraph, block)
+    assert checks["text_style"]
+
+
+@pytest.mark.parametrize("change", ["none", "color", "size", "bold", "link", "family"])
+def test_unchanged_citation_font_proof_keeps_nonfamily_styles_and_link_targets(change: str) -> None:
+    before = _captured_citation_document()
+    parsed = parse_google_document(before, title=str(before["title"]))
+    block = next(block for block in parsed.blocks if block.editable and block.protected_suffix)
+    proof = capture_native_font_proof(
+        before, parsed, transformed=parsed, target_font_family="Nunito"
+    )
+    assert any(item.block_id == block.id for item in proof)
+    source = block.source_range
+    assert source is not None
+    after = deepcopy(before)
+    tab = next(iter(native_gateway._document_tabs(after)))[1]
+    paragraph = next(
+        node["paragraph"]
+        for node in tab["body"]["content"]
+        if node.get("startIndex") == source.start_index
+    )
+    linked = next(
+        part["textRun"]["textStyle"]
+        for part in paragraph["elements"]
+        if part.get("textRun", {}).get("textStyle", {}).get("link")
+    )
+    match change:
+        case "color":
+            linked["foregroundColor"] = {"color": {"rgbColor": {"red": 1}}}
+        case "size":
+            linked["fontSize"] = {"magnitude": 14, "unit": "PT"}
+        case "bold":
+            linked["bold"] = True
+        case "link":
+            linked["link"] = {"url": "https://example.test/changed"}
+        case "family":
+            linked["weightedFontFamily"] = {"fontFamily": "Arial", "weight": 400}
+        case "none":
+            pass
+        case _:
+            raise AssertionError(change)
+    assert verify_native_font_proof(
+        after, proof, font_policy=NativeFontVerificationPolicy(require_target_family=True)
+    ) is (change == "none")

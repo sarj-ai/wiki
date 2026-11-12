@@ -1965,7 +1965,7 @@ class DocumentTransformExecutor(DocumentTransformRunner):
                     )
                 )
                 if branded
-                else (),
+                else inspection.custom_header_titles_present,
                 "custom_header_title_targets": inspection.custom_header_title_targets
                 if branded
                 else (),
@@ -2166,7 +2166,7 @@ class DocumentTransformExecutor(DocumentTransformRunner):
             paragraph_layout=paragraph_layout,
             native_font_proof=native_font_proof,
             custom_furniture=inspection.custom_furniture,
-            custom_header_titles=inspection.custom_header_titles_present if branded else (),
+            custom_header_titles=inspection.custom_header_titles_present,
             custom_header_title_targets=(),
             custom_header_titles_required=branded
             and bool(any(binding.header_ids for binding in inspection.custom_furniture)),
