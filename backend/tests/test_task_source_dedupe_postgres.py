@@ -80,7 +80,7 @@ async def test_real_postgres_result_kind_invariants_and_rollback(corruption: str
             parent_folder_id=FileId("qa-folder"),
             name="Result invariant fixture",
             emoji="📄",
-            alias=f"qa-{uuid.uuid7().hex}",
+            alias="qa-result",
         )
         if kind is TaskKind.FILE_SMART_CREATE
         else _markdown_payload()
