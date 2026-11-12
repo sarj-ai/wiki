@@ -43,6 +43,6 @@ class ReadabilityProvider:
                 raise OutputConflictError
             await self.write(document_id, checkpoint)
             document = await self.read(document_id)
-            if not verify_readability(document, checkpoint):
+            if not verify_readability(document, checkpoint, diagnostics=True):
                 raise OutputVerificationError
         return complete_readability(checkpoint, DocsRevisionId(str(document["revisionId"])))

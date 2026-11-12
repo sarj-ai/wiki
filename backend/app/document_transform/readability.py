@@ -1,6 +1,7 @@
 from copy import deepcopy
 from dataclasses import dataclass
 
+from loguru import logger
 from pydantic import JsonValue
 
 from app.document_transform.brand import mutation_sha256
@@ -40,6 +41,18 @@ _MAX_LAYOUT_CHARACTERS = 60000
 # A useful group of 2-6 facts should improve on one short paragraph. Tiny
 # fragments still incur a separate penalty in the layout score.
 _LIST_ITEM_BURDEN = 8
+_KNOWN_PROJECTION_FAILURES = frozenset(
+    {
+        "Paragraph identity changed",
+        "Paragraph source changed",
+        "List formatting was not applied",
+        "Paragraph text or position changed",
+        "Paragraph formatting was not applied or unplanned properties changed",
+        "Unplanned inline formatting changed",
+        "Existing list definitions changed",
+        "A generated list changed unrelated content",
+    }
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -181,14 +194,31 @@ def _layout_burden(
     return score
 
 
-def verify_readability(document: dict[str, JsonValue], checkpoint: ReadabilityCheckpoint) -> bool:
+def verify_readability(
+    document: dict[str, JsonValue], checkpoint: ReadabilityCheckpoint, *, diagnostics: bool = False
+) -> bool:
     try:
-        return (
-            readability_invariant_sha256(document, checkpoint, applied=True)
-            == checkpoint.invariant_sha256
-        )
-    except KeyError, IndexError, TypeError, ValueError:
+        observed = readability_invariant_sha256(document, checkpoint, applied=True)
+    except (KeyError, IndexError, TypeError, ValueError) as error:
+        # Only fixed, code-owned messages may cross the diagnostic boundary.
+        # KeyError values and provider/document values are never emitted.
+        if diagnostics:
+            logger.warning(
+                "document readability native projection rejected",
+                invariant=str(error)
+                if type(error) is ValueError and str(error) in _KNOWN_PROJECTION_FAILURES
+                else "protected_native_projection",
+                exception_type=type(error).__name__,
+            )
         return False
+    if diagnostics and observed != checkpoint.invariant_sha256:
+        logger.warning(
+            "document readability native invariant mismatch",
+            invariant="unplanned_native_difference",
+            expected_sha256=checkpoint.invariant_sha256,
+            observed_sha256=observed,
+        )
+    return observed == checkpoint.invariant_sha256
 
 
 def readability_invariant_sha256(

@@ -96,6 +96,7 @@ from app.document_transform.ir import (
 from app.document_transform.limits import MAX_MARKDOWN_BYTES, MIN_MODEL_PROSE_WORDS
 from app.document_transform.markdown_import import (
     markdown_import_brand_diagnostics,
+    markdown_import_structure_diagnostics,
     verify_markdown_import,
 )
 from app.document_transform.naming import suggested_document_title
@@ -1735,6 +1736,11 @@ class GoogleDocumentGateway(DocumentGateway):
                 compact_single_paragraph=source.compact_markdown,
             )
             verification = verify_markdown_import(output_document, manifest)
+            if not verification.structure_preserved:
+                logger.warning(
+                    "document markdown native structure mismatch",
+                    diagnostics=markdown_import_structure_diagnostics(output_document, manifest),
+                )
             logger.info(
                 "document markdown import verification checks={checks}",
                 checks={

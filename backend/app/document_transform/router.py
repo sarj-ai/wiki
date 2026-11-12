@@ -4,7 +4,18 @@ from time import monotonic
 from typing import Annotated
 import uuid
 
-from fastapi import APIRouter, Body, Depends, Header, HTTPException, Path, Query, Response, status
+from fastapi import (
+    APIRouter,
+    Body,
+    Depends,
+    Header,
+    HTTPException,
+    Path,
+    Query,
+    Response,
+    Security,
+    status,
+)
 
 from app.auth.dependencies import get_current_user
 from app.config import document_transform_in_place_enabled
@@ -13,12 +24,20 @@ from app.document_transform.application import (
     get_current_document_polish,
     submit_document_transform,
 )
-from app.document_transform.dependencies import CurrentPolishContext, current_polish_context_dep
+from app.document_transform.dependencies import (
+    CurrentPolishContext,
+    CurrentPolishRuntime,
+    current_polish_context_dep,
+    current_polish_runtime_dep,
+)
+from app.document_transform.errors import DocumentTransformError
 from app.document_transform.gcs_uploads import UploadUnavailableError, sign_markdown_upload
+from app.document_transform.inspection import NativeDocumentInspection, inspect_native_document
 from app.document_transform.schemas import (
     CurrentDocumentPolish,
     DocumentTransformCapabilities,
     DocumentTransformRequest,
+    DriveFileSource,
     MarkdownUpload,
     TransformMode,
 )
@@ -40,6 +59,32 @@ router = APIRouter(
     tags=["document-transforms"],
     responses=authentication_responses(),
 )
+
+
+@router.post(
+    "/inspect",
+    include_in_schema=False,
+    operation_id="inspect_native_document",
+    summary="Read native Docs structure under the current Wiki account",
+)
+async def inspect_document(
+    source: DriveFileSource,
+    response: Response,
+    user: Annotated[User, Security(get_current_user)],
+    runtime: Annotated[CurrentPolishRuntime, Depends(current_polish_runtime_dep)],
+) -> NativeDocumentInspection:
+    response.headers["Cache-Control"] = "private, no-store"
+    if runtime.native_sources is None:
+        raise HTTPException(status_code=503, detail="Native document readback is unavailable")
+    try:
+        return await inspect_native_document(
+            source, reader=runtime.native_sources, account_email=user.email
+        )
+    except DocumentTransformError as error:
+        raise HTTPException(
+            status_code=409 if error.code == "source_changed" else 422,
+            detail=error.public_detail,
+        ) from error
 
 
 @router.post(
