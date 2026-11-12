@@ -6,6 +6,8 @@ import json
 
 from pydantic import BaseModel, ConfigDict, Field, JsonValue, StrictInt, ValidationError
 
+from app.document_transform.native_payload import canonical_style
+
 
 NATIVE_TEXT_STYLE_FIELDS = frozenset(
     {
@@ -88,6 +90,7 @@ class NativeProseTail:
 class _CitationRun:
     text: str
     link: dict[str, JsonValue] | None
+    foreground_color: JsonValue
 
 
 def brandable_prose(paragraph: dict[str, JsonValue], *, start: int, end: int) -> bool:
@@ -177,8 +180,9 @@ def _citation_runs(runs: list[_TextRun]) -> list[_CitationRun]:
         if not text:
             continue
         link = run.text_style.link
-        if suffix and suffix[-1].link == link:
+        color = canonical_style(run.text_style.foreground_color)
+        if suffix and suffix[-1].link == link and suffix[-1].foreground_color == color:
             suffix[-1].text += text
         else:
-            suffix.append(_CitationRun(text=text, link=link))
+            suffix.append(_CitationRun(text=text, link=link, foreground_color=color))
     return suffix

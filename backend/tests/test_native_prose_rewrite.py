@@ -26,13 +26,20 @@ URL = "https://www.rspb.org.uk/birds-and-wildlife/nightingale"
 
 
 def _document(
-    prefix: str = PREFIX, url: str = URL, *, suggested: bool = False
+    prefix: str = PREFIX,
+    url: str = URL,
+    *,
+    suggested: bool = False,
+    link_red: float | None = None,
 ) -> dict[str, JsonValue]:
     cursor = 1
     parts: list[JsonValue] = []
+    link_style: dict[str, JsonValue] = {"link": {"url": url}}
+    if link_red is not None:
+        link_style["foregroundColor"] = {"color": {"rgbColor": {"red": link_red}}}
     styled_runs: list[tuple[str, JsonValue]] = [
         (prefix, {"bold": False}),
-        (SUFFIX, {"link": {"url": url}}),
+        (SUFFIX, link_style),
         ("\n", {}),
     ]
     for text, style in styled_runs:
@@ -151,6 +158,40 @@ async def test_native_readback_accepts_rewritten_prose_but_requires_original_lin
     )
     assert verification.content_preserved is (url == URL)
     assert verification.structure_preserved is (url == URL)
+
+
+@pytest.mark.parametrize("verify_brand", [False, True])
+@pytest.mark.parametrize(
+    ("actual_red", "preserved"), [(0.300000012, True), (0.6, False), (None, False)]
+)
+async def test_native_readback_preserves_authored_link_color_across_prose_edits(
+    actual_red: float | None, *, preserved: bool, verify_brand: bool
+) -> None:
+    original = _document(link_red=0.3)
+    parsed = parse_google_document(original, title="Bird")
+    prefix = "The hidden bird can sing from scrub. "
+    expected = parsed.replace_blocks({parsed.blocks[0].id: prefix + SUFFIX})
+    source = SourceSnapshot(
+        title="Bird",
+        parent_folder_id=FileId("folder"),
+        modified_time=None,
+        revision_id=DocsRevisionId("revision"),
+        media_type="application/vnd.google-apps.document",
+        google_document=original,
+    )
+    draft = OutputDraft(
+        output=DocumentOutput(
+            file_id=FileId("doc"), name="Bird", parent_folder_id=FileId("folder")
+        ),
+        document_id=FileId("doc"),
+        tab_id=DocsTabId("tab"),
+        revision_id=DocsRevisionId("revision"),
+        source_sha256="source",
+    )
+    verification = await _Gateway(_document(prefix, link_red=actual_red)).verify_output(
+        draft=draft, source=source, expected=expected, verify_brand=verify_brand
+    )
+    assert verification.structure_preserved is preserved
 
 
 def test_native_link_write_ranges_use_utf16_before_astral_characters() -> None:
