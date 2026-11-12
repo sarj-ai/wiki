@@ -9,7 +9,7 @@ from loguru import logger
 from pydantic import ValidationError
 import pytest
 
-from app.document_transform.errors import ModelUnavailableError
+from app.document_transform.errors import ModelDeadlineError, ModelUnavailableError
 from app.document_transform.model_diagnostics import (
     ModelBindingError,
     ModelCoverageError,
@@ -21,6 +21,34 @@ from app.document_transform.model_diagnostics import (
 )
 from app.document_transform.model_failures import exhausted_model_failure
 from app.document_transform.schemas import PatchEnvelope, TransformPhase
+
+
+@pytest.mark.parametrize("wrapped", [False, True])
+def test_budget_deadline_is_not_reported_as_malformed_model_output(*, wrapped: bool) -> None:
+    error = ModelDeadlineError()
+    if wrapped:
+        error.__cause__ = TimeoutError("PRIVATE PROVIDER RESPONSE")
+    captured: list[str] = []
+    sink = logger.add(captured.append, serialize=True)
+    try:
+        log_model_failure(
+            operation=TransformPhase.UNSLOP,
+            attempt=2,
+            model="gemini-3.1-pro-preview",
+            error=error,
+        )
+    finally:
+        logger.remove(sink)
+    failure = model_failure_details(error)
+    assert failure.kind == "timeout"
+    assert failure.reason == "DEADLINE_EXCEEDED"
+    assert failure.payload_category == "none"
+    record = json.loads(captured[-1])["record"]["extra"]
+    assert record["model_error_kind"] == "timeout"
+    assert record["model_error_reason"] == "DEADLINE_EXCEEDED"
+    assert record["model_payload_category"] == "none"
+    assert not record["model_attempt_retryable"]
+    assert "PRIVATE" not in "".join(captured)
 
 
 def test_provider_deadline_retains_safe_exception_chain_and_canonical_status() -> None:
