@@ -56,7 +56,7 @@ def test_body_tables_receive_cell_formatting_without_inventing_a_header(
         assert "paddingRight" not in style
         assert style["paddingTop"] == {"magnitude": 4, "unit": "PT"}
         assert style["contentAlignment"] == "TOP"
-        assert obj(style["borderBottom"])["width"] == {"magnitude": 0.5, "unit": "PT"}
+        assert not any(key.startswith("border") for key in style)
     if len(cells) > 1:
         assert (
             obj(cells[0]["tableCellStyle"])["backgroundColor"]
@@ -85,7 +85,10 @@ def test_older_table_checkpoints_reconstruct_their_original_cell_requests(*, hea
 
 
 def _body_readback(
-    document: dict[str, JsonValue], target: ReadabilityTable
+    document: dict[str, JsonValue],
+    target: ReadabilityTable,
+    *,
+    version: ReadabilityVersion = CURRENT_READABILITY_VERSION,
 ) -> dict[str, JsonValue]:
     result = deepcopy(document)
     result["revisionId"] = "r2"
@@ -109,7 +112,13 @@ def _body_readback(
             }
             cell["tableCellStyle"] = {
                 **obj(cell.get("tableCellStyle", {})),
-                **dict.fromkeys(("borderTop", "borderBottom", "borderLeft", "borderRight"), border),
+                **(
+                    dict.fromkeys(
+                        ("borderTop", "borderBottom", "borderLeft", "borderRight"), border
+                    )
+                    if version < 4
+                    else {}
+                ),
                 "backgroundColor": {
                     "color": {"rgbColor": dict.fromkeys(("red", "green", "blue"), color)}
                 },
@@ -264,7 +273,7 @@ async def test_legacy_table_plan_retains_exact_horizontal_requests_and_strict_re
     legacy = legacy.model_copy(
         update={"invariant_sha256": readability_invariant_sha256(before, legacy, applied=False)}
     )
-    after = _body_readback(before, legacy.tables[0])
+    after = _body_readback(before, legacy.tables[0], version=version)
     table = obj(obj(content(next(bodies(after))[1])[0])["table"])
     for row in array(table["tableRows"]):
         for cell in array(obj(row)["tableCells"]):

@@ -439,6 +439,11 @@ def _verify_part_layout(
                 "indentFirstLine": {"magnitude": 18, "unit": "PT"},
             }
         )
+        # createParagraphBullets can materialize this native list-spacing mode
+        # even when an imported source paragraph explicitly used NEVER_COLLAPSE.
+        # Admit that specific list effect; keep every other style comparison.
+        if observed.get("spacingMode") == "COLLAPSE_LISTS":
+            wanted["spacingMode"] = "COLLAPSE_LISTS"
     actual = effective_paragraph_style(document, tab, observed)
     expected = effective_paragraph_style(document, tab, wanted)
     if canonical_style(actual) != canonical_style(expected):

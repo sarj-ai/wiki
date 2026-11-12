@@ -11,6 +11,8 @@ from app.document_transform.readability_types import (
 
 _COLORS = CURRENT_BRAND_MANIFEST.colors
 _COLOR_TOLERANCE = 0.00001
+_BORDER_PRESERVATION_VERSION = 4
+_HORIZONTAL_PADDING_PRESERVATION_VERSION = 3
 
 
 def _row_style(
@@ -41,7 +43,14 @@ def _row_style(
         "dashStyle": "SOLID",
     }
     return {
-        **dict.fromkeys(("borderTop", "borderBottom", "borderLeft", "borderRight"), border),
+        # Docs can omit an explicitly written border when it equals an inherited
+        # table style. Preserve borders in new plans: an absent field cannot
+        # prove a requested border value. Older checkpoints retain their writes.
+        **(
+            dict.fromkeys(("borderTop", "borderBottom", "borderLeft", "borderRight"), border)
+            if version < _BORDER_PRESERVATION_VERSION
+            else {}
+        ),
         "backgroundColor": {"color": {"rgbColor": rgb}},
         "paddingTop": {"magnitude": 4, "unit": "PT"},
         "paddingBottom": {"magnitude": 4, "unit": "PT"},
@@ -50,7 +59,7 @@ def _row_style(
                 "paddingLeft": {"magnitude": 6, "unit": "PT"},
                 "paddingRight": {"magnitude": 6, "unit": "PT"},
             }
-            if version != CURRENT_READABILITY_VERSION
+            if version < _HORIZONTAL_PADDING_PRESERVATION_VERSION
             else {}
         ),
         "contentAlignment": "TOP",
