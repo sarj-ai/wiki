@@ -10,7 +10,7 @@ import {
 } from "@/components/wiki-document/doc-viewer-store";
 import { DocumentLoading } from "@/components/wiki-document/document-loading";
 import { useReducedMotion } from "@/hooks/use-reduced-motion";
-import { embedUrlFor } from "@/lib/file-urls";
+import { type DocumentMode, embedUrlFor } from "@/lib/file-urls";
 import { markNav } from "@/lib/perf-marks";
 import { cn } from "@/lib/utils";
 import { MIME_HTML } from "@/types/wiki";
@@ -142,6 +142,7 @@ function PooledFrames({
     >
       <PooledIframe
         active={viewerKey(entry) === activeKey}
+        documentMode={entry.documentMode ?? "edit"}
         fileId={entry.fileId}
         key={viewerKey(entry)}
         mimeType={entry.mimeType}
@@ -156,11 +157,12 @@ function PooledFrames({
 export function viewerKey(entry: ActiveDoc): string {
   const contentVersion =
     entry.mimeType === MIME_HTML ? (entry.version ?? "current") : "stable";
-  return `${entry.fileId}:${entry.reloadKey}:${contentVersion}`;
+  return `${entry.fileId}:${entry.reloadKey}:${contentVersion}:${entry.documentMode ?? "edit"}`;
 }
 
 interface PooledIframeProps {
   active: boolean;
+  documentMode: DocumentMode;
   fileId: string;
   mimeType: string;
   reducedMotion: boolean;
@@ -170,6 +172,7 @@ interface PooledIframeProps {
 
 const PooledIframe = ({
   active,
+  documentMode,
   fileId,
   mimeType,
   reducedMotion,
@@ -190,6 +193,7 @@ const PooledIframe = ({
   return (
     <DrivePreviewIframe
       active={active}
+      documentMode={documentMode}
       fileId={fileId}
       mimeType={mimeType}
       reducedMotion={reducedMotion}
@@ -200,12 +204,13 @@ const PooledIframe = ({
 
 const DrivePreviewIframe = ({
   active,
+  documentMode,
   fileId,
   mimeType,
   reducedMotion,
   title,
 }: PooledIframeProps) => {
-  const src = embedUrlFor(mimeType, fileId);
+  const src = embedUrlFor(mimeType, fileId, documentMode);
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {

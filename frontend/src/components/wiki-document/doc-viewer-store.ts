@@ -2,7 +2,10 @@
 
 import { create } from "zustand";
 
+import type { DocumentMode } from "@/lib/file-urls";
+
 export interface ActiveDoc {
+  documentMode?: DocumentMode;
   fileId: string;
   mimeType: string;
   reloadKey: number;
@@ -89,6 +92,7 @@ function reconcilePool(pool: ActiveDoc[], active: ActiveDoc): ActiveDoc[] {
     head?.fileId === active.fileId &&
     head.reloadKey === active.reloadKey &&
     head.mimeType === active.mimeType &&
+    (head.documentMode ?? "edit") === (active.documentMode ?? "edit") &&
     head.title === active.title &&
     head.version === active.version
   ) {

@@ -5,6 +5,8 @@ import {
   ChevronRight,
   Copy,
   ExternalLink,
+  Eye,
+  Pencil,
   RefreshCw,
   Sparkles,
 } from "lucide-react";
@@ -19,7 +21,11 @@ import {
   openInGoogleLabel,
   renderMimeIcon,
 } from "@/lib/file-icons";
-import { openUrlFor } from "@/lib/file-urls";
+import {
+  type DocumentMode,
+  openUrlFor,
+  supportsDocumentMode,
+} from "@/lib/file-urls";
 import type { BreadcrumbItem } from "@/types/wiki";
 import {
   MIME_DOC,
@@ -39,10 +45,12 @@ interface WikiToolbarProps {
   authority?: "pending" | "resolved";
   breadcrumb: BreadcrumbItem[];
   canEdit: boolean;
+  documentMode: DocumentMode;
   driveId: string | undefined;
   fileId: string;
   mimeType: string;
   modifiedTime?: string;
+  onDocumentModeChange: (mode: DocumentMode) => void;
   onReload: () => void;
   parentFolderId: string | undefined;
   refreshModifiedTime?: () => Promise<string>;
@@ -54,10 +62,12 @@ export function WikiToolbar({
   authority = "resolved",
   breadcrumb,
   canEdit,
+  documentMode,
   driveId,
   fileId,
   mimeType,
   modifiedTime,
+  onDocumentModeChange,
   onReload,
   parentFolderId,
   refreshModifiedTime,
@@ -85,8 +95,8 @@ export function WikiToolbar({
   };
 
   return (
-    <header className="border-border bg-background text-foreground @container/toolbar flex h-10 shrink-0 items-center gap-1 overflow-hidden border-b px-4 sm:gap-2">
-      <div className="flex min-w-0 flex-1 items-center gap-2 overflow-hidden">
+    <header className="border-border bg-background text-foreground @container/toolbar flex min-h-10 shrink-0 flex-wrap items-center gap-1 overflow-hidden border-b px-4 py-1 sm:gap-2">
+      <div className="flex min-w-20 flex-1 items-center gap-2 overflow-hidden">
         <span className="shrink-0">{renderMimeIcon(mimeType, "size-4")}</span>
         <nav
           aria-label="Breadcrumb"
@@ -114,6 +124,13 @@ export function WikiToolbar({
           })}
         </nav>
       </div>
+      <DocumentModeSwitch
+        authority={authority}
+        canEdit={canEdit}
+        mimeType={mimeType}
+        mode={documentMode}
+        onModeChange={onDocumentModeChange}
+      />
       <Button
         aria-label="Reload"
         onClick={onReload}
@@ -192,7 +209,7 @@ export function WikiToolbar({
       ) : null}
       {authority === "resolved" ? (
         canEdit ? (
-          <div className="size-6 shrink-0 @min-[40rem]/toolbar:w-24">
+          <div className="size-6 shrink-0 @min-[40rem]/toolbar:w-24 pointer-coarse:min-h-11 pointer-coarse:min-w-11">
             <ReorganizeDocument
               driveId={driveId}
               fileId={fileId}
@@ -202,14 +219,14 @@ export function WikiToolbar({
           </div>
         ) : null
       ) : (
-        <div className="size-6 shrink-0 @min-[40rem]/toolbar:w-24">
+        <div className="size-6 shrink-0 @min-[40rem]/toolbar:w-24 pointer-coarse:min-h-11 pointer-coarse:min-w-11">
           <span
             aria-hidden
             className="bg-muted block size-full animate-pulse rounded-md"
           />
         </div>
       )}
-      <div className="size-6 shrink-0 @min-[40rem]/toolbar:w-24">
+      <div className="size-6 shrink-0 @min-[40rem]/toolbar:w-24 pointer-coarse:min-h-11 pointer-coarse:min-w-11">
         {authority === "resolved" ? (
           canEdit ? (
             <ShortLinkDialog fileId={fileId} />
@@ -237,5 +254,57 @@ export function WikiToolbar({
         </a>
       </Button>
     </header>
+  );
+}
+
+function DocumentModeSwitch({
+  authority,
+  canEdit,
+  mimeType,
+  mode,
+  onModeChange,
+}: {
+  authority: "pending" | "resolved";
+  canEdit: boolean;
+  mimeType: string;
+  mode: DocumentMode;
+  onModeChange: (mode: DocumentMode) => void;
+}) {
+  if (authority !== "resolved" || !supportsDocumentMode(mimeType)) return null;
+
+  return (
+    <div
+      aria-label="Document mode"
+      className="bg-muted/40 inline-flex shrink-0 items-center gap-0.5 rounded-md border p-0.5"
+      role="group"
+    >
+      <Button
+        aria-pressed={mode === "preview"}
+        onClick={() => onModeChange("preview")}
+        size="xs"
+        title="Preview this document"
+        type="button"
+        variant={mode === "preview" ? "secondary" : "ghost"}
+      >
+        <Eye className="hidden size-3.5 @min-[40rem]/toolbar:block" />
+        Preview
+      </Button>
+      <Button
+        aria-pressed={mode === "edit"}
+        disabled={!canEdit}
+        onClick={() => onModeChange("edit")}
+        size="xs"
+        title={
+          canEdit
+            ? "Edit this document"
+            : "You have view-only access to this document"
+        }
+        type="button"
+        variant={mode === "edit" ? "secondary" : "ghost"}
+      >
+        <Pencil className="hidden size-3.5 @min-[40rem]/toolbar:block" />
+        Edit
+      </Button>
+    </div>
   );
 }
