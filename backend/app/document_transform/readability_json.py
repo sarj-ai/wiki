@@ -7,7 +7,10 @@ from typing import Literal
 from pydantic import JsonValue
 
 from app.document_transform.ir import MAX_DOC_TABS, utf16_length
-from app.document_transform.native_payload import stable_native_payload
+from app.document_transform.native_payload import (
+    canonical_style as canonical_style,
+    stable_native_payload,
+)
 from app.identifiers import DocsTabId
 
 
@@ -139,23 +142,6 @@ def _effective_style(
         if field == "textStyle" and family:
             result["weightedFontFamily"] = family
     return result
-
-
-def canonical_style(value: JsonValue) -> JsonValue:
-    # Docs omits zero dimensions and serializes colors as float32. Normalize
-    # only style representation; document text and numeric data stay exact.
-    match value:
-        case dict():
-            result = {key: canonical_style(child) for key, child in value.items()}
-            if result.get("unit") == "PT":
-                result.setdefault("magnitude", 0)
-            return result
-        case list():
-            return [canonical_style(child) for child in value]
-        case float():
-            return round(value, 6)
-        case _:
-            return value
 
 
 def rgb_color(value: str) -> dict[str, JsonValue]:
