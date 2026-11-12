@@ -227,6 +227,9 @@ def log_model_failure(
         if isinstance(error, ModelUnavailableError)
         else "provider_attempt",
         model_retryable=error.retryable if isinstance(error, ModelUnavailableError) else None,
+        model_attempt_retryable=error.retry_within_operation
+        if isinstance(error, ModelUnavailableError)
+        else None,
     )
 
 

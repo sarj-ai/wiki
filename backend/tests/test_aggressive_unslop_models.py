@@ -461,7 +461,7 @@ async def test_semantic_verdict_with_the_wrong_output_hash_fails_closed() -> Non
     )
     with pytest.raises(ModelUnavailableError):
         await harness.generator.verify(document, [patch])
-    assert harness.call.models == ["gemini-3.1-pro-preview"]
+    assert harness.call.models == ["gemini-3.1-pro-preview"] * 3
 
 
 async def test_missing_rewrite_proposals_fail_instead_of_silently_returning_no_edits() -> None:
@@ -469,7 +469,7 @@ async def test_missing_rewrite_proposals_fail_instead_of_silently_returning_no_e
     harness = _generator(types.GenerateContentResponse(parsed=PatchEnvelope(patches=[])))
     with pytest.raises(ModelUnavailableError):
         await harness.generator.generate(document, phase=TransformPhase.UNSLOP)
-    assert len(harness.call.configurations) == 1
+    assert len(harness.call.configurations) == 3
 
 
 @pytest.mark.parametrize("code", ["force_language_changed", "semantic_review_rejected"])
@@ -706,6 +706,7 @@ async def test_transient_review_fallback_rejects_forged_bindings(
 
     assert harness.call.models == [
         "gemini-3.1-pro-preview",
+        "gemini-3.1-flash-lite",
         "gemini-3.1-flash-lite",
     ]
 

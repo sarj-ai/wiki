@@ -330,6 +330,15 @@ class PatchGenerator(ABC):
         return []
 
 
+@dataclass(slots=True)
+class _ModelBatchFailure:
+    error: ModelUnavailableError | None
+
+    def require_available(self) -> None:
+        if self.error is not None:
+            raise exhausted_model_failure(self.error) from self.error
+
+
 class VertexGeminiPatchGenerator(PatchGenerator):
     supports_semantic_rewrite: bool = True
     supports_readability_planning: bool = True
@@ -414,7 +423,7 @@ class VertexGeminiPatchGenerator(PatchGenerator):
                     )
             else:
                 return envelope.proposals
-        raise exhausted_model_failure(last_error) from last_error
+        raise exhausted_model_failure(last_error) from _model_failure_cause(last_error)
 
     def __init__(
         self,
@@ -478,12 +487,14 @@ class VertexGeminiPatchGenerator(PatchGenerator):
     async def _generate_batches(
         self, document: DocumentIR, *, feedback: dict[str, _RepairProposal]
     ) -> list[TextPatch]:
+        failure = _ModelBatchFailure(None)
         try:
             async with asyncio.TaskGroup() as group:
                 tasks = [
                     group.create_task(
                         self._bounded_generate_batch(
                             batch,
+                            failure=failure,
                             feedback=tuple(
                                 feedback[block.id] for block in batch.blocks if block.id in feedback
                             ),
@@ -496,12 +507,22 @@ class VertexGeminiPatchGenerator(PatchGenerator):
         return [patch for task in tasks for patch in task.result()]
 
     async def _bounded_generate_batch(
-        self, document: DocumentIR, *, feedback: tuple[_RepairProposal, ...]
+        self,
+        document: DocumentIR,
+        *,
+        feedback: tuple[_RepairProposal, ...],
+        failure: _ModelBatchFailure,
     ) -> list[TextPatch]:
         async with _model_batch_slot(self._model_semaphore):
-            return await self._generate_batch(
-                document, phase=TransformPhase.UNSLOP, feedback=feedback
-            )
+            failure.require_available()
+            try:
+                return await self._generate_batch(
+                    document, phase=TransformPhase.UNSLOP, feedback=feedback
+                )
+            except ModelUnavailableError as error:
+                if failure.error is None:
+                    failure.error = error
+                raise
 
     async def _generate_batch(
         self,
@@ -547,7 +568,7 @@ class VertexGeminiPatchGenerator(PatchGenerator):
                 last_error = failure
             else:
                 return patches
-        raise exhausted_model_failure(last_error) from last_error
+        raise exhausted_model_failure(last_error) from _model_failure_cause(last_error)
 
     async def _admit_initial_writer(self, *, attempt: int, last_error: Exception | None) -> None:
         loop = asyncio.get_running_loop()
@@ -559,7 +580,7 @@ class VertexGeminiPatchGenerator(PatchGenerator):
             ):
                 backoff = _INITIAL_WRITER_START_INTERVAL.total_seconds() * 2 ** (attempt - 2)
                 delay = max(delay, backoff + _writer_jitter_seconds())
-            if isinstance(last_error, ModelUnavailableError):
+            if isinstance(last_error, ModelUnavailableError) and last_error.retryable:
                 delay = max(delay, last_error.retry_after or 0, 2 ** (attempt - 1))
             if delay:
                 await _model_retry_delay(delay, sleep=self._writer_sleep)
@@ -714,11 +735,14 @@ class VertexGeminiPatchGenerator(PatchGenerator):
         denied_models = _phase_denied_review_models_var.get()
         if denied_models is None:
             denied_models = set()
+        failure = _ModelBatchFailure(None)
         try:
             async with asyncio.TaskGroup() as group:
                 tasks = [
                     group.create_task(
-                        self._bounded_review_batch(batch, self._model_semaphore, denied_models)
+                        self._bounded_review_batch(
+                            batch, self._model_semaphore, denied_models, failure
+                        )
                     )
                     for batch in _review_batches(pairs)
                 ]
@@ -727,10 +751,20 @@ class VertexGeminiPatchGenerator(PatchGenerator):
         return tuple(task.result() for task in tasks)
 
     async def _bounded_review_batch(
-        self, pairs: list[_ReviewPair], semaphore: asyncio.Semaphore, denied_models: set[str]
+        self,
+        pairs: list[_ReviewPair],
+        semaphore: asyncio.Semaphore,
+        denied_models: set[str],
+        failure: _ModelBatchFailure,
     ) -> RewriteReview:
         async with _model_batch_slot(semaphore):
-            return await self._review_batch(pairs, denied_models)
+            failure.require_available()
+            try:
+                return await self._review_batch(pairs, denied_models)
+            except ModelUnavailableError as error:
+                if failure.error is None:
+                    failure.error = error
+                raise
 
     async def _review_batch(
         self, pairs: list[_ReviewPair], denied_models: set[str]
@@ -765,7 +799,7 @@ class VertexGeminiPatchGenerator(PatchGenerator):
                     )
             else:
                 return decision
-        raise exhausted_model_failure(last_error) from last_error
+        raise exhausted_model_failure(last_error) from _model_failure_cause(last_error)
 
     async def _review_once(self, *, model: str, pairs: list[_ReviewPair]) -> PatchReviewEnvelope:
         prompt = _review_prompt(pairs)
@@ -911,7 +945,9 @@ def _model_remaining_seconds() -> float | None:
 
 def _retryable_model_failure(error: Exception) -> ModelUnavailableError:
     failure = classify_model_failure(error) or ModelUnavailableError()
-    if not failure.retryable:
+    if failure is not error:
+        failure.__cause__ = error
+    if not failure.retry_within_operation:
         if failure is error:
             raise error
         raise failure from error
@@ -921,6 +957,12 @@ def _retryable_model_failure(error: Exception) -> ModelUnavailableError:
 def _attempt_models(models: tuple[str, ...]) -> tuple[str, ...]:
     unique = tuple(dict.fromkeys(models))
     return (unique + (unique[-1],) * _MAX_PROVIDER_ATTEMPTS)[:_MAX_PROVIDER_ATTEMPTS]
+
+
+def _model_failure_cause(error: Exception | None) -> Exception | None:
+    if isinstance(error, ModelUnavailableError) and isinstance(error.__cause__, Exception):
+        return error.__cause__
+    return error
 
 
 def _review_plan(document: DocumentIR, patches: dict[str, TextPatch]) -> _ReviewPlan:

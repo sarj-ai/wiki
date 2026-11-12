@@ -1,3 +1,6 @@
+from typing import override
+
+
 class DocumentTransformError(Exception):
     code = "document_transform_failed"
     public_detail = "The document could not be transformed safely"
@@ -54,6 +57,10 @@ class ModelUnavailableError(DocumentTransformError):
         self.retryable = retryable
         self.retry_after = retry_after
 
+    @property
+    def retry_within_operation(self) -> bool:
+        return self.retryable
+
 
 class ModelConfigurationError(ModelUnavailableError):
     code = "model_configuration_invalid"
@@ -83,6 +90,13 @@ class ModelOutputError(ModelUnavailableError):
 
     def __init__(self) -> None:
         super().__init__(retryable=False)
+
+    @property
+    @override
+    def retry_within_operation(self) -> bool:
+        # A fresh bounded model response can repair malformed JSON or binding.
+        # Exhausted output failures never restart the queue delivery.
+        return True
 
 
 class ModelDeadlineError(ModelUnavailableError):

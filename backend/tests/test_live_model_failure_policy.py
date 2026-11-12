@@ -179,12 +179,12 @@ async def test_19_stalled_provider_does_not_start_another_call_without_remaining
 
 
 async def test_20_malformed_response_is_not_reported_as_model_unavailability() -> None:
-    async with _provider(("malformed",)) as run:
+    async with _provider(("malformed",) * 3) as run:
         with pytest.raises(ModelUnavailableError) as caught:
             await _generate(run)
         assert caught.value.code == "model_output_invalid"
         assert not caught.value.retryable
-        assert len(run.requests) == 1
+        assert len(run.requests) == 3
 
 
 def test_21_nested_provider_budgets_cannot_extend_the_parent_deadline() -> None:
