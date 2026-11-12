@@ -179,6 +179,68 @@ describe("public read-only Wiki demo", () => {
   );
 
   it.each(DEMO_FILES)(
+    "switches $id views and reloads without changing permissions or calling private APIs",
+    async (file) => {
+      ROUTING.search = new URLSearchParams({ file: file.id }).toString();
+      await mount();
+      const preview = screen.getByRole("button", { name: "Preview" });
+      const edit = screen.getByRole("button", { name: "Edit" });
+      expect(preview).toHaveAttribute("aria-pressed", "true");
+      expect(edit).toBeEnabled();
+      fireEvent.click(edit);
+      const editor = screen.getByTitle(/ — editor view$/);
+      expect(editor).toHaveAttribute(
+        "src",
+        file.previewUrl.replace("/preview", "/edit"),
+      );
+      expect(editor).toHaveAttribute(
+        "sandbox",
+        "allow-scripts allow-same-origin",
+      );
+      expect(editor).toHaveAttribute("referrerpolicy", "no-referrer");
+      expect(edit).toHaveAttribute("aria-pressed", "true");
+      fireEvent.click(screen.getByRole("button", { name: "Reload" }));
+      const reloaded = screen.getByTitle(/ — editor view$/);
+      expect(reloaded).not.toBe(editor);
+      expect(reloaded).toHaveAttribute(
+        "src",
+        file.previewUrl.replace("/preview", "/edit"),
+      );
+      expect(edit).toHaveAttribute("aria-pressed", "true");
+      fireEvent.click(preview);
+      expect(screen.getByTitle(/read-only preview/)).toHaveAttribute(
+        "src",
+        file.previewUrl,
+      );
+      expect(screen.getByText("Public demo · Read only")).toBeInTheDocument();
+      expect(HTTP).not.toHaveBeenCalled();
+      expect(COOKIE_WRITE).not.toHaveBeenCalled();
+    },
+  );
+
+  it("starts each newly selected sample in preview mode", async () => {
+    await mount();
+    fireEvent.click(screen.getByRole("button", { name: "Edit" }));
+    ROUTING.search = "file=latency-workbook";
+    view?.rerender(<DemoWorkspace />);
+    expect(screen.getByRole("button", { name: "Preview" })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+    expect(screen.getByTitle(/read-only preview/)).toHaveAttribute(
+      "src",
+      demoFileFor("latency-workbook").previewUrl,
+    );
+    ROUTING.search = "file=latency-guide";
+    view?.rerender(<DemoWorkspace />);
+    expect(screen.queryByTitle(/ — editor view$/)).toBeNull();
+    expect(screen.getByRole("button", { name: "Preview" })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+  });
+
+  it.each(DEMO_FILES)(
     "offers the real $id download without a mutation",
     async (file) => {
       ROUTING.search = new URLSearchParams({ file: file.id }).toString();
@@ -286,9 +348,7 @@ describe("public read-only Wiki demo", () => {
     const retry = screen.getByRole("button", { name: "Try again" });
     retry.focus();
     fireEvent.click(retry);
-    expect(
-      screen.getByRole("button", { name: "Reload preview" }),
-    ).toHaveFocus();
+    expect(screen.getByRole("button", { name: "Reload" })).toHaveFocus();
     expect(screen.getByTitle(/read-only preview/)).not.toBe(oldFrame);
     expect(HTTP).not.toHaveBeenCalled();
   });

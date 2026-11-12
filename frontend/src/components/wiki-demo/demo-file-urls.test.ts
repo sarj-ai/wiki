@@ -1,6 +1,7 @@
 import { DEMO_FILES, type DemoFile, demoFileFor, demoHref } from "./demo-data";
 import {
   demoDownloadUrl,
+  demoEmbedUrl,
   demoHrefForDocumentPath,
   demoPreviewUrl,
   demoViewUrl,
@@ -54,6 +55,34 @@ describe("public Google preview URL boundary", () => {
     "javascript:alert(1)",
   ])("rejects an editor or untrusted source: %s", (previewUrl) => {
     expect(demoPreviewUrl(sample({ previewUrl }))).toBeNull();
+  });
+});
+
+describe("public sample view switching", () => {
+  it("rejects a native MIME type that does not match its verified preview route", () => {
+    const file = sample({
+      previewUrl: "https://docs.google.com/spreadsheets/d/public-sheet/preview",
+    });
+    expect(demoEmbedUrl(file, "preview")).toBeNull();
+    expect(demoEmbedUrl(file, "edit")).toBeNull();
+  });
+
+  it.each(DEMO_FILES)("uses the shared native editor route for $id", (file) => {
+    expect(demoEmbedUrl(file, "preview")).toBe(file.previewUrl);
+    expect(demoEmbedUrl(file, "edit")).toBe(
+      file.previewUrl.replace("/preview", "/edit"),
+    );
+  });
+
+  it.each([
+    "/api/wiki/files/private-id",
+    "https://evil.example/document/d/private-id/preview",
+    "https://docs.google.com/document/d/public-doc/edit",
+    "https://docs.google.com/document/d/public-doc/preview?edit=true",
+  ])("rejects an unvalidated source in both modes: %s", (previewUrl) => {
+    const file = sample({ previewUrl });
+    expect(demoEmbedUrl(file, "preview")).toBeNull();
+    expect(demoEmbedUrl(file, "edit")).toBeNull();
   });
 });
 

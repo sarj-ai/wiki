@@ -6,6 +6,8 @@ import {
 } from "@testing-library/react";
 import { act } from "react";
 
+import { SHORT_LINK_COPY_FEEDBACK_MS } from "@/lib/document-short-link";
+
 import { demoFileFor, demoHref } from "./demo-data";
 import { DemoToolbar } from "./demo-toolbar";
 
@@ -31,7 +33,14 @@ describe("public file actions", () => {
       downloadUrl:
         "https://docs.google.com/spreadsheets/d/public-sheet/export?format=xlsx",
     };
-    view = render(<DemoToolbar file={file} onReload={vi.fn()} />);
+    view = render(
+      <DemoToolbar
+        documentMode="preview"
+        onDocumentModeChange={vi.fn()}
+        file={file}
+        onReload={vi.fn()}
+      />,
+    );
     const download = screen.getByRole("link", {
       name: `Download ${file.name}`,
     });
@@ -40,9 +49,7 @@ describe("public file actions", () => {
     expect(download).toHaveAttribute("rel", "noopener noreferrer");
     expect(download).toHaveAttribute("referrerpolicy", "no-referrer");
     expect(screen.queryByRole("form")).toBeNull();
-    expect(
-      screen.queryByRole("button", { name: /Polish|Delete|Edit/ }),
-    ).toBeNull();
+    expect(screen.queryByRole("button", { name: /Polish|Delete/ })).toBeNull();
   });
 
   it("omits an unsafe download instead of rendering a private API link", () => {
@@ -50,7 +57,14 @@ describe("public file actions", () => {
       ...demoFileFor(null),
       downloadUrl: "/api/wiki/files/private-id",
     };
-    view = render(<DemoToolbar file={file} onReload={vi.fn()} />);
+    view = render(
+      <DemoToolbar
+        documentMode="preview"
+        onDocumentModeChange={vi.fn()}
+        file={file}
+        onReload={vi.fn()}
+      />,
+    );
     expect(
       screen.queryByRole("link", { name: `Download ${file.name}` }),
     ).toBeNull();
@@ -61,9 +75,16 @@ describe("public file actions", () => {
       ...demoFileFor(null),
       viewUrl: "https://drive.google.com/file/d/public-document/view",
     };
-    view = render(<DemoToolbar file={file} onReload={vi.fn()} />);
+    view = render(
+      <DemoToolbar
+        documentMode="preview"
+        onDocumentModeChange={vi.fn()}
+        file={file}
+        onReload={vi.fn()}
+      />,
+    );
     const link = screen.getByRole("link", {
-      name: "Open sample in Google Drive",
+      name: "Open in Google Docs",
     });
     expect(link).toHaveAttribute("href", file.viewUrl);
     expect(link).toHaveAttribute("target", "_blank");
@@ -73,23 +94,44 @@ describe("public file actions", () => {
 
   it("omits an untrusted Open in Drive link", () => {
     const file = { ...demoFileFor(null), viewUrl: "javascript:alert(1)" };
-    view = render(<DemoToolbar file={file} onReload={vi.fn()} />);
+    view = render(
+      <DemoToolbar
+        documentMode="preview"
+        onDocumentModeChange={vi.fn()}
+        file={file}
+        onReload={vi.fn()}
+      />,
+    );
     expect(
-      screen.queryByRole("link", { name: "Open sample in Google Drive" }),
+      screen.queryByRole("link", { name: "Open in Google Docs" }),
     ).toBeNull();
   });
 
   it("reloads the current preview", () => {
     const reload = vi.fn();
-    view = render(<DemoToolbar file={demoFileFor(null)} onReload={reload} />);
-    fireEvent.click(screen.getByRole("button", { name: "Reload preview" }));
+    view = render(
+      <DemoToolbar
+        documentMode="preview"
+        onDocumentModeChange={vi.fn()}
+        file={demoFileFor(null)}
+        onReload={reload}
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Reload" }));
     expect(reload).toHaveBeenCalledOnce();
   });
 
   it("copies a public demo link and clears its success feedback", async () => {
     const file = demoFileFor(null);
     const copy = vi.spyOn(navigator.clipboard, "writeText").mockResolvedValue();
-    view = render(<DemoToolbar file={file} onReload={vi.fn()} />);
+    view = render(
+      <DemoToolbar
+        documentMode="preview"
+        onDocumentModeChange={vi.fn()}
+        file={file}
+        onReload={vi.fn()}
+      />,
+    );
     fireEvent.click(screen.getByRole("button", { name: "Copy link" }));
     await act(async () => {
       await vi.advanceTimersByTimeAsync(0);
@@ -97,14 +139,12 @@ describe("public file actions", () => {
     expect(copy).toHaveBeenCalledExactlyOnceWith(
       new URL(demoHref(file), window.location.origin).href,
     );
-    expect(screen.getByRole("status")).toHaveTextContent(
-      "Public demo link copied.",
-    );
+    expect(screen.getByRole("status")).toHaveTextContent("Link copied.");
     expect(
       screen.getByRole("button", { name: "Link copied" }),
     ).toBeInTheDocument();
     await act(async () => {
-      await vi.advanceTimersByTimeAsync(4_000);
+      await vi.advanceTimersByTimeAsync(SHORT_LINK_COPY_FEEDBACK_MS);
     });
     expect(
       screen.getByRole("button", { name: "Copy link" }),
@@ -116,7 +156,14 @@ describe("public file actions", () => {
     vi.spyOn(navigator.clipboard, "writeText").mockRejectedValue(
       new Error("Clipboard denied"),
     );
-    view = render(<DemoToolbar file={demoFileFor(null)} onReload={vi.fn()} />);
+    view = render(
+      <DemoToolbar
+        documentMode="preview"
+        onDocumentModeChange={vi.fn()}
+        file={demoFileFor(null)}
+        onReload={vi.fn()}
+      />,
+    );
     fireEvent.click(screen.getByRole("button", { name: "Copy link" }));
     await act(async () => {
       await vi.advanceTimersByTimeAsync(0);
