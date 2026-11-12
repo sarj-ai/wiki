@@ -10,22 +10,27 @@ from app.document_transform.quantity_notation import UNIT_POWER, UNIT_PRODUCT, U
 
 _MISSING = frozenset({"", "-", "–", "—", "n/a", "na", "null", "…"})
 _CHARACTER_WIDTH_TWIPS = 110  # Conservative 5.5 pt at the shared 10 pt table font size.
-_INTEGER = r"(?:\d{1,3}(?:[,\u00a0\u2009\u202f ]\d{3})+|\d{1,2}(?:,\d{2})+,\d{3}|\d+)"
+_INTEGER = r"(?:\d{1,3}(?:[,'’\u00a0\u2009\u202f ]\d{3})+|\d{1,2}(?:,\d{2})+,\d{3}|\d+)"
 _COMMA_INTEGER = r"(?:\d{1,3}(?:[.\u00a0\u2009\u202f ]\d{3})+|\d+)"
-_DECIMAL = rf"(?:{_INTEGER}(?:\.\d+)?|{_COMMA_INTEGER},\d+|[.,]\d+)"
+_DOT_GROUPED_INTEGER = r"\d{1,3}(?:\.\d{3})+"
+_ARABIC_NUMBER = r"(?:(?:\d{1,3}(?:٬\d{3})+|\d+)(?:٫\d+)?|٫\d+)"
+_DECIMAL = (
+    rf"(?:{_INTEGER}(?:\.\d+)?|{_COMMA_INTEGER},\d+|"
+    rf"{_DOT_GROUPED_INTEGER}|{_ARABIC_NUMBER}|[.,]\d+)"
+)
 _POWER = UNIT_POWER
 _SCIENTIFIC = rf"(?:{_DECIMAL}(?:\(\d+\))?(?:[eE][+−-]?\d+|\s*[×x·]\s*10{_POWER})?|10{_POWER})"
 _VULGAR_FRACTION = r"[¼½¾⅐⅑⅒⅓⅔⅕⅖⅗⅘⅙⅚⅛⅜⅝⅞]"
 _FRACTION = rf"{_SCIENTIFIC}\s*[/⁄]\s*[+−-]?{_SCIENTIFIC}"
 _MAGNITUDE = rf"(?:\d+\s+{_FRACTION}|(?:\d+\s*)?{_VULGAR_FRACTION}|{_FRACTION}|{_SCIENTIFIC})"
-_CURRENCY_CODE = r"(?:USD|EUR|GBP|SAR)"
+_CURRENCY_CODE = r"(?:USD|EUR|GBP|SAR|CHF)"
 _CURRENCY = rf"(?:[$€£¥₹₩₽₺]|{_CURRENCY_CODE}(?=\s))"
 _NUMBER = rf"(?:[+−-]?\s*(?:{_CURRENCY}\s*)?|{_CURRENCY}\s*[+−-]?)\s*{_MAGNITUDE}"
 _UNIT = rf"{UNIT_SYMBOL}(?:{_POWER})?(?:{UNIT_PRODUCT}{UNIT_SYMBOL}(?:{_POWER})?)*"
 _QUANTITY_TERM = rf"{_NUMBER}(?:\s*(?:%|‰|×|x|{_CURRENCY_CODE}|{_UNIT}))?"
 _QUANTITY = re.compile(
     rf"(?:(?:approximately|about|roughly|approx\.)\s+)?"
-    rf"(?:[<>≤≥~≈]\s*)?{_QUANTITY_TERM}(?:\s*:\s*{_QUANTITY_TERM})?"
+    rf"(?:[<>]=?\s*|[≤≥~≈]\s*)?{_QUANTITY_TERM}(?:\s*:\s*{_QUANTITY_TERM})?"
     rf"(?:\s*(?:±|–|−|-|\bto\b)\s*{_QUANTITY_TERM})?",
     re.IGNORECASE,
 )
