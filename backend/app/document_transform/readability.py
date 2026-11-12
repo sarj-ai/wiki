@@ -185,13 +185,7 @@ async def _refine_layout(
             )
             paragraphs = validated_readability_paragraphs(document, ir, proposals)
         except ModelUnavailableError as error:
-            best = replace(
-                best,
-                planning_failure_code=error.code,
-                stop_reason="deadline_reserve"
-                if error.code == "model_deadline_exhausted"
-                else "provider_unavailable",
-            )
+            best = _provider_stopped_draft(best, error)
             break
         except ValueError as error:
             if feedback:
@@ -221,6 +215,13 @@ async def _refine_layout(
         )
         feedback = "Further improve the previous layout only if it makes the whole document easier to read. Keep text exact."
     return best
+
+
+def _provider_stopped_draft(best: _LayoutDraft, error: ModelUnavailableError) -> _LayoutDraft:
+    reason: ReadabilityStopReason = "provider_unavailable"
+    if error.code == "model_deadline_exhausted":
+        reason = "deadline_reserve"
+    return replace(best, planning_failure_code=error.code, stop_reason=reason)
 
 
 def _layout_burden(
