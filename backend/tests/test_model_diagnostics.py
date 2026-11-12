@@ -2,7 +2,9 @@ from dataclasses import asdict
 import json
 from typing import Literal
 
+from google.auth import exceptions as auth_errors
 from google.genai import errors, types
+import httpx
 from loguru import logger
 from pydantic import ValidationError
 import pytest
@@ -15,6 +17,7 @@ from app.document_transform.model_diagnostics import (
     log_model_response_failure,
     model_failure_details,
 )
+from app.document_transform.model_failures import exhausted_model_failure
 from app.document_transform.schemas import PatchEnvelope, TransformPhase
 
 
@@ -53,6 +56,24 @@ def test_transport_and_schema_failure_details_are_private(error: TimeoutError | 
     failure = model_failure_details(error)
     assert failure.http_status == 0
     assert failure.reason == "unknown"
+    assert "PRIVATE" not in json.dumps(asdict(failure))
+
+
+@pytest.mark.parametrize(
+    ("error", "kind"),
+    [
+        (httpx.ConnectError("PRIVATE TRANSPORT RESPONSE"), "transport"),
+        (auth_errors.RefreshError("PRIVATE CREDENTIALS"), "credentials"),
+    ],
+)
+def test_wrapped_transport_and_credentials_keep_their_category_without_private_values(
+    error: Exception, kind: str
+) -> None:
+    wrapped = exhausted_model_failure(error)
+    wrapped.__cause__ = error
+    failure = model_failure_details(wrapped)
+    assert failure.kind == kind
+    assert failure.http_status == 0
     assert "PRIVATE" not in json.dumps(asdict(failure))
 
 

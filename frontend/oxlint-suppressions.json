@@ -494,9 +494,6 @@
     },
     "@sarj/no-frontend-comments": {
       "count": 3
-    },
-    "@sarj/require-camelcase-properties": {
-      "count": 95
     }
   },
   "src/lib/last-doc.test.ts": {

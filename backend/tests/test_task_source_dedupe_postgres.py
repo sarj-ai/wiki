@@ -38,7 +38,13 @@ from app.tasks.errors import (
     TaskNotClaimableError,
     TaskTargetBusyError,
 )
-from app.tasks.schemas import DocumentTransformSucceededTaskRead, TaskKind, TaskRead, TaskStatus
+from app.tasks.schemas import (
+    DocumentTransformSucceededTaskRead,
+    RunningTaskRead,
+    TaskKind,
+    TaskRead,
+    TaskStatus,
+)
 from app.tasks.service import PostgresTaskService
 
 
@@ -59,6 +65,46 @@ def _qa_engine() -> AsyncEngine:
     ):
         pytest.fail("Only a loopback PostgreSQL database named wiki_polish29_qa* is allowed")
     return create_async_engine(dsn, pool_size=12, max_overflow=0)
+
+
+async def test_real_postgres_polling_distinguishes_active_attempt_from_retry_wait() -> None:
+    engine = _qa_engine()
+    sessions = async_sessionmaker(engine, expire_on_commit=False)
+    owner = UserId(uuid.uuid7())
+    try:
+        async with sessions() as session:
+            session.add(
+                User(id=owner, email=f"qa-{owner}@sarj.ai", google_id=GoogleUserId(str(owner)))
+            )
+            await session.commit()
+            service = PostgresTaskService(db=session)
+            reservation = await service.create_or_replay(
+                kind=TaskKind.FILE_DOCUMENT_TRANSFORM,
+                owner_user_id=owner,
+                idempotency_key=IdempotencyKey(uuid.uuid7()),
+                payload=_markdown_payload(),
+            )
+            task_id = reservation.task.id
+            first = await service.claim(task_id, lease_duration=timedelta(minutes=1))
+            active = await service.get_for_owner(task_id, owner)
+            assert isinstance(active, RunningTaskRead)
+            assert active.execution_state == "running"
+            assert active.attempt_count == 1
+            await service.defer(task_id, lease_token=first.lease_token)
+            waiting = await service.get_for_owner(task_id, owner)
+            assert isinstance(waiting, RunningTaskRead)
+            assert waiting.execution_state == "retrying"
+            assert waiting.attempt_count == 1
+            await service.claim(task_id, lease_duration=timedelta(minutes=1))
+            resumed = await service.get_for_owner(task_id, owner)
+            assert isinstance(resumed, RunningTaskRead)
+            assert resumed.execution_state == "running"
+            assert resumed.attempt_count == 2
+    finally:
+        async with sessions() as session:
+            await session.execute(delete(User).where(User.id == owner))
+            await session.commit()
+        await engine.dispose()
 
 
 @pytest.mark.parametrize(

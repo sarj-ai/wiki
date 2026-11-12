@@ -1,0 +1,126 @@
+{
+  "documentId": "native-date-fixture",
+  "title": "Native date range fixture",
+  "revisionId": "r1",
+  "tabs": [
+    {
+      "tabProperties": {
+        "tabId": "t.0",
+        "title": "Tab 1",
+        "index": 0
+      },
+      "documentTab": {
+        "body": {
+          "content": [
+            {
+              "endIndex": 1,
+              "sectionBreak": {
+                "sectionStyle": {
+                  "columnSeparatorStyle": "NONE",
+                  "contentDirection": "LEFT_TO_RIGHT",
+                  "sectionType": "CONTINUOUS"
+                }
+              }
+            },
+            {
+              "startIndex": 1,
+              "endIndex": 40,
+              "paragraph": {
+                "elements": [
+                  {
+                    "startIndex": 1,
+                    "endIndex": 2,
+                    "dateElement": {
+                      "dateId": "kix.ds1h5urwkgzi",
+                      "textStyle": {},
+                      "dateElementProperties": {
+                        "timestamp": "2026-11-15T00:30:00Z",
+                        "timeZoneId": "America/New_York",
+                        "locale": "en",
+                        "dateFormat": "DATE_FORMAT_MONTH_DAY_YEAR_ABBREVIATED",
+                        "timeFormat": "TIME_FORMAT_HOUR_MINUTE_TIMEZONE",
+                        "displayText": "Nov 14, 2026 7:30 PM EST"
+                      }
+                    }
+                  },
+                  {
+                    "startIndex": 2,
+                    "endIndex": 40,
+                    "textRun": {
+                      "content": "NYC native smart-chip capability test\n",
+                      "textStyle": {}
+                    }
+                  }
+                ],
+                "paragraphStyle": {
+                  "namedStyleType": "NORMAL_TEXT",
+                  "direction": "LEFT_TO_RIGHT"
+                }
+              }
+            },
+            {
+              "startIndex": 40,
+              "endIndex": 87,
+              "paragraph": {
+                "elements": [
+                  {
+                    "startIndex": 40,
+                    "endIndex": 87,
+                    "textRun": {
+                      "content": "533 W. 19th St. and 537 W. 20th St. Exhibition\n",
+                      "textStyle": {}
+                    }
+                  }
+                ],
+                "paragraphStyle": {
+                  "namedStyleType": "NORMAL_TEXT",
+                  "direction": "LEFT_TO_RIGHT"
+                }
+              }
+            },
+            {
+              "startIndex": 87,
+              "endIndex": 129,
+              "paragraph": {
+                "elements": [
+                  {
+                    "startIndex": 87,
+                    "endIndex": 129,
+                    "textRun": {
+                      "content": "Saturday, November 14, 2026, 7:30–9:00 pm\n",
+                      "textStyle": {}
+                    }
+                  }
+                ],
+                "paragraphStyle": {
+                  "namedStyleType": "NORMAL_TEXT",
+                  "direction": "LEFT_TO_RIGHT"
+                }
+              }
+            },
+            {
+              "startIndex": 129,
+              "endIndex": 130,
+              "paragraph": {
+                "elements": [
+                  {
+                    "startIndex": 129,
+                    "endIndex": 130,
+                    "textRun": {
+                      "content": "\n",
+                      "textStyle": {}
+                    }
+                  }
+                ],
+                "paragraphStyle": {
+                  "namedStyleType": "NORMAL_TEXT",
+                  "direction": "LEFT_TO_RIGHT"
+                }
+              }
+            }
+          ]
+        }
+      }
+    }
+  ]
+}

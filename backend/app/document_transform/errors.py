@@ -49,6 +49,51 @@ class ModelUnavailableError(DocumentTransformError):
     code = "model_unavailable"
     public_detail = "The document transformation model is temporarily unavailable"
 
+    def __init__(self, *, retryable: bool = True, retry_after: float | None = None) -> None:
+        super().__init__(self.public_detail)
+        self.retryable = retryable
+        self.retry_after = retry_after
+
+
+class ModelConfigurationError(ModelUnavailableError):
+    code = "model_configuration_invalid"
+    public_detail = (
+        "The configured model or endpoint is unavailable. Contact support with this task ID."
+    )
+
+    def __init__(self) -> None:
+        super().__init__(retryable=False)
+
+
+class ModelAuthenticationError(ModelUnavailableError):
+    code = "model_authentication_failed"
+    public_detail = "Model provider authorization failed. Contact support with this task ID."
+
+    def __init__(self) -> None:
+        super().__init__(retryable=False)
+
+
+class ModelPermissionError(ModelAuthenticationError):
+    code = "model_permission_denied"
+
+
+class ModelOutputError(ModelUnavailableError):
+    code = "model_output_invalid"
+    public_detail = "The model returned invalid output. No unverified rewrite was applied."
+
+    def __init__(self) -> None:
+        super().__init__(retryable=False)
+
+
+class ModelDeadlineError(ModelUnavailableError):
+    code = "model_deadline_exhausted"
+    public_detail = (
+        "The model could not finish within the execution budget. Review this task before retrying."
+    )
+
+    def __init__(self) -> None:
+        super().__init__(retryable=False)
+
 
 class ConcisionTargetUnmetError(DocumentTransformError):
     public_detail = "Unslop couldn't meet the word limit safely. The source was not changed."

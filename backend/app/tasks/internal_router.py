@@ -86,5 +86,5 @@ async def execute_document_transform_task(
     # Interactive requests keep a strict 20-second aggregate provider budget. This
     # authenticated Cloud Tasks route runs behind a 300-second Cloud Run timeout and
     # needs enough room for the model pass plus idempotent Google Docs mutations.
-    with provider_retry_budget(_DOCUMENT_TRANSFORM_PROVIDER_BUDGET):
+    with provider_retry_budget(_DOCUMENT_TRANSFORM_PROVIDER_BUDGET, independent_execution=True):
         return await executor.execute(payload.task_id)

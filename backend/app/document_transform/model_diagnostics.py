@@ -3,10 +3,13 @@ from __future__ import annotations
 from dataclasses import asdict, dataclass
 from typing import Literal
 
+from google.auth import exceptions as auth_errors
 from google.genai import errors as genai_errors, types as genai_types
 from loguru import logger
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
+from app.document_transform.errors import ModelUnavailableError
+from app.document_transform.model_failures import classify_model_failure
 from app.document_transform.schemas import TransformPhase
 
 
@@ -123,7 +126,7 @@ class _ProviderResponse(BaseModel):
 
 @dataclass(frozen=True, slots=True)
 class ModelFailureDetails:
-    kind: Literal["api_error", "timeout", "invalid_payload"]
+    kind: Literal["api_error", "timeout", "invalid_payload", "credentials", "transport"]
     http_status: int
     reason: str
     payload_category: Literal["none", "unknown", "empty", "coverage", "binding", "schema"] = "none"
@@ -131,8 +134,14 @@ class ModelFailureDetails:
 
 
 def model_failure_details(
-    error: TimeoutError | ValueError | genai_errors.APIError,
+    error: Exception,
 ) -> ModelFailureDetails:
+    if isinstance(error, ModelUnavailableError) and isinstance(error.__cause__, Exception):
+        return model_failure_details(error.__cause__)
+    if isinstance(error, auth_errors.TransportError):
+        return ModelFailureDetails("transport", 0, "unknown")
+    if isinstance(error, auth_errors.GoogleAuthError):
+        return ModelFailureDetails("credentials", 0, "unknown")
     if isinstance(error, genai_errors.APIError):
         status = error.code if _HTTP_STATUS_MIN <= error.code <= _HTTP_STATUS_MAX else 0
         return ModelFailureDetails("api_error", status, _provider_reason(error))
@@ -148,6 +157,9 @@ def model_failure_details(
         return ModelFailureDetails(
             "invalid_payload", 0, "unknown", "schema", _safe_validation_issues(error)
         )
+    failure = classify_model_failure(error)
+    if failure is not None and failure.code == "model_unavailable":
+        return ModelFailureDetails("transport", 0, "unknown")
     return ModelFailureDetails("invalid_payload", 0, "unknown", "unknown")
 
 
@@ -197,7 +209,7 @@ def log_model_failure(
     operation: TransformPhase | Literal["review", "readability"],
     attempt: int,
     model: str,
-    error: TimeoutError | ValueError | genai_errors.APIError,
+    error: Exception,
 ) -> None:
     failure = model_failure_details(error)
     logger.warning(
@@ -211,6 +223,10 @@ def log_model_failure(
         model_error_kind=failure.kind,
         model_http_status=failure.http_status,
         model_error_reason=failure.reason,
+        model_error_code=error.code
+        if isinstance(error, ModelUnavailableError)
+        else "provider_attempt",
+        model_retryable=error.retryable if isinstance(error, ModelUnavailableError) else None,
     )
 
 

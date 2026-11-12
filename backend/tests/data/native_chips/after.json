@@ -1,0 +1,191 @@
+{
+  "documentId": "native-date-fixture",
+  "title": "Native date range fixture",
+  "revisionId": "r2",
+  "tabs": [
+    {
+      "tabProperties": {
+        "tabId": "t.0",
+        "title": "Tab 1",
+        "index": 0
+      },
+      "documentTab": {
+        "body": {
+          "content": [
+            {
+              "endIndex": 1,
+              "sectionBreak": {
+                "sectionStyle": {
+                  "columnSeparatorStyle": "NONE",
+                  "contentDirection": "LEFT_TO_RIGHT",
+                  "sectionType": "CONTINUOUS"
+                }
+              }
+            },
+            {
+              "startIndex": 1,
+              "endIndex": 40,
+              "paragraph": {
+                "elements": [
+                  {
+                    "startIndex": 1,
+                    "endIndex": 2,
+                    "dateElement": {
+                      "dateId": "kix.ds1h5urwkgzi",
+                      "textStyle": {},
+                      "dateElementProperties": {
+                        "timestamp": "2026-11-15T00:30:00Z",
+                        "timeZoneId": "America/New_York",
+                        "locale": "en",
+                        "dateFormat": "DATE_FORMAT_MONTH_DAY_YEAR_ABBREVIATED",
+                        "timeFormat": "TIME_FORMAT_HOUR_MINUTE_TIMEZONE",
+                        "displayText": "Nov 14, 2026 7:30 PM EST"
+                      }
+                    }
+                  },
+                  {
+                    "startIndex": 2,
+                    "endIndex": 40,
+                    "textRun": {
+                      "content": "NYC native smart-chip capability test\n",
+                      "textStyle": {}
+                    }
+                  }
+                ],
+                "paragraphStyle": {
+                  "namedStyleType": "NORMAL_TEXT",
+                  "direction": "LEFT_TO_RIGHT"
+                }
+              }
+            },
+            {
+              "startIndex": 40,
+              "endIndex": 87,
+              "paragraph": {
+                "elements": [
+                  {
+                    "startIndex": 40,
+                    "endIndex": 87,
+                    "textRun": {
+                      "content": "533 W. 19th St. and 537 W. 20th St. Exhibition\n",
+                      "textStyle": {}
+                    }
+                  }
+                ],
+                "paragraphStyle": {
+                  "namedStyleType": "NORMAL_TEXT",
+                  "direction": "LEFT_TO_RIGHT"
+                }
+              }
+            },
+            {
+              "startIndex": 87,
+              "endIndex": 101,
+              "paragraph": {
+                "elements": [
+                  {
+                    "startIndex": 87,
+                    "endIndex": 97,
+                    "textRun": {
+                      "content": "Saturday, ",
+                      "textStyle": {}
+                    }
+                  },
+                  {
+                    "startIndex": 97,
+                    "endIndex": 98,
+                    "dateElement": {
+                      "dateId": "kix.sit13070zidt",
+                      "textStyle": {},
+                      "dateElementProperties": {
+                        "timestamp": "2026-11-15T00:30:00Z",
+                        "timeZoneId": "America/New_York",
+                        "locale": "en",
+                        "dateFormat": "DATE_FORMAT_ISO8601",
+                        "timeFormat": "TIME_FORMAT_HOUR_MINUTE_TIMEZONE",
+                        "displayText": "2026-11-14 7:30 PM EST"
+                      }
+                    }
+                  },
+                  {
+                    "startIndex": 98,
+                    "endIndex": 99,
+                    "textRun": {
+                      "content": "–",
+                      "textStyle": {}
+                    }
+                  },
+                  {
+                    "startIndex": 99,
+                    "endIndex": 100,
+                    "dateElement": {
+                      "dateId": "kix.ck08tvg840j7",
+                      "textStyle": {},
+                      "dateElementProperties": {
+                        "timestamp": "2026-11-15T02:00:00Z",
+                        "timeZoneId": "America/New_York",
+                        "locale": "en",
+                        "dateFormat": "DATE_FORMAT_ISO8601",
+                        "timeFormat": "TIME_FORMAT_HOUR_MINUTE_TIMEZONE",
+                        "displayText": "2026-11-14 9:00 PM EST"
+                      }
+                    }
+                  },
+                  {
+                    "startIndex": 100,
+                    "endIndex": 101,
+                    "textRun": {
+                      "content": "\n",
+                      "textStyle": {}
+                    }
+                  }
+                ],
+                "paragraphStyle": {
+                  "namedStyleType": "NORMAL_TEXT",
+                  "direction": "LEFT_TO_RIGHT"
+                }
+              }
+            },
+            {
+              "startIndex": 101,
+              "endIndex": 102,
+              "paragraph": {
+                "elements": [
+                  {
+                    "startIndex": 101,
+                    "endIndex": 102,
+                    "textRun": {
+                      "content": "\n",
+                      "textStyle": {}
+                    }
+                  }
+                ],
+                "paragraphStyle": {
+                  "namedStyleType": "NORMAL_TEXT",
+                  "direction": "LEFT_TO_RIGHT"
+                }
+              }
+            }
+          ]
+        },
+        "namedRanges": {
+          "sarj_native_date_range_canary_20261112": {
+            "name": "sarj_native_date_range_canary_20261112",
+            "namedRanges": [
+              {
+                "namedRangeId": "kix.unnkkmredgem",
+                "name": "sarj_native_date_range_canary_20261112",
+                "ranges": [
+                  {
+                    "startIndex": 101,
+                    "endIndex": 102
+                  }
+                ]
+              }
+            ]
+          }
+        }
+      }
+    }
+  ]
+}

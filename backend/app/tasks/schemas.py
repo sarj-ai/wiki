@@ -58,6 +58,7 @@ class PendingTaskRead(_TaskReadBase):
 class RunningTaskRead(_TaskReadBase):
     kind: TaskKind
     status: Literal[TaskStatus.RUNNING]
+    execution_state: Literal["running", "retrying"] = "running"
     result: None
     resource_id: FileId | None
     error_code: None

@@ -1284,7 +1284,7 @@ class GoogleDocumentGateway(DocumentGateway):
     ) -> InPlaceStageResult:
         if not requests or not marker_name:
             raise DocumentGatewayError
-        expected_marker_range = _post_mutation_marker_range(marker_range, requests)
+        expected_marker_range = post_mutation_marker_range(marker_range, requests)
         atomic_requests = [
             {"createNamedRange": {"name": marker_name, "range": marker_range}},
             *requests,
@@ -1629,7 +1629,7 @@ class GoogleDocumentGateway(DocumentGateway):
             marker_range = _terminal_body_marker_range(document)
             if marker_range is None:
                 raise DocumentGatewayError(retryable=False)
-            expected_marker_range = _post_mutation_marker_range(marker_range, requests)
+            expected_marker_range = post_mutation_marker_range(marker_range, requests)
             self._update_properties_sync(
                 draft.document_id,
                 {
@@ -2879,7 +2879,7 @@ def _terminal_body_marker_range(document: dict[str, Any]) -> dict[str, Any] | No
     return candidate
 
 
-def _post_mutation_marker_range(
+def post_mutation_marker_range(
     marker_range: dict[str, Any],
     requests: list[dict[str, Any]],
 ) -> dict[str, Any]:
@@ -2903,6 +2903,11 @@ def _post_mutation_marker_range(
         if delta is not None:
             start += delta
             end += delta
+        # Native Docs readback confirms insertDate occupies one UTF-16 unit.
+        delta = _marker_insertion_delta(request.get("insertDate"), tab_id, start, native_width=1)
+        if delta is not None:
+            start += delta
+            end += delta
     expected["startIndex"] = start
     expected["endIndex"] = end
     return expected
@@ -2921,11 +2926,13 @@ def _marker_deletion_delta(span: dict[str, JsonValue], tab_id: str, start: int) 
     return None
 
 
-def _marker_insertion_delta(insertion: object, tab_id: str, start: int) -> int | None:
+def _marker_insertion_delta(
+    insertion: object, tab_id: str, start: int, *, native_width: int | None = None
+) -> int | None:
     if not isinstance(insertion, dict):
         return None
     location, text = insertion.get("location"), insertion.get("text")
-    if not isinstance(location, dict) or not isinstance(text, str):
+    if not isinstance(location, dict) or (not isinstance(text, str) and native_width is None):
         return None
     index = location.get("index")
     if (
@@ -2934,7 +2941,7 @@ def _marker_insertion_delta(insertion: object, tab_id: str, start: int) -> int |
         and isinstance(index, int)
         and index <= start
     ):
-        return len(text.encode("utf-16-le")) // 2
+        return native_width if native_width is not None else utf16_length(str(text))
     return None
 
 

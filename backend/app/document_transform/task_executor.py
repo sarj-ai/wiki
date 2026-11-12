@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from datetime import timedelta
+from datetime import UTC, datetime, timedelta
 import hashlib
 import time
 from typing import Protocol, override
@@ -64,6 +64,7 @@ from app.files.service import GoogleFilesService
 from app.identifiers import FileId, TaskId
 from app.models.user import User
 from app.models.wiki import DocumentHeaderProvenance
+from app.performance import provider_retry_budget
 from app.tasks.errors import TaskExecutionDeferredError, TaskNotClaimableError
 from app.tasks.schemas import (
     CancelledTaskRead,
@@ -79,7 +80,9 @@ from app.tasks.service import TaskService
 
 _EXECUTION_LEASE = timedelta(minutes=6)
 _MAX_LOGO_BYTES = 2 * 1024 * 1024
-_MAX_TASK_ATTEMPTS = 10
+_MAX_TASK_ATTEMPTS = 3
+_MAX_TASK_AGE = timedelta(minutes=10)
+_MAX_DELIVERY_BUDGET = timedelta(minutes=4)
 
 
 class DocumentTransformTaskExecutor(ABC):
@@ -217,6 +220,13 @@ class DriveDocumentTransformTaskExecutor(DocumentTransformTaskExecutor):
                 error_detail="The saved document transformation request could not be read",
             )
         try:
+            if datetime.now(UTC) - claim.task.created_at >= _MAX_TASK_AGE:
+                return await self._tasks.fail(
+                    task_id,
+                    lease_token=claim.lease_token,
+                    error_code="execution_deadline_exhausted",
+                    error_detail="The task exceeded its total execution budget. Review any existing output before retrying.",
+                )
             if claim.task.attempt_count > _MAX_TASK_ATTEMPTS:
                 return await self._tasks.fail(
                     task_id,
@@ -287,15 +297,24 @@ class DriveDocumentTransformTaskExecutor(DocumentTransformTaskExecutor):
                 error_detail="The document transformation could not be initialized",
                 cause=exc,
             )
-        return await _execute_claimed(
-            tasks=self._tasks,
-            transform=runtime.transform,
-            task_id=task_id,
-            claim=claim,
-            payload=claimed_payload,
-            checkpoint=claimed_record.checkpoint,
-            short_links=runtime.short_links,
-        )
+        remaining = _MAX_TASK_AGE - (datetime.now(UTC) - claim.task.created_at)
+        if remaining.total_seconds() < 1:
+            return await self._tasks.fail(
+                task_id,
+                lease_token=claim.lease_token,
+                error_code="execution_deadline_exhausted",
+                error_detail="The task exceeded its total execution budget before execution.",
+            )
+        with provider_retry_budget(min(_MAX_DELIVERY_BUDGET, remaining)):
+            return await _execute_claimed(
+                tasks=self._tasks,
+                transform=runtime.transform,
+                task_id=task_id,
+                claim=claim,
+                payload=claimed_payload,
+                checkpoint=claimed_record.checkpoint,
+                short_links=runtime.short_links,
+            )
 
     async def _runtime(
         self,
@@ -514,7 +533,7 @@ async def _execute_claimed(
             error_code=exc.code,
             started_at=started_at,
         )
-        if isinstance(exc, DocumentGatewayError) and not exc.retryable:
+        if not exc.retryable:
             return await tasks.fail(
                 task_id,
                 lease_token=claim.lease_token,
@@ -642,7 +661,10 @@ async def defer_or_fail_retryable_task(
     error_detail: str,
     cause: Exception,
 ) -> TaskRead:
-    if claim.task.attempt_count >= _MAX_TASK_ATTEMPTS:
+    if (
+        claim.task.attempt_count >= _MAX_TASK_ATTEMPTS
+        or datetime.now(UTC) - claim.task.created_at >= _MAX_TASK_AGE
+    ):
         return await tasks.fail(
             task_id,
             lease_token=claim.lease_token,

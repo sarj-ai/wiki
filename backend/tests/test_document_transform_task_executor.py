@@ -67,12 +67,14 @@ class _RetryTasks:
         *,
         attempt_count: int = 1,
         payload: DocumentTransformRequest | None = None,
+        created_at: datetime | None = None,
     ) -> None:
         self.deferred = 0
         self.deferred_task_ids: list[TaskId] = []
         self.failed = 0
         self.attempt_count = attempt_count
         self.payload = payload or _payload()
+        self.created_at = created_at
         self.last_error_code: str | None = None
 
     async def defer(self, task_id: TaskId, *, lease_token: uuid.UUID) -> TaskRead:
@@ -137,7 +139,12 @@ class _RetryTasks:
 
     async def claim(self, task_id: TaskId, *, lease_duration: timedelta) -> TaskClaim:
         del lease_duration
-        return _claim(task_id, attempt_count=self.attempt_count)
+        claim = _claim(task_id, attempt_count=self.attempt_count)
+        if self.created_at is not None:
+            claim = claim.model_copy(
+                update={"task": claim.task.model_copy(update={"created_at": self.created_at})}
+            )
+        return claim
 
 
 class _UnreadableTask(_RetryTasks):
@@ -528,7 +535,7 @@ async def test_retryable_failure_defers_before_attempt_limit() -> None:
         await defer_or_fail_retryable_task(
             task_id,
             tasks=tasks,
-            claim=_claim(task_id, attempt_count=9),
+            claim=_claim(task_id, attempt_count=2),
             error_code="model_unavailable",
             error_detail="Retry later",
             cause=RuntimeError("provider timeout"),
@@ -538,7 +545,7 @@ async def test_retryable_failure_defers_before_attempt_limit() -> None:
     assert tasks.failed == 0
 
 
-@pytest.mark.parametrize("attempt_count", [1, 9], ids=["first-attempt", "last-retry"])
+@pytest.mark.parametrize("attempt_count", [1, 2], ids=["first-attempt", "last-retry"])
 async def test_model_unavailability_defers_the_same_task_without_recording_output(
     attempt_count: int,
 ) -> None:
@@ -771,14 +778,17 @@ async def test_internal_document_transform_gets_worker_provider_budget() -> None
 
 
 @pytest.mark.parametrize("in_place", [False, True])
+@pytest.mark.parametrize("exhausted_budget", ["attempts", "age"])
 async def test_crashed_worker_retry_cap_precedes_runtime(
     monkeypatch: pytest.MonkeyPatch,
+    exhausted_budget: str,
     *,
     in_place: bool,
 ) -> None:
     tasks = _RetryTasks(
-        attempt_count=11,
+        attempt_count=4 if exhausted_budget == "attempts" else 1,
         payload=_in_place_payload() if in_place else _drive_payload(),
+        created_at=datetime.now(UTC) - timedelta(minutes=11) if exhausted_budget == "age" else None,
     )
     executor = object.__new__(DriveDocumentTransformTaskExecutor)
     monkeypatch.setattr(executor, "_tasks", tasks, raising=False)
@@ -791,8 +801,15 @@ async def test_crashed_worker_retry_cap_precedes_runtime(
     result = await executor.execute(TaskId(uuid.uuid7()))
 
     assert isinstance(result, FailedTaskRead)
-    assert tasks.last_error_code == ("needs_review" if in_place else "execution_attempts_exhausted")
+    assert tasks.last_error_code == (
+        "execution_deadline_exhausted"
+        if exhausted_budget == "age"
+        else "needs_review"
+        if in_place
+        else "execution_attempts_exhausted"
+    )
     assert tasks.failed == 1
+    assert tasks.deferred == 0
 
 
 async def test_worker_kill_switch_blocks_claimed_in_place_task_before_runtime(
