@@ -310,14 +310,29 @@ def _presentation_blocks(markdown: str, *, title: str, branded: bool) -> tuple[_
     return tuple(
         replace(
             block,
-            inlines=tuple(replace(inline, bold=False) for inline in block.inlines),
+            inlines=_body_weight_inlines(block.inlines),
             cell_inlines=tuple(
-                tuple(tuple(replace(inline, bold=False) for inline in cell) for cell in row)
-                for row in block.cell_inlines
+                tuple(_body_weight_inlines(cell) for cell in row) for row in block.cell_inlines
             ),
         )
         for block in blocks
     )
+
+
+def _body_weight_inlines(
+    inlines: tuple[MarkdownImportInline, ...],
+) -> tuple[MarkdownImportInline, ...]:
+    result: list[MarkdownImportInline] = []
+    for inline in inlines:
+        _append_inline(
+            result,
+            inline.text,
+            bold=False,
+            italic=inline.italic,
+            code=inline.code,
+            url=inline.url,
+        )
+    return tuple(result)
 
 
 def _manifest_list_position(
