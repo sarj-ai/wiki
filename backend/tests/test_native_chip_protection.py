@@ -77,3 +77,17 @@ def test_quote_continued_across_native_paragraphs_is_preserved() -> None:
     assert plan is not None
     assert [span.original_text for span in plan.spans] == ["November 15, 2026"]
     assert [item.reason for item in plan.skipped] == ["protected_quotation"]
+
+
+@pytest.mark.parametrize(
+    ("opening", "reason"), [("“", "unclosed_quotation"), ("`", "unclosed_code")]
+)
+def test_many_unmatched_openers_and_date_candidates_are_preserved(
+    opening: str, reason: str
+) -> None:
+    text = "😀 " + opening * 16_000 + " November 14, 2026;" * 100
+    plan = plan_native_chips(_document((text,)), operation_id=uuid.UUID(int=5))
+    assert plan is not None
+    assert not plan.spans
+    assert len(plan.skipped) == 100
+    assert all(item.reason == reason for item in plan.skipped)

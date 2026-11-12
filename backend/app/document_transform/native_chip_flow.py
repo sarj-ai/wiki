@@ -18,7 +18,7 @@ from app.document_transform.native_chip_detection import (
 )
 from app.document_transform.native_chip_nodes import native_chip_node
 from app.document_transform.native_chip_protection import (
-    protect_native_chip_candidate,
+    protect_native_chip_candidates,
     protected_native_chip_ranges,
 )
 from app.document_transform.readability_json import (
@@ -134,24 +134,19 @@ def plan_native_chips(
         for paragraph in _paragraphs(native_chip_node(tab).body):
             text = _paragraph_text(paragraph)
             start = integer(paragraph["startIndex"])
-            candidates = (
-                *detect_address_spans(text, context=context),
-                *detect_date_spans(text, context=context),
+            candidates = protect_native_chip_candidates(
+                (
+                    *detect_address_spans(text, context=context),
+                    *detect_date_spans(text, context=context),
+                ),
+                text=text,
+                tab_id=tab_id,
+                paragraph_start=start,
+                protected=protected,
+                enabled=planner_version != 1,
             )
             for candidate in candidates:
-                conversion = _candidate_conversion(
-                    tab_id,
-                    tab,
-                    paragraph,
-                    protect_native_chip_candidate(
-                        candidate,
-                        text=text,
-                        tab_id=tab_id,
-                        paragraph_start=start,
-                        protected=protected,
-                        enabled=planner_version != 1,
-                    ),
-                )
+                conversion = _candidate_conversion(tab_id, tab, paragraph, candidate)
                 if isinstance(conversion, NativeChipSkip):
                     skipped.append(conversion)
                 elif len(spans) >= _MAX_CHIPS:
