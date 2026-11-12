@@ -12,7 +12,7 @@ from app.document_transform.quotations import SINGLE_QUOTED_SPAN_PATTERN, quoted
 
 UNSLOP_UPSTREAM_COMMIT = "d81f5196167ded24f46fced04958c0c12d681798"
 UNSLOP_UPSTREAM_VERSION = "2.3.0"
-UNSLOP_POLICY_VERSION = "sarj-concise-v33"
+UNSLOP_POLICY_VERSION = "sarj-concise-v34"
 MAX_EDITORIAL_PASSES = 100
 MIN_CONCISION_PROSE_WORDS = 40
 CONCISION_WORD_NUMERATOR = 2
@@ -71,7 +71,15 @@ UNSLOP_REWRITE_INSTRUCTION = (
     "are editorial framing. State the attributed facts directly: 'This note is intended "
     "to bring together latency estimates from the Google SRE reference. The figures are "
     "rules of thumb' becomes 'Google SRE reference latency estimates are rules of thumb.' "
-    "Retain every substantive fact when removing that announcement. This exception applies to the "
+    "Retain every substantive fact when removing that announcement. A source explicitly "
+    "identified as a working reference or reference document is a document; retain that "
+    "identity across passes even if an earlier pass omits the adjective. An unqualified "
+    "technical reference keeps its substantive goals. Multiple possible reference "
+    "subjects keep their intention constraints; never transfer the exception between them. "
+    "For this reference exception, keep the same leading writing predicate and subject "
+    "matter, and retain following sentences verbatim; remove only writing scaffolding "
+    "and a redundant 'the' article in that leading sentence. "
+    "This exception applies to the "
     "document describing its own writing, not substantive plans, desired outcomes, "
     "requirements, capabilities or uncertainty. Keep a retained writing action attached "
     "to the document. Never turn 'This note brings together estimates. The team measured "
@@ -340,12 +348,28 @@ _RECAP_PROTECTED_SPAN = re.compile(
 )
 _RECAP_PROTECTED_LEADING = frozenset("@/#_`'\"‘“[")
 _FRAMING_REFERENCE_SPAN = re.compile(rf"{CUSTOM_URI_PATTERN}|\[[^\]\n]*\]")
+_REFERENCE_IDENTITY_TOKEN = re.compile(
+    _IGNORED_SPAN.pattern + "|" + _FRAMING_REFERENCE_SPAN.pattern + r"|\w+|[^\w\s]",
+    re.MULTILINE,
+)
 
 # A document's announcement of its own writing is editorial framing.
 # Keep substantive intentions ("the plan aims to reduce outages") constrained.
 _DOCUMENT_SUBJECT_PATTERN = (
     r"\b(?:this|the|our|a)\s+(?:working\s+)?"
     r"(?:document|note|guide|report|article|section|page|overview)\s+"
+)
+_QUALIFIED_REFERENCE_PREFIX = re.compile(
+    r"\A(?:this|the|our|a)\s+(?P<kind>working\s+reference|reference\s+document)\b",
+    re.IGNORECASE,
+)
+_CONTINUED_REFERENCE_PREFIX = re.compile(
+    r"\A(?:this|the|our|a)\s+(?P<kind>reference)\b", re.IGNORECASE
+)
+_REFERENCE_MENTION = re.compile(r"\breference\b", re.IGNORECASE)
+_REFERENCE_COMPLEX_CLAUSE = re.compile(
+    r"[,;:]|\b(?:and|but|while|whereas|because|although|if|unless|when|who|which|that)\b",
+    re.IGNORECASE,
 )
 _DOCUMENT_WRITING_MODAL_PATTERN = r"(?:is\s+intended\s+to|aims\s+to|seeks\s+to|is\s+designed\s+to)"
 _DOCUMENT_WRITING_ACTIONS = (
@@ -405,6 +429,23 @@ UNSLOP_CATALOG_SHA256 = hashlib.sha256(
                 _FRAMING_REFERENCE_SPAN.pattern,
                 _FRAMING_REFERENCE_SPAN.flags,
             ),
+            "qualified_reference_prefix": (
+                _QUALIFIED_REFERENCE_PREFIX.pattern,
+                _QUALIFIED_REFERENCE_PREFIX.flags,
+            ),
+            "continued_reference_prefix": (
+                _CONTINUED_REFERENCE_PREFIX.pattern,
+                _CONTINUED_REFERENCE_PREFIX.flags,
+            ),
+            "reference_mention": (_REFERENCE_MENTION.pattern, _REFERENCE_MENTION.flags),
+            "reference_complex_clause": (
+                _REFERENCE_COMPLEX_CLAUSE.pattern,
+                _REFERENCE_COMPLEX_CLAUSE.flags,
+            ),
+            "reference_identity_token": (
+                _REFERENCE_IDENTITY_TOKEN.pattern,
+                _REFERENCE_IDENTITY_TOKEN.flags,
+            ),
             "recap_protected_leading": sorted(_RECAP_PROTECTED_LEADING),
             "recap_protected_span": (
                 _RECAP_PROTECTED_SPAN.pattern,
@@ -448,10 +489,11 @@ class ConcisionTarget:
     max_words: int
 
 
-def reassigned_document_writing_action(source: str, replacement: str) -> bool:
-    before = _FRAMING_REFERENCE_SPAN.sub(
-        lambda match: " " * len(match.group()), _mask_ignored_spans(source)
-    )
+def reassigned_document_writing_action(
+    source: str, replacement: str, *, framing_source: str | None = None
+) -> bool:
+    origin = source if framing_source is None else framing_source
+    before = _document_framing_text(source, framing_source=origin)
     if not re.search(_DOCUMENT_SUBJECT_PATTERN, before, re.IGNORECASE):
         return False
     prefix = _DOCUMENT_SUBJECT_PATTERN + rf"(?:{_DOCUMENT_WRITING_MODAL_PATTERN}\s+)?"
@@ -467,9 +509,7 @@ def reassigned_document_writing_action(source: str, replacement: str) -> bool:
         start, end = frame.span("action")
         remaining[start:end] = " " * (end - start)
     other_actions = "".join(remaining)
-    after = _FRAMING_REFERENCE_SPAN.sub(
-        lambda match: " " * len(match.group()), _mask_ignored_spans(replacement)
-    )
+    after = _document_framing_text(replacement, framing_source=origin)
     for action in _DOCUMENT_WRITING_ACTIONS:
         verb = _writing_action_pattern(action)
         if verb.search(other_actions):
@@ -496,11 +536,140 @@ def _writing_action_pattern(action: str) -> re.Pattern[str]:
     return re.compile(r"\b(?:" + forms + r")\b", re.IGNORECASE)
 
 
-def without_editorial_framing(text: str) -> str:
-    characters = list(text)
-    masked = _FRAMING_REFERENCE_SPAN.sub(
-        lambda match: " " * len(match.group(0)), _mask_ignored_spans(text)
+def _masked_framing_text(text: str) -> str:
+    return _FRAMING_REFERENCE_SPAN.sub(
+        lambda match: " " * len(match.group()), _mask_ignored_spans(text)
     )
+
+
+def _sole_reference_subject(text: str, *, qualified: bool) -> re.Match[str] | None:
+    prefix = _QUALIFIED_REFERENCE_PREFIX if qualified else _CONTINUED_REFERENCE_PREFIX
+    reference = prefix.match(text)
+    if reference is None:
+        return None
+    remaining = text[reference.end() :]
+    if _REFERENCE_MENTION.search(remaining) or re.search(
+        _DOCUMENT_SUBJECT_PATTERN, remaining, re.IGNORECASE
+    ):
+        return None
+    return reference
+
+
+def ambiguous_reference_framing(
+    source: str, replacement: str, *, framing_source: str | None = None
+) -> bool:
+    origin = source if framing_source is None else framing_source
+    original = _masked_framing_text(origin)
+    if _QUALIFIED_REFERENCE_PREFIX.match(original) is None:
+        # A technical reference cannot gain document identity from a rewrite.
+        return bool(
+            _CONTINUED_REFERENCE_PREFIX.match(original)
+            and _QUALIFIED_REFERENCE_PREFIX.match(_masked_framing_text(replacement))
+        )
+    if (
+        len(_REFERENCE_MENTION.findall(origin)) != 1
+        or _sole_reference_subject(original, qualified=True) is None
+    ):
+        return False
+    for text in (source, replacement):
+        masked = _masked_framing_text(text)
+        if not (
+            _QUALIFIED_REFERENCE_PREFIX.match(masked) or _CONTINUED_REFERENCE_PREFIX.match(masked)
+        ):
+            continue
+        if len(_REFERENCE_MENTION.findall(text)) != 1 or not (
+            _sole_reference_subject(masked, qualified=True)
+            or _sole_reference_subject(masked, qualified=False)
+        ):
+            return True
+    expected = _reference_framing_signature(origin)
+    return expected is not None and any(
+        _reference_framing_signature(text) != expected for text in (source, replacement)
+    )
+
+
+@dataclass(frozen=True, slots=True)
+class _ReferenceFramingSignature:
+    tokens: tuple[str, ...]
+    tail: str
+
+
+def _reference_framing_signature(text: str) -> _ReferenceFramingSignature | None:
+    masked = _masked_framing_text(text)
+    reference = _QUALIFIED_REFERENCE_PREFIX.match(masked) or _CONTINUED_REFERENCE_PREFIX.match(
+        masked
+    )
+    if reference is None:
+        return None
+    start, end = reference.span("kind")
+    projected = f"{text[:start]}document{text[end:]}"
+    sentence_end = _reference_sentence_end(projected)
+    sentence, tail = projected[:sentence_end], projected[sentence_end:]
+    syntax = _READER_CONVENIENCE_FRAME.sub("", _masked_framing_text(sentence))
+    if _REFERENCE_COMPLEX_CLAUSE.search(syntax):
+        return None
+    prefix = _DOCUMENT_SUBJECT_PATTERN + rf"(?:{_DOCUMENT_WRITING_MODAL_PATTERN}\s+)?"
+    for action in _DOCUMENT_WRITING_ACTIONS:
+        verb = _writing_action_pattern(action)
+        owner = re.match(prefix + rf"(?P<action>{verb.pattern})", sentence, re.IGNORECASE)
+        if owner is None:
+            continue
+        canonical = sentence[: owner.start("action")] + action + sentence[owner.end("action") :]
+        retained = without_editorial_framing(canonical)
+        # Protected code/quote/URL spans remain whole, case-sensitive tokens.
+        # Only an ordinary article outside those spans can disappear.
+        tokens = tuple(
+            match.group()
+            for match in _REFERENCE_IDENTITY_TOKEN.finditer(retained)
+            if match.group().casefold() != "the"
+        )
+        return _ReferenceFramingSignature(tokens=tokens, tail=tail)
+    return None
+
+
+def _reference_sentence_end(text: str) -> int:
+    boundary = re.search(r"[.!?](?=\s|$)", _masked_framing_text(text))
+    ends = [boundary.end() if boundary else len(text)]
+    for span in _IGNORED_SPAN.finditer(text):
+        value = span.group()
+        if (
+            value.startswith(('"', "“", "'", "‘"))
+            and re.search(r"[.!?][\"”'’]+$", value)
+            and (span.end() == len(text) or text[span.end()].isspace())
+        ):
+            ends.append(span.end())
+    return min(ends)
+
+
+def _document_framing_text(text: str, *, framing_source: str | None) -> str:
+    masked = _masked_framing_text(text)
+    origin = text if framing_source is None else framing_source
+    original = _masked_framing_text(origin)
+    # A block containing another reference/document subject cannot prove which
+    # entity a later leading reference denotes after model reordering. Keep its
+    # intention constraints rather than transfer the document exception.
+    if (
+        len(_REFERENCE_MENTION.findall(origin)) != 1
+        or len(_REFERENCE_MENTION.findall(text)) != 1
+        or _sole_reference_subject(original, qualified=True) is None
+        or _reference_framing_signature(origin) is None
+    ):
+        return masked
+    reference = _sole_reference_subject(masked, qualified=True)
+    if reference is None:
+        reference = _sole_reference_subject(masked, qualified=False)
+    if reference is None:
+        return masked
+    start, end = reference.span("kind")
+    # This projection is only for matching the proven document subject. Keep
+    # offsets stable so masking never moves quotations, literals or names.
+    return masked[:start] + "document".ljust(end - start) + masked[end:]
+
+
+def without_editorial_framing(text: str, *, framing_source: str | None = None) -> str:
+    characters = list(text)
+    masked = _document_framing_text(text, framing_source=framing_source)
+    reference_end = _reference_sentence_end(text) if masked != _masked_framing_text(text) else None
     for match in _EDITORIAL_FRAMING_PATTERN.finditer(masked):
         characters[match.start() : match.end()] = " " * (match.end() - match.start())
     for match in _DOCUMENT_GATHERING_FRAME.finditer(masked):
@@ -512,6 +681,8 @@ def without_editorial_framing(text: str) -> str:
         characters[start:end] = " " * (end - start)
         boundary = re.search(r"[.!?\n]", masked[match.end() :])
         sentence_end = match.end() + boundary.start() if boundary else len(masked)
+        if reference_end is not None:
+            sentence_end = min(sentence_end, reference_end)
         for convenience in _READER_CONVENIENCE_FRAME.finditer(masked, match.end(), sentence_end):
             characters[convenience.start() : convenience.end()] = " " * (
                 convenience.end() - convenience.start()
