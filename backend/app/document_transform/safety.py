@@ -110,7 +110,8 @@ _SCOPE_QUALIFIER = re.compile(
     r"observed|recorded|studied|measured|estimated|reported|inferred|concluded|proved|"
     r"national|confidence intervals?|as (?:clearly|often|likely|many|much) as)\b|"
     r"\b(?:about|around|roughly|approximately|nearly)\b(?=\s+\d)|"
-    r"\b[^\W\d_]+(?:[-\u2011][^\W\d_]+)+\b",
+    r"\b[^\W\d_]+(?:[-\u2011][^\W\d_]+)+\b|"
+    r"\b(?:above|below)\b",
     re.IGNORECASE,
 )
 _RHETORICAL_COMPOUNDS = frozenset(
