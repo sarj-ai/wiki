@@ -13,13 +13,16 @@ from app.identifiers import DocsSegmentId, DocsTabId
 
 # Apostrophes within words belong to the quotation. A quotation may continue
 # across line or paragraph breaks; those breaks do not permit paraphrasing it.
+_STRAIGHT_SINGLE_QUOTED_SPAN_PATTERN = r"(?<!\w)'(?:[^']|(?<=\w)'(?=\w)|(?<=[sS])'(?!\w))+'(?!\w)"
 SINGLE_QUOTED_SPAN_PATTERN = (
-    r"(?<!\w)'(?:[^']|(?<=\w)'(?=\w)|(?<=[sS])'(?!\w))+'(?!\w)|"
+    _STRAIGHT_SINGLE_QUOTED_SPAN_PATTERN + "|"
     r"‘(?:[^‘’]|(?<=\w)’(?=\w)|(?<=[sS])’(?!\w))+’"
 )
 QUOTED_SPAN_PATTERN = rf'"[^"]+"|“[^”]+”|{SINGLE_QUOTED_SPAN_PATTERN}'
 _QUOTE_TOKEN = re.compile(r"""["“”‘’']""")
-_QUOTED_SPAN = re.compile(QUOTED_SPAN_PATTERN)
+# Only straight quotes can close at an inch/foot abbreviation. In particular,
+# never rescan a suffix for every unmatched curly opening mark in a document.
+_UNIT_QUOTATION_PREFIX = re.compile(rf'"[^"]+"|{_STRAIGHT_SINGLE_QUOTED_SPAN_PATTERN}')
 
 
 def quotation_scan_sources(source: str) -> tuple[str, ...]:
@@ -31,7 +34,7 @@ def quotation_scan_sources(source: str) -> tuple[str, ...]:
     if any(
         masked[span.start()] == source[span.start()]
         and masked[span.end() - 1] != source[span.end() - 1]
-        for span in _QUOTED_SPAN.finditer(source)
+        for span in _UNIT_QUOTATION_PREFIX.finditer(source)
     ):
         return masked, source
     return (masked,)

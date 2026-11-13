@@ -19,7 +19,7 @@ UNIT_GROUP = (
 )
 UNIT_EXPRESSION = rf"(?:{UNIT_ATOM}|{UNIT_GROUP})(?:{UNIT_PRODUCT}(?:{UNIT_ATOM}|{UNIT_GROUP}))*"
 
-UNIT_ANNOTATION_POLICY_VERSION = "explicit-imperial-annotation-v1"
+UNIT_ANNOTATION_POLICY_VERSION = "explicit-imperial-annotation-v2"
 _ANNOTATION_NUMBER = (
     rf"[+−-]?(?:\d+(?:{HORIZONTAL_SPACE}+\d+)?{HORIZONTAL_SPACE}*/"
     rf"{HORIZONTAL_SPACE}*\d+|\d+(?:\.\d+)?)"

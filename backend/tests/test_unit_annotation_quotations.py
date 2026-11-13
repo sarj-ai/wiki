@@ -1,8 +1,12 @@
 from dataclasses import replace
+from pathlib import Path
+import subprocess
+import sys
 import uuid
 
 import pytest
 
+from app.document_transform import native_quote_spans
 from app.document_transform.ir import parse_google_document, parse_markdown, utf16_length
 from app.document_transform.native_chip_flow import plan_native_chips
 from app.document_transform.native_quote_spans import native_inline_protected_ranges
@@ -216,6 +220,41 @@ def test_genuine_later_unfinished_quote_keeps_its_native_date_literal() -> None:
     assert not plan.spans
     assert len(plan.skipped) == 1
     assert plan.skipped[0].reason in {"protected_quotation", "unclosed_quotation"}
+
+
+def test_closed_mixed_quote_with_unit_keeps_only_the_outside_date_eligible() -> None:
+    source = '“The reviewer retained "12 inches (12") on 2026-11-13.” Visit 2026-11-14.'
+    plan = plan_native_chips(_chip_document((source,)), operation_id=uuid.UUID(int=8))
+
+    assert plan is not None
+    assert [span.original_text for span in plan.spans] == ["2026-11-14"]
+    assert len(plan.skipped) == 1
+    assert plan.skipped[0].reason == "protected_quotation"
+
+
+@pytest.mark.parametrize("annotation", ['12 inches (12")', "12 inches (12″)"])
+def test_supported_size_unmatched_quote_scan_cannot_rescan_every_suffix(annotation: str) -> None:
+    expected_module = str(Path(native_quote_spans.__file__).resolve())
+    script = (
+        "from pathlib import Path\n"
+        "from app.document_transform import native_quote_spans\n"
+        "from app.document_transform.ir import utf16_length\n"
+        f"assert str(Path(native_quote_spans.__file__).resolve()) == {expected_module!r}\n"
+        f"source = '“' * 400_000 + {annotation!r} + ' Keep 2026-11-13 verbatim.'\n"
+        "assert utf16_length(source) < 500_000\n"
+        "ranges = native_quote_spans.native_inline_protected_ranges(source)\n"
+        "assert any(span.start == 0 and span.end == utf16_length(source) "
+        "and span.reason == 'unclosed_quotation' for span in ranges)\n"
+        "print('protected')\n"
+    )
+    completed = subprocess.run(
+        [sys.executable, "-c", script],
+        check=True,
+        capture_output=True,
+        text=True,
+        timeout=10,
+    )
+    assert completed.stdout.strip() == "protected"
 
 
 def test_annotation_inside_code_retains_code_and_real_quote_ranges() -> None:
