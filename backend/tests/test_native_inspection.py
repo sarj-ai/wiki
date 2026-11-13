@@ -8,7 +8,7 @@ import pytest
 from app.auth.dependencies import auth_service_dep, get_current_user
 from app.document_transform.dependencies import CurrentPolishRuntime, current_polish_runtime_dep
 from app.document_transform.errors import SourceChangedError
-from app.document_transform.gateway import SourceSnapshot
+from app.document_transform.gateway import NativeDocumentSnapshot, SourceSnapshot
 from app.document_transform.inspection import attach_saved_checkpoint, inspect_native_document
 from app.document_transform.schemas import DriveFileSource
 from app.identifiers import DocsRevisionId, FileId, TaskId, UserId
@@ -35,12 +35,11 @@ from tests.test_task_unverified_output import _failed_task
 class _Reader:
     def __init__(self) -> None:
         self.calls: list[DriveFileSource] = []
-        self.snapshot = SourceSnapshot(
+        self.snapshot = NativeDocumentSnapshot(
             title="Private native fixture",
             parent_folder_id=FileId("private-folder"),
             modified_time="2026-11-12T13:00:00Z",
             revision_id=DocsRevisionId("native-revision"),
-            media_type="application/vnd.google-apps.document",
             google_document={**_fixture("before"), "revisionId": "native-revision"},
         )
 

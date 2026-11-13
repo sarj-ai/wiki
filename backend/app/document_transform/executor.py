@@ -4,7 +4,7 @@ from dataclasses import asdict, dataclass, replace
 import hashlib
 import json
 from types import MappingProxyType
-from typing import Any, NamedTuple, Protocol, override
+from typing import Any, NamedTuple, Protocol, assert_never, override
 import uuid
 
 from loguru import logger
@@ -26,6 +26,11 @@ from app.document_transform.brand import (
 )
 from app.document_transform.brand_manifest import CURRENT_BRAND_MANIFEST
 from app.document_transform.checkpoint_transitions import begin_copy, record_copy, verify_copy
+from app.document_transform.copy_draft_state import (
+    CompletedDraft,
+    UnmodifiedDraft,
+    confirmed_draft_mutation,
+)
 from app.document_transform.copy_font_defense import (
     copy_font_proofs,
     copy_preserved_font_ids,
@@ -51,6 +56,8 @@ from app.document_transform.gateway import (
     DocumentGateway,
     InPlaceInspection,
     InPlaceStageResult,
+    MarkdownSnapshot,
+    NativeDocumentSnapshot,
     OutputDraft,
     SourceSnapshot,
     TabHeader,
@@ -204,7 +211,10 @@ def _structure_inputs(
     structure = checkpoint.tab_structure
     if structure is None:
         return StructureInputs(snapshot, expected)
-    if snapshot.google_document is None or structure.stage is not StructureStage.VERIFIED:
+    if (
+        not isinstance(snapshot, NativeDocumentSnapshot)
+        or structure.stage is not StructureStage.VERIFIED
+    ):
         raise OutputVerificationError
     projected = planned_structure_document(structure, snapshot.google_document)
     mapped = parse_google_document(projected, title=expected.title)
@@ -257,7 +267,7 @@ class _CopyMutation(NamedTuple):
 
 
 class _InPlaceStage(NamedTuple):
-    snapshot: SourceSnapshot
+    snapshot: NativeDocumentSnapshot
     inspection: InPlaceInspection
     checkpoint: InPlaceCheckpoint
 
@@ -595,9 +605,9 @@ class DocumentTransformExecutor(DocumentTransformRunner):
         result_sha256 = _json_sha256(payload)
         revision_sha256 = hashlib.sha256(result.output_revision_id.encode()).hexdigest()
         if (
-            draft.completed
-            and draft.result_sha256 == result_sha256
-            and draft.verified_revision_sha256 == revision_sha256
+            isinstance(draft.completion, CompletedDraft)
+            and draft.completion.result_sha256 == result_sha256
+            and draft.completion.verified_revision_sha256 == revision_sha256
         ):
             return
         await self._gateway.complete(
@@ -608,8 +618,9 @@ class DocumentTransformExecutor(DocumentTransformRunner):
         recovered = await self._gateway.recover_output(operation_id)
         if (
             recovered is None
-            or recovered.result_sha256 != result_sha256
-            or recovered.verified_revision_sha256 != revision_sha256
+            or not isinstance(recovered.completion, CompletedDraft)
+            or recovered.completion.result_sha256 != result_sha256
+            or recovered.completion.verified_revision_sha256 != revision_sha256
         ):
             raise OutputConflictError
 
@@ -661,7 +672,7 @@ class DocumentTransformExecutor(DocumentTransformRunner):
 
         findings = list(outcome.findings)
         if (
-            snapshot.markdown is not None
+            isinstance(snapshot, MarkdownSnapshot)
             and request.mode is not TransformMode.UNSLOP
             and self._logo_bytes is None
         ):
@@ -681,7 +692,7 @@ class DocumentTransformExecutor(DocumentTransformRunner):
         await self._require_unchanged_drive_source(request, snapshot)
         checkpoint, draft = await self._create_copy_draft(operation_id, request, plan, recovered)
         if (
-            snapshot.google_document is not None
+            isinstance(snapshot, NativeDocumentSnapshot)
             and isinstance(request.source, DriveFileSource)
             and request.mode is not TransformMode.UNSLOP
             and self._checkpoint_store is not None
@@ -843,7 +854,12 @@ class DocumentTransformExecutor(DocumentTransformRunner):
                 outcome,
                 document=apply_native_pagination(
                     outcome.document,
-                    plan_native_pagination(snapshot.google_document, outcome.document),
+                    plan_native_pagination(
+                        snapshot.google_document
+                        if isinstance(snapshot, NativeDocumentSnapshot)
+                        else None,
+                        outcome.document,
+                    ),
                 ),
             )
         return _copy_font_outcome(snapshot, original, outcome)
@@ -927,7 +943,7 @@ class DocumentTransformExecutor(DocumentTransformRunner):
             checkpoint = self._copy_checkpoint_or_none() or checkpoint
             prepared_draft = draft
             mutations = []
-        elif snapshot.markdown is not None:
+        elif isinstance(snapshot, MarkdownSnapshot):
             prepared_draft = draft
             mutations = []
         elif request.mode is TransformMode.UNSLOP:
@@ -964,8 +980,7 @@ class DocumentTransformExecutor(DocumentTransformRunner):
         )
         if (
             checkpoint.managed_headers is not None
-            and draft.applied_mutation_sha256 is None
-            and draft.pending_mutation_sha256 is None
+            and isinstance(draft.mutation, UnmodifiedDraft)
             and prepared_draft.revision_id != checkpoint.output_revision_id
         ):
             raise SourceChangedError
@@ -977,7 +992,7 @@ class DocumentTransformExecutor(DocumentTransformRunner):
                     update={
                         "output_revision_id": prepared_draft.revision_id,
                         "managed_headers": {}
-                        if (draft.applied_mutation_sha256 or draft.pending_mutation_sha256)
+                        if not isinstance(draft.mutation, UnmodifiedDraft)
                         else {
                             str(header.tab_id): str(header.header_id)
                             for header in prepared_draft.headers
@@ -1002,12 +1017,16 @@ class DocumentTransformExecutor(DocumentTransformRunner):
             headers=prepared_draft.headers,
             logo_uri=prepared_draft.logo_uri,
             header_title=checkpoint.output_name,
-            source_document=snapshot.google_document,
+            source_document=snapshot.google_document
+            if isinstance(snapshot, NativeDocumentSnapshot)
+            else None,
         )
         if outcome.document.copy_font_defended:
             mutations = defend_copy_fonts(
                 mutations,
-                document=snapshot.google_document,
+                document=snapshot.google_document
+                if isinstance(snapshot, NativeDocumentSnapshot)
+                else None,
                 original=original,
                 transformed=outcome.document,
                 font_family=self._brand.font_family,
@@ -1041,7 +1060,7 @@ class DocumentTransformExecutor(DocumentTransformRunner):
             # Footer metadata follows content and tab verification. Never revisit
             # earlier mutation stages once its durable checkpoint exists.
             if (
-                snapshot.markdown is None
+                not isinstance(snapshot, MarkdownSnapshot)
                 and self._checkpoint_store is not None
                 and self._gateway.supports_native_footer
             ):
@@ -1051,7 +1070,7 @@ class DocumentTransformExecutor(DocumentTransformRunner):
                 checkpoint = self._copy_checkpoint_or_none() or checkpoint
         if (
             request.mode is not TransformMode.UNSLOP
-            and snapshot.markdown is None
+            and not isinstance(snapshot, MarkdownSnapshot)
             and self._checkpoint_store is not None
             and self._gateway.supports_native_dates
         ):
@@ -1169,7 +1188,7 @@ class DocumentTransformExecutor(DocumentTransformRunner):
                 checkpoint.tab_naming
                 or checkpoint.native_footer
                 or checkpoint.native_dates
-                or draft.applied_mutation_sha256
+                or confirmed_draft_mutation(draft.mutation)
             ):
                 return draft
             structure = await provider.plan(
@@ -1387,7 +1406,7 @@ class DocumentTransformExecutor(DocumentTransformRunner):
         serialized_result = result.model_dump(mode="json")
         expected_result_sha256 = _json_sha256(serialized_result)
         expected_revision_sha256 = hashlib.sha256(revision_id.encode()).hexdigest()
-        if not draft.completed:
+        if not isinstance(draft.completion, CompletedDraft):
             await self._gateway.complete(
                 operation_id=operation_id,
                 draft=replace(draft, revision_id=revision_id),
@@ -1401,13 +1420,11 @@ class DocumentTransformExecutor(DocumentTransformRunner):
                 native_footer=checkpoint.native_footer,
                 native_dates=checkpoint.native_dates,
             )
-        durable = self._checkpoint_store is not None
-        digest_matches = (
-            draft.result_sha256 == expected_result_sha256
-            and draft.verified_revision_sha256 == expected_revision_sha256
-        )
-        legacy_fake_matches = draft.result == serialized_result
-        if not draft.completed or (not digest_matches and (durable or not legacy_fake_matches)):
+        if (
+            not isinstance(draft.completion, CompletedDraft)
+            or draft.completion.result_sha256 != expected_result_sha256
+            or draft.completion.verified_revision_sha256 != expected_revision_sha256
+        ):
             raise OutputConflictError
         final_verification = await self._gateway.verify_output(
             draft=draft,
@@ -1448,6 +1465,8 @@ class DocumentTransformExecutor(DocumentTransformRunner):
             raise DocumentGatewayError
 
         snapshot = await self._gateway.load_drive_source(request.source)
+        if not isinstance(snapshot, NativeDocumentSnapshot):
+            raise InPlaceNotAllowedError
         checkpoint = self._resume_in_place_checkpoint(request, request.source, snapshot)
         if checkpoint is not None and checkpoint.stage is InPlaceCheckpointStage.COMPLETE:
             await self._verify_completed_in_place(snapshot, checkpoint)
@@ -1524,7 +1543,7 @@ class DocumentTransformExecutor(DocumentTransformRunner):
         self,
         request: DocumentTransformRequest,
         source: DriveFileSource,
-        snapshot: SourceSnapshot,
+        snapshot: NativeDocumentSnapshot,
     ) -> InPlaceCheckpoint | None:
         checkpoint = self._checkpoint
         if checkpoint is not None and checkpoint.kind != "in_place":
@@ -1540,7 +1559,7 @@ class DocumentTransformExecutor(DocumentTransformRunner):
 
     async def _verify_completed_in_place(
         self,
-        snapshot: SourceSnapshot,
+        snapshot: NativeDocumentSnapshot,
         checkpoint: InPlaceCheckpoint,
     ) -> None:
         if snapshot.revision_id != checkpoint.current_revision_id:
@@ -1567,7 +1586,7 @@ class DocumentTransformExecutor(DocumentTransformRunner):
         *,
         operation_id: uuid.UUID,
         request: DocumentTransformRequest,
-        snapshot: SourceSnapshot,
+        snapshot: NativeDocumentSnapshot,
         inspection: InPlaceInspection,
         checkpoint: InPlaceCheckpoint,
     ) -> _InPlaceStage:
@@ -1576,18 +1595,14 @@ class DocumentTransformExecutor(DocumentTransformRunner):
         )
         if stage_result is None:
             stage_result = await self._apply_checkpoint_stage(checkpoint)
-        stage_snapshot = SourceSnapshot(
+        stage_snapshot = NativeDocumentSnapshot(
             title=snapshot.title,
             parent_folder_id=snapshot.parent_folder_id,
             modified_time=snapshot.modified_time,
             revision_id=stage_result.revision_id,
-            media_type=snapshot.media_type,
             google_document=stage_result.document,
-            owned_by_me=snapshot.owned_by_me,
-            can_edit=snapshot.can_edit,
-            is_personal_drive=snapshot.is_personal_drive,
-            shared_drive_id=snapshot.shared_drive_id,
             web_url=snapshot.web_url,
+            access=snapshot.access,
         )
         inspection = await self._verify_in_place_headers(stage_snapshot, stage_result, checkpoint)
         snapshot = stage_snapshot
@@ -1622,7 +1637,7 @@ class DocumentTransformExecutor(DocumentTransformRunner):
 
     async def _verify_in_place_headers(
         self,
-        stage_snapshot: SourceSnapshot,
+        stage_snapshot: NativeDocumentSnapshot,
         stage_result: InPlaceStageResult,
         checkpoint: InPlaceCheckpoint,
     ) -> InPlaceInspection:
@@ -1686,7 +1701,7 @@ class DocumentTransformExecutor(DocumentTransformRunner):
         *,
         operation_id: uuid.UUID,
         request: DocumentTransformRequest,
-        snapshot: SourceSnapshot,
+        snapshot: NativeDocumentSnapshot,
         inspection: InPlaceInspection,
         checkpoint: InPlaceCheckpoint,
     ) -> DocumentTransformResult:
@@ -1728,8 +1743,6 @@ class DocumentTransformExecutor(DocumentTransformRunner):
         if expected_content.semantic_sha256 != checkpoint.expected_semantic_sha256:
             raise InPlaceNeedsReviewError
         if checkpoint.tab_naming is not None or checkpoint.tab_naming_declined_reason is not None:
-            if snapshot.google_document is None or snapshot.revision_id is None:
-                raise InPlaceNeedsReviewError
             stage_result = InPlaceStageResult(snapshot.revision_id, snapshot.google_document)
         else:
             stage_result = await self._apply_checkpoint_stage(checkpoint)
@@ -1768,7 +1781,7 @@ class DocumentTransformExecutor(DocumentTransformRunner):
         self,
         *,
         request: DocumentTransformRequest,
-        snapshot: SourceSnapshot,
+        snapshot: NativeDocumentSnapshot,
         checkpoint: InPlaceCheckpoint,
         expected_content: DocumentIR,
         stage_result: InPlaceStageResult,
@@ -1860,13 +1873,11 @@ class DocumentTransformExecutor(DocumentTransformRunner):
         *,
         operation_id: uuid.UUID,
         request: DocumentTransformRequest,
-        snapshot: SourceSnapshot,
+        snapshot: NativeDocumentSnapshot,
         inspection: InPlaceInspection,
     ) -> InPlaceCheckpoint:
         source = request.source
         if not isinstance(source, DriveFileSource):
-            raise InPlaceNotAllowedError
-        if snapshot.revision_id is None:
             raise InPlaceNotAllowedError
         plan = await self._prepare_in_place_plan(request, snapshot)
         original, outcome = plan.original, plan.outcome
@@ -1950,7 +1961,7 @@ class DocumentTransformExecutor(DocumentTransformRunner):
         *,
         operation_id: uuid.UUID,
         source: DriveFileSource,
-        snapshot: SourceSnapshot,
+        snapshot: NativeDocumentSnapshot,
         inspection: InPlaceInspection,
         plan: _InPlacePlan,
         mutations: _InPlaceMutationPlan,
@@ -1961,8 +1972,6 @@ class DocumentTransformExecutor(DocumentTransformRunner):
         preserved_font_ids, paragraph_layout = plan.preserved_font_ids, plan.paragraph_layout
         stage, requests, replacements, table_scope, native_font_proof, branded = mutations
         revision_id = snapshot.revision_id
-        if revision_id is None:
-            raise InPlaceNotAllowedError
         return InPlaceCheckpointPayload.model_validate(
             {
                 "visual_authority_block_ids": tuple(NativeFontBlockId(item) for item in visual_ids),
@@ -2039,7 +2048,7 @@ class DocumentTransformExecutor(DocumentTransformRunner):
     async def _prepare_in_place_plan(
         self,
         request: DocumentTransformRequest,
-        snapshot: SourceSnapshot,
+        snapshot: NativeDocumentSnapshot,
     ) -> _InPlacePlan:
         original = _to_ir(snapshot)
         pagination = existing_native_pagination(snapshot.google_document, original)
@@ -2108,7 +2117,7 @@ class DocumentTransformExecutor(DocumentTransformRunner):
         self,
         *,
         request: DocumentTransformRequest,
-        snapshot: SourceSnapshot,
+        snapshot: NativeDocumentSnapshot,
         plan: _InPlacePlan,
         inspection: InPlaceInspection,
         replacements: dict[str, str],
@@ -2148,7 +2157,7 @@ class DocumentTransformExecutor(DocumentTransformRunner):
         self,
         *,
         source: DriveFileSource,
-        snapshot: SourceSnapshot,
+        snapshot: NativeDocumentSnapshot,
         inspection: InPlaceInspection,
         original: DocumentIR,
         outcome: TransformOutcome,
@@ -2157,8 +2166,6 @@ class DocumentTransformExecutor(DocumentTransformRunner):
         preserved_font_ids: tuple[str, ...],
         branded: bool,
     ) -> InPlaceCheckpoint:
-        if snapshot.revision_id is None:
-            raise InPlaceNeedsReviewError
         try:
             paragraph_layout = capture_paragraph_layout(
                 snapshot.google_document, original, original
@@ -2174,6 +2181,8 @@ class DocumentTransformExecutor(DocumentTransformRunner):
         except (KeyError, IndexError, TypeError, ValueError, AttributeError) as error:
             raise InPlaceNeedsReviewError from error
         final_snapshot = await self._gateway.load_drive_source(source)
+        if not isinstance(final_snapshot, NativeDocumentSnapshot):
+            raise InPlaceNeedsReviewError
         final_inspection = await self._gateway.inspect_in_place(
             snapshot=final_snapshot, title=final_snapshot.title
         )
@@ -2242,14 +2251,14 @@ class DocumentTransformExecutor(DocumentTransformRunner):
     async def _table_font_scope(
         *,
         request: DocumentTransformRequest,
-        snapshot: SourceSnapshot,
+        snapshot: NativeDocumentSnapshot,
         original: DocumentIR,
         transformed: DocumentIR,
         inspection: InPlaceInspection,
     ) -> _TableFontScope:
         del original, transformed
         empty = _TableFontScope(None, inspection.protected_structure_sha256, [], [])
-        if request.mode is TransformMode.UNSLOP or snapshot.google_document is None:
+        if request.mode is TransformMode.UNSLOP:
             return empty
         try:
             candidate = plan_table_fonts(snapshot.google_document)
@@ -2279,7 +2288,7 @@ class DocumentTransformExecutor(DocumentTransformRunner):
         self,
         *,
         request: DocumentTransformRequest,
-        snapshot: SourceSnapshot,
+        snapshot: NativeDocumentSnapshot,
         original: DocumentIR,
         transformed: DocumentIR,
         inspection: InPlaceInspection,
@@ -2420,7 +2429,9 @@ class DocumentTransformExecutor(DocumentTransformRunner):
         unchanged = await self._gateway.source_is_unchanged(
             request.source,
             expected_modified_time=request.source.expected_modified_time,
-            expected_revision_id=snapshot.revision_id,
+            expected_revision_id=snapshot.revision_id
+            if isinstance(snapshot, NativeDocumentSnapshot)
+            else None,
             expected_parent_folder_id=snapshot.parent_folder_id,
         )
         if not unchanged:
@@ -2483,12 +2494,10 @@ class DocumentTransformExecutor(DocumentTransformRunner):
                 return snapshot
             case _:
                 pass
-        return SourceSnapshot(
+        return MarkdownSnapshot(
             title=source.name,
             parent_folder_id=source.destination_folder_id,
             modified_time=None,
-            revision_id=None,
-            media_type="text/markdown",
             markdown=source.content,
         )
 
@@ -2505,7 +2514,7 @@ class DocumentTransformExecutor(DocumentTransformRunner):
     ) -> OutputDraft:
         output_name = output_name or _copy_output_name(request, original)
         imported_docx = None
-        if snapshot.markdown is not None:
+        if isinstance(snapshot, MarkdownSnapshot):
             imported_docx = render_markdown_docx(
                 rewrite_markdown(snapshot.markdown, original, transformed),
                 title=snapshot.title,
@@ -2705,7 +2714,7 @@ def _strip_generated_copy_suffixes(title: str) -> str:
 def _copy_font_outcome(
     snapshot: SourceSnapshot, original: DocumentIR, outcome: TransformOutcome
 ) -> TransformOutcome:
-    if not original.copy_font_defended:
+    if not original.copy_font_defended or not isinstance(snapshot, NativeDocumentSnapshot):
         return outcome
     preserved_ids = copy_preserved_font_ids(snapshot.google_document, original, outcome.document)
     return replace(
@@ -2759,7 +2768,11 @@ def _new_copy_checkpoint(
         plan_authored_labels(original) if request.mode is not TransformMode.UNSLOP else ()
     )
     pagination = (
-        plan_native_pagination(snapshot.google_document, outcome.document, emit_diagnostics=True)
+        plan_native_pagination(
+            snapshot.google_document if isinstance(snapshot, NativeDocumentSnapshot) else None,
+            outcome.document,
+            emit_diagnostics=True,
+        )
         if request.mode is not TransformMode.UNSLOP
         else ()
     )
@@ -2779,13 +2792,17 @@ def _new_copy_checkpoint(
         logo_sha256=logo_sha256,
     )
     return PlannedCopyCheckpoint(
-        compact_markdown=snapshot.compact_markdown,
+        compact_markdown=snapshot.compact_markdown
+        if isinstance(snapshot, MarkdownSnapshot)
+        else False,
         authored_labels=authored_labels,
         pagination=pagination,
         source_title=snapshot.title,
         source_sha256=source_sha256,
         source_modified_time=snapshot.modified_time,
-        source_revision_id=snapshot.revision_id,
+        source_revision_id=snapshot.revision_id
+        if isinstance(snapshot, NativeDocumentSnapshot)
+        else None,
         source_parent_folder_id=snapshot.parent_folder_id,
         output_parent_folder_id=request.copy_destination_folder_id or snapshot.parent_folder_id,
         brand_profile_id=CURRENT_BRAND_MANIFEST.profile_id,
@@ -2826,11 +2843,11 @@ def _validate_copy_checkpoint(
     current_logo_sha256: str | None,
 ) -> None:
     expected_contract = (
-        snapshot.compact_markdown,
+        snapshot.compact_markdown if isinstance(snapshot, MarkdownSnapshot) else False,
         snapshot.title,
         source_sha256,
         snapshot.modified_time,
-        snapshot.revision_id,
+        snapshot.revision_id if isinstance(snapshot, NativeDocumentSnapshot) else None,
         snapshot.parent_folder_id,
         request.copy_destination_folder_id or snapshot.parent_folder_id,
         CURRENT_BRAND_MANIFEST.profile_id,
@@ -2891,7 +2908,7 @@ def _validate_copy_checkpoint(
 def _copy_snapshot_title_policy(
     snapshot: SourceSnapshot, checkpoint: CopyCheckpoint | None
 ) -> SourceSnapshot:
-    if snapshot.markdown is None:
+    if not isinstance(snapshot, MarkdownSnapshot):
         return snapshot
     return replace(
         snapshot,
@@ -2904,7 +2921,7 @@ def _copy_original(snapshot: SourceSnapshot, request: DocumentTransformRequest) 
     original = apply_visual_authority(
         original,
         visual_authority_block_ids(snapshot.google_document, original)
-        if request.mode is not TransformMode.UNSLOP
+        if request.mode is not TransformMode.UNSLOP and isinstance(snapshot, NativeDocumentSnapshot)
         else (),
     )
     return replace(
@@ -2936,7 +2953,10 @@ def _copy_checkpoint_document(
         original.replace_blocks(checkpoint.replacements), checkpoint.authored_labels
     )
     if checkpoint.pagination != (
-        plan_native_pagination(snapshot.google_document, transformed)
+        plan_native_pagination(
+            snapshot.google_document if isinstance(snapshot, NativeDocumentSnapshot) else None,
+            transformed,
+        )
         if request.mode is not TransformMode.UNSLOP
         else ()
     ):
@@ -2954,7 +2974,7 @@ def _copy_checkpoint_fonts(
     original: DocumentIR,
     transformed: DocumentIR,
 ) -> DocumentIR:
-    if not original.copy_font_defended:
+    if not original.copy_font_defended or not isinstance(snapshot, NativeDocumentSnapshot):
         return transformed
     preserved_ids = copy_preserved_font_ids(snapshot.google_document, original, transformed)
     if tuple(
@@ -3036,7 +3056,7 @@ def _copy_manifest_sha256(
     branded: bool,
     header_title: str,
 ) -> str:
-    if snapshot.markdown is not None:
+    if isinstance(snapshot, MarkdownSnapshot):
         rendered = rewrite_markdown(snapshot.markdown, original, transformed)
         manifest: object = asdict(
             markdown_import_manifest(
@@ -3056,8 +3076,6 @@ def _copy_manifest_sha256(
             "header_title": header_title if branded else None,
         }
         if transformed.copy_font_defended:
-            if snapshot.google_document is None:
-                raise OutputConflictError
             manifest = {
                 **manifest,
                 "copy_font_proofs": [
@@ -3069,7 +3087,7 @@ def _copy_manifest_sha256(
                     )
                 ],
             }
-        if branded and snapshot.google_document is not None:
+        if branded:
             code_plan = plan_native_code_styles(snapshot.google_document, original, transformed)
             if code_plan.paragraphs:
                 manifest["native_code_plan_sha256"] = code_plan.sha256
@@ -3085,13 +3103,15 @@ def _json_sha256(value: dict[str, Any]) -> str:
 
 
 def _to_ir(snapshot: SourceSnapshot) -> DocumentIR:
-    if snapshot.google_document is not None:
-        if snapshot.google_document.get("revisionId") != snapshot.revision_id:
-            raise SourceChangedError
-        return parse_google_document(snapshot.google_document, title=snapshot.title)
-    if snapshot.markdown is None:
-        raise UnsupportedSourceError
-    return parse_markdown(snapshot.markdown, title=snapshot.title)
+    match snapshot:
+        case NativeDocumentSnapshot():
+            if snapshot.google_document.get("revisionId") != snapshot.revision_id:
+                raise SourceChangedError
+            return parse_google_document(snapshot.google_document, title=snapshot.title)
+        case MarkdownSnapshot():
+            return parse_markdown(snapshot.markdown, title=snapshot.title)
+        case _:
+            assert_never(snapshot)
 
 
 def _in_place_marker(
@@ -3104,12 +3124,10 @@ def _in_place_marker(
 
 
 def _matches_pre_header_checkpoint(
-    snapshot: SourceSnapshot,
+    snapshot: NativeDocumentSnapshot,
     inspection: InPlaceInspection,
     checkpoint: InPlaceCheckpoint,
 ) -> bool:
-    if snapshot.revision_id is None:
-        return False
     requested_tab_ids = _header_request_tab_ids(list(checkpoint.requests))
     if requested_tab_ids is None:
         return False
@@ -3202,11 +3220,11 @@ def _complex_structure_safe_noop_findings(
 
 
 def _matches_complex_structure_safe_noop(
-    snapshot: SourceSnapshot,
+    snapshot: NativeDocumentSnapshot,
     inspection: InPlaceInspection,
     checkpoint: InPlaceCheckpoint,
 ) -> bool:
-    if not _is_complex_structure_safe_noop(checkpoint) or snapshot.revision_id is None:
+    if not _is_complex_structure_safe_noop(checkpoint):
         return False
     document = _to_ir(snapshot)
     return (
@@ -3267,7 +3285,9 @@ def _source_sha256(snapshot: SourceSnapshot, document: DocumentIR) -> str:
         "ir": document.text_sha256,
         "media_type": snapshot.media_type,
         "modified_time": snapshot.modified_time,
-        "revision_id": snapshot.revision_id,
+        "revision_id": snapshot.revision_id
+        if isinstance(snapshot, NativeDocumentSnapshot)
+        else None,
     }
     return hashlib.sha256(
         json.dumps(stable, sort_keys=True, separators=(",", ":")).encode()
@@ -3423,7 +3443,7 @@ def _preserved_block_ids(checkpoint: InPlaceCheckpoint) -> tuple[str, ...]:
 def _validate_in_place_contract(
     checkpoint: InPlaceCheckpoint,
     source: DriveFileSource,
-    snapshot: SourceSnapshot,
+    snapshot: NativeDocumentSnapshot,
 ) -> None:
     if checkpoint.document_id != source.file_id:
         raise OutputConflictError
@@ -3456,12 +3476,10 @@ def _validate_in_place_contract(
 def _validate_in_place_table_scope(
     checkpoint: InPlaceCheckpoint,
     request: DocumentTransformRequest,
-    snapshot: SourceSnapshot,
+    snapshot: NativeDocumentSnapshot,
 ) -> None:
     if checkpoint.table_font_plan is not None:
         if request.mode is not TransformMode.FORMAT or checkpoint.replacements:
-            raise InPlaceNeedsReviewError
-        if snapshot.google_document is None:
             raise InPlaceNeedsReviewError
         try:
             project_table_fonts(
@@ -3475,7 +3493,9 @@ def _validate_in_place_table_scope(
         raise InPlaceNeedsReviewError
 
 
-def _validate_in_place_layout(checkpoint: InPlaceCheckpoint, snapshot: SourceSnapshot) -> None:
+def _validate_in_place_layout(
+    checkpoint: InPlaceCheckpoint, snapshot: NativeDocumentSnapshot
+) -> None:
     if _claims_complex_structure_safe_noop(checkpoint) and not _is_complex_structure_safe_noop(
         checkpoint
     ):
@@ -3502,7 +3522,9 @@ def _claims_complex_structure_safe_noop(checkpoint: InPlaceCheckpoint) -> bool:
     )
 
 
-def _validate_in_place_fonts(checkpoint: InPlaceCheckpoint, snapshot: SourceSnapshot) -> None:
+def _validate_in_place_fonts(
+    checkpoint: InPlaceCheckpoint, snapshot: NativeDocumentSnapshot
+) -> None:
     if checkpoint.native_font_proof is None and (
         checkpoint.preserved_font_block_ids
         or any(finding.code == "native_rich_text_preserved" for finding in checkpoint.findings)

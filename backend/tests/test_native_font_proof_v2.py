@@ -9,6 +9,7 @@ from app.document_transform.ir import parse_google_document, utf16_length
 from app.document_transform.native_font_context import resolve_native_font_values
 from app.document_transform.native_font_proof import (
     NativeFontProof,
+    NativeFontProofPayload,
     NativeFontVerificationPolicy,
     capture_native_font_proof,
     native_font_target_interval_count,
@@ -66,7 +67,7 @@ def test_v2_explicit_terminal_family_and_materialized_weight_preserve_emphasis()
         actual, proofs, font_policy=NativeFontVerificationPolicy(require_target_family=True)
     )
     restored = tuple(
-        NativeFontProof.model_validate_json(proof.model_dump_json()) for proof in proofs
+        NativeFontProofPayload.model_validate_json(proof.model_dump_json()).root for proof in proofs
     )
     assert verify_native_font_proof(
         actual, restored, font_policy=NativeFontVerificationPolicy(require_target_family=True)
@@ -203,9 +204,9 @@ def test_legacy_proof_remains_v1_and_rejects_terminal_family_change():
     raw = proofs[0].model_dump()
     raw.pop("semantics")
     raw.pop("block_id")
-    assert verify_native_font_proof(source, (NativeFontProof.model_validate(raw),))
+    assert verify_native_font_proof(source, (NativeFontProofPayload.model_validate(raw).root,))
     with pytest.raises(ValidationError):
-        NativeFontProof.model_validate({**raw, "version": 2})
+        NativeFontProofPayload.model_validate({**raw, "version": 2})
 
 
 @pytest.mark.parametrize(
@@ -394,7 +395,7 @@ def test_preserved_paragraph_accepts_only_exact_planned_utf16_shift(prefix: str)
     actual_body[0]["paragraph"]["elements"][0]["textRun"]["content"] = "Lead.\n"
     _shift(actual_body[1], delta)
     restored = tuple(
-        NativeFontProof.model_validate_json(proof.model_dump_json()) for proof in proofs
+        NativeFontProofPayload.model_validate_json(proof.model_dump_json()).root for proof in proofs
     )
     assert verify_native_font_proof(actual, restored, font_policy=after)
     _shift(actual_body[1], 1)

@@ -5,8 +5,10 @@ from loguru import logger
 import pytest
 
 from app.document_transform.errors import DocumentGatewayError
+from app.document_transform.gateway import NativeDocumentSnapshot
 from app.document_transform.header_recovery import recover_empty_header_postcondition
 from app.document_transform.schemas import DriveFileSource
+from tests.json_values import json_object_at
 from tests.test_header_postcondition_recovery import _Session
 
 
@@ -18,6 +20,7 @@ async def test_recovery_diagnostics_preserve_decision_and_exclude_payload(change
     checkpoint = session.store.checkpoints[-1]
     assert isinstance(session.request.source, DriveFileSource)
     snapshot = await session.gateway.load_drive_source(session.request.source)
+    assert isinstance(snapshot, NativeDocumentSnapshot)
     inspection = await session.gateway.inspect_in_place(snapshot=snapshot, title=snapshot.title)
     expected = "recovered"
     if change == "body":
@@ -30,12 +33,15 @@ async def test_recovery_diagnostics_preserve_decision_and_exclude_payload(change
         checkpoint = checkpoint.model_copy(update={"headers": {"SECRET": "SECRET"}})
         expected = "ownership"
     elif change in {"style", "indices"}:
-        assert snapshot.google_document is not None
-        header = snapshot.google_document["tabs"][0]["documentTab"]["headers"]["created-0"]
+        header = json_object_at(
+            snapshot.google_document, "tabs", 0, "documentTab", "headers", "created-0"
+        )
         if change == "style":
-            header["content"][0]["paragraph"]["paragraphStyle"]["alignment"] = "SECRET"
+            json_object_at(header, "content", 0, "paragraph", "paragraphStyle")["alignment"] = (
+                "SECRET"
+            )
         else:
-            header["content"][0]["endIndex"] = 2
+            json_object_at(header, "content", 0)["endIndex"] = 2
         expected = "inventory"
     records: list[dict[str, Any]] = []
     sink = logger.add(lambda message: records.append(message.record["extra"]["checks"]))
@@ -160,9 +166,11 @@ async def _rejected_header_checks(header: dict[str, Any]) -> dict[str, Any]:
     checkpoint = session.store.checkpoints[-1]
     assert isinstance(session.request.source, DriveFileSource)
     snapshot = await session.gateway.load_drive_source(session.request.source)
+    assert isinstance(snapshot, NativeDocumentSnapshot)
     inspection = await session.gateway.inspect_in_place(snapshot=snapshot, title=snapshot.title)
-    assert snapshot.google_document is not None
-    snapshot.google_document["tabs"][0]["documentTab"]["headers"]["created-0"] = header
+    json_object_at(snapshot.google_document, "tabs", 0, "documentTab", "headers")["created-0"] = (
+        header
+    )
     records: list[dict[str, Any]] = []
     sink = logger.add(lambda message: records.append(message.record["extra"]["checks"]))
     try:

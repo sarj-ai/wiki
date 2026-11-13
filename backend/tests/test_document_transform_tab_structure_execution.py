@@ -7,7 +7,7 @@ import uuid
 from loguru import logger
 import pytest
 
-from app.document_transform.gateway import OutputDraft, SourceSnapshot
+from app.document_transform.gateway import NativeDocumentSnapshot, OutputDraft
 from app.document_transform.schemas import (
     CopyCheckpointPayload,
     DocumentTransformRequest,
@@ -461,12 +461,11 @@ async def test_executor_persists_before_dispatch_and_recovers_without_duplicate_
             return await super().apply_requests_once(**kwargs)
 
     gateway = Gateway(
-        snapshot=SourceSnapshot(
+        snapshot=NativeDocumentSnapshot(
             title="Long report",
             parent_folder_id=FileId("folder"),
             modified_time="before",
             revision_id=DocsRevisionId("rev1"),
-            media_type="application/vnd.google-apps.document",
             google_document=source,
         )
     )

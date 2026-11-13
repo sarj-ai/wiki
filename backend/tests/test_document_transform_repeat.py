@@ -1,18 +1,18 @@
 from copy import deepcopy
 from dataclasses import replace
-from typing import Any
 import uuid
 
+from pydantic import JsonValue
 import pytest
 
 from app.document_transform import google_gateway as gateway_module
 from app.document_transform.brand import SarjBrandProfile, build_copy_mutations
 from app.document_transform.executor import DocumentTransformExecutor
-from app.document_transform.gateway import SourceSnapshot
+from app.document_transform.gateway import NativeDocumentSnapshot, SourceSnapshot
 from app.document_transform.google_gateway import GoogleDocumentGateway, verify_brand_application
 from app.document_transform.ir import parse_google_document
 from app.document_transform.schemas import TransformMode
-from app.drive.schemas import MIME_DOC
+from app.document_transform.source_access import NativeSourceAccess, PersonalDrive
 from app.identifiers import DocsRevisionId, FileId, TaskId
 from tests.test_document_transform import (
     _branded_google_document,
@@ -97,17 +97,14 @@ def test_existing_header_conflicts_stay_blocked(conflict: str) -> None:
     assert not inspection.fully_branded
 
 
-def _inspection_snapshot(document: dict[str, Any]) -> SourceSnapshot:
-    return SourceSnapshot(
+def _inspection_snapshot(document: dict[str, JsonValue]) -> NativeDocumentSnapshot:
+    return NativeDocumentSnapshot(
         title="Decision",
         parent_folder_id=FileId("folder"),
         modified_time="now",
         revision_id=DocsRevisionId("revision-2"),
-        media_type=MIME_DOC,
         google_document=document,
-        owned_by_me=True,
-        can_edit=True,
-        is_personal_drive=True,
+        access=NativeSourceAccess(owned_by_me=True, can_edit=True, location=PersonalDrive()),
     )
 
 

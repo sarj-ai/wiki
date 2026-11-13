@@ -1,9 +1,10 @@
 from dataclasses import replace
-from typing import Any, override
+from typing import Any, Literal, assert_never, override
 import uuid
 
 import pytest
 
+from app.document_transform.copy_draft_state import CompletedDraft, IncompleteDraft
 from app.document_transform.executor import DocumentTransformExecutor
 from app.document_transform.gateway import OutputDraft
 from app.document_transform.schemas import DocumentTransformRequest, MarkdownSource, TransformMode
@@ -26,7 +27,7 @@ class _ReceiptGateway(_Gateway):
 
 @pytest.mark.parametrize("drift", [None, "completed", "result_sha256", "verified_revision_sha256"])
 async def test_readable_copy_finalization_writes_only_a_missing_or_changed_receipt(
-    drift: str | None,
+    drift: Literal["completed", "result_sha256", "verified_revision_sha256"] | None,
 ) -> None:
     gateway = _ReceiptGateway()
     task_id = TaskId(uuid.uuid7())
@@ -49,12 +50,31 @@ async def test_readable_copy_finalization_writes_only_a_missing_or_changed_recei
     result = await executor.execute(operation_id=task_id, request=request)
     assert gateway.draft is not None
     assert gateway.completions == 1
-    if drift == "completed":
-        gateway.draft = replace(gateway.draft, completed=False)
-    elif drift == "result_sha256":
-        gateway.draft = replace(gateway.draft, result_sha256="outdated-result")
-    elif drift == "verified_revision_sha256":
-        gateway.draft = replace(gateway.draft, verified_revision_sha256="outdated-revision")
+    receipt = gateway.draft.completion
+    assert isinstance(receipt, CompletedDraft)
+    match drift:
+        case "completed":
+            gateway.draft = replace(gateway.draft, completion=IncompleteDraft())
+        case "result_sha256":
+            gateway.draft = replace(
+                gateway.draft,
+                completion=CompletedDraft(
+                    result_sha256="0" * 64,
+                    verified_revision_sha256=receipt.verified_revision_sha256,
+                ),
+            )
+        case "verified_revision_sha256":
+            gateway.draft = replace(
+                gateway.draft,
+                completion=CompletedDraft(
+                    result_sha256=receipt.result_sha256,
+                    verified_revision_sha256="0" * 64,
+                ),
+            )
+        case None:
+            pass
+        case _:
+            assert_never(drift)
 
     await executor._finalize_readable_copy(operation_id=task_id, result=result)
     assert gateway.completions == (1 if drift is None else 2)

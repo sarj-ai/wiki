@@ -3,11 +3,15 @@ from dataclasses import replace
 from typing import Any
 import uuid
 
+from pydantic import JsonValue
 import pytest
 
 from app.document_transform.authored_labels import apply_authored_labels, plan_authored_labels
+from app.document_transform.copy_draft_state import (
+    UnmodifiedDraft,
+)
 from app.document_transform.errors import OutputConflictError
-from app.document_transform.gateway import SourceSnapshot
+from app.document_transform.gateway import NativeDocumentSnapshot
 from app.document_transform.google_gateway import GoogleDocumentGateway
 from app.document_transform.ir import BlockKind, parse_google_document
 from app.document_transform.schemas import (
@@ -24,7 +28,7 @@ from tests.test_document_transform import (
     _copy_executor,
     _CopyCheckpointStore,
     _Gateway,
-    _pending_output_draft,
+    _output_draft,
 )
 
 
@@ -62,13 +66,12 @@ def _document() -> dict[str, Any]:
     }
 
 
-def _snapshot(document: dict[str, Any]) -> SourceSnapshot:
-    return SourceSnapshot(
+def _snapshot(document: dict[str, JsonValue]) -> NativeDocumentSnapshot:
+    return NativeDocumentSnapshot(
         title="Review",
         parent_folder_id=FileId("folder"),
         modified_time="initial",
         revision_id=DocsRevisionId("source-revision-1"),
-        media_type="application/vnd.google-apps.document",
         google_document=document,
     )
 
@@ -394,7 +397,7 @@ async def test_native_readback_requires_exact_planned_roles_and_content(
     monkeypatch.setattr(gateway, "_get_document_sync", lambda _file_id: output)
     snapshot = _snapshot(source)
     verification = await gateway.verify_output(
-        draft=_pending_output_draft(pending_mutation_sha256="", mutation_base_revision_sha256=""),
+        draft=_output_draft(mutation=UnmodifiedDraft()),
         source=snapshot,
         expected=expected,
         verify_brand=False,

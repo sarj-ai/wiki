@@ -1,7 +1,8 @@
 import asyncio
 from collections.abc import AsyncGenerator
+from functools import partial
 import time
-from typing import Any, ClassVar, Protocol
+from typing import Any, ClassVar, Protocol, assert_never
 
 from google.cloud.sql.connector import Connector, IPTypes, RefreshStrategy
 from sqlalchemy import Text, event
@@ -13,7 +14,11 @@ from sqlalchemy.ext.asyncio import (
 )
 from sqlalchemy.orm import DeclarativeBase
 
-from app.database_config import database_settings
+from app.database_config import (
+    CloudSqlDatabaseConnection,
+    DirectDatabaseConnection,
+    database_settings,
+)
 from app.identifiers import DriveId, FileId, GoogleUserId
 from app.performance import add_duration, increment
 
@@ -31,19 +36,23 @@ _POOL_KWARGS = {
 
 
 def build_engine() -> AsyncEngine:
-    if database_settings.DATABASE_URL is not None:
-        return create_async_engine(
-            str(database_settings.DATABASE_URL),
-            connect_args={
-                "server_settings": {"statement_timeout": _STATEMENT_TIMEOUT_MS},
-            },
-            **_POOL_KWARGS,
-        )
-    return create_async_engine(
-        "postgresql+asyncpg://",
-        async_creator=_connect_via_connector,
-        **_POOL_KWARGS,
-    )
+    match connection := database_settings.connection:
+        case DirectDatabaseConnection(url):
+            return create_async_engine(
+                str(url),
+                connect_args={
+                    "server_settings": {"statement_timeout": _STATEMENT_TIMEOUT_MS},
+                },
+                **_POOL_KWARGS,
+            )
+        case CloudSqlDatabaseConnection():
+            return create_async_engine(
+                "postgresql+asyncpg://",
+                async_creator=partial(_connect_via_connector, connection),
+                **_POOL_KWARGS,
+            )
+        case _:
+            assert_never(connection)
 
 
 async def close_connector() -> None:
@@ -56,12 +65,7 @@ async def close_connector() -> None:
 _connector: Connector | None = None
 
 
-async def _connect_via_connector() -> Any:
-    instance = database_settings.DB_INSTANCE_CONNECTION_NAME
-    iam_user = database_settings.DB_IAM_USER
-    if instance is None or iam_user is None:  # pragma: no cover — config validator forbids this
-        msg = "Connector path requires DB_INSTANCE_CONNECTION_NAME and DB_IAM_USER"
-        raise RuntimeError(msg)
+async def _connect_via_connector(connection: CloudSqlDatabaseConnection) -> Any:
     global _connector
     connector = _connector
     if connector is None:
@@ -71,10 +75,10 @@ async def _connect_via_connector() -> Any:
         )
         _connector = connector
     return await connector.connect_async(
-        instance,
+        connection.instance,
         "asyncpg",
-        user=iam_user,
-        db=database_settings.DB_NAME,
+        user=connection.iam_user,
+        db=connection.database,
         enable_iam_auth=True,
         ip_type=IPTypes.PRIVATE,
         server_settings={"statement_timeout": _STATEMENT_TIMEOUT_MS},

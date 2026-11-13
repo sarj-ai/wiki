@@ -8,10 +8,17 @@ from pydantic import JsonValue
 import pytest
 
 from app.document_transform.authored_labels import plan_authored_labels
+from app.document_transform.copy_draft_state import (
+    PendingDraftMutation,
+)
 from app.document_transform.copy_font_defense import copy_preserved_font_ids
 from app.document_transform.copy_visual_authority import verify_copy_visual_authority
 from app.document_transform.errors import OutputConflictError, OutputVerificationError
-from app.document_transform.gateway import OutputVerification, SourceSnapshot
+from app.document_transform.gateway import (
+    NativeDocumentSnapshot,
+    OutputVerification,
+    SourceSnapshot,
+)
 from app.document_transform.google_gateway import GoogleDocumentGateway
 from app.document_transform.ir import DocumentIR, parse_google_document
 from app.document_transform.native_font_defense import apply_native_font_preservation
@@ -40,7 +47,7 @@ from tests.test_document_transform import (
     _CopyCheckpointStore,
     _Gateway,
     _in_place_request,
-    _pending_output_draft,
+    _output_draft,
 )
 from tests.test_document_transform_header_provenance import _snapshot
 from tests.test_document_transform_tab_structure import _document as _sectioned_document
@@ -194,8 +201,11 @@ async def test_visual_proof_scope_keeps_other_native_preservation_checks(
     expected = apply_native_font_preservation(
         expected, copy_preserved_font_ids(source, expected, expected)
     )
-    draft = _pending_output_draft(
-        pending_mutation_sha256="hash", mutation_base_revision_sha256="hash"
+    draft = _output_draft(
+        mutation=PendingDraftMutation(
+            sha256="d04b98f48e8f8bcc15c6ae5ac050801cd6dcfd428fb5f9e65c4e16e7807340fa",
+            base_revision_sha256="d04b98f48e8f8bcc15c6ae5ac050801cd6dcfd428fb5f9e65c4e16e7807340fa",
+        )
     )
     gateway = copy_verification_gateway_factory(draft.document_id, actual)
     result = await gateway.verify_output(
@@ -310,6 +320,7 @@ async def test_visual_authority_survives_verified_move_to_new_tab(monkeypatch: p
     async def verify(
         *, source: SourceSnapshot, expected: DocumentIR, **kwargs: Any
     ) -> OutputVerification:
+        assert isinstance(source, NativeDocumentSnapshot)
         preserved = [block for block in expected.blocks if block.preserved_visual_authority]
         assert len(preserved) == 1
         assert preserved[0].source_range is not None
@@ -389,8 +400,11 @@ async def test_copy_supported_brand_requires_real_visual_and_structure_proof(
     assert tuple(block.id for block in expected.blocks if block.preserved_visual_authority) == (
         "b0",
     )
-    draft = _pending_output_draft(
-        pending_mutation_sha256="hash", mutation_base_revision_sha256="hash"
+    draft = _output_draft(
+        mutation=PendingDraftMutation(
+            sha256="d04b98f48e8f8bcc15c6ae5ac050801cd6dcfd428fb5f9e65c4e16e7807340fa",
+            base_revision_sha256="d04b98f48e8f8bcc15c6ae5ac050801cd6dcfd428fb5f9e65c4e16e7807340fa",
+        )
     )
     gateway = copy_verification_gateway_factory(draft.document_id, actual)
     result = await gateway.verify_output(

@@ -9,10 +9,14 @@ import pytest
 from app.document_transform import google_gateway as google_gateway_module
 from app.document_transform.brand import SarjBrandProfile, build_copy_mutations
 from app.document_transform.brand_manifest import HEADER_TITLE_SEPARATOR
-from app.document_transform.gateway import SourceSnapshot, TabHeader
+from app.document_transform.copy_draft_state import (
+    PendingDraftMutation,
+)
+from app.document_transform.gateway import NativeDocumentSnapshot, TabHeader
 from app.document_transform.google_gateway import GoogleDocumentGateway, verify_brand_application
 from app.document_transform.ir import DocumentIR, parse_google_document
 from app.document_transform.schemas import DocumentTransformRequest, DriveFileSource, TransformMode
+from app.document_transform.source_access import NativeSourceAccess, PersonalDrive
 from app.identifiers import DocsRevisionId, DocsSegmentId, DocsTabId, FileId, TaskId
 from tests.test_document_transform import (
     _branded_google_document,
@@ -20,7 +24,7 @@ from tests.test_document_transform import (
     _CopyCheckpointStore,
     _Gateway,
     _in_place_document,
-    _pending_output_draft,
+    _output_draft,
 )
 
 
@@ -96,16 +100,13 @@ async def test_custom_header_preflight_preserves_privacy() -> None:
     document["documentId"] = "private-document"
     gateway = object.__new__(GoogleDocumentGateway)
     gateway._logo_uri = "https://private.example/secret-logo"
-    snapshot = SourceSnapshot(
+    snapshot = NativeDocumentSnapshot(
         title="Decision — Sarj formatted (12345678)",
         parent_folder_id=FileId("private-folder"),
         modified_time="private-time",
         revision_id=DocsRevisionId("private-revision"),
-        media_type="application/vnd.google-apps.document",
         google_document=document,
-        owned_by_me=True,
-        can_edit=True,
-        is_personal_drive=True,
+        access=NativeSourceAccess(owned_by_me=True, can_edit=True, location=PersonalDrive()),
     )
     messages: list[str] = []
     sink = logger.add(lambda message: messages.append(str(message)), format="{message}")
@@ -131,12 +132,11 @@ async def test_copy_auto_title_and_header_agree_and_retry_keeps_identity() -> No
     source = _source()
     original = deepcopy(source)
     gateway = _Gateway(
-        SourceSnapshot(
+        NativeDocumentSnapshot(
             title="Untitled document",
             parent_folder_id=FileId("folder"),
             modified_time="before",
             revision_id=DocsRevisionId("source-revision"),
-            media_type="application/vnd.google-apps.document",
             google_document=source,
         )
     )
@@ -184,18 +184,20 @@ async def test_copy_gateway_verifies_header_once_against_supplied_durable_title(
         return True
 
     monkeypatch.setattr(google_gateway_module, "verify_brand_application", capture)
-    source = SourceSnapshot(
+    source = NativeDocumentSnapshot(
         title="Untitled document",
         parent_folder_id=FileId("folder"),
         modified_time="before",
         revision_id=DocsRevisionId("source-revision"),
-        media_type="application/vnd.google-apps.document",
         google_document=document,
     )
     expected = parse_google_document(document, title=source.title)
     # A provider collision name cannot override the supplied durable header title.
-    draft = _pending_output_draft(
-        pending_mutation_sha256="hash", mutation_base_revision_sha256="hash"
+    draft = _output_draft(
+        mutation=PendingDraftMutation(
+            sha256="d04b98f48e8f8bcc15c6ae5ac050801cd6dcfd428fb5f9e65c4e16e7807340fa",
+            base_revision_sha256="d04b98f48e8f8bcc15c6ae5ac050801cd6dcfd428fb5f9e65c4e16e7807340fa",
+        )
     )
     draft = replace(
         draft, output=draft.output.model_copy(update={"name": "Generated — Sarj formatted"})

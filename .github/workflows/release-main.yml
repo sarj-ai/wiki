@@ -116,8 +116,11 @@ jobs:
       WIF_SERVICE_ACCOUNT: ${{ secrets.WIF_SERVICE_ACCOUNT }}
 
   frontend-deploy:
-    needs: [ci-backend, ci-frontend, ci-quality, ci-iac, standards-receipt]
-    if: needs.standards-receipt.outputs.frontend == 'true'
+    needs: [ci-backend, ci-frontend, ci-quality, ci-iac, standards-receipt, backend-deploy]
+    if: >-
+      ${{ !cancelled() && needs.standards-receipt.outputs.frontend == 'true' &&
+      ((needs.standards-receipt.outputs.backend == 'true' && needs.backend-deploy.result == 'success') ||
+      (needs.standards-receipt.outputs.backend == 'false' && needs.backend-deploy.result == 'skipped')) }}
     permissions:
       contents: read
       actions: read

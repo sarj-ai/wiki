@@ -14,6 +14,7 @@ from app.document_transform.ir import parse_google_document, utf16_length
 from app.document_transform.naming import title_case_document_name
 from app.document_transform.native_pagination import apply_native_pagination, plan_native_pagination
 from app.document_transform.schemas import DocumentTransformRequest, DriveFileSource, TransformMode
+from app.document_transform.source_access import NativeSourceAccess, PersonalDrive
 from app.identifiers import DocsRevisionId, FileId, TaskId
 from tests.test_authored_labels import _snapshot
 from tests.test_document_transform import (
@@ -195,9 +196,7 @@ async def test_copy_to_in_place_is_noop_or_truthful_review_never_padding_reset(
         title="Decision — Sarj Polished" if branded_naming else "Decision",
         modified_time="2026-09-03T00:00:00Z",
         revision_id=DocsRevisionId("revision-2"),
-        owned_by_me=True,
-        can_edit=True,
-        is_personal_drive=True,
+        access=NativeSourceAccess(owned_by_me=True, can_edit=True, location=PersonalDrive()),
     )
     gateway = _Gateway(snapshot)
     native_gateway = object.__new__(GoogleDocumentGateway)
