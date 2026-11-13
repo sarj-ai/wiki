@@ -1035,6 +1035,8 @@ describe("DocumentPolishDialog", () => {
       task: {
         id: "55555555-5555-4555-8555-555555555555",
         status: "running",
+        attemptCount: 1,
+        executionState: "running",
       } as const,
     },
     {
@@ -1200,6 +1202,8 @@ describe("DocumentPolishDialog", () => {
       id: result.operationId,
       replayed: true,
       status: "running",
+      attemptCount: 1,
+      executionState: "running",
     });
     vi.spyOn(DOCUMENT_TRANSFORM_API, "waitForCompletion").mockResolvedValue(
       result,

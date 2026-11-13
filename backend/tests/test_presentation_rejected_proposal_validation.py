@@ -8,7 +8,11 @@ from app.document_transform.models import PatchGenerator
 from app.document_transform.presentation_executor import PresentationTransformExecutor
 from app.document_transform.schemas import OutputStrategy, TextPatch, TransformPhase
 from app.drive.schemas import MIME_SLIDE
-from tests.test_presentation_transform import PresentationGatewaySpy, _request
+from tests.test_presentation_transform import (
+    PresentationCheckpointStore,
+    PresentationGatewaySpy,
+    _request,
+)
 
 
 class _RejectedProposal(PatchGenerator):
@@ -50,6 +54,10 @@ def rejected_scenario() -> _RejectedScenario:
         gateway=gateway,
         generator=editor,
         logo_uri="https://wiki.sarj.ai/brand/sarj-logo-light.png",
+        checkpoint_store=PresentationCheckpointStore(),
+        lease_token=uuid.uuid7(),
+        checkpoint=None,
+        checkpoint_generation=0,
     )
     return _RejectedScenario(gateway, editor, executor)
 

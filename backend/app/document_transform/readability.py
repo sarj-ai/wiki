@@ -23,13 +23,18 @@ from app.document_transform.readability_tables import (
 from app.document_transform.readability_types import (
     CURRENT_READABILITY_VERSION,
     READABILITY_PARAGRAPH_WORD_LIMIT,
+    DeadlineReadabilityRefinement,
+    FinishedReadabilityRefinement,
+    IneligibleReadabilityRefinement,
+    InvalidReadabilityRefinement,
     PlannedReadabilityCheckpoint,
     ReadabilityCheckpoint,
     ReadabilityParagraph,
     ReadabilityPart,
     ReadabilityProposal,
-    ReadabilityStopReason,
     ReadabilityTable,
+    RecordedReadabilityRefinement,
+    UnavailableReadabilityRefinement,
 )
 from app.identifiers import DocsRevisionId
 from app.performance import provider_retry_remaining_seconds
@@ -65,10 +70,19 @@ _KNOWN_PROJECTION_FAILURES = frozenset(
 class _LayoutDraft:
     proposals: list[ReadabilityProposal]
     paragraphs: tuple[ReadabilityParagraph, ...]
-    passes: int
-    planning_failure_code: str | None = None
-    accepted_improvements: int = 0
-    stop_reason: ReadabilityStopReason = "not_eligible"
+    refinement: RecordedReadabilityRefinement
+
+    @property
+    def passes(self) -> int:
+        return self.refinement.passes
+
+    @property
+    def planning_failure_code(self) -> str | None:
+        return self.refinement.planning_failure_code
+
+    @property
+    def accepted_improvements(self) -> int:
+        return self.refinement.accepted_improvements
 
 
 @dataclass(frozen=True, slots=True)
@@ -103,11 +117,7 @@ async def plan_readability(
             str(tab_id): deepcopy(obj(tab.get("lists", {}))) for tab_id, tab in bodies(document)
         },
         requests=mutations.requests,
-        model_invoked=bool(draft.passes),
-        passes=draft.passes,
-        accepted_improvements=draft.accepted_improvements,
-        stop_reason=draft.stop_reason,
-        planning_failure_code=draft.planning_failure_code,
+        refinement=draft.refinement,
     )
     checkpoint = checkpoint.model_copy(
         update={
@@ -158,7 +168,7 @@ async def _refine_layout(
     document: dict[str, JsonValue], *, title: str, generator: PatchGenerator, max_passes: int
 ) -> _LayoutDraft:
     ir = readability_document(document, title=title)
-    best = _LayoutDraft([], (), 0)
+    best = _LayoutDraft([], (), IneligibleReadabilityRefinement())
     if (
         not generator.supports_readability_planning
         or not any(block.editable for block in ir.blocks)
@@ -167,18 +177,25 @@ async def _refine_layout(
         return best
     score = _layout_burden([], document, title=title)
     feedback = ""
-    best = replace(best, stop_reason="pass_limit")
     for number in range(1, max_passes + 1):
         remaining = provider_retry_remaining_seconds()
         if remaining is not None and remaining < _MIN_LAYOUT_SECONDS:
             best = replace(
                 best,
-                planning_failure_code="model_deadline_exhausted",
-                stop_reason="deadline_reserve",
+                refinement=DeadlineReadabilityRefinement(
+                    passes=best.passes, accepted_improvements=best.accepted_improvements
+                ),
             )
             break
         # Failed provider calls still count as attempts in table-only receipts.
-        best = replace(best, passes=number)
+        best = replace(
+            best,
+            refinement=FinishedReadabilityRefinement(
+                stop_reason="pass_limit",
+                passes=number,
+                accepted_improvements=best.accepted_improvements,
+            ),
+        )
         try:
             proposals = await generator.plan_readability(
                 ir, previous=best.proposals, feedback=feedback
@@ -191,8 +208,9 @@ async def _refine_layout(
             if feedback:
                 best = replace(
                     best,
-                    planning_failure_code="model_output_invalid",
-                    stop_reason="invalid_proposal",
+                    refinement=InvalidReadabilityRefinement(
+                        passes=best.passes, accepted_improvements=best.accepted_improvements
+                    ),
                 )
                 break
             feedback = str(error)
@@ -201,7 +219,11 @@ async def _refine_layout(
         if candidate_score >= score:
             best = replace(
                 best,
-                stop_reason="converged" if proposals == best.proposals else "no_improvement",
+                refinement=FinishedReadabilityRefinement(
+                    stop_reason="converged" if proposals == best.proposals else "no_improvement",
+                    passes=best.passes,
+                    accepted_improvements=best.accepted_improvements,
+                ),
             )
             break
         best, score = (
@@ -209,7 +231,11 @@ async def _refine_layout(
                 best,
                 proposals=proposals,
                 paragraphs=paragraphs,
-                accepted_improvements=best.accepted_improvements + 1,
+                refinement=FinishedReadabilityRefinement(
+                    stop_reason="pass_limit",
+                    passes=best.passes,
+                    accepted_improvements=best.accepted_improvements + 1,
+                ),
             ),
             candidate_score,
         )
@@ -218,10 +244,17 @@ async def _refine_layout(
 
 
 def _provider_stopped_draft(best: _LayoutDraft, error: ModelUnavailableError) -> _LayoutDraft:
-    reason: ReadabilityStopReason = "provider_unavailable"
     if error.code == "model_deadline_exhausted":
-        reason = "deadline_reserve"
-    return replace(best, planning_failure_code=error.code, stop_reason=reason)
+        refinement: RecordedReadabilityRefinement = DeadlineReadabilityRefinement(
+            passes=best.passes, accepted_improvements=best.accepted_improvements
+        )
+    else:
+        refinement = UnavailableReadabilityRefinement(
+            passes=best.passes,
+            accepted_improvements=best.accepted_improvements,
+            planning_failure_code=error.code,
+        )
+    return replace(best, refinement=refinement)
 
 
 def _layout_burden(

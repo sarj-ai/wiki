@@ -1,4 +1,5 @@
 from datetime import UTC, datetime
+from typing import Literal
 import uuid
 
 from fastapi import Response
@@ -19,17 +20,25 @@ from app.identifiers import FileId, TaskId, UserId
 from app.models.user import User
 from app.tasks.errors import TaskNotFoundError
 from app.tasks.router import get_task
-from app.tasks.schemas import DocumentTransformTaskRecord, FailedTaskRead, TaskKind, TaskStatus
+from app.tasks.schemas import (
+    DocumentTransformTaskRecord,
+    FailedTaskRead,
+    TaskKind,
+    TaskStatus,
+    TerminalDocumentTransformTaskRecord,
+)
 from tests.advanced_round6_support import in_place_checkpoint
 
 
 class TaskReaderStub:
-    def __init__(self, record: DocumentTransformTaskRecord, hidden: bool) -> None:
+    def __init__(self, record: TerminalDocumentTransformTaskRecord, hidden: bool) -> None:
         self.record = record
         self.hidden = hidden
         self.loads = 0
 
-    async def get_for_owner(self, task_id: TaskId, owner_user_id: UserId) -> FailedTaskRead:
+    async def get_for_owner(
+        self, task_id: TaskId, owner_user_id: UserId
+    ) -> FailedTaskRead[Literal[TaskKind.FILE_DOCUMENT_TRANSFORM]]:
         if self.hidden:
             raise TaskNotFoundError
         assert task_id == self.record.task.id
@@ -59,9 +68,9 @@ def _failed_task(
     *,
     resource_id: FileId | None = None,
     error_code: str = "output_verification_failed",
-) -> FailedTaskRead:
+) -> FailedTaskRead[Literal[TaskKind.FILE_DOCUMENT_TRANSFORM]]:
     now = datetime.now(UTC)
-    return FailedTaskRead(
+    return FailedTaskRead[Literal[TaskKind.FILE_DOCUMENT_TRANSFORM]](
         id=TaskId(uuid.uuid7()),
         kind=TaskKind.FILE_DOCUMENT_TRANSFORM,
         status=TaskStatus.FAILED,
@@ -119,7 +128,7 @@ async def test_failed_copy_review_descriptor_checks_owner_and_live_access(scenar
         mode=TransformMode.FORMAT,
         output_strategy=OutputStrategy.COPY,
     )
-    record = DocumentTransformTaskRecord.model_construct(
+    record = TerminalDocumentTransformTaskRecord(
         owner_user_id=uuid.uuid7() if scenario == "wrong_owner" else owner,
         task=task,
         payload=None
@@ -205,7 +214,7 @@ async def test_post_mutation_failure_exposes_only_owner_verified_original(
         mode=TransformMode.FORMAT,
         output_strategy=OutputStrategy.IN_PLACE,
     )
-    record = DocumentTransformTaskRecord.model_construct(
+    record = TerminalDocumentTransformTaskRecord(
         owner_user_id=uuid.uuid7() if scenario == "wrong_owner" else owner,
         task=task,
         payload=None if scenario == "redacted" else payload,

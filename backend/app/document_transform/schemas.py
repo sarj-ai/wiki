@@ -691,4 +691,65 @@ class WordCheckpointPayload(RootModel[WordCopyCheckpoint]):
     pass
 
 
-DocumentTransformCheckpoint = InPlaceCheckpoint | CopyCheckpoint | WordCopyCheckpoint
+class PresentationCopyPlan(StrictTransformModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    version: Literal[1] = 1
+    kind: Literal["presentation_copy"] = "presentation_copy"
+    request_sha256: str = Field(pattern=r"^[a-f0-9]{64}$")
+    source_sha256: str = Field(pattern=r"^[a-f0-9]{64}$")
+    output_name: OutputName
+
+
+class PlannedPresentationCheckpoint(PresentationCopyPlan):
+    stage: Literal[CopyCheckpointStage.PLANNED] = CopyCheckpointStage.PLANNED
+    output: None = None
+    result: None = None
+
+
+class CreatingPresentationCheckpoint(PresentationCopyPlan):
+    stage: Literal[CopyCheckpointStage.CREATING] = CopyCheckpointStage.CREATING
+    output: None = None
+    result: None = None
+
+
+class CreatedPresentationCheckpoint(PresentationCopyPlan):
+    stage: Literal[CopyCheckpointStage.CREATED] = CopyCheckpointStage.CREATED
+    output: DocumentOutput
+    result: None = None
+
+
+class VerifiedPresentationCheckpoint(PresentationCopyPlan):
+    stage: Literal[CopyCheckpointStage.VERIFIED] = CopyCheckpointStage.VERIFIED
+    output: DocumentOutput
+    result: DocumentTransformResult
+
+    @model_validator(mode="after")
+    def matching_result(self) -> Self:
+        if self.result.output != self.output or self.result.source_sha256 != self.source_sha256:
+            message = "Presentation result does not match its checkpoint"
+            raise ValueError(message)
+        return self
+
+
+PresentationCopyCheckpoint = Annotated[
+    PlannedPresentationCheckpoint
+    | CreatingPresentationCheckpoint
+    | CreatedPresentationCheckpoint
+    | VerifiedPresentationCheckpoint,
+    Field(discriminator="stage"),
+]
+
+
+class PresentationCheckpointPayload(RootModel[PresentationCopyCheckpoint]):
+    pass
+
+
+type TextDocumentCheckpoint = InPlaceCheckpoint | CopyCheckpoint | WordCopyCheckpoint
+
+
+class TextDocumentCheckpointPayload(RootModel[TextDocumentCheckpoint]):
+    pass
+
+
+DocumentTransformCheckpoint = TextDocumentCheckpoint | PresentationCopyCheckpoint

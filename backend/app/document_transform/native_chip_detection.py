@@ -1,7 +1,7 @@
 from dataclasses import dataclass, replace
 from datetime import UTC, date, datetime, time, timedelta
 import re
-from typing import Literal, NotRequired, TypedDict
+from typing import ClassVar, Literal, NotRequired, TypedDict
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from app.document_transform.ir import utf16_length
@@ -93,13 +93,37 @@ class NativeDateValue:
 
 
 @dataclass(frozen=True, slots=True)
-class DetectedNativeSpan:
+class _NativeSpan:
     start: int
     end: int
     text: str
+
+
+@dataclass(frozen=True, slots=True)
+class ResolvedNativeDateSpan(_NativeSpan):
+    resolution: ClassVar[Literal["resolved-date"]] = "resolved-date"
+    kind: ClassVar[Literal["date"]] = "date"
+    skip_reason: ClassVar[None] = None
+    date_value: NativeDateValue
+
+
+@dataclass(frozen=True, slots=True)
+class LocatedNativePlaceSpan(_NativeSpan):
+    resolution: ClassVar[Literal["located-place"]] = "located-place"
+    kind: ClassVar[Literal["place"]] = "place"
+    skip_reason: ClassVar[None] = None
+    date_value: ClassVar[None] = None
+
+
+@dataclass(frozen=True, slots=True)
+class BlockedNativeSpan(_NativeSpan):
+    resolution: ClassVar[Literal["blocked"]] = "blocked"
+    date_value: ClassVar[None] = None
     kind: Literal["date", "place"]
-    date_value: NativeDateValue | None = None
-    skip_reason: str | None = None
+    skip_reason: str
+
+
+DetectedNativeSpan = ResolvedNativeDateSpan | LocatedNativePlaceSpan | BlockedNativeSpan
 
 
 def native_chip_context(title: str, context_text: str) -> NativeChipContext:
@@ -153,12 +177,18 @@ def detect_address_spans(
         else None
     )
     return tuple(
-        DetectedNativeSpan(
+        BlockedNativeSpan(
             utf16_length(text[: match.start()]),
             utf16_length(text[: match.end()]),
             match[0],
             "place",
-            skip_reason=reason,
+            reason,
+        )
+        if reason is not None
+        else LocatedNativePlaceSpan(
+            utf16_length(text[: match.start()]),
+            utf16_length(text[: match.end()]),
+            match[0],
         )
         for match in _ADDRESS.finditer(text)
     )
@@ -186,10 +216,16 @@ def _detected_date_spans(
 ) -> tuple[DetectedNativeSpan, ...]:
     value = _parse_date(match[0], context=context)
     if value is None:
-        return (_span(text, match.start(), match.end(), reason="ambiguous_or_invalid_date"),)
+        return (
+            _blocked_date_span(
+                text, match.start(), match.end(), reason="ambiguous_or_invalid_date"
+            ),
+        )
     weekday = _WEEKDAY_PREFIX.search(text[: match.start()])
     if weekday and weekday[1].lower() != _WEEKDAYS[value.weekday()].lower():
-        return (_span(text, match.start(), match.end(), reason="weekday_date_conflict"),)
+        return (
+            _blocked_date_span(text, match.start(), match.end(), reason="weekday_date_conflict"),
+        )
     times = _TIME_RANGE.match(text[match.end() :])
     if times is None or _RECURRING.search(text):
         return (_date_span(text, match.start(), match.end(), value, context=context),)
@@ -207,8 +243,10 @@ def _timed_date_spans(
     try:
         values = _zoned_time_values(value, times, context=context)
     except ValueError as error:
-        return (_span(text, match.start(), match.end() + times.end(), reason=str(error)),)
-    first = _span(
+        return (
+            _blocked_date_span(text, match.start(), match.end() + times.end(), reason=str(error)),
+        )
+    first = _resolved_date_span(
         text,
         match.start(),
         match.end() + _time_endpoint_end(times, "a"),
@@ -216,7 +254,7 @@ def _timed_date_spans(
     )
     if len(values) == 1:
         return (first,)
-    second = _span(
+    second = _resolved_date_span(
         text,
         match.end() + times.start("bhour"),
         match.end() + _time_endpoint_end(times, "b"),
@@ -234,12 +272,14 @@ def _anchored_time_spans(
     try:
         values = _zoned_time_values(context.anchored_date, times, context=context)
     except ValueError as error:
-        return (_span(text, match.start(), match.end(), reason=str(error)),)
+        return (_blocked_date_span(text, match.start(), match.end(), reason=str(error)),)
     offset = match.start() - 1
-    first = _span(text, match.start(), offset + _time_endpoint_end(times, "a"), value=values[0])
+    first = _resolved_date_span(
+        text, match.start(), offset + _time_endpoint_end(times, "a"), value=values[0]
+    )
     if len(values) == 1:
         return (first,)
-    second = _span(
+    second = _resolved_date_span(
         text,
         offset + times.start("bhour"),
         offset + _time_endpoint_end(times, "b"),
@@ -274,21 +314,17 @@ def _time_endpoint_end(match: re.Match[str], prefix: Literal["a", "b"]) -> int:
     raise ValueError(msg)
 
 
-def _span(
-    text: str,
-    start: int,
-    end: int,
-    *,
-    reason: str | None = None,
-    value: NativeDateValue | None = None,
-) -> DetectedNativeSpan:
-    return DetectedNativeSpan(
-        utf16_length(text[:start]),
-        utf16_length(text[:end]),
-        text[start:end],
-        "date",
-        date_value=value,
-        skip_reason=reason,
+def _blocked_date_span(text: str, start: int, end: int, *, reason: str) -> BlockedNativeSpan:
+    return BlockedNativeSpan(
+        utf16_length(text[:start]), utf16_length(text[:end]), text[start:end], "date", reason
+    )
+
+
+def _resolved_date_span(
+    text: str, start: int, end: int, *, value: NativeDateValue
+) -> ResolvedNativeDateSpan:
+    return ResolvedNativeDateSpan(
+        utf16_length(text[:start]), utf16_length(text[:end]), text[start:end], value
     )
 
 
@@ -296,15 +332,15 @@ def _date_span(
     text: str, start: int, end: int, value: date, *, context: NativeChipContext
 ) -> DetectedNativeSpan:
     if context.conflicting_time_zone:
-        return _span(text, start, end, reason="conflicting_time_zone_context")
+        return _blocked_date_span(text, start, end, reason="conflicting_time_zone_context")
     zone = context.time_zone or (
         "America/New_York" if context.city == "New York City" else "Etc/UTC"
     )
     try:
         timestamp = _local_instant(value, time(0), zone)
     except ValueError as error:
-        return _span(text, start, end, reason=str(error))
-    return _span(
+        return _blocked_date_span(text, start, end, reason=str(error))
+    return _resolved_date_span(
         text,
         start,
         end,

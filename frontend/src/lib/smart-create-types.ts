@@ -55,6 +55,12 @@ export interface SmartCreateResult {
 
 export type SmartCreateTask =
   | {
+      id: string;
+      status: "needs_review";
+      errorCode: "external_effect_uncertain";
+      errorDetail: string;
+    }
+  | {
       errorCode: string;
       errorDetail?: string;
       id: string;

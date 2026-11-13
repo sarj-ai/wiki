@@ -116,7 +116,7 @@
       "runtime": "backend/app/tasks/service.py",
       "reason": "Durable execution, leases, checkpoints, dispatch and results for active document operations.",
       "lifecycleEvidence": "backend/app/tasks/service.py",
-      "currentChange": "Deployed migration 0028 enforces allowed task kinds and succeeded result identity/shape. Runtime DTOs correlate result with kind and Smart Create task ID; validate before committing a transition. Existing JSON and failure/checkpoint evidence are retained."
+      "currentChange": "0028 remains production verified with PR652. Candidate 0029 adds explicit needs_review, preserves ambiguous expired execution and all replay/target ownership, validates task state/evidence, and refuses lossy downgrade. Slides and Smart Create reuse the existing checkpoint and generation fields."
     },
     {
       "table": "user_drive_tree_cache",
@@ -1269,6 +1269,44 @@
       "backend": "6307 passed with disposable PostgreSQL enabled; 65 MCP fixtures initially rejected the database name, all 69 MCP tests passed after using the required wiki_mcp_qa prefix",
       "configuredDomainMigration": "2 passed against a separate fresh PostgreSQL 18 database",
       "migration": "Actual fresh Alembic head 0028 applied; production native migration receipt and constraint catalog verified"
+    }
+  },
+  "reviewMigration": {
+    "revision": "0029_task_review",
+    "tableChanges": "No table or column added or removed. Replace task state/evidence constraints and extend the unique in-place reservation to needs_review.",
+    "dataMigration": "Refuse unexpired running leases under an exclusive lock; preserve every expired running task and its input/checkpoint/generation/resource as needs_review.",
+    "verification": "276 focused runtime tests, 157 PostgreSQL storage/recovery tests, 69 native MCP transaction/admission tests and two authentication migration tests passed on 2026-11-12. Full release qualification and production cutover are separate gates.",
+    "cutoverContract": "Maintenance must block new execution before leases drain. Retain the four previously observed uncertain executions; preserve backups and refuse downgrade while review or presentation-copy evidence exists.",
+    "latestReadOnlyPreflight": {
+      "observedAt": "2026-11-12T18:23:51.503957+00:00",
+      "execution": "wiki-code-metadata-20261111-r2-fm5t6",
+      "migration": [
+        "0028_task_result_invariants"
+      ],
+      "tableCounts": {
+        "alembic_version": 1,
+        "cache_entries": 1,
+        "doc_icons": 64,
+        "document_aliases": 128,
+        "document_header_provenance": 36,
+        "mcp_grants": 3,
+        "mcp_oauth_entries": 14,
+        "task_replay_keys": 1,
+        "tasks": 72,
+        "user_drive_tree_cache": 47,
+        "user_sessions": 185,
+        "users": 54
+      },
+      "taskStates": {
+        "failed": 36,
+        "running": 4,
+        "succeeded": 32
+      },
+      "liveTaskLeases": 0,
+      "validatedTaskConstraints": 29,
+      "uncertainTasksWithPreservedEvidence": 4,
+      "receiptSHA256": "da6a50262b08691ad58c73a23a975e05a662400b434ee7cb5c3e357ad10fe717",
+      "status": "Read-only snapshot before cutover; not proof that migration 0029 is applied."
     }
   }
 }

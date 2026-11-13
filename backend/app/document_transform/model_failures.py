@@ -7,12 +7,14 @@ from google.auth import exceptions as auth_errors
 from google.genai import errors
 
 from app.document_transform.errors import (
+    ExhaustedModelError,
     ModelAuthenticationError,
     ModelConfigurationError,
     ModelDeadlineError,
     ModelOutputError,
     ModelPermissionError,
     ModelUnavailableError,
+    NoQueueRetryModelError,
 )
 from app.performance import provider_retry_remaining_seconds
 
@@ -100,16 +102,12 @@ def grouped_model_failure(error: BaseExceptionGroup) -> ModelUnavailableError:
 
 def exhausted_model_failure(error: Exception | None) -> ModelUnavailableError:
     failure = classify_model_failure(error) if error is not None else None
-    if failure is None:
-        return ModelUnavailableError(retryable=False)
-    # A new exception must wrap the group. Re-raising one of the group's own
-    # children with the group as its cause would create a cyclic cause graph.
-    result = type(failure)()
-    # This operation already consumed its bounded provider attempts. A new
-    # queue delivery must not reset that budget or bypass the last Retry-After.
-    result.retryable = False
-    result.retry_after = failure.retry_after
-    return result
+    # A fresh exception avoids a cyclic cause graph when wrapping a group child.
+    # Preserve permanent categories and the last provider delay without allowing
+    # a queue delivery to reset an exhausted operation's bounded retry budget.
+    if isinstance(failure, NoQueueRetryModelError):
+        return type(failure)()
+    return ExhaustedModelError(retry_after=failure.retry_after if failure is not None else None)
 
 
 def _retry_after(error: errors.APIError) -> float | None:

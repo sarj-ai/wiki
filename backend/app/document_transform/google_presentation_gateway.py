@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import asyncio
-from collections.abc import Callable, Iterator
+from collections.abc import Callable, Iterator, Mapping
 from functools import cache
 import hashlib
 from http import HTTPStatus
@@ -41,6 +41,17 @@ from app.document_transform.presentation_gateway import (
     PresentationRevisionId,
     PresentationSourceSnapshot,
     PresentationVerification,
+)
+from app.document_transform.presentation_state import (
+    AppliedPresentationMutation,
+    CompletedPresentationMutation,
+    PendingPresentationMutation,
+    PresentationMutation,
+    PresentationMutationPlan,
+    ReadyPresentation,
+    RecordedPresentationMutation,
+    confirmed_mutation,
+    pending_mutation_plan,
 )
 from app.document_transform.schemas import DriveFileSource
 from app.document_transform.slides_ir import parse_google_presentation
@@ -354,8 +365,10 @@ class GooglePresentationGateway(PresentationGateway):
         expected_protected_structure_sha256: str,
         expected_brand_sha256: str | None = None,
     ) -> PresentationDraft:
-        if draft.applied_mutation_sha256 == mutation_sha256:
+        if confirmed_mutation(draft.mutation) == mutation_sha256:
             return draft
+        if isinstance(draft.mutation, CompletedPresentationMutation):
+            raise OutputConflictError
         await self._validate_output_scope(draft, draft.parent_folder_id)
         return await asyncio.to_thread(
             self._apply_requests_sync,
@@ -390,6 +403,8 @@ class GooglePresentationGateway(PresentationGateway):
     @override
     async def complete(self, *, draft: PresentationDraft) -> None:
         await self._validate_output_scope(draft, draft.parent_folder_id)
+        if confirmed_mutation(draft.mutation) is None:
+            raise IncompatiblePendingOutputError
         await asyncio.to_thread(
             self._update_properties_sync,
             draft.file_id,
@@ -554,57 +569,29 @@ class GooglePresentationGateway(PresentationGateway):
             revision_id=PresentationRevisionId(_required_string(presentation, "revisionId")),
             source_sha256=source_sha256,
             web_url=(raw.get("webViewLink") if isinstance(raw.get("webViewLink"), str) else None),
-            applied_mutation_sha256=_optional_string(typed_properties, _PROP_MUTATION),
-            pending_mutation_sha256=_optional_string(typed_properties, _PROP_PENDING_MUTATION),
-            mutation_base_revision_sha256=_optional_string(
-                typed_properties, _PROP_MUTATION_BASE_REVISION_HASH
-            ),
-            pending_expected_semantic_sha256=_optional_string(
-                typed_properties, _PROP_EXPECTED_SEMANTIC_HASH
-            ),
-            pending_expected_protected_structure_sha256=_optional_string(
-                typed_properties, _PROP_EXPECTED_PROTECTED_HASH
-            ),
-            pending_expected_brand_sha256=_optional_string(
-                typed_properties, _PROP_EXPECTED_BRAND_HASH
-            ),
-            completed=typed_properties.get(_PROP_STATE) == _STATE_COMPLETE,
+            mutation=_mutation_state(typed_properties),
         )
 
     def _reconcile_pending_sync(self, draft: PresentationDraft) -> PresentationDraft:
-        pending = draft.pending_mutation_sha256
-        if pending is None:
+        plan = pending_mutation_plan(draft.mutation)
+        if plan is None:
             return draft
-        expected_semantic = draft.pending_expected_semantic_sha256
-        expected_protected = draft.pending_expected_protected_structure_sha256
-        expected_brand_hash = draft.pending_expected_brand_sha256
-        base_hash = draft.mutation_base_revision_sha256
-        if (
-            expected_semantic is None
-            or expected_protected is None
-            or expected_brand_hash is None
-            or base_hash is None
-        ):
-            raise IncompatiblePendingOutputError
-        if draft.applied_mutation_sha256 not in {None, pending}:
-            raise IncompatiblePendingOutputError
-        expected_brand = None if expected_brand_hash == _NO_BRAND_EXPECTED else expected_brand_hash
         presentation = self._get_presentation_sync(draft.file_id)
         verification = self._verify_presentation(
             presentation=presentation,
             title=draft.name,
-            expected_semantic_sha256=expected_semantic,
-            expected_protected_structure_sha256=expected_protected,
-            expected_brand_sha256=expected_brand,
+            expected_semantic_sha256=plan.expected_semantic_sha256,
+            expected_protected_structure_sha256=plan.expected_protected_structure_sha256,
+            expected_brand_sha256=plan.expected_brand_sha256,
         )
         if _verification_passed(verification):
-            if draft.applied_mutation_sha256 is None:
-                self._update_properties_sync(draft.file_id, {_PROP_MUTATION: pending})
+            if isinstance(draft.mutation, PendingPresentationMutation):
+                self._update_properties_sync(draft.file_id, {_PROP_MUTATION: plan.mutation_sha256})
             return self._read_draft(draft)
-        if draft.applied_mutation_sha256 is not None:
+        if not isinstance(draft.mutation, PendingPresentationMutation):
             raise IncompatiblePendingOutputError
         revision_id = _required_string(presentation, "revisionId")
-        if _revision_sha256(revision_id) == base_hash:
+        if _revision_sha256(revision_id) == plan.base_revision_sha256:
             return self._read_draft(draft)
         raise SourceChangedError
 
@@ -621,7 +608,8 @@ class GooglePresentationGateway(PresentationGateway):
     ) -> PresentationDraft:
         if draft.revision_id != required_revision_id:
             raise SourceChangedError
-        if draft.pending_mutation_sha256 not in {None, mutation_sha256}:
+        plan = pending_mutation_plan(draft.mutation)
+        if plan is not None and plan.mutation_sha256 != mutation_sha256:
             raise IncompatiblePendingOutputError
         if not requests:
             self._update_properties_sync(draft.file_id, {_PROP_MUTATION: mutation_sha256})
@@ -957,18 +945,71 @@ def _initial_properties(operation_id: uuid.UUID, source_sha256: str) -> dict[str
     }
 
 
+def _mutation_state(properties: Mapping[str, object]) -> PresentationMutation:
+    phase = _required_string(properties, _PROP_STATE)
+    if phase not in {_STATE_INCOMPLETE, _STATE_COMPLETE}:
+        raise IncompatiblePendingOutputError
+    pending = _mutation_property(properties, _PROP_PENDING_MUTATION)
+    applied = _mutation_property(properties, _PROP_MUTATION)
+    if pending is None:
+        if any(
+            key in properties
+            for key in (
+                _PROP_MUTATION_BASE_REVISION_HASH,
+                _PROP_EXPECTED_SEMANTIC_HASH,
+                _PROP_EXPECTED_PROTECTED_HASH,
+                _PROP_EXPECTED_BRAND_HASH,
+            )
+        ):
+            raise IncompatiblePendingOutputError
+        if applied is None:
+            if phase == _STATE_COMPLETE:
+                raise IncompatiblePendingOutputError
+            return ReadyPresentation()
+        recorded = RecordedPresentationMutation(mutation_sha256=applied)
+        if phase == _STATE_COMPLETE:
+            return CompletedPresentationMutation(receipt=recorded)
+        return recorded
+    if applied not in {None, pending}:
+        raise IncompatiblePendingOutputError
+    brand_hash = _required_string(properties, _PROP_EXPECTED_BRAND_HASH)
+    plan = PresentationMutationPlan(
+        mutation_sha256=pending,
+        base_revision_sha256=_required_string(properties, _PROP_MUTATION_BASE_REVISION_HASH),
+        expected_semantic_sha256=_required_string(properties, _PROP_EXPECTED_SEMANTIC_HASH),
+        expected_protected_structure_sha256=_required_string(
+            properties, _PROP_EXPECTED_PROTECTED_HASH
+        ),
+        expected_brand_sha256=None if brand_hash == _NO_BRAND_EXPECTED else brand_hash,
+    )
+    if applied is None:
+        if phase == _STATE_COMPLETE:
+            raise IncompatiblePendingOutputError
+        return PendingPresentationMutation(plan=plan)
+    receipt = AppliedPresentationMutation(plan=plan)
+    if phase == _STATE_COMPLETE:
+        return CompletedPresentationMutation(receipt=receipt)
+    return receipt
+
+
+def _mutation_property(properties: Mapping[str, object], key: str) -> str | None:
+    if key not in properties:
+        return None
+    return _required_string(properties, key)
+
+
 def _revision_sha256(revision_id: str) -> str:
     return hashlib.sha256(revision_id.encode()).hexdigest()
 
 
-def _required_string(mapping: dict[str, Any], key: str) -> str:
+def _required_string(mapping: Mapping[str, object], key: str) -> str:
     value = mapping.get(key)
     if not isinstance(value, str) or not value:
         raise DocumentGatewayError
     return value
 
 
-def _optional_string(mapping: dict[str, Any], key: str) -> str | None:
+def _optional_string(mapping: Mapping[str, object], key: str) -> str | None:
     value = mapping.get(key)
     return value if isinstance(value, str) else None
 

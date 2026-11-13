@@ -4,12 +4,13 @@ import asyncio
 from datetime import UTC, datetime, timedelta
 import hashlib
 import json
-from typing import Any, Never, override
+from typing import Any, Literal, Never, override
 import uuid
 
 from pydantic import BaseModel, RootModel, ValidationError
 import pytest
 from sqlalchemy import Table
+from sqlalchemy.exc import NoResultFound
 from sqlalchemy.sql.elements import ClauseElement
 
 from app.document_transform.schemas import (
@@ -36,7 +37,16 @@ from app.tasks.errors import (
     TaskNotFoundError,
     TaskTargetBusyError,
 )
-from app.tasks.schemas import TaskKind, TaskRead, TaskStatus
+from app.tasks.schemas import (
+    ActiveDocumentTransformTaskRecord,
+    ExistingTaskReservation,
+    NewTaskReservation,
+    RunningTaskRead,
+    TaskKind,
+    TaskRead,
+    TaskStatus,
+    TerminalDocumentTransformTaskRecord,
+)
 from app.tasks.service import PostgresTaskService
 
 
@@ -57,11 +67,11 @@ class _Result:
         return self._row
 
     def scalar_one(self) -> Any:
+        if self._row is None:
+            raise NoResultFound
         return self._row
 
     def one_or_none(self) -> Any:
-        if isinstance(self._row, Task):
-            return (self._row, False)
         return self._row
 
     def one(self) -> Any:
@@ -367,10 +377,12 @@ async def test_different_key_same_source_reuses_active_task(
         status=task_status,
     )
     row.kind = TaskKind.FILE_DOCUMENT_TRANSFORM
-    session = _Session(True, None, row, row, None)
+    session = _Session(True, None, (row, "live"), (row, "live"), None)
     if task_status is TaskStatus.RUNNING:
         row.started_at = datetime.now(UTC)
         row.attempt_count = 1
+        row.lease_token = uuid.uuid7()
+        row.lease_expires_at = datetime.now(UTC) + timedelta(minutes=1)
     admitted = False
 
     async def admit() -> None:
@@ -427,7 +439,7 @@ async def test_active_source_different_intent_is_busy(change: str) -> None:
             changed = payload.model_copy(update={"output_strategy": OutputStrategy.COPY})
         case _:
             changed = payload.model_copy(update={"output_name": "Different name"})
-    session = _Session(True, None, row, row)
+    session = _Session(True, None, (row, "live"), (row, "live"))
     with pytest.raises(TaskTargetBusyError):
         await _service(session).create_or_replay(
             kind=TaskKind.FILE_DOCUMENT_TRANSFORM,
@@ -799,8 +811,11 @@ async def test_markdown_task_persists_ciphertext_and_hash_without_plaintext() ->
     gc_sql = str(statement)
     assert "DELETE FROM tasks" in gc_sql
     assert "tasks.expires_at <= now()" in gc_sql
-    assert "tasks.status !=" in gc_sql
-    assert "tasks.lease_expires_at <=" in gc_sql
+    assert "tasks.status IN" in gc_sql
+    parameters = statement.compile().params or {}
+    assert any(
+        value == ["pending", "succeeded", "failed", "cancelled"] for value in parameters.values()
+    )
 
 
 def test_uploaded_markdown_task_stores_reference_without_inline_encryption() -> None:
@@ -830,16 +845,23 @@ def test_uploaded_markdown_task_stores_reference_without_inline_encryption() -> 
 
 
 @pytest.mark.parametrize("revoked", [False, True])
-@pytest.mark.parametrize("expired", [False, True])
+@pytest.mark.parametrize("retained_lease", [False, True])
 async def test_markdown_active_hash_reuse_authorizes_before_recording_new_key(
-    *, revoked: bool, expired: bool
+    *, revoked: bool, retained_lease: bool
 ) -> None:
     payload = _markdown_payload()
     row = _task(
         request_hash=task_service_module._request_hash(task_service_module._serialize(payload))
     )
     row.kind = TaskKind.FILE_DOCUMENT_TRANSFORM
-    session = _Session(True, None, (row, expired), (row, expired), None)
+    if retained_lease:
+        row.status = TaskStatus.RUNNING
+        row.attempt_count = 1
+        row.started_at = datetime.now(UTC)
+        row.expires_at = datetime.now(UTC) - timedelta(minutes=1)
+        row.lease_expires_at = datetime.now(UTC) - timedelta(minutes=1)
+    phase = "retained_lease" if retained_lease else "live"
+    session = _Session(True, None, (row, phase), (row, phase), None)
     admissions: list[bool] = []
 
     async def admit() -> None:
@@ -863,7 +885,7 @@ async def test_markdown_active_hash_reuse_authorizes_before_recording_new_key(
         assert session.rollbacks == 1
         assert session.commits == 0
         assert len(session.statements) == 3
-    elif expired:
+    elif retained_lease:
         with pytest.raises(TaskTargetBusyError):
             await reserve()
         assert session.rollbacks == 1
@@ -880,9 +902,11 @@ async def test_markdown_active_hash_reuse_authorizes_before_recording_new_key(
     params = query.compile().params or {}
     assert row.owner_user_id in params.values()
     assert row.request_hash in params.values()
-    assert "markdown" in params.values()
     assert "tasks.status IN" in str(query)
-    assert "tasks.expires_at <= now() AS expired" in str(query)
+    assert "CASE WHEN" in str(query)
+    assert "AS slot_phase" in str(query)
+    assert "tasks.request_hash =" in str(query)
+    assert "tasks.payload" not in str(query)
 
 
 @pytest.mark.parametrize("insert_succeeds", [False, True])
@@ -938,6 +962,7 @@ async def test_worker_load_decrypts_markdown_and_accepts_legacy_payloads() -> No
     row.payload = stored_payload
     encrypted_record = await _service(_Session(row)).load_document_transform(row.id)
 
+    assert isinstance(encrypted_record, ActiveDocumentTransformTaskRecord)
     assert encrypted_record.payload == payload
     assert encrypted_record.payload is not None
     assert isinstance(encrypted_record.payload.source, MarkdownSource)
@@ -946,12 +971,14 @@ async def test_worker_load_decrypts_markdown_and_accepts_legacy_payloads() -> No
     legacy_payload: dict[str, object] = dict(serialized)
     row.payload = legacy_payload
     legacy_record = await _service(_Session(row)).load_document_transform(row.id)
+    assert isinstance(legacy_record, ActiveDocumentTransformTaskRecord)
     assert legacy_record.payload == payload
 
     drive_payload = _in_place_payload()
     serialized_drive: dict[str, object] = dict(task_service_module._serialize(drive_payload))
     row.payload = serialized_drive
     drive_record = await _service(_Session(row)).load_document_transform(row.id)
+    assert isinstance(drive_record, ActiveDocumentTransformTaskRecord)
     assert drive_record.payload == drive_payload
 
 
@@ -1088,6 +1115,7 @@ async def test_success_redacts_document_transform_payload_and_terminal_load_skip
     redacted_payload: dict[str, object] = {"redacted": True}
     row.payload = redacted_payload
     terminal = await _service(_Session(row)).load_document_transform(row.id)
+    assert isinstance(terminal, TerminalDocumentTransformTaskRecord)
     assert terminal.payload is None
 
 
@@ -1135,7 +1163,7 @@ async def test_failed_task_persists_only_bounded_public_detail() -> None:
         "https://www.googleapis.com/drive/v3/files/private-resource-id "
         "Bearer ya29.provider-access-token " + '{"error":{"message":"private provider body"}}' * 100
     )
-    session = _Session(row)
+    session = _Session("absent", row)
 
     await _service(session).fail(
         row.id,
@@ -1144,7 +1172,7 @@ async def test_failed_task_persists_only_bounded_public_detail() -> None:
         error_detail=raw_provider_detail,
     )
 
-    statement = session.statements[0]
+    statement = session.statements[-1]
     assert isinstance(statement, ClauseElement)
     params = statement.compile().params or {}
     persisted = params["error_detail"]
@@ -1186,6 +1214,30 @@ async def test_task_lookup_is_owner_isolated_and_expiry_enforced() -> None:
     assert "tasks.id" in sql
     assert "tasks.owner_user_id" in sql
     assert "tasks.expires_at > now()" in sql
+
+
+@pytest.mark.parametrize("lease_phase", ["live", "expired", "missing"])
+async def test_running_task_lookup_requires_lease_evidence(
+    lease_phase: Literal["live", "expired", "missing"],
+) -> None:
+    row = _task(request_hash="0" * 64, status=TaskStatus.RUNNING)
+    row.attempt_count = 1
+    row.started_at = datetime.now(UTC) - timedelta(minutes=2)
+    row.lease_token = uuid.uuid7()
+    if lease_phase != "missing":
+        row.lease_expires_at = datetime.now(UTC) + timedelta(
+            minutes=1 if lease_phase == "live" else -1
+        )
+    session = _Session(row)
+
+    if lease_phase == "missing":
+        with pytest.raises(ValueError, match="Running task has no lease expiry"):
+            await _service(session).get_for_owner(row.id, UserId(row.owner_user_id))
+    else:
+        result = await _service(session).get_for_owner(row.id, UserId(row.owner_user_id))
+        assert isinstance(result, RunningTaskRead)
+        assert result.execution_state == ("running" if lease_phase == "live" else "retrying")
+    assert session.commits == 0
 
 
 def test_database_model_carries_legal_state_and_idempotency_constraints() -> None:
@@ -1273,3 +1325,22 @@ def test_successful_task_requires_the_result_for_its_command_kind(kind: TaskKind
         else:
             with pytest.raises(ValidationError):
                 _TaskReadModel.model_validate(payload)
+
+
+def test_a_terminal_task_can_only_be_an_existing_reservation() -> None:
+    row = _task(request_hash="a" * 64, status=TaskStatus.CANCELLED)
+    row.finished_at = datetime.now(UTC)
+    task = _TaskReadModel.model_validate(row, from_attributes=True).root
+    existing = ExistingTaskReservation(task=task)
+    assert not existing.created
+    with pytest.raises(ValidationError):
+        NewTaskReservation.model_validate({"task": task})
+
+
+def test_document_transform_record_rejects_a_smart_create_task() -> None:
+    row = _task(request_hash="a" * 64)
+    task = _TaskReadModel.model_validate(row, from_attributes=True).root
+    with pytest.raises(ValidationError, match="kind"):
+        ActiveDocumentTransformTaskRecord.model_validate(
+            {"owner_user_id": row.owner_user_id, "task": task, "payload": _in_place_payload()}
+        )

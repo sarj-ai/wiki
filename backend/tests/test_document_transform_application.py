@@ -5,7 +5,7 @@ from threading import Event
 import uuid
 
 from fastapi import HTTPException
-from pydantic import BaseModel
+from pydantic import BaseModel, ValidationError
 import pytest
 
 from app.document_transform import application
@@ -38,7 +38,13 @@ from app.tasks.errors import (
     TaskIdempotencyConflictError,
     TaskTargetBusyError,
 )
-from app.tasks.schemas import TaskKind, TaskRead, TaskReservation
+from app.tasks.schemas import (
+    ExistingTaskReservation,
+    NewTaskReservation,
+    TaskKind,
+    TaskRead,
+    TaskReservation,
+)
 from tests.support import dependency
 
 
@@ -88,7 +94,8 @@ class SubmissionHarness:
                 needs_review=False,
                 output_strategy=strategy,
             ).model_dump(mode="json")
-        self.reservation = TaskReservation.model_validate(
+        reservation_type = NewTaskReservation if created else ExistingTaskReservation
+        self.reservation = reservation_type.model_validate(
             {
                 "created": created,
                 "task": {
@@ -253,8 +260,10 @@ async def test_markdown_admission_keeps_event_loop_responsive(
     assert result.task is harness.reservation.task
 
 
-@pytest.mark.parametrize("created", [True, False])
-@pytest.mark.parametrize("status", ["pending", "running", "cancelled"])
+@pytest.mark.parametrize(
+    ("created", "status"),
+    [(True, "pending"), (False, "pending"), (False, "running"), (False, "cancelled")],
+)
 async def test_identity_admission_replay_and_active_only_dispatch(
     created: bool, status: str
 ) -> None:
@@ -269,6 +278,12 @@ async def test_identity_admission_replay_and_active_only_dispatch(
     if status in {"pending", "running"}:
         expected.append("enqueue")
     assert harness.calls == expected
+
+
+@pytest.mark.parametrize("status", ["running", "cancelled"])
+def test_new_reservation_rejects_nonpending_task(status: str) -> None:
+    with pytest.raises(ValidationError):
+        SubmissionHarness(created=True, status=status)
 
 
 async def test_terminal_semantic_replay_is_never_enqueued() -> None:

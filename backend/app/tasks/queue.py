@@ -1,7 +1,8 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from typing import override
+from dataclasses import dataclass
+from typing import ClassVar, Literal, assert_never, override
 from urllib.parse import urlsplit
 
 from google.api_core.exceptions import AlreadyExists, GoogleAPICallError
@@ -20,6 +21,21 @@ class TaskEnqueuer(ABC):
         raise NotImplementedError
 
 
+@dataclass(frozen=True, slots=True)
+class _DisabledDocumentTransformQueue:
+    kind: ClassVar[Literal["disabled"]] = "disabled"
+
+
+@dataclass(frozen=True, slots=True)
+class _ConfiguredDocumentTransformQueue:
+    kind: ClassVar[Literal["configured"]] = "configured"
+    parent: str
+    request_template: bytes
+
+
+type _DocumentTransformQueue = _DisabledDocumentTransformQueue | _ConfiguredDocumentTransformQueue
+
+
 class CloudTasksEnqueuer(TaskEnqueuer):
     def __init__(
         self,
@@ -36,24 +52,25 @@ class CloudTasksEnqueuer(TaskEnqueuer):
         if not _is_internal_task_url(target_url, expected_path="/internal/tasks/smart-create"):
             msg = "Cloud Tasks target must be the HTTPS internal Smart Create endpoint"
             raise ValueError(msg)
-        self._client = client or tasks_v2.CloudTasksAsyncClient()
-        self._parent = self._client.queue_path(project, location, queue)
-        self._document_transform_parent = (
-            self._client.queue_path(project, location, document_transform_queue)
-            if document_transform_queue is not None
-            else None
-        )
+        if (document_transform_queue is None) != (document_transform_target_url is None):
+            msg = "Document Transform queue and target URL must be configured together"
+            raise ValueError(msg)
         if document_transform_target_url is not None and not _is_internal_task_url(
             document_transform_target_url, expected_path="/internal/tasks/document-transform"
         ):
-            msg = "Cloud Tasks target must be the HTTPS internal Document Transform endpoint"
+            msg = "Document Transform Cloud Tasks target must be its HTTPS internal endpoint"
             raise ValueError(msg)
+        self._client = client or tasks_v2.CloudTasksAsyncClient()
+        self._parent = self._client.queue_path(project, location, queue)
         self._smart_create_request = _http_request_template(target_url, invoker_service_account)
-        self._document_transform_request = (
-            _http_request_template(document_transform_target_url, invoker_service_account)
-            if document_transform_target_url is not None
-            else None
-        )
+        self._document_transform: _DocumentTransformQueue
+        if document_transform_queue is not None and document_transform_target_url is not None:
+            self._document_transform = _ConfiguredDocumentTransformQueue(
+                self._client.queue_path(project, location, document_transform_queue),
+                _http_request_template(document_transform_target_url, invoker_service_account),
+            )
+        else:
+            self._document_transform = _DisabledDocumentTransformQueue()
 
     @override
     async def enqueue_smart_create(self, task_id: TaskId) -> None:
@@ -66,15 +83,19 @@ class CloudTasksEnqueuer(TaskEnqueuer):
 
     @override
     async def enqueue_document_transform(self, task_id: TaskId) -> None:
-        if self._document_transform_parent is None or self._document_transform_request is None:
-            msg = "Document Transform Cloud Tasks queue is not configured"
-            raise RuntimeError(msg)
-        await self._enqueue(
-            task_id,
-            parent=self._document_transform_parent,
-            prefix="document-transform",
-            request_template=self._document_transform_request,
-        )
+        match self._document_transform:
+            case _ConfiguredDocumentTransformQueue(parent, request_template):
+                await self._enqueue(
+                    task_id,
+                    parent=parent,
+                    prefix="document-transform",
+                    request_template=request_template,
+                )
+            case _DisabledDocumentTransformQueue():
+                msg = "Document Transform Cloud Tasks queue is not configured"
+                raise RuntimeError(msg)
+            case _ as unexpected:
+                assert_never(unexpected)
 
     async def _enqueue(
         self,

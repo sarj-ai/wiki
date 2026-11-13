@@ -4,17 +4,19 @@ from abc import ABC, abstractmethod
 import asyncio
 from collections.abc import Awaitable, Callable, Mapping
 from datetime import UTC, datetime, timedelta
+from enum import StrEnum
 import hashlib
 import hmac
 import json
-from typing import override
+from typing import Annotated, Literal, TypedDict, assert_never, override
 import uuid
 
 from cryptography.fernet import InvalidToken
-from pydantic import BaseModel, JsonValue, RootModel
+from pydantic import BaseModel, ConfigDict, Field, JsonValue, RootModel, model_validator
 from sqlalchemy import Text, and_, case, cast, delete, func, literal, or_, select, union_all, update
 from sqlalchemy.dialects.postgresql import JSONB, insert as pg_insert
 from sqlalchemy.engine import Row
+from sqlalchemy.exc import NoResultFound
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import load_only
 from sqlalchemy.sql.elements import ColumnElement
@@ -34,6 +36,11 @@ from app.document_transform.schemas import (
     InPlaceCheckpointPayload,
     MarkdownSource,
     OutputStrategy,
+    PlannedCopyCheckpoint,
+    PlannedPresentationCheckpoint,
+    PlannedWordCheckpoint,
+    PresentationCheckpointPayload,
+    PresentationCopyPlan,
     TransformMode,
     WordCheckpointPayload,
     WordCopyPlan,
@@ -53,10 +60,20 @@ from app.tasks.errors import (
     TaskTargetBusyError,
 )
 from app.tasks.schemas import (
+    ActiveDocumentTransformTaskRecord,
+    ActiveSmartCreateTaskRecord,
     DocumentTransformAdmission,
     DocumentTransformSucceededTaskRead,
     DocumentTransformTaskRecord,
+    ExistingTaskReservation,
+    NeedsReviewTaskRead,
+    NewTaskReservation,
+    PendingTaskRead,
+    ReviewDocumentTransformTaskRecord,
     RunningTaskRead,
+    SettledSmartCreateTaskRecord,
+    SmartCreateCheckpoint,
+    SmartCreateDispatch,
     SmartCreateTaskRecord,
     TaskClaim,
     TaskKind,
@@ -64,11 +81,66 @@ from app.tasks.schemas import (
     TaskReservation,
     TaskResult,
     TaskStatus,
+    TerminalDocumentTransformTaskRecord,
 )
+
+
+class _TransformSlotPhase(StrEnum):
+    LIVE = "live"
+    REVIEW = "review"
+    RETAINED_LEASE = "retained_lease"
+    ABANDONED = "abandoned"
+    EXPIRED_PENDING = "expired_pending"
+
+
+class _FailureCheckpointPhase(StrEnum):
+    ABSENT = "absent"
+    ENCRYPTED_COPY = "encrypted_copy"
+    UNCERTAIN = "uncertain"
 
 
 class _TaskJsonObject(RootModel[dict[str, JsonValue]]):
     """Validate serialized task payloads without changing their JSON shape."""
+
+
+class _EncryptedCopyEnvelope(BaseModel):
+    model_config = ConfigDict(strict=True, extra="forbid", frozen=True)
+    kind: Literal["copy", "word_copy", "presentation_copy"]
+    version: Literal[1]
+    checkpoint_ciphertext: str
+
+
+class _EncryptedInPlaceEnvelope(BaseModel):
+    """Transport metadata is checked by the complete checkpoint model after decryption."""
+
+    model_config = ConfigDict(strict=True, extra="forbid", frozen=True)
+    kind: Literal["in_place"]
+    version: Literal[2]
+    plan_ciphertext: str
+    metadata: dict[str, JsonValue]
+
+    @model_validator(mode="before")
+    @classmethod
+    def decode_wire_metadata(cls, value: object) -> dict[str, JsonValue]:
+        raw = _TaskJsonObject.model_validate(value).root
+        return {
+            "kind": raw.get("kind"),
+            "version": raw.get("version", 2),
+            "plan_ciphertext": raw.get("plan_ciphertext"),
+            "metadata": {
+                field: item
+                for field, item in raw.items()
+                if field not in {"kind", "version", "plan_ciphertext"}
+            },
+        }
+
+
+class _StoredCheckpointEnvelope(
+    RootModel[
+        Annotated[_EncryptedCopyEnvelope | _EncryptedInPlaceEnvelope, Field(discriminator="kind")]
+    ]
+):
+    pass
 
 
 class _TaskReadPayload(RootModel[TaskRead]):
@@ -110,7 +182,9 @@ _PUBLIC_TASK_COLUMNS = (
     Task.lease_expires_at,
 )
 _PUBLIC_TASK_LOAD = load_only(*_PUBLIC_TASK_COLUMNS, raiseload=True)
-_REPLAY_TASK_LOAD = load_only(*_PUBLIC_TASK_COLUMNS, Task.request_hash, raiseload=True)
+_REPLAY_TASK_LOAD = load_only(
+    *_PUBLIC_TASK_COLUMNS, Task.request_hash, Task.idempotency_key, raiseload=True
+)
 
 
 class TaskService(ABC):
@@ -202,6 +276,11 @@ class TaskService(ABC):
     @abstractmethod
     async def load_smart_create(self, task_id: TaskId) -> SmartCreateTaskRecord: ...
 
+    async def begin_smart_create(
+        self, task_id: TaskId, *, lease_token: uuid.UUID
+    ) -> SmartCreateDispatch:
+        raise NotImplementedError
+
     async def load_document_transform(self, task_id: TaskId) -> DocumentTransformTaskRecord:
         raise NotImplementedError
 
@@ -213,6 +292,9 @@ class TaskService(ABC):
         expected_generation: int,
         checkpoint: DocumentTransformCheckpoint,
     ) -> int:
+        raise NotImplementedError
+
+    async def require_review(self, task_id: TaskId, *, lease_token: uuid.UUID) -> TaskRead:
         raise NotImplementedError
 
 
@@ -261,6 +343,7 @@ class PostgresTaskService(TaskService):
         if not 1 <= limit <= _MAX_DISPATCH_RECONCILIATION_BATCH:
             msg = "Dispatch reconciliation limit must be between 1 and 100"
             raise ValueError(msg)
+        await self._retain_expired_executions(limit=limit)
         statement = (
             select(Task.id)
             .where(
@@ -273,6 +356,26 @@ class PostgresTaskService(TaskService):
             .limit(limit)
         )
         return list((await self._db.execute(statement)).scalars().all())
+
+    async def _retain_expired_executions(self, *, limit: int) -> None:
+        expired = (
+            select(Task.id)
+            .where(
+                Task.status == TaskStatus.RUNNING,
+                Task.expires_at <= func.now(),
+                Task.lease_expires_at <= func.now(),
+            )
+            .order_by(Task.expires_at, Task.id)
+            .limit(limit)
+            .with_for_update(skip_locked=True)
+        )
+        await self._db.execute(
+            update(Task)
+            .where(Task.id.in_(expired))
+            .values(**_review_values(func.now()))
+            .execution_options(synchronize_session=False)
+        )
+        await self._db.commit()
 
     @override
     async def create_or_replay(
@@ -326,9 +429,13 @@ class PostgresTaskService(TaskService):
             delete(Task)
             .where(
                 Task.expires_at <= func.now(),
-                or_(
-                    Task.status != TaskStatus.RUNNING,
-                    Task.lease_expires_at <= func.now() - _LEASE_RETENTION_GRACE,
+                Task.status.in_(
+                    (
+                        TaskStatus.PENDING,
+                        TaskStatus.SUCCEEDED,
+                        TaskStatus.FAILED,
+                        TaskStatus.CANCELLED,
+                    )
                 ),
             )
             .cte("delete_expired_tasks")
@@ -357,7 +464,7 @@ class PostgresTaskService(TaskService):
         task = (await self._db.execute(statement)).scalar_one_or_none()
         if task is not None:
             await self._db.commit()
-            return TaskReservation(task=_to_read(task), created=True)
+            return NewTaskReservation.model_validate({"task": task}, from_attributes=True)
 
         existing = await self._maybe_existing(owner_user_id, kind, idempotency_key)
         if existing is None and document_transform_payload is not None:
@@ -368,13 +475,13 @@ class PostgresTaskService(TaskService):
             task = (await self._db.execute(statement)).scalar_one_or_none()
             if task is not None:
                 await self._db.commit()
-                return TaskReservation(task=_to_read(task), created=True)
+                return NewTaskReservation.model_validate({"task": task}, from_attributes=True)
         if existing is None:
             await self._db.rollback()
             raise TaskTargetBusyError
         if existing.request_hash != request_hash:
             raise TaskIdempotencyConflictError
-        return TaskReservation(task=_to_read(existing), created=False)
+        return ExistingTaskReservation(task=_to_read(existing))
 
     async def _admit_document_transform(
         self,
@@ -395,7 +502,7 @@ class PostgresTaskService(TaskService):
                 await self._db.rollback()
                 raise TaskIdempotencyConflictError
             await self._db.commit()
-            return TaskReservation(task=_to_read(existing), created=False)
+            return ExistingTaskReservation(task=_to_read(existing))
         active_row = await self._find_active_transform(owner_user_id, payload, request_hash)
         if active_row is not None:
             replay = await self._reuse_active_transform(
@@ -486,33 +593,31 @@ class PostgresTaskService(TaskService):
         owner_user_id: uuid.UUID,
         payload: DocumentTransformRequest,
         request_hash: str,
-    ) -> Row[Task, bool] | None:
+    ) -> Row[Task, str] | None:
         source = payload.source
-        source_predicate = (
-            and_(
-                Task.payload["source"]["kind"].astext == "drive_file",
-                Task.payload["source"]["file_id"].astext == source.file_id,
-            )
-            if isinstance(source, DriveFileSource)
-            else and_(
-                Task.payload["source"]["kind"].astext == source.kind,
-                Task.request_hash == request_hash,
-            )
-        )
+        source_predicate: ColumnElement[bool] = Task.request_hash == request_hash
+        match source:
+            case DriveFileSource():
+                source_predicate = or_(
+                    source_predicate,
+                    and_(
+                        Task.payload["source"]["kind"].astext == "drive_file",
+                        Task.payload["source"]["file_id"].astext == source.file_id,
+                    ),
+                )
+            case MarkdownSource():
+                pass
+            case _:
+                assert_never(source)
         return (
             await self._db.execute(
-                select(Task, (Task.expires_at <= func.now()).label("expired"))
+                select(Task, _transform_slot_phase(func.now()).label("slot_phase"))
                 .options(_REPLAY_TASK_LOAD)
                 .where(
                     Task.owner_user_id == owner_user_id,
                     Task.kind == TaskKind.FILE_DOCUMENT_TRANSFORM,
-                    Task.status.in_((TaskStatus.PENDING, TaskStatus.RUNNING)),
-                    or_(
-                        Task.expires_at > func.now(),
-                        and_(
-                            Task.status == TaskStatus.RUNNING,
-                            Task.lease_expires_at > func.now() - _LEASE_RETENTION_GRACE,
-                        ),
+                    Task.status.in_(
+                        (TaskStatus.PENDING, TaskStatus.RUNNING, TaskStatus.NEEDS_REVIEW)
                     ),
                     source_predicate,
                 )
@@ -524,7 +629,7 @@ class PostgresTaskService(TaskService):
     async def _reuse_active_transform(
         self,
         *,
-        active_row: Row[Task, bool],
+        active_row: Row[Task, str],
         owner_user_id: uuid.UUID,
         idempotency_key: IdempotencyKey,
         request_hash: str,
@@ -540,17 +645,12 @@ class PostgresTaskService(TaskService):
             raise
         refreshed = (
             await self._db.execute(
-                select(Task, (Task.expires_at <= func.clock_timestamp()).label("expired"))
+                select(Task, _transform_slot_phase(func.clock_timestamp()).label("slot_phase"))
                 .options(_REPLAY_TASK_LOAD)
                 .where(
                     Task.id == active_row[0].id,
-                    Task.status.in_((TaskStatus.PENDING, TaskStatus.RUNNING)),
-                    or_(
-                        Task.expires_at > func.clock_timestamp(),
-                        and_(
-                            Task.status == TaskStatus.RUNNING,
-                            Task.lease_expires_at > func.clock_timestamp() - _LEASE_RETENTION_GRACE,
-                        ),
+                    Task.status.in_(
+                        (TaskStatus.PENDING, TaskStatus.RUNNING, TaskStatus.NEEDS_REVIEW)
                     ),
                 )
                 .with_for_update()
@@ -558,17 +658,43 @@ class PostgresTaskService(TaskService):
         ).one_or_none()
         if refreshed is None:
             return None
-        if refreshed[1] or refreshed[0].request_hash != request_hash:
-            await self._db.rollback()
+        phase = _TransformSlotPhase(refreshed[1])
+        match phase:
+            case _TransformSlotPhase.EXPIRED_PENDING:
+                return None
+            case _TransformSlotPhase.RETAINED_LEASE:
+                await self._db.rollback()
+                raise TaskTargetBusyError
+            case _TransformSlotPhase.ABANDONED:
+                retained = (
+                    await self._db.execute(
+                        update(Task)
+                        .where(Task.id == refreshed[0].id)
+                        .values(**_review_values(func.clock_timestamp()))
+                        .returning(Task)
+                        .options(_REPLAY_TASK_LOAD)
+                        .execution_options(populate_existing=True)
+                    )
+                ).scalar_one()
+            case _TransformSlotPhase.LIVE | _TransformSlotPhase.REVIEW:
+                retained = refreshed[0]
+            case _:
+                assert_never(phase)
+        if retained.request_hash != request_hash:
+            if phase is _TransformSlotPhase.ABANDONED:
+                await self._db.commit()
+            else:
+                await self._db.rollback()
             raise TaskTargetBusyError
-        await self._bind_replay_key(
-            owner_user_id=owner_user_id,
-            kind=TaskKind.FILE_DOCUMENT_TRANSFORM,
-            idempotency_key=idempotency_key,
-            task_id=refreshed[0].id,
-        )
+        if retained.idempotency_key != idempotency_key:
+            await self._bind_replay_key(
+                owner_user_id=owner_user_id,
+                kind=TaskKind.FILE_DOCUMENT_TRANSFORM,
+                idempotency_key=idempotency_key,
+                task_id=retained.id,
+            )
         await self._db.commit()
-        return TaskReservation(task=_to_read(refreshed[0]), created=False)
+        return ExistingTaskReservation(task=_to_read(retained))
 
     async def _check_document_transform_limits(
         self, owner_user_id: uuid.UUID, payload: DocumentTransformRequest
@@ -717,6 +843,13 @@ class PostgresTaskService(TaskService):
         if not error_code:
             msg = "error_code must not be empty"
             raise ValueError(msg)
+        try:
+            needs_review = await self._failure_requires_review(task_id, lease_token)
+        except Exception, asyncio.CancelledError:
+            await self._db.rollback()
+            raise
+        if needs_review:
+            return await self.require_review(task_id, lease_token=lease_token)
         now = datetime.now(UTC)
         return await self._owned_lease_update(
             task_id,
@@ -731,6 +864,43 @@ class PostgresTaskService(TaskService):
                 "finished_at": now,
                 "updated_at": now,
             },
+        )
+
+    async def _failure_requires_review(self, task_id: TaskId, lease_token: uuid.UUID) -> bool:
+        phase_value = (
+            await self._db.execute(
+                select(_failure_checkpoint_phase())
+                .where(
+                    Task.id == task_id,
+                    Task.status == TaskStatus.RUNNING,
+                    Task.lease_token == lease_token,
+                )
+                .with_for_update()
+            )
+        ).scalar_one_or_none()
+        if phase_value is None:
+            raise TaskLeaseLostError
+        phase = _FailureCheckpointPhase(phase_value)
+        match phase:
+            case _FailureCheckpointPhase.ABSENT:
+                return False
+            case _FailureCheckpointPhase.UNCERTAIN:
+                return True
+            case _FailureCheckpointPhase.ENCRYPTED_COPY:
+                checkpoint = (
+                    await self._db.execute(select(Task.checkpoint).where(Task.id == task_id))
+                ).scalar_one()
+                return _checkpoint_requires_review(_TaskJsonObject.model_validate(checkpoint))
+            case _:
+                assert_never(phase)
+
+    @override
+    async def require_review(self, task_id: TaskId, *, lease_token: uuid.UUID) -> TaskRead:
+        now = datetime.now(UTC)
+        return await self._owned_lease_update(
+            task_id,
+            lease_token,
+            values=_review_values(now),
         )
 
     @override
@@ -784,7 +954,7 @@ class PostgresTaskService(TaskService):
                 .where(
                     Task.id == task_id,
                     Task.owner_user_id == owner_user_id,
-                    Task.expires_at > func.now(),
+                    _visible_task(),
                 )
             )
         ).scalar_one_or_none()
@@ -826,7 +996,7 @@ class PostgresTaskService(TaskService):
                 .where(
                     Task.id == task_id,
                     Task.owner_user_id == owner_user_id,
-                    Task.expires_at > func.now(),
+                    _visible_task(),
                     # Filter before asyncpg materializes a terminal JSON result.
                     or_(Task.status != TaskStatus.SUCCEEDED, valid_result),
                 )
@@ -847,18 +1017,59 @@ class PostgresTaskService(TaskService):
                         *_PUBLIC_TASK_COLUMNS, Task.owner_user_id, Task.payload, raiseload=True
                     )
                 )
-                .where(Task.id == task_id, Task.expires_at > func.now())
+                .where(Task.id == task_id, _visible_task())
             )
         ).scalar_one_or_none()
         if task is None or task.kind != TaskKind.FILE_SMART_CREATE:
             raise TaskNotFoundError
-        return SmartCreateTaskRecord.model_validate(
+        public_task = _to_read(task)
+        if not isinstance(public_task, PendingTaskRead | RunningTaskRead):
+            return SettledSmartCreateTaskRecord.model_validate(
+                {"owner_user_id": task.owner_user_id, "task": public_task}
+            )
+        return ActiveSmartCreateTaskRecord.model_validate(
             {
                 "owner_user_id": task.owner_user_id,
-                "task": _to_read(task),
+                "task": public_task,
                 "payload": task.payload,
             }
         )
+
+    @override
+    async def begin_smart_create(
+        self, task_id: TaskId, *, lease_token: uuid.UUID
+    ) -> SmartCreateDispatch:
+        owned = (
+            Task.id == task_id,
+            Task.kind == TaskKind.FILE_SMART_CREATE,
+            Task.status == TaskStatus.RUNNING,
+            Task.lease_token == lease_token,
+            Task.lease_expires_at > func.now(),
+        )
+        started = (
+            await self._db.execute(
+                update(Task)
+                .where(*owned, Task.checkpoint.is_(None))
+                .values(
+                    checkpoint=SmartCreateCheckpoint().model_dump(mode="json"),
+                    checkpoint_generation=Task.checkpoint_generation + 1,
+                    updated_at=func.now(),
+                )
+                .returning(Task.id)
+                .execution_options(synchronize_session=False)
+            )
+        ).scalar_one_or_none()
+        if started is not None:
+            await self._db.commit()
+            return SmartCreateDispatch.STARTED
+        checkpoint = (
+            await self._db.execute(select(Task.checkpoint).where(*owned))
+        ).scalar_one_or_none()
+        await self._db.rollback()
+        if checkpoint is None:
+            raise TaskLeaseLostError
+        SmartCreateCheckpoint.model_validate(checkpoint)
+        return SmartCreateDispatch.ALREADY_ATTEMPTED
 
     @override
     async def save_document_transform_checkpoint(
@@ -912,11 +1123,22 @@ class PostgresTaskService(TaskService):
                         raiseload=True,
                     )
                 )
-                .where(Task.id == task_id, Task.expires_at > func.now())
+                .where(Task.id == task_id, _visible_task())
             )
         ).scalar_one_or_none()
         if task is None or task.kind != TaskKind.FILE_DOCUMENT_TRANSFORM:
             raise TaskNotFoundError
+        public_task = _to_read(task)
+        if public_task.kind is not TaskKind.FILE_DOCUMENT_TRANSFORM:
+            raise TaskNotFoundError
+        match public_task:
+            case NeedsReviewTaskRead():
+                # Review never decrypts or rewrites the original operator evidence.
+                return ReviewDocumentTransformTaskRecord.model_validate(
+                    {"owner_user_id": task.owner_user_id, "task": public_task.model_dump()}
+                )
+            case _:
+                pass
         terminal = task.status in {
             TaskStatus.SUCCEEDED,
             TaskStatus.FAILED,
@@ -927,10 +1149,15 @@ class PostgresTaskService(TaskService):
             if terminal and task.payload == _TERMINAL_REDACTED_PAYLOAD
             else _deserialize_document_transform_payload(task.payload)
         )
-        return DocumentTransformTaskRecord.model_validate(
+        record_type = (
+            ActiveDocumentTransformTaskRecord
+            if isinstance(public_task, PendingTaskRead | RunningTaskRead)
+            else TerminalDocumentTransformTaskRecord
+        )
+        return record_type.model_validate(
             {
                 "owner_user_id": task.owner_user_id,
-                "task": _to_read(task),
+                "task": public_task,
                 "payload": payload,
                 "checkpoint": (
                     _deserialize_checkpoint(task.checkpoint)
@@ -955,7 +1182,7 @@ class PostgresTaskService(TaskService):
                     Task.owner_user_id == owner_user_id,
                     Task.kind == kind,
                     Task.id.in_(_task_ids_for_key(UserId(owner_user_id), kind, idempotency_key)),
-                    Task.expires_at > func.now(),
+                    _visible_task(),
                 )
             )
         ).scalar_one_or_none()
@@ -1063,7 +1290,7 @@ class PostgresTaskService(TaskService):
             task_id=terminal.id,
         )
         await self._db.commit()
-        return TaskReservation(task=terminal_read, created=False)
+        return ExistingTaskReservation(task=terminal_read)
 
     @override
     async def get_document_transform_admission(
@@ -1076,7 +1303,7 @@ class PostgresTaskService(TaskService):
                 select(Task.id, Task.status).where(
                     Task.owner_user_id == owner_user_id,
                     Task.kind == TaskKind.FILE_DOCUMENT_TRANSFORM,
-                    Task.expires_at > func.now(),
+                    _visible_task(),
                     Task.id.in_(
                         _task_ids_for_key(
                             UserId(owner_user_id), TaskKind.FILE_DOCUMENT_TRANSFORM, idempotency_key
@@ -1094,7 +1321,7 @@ class PostgresTaskService(TaskService):
         task_id: TaskId,
         lease_token: uuid.UUID,
         *,
-        values: dict[str, object],
+        values: _OwnedLeaseValues,
         header_result: DocumentTransformResult | None = None,
     ) -> TaskRead:
         statement = (
@@ -1116,7 +1343,14 @@ class PostgresTaskService(TaskService):
         else:
             statement = statement.options(_PUBLIC_TASK_LOAD)
         try:
-            task = _require_owned_task((await self._db.execute(statement)).scalar_one_or_none())
+            task = (await self._db.execute(statement)).scalar_one()
+        except NoResultFound:
+            await self._db.rollback()
+            raise TaskLeaseLostError from None
+        except Exception, asyncio.CancelledError:
+            await self._db.rollback()
+            raise
+        try:
             # Validate the prospective state while the transaction can still roll back.
             # A wrong result kind must never become a committed successful task.
             task_read = _to_read(task)
@@ -1353,7 +1587,7 @@ def _deserialize_document_transform_payload(
     return DocumentTransformRequest.model_validate(plaintext)
 
 
-def _terminal_payload() -> object:
+def _terminal_payload() -> ColumnElement[dict[str, JsonValue]]:
     return case(
         (
             Task.kind == TaskKind.FILE_DOCUMENT_TRANSFORM,
@@ -1365,7 +1599,7 @@ def _terminal_payload() -> object:
 
 def _serialize_checkpoint(checkpoint: DocumentTransformCheckpoint) -> dict[str, JsonValue]:
     serialized = checkpoint.model_dump(mode="json")
-    if isinstance(checkpoint, CopyPlan | WordCopyPlan):
+    if isinstance(checkpoint, CopyPlan | WordCopyPlan | PresentationCopyPlan):
         plaintext = json.dumps(serialized, ensure_ascii=False, separators=(",", ":"))
         if len(plaintext.encode()) > _MAX_CHECKPOINT_PLAN_BYTES:
             raise CheckpointTooLargeError
@@ -1383,37 +1617,42 @@ def _serialize_checkpoint(checkpoint: DocumentTransformCheckpoint) -> dict[str, 
 
 
 def _deserialize_checkpoint(raw: Mapping[str, object]) -> DocumentTransformCheckpoint:
-    if raw.get("kind") in {"copy", "word_copy"}:
-        ciphertext = raw.get(_COPY_CHECKPOINT_CIPHERTEXT_FIELD)
-        if not isinstance(ciphertext, str):
-            msg = "Copy transform checkpoint is missing its encrypted payload"
-            raise TypeError(msg)
-        payload = json.loads(decrypt_cache(ciphertext))
-        if not isinstance(payload, dict):
-            msg = "Copy transform checkpoint payload is invalid"
-            raise ValueError(msg)
-        # Older normal checkpoints serialized unused QA metadata as null.
-        payload = {
-            field: value
-            for field, value in payload.items()
-            if value is not None
-            or field not in {"qa_destination_permission", "qa_permission_evidence", "qa_quarantine"}
-        }
-        checkpoint_type = (
-            WordCheckpointPayload if raw.get("kind") == "word_copy" else CopyCheckpointPayload
-        )
-        return checkpoint_type.model_validate(payload).root
-    metadata = dict(raw)
-    ciphertext = metadata.pop("plan_ciphertext", None)
-    if not isinstance(ciphertext, str):
-        msg = "Document transform checkpoint is missing encrypted plan"
-        raise TypeError(msg)
-    plan = json.loads(decrypt_cache(ciphertext))
-    if not isinstance(plan, dict) or set(plan) != _CHECKPOINT_PLAN_FIELDS:
-        msg = "Document transform checkpoint plan is invalid"
-        raise ValueError(msg)
-    metadata.update(plan)
-    return InPlaceCheckpointPayload.model_validate(metadata).root
+    envelope = _StoredCheckpointEnvelope.model_validate(raw).root
+    match envelope:
+        case _EncryptedCopyEnvelope():
+            payload = _TaskJsonObject.model_validate_json(
+                decrypt_cache(envelope.checkpoint_ciphertext)
+            ).root
+            payload = {
+                field: value
+                for field, value in payload.items()
+                if value is not None
+                or field
+                not in {"qa_destination_permission", "qa_permission_evidence", "qa_quarantine"}
+            }
+            match envelope.kind:
+                case "presentation_copy":
+                    return PresentationCheckpointPayload.model_validate(payload).root
+                case "word_copy":
+                    return WordCheckpointPayload.model_validate(payload).root
+                case "copy":
+                    return CopyCheckpointPayload.model_validate(payload).root
+                case _:
+                    assert_never(envelope.kind)
+        case _EncryptedInPlaceEnvelope():
+            metadata = {
+                **envelope.metadata,
+                "kind": envelope.kind,
+                "version": envelope.version,
+            }
+            plan = _TaskJsonObject.model_validate_json(decrypt_cache(envelope.plan_ciphertext)).root
+            if set(plan) != _CHECKPOINT_PLAN_FIELDS:
+                msg = "Document transform checkpoint plan is invalid"
+                raise ValueError(msg)
+            metadata.update(plan)
+            return InPlaceCheckpointPayload.model_validate(metadata).root
+        case _:
+            assert_never(envelope)
 
 
 def _persisted_error_detail(error_detail: str | None) -> str | None:
@@ -1422,9 +1661,104 @@ def _persisted_error_detail(error_detail: str | None) -> str | None:
     return _TASK_FAILURE_DETAIL[:_MAX_ERROR_DETAIL_LENGTH]
 
 
+def _failure_checkpoint_phase() -> ColumnElement[str]:
+    encrypted = Task.checkpoint[_COPY_CHECKPOINT_CIPHERTEXT_FIELD]
+    return case(
+        (Task.checkpoint.is_(None), _FailureCheckpointPhase.ABSENT.value),
+        (
+            and_(
+                Task.kind == TaskKind.FILE_DOCUMENT_TRANSFORM,
+                Task.checkpoint["kind"].astext.in_(("copy", "word_copy", "presentation_copy")),
+                func.jsonb_typeof(encrypted) == "string",
+                func.octet_length(encrypted.astext) <= 2 * _MAX_CHECKPOINT_PLAN_BYTES,
+            ),
+            _FailureCheckpointPhase.ENCRYPTED_COPY.value,
+        ),
+        else_=_FailureCheckpointPhase.UNCERTAIN.value,
+    )
+
+
+def _checkpoint_requires_review(raw: _TaskJsonObject) -> bool:
+    try:
+        checkpoint = _deserialize_checkpoint(raw.root)
+    except InvalidToken, TypeError, ValueError:
+        return True
+    return not isinstance(
+        checkpoint, PlannedCopyCheckpoint | PlannedWordCheckpoint | PlannedPresentationCheckpoint
+    )
+
+
+def _transform_slot_phase(now: ColumnElement[datetime]) -> ColumnElement[str]:
+    return case(
+        (Task.status == TaskStatus.NEEDS_REVIEW, _TransformSlotPhase.REVIEW.value),
+        (Task.expires_at > now, _TransformSlotPhase.LIVE.value),
+        (Task.status == TaskStatus.PENDING, _TransformSlotPhase.EXPIRED_PENDING.value),
+        (
+            Task.lease_expires_at > now - _LEASE_RETENTION_GRACE,
+            _TransformSlotPhase.RETAINED_LEASE.value,
+        ),
+        else_=_TransformSlotPhase.ABANDONED.value,
+    )
+
+
 def _request_hash(payload: dict[str, JsonValue]) -> str:
     canonical = json.dumps(payload, ensure_ascii=False, separators=(",", ":"), sort_keys=True)
     return hashlib.sha256(canonical.encode()).hexdigest()
+
+
+class _ReviewValues(TypedDict):
+    status: Literal[TaskStatus.NEEDS_REVIEW]
+    error_code: Literal["external_effect_uncertain"]
+    error_detail: str
+    lease_token: None
+    lease_expires_at: None
+    finished_at: datetime | ColumnElement[datetime]
+    updated_at: datetime | ColumnElement[datetime]
+
+
+class _DeferredLeaseValues(TypedDict):
+    lease_expires_at: ColumnElement[datetime]
+    updated_at: ColumnElement[datetime]
+
+
+class _TerminalLeaseValues(TypedDict):
+    payload: ColumnElement[dict[str, JsonValue]]
+    lease_token: None
+    lease_expires_at: None
+    finished_at: datetime
+    updated_at: datetime
+
+
+class _SucceededLeaseValues(_TerminalLeaseValues):
+    status: Literal[TaskStatus.SUCCEEDED]
+    result: dict[str, JsonValue]
+
+
+class _FailedLeaseValues(_TerminalLeaseValues):
+    status: Literal[TaskStatus.FAILED]
+    error_code: str
+    error_detail: str | None
+
+
+type _OwnedLeaseValues = (
+    _DeferredLeaseValues | _SucceededLeaseValues | _FailedLeaseValues | _ReviewValues
+)
+
+
+def _review_values(now: datetime | ColumnElement[datetime]) -> _ReviewValues:
+    return {
+        "status": TaskStatus.NEEDS_REVIEW,
+        "error_code": "external_effect_uncertain",
+        "error_detail": "The external action could not be confirmed; review it before retrying",
+        "lease_token": None,
+        "lease_expires_at": None,
+        "finished_at": now,
+        "updated_at": now,
+    }
+
+
+def _visible_task() -> ColumnElement[bool]:
+    return or_(Task.expires_at > func.now(), Task.status == TaskStatus.NEEDS_REVIEW)
 
 
 def _to_read(task: Task) -> TaskRead:
@@ -1432,18 +1766,12 @@ def _to_read(task: Task) -> TaskRead:
     match result:
         case RunningTaskRead():
             expiry = task.lease_expires_at
-            return result.model_copy(
-                update={
-                    "execution_state": "retrying"
-                    if expiry is not None and expiry <= datetime.now(UTC)
-                    else "running"
-                }
+            if expiry is None:
+                msg = "Running task has no lease expiry"
+                raise ValueError(msg)
+            return result.model_validate(
+                result.model_dump()
+                | {"execution_state": "retrying" if expiry <= datetime.now(UTC) else "running"}
             )
         case _:
             return result
-
-
-def _require_owned_task(task: Task | None) -> Task:
-    if task is None:
-        raise TaskLeaseLostError
-    return task

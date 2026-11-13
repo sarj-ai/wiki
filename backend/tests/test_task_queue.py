@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+from typing import override
 import uuid
 
 from google.api_core.exceptions import AlreadyExists
@@ -114,3 +115,86 @@ async def test_dependency_constructs_async_client_on_request_event_loop(
     monkeypatch.setattr(dependencies, "_cached_task_enqueuer", construct)
 
     assert await dependencies.task_enqueuer_dep() is expected
+
+
+@pytest.mark.parametrize(
+    ("document_queue", "document_target"),
+    [
+        ("document-transform", None),
+        (None, "https://wiki-api.sarj.ai/internal/tasks/document-transform"),
+    ],
+)
+def test_partial_transform_configuration_fails_before_client_use(
+    document_queue: str | None,
+    document_target: str | None,
+) -> None:
+    class UnusedClient(_Client):
+        @override
+        def queue_path(self, project: str, location: str, queue: str) -> str:
+            msg = "Invalid configuration must not use the provider client"
+            raise AssertionError(msg)
+
+    with pytest.raises(ValueError, match="configured together"):
+        CloudTasksEnqueuer(
+            project="sarj-docs",
+            location="us-central1",
+            queue="smart-create",
+            target_url="https://wiki-api.sarj.ai/internal/tasks/smart-create",
+            invoker_service_account="wiki-task-invoker@sarj-docs.iam.gserviceaccount.com",
+            document_transform_queue=document_queue,
+            document_transform_target_url=document_target,
+            client=dependency(UnusedClient()),
+        )
+
+
+async def test_disabled_transform_queue_refuses_dispatch_without_affecting_smart_create() -> None:
+    client = _Client()
+    enqueuer = CloudTasksEnqueuer(
+        project="sarj-docs",
+        location="us-central1",
+        queue="smart-create",
+        target_url="https://wiki-api.sarj.ai/internal/tasks/smart-create",
+        invoker_service_account="wiki-task-invoker@sarj-docs.iam.gserviceaccount.com",
+        client=dependency(client),
+    )
+    task_id = TaskId(uuid.uuid7())
+    with pytest.raises(RuntimeError, match="not configured"):
+        await enqueuer.enqueue_document_transform(task_id)
+    assert client.task is None
+    await enqueuer.enqueue_smart_create(task_id)
+    assert client.task is not None
+    assert client.task.name.endswith(f"/tasks/smart-create-{task_id.hex}")
+
+
+async def test_concurrent_dispatches_keep_their_queue_payload_and_oidc_target() -> None:
+    class RecordingClient(_Client):
+        def __init__(self) -> None:
+            super().__init__()
+            self.tasks: list[tasks_v2.Task] = []
+
+        @override
+        async def create_task(self, *, parent: str, task: tasks_v2.Task) -> tasks_v2.Task:
+            self.tasks.append(task)
+            await asyncio.sleep(0)
+            return task
+
+    client = RecordingClient()
+    enqueuer = _enqueuer(client)
+    smart_id = TaskId(uuid.uuid7())
+    transform_id = TaskId(uuid.uuid7())
+    await asyncio.gather(
+        enqueuer.enqueue_smart_create(smart_id),
+        enqueuer.enqueue_document_transform(transform_id),
+    )
+    assert len(client.tasks) == 2
+    assert client.tasks[0] is not client.tasks[1]
+    for task, expected_id, path in zip(
+        client.tasks,
+        (smart_id, transform_id),
+        ("smart-create", "document-transform"),
+        strict=True,
+    ):
+        assert task.name.endswith(f"/tasks/{path}-{expected_id.hex}")
+        assert json.loads(task.http_request.body) == {"task_id": str(expected_id)}
+        assert task.http_request.url == f"https://wiki-api.sarj.ai/internal/tasks/{path}"
+        assert task.http_request.oidc_token.audience == task.http_request.url

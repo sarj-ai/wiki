@@ -5,6 +5,7 @@ from typing import Any, NamedTuple
 import uuid
 
 import pytest
+from sqlalchemy.exc import NoResultFound
 
 from app.document_transform.errors import OutputConflictError
 from app.document_transform.header_provenance import (
@@ -38,6 +39,8 @@ class _Row:
         return self.value
 
     def scalar_one(self) -> Any:
+        if self.value is None:
+            raise NoResultFound
         return self.value
 
 

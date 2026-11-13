@@ -1,12 +1,15 @@
 from datetime import timedelta
 from typing import override
 
+from pydantic import JsonValue, ValidationError
 import pytest
 
 from app.document_transform.errors import ModelDeadlineError
 from app.document_transform.ir import DocumentIR
 from app.document_transform.readability import plan_readability
 from app.document_transform.readability_types import (
+    FinishedReadabilityRefinement,
+    LegacyReadabilityRefinement,
     PlannedReadabilityCheckpoint,
     ReadabilityProposal,
 )
@@ -104,3 +107,72 @@ async def test_provider_deadline_keeps_the_best_draft_and_attempted_pass_count(
     }
     assert deadline_editor.calls == 2
     assert len(plan.paragraphs) == 3
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("model_invoked", False),
+        ("passes", 0),
+        ("passes", True),
+        ("accepted_improvements", 101),
+        ("accepted_improvements", None),
+        ("planning_failure_code", "model_unavailable"),
+        ("stop_reason", "not_eligible"),
+        ("stop_reason", "deadline_reserve"),
+        ("stop_reason", "invalid_proposal"),
+        ("stop_reason", "provider_unavailable"),
+        ("stop_reason", "unrecorded"),
+        ("stop_reason", "invented_outcome"),
+    ],
+)
+async def test_persisted_refinement_rejects_contradictory_state_data(
+    field: str, value: JsonValue
+) -> None:
+    plan = await _plan()
+    payload = {**plan.model_dump(), field: value}
+    with pytest.raises(ValidationError):
+        PlannedReadabilityCheckpoint.model_validate(payload)
+
+
+async def test_refinement_is_authoritative_and_legacy_projection_round_trips() -> None:
+    plan = await _plan()
+    assert isinstance(plan.refinement, FinishedReadabilityRefinement)
+    wire = plan.model_dump(mode="json")
+    assert "refinement" not in wire
+    recovered = PlannedReadabilityCheckpoint.model_validate(wire)
+    assert recovered.refinement == plan.refinement
+    legacy = PlannedReadabilityCheckpoint.model_validate(
+        plan.model_dump(exclude={"accepted_improvements", "stop_reason"})
+    )
+    assert isinstance(legacy.refinement, LegacyReadabilityRefinement)
+    assert legacy.refinement.accepted_improvements is None
+    with pytest.raises(ValidationError):
+        PlannedReadabilityCheckpoint.model_validate({**wire, "refinement": plan.refinement})
+
+
+async def test_legacy_invocation_evidence_is_not_rewritten_from_an_unrecorded_count() -> None:
+    plan = await _plan()
+    wire = plan.model_dump(exclude={"accepted_improvements", "stop_reason"})
+    wire["passes"] = 0
+    wire["model_invoked"] = True
+    legacy = PlannedReadabilityCheckpoint.model_validate(wire)
+    assert isinstance(legacy.refinement, LegacyReadabilityRefinement)
+    assert legacy.model_invoked
+    assert legacy.passes == 0
+    assert legacy.accepted_improvements is None
+    assert legacy.model_dump(include={"model_invoked", "passes"}) == {
+        "model_invoked": True,
+        "passes": 0,
+    }
+
+
+async def test_receipt_metadata_filtering_preserves_native_model_dump_behavior() -> None:
+    plan = await _plan()
+    wire = plan.model_dump()
+    assert isinstance(wire["tables"], tuple)
+    assert plan.model_dump(include={"tables"}) == {"tables": wire["tables"]}
+    assert plan.model_dump(include={"passes": False}) == {"passes": plan.passes}
+    assert plan.model_dump(exclude={"passes": False})["passes"] == plan.passes
+    assert "passes" not in plan.model_dump(exclude={"passes": True})
+    assert plan.model_dump_json(include={"passes"}) == f'{{"passes":{plan.passes}}}'

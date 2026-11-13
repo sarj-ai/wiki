@@ -1,14 +1,16 @@
 from __future__ import annotations
 
 from copy import deepcopy
-from typing import Any, override
+from typing import Any, Never, TypedDict, Unpack, override
 import uuid
 
+from pydantic import JsonValue
 import pytest
 
 from app.document_transform.brand_manifest import CURRENT_BRAND_MANIFEST
 from app.document_transform.errors import (
     DocumentTransformError,
+    ExternalEffectUncertainError,
     InPlaceNotAllowedError,
     OutputConflictError,
     SourceTooLargeError,
@@ -25,7 +27,14 @@ from app.document_transform.presentation_gateway import (
     PresentationSourceSnapshot,
     PresentationVerification,
 )
+from app.document_transform.presentation_state import (
+    AppliedPresentationMutation,
+    PresentationMutationPlan,
+    RecordedPresentationMutation,
+)
 from app.document_transform.schemas import (
+    CreatingPresentationCheckpoint,
+    DocumentTransformCheckpoint,
     DocumentTransformRequest,
     DriveFileSource,
     FindingSeverity,
@@ -34,9 +43,39 @@ from app.document_transform.schemas import (
     TransformMode,
     TransformPhase,
 )
-from app.document_transform.slides_ir import MAX_PRESENTATION_SLIDES
+from app.document_transform.slides_ir import MAX_PRESENTATION_SLIDES, ParsedPresentation
 from app.drive.schemas import MIME_SLIDE
-from app.identifiers import FileId
+from app.identifiers import FileId, TaskId
+
+
+class _SlidesPlanArguments(TypedDict):
+    parsed: ParsedPresentation
+    transformed: DocumentIR
+    mode: TransformMode
+    logo_uri: str
+
+
+class PresentationCheckpointStore:
+    def __init__(self) -> None:
+        self.checkpoints: list[DocumentTransformCheckpoint] = []
+        self.resources: list[tuple[TaskId, uuid.UUID, FileId]] = []
+
+    async def save_document_transform_checkpoint(
+        self,
+        task_id: TaskId,
+        *,
+        lease_token: uuid.UUID,
+        expected_generation: int,
+        checkpoint: DocumentTransformCheckpoint,
+    ) -> int:
+        assert expected_generation == len(self.checkpoints)
+        self.checkpoints.append(checkpoint)
+        return len(self.checkpoints)
+
+    async def record_resource(
+        self, task_id: TaskId, *, lease_token: uuid.UUID, resource_id: FileId
+    ) -> None:
+        self.resources.append((task_id, lease_token, resource_id))
 
 
 class NoopPatchGenerator(PatchGenerator):
@@ -145,8 +184,11 @@ class PresentationGatewaySpy:
         expected_protected_structure_sha256: str,
         expected_brand_sha256: str | None = None,
     ) -> PresentationDraft:
-        del mutation_sha256, expected_semantic_sha256
-        del expected_protected_structure_sha256, expected_brand_sha256
+        self.request_invariants = (
+            expected_semantic_sha256,
+            expected_protected_structure_sha256,
+            expected_brand_sha256,
+        )
         self.requests = requests
         self.required_revision_id = required_revision_id
         return PresentationDraft(
@@ -156,6 +198,7 @@ class PresentationGatewaySpy:
             revision_id=PresentationRevisionId("output-revision-2"),
             source_sha256=draft.source_sha256,
             web_url=draft.web_url,
+            mutation=RecordedPresentationMutation(mutation_sha256=mutation_sha256),
         )
 
     async def verify_output(
@@ -167,7 +210,6 @@ class PresentationGatewaySpy:
         expected_protected_structure_sha256: str,
         expected_brand_sha256: str | None = None,
     ) -> PresentationVerification:
-        del draft, title
         return PresentationVerification(
             content_preserved=self.verification_content_preserved,
             structure_preserved=self.verification_structure_preserved,
@@ -261,10 +303,9 @@ async def test_presentation_result_distinguishes_review_rejections_from_informat
         run["endIndex"] = len(text) + 1
     source_before = deepcopy(gateway.snapshot)
     generator = QuantityPatchGenerator(change_quantity=change_quantity)
-    executor = PresentationTransformExecutor(
+    executor = _executor(
         gateway=gateway,
         generator=generator,
-        logo_uri="https://wiki.sarj.ai/brand/sarj-logo-light.png",
     )
 
     result = await executor.execute(
@@ -295,10 +336,9 @@ async def test_presentation_copy_is_revision_fenced_branded_and_keeps_source(
     presentation_gateway_factory: type[PresentationGatewaySpy],
 ) -> None:
     gateway = presentation_gateway_factory(mime_type=mime_type)
-    executor = PresentationTransformExecutor(
+    executor = _executor(
         gateway=gateway,
         generator=NoopPatchGenerator(),
-        logo_uri="https://wiki.sarj.ai/brand/sarj-logo-light.png",
     )
 
     result = await executor.execute(
@@ -347,10 +387,9 @@ async def test_native_copy_fingerprint_mismatch_rejects_before_mutation(
     else:
         output_body["objectId"] = "changed-body"
     generator = NoopPatchGenerator()
-    executor = PresentationTransformExecutor(
+    executor = _executor(
         gateway=gateway,
         generator=generator,
-        logo_uri="https://wiki.sarj.ai/brand/sarj-logo-light.png",
     )
 
     with pytest.raises(OutputConflictError):
@@ -383,10 +422,9 @@ async def test_native_copy_parse_error_propagates_before_mutation(
 ) -> None:
     gateway = presentation_gateway_factory(mime_type=MIME_SLIDE)
     gateway.output_presentation["slides"] *= slide_count
-    executor = PresentationTransformExecutor(
+    executor = _executor(
         gateway=gateway,
         generator=NoopPatchGenerator(),
-        logo_uri="https://wiki.sarj.ai/brand/sarj-logo-light.png",
     )
 
     with pytest.raises(expected_error):
@@ -414,10 +452,9 @@ async def test_uneditable_pptx_conversion_returns_copy_for_review_without_mutati
     gateway = presentation_gateway_factory(mime_type=PPTX_MIME_TYPE)
     gateway.output_presentation["slides"] *= slide_count
     generator = NoopPatchGenerator()
-    executor = PresentationTransformExecutor(
+    executor = _executor(
         gateway=gateway,
         generator=generator,
-        logo_uri="https://wiki.sarj.ai/brand/sarj-logo-light.png",
     )
 
     result = await executor.execute(
@@ -442,10 +479,9 @@ async def test_presentation_in_place_rejects_before_any_gateway_call(
     presentation_gateway_factory: type[PresentationGatewaySpy],
 ) -> None:
     gateway = presentation_gateway_factory(mime_type=MIME_SLIDE)
-    executor = PresentationTransformExecutor(
+    executor = _executor(
         gateway=gateway,
         generator=NoopPatchGenerator(),
-        logo_uri="https://wiki.sarj.ai/brand/sarj-logo-light.png",
     )
 
     with pytest.raises(InPlaceNotAllowedError):
@@ -462,10 +498,9 @@ async def test_exact_pending_commit_recovery_completes_without_reapplying(
     presentation_gateway_factory: type[PresentationGatewaySpy],
 ) -> None:
     gateway = presentation_gateway_factory(mime_type=MIME_SLIDE)
-    executor = PresentationTransformExecutor(
+    executor = _executor(
         gateway=gateway,
         generator=NoopPatchGenerator(),
-        logo_uri="https://wiki.sarj.ai/brand/sarj-logo-light.png",
     )
     first = await executor.execute(
         operation_id=uuid.uuid7(),
@@ -480,12 +515,19 @@ async def test_exact_pending_commit_recovery_completes_without_reapplying(
         parent_folder_id=FileId("folder"),
         revision_id=PresentationRevisionId("output-revision-2"),
         source_sha256=first.source_sha256,
-        applied_mutation_sha256="mutation-hash",
-        pending_mutation_sha256="mutation-hash",
+        mutation=AppliedPresentationMutation(
+            plan=PresentationMutationPlan(
+                mutation_sha256="mutation-hash",
+                base_revision_sha256="base-hash",
+                expected_semantic_sha256="semantic-hash",
+                expected_protected_structure_sha256="protected-hash",
+                expected_brand_sha256=None,
+            )
+        ),
     )
 
     recovered = await executor.execute(
-        operation_id=uuid.uuid7(),
+        operation_id=first.operation_id,
         request=_request(output_strategy=OutputStrategy.COPY),
     )
 
@@ -493,7 +535,7 @@ async def test_exact_pending_commit_recovery_completes_without_reapplying(
     assert gateway.requests == []
     assert gateway.completed == 1
     assert recovered.output.file_id == "output"
-    assert {finding.code for finding in recovered.findings} == {"recovered_completed_output"}
+    assert recovered == first
 
 
 async def test_known_post_write_verification_mismatch_is_not_completed(
@@ -501,10 +543,9 @@ async def test_known_post_write_verification_mismatch_is_not_completed(
 ) -> None:
     gateway = presentation_gateway_factory(mime_type=MIME_SLIDE)
     gateway.verification_brand_applied = False
-    executor = PresentationTransformExecutor(
+    executor = _executor(
         gateway=gateway,
         generator=NoopPatchGenerator(),
-        logo_uri="https://wiki.sarj.ai/brand/sarj-logo-light.png",
     )
 
     result = await executor.execute(
@@ -527,10 +568,9 @@ async def test_presentation_contextual_unslop_never_invokes_model(
         text_run["textRun"]["content"] = "This is a game changer.\n"
         text_run["endIndex"] = len("This is a game changer.\n")
     generator = NoopPatchGenerator()
-    executor = PresentationTransformExecutor(
+    executor = _executor(
         gateway=gateway,
         generator=generator,
-        logo_uri="https://wiki.sarj.ai/brand/sarj-logo-light.png",
     )
 
     result = await executor.execute(
@@ -549,14 +589,14 @@ async def test_native_mutation_limits_are_checked_before_copy(
     presentation_gateway_factory: type[PresentationGatewaySpy],
 ) -> None:
     gateway = presentation_gateway_factory(mime_type=MIME_SLIDE)
-    executor = PresentationTransformExecutor(
+    executor = _executor(
         gateway=gateway,
         generator=NoopPatchGenerator(),
-        logo_uri="https://wiki.sarj.ai/brand/sarj-logo-light.png",
     )
 
-    def reject_oversized_plan(*args: object, **kwargs: object) -> object:
-        del args, kwargs
+    def reject_oversized_plan(
+        _presentation: dict[str, JsonValue], **_kwargs: Unpack[_SlidesPlanArguments]
+    ) -> Never:
         raise SourceTooLargeError
 
     monkeypatch.setattr(
@@ -571,6 +611,27 @@ async def test_native_mutation_limits_are_checked_before_copy(
         )
 
     assert gateway.created == 0
+
+
+def _executor(
+    *,
+    gateway: PresentationGatewaySpy,
+    generator: PatchGenerator | None = None,
+    logo_uri: str = "https://wiki.sarj.ai/brand/sarj-logo-light.png",
+    checkpoint_store: PresentationCheckpointStore | None = None,
+    lease_token: uuid.UUID | None = None,
+    checkpoint: DocumentTransformCheckpoint | None = None,
+) -> PresentationTransformExecutor:
+    store = PresentationCheckpointStore() if checkpoint_store is None else checkpoint_store
+    return PresentationTransformExecutor(
+        gateway=gateway,
+        generator=NoopPatchGenerator() if generator is None else generator,
+        logo_uri=logo_uri,
+        checkpoint_store=store,
+        lease_token=uuid.uuid7() if lease_token is None else lease_token,
+        checkpoint=checkpoint,
+        checkpoint_generation=len(store.checkpoints),
+    )
 
 
 def _request(*, output_strategy: OutputStrategy) -> DocumentTransformRequest:
@@ -654,3 +715,102 @@ def _presentation(presentation_id: str, revision_id: str) -> dict[str, Any]:
             }
         ],
     }
+
+
+async def test_lost_creation_acknowledgement_never_creates_again() -> None:
+    store = PresentationCheckpointStore()
+    operation_id = uuid.uuid7()
+    lease_token = uuid.uuid7()
+
+    class LostAcknowledgementGateway(PresentationGatewaySpy):
+        @override
+        async def create_copy(
+            self,
+            *,
+            operation_id: uuid.UUID,
+            source: PresentationSourceSnapshot,
+            source_sha256: str,
+            output_name: str,
+        ) -> PresentationDraft:
+            assert isinstance(store.checkpoints[-1], CreatingPresentationCheckpoint)
+            await super().create_copy(
+                operation_id=operation_id,
+                source=source,
+                source_sha256=source_sha256,
+                output_name=output_name,
+            )
+            raise TimeoutError
+
+    gateway = LostAcknowledgementGateway(mime_type=MIME_SLIDE)
+    executor = _executor(
+        gateway=gateway,
+        generator=NoopPatchGenerator(),
+        logo_uri="",
+        checkpoint_store=store,
+        lease_token=lease_token,
+    )
+    request = _request(output_strategy=OutputStrategy.COPY)
+    with pytest.raises(ExternalEffectUncertainError):
+        await executor.execute(operation_id=operation_id, request=request)
+    assert gateway.created == 1
+    assert len(store.checkpoints) == 2
+    checkpoint = store.checkpoints[-1]
+    assert isinstance(checkpoint, CreatingPresentationCheckpoint)
+    resumed = _executor(
+        gateway=gateway,
+        generator=NoopPatchGenerator(),
+        logo_uri="",
+        checkpoint_store=store,
+        checkpoint=checkpoint,
+    )
+    with pytest.raises(ExternalEffectUncertainError):
+        await resumed.execute(operation_id=operation_id, request=request)
+    assert gateway.created == 1
+    assert len(store.checkpoints) == 2
+
+    gateway.recovered = PresentationDraft(
+        file_id=FileId("output"),
+        name=checkpoint.output_name,
+        parent_folder_id=FileId("folder"),
+        revision_id=PresentationRevisionId("output-revision"),
+        source_sha256=checkpoint.source_sha256,
+    )
+    result = await resumed.execute(operation_id=operation_id, request=request)
+    assert result.output.file_id == "output"
+    assert gateway.created == 1
+    assert store.checkpoints[-1].stage.value == "verified"
+
+
+@pytest.mark.parametrize("fail_at_generation", [0, 1])
+async def test_checkpoint_conflict_prevents_provider_creation(fail_at_generation: int) -> None:
+    class ConflictingStore(PresentationCheckpointStore):
+        @override
+        async def save_document_transform_checkpoint(
+            self,
+            task_id: TaskId,
+            *,
+            lease_token: uuid.UUID,
+            expected_generation: int,
+            checkpoint: DocumentTransformCheckpoint,
+        ) -> int:
+            if expected_generation == fail_at_generation:
+                raise OutputConflictError
+            return await super().save_document_transform_checkpoint(
+                task_id,
+                lease_token=lease_token,
+                expected_generation=expected_generation,
+                checkpoint=checkpoint,
+            )
+
+    gateway = PresentationGatewaySpy(mime_type=MIME_SLIDE)
+    executor = _executor(
+        gateway=gateway,
+        generator=NoopPatchGenerator(),
+        logo_uri="",
+        checkpoint_store=ConflictingStore(),
+    )
+    with pytest.raises(OutputConflictError):
+        await executor.execute(
+            operation_id=uuid.uuid7(), request=_request(output_strategy=OutputStrategy.COPY)
+        )
+    assert gateway.created == 0

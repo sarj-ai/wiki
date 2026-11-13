@@ -3,7 +3,7 @@ from dataclasses import dataclass, replace
 from typing import Literal
 
 from app.document_transform.ir import BlockKind, DocumentIR, SourceRange, utf16_length
-from app.document_transform.native_chip_detection import DetectedNativeSpan
+from app.document_transform.native_chip_detection import BlockedNativeSpan, DetectedNativeSpan
 from app.document_transform.native_quote_spans import (
     NativeInlineRange,
     native_inline_protected_ranges,
@@ -76,5 +76,11 @@ def _protect_candidate(
 ) -> DetectedNativeSpan:
     index = bisect_right(starts, candidate.end - 1) - 1
     if index >= 0 and ranges[index].end > candidate.start:
-        return replace(candidate, skip_reason=ranges[index].reason)
+        return BlockedNativeSpan(
+            candidate.start,
+            candidate.end,
+            candidate.text,
+            candidate.kind,
+            ranges[index].reason,
+        )
     return candidate

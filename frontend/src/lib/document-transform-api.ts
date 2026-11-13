@@ -28,6 +28,7 @@ const TaskStatusSchema = z.enum([
   "succeeded",
   "failed",
   "cancelled",
+  "needs_review",
 ]);
 const UuidSchema = z.uuid();
 const AdmissionSchema = z.strictObject({
@@ -96,9 +97,19 @@ const ResultSchema = z
 const TaskSchema = z.discriminatedUnion("status", [
   z.object({
     id: UuidSchema,
-    status: TaskStatusSchema.exclude(["failed", "succeeded"]),
-    "attempt_count": z.int().nonnegative().optional(),
-    "execution_state": z.enum(["running", "retrying"]).optional(),
+    status: z.literal("needs_review"),
+    "error_code": z.literal("external_effect_uncertain"),
+    "error_detail": z.string().min(1),
+  }),
+  z.object({
+    id: UuidSchema,
+    status: z.enum(["pending", "cancelled"]),
+  }),
+  z.object({
+    id: UuidSchema,
+    status: z.literal("running"),
+    "attempt_count": z.int().positive(),
+    "execution_state": z.enum(["running", "retrying"]),
   }),
   z.object({
     "error_code": z.string(),
@@ -306,6 +317,8 @@ async function waitForTask(
     pollSignal.throwIfAborted();
     onProgress?.(current);
     switch (current.status) {
+      case "needs_review":
+        throw new DocumentTransformNeedsReviewError(current.errorDetail);
       case "cancelled":
         throw new DocumentTransformTerminalError(
           "Document polish was cancelled",
@@ -394,18 +407,25 @@ function taskFailureDetail(
 
 function parseTask(task: z.infer<typeof TaskSchema>): DocumentTransformTask {
   switch (task.status) {
+    case "needs_review":
+      return {
+        id: task.id,
+        status: "needs_review",
+        errorCode: task["error_code"],
+        errorDetail: task["error_detail"],
+      };
     case "cancelled":
     case "pending":
+      return {
+        id: task.id,
+        status: task.status,
+      };
     case "running":
       return {
         id: task.id,
         status: task.status,
-        ...(task["attempt_count"] !== undefined && {
-          attemptCount: task["attempt_count"],
-        }),
-        ...(task["execution_state"] !== undefined && {
-          executionState: task["execution_state"],
-        }),
+        attemptCount: task["attempt_count"],
+        executionState: task["execution_state"],
       };
     case "failed":
       return {

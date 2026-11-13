@@ -26,6 +26,7 @@ from app.document_transform.brand_manifest import CURRENT_BRAND_MANIFEST
 from app.document_transform.errors import (
     DocumentGatewayError,
     DocumentTransformError,
+    ExternalEffectUncertainError,
     InPlaceNeedsReviewError,
     ModelUnavailableError,
     UnsupportedSourceError,
@@ -67,13 +68,11 @@ from app.models.wiki import DocumentHeaderProvenance
 from app.performance import provider_retry_budget
 from app.tasks.errors import TaskExecutionDeferredError, TaskNotClaimableError
 from app.tasks.schemas import (
-    CancelledTaskRead,
-    DocumentTransformSucceededTaskRead,
-    DocumentTransformTaskRecord,
-    FailedTaskRead,
-    SmartCreateSucceededTaskRead,
+    ActiveDocumentTransformTaskRecord,
+    ReviewDocumentTransformTaskRecord,
     TaskClaim,
     TaskRead,
+    TerminalDocumentTransformTaskRecord,
 )
 from app.tasks.service import TaskService
 
@@ -91,6 +90,8 @@ class DocumentTransformTaskExecutor(ABC):
 
 
 class RetryTaskStore(Protocol):
+    async def require_review(self, task_id: TaskId, *, lease_token: uuid.UUID) -> TaskRead: ...
+
     async def defer(self, task_id: TaskId, *, lease_token: uuid.UUID) -> TaskRead: ...
 
     async def fail(
@@ -162,13 +163,6 @@ class DocumentTransformRuntime:
     short_links: PolishShortLinks | None = None
 
 
-def _required_payload(record: DocumentTransformTaskRecord) -> DocumentTransformRequest:
-    if record.payload is None:
-        msg = "Active document-transform task is missing its payload"
-        raise ValueError(msg)
-    return record.payload
-
-
 class DriveDocumentTransformTaskExecutor(DocumentTransformTaskExecutor):
     def __init__(
         self,
@@ -197,12 +191,8 @@ class DriveDocumentTransformTaskExecutor(DocumentTransformTaskExecutor):
             # A malformed encrypted payload or checkpoint must not prevent the
             # worker from claiming the task and recording a terminal failure.
             record = None
-        if record is not None and isinstance(
-            record.task,
-            SmartCreateSucceededTaskRead
-            | DocumentTransformSucceededTaskRead
-            | FailedTaskRead
-            | CancelledTaskRead,
+        if isinstance(
+            record, TerminalDocumentTransformTaskRecord | ReviewDocumentTransformTaskRecord
         ):
             return record.task
         try:
@@ -211,7 +201,9 @@ class DriveDocumentTransformTaskExecutor(DocumentTransformTaskExecutor):
             raise TaskExecutionDeferredError from exc
         try:
             claimed_record = await self._tasks.load_document_transform(task_id)
-            claimed_payload = _required_payload(claimed_record)
+            if not isinstance(claimed_record, ActiveDocumentTransformTaskRecord):
+                return claimed_record.task
+            claimed_payload = claimed_record.payload
         except ValueError, TypeError, InvalidToken:
             return await self._tasks.fail(
                 task_id,
@@ -381,6 +373,10 @@ class DriveDocumentTransformTaskExecutor(DocumentTransformTaskExecutor):
                         gateway=presentation_gateway,
                         generator=self._generator,
                         logo_uri=logo_uri,
+                        checkpoint_store=self._tasks,
+                        lease_token=lease_token,
+                        checkpoint=checkpoint,
+                        checkpoint_generation=checkpoint_generation,
                     ),
                 )
         document_gateway = GoogleDocumentGateway(
@@ -509,6 +505,8 @@ async def _execute_claimed(
     )
     try:
         result = await transform.execute(operation_id=task_id, request=payload)
+    except ExternalEffectUncertainError:
+        return await tasks.require_review(task_id, lease_token=claim.lease_token)
     except ProviderDeadlineError as exc:
         _log_transform_failure(
             task_id=task_id,

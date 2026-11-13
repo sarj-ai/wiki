@@ -13,9 +13,21 @@ from google.oauth2.credentials import Credentials
 import httpx
 import pytest
 
-from app.document_transform.errors import ModelPermissionError, ModelUnavailableError
+from app.document_transform.errors import (
+    ExhaustedModelError,
+    ModelAuthenticationError,
+    ModelConfigurationError,
+    ModelDeadlineError,
+    ModelOutputError,
+    ModelPermissionError,
+    ModelUnavailableError,
+)
 from app.document_transform.ir import parse_markdown
-from app.document_transform.model_failures import classify_model_failure, grouped_model_failure
+from app.document_transform.model_failures import (
+    classify_model_failure,
+    exhausted_model_failure,
+    grouped_model_failure,
+)
 from app.document_transform.models import GeminiModelPolicy, VertexGeminiPatchGenerator
 from app.document_transform.schemas import PatchEnvelope, TextPatch, TransformPhase
 from app.performance import provider_retry_budget, provider_retry_remaining_seconds
@@ -247,9 +259,7 @@ def test_known_permanent_batch_failure_retains_actionable_category_after_other_a
     None
 ):
     failure = grouped_model_failure(
-        ExceptionGroup(
-            "parallel batches", [ModelUnavailableError(retryable=False), ModelPermissionError()]
-        )
+        ExceptionGroup("parallel batches", [ExhaustedModelError(), ModelPermissionError()])
     )
     assert failure.code == "model_permission_denied"
     assert not failure.retryable
@@ -317,3 +327,58 @@ def test_credential_refresh_failure_retains_the_auth_library_retry_policy(
     assert failure.retryable is retryable
     assert failure.code == ("model_unavailable" if retryable else "model_authentication_failed")
     assert _SECRET_SENTINEL not in str(failure)
+
+
+@pytest.mark.parametrize(
+    "failure",
+    [
+        ModelAuthenticationError(),
+        ModelConfigurationError(),
+        ModelDeadlineError(),
+        ModelOutputError(),
+        ModelPermissionError(),
+    ],
+)
+def test_terminal_model_policy_cannot_be_mutated_into_a_queue_retry(
+    failure: ModelUnavailableError,
+) -> None:
+    assert failure.retryable is False
+    assert failure.retry_after is None
+    assert failure.retry_within_operation is isinstance(failure, ModelOutputError)
+    for attribute, value in (("retryable", True), ("retry_after", 1.0)):
+        with pytest.raises(AttributeError):
+            setattr(failure, attribute, value)
+
+
+@pytest.mark.parametrize("delay", [-1.0, float("inf"), float("nan")])
+def test_model_retry_delay_rejects_invalid_provider_timing(delay: float) -> None:
+    with pytest.raises(ValueError, match="finite and nonnegative"):
+        ModelUnavailableError(retry_after=delay)
+
+
+def test_exhausted_transient_wrapper_preserves_delay_without_aliasing_the_original() -> None:
+    original = ModelUnavailableError(retry_after=8.0)
+    wrapped = exhausted_model_failure(original)
+    assert wrapped is not original
+    assert isinstance(wrapped, ExhaustedModelError)
+    assert wrapped.retryable is False
+    assert wrapped.retry_within_operation is False
+    assert wrapped.retry_after == 8.0
+    assert wrapped.__cause__ is None
+
+
+def test_exhausted_failure_stays_terminal_when_wrapped_again() -> None:
+    original = ExhaustedModelError(retry_after=8.0)
+    wrapped = exhausted_model_failure(original)
+    assert isinstance(wrapped, ExhaustedModelError)
+    assert wrapped is not original
+    assert wrapped.retry_after == 8.0
+    assert not wrapped.retryable
+    assert not wrapped.retry_within_operation
+
+
+def test_unknown_exhausted_failure_cannot_restart_provider_attempts() -> None:
+    wrapped = exhausted_model_failure(None)
+    assert isinstance(wrapped, ExhaustedModelError)
+    assert not wrapped.retryable
+    assert wrapped.retry_after is None

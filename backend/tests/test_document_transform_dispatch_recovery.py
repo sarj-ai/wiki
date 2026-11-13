@@ -49,6 +49,9 @@ class _Rows:
 class _Session:
     statement: ClauseElement | None = None
 
+    async def commit(self) -> None:
+        return None
+
     async def execute(self, statement: ClauseElement) -> _Rows:
         self.statement = statement
         return _Rows([])

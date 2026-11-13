@@ -13,6 +13,8 @@ from app.document_transform.schemas import (
     CopyPlan,
     DocumentTransformCheckpoint,
     InPlacePlan,
+    PlannedPresentationCheckpoint,
+    TextDocumentCheckpointPayload,
     WordCopyPlan,
 )
 from app.drive.schemas import DriveTree
@@ -26,7 +28,12 @@ from app.smart_create.service import (
     organization_candidates,
     smart_create_candidates,
 )
-from app.tasks.schemas import TaskKind, TaskStatus
+from app.tasks.schemas import (
+    ActiveDocumentTransformTaskRecord,
+    TaskKind,
+    TaskStatus,
+    TerminalDocumentTransformTaskRecord,
+)
 from app.tasks.service import PostgresTaskService
 from app.templates.schemas import TemplateRead
 from tests.advanced_round6_support import (
@@ -269,6 +276,7 @@ async def test_transform_worker_preserves_terminal_redaction() -> None:
     record = await PostgresTaskService(db=fixture_dependency(session)).load_document_transform(
         row.id
     )
+    assert isinstance(record, TerminalDocumentTransformTaskRecord)
     assert record.payload is None
     assert record.task.result is not None
     assert record.task.result.model_dump(mode="json") == result_data
@@ -328,6 +336,7 @@ async def test_checkpoint_storage_restores_sorted_legacy_and_current_envelopes(k
         restored = await PostgresTaskService(db=fixture_dependency(db)).load_document_transform(
             row.id
         )
+        assert isinstance(restored, ActiveDocumentTransformTaskRecord)
         assert restored.checkpoint == checkpoint
 
 
@@ -368,3 +377,18 @@ async def test_checkpoint_exact_utf8_cap_and_pre_sql_rejection() -> None:
             FIXTURE_TASK, lease_token=FIXTURE_LEASE, expected_generation=0, checkpoint=unicode_over
         )
     assert session.statements == []
+
+
+def test_document_executor_preserves_word_recovery_checkpoint() -> None:
+    checkpoint = word_checkpoint()
+    assert TextDocumentCheckpointPayload.model_validate(checkpoint).root is checkpoint
+
+
+def test_document_executor_rejects_presentation_recovery_checkpoint() -> None:
+    checkpoint = PlannedPresentationCheckpoint(
+        request_sha256="a" * 64,
+        source_sha256="b" * 64,
+        output_name="Recovered copy",
+    )
+    with pytest.raises(ValidationError):
+        TextDocumentCheckpointPayload.model_validate(checkpoint)

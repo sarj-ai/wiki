@@ -1,9 +1,10 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any, NewType, Protocol
 import uuid
 
+from app.document_transform.presentation_state import PresentationMutation, ReadyPresentation
 from app.document_transform.schemas import DriveFileSource
 from app.identifiers import FileId
 
@@ -44,13 +45,7 @@ class PresentationDraft:
     revision_id: PresentationRevisionId
     source_sha256: str
     web_url: str | None = None
-    applied_mutation_sha256: str | None = None
-    pending_mutation_sha256: str | None = None
-    mutation_base_revision_sha256: str | None = None
-    pending_expected_semantic_sha256: str | None = None
-    pending_expected_protected_structure_sha256: str | None = None
-    pending_expected_brand_sha256: str | None = None
-    completed: bool = False
+    mutation: PresentationMutation = field(default_factory=ReadyPresentation)
 
 
 @dataclass(frozen=True, slots=True)

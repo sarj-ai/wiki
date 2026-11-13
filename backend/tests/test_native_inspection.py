@@ -1,4 +1,5 @@
 from dataclasses import replace
+from typing import Literal, assert_never
 import uuid
 
 from httpx import ASGITransport, AsyncClient
@@ -14,7 +15,16 @@ from app.identifiers import DocsRevisionId, FileId, TaskId, UserId
 from app.main import app
 from app.tasks.dependencies import task_service_dep
 from app.tasks.errors import TaskNotFoundError
-from app.tasks.schemas import DocumentTransformTaskRecord, FailedTaskRead
+from app.tasks.schemas import (
+    DocumentTransformTaskRead,
+    DocumentTransformTaskRecord,
+    FailedTaskRead,
+    NeedsReviewTaskRead,
+    ReviewDocumentTransformTaskRecord,
+    TaskKind,
+    TaskStatus,
+    TerminalDocumentTransformTaskRecord,
+)
 from tests.advanced_round6_support import in_place_checkpoint
 from tests.support import dependency
 from tests.test_document_readability import _fixture
@@ -84,24 +94,46 @@ async def test_native_inspection_requires_wiki_auth_and_disables_response_cachin
 
 class _SavedTaskReader:
     def __init__(
-        self, *, hidden: bool = False, wrong_owner: bool = False, wrong_file: bool = False
+        self,
+        *,
+        hidden: bool = False,
+        wrong_owner: bool = False,
+        wrong_file: bool = False,
+        review: bool = False,
     ) -> None:
         self.user = _user()
-        self.record = DocumentTransformTaskRecord(
+        terminal = TerminalDocumentTransformTaskRecord(
             owner_user_id=uuid.uuid7() if wrong_owner else self.user.id,
             task=_failed_task(resource_id=FileId("another-file" if wrong_file else "private")),
             payload=None,
             checkpoint=in_place_checkpoint(),
             checkpoint_generation=3,
         )
+        self.record: DocumentTransformTaskRecord
+        if review:
+            self.record = ReviewDocumentTransformTaskRecord(
+                owner_user_id=terminal.owner_user_id,
+                task=NeedsReviewTaskRead[Literal[TaskKind.FILE_DOCUMENT_TRANSFORM]].model_validate(
+                    terminal.task.model_dump()
+                    | {
+                        "status": TaskStatus.NEEDS_REVIEW,
+                        "error_code": "external_effect_uncertain",
+                        "error_detail": "The provider action needs review",
+                    }
+                ),
+            )
+        else:
+            self.record = terminal
         self.hidden = hidden
         self.loads: list[TaskId] = []
 
-    async def get_for_owner(self, task_id: TaskId, owner_user_id: UserId) -> FailedTaskRead:
+    async def get_for_owner(
+        self, task_id: TaskId, owner_user_id: UserId
+    ) -> DocumentTransformTaskRead:
         if self.hidden or owner_user_id != self.record.owner_user_id:
             raise TaskNotFoundError
         assert task_id == self.record.task.id
-        assert isinstance(self.record.task, FailedTaskRead)
+        assert isinstance(self.record.task, FailedTaskRead | NeedsReviewTaskRead)
         return self.record.task
 
     async def load_document_transform(self, task_id: TaskId) -> DocumentTransformTaskRecord:
@@ -120,14 +152,20 @@ async def test_saved_checkpoint_cannot_be_attached_to_another_owner_or_file(mism
         attach_saved_checkpoint(inspection, tasks.record, owner_user_id=UserId(tasks.user.id))
 
 
-@pytest.mark.parametrize("scenario", ["visible", "hidden_task", "wrong_file", "changed_source"])
+@pytest.mark.parametrize(
+    "scenario", ["visible", "hidden_task", "wrong_file", "changed_source", "review_task"]
+)
 async def test_saved_checkpoint_requires_owner_and_fresh_native_document_access(
-    scenario: str,
+    scenario: Literal["visible", "hidden_task", "wrong_file", "changed_source", "review_task"],
 ) -> None:
     reader = _Reader()
     if scenario == "changed_source":
         reader.snapshot = replace(reader.snapshot, modified_time="2026-11-12T14:00:00Z")
-    tasks = _SavedTaskReader(hidden=scenario == "hidden_task", wrong_file=scenario == "wrong_file")
+    tasks = _SavedTaskReader(
+        hidden=scenario == "hidden_task",
+        wrong_file=scenario == "wrong_file",
+        review=scenario == "review_task",
+    )
     runtime = CurrentPolishRuntime(
         files=dependency(reader), revisions=dependency(reader), native_sources=reader
     )
@@ -141,17 +179,31 @@ async def test_saved_checkpoint_requires_owner_and_fresh_native_document_access(
                 params={"task_id": str(tasks.record.task.id)},
                 json=_source().model_dump(),
             )
-        if scenario == "visible":
-            assert response.status_code == 200
-            assert response.headers["cache-control"] == "private, no-store"
-            assert tasks.record.checkpoint is not None
-            assert response.json()["checkpoint"] == tasks.record.checkpoint.model_dump(mode="json")
-            assert response.json()["checkpoint_generation"] == 3
-        else:
-            assert response.status_code == (409 if scenario == "changed_source" else 404)
-            assert "checkpoint" not in response.json()
+        match scenario:
+            case "visible":
+                assert response.status_code == 200
+                assert response.headers["cache-control"] == "private, no-store"
+                assert response.json()["kind"] == "saved-task"
+                assert isinstance(tasks.record, TerminalDocumentTransformTaskRecord)
+                assert tasks.record.checkpoint is not None
+                assert response.json()["checkpoint"] == tasks.record.checkpoint.model_dump(
+                    mode="json"
+                )
+                assert response.json()["checkpoint_generation"] == 3
+            case "review_task":
+                assert response.status_code == 409
+                assert response.json()["code"] == "task_not_claimable"
+                assert "checkpoint" not in response.json()
+            case "changed_source":
+                assert response.status_code == 409
+                assert "checkpoint" not in response.json()
+            case "hidden_task" | "wrong_file":
+                assert response.status_code == 404
+                assert "checkpoint" not in response.json()
+            case _:
+                assert_never(scenario)
         assert tasks.loads == (
-            [tasks.record.task.id] if scenario in {"visible", "wrong_file"} else []
+            [tasks.record.task.id] if scenario in {"visible", "wrong_file", "review_task"} else []
         )
     finally:
         app.dependency_overrides.pop(current_polish_runtime_dep, None)
