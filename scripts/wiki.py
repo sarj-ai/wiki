@@ -183,6 +183,7 @@ def checks(scope: Check, *, platform: str = sys.platform) -> tuple[Command, ...]
 
 def _quality_checks(*, platform: str) -> tuple[Command, ...]:
     return (
+        _project("sarj-ratchet", "."),
         *_repository_checks(),
         _standards("doctor"),
         _standards(
@@ -201,7 +202,6 @@ def _quality_checks(*, platform: str) -> tuple[Command, ...]:
             "--verify-python-baseline",
             ".",
         ),
-        _project("sarj-ratchet", "."),
         # Full subprocess fan-out can deadlock on macOS; native hooks and CI retain these checks.
         Command(
             arguments=(

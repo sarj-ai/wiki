@@ -139,6 +139,29 @@ def test_command_environment_does_not_leak_to_the_next_tool(
     assert [call.setting for call in _invocations(native_tool)] == ["inner", "outer"]
 
 
+def test_quality_suppression_failure_stops_before_other_gates(native_tool: Path) -> None:
+    executable = native_tool.parent / "fixture-tool"
+    for name in ("uv", "uvx"):
+        target = native_tool.parent / name
+        target.write_text(
+            executable.read_text().replace("'fail' in sys.argv", "'sarj-ratchet' in sys.argv")
+        )
+        target.chmod(0o700)
+
+    result = CliRunner().invoke(wiki.CLI, ["check", "quality"])
+
+    assert result.exit_code == _NATIVE_FAILURE
+    (call,) = _invocations(native_tool)
+    assert call.arguments == [
+        "run",
+        "--project",
+        "backend",
+        "--locked",
+        "sarj-ratchet",
+        ".",
+    ]
+
+
 @pytest.mark.parametrize(
     ("scopes", "expected_count"),
     [(["backend", "frontend"], 18), (["backend", "backend"], 9)],
@@ -212,7 +235,12 @@ def test_frontend_contract_checks_generated_api_and_types_before_the_production_
 
 def test_full_qualification_keeps_one_repository_audit_and_required_gates() -> None:
     commands = wiki.checks(wiki.Check.ALL)
+    ratchet = wiki.Command(
+        arguments=("uv", "run", "--project", "backend", "--locked", "sarj-ratchet", ".")
+    )
 
+    assert commands[1] == ratchet
+    assert commands.count(ratchet) == 1
     assert wiki.REPOSITORY_STANDARDS_VERSION == "6.22.3"
     distribution = f"repo-standards=={wiki.REPOSITORY_STANDARDS_VERSION}"
     assert sum(distribution in command.arguments for command in commands) == 1
