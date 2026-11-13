@@ -13,7 +13,7 @@ from app.document_transform.quotations import SINGLE_QUOTED_SPAN_PATTERN, quoted
 
 UNSLOP_UPSTREAM_COMMIT = "d81f5196167ded24f46fced04958c0c12d681798"
 UNSLOP_UPSTREAM_VERSION = "2.3.0"
-UNSLOP_POLICY_VERSION = "sarj-concise-v40"
+UNSLOP_POLICY_VERSION = "sarj-concise-v41"
 MAX_EDITORIAL_PASSES = 100
 MIN_CONCISION_PROSE_WORDS = 40
 CONCISION_WORD_NUMERATOR = 2
@@ -134,9 +134,16 @@ UNSLOP_REWRITE_INSTRUCTION = (
     "identity across passes even if an earlier pass omits the adjective. An unqualified "
     "technical reference keeps its substantive goals. Multiple possible reference "
     "subjects keep their intention constraints; never transfer the exception between them. "
-    "For this reference exception, keep the same leading writing predicate and subject "
-    "matter, and retain following sentences verbatim; remove only writing scaffolding "
-    "and a redundant 'the' article in that leading sentence. "
+    "Only when the leading grammatical SUBJECT is that proven document reference does "
+    "the restrictive reference exception apply: keep the same leading writing predicate "
+    "and subject matter, retain following sentences verbatim, and remove only writing "
+    "scaffolding and a redundant 'the' article in that leading sentence. A reference "
+    "cited as the SOURCE or OBJECT of an ordinary document preamble does not activate "
+    "that restriction. In 'This note is intended to bring together latency estimates "
+    "from the Google SRE reference', the subject is this note, not the Google SRE "
+    "reference. Remove that note-writing preamble, state the attributed facts directly, "
+    "and independently shorten following sentences, including source-supported active "
+    "voice. Preserve substantive goals elsewhere as goals. "
     "This exception applies to the "
     "document describing its own writing, not substantive plans, desired outcomes, "
     "requirements, capabilities or uncertainty. Keep a retained writing action attached "

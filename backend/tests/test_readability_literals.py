@@ -36,6 +36,12 @@ from tests.test_readability_lists import _prose_document
 @pytest.mark.parametrize(
     "marked",
     [
+        "Measurements remain approximately 20|℃ under load.",
+        "Measurements remain approximately 20|℉ under load.",
+        "Measurements remain approximately 20 °|C under load.",
+        "Measurements remain approximately 20 °|c under load.",
+        "Measurements remain approximately 3 W/|℃ under load.",
+        "Measurements remain approximately 3 W m⁻¹|K⁻¹ under load.",
         'The report states "measure latency|then select storage" before release.',
         "The report states “measure latency|then select storage” before release.",
         "The report states 'measure latency|then select storage' before release.",
