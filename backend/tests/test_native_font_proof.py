@@ -1,12 +1,12 @@
 from copy import deepcopy
 from typing import Any, Literal
 
-from pydantic import ValidationError
+from pydantic import JsonValue, ValidationError
 import pytest
 
 from app.document_transform.ir import parse_google_document
 from app.document_transform.native_font_proof import (
-    NativeFontProof,
+    NativeFontProofPayload,
     capture_native_font_proof,
     verify_native_font_proof,
 )
@@ -110,7 +110,17 @@ def test_partial_proof_coverage_and_unknown_versions_fail_closed():
     assert verify_native_font_proof(original, proofs, preserved_block_ids=("b0", "b1"))
     assert not verify_native_font_proof(original, proofs[:1], preserved_block_ids=("b0", "b1"))
     with pytest.raises(ValidationError):
-        NativeFontProof.model_validate({**proofs[0].model_dump(), "version": 2})
+        NativeFontProofPayload.model_validate({**proofs[0].model_dump(), "version": 2})
+
+
+@pytest.mark.parametrize(
+    "version", [True, False, 1.0, "2", 3], ids=["true", "false", "float", "string", "future"]
+)
+def test_persisted_proof_version_cannot_be_coerced(version: JsonValue) -> None:
+    original = _native()
+    proof = capture_native_font_proof(original, parse_google_document(original, title="Source"))[0]
+    with pytest.raises(ValidationError):
+        NativeFontProofPayload.model_validate({**proof.model_dump(), "version": version})
 
 
 @pytest.mark.parametrize(

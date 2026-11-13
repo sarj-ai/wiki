@@ -62,7 +62,9 @@ def test_workflow_requires_all_local_gates_without_cloud_secrets(
     component: str,
 ) -> None:
     root = Path(__file__).resolve().parents[2]
-    workflow = yaml.safe_load((root / f".github/workflows/deploy-{component}.yml").read_text())
+    workflow = yaml.safe_load(
+        (root / f".github/workflows/deploy-{component}.yml").read_text()
+    )
     jobs = workflow["jobs"]
     assert set(jobs["deploy"]["needs"]) == GATE["REQUIRED_JOBS"]
     for name in GATE["REQUIRED_JOBS"] - {"standards-receipt"}:
@@ -83,7 +85,8 @@ def test_workflow_requires_all_local_gates_without_cloud_secrets(
     verification = [
         step
         for step in jobs["deploy"]["steps"]
-        if step.get("run") == f"bash scripts/github/verify-release-gate.sh ready {component}"
+        if step.get("run")
+        == f"bash scripts/github/verify-release-gate.sh ready {component}"
     ]
     expected_fences = 1 if component == "backend" else 2
     assert len(verification) == expected_fences
@@ -102,9 +105,13 @@ def test_workflow_requires_all_local_gates_without_cloud_secrets(
         ("frontend", "deploy"),
     ],
 )
-def test_gate_bootstraps_python_before_every_invocation(component: str, job_name: str) -> None:
+def test_gate_bootstraps_python_before_every_invocation(
+    component: str, job_name: str
+) -> None:
     root = Path(__file__).resolve().parents[2]
-    workflow = yaml.safe_load((root / f".github/workflows/deploy-{component}.yml").read_text())
+    workflow = yaml.safe_load(
+        (root / f".github/workflows/deploy-{component}.yml").read_text()
+    )
     steps = workflow["jobs"][job_name]["steps"]
     (installer,) = [
         index
@@ -188,7 +195,9 @@ def test_ambiguous_paginated_runs_fail_closed() -> None:
 
 def test_pending_run_waits_without_accepting_success() -> None:
     data = receipts()
-    data[f"{GATE['API_PREFIX']}/actions/runs/101"].update(status="in_progress", conclusion=None)
+    data[f"{GATE['API_PREFIX']}/actions/runs/101"].update(
+        status="in_progress", conclusion=None
+    )
     assert not GATE["standards_receipt"](data.__getitem__, SHA)
 
 
@@ -228,7 +237,9 @@ def test_other_repository_identities_cannot_authorize_deployment(
     )
     with pytest.raises(GATE["ReleaseBlockedError"], match="Untrusted"):
         GATE["validate_context"](environment, "backend", SHA)
-    with pytest.raises(GATE["ReleaseBlockedError"], match="Untrusted receipt repository"):
+    with pytest.raises(
+        GATE["ReleaseBlockedError"], match="Untrusted receipt repository"
+    ):
         GATE["validate_repository"]({"id": repository_id, "full_name": repository})
 
 
@@ -253,7 +264,9 @@ def test_main_advance_blocks_release() -> None:
 
 @pytest.mark.parametrize("result", ["failure", "cancelled", "skipped", None])
 def test_any_unsuccessful_gate_blocks_release(result: str | None) -> None:
-    needs: dict[str, JsonObject] = {name: {"result": "success"} for name in GATE["REQUIRED_JOBS"]}
+    needs: dict[str, JsonObject] = {
+        name: {"result": "success"} for name in GATE["REQUIRED_JOBS"]
+    }
     needs["ci-backend"]["result"] = result
     with pytest.raises(GATE["ReleaseBlockedError"], match="did not succeed"):
         GATE["validate_needs"](needs, SHA)
@@ -266,7 +279,9 @@ def test_missing_gate_blocks_release() -> None:
 
 @pytest.mark.parametrize("receipt_sha", [SHA, "b" * 40])
 def test_all_gates_require_matching_standards_sha(receipt_sha: str) -> None:
-    needs: dict[str, JsonObject] = {name: {"result": "success"} for name in GATE["REQUIRED_JOBS"]}
+    needs: dict[str, JsonObject] = {
+        name: {"result": "success"} for name in GATE["REQUIRED_JOBS"]
+    }
     needs["standards-receipt"]["outputs"] = {"release_sha": receipt_sha}
     if receipt_sha == SHA:
         GATE["validate_needs"](needs, SHA)
@@ -290,7 +305,9 @@ def test_missing_standards_times_out() -> None:
         return {"total_count": 0, "workflow_runs": []}
 
     with pytest.raises(GATE["ReleaseBlockedError"], match="deadline"):
-        GATE["wait_for_standards"](fetch, SHA, now=lambda: next(times), pause=lambda _seconds: None)
+        GATE["wait_for_standards"](
+            fetch, SHA, now=lambda: next(times), pause=lambda _seconds: None
+        )
 
 
 @pytest.mark.parametrize("component", ["main", "backend", "frontend"])
@@ -312,7 +329,9 @@ def test_shared_receipt_cannot_authorize_other_events(event: str) -> None:
 
 @pytest.mark.parametrize("selected", ["true", "false", "", None])
 def test_shared_dag_requires_explicit_component_selection(selected: str | None) -> None:
-    needs: dict[str, JsonObject] = {name: {"result": "success"} for name in GATE["REQUIRED_JOBS"]}
+    needs: dict[str, JsonObject] = {
+        name: {"result": "success"} for name in GATE["REQUIRED_JOBS"]
+    }
     needs["standards-receipt"]["outputs"] = {
         "release_sha": SHA,
         "backend": selected,
@@ -322,6 +341,35 @@ def test_shared_dag_requires_explicit_component_selection(selected: str | None) 
     else:
         with pytest.raises(GATE["ReleaseBlockedError"], match="not selected"):
             GATE["validate_needs"](needs, SHA, "backend")
+
+
+@pytest.mark.parametrize("selected", ["true", "false", None])
+@pytest.mark.parametrize("result", ["success", "skipped", "failure", "cancelled", None])
+def test_shared_frontend_waits_for_exact_selected_backend_result(
+    selected: str | None, result: str | None
+) -> None:
+    needs: dict[str, JsonObject] = {
+        name: {"result": "success"} for name in GATE["REQUIRED_JOBS"]
+    }
+    needs["standards-receipt"]["outputs"] = {
+        "release_sha": SHA,
+        "frontend": "true",
+        "backend": selected,
+    }
+    needs["backend-deploy"] = {"result": result}
+    if (selected, result) in {("true", "success"), ("false", "skipped")}:
+        GATE["validate_needs"](needs, SHA, "frontend")
+    else:
+        with pytest.raises(GATE["ReleaseBlockedError"], match=r"backend|Backend"):
+            GATE["validate_needs"](needs, SHA, "frontend")
+    with pytest.raises(GATE["ReleaseBlockedError"], match="unexpected"):
+        GATE["validate_needs"](needs, SHA)
+    with pytest.raises(GATE["ReleaseBlockedError"], match="Missing"):
+        GATE["validate_needs"](
+            {name: value for name, value in needs.items() if name != "backend-deploy"},
+            SHA,
+            "frontend",
+        )
 
 
 @pytest.mark.parametrize(
@@ -435,7 +483,9 @@ def test_cumulative_selection_includes_intervening_backend_pushes(
     }
 
 
-@pytest.mark.parametrize("fault", ["missing", "failed", "fork", "bad-sha", "wrong-workflow"])
+@pytest.mark.parametrize(
+    "fault", ["missing", "failed", "fork", "bad-sha", "wrong-workflow"]
+)
 def test_unusable_baseline_selects_full_release(fault: str) -> None:
     data = baseline_receipts(SHA)
     page = data[
@@ -479,9 +529,20 @@ def test_shared_main_dag_qualifies_once_without_release_secrets() -> None:
         assert "secrets" not in jobs[name]
     for component in ("backend", "frontend"):
         job = jobs[f"{component}-deploy"]
-        assert set(job["needs"]) == GATE["REQUIRED_JOBS"]
+        expected = GATE["REQUIRED_JOBS"] | (
+            {"backend-deploy"} if component == "frontend" else set()
+        )
+        assert set(job["needs"]) == expected
         assert job["with"] == {"release_needs": "${{ toJSON(needs) }}"}
-        assert job["if"] == f"needs.standards-receipt.outputs.{component} == 'true'"
-        deploy = yaml.safe_load((root / f".github/workflows/deploy-{component}.yml").read_text())
+        if component == "backend":
+            assert job["if"] == "needs.standards-receipt.outputs.backend == 'true'"
+        else:
+            assert "!cancelled()" in job["if"]
+            assert "needs.standards-receipt.outputs.frontend == 'true'" in job["if"]
+            assert "needs.backend-deploy.result == 'success'" in job["if"]
+            assert "needs.backend-deploy.result == 'skipped'" in job["if"]
+        deploy = yaml.safe_load(
+            (root / f".github/workflows/deploy-{component}.yml").read_text()
+        )
         for name in GATE["REQUIRED_JOBS"]:
             assert "inputs.release_needs == ''" in deploy["jobs"][name]["if"]

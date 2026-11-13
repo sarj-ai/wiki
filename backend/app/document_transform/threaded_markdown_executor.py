@@ -6,7 +6,11 @@ import uuid
 
 from app.document_transform.docx_renderer import render_markdown_docx
 from app.document_transform.executor import DocumentTransformExecutor
-from app.document_transform.gateway import OutputDraft, SourceSnapshot
+from app.document_transform.gateway import (
+    MarkdownSnapshot,
+    OutputDraft,
+    SourceSnapshot,
+)
 from app.document_transform.gcs_uploads import load_markdown_upload
 from app.document_transform.ir import DocumentIR, rewrite_markdown
 from app.document_transform.schemas import (
@@ -48,7 +52,7 @@ class ThreadedMarkdownExecutor(DocumentTransformExecutor):
         transformed: DocumentIR,
         output_name: str | None = None,
     ) -> OutputDraft:
-        if snapshot.markdown is None or output_name is None:
+        if not isinstance(snapshot, MarkdownSnapshot) or output_name is None:
             return await super()._create_output(
                 operation_id=operation_id,
                 request=request,
@@ -87,7 +91,7 @@ class ThreadedMarkdownExecutor(DocumentTransformExecutor):
 
 
 def _render_rewritten_markdown(
-    snapshot: SourceSnapshot,
+    snapshot: MarkdownSnapshot,
     original: DocumentIR,
     transformed: DocumentIR,
     *,
@@ -95,9 +99,6 @@ def _render_rewritten_markdown(
     logo_bytes: bytes | None,
     branded: bool,
 ) -> bytes:
-    if snapshot.markdown is None:
-        msg = "Markdown source is required for DOCX rendering"
-        raise ValueError(msg)
     return render_markdown_docx(
         rewrite_markdown(snapshot.markdown, original, transformed),
         title=snapshot.title,

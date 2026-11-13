@@ -12,7 +12,7 @@ from app.document_transform.brand_manifest import (
 )
 from app.document_transform.docx_renderer import markdown_import_manifest
 from app.document_transform.errors import UnsupportedSourceError
-from app.document_transform.gateway import OutputDraft, SourceSnapshot
+from app.document_transform.gateway import MarkdownSnapshot, OutputDraft
 from app.document_transform.google_gateway import GoogleDocumentGateway
 from app.document_transform.ir import parse_markdown
 from app.document_transform.markdown_import import verify_markdown_import
@@ -886,13 +886,8 @@ def test_google_gateway_uses_markdown_manifest_for_post_import_readback(
     }
     gateway = object.__new__(GoogleDocumentGateway)
     monkeypatch.setattr(gateway, "_get_document_sync", lambda _document_id: document)
-    source = SourceSnapshot(
-        title="Import",
-        parent_folder_id=FileId("folder"),
-        modified_time=None,
-        revision_id=None,
-        media_type="text/markdown",
-        markdown="Body",
+    source = MarkdownSnapshot(
+        title="Import", parent_folder_id=FileId("folder"), modified_time=None, markdown="Body"
     )
     expected = parse_markdown("Body", title="Import")
     draft = OutputDraft(

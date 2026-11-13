@@ -1,12 +1,20 @@
 from dataclasses import replace
 from typing import Any
 
+from pydantic import JsonValue
 import pytest
 
 from app.document_transform.errors import InPlaceNotAllowedError
+from app.document_transform.gateway import NativeDocumentSnapshot
 from app.document_transform.google_gateway import GoogleDocumentGateway
 from app.document_transform.schemas import DriveFileSource
-from app.document_transform.source_access import native_source_access
+from app.document_transform.source_access import (
+    NativeSourceAccess,
+    PersonalDrive,
+    SharedDrive,
+    UnresolvedDrive,
+    native_source_access,
+)
 from app.files.schemas import FileResponse
 from app.files.service import GoogleFilesService
 from app.identifiers import DriveId, FileId
@@ -23,11 +31,10 @@ def _metadata() -> dict[str, Any]:
     [None, "", "with spaces", "x" * 257, False, {}],
     ids=["null", "empty", "space", "overlong", "boolean", "object"],
 )
-def test_explicit_malformed_shared_identity_cannot_become_personal(drive: object):
+def test_explicit_malformed_shared_identity_cannot_become_personal(drive: JsonValue):
     access = native_source_access(_metadata() | {"driveId": drive, "ownedByMe": True})
     assert not access.can_edit
-    assert not access.is_personal_drive
-    assert access.shared_drive_id is None
+    assert isinstance(access.location, UnresolvedDrive)
 
 
 @pytest.mark.parametrize(
@@ -67,17 +74,16 @@ def test_fresh_native_access_preserves_personal_and_shared_paths(*, personal: bo
         metadata["ownedByMe"] = True
     access = native_source_access(metadata)
     assert access.can_edit
-    assert access.is_personal_drive is personal
+    assert isinstance(access.location, PersonalDrive) is personal
     assert access.owned_by_me is personal
-    assert access.shared_drive_id == (None if personal else "shared-drive-1")
+    assert access.location == (
+        PersonalDrive() if personal else SharedDrive(DriveId("shared-drive-1"))
+    )
     document = _branded_google_document()
     document["documentId"] = "source"
     snapshot = replace(
         _snapshot(document),
-        owned_by_me=access.owned_by_me,
-        can_edit=access.can_edit,
-        is_personal_drive=access.is_personal_drive,
-        shared_drive_id=access.shared_drive_id,
+        access=access,
     )
     gateway = object.__new__(GoogleDocumentGateway)
     gateway._logo_uri = "https://example.test/logo.png"
@@ -86,16 +92,16 @@ def test_fresh_native_access_preserves_personal_and_shared_paths(*, personal: bo
 
 
 @pytest.mark.parametrize(
-    "changes",
+    "access",
     [
-        {"can_edit": False, "shared_drive_id": DriveId("shared-drive-1")},
-        {"owned_by_me": False, "is_personal_drive": True},
-        {"owned_by_me": False, "is_personal_drive": False},
+        NativeSourceAccess(can_edit=False, location=SharedDrive(DriveId("shared-drive-1"))),
+        NativeSourceAccess(can_edit=True, location=PersonalDrive()),
+        NativeSourceAccess(can_edit=True, location=UnresolvedDrive()),
     ],
     ids=["shared_permission_lost", "unowned_personal", "unknown_location"],
 )
-def test_shared_support_does_not_weaken_other_eligibility(changes: dict[str, Any]):
-    snapshot = replace(_snapshot(_branded_google_document()), **changes)
+def test_shared_support_does_not_weaken_other_eligibility(access: NativeSourceAccess):
+    snapshot = replace(_snapshot(_branded_google_document()), access=access)
     gateway = object.__new__(GoogleDocumentGateway)
     with pytest.raises(InPlaceNotAllowedError):
         gateway._inspect_in_place_sync(snapshot, snapshot.title)
@@ -131,11 +137,13 @@ async def test_load_source_uses_fresh_capability_not_cached_file_access(
         kind="drive_file", file_id=FileId("source"), expected_modified_time="current"
     )
     allowed = await gateway.load_drive_source(source)
-    assert allowed.shared_drive_id == "shared-drive-1"
-    assert allowed.can_edit
+    assert isinstance(allowed, NativeDocumentSnapshot)
+    assert allowed.access.location == SharedDrive(DriveId("shared-drive-1"))
+    assert allowed.access.can_edit
     assert allowed.modified_time == "current"
     metadata["capabilities"] = {"canEdit": False}
     denied = await gateway.load_drive_source(source)
-    assert not denied.can_edit
+    assert isinstance(denied, NativeDocumentSnapshot)
+    assert not denied.access.can_edit
     with pytest.raises(InPlaceNotAllowedError):
         gateway._inspect_in_place_sync(denied, denied.title)

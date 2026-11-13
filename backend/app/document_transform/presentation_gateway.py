@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any, NewType, Protocol
+from typing import Any, Literal, NewType, Protocol
 import uuid
+
+from pydantic import JsonValue
 
 from app.document_transform.presentation_state import PresentationMutation, ReadyPresentation
 from app.document_transform.schemas import DriveFileSource
@@ -20,21 +22,42 @@ class PresentationFingerprints:
     brand_sha256: str | None = None
 
 
-@dataclass(frozen=True, slots=True)
-class PresentationSourceSnapshot:
+@dataclass(frozen=True, slots=True, kw_only=True)
+class _PresentationSourceMetadata:
     file_id: FileId
     title: str
     source_name: str
     parent_folder_id: FileId
     modified_time: str
-    revision_id: PresentationRevisionId | None
     drive_version: DriveFileVersion
-    mime_type: str
-    size: int | None
-    md5_checksum: str | None
     can_download: bool
     can_copy: bool
-    presentation: dict[str, Any] | None = None
+
+
+@dataclass(frozen=True, slots=True, kw_only=True)
+class NativePresentationSource(_PresentationSourceMetadata):
+    revision_id: PresentationRevisionId
+    presentation: dict[str, JsonValue]
+    size: int | None
+    md5_checksum: str | None
+    mime_type: Literal["application/vnd.google-apps.presentation"] = field(
+        default="application/vnd.google-apps.presentation", init=False
+    )
+
+
+@dataclass(frozen=True, slots=True, kw_only=True)
+class PptxPresentationSource(_PresentationSourceMetadata):
+    size: int
+    md5_checksum: str
+    mime_type: Literal[
+        "application/vnd.openxmlformats-officedocument.presentationml.presentation"
+    ] = field(
+        default="application/vnd.openxmlformats-officedocument.presentationml.presentation",
+        init=False,
+    )
+
+
+type PresentationSourceSnapshot = NativePresentationSource | PptxPresentationSource
 
 
 @dataclass(frozen=True, slots=True)

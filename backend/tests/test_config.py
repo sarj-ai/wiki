@@ -10,7 +10,12 @@ from pydantic_settings import BaseSettings
 import pytest
 
 from app.config import Settings, load_environment_settings
-from app.database_config import DatabaseSettings
+from app.database_config import (
+    CloudDatabaseSettings,
+    CloudSqlDatabaseConnection,
+    DatabaseSettings,
+    DirectDatabaseConnection,
+)
 from app.document_settings import DocumentSettings
 
 
@@ -75,6 +80,8 @@ def document_settings_factory() -> Callable[[str | None], DocumentSettings]:
 def test_baseline_parses_with_typed_defaults(monkeypatch: pytest.MonkeyPatch) -> None:
     s = _settings(monkeypatch)
     assert str(s.DATABASE_URL) == "postgresql+asyncpg://u:p@localhost:5432/db"
+    assert isinstance(s.connection, DirectDatabaseConnection)
+    assert s.connection.url == s.DATABASE_URL
     assert s.SECRET_KEY.get_secret_value() == "x" * 32
     assert s.LOG_LEVEL == "INFO"
     assert s.RELEASE_SHA == "dev"
@@ -266,12 +273,7 @@ def test_release_sha_accepts_full_lowercase_git_sha(monkeypatch: pytest.MonkeyPa
 
 
 def test_database_settings_do_not_load_application_secrets() -> None:
-    database_fields = {
-        "DATABASE_URL",
-        "DB_IAM_USER",
-        "DB_INSTANCE_CONNECTION_NAME",
-        "DB_NAME",
-    }
+    database_fields = {"DATABASE_URL", "DB"}
     assert set(DatabaseSettings.model_fields) == database_fields
 
 
@@ -302,7 +304,10 @@ def test_instance_connection_name_shape(monkeypatch: pytest.MonkeyPatch) -> None
         DB_INSTANCE_CONNECTION_NAME="sarj-docs:me-central1:wiki",
         DB_IAM_USER="svc@sarj-docs.iam",
     )
-    assert s.DB_INSTANCE_CONNECTION_NAME == "sarj-docs:me-central1:wiki"
+    assert s.DB.INSTANCE_CONNECTION_NAME == "sarj-docs:me-central1:wiki"
+    assert s.connection == CloudSqlDatabaseConnection(
+        "sarj-docs:me-central1:wiki", "svc@sarj-docs.iam", "sarj_wiki"
+    )
     with pytest.raises(ValidationError):
         _settings(
             monkeypatch,
@@ -310,6 +315,36 @@ def test_instance_connection_name_shape(monkeypatch: pytest.MonkeyPatch) -> None
             DB_INSTANCE_CONNECTION_NAME="missing-the-colons",
             DB_IAM_USER="svc@sarj-docs.iam",
         )
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("DATABASE_URL", "postgresql+asyncpg://u:p@localhost:5432/other"),
+        ("DB", "other"),
+    ],
+)
+def test_database_environment_cannot_diverge_from_decoded_connection(
+    monkeypatch: pytest.MonkeyPatch, field: str, value: str
+) -> None:
+    configured = _settings(monkeypatch)
+    with pytest.raises(ValidationError, match="frozen"):
+        setattr(configured, field, value)
+    assert isinstance(configured.connection, DirectDatabaseConnection)
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("INSTANCE_CONNECTION_NAME", "sarj-docs:me-central1:wiki"),
+        ("IAM_USER", "other@sarj-docs.iam"),
+        ("NAME", "other"),
+    ],
+)
+def test_nested_database_configuration_is_immutable(field: str, value: str) -> None:
+    configured = CloudDatabaseSettings()
+    with pytest.raises(ValidationError, match="frozen"):
+        setattr(configured, field, value)
 
 
 def test_cloud_tasks_settings_are_all_or_none(monkeypatch: pytest.MonkeyPatch) -> None:

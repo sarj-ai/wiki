@@ -3,10 +3,19 @@ from copy import deepcopy
 from dataclasses import dataclass
 import hashlib
 import json
-from typing import Any, Literal, NewType, Self
+from typing import Annotated, Any, Literal, NewType, assert_never
 
 from loguru import logger
-from pydantic import BaseModel, ConfigDict, Field, JsonValue, StrictBool, model_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    JsonValue,
+    RootModel,
+    StrictBool,
+    field_validator,
+    model_validator,
+)
 
 from app.document_transform.errors import UnsupportedSourceError
 from app.document_transform.ir import (
@@ -27,7 +36,6 @@ from app.identifiers import DocsTabId
 
 _MAX_COMPONENT_BYTES = 131072
 NativeFontBlockId = NewType("NativeFontBlockId", str)
-_SEMANTIC_VERSION = 2
 MAX_NATIVE_FONT_INTERVALS = 5000
 _COMPONENT_ERRORS = (
     KeyError,
@@ -50,27 +58,53 @@ class NativeFontComponents(BaseModel):
     terminal_family_representation_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
 
 
-class NativeFontProof(BaseModel):
+class _NativeFontProofBinding(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
-    version: Literal[1, 2] = 1
     tab_id: DocsTabId
     body_ordinal: int = Field(ge=0)
     sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
     named_styles_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
     components: NativeFontComponents | None = None
-    semantics: NativeFontSemantics | None = None
-    visual_authority: StrictBool = False
-    block_id: NativeFontBlockId | None = Field(default=None, pattern=r"^b[0-9]+$", max_length=32)
 
-    @model_validator(mode="after")
-    def validate_semantic_version(self) -> Self:
-        if self.version == 1:
-            if self.semantics is not None or self.block_id is not None or self.visual_authority:
+    @model_validator(mode="before")
+    @classmethod
+    def reject_coerced_version(cls, value: object) -> object:
+        if isinstance(value, dict) and "version" in value:
+            version = value["version"]
+            if type(version) is not int or version not in {1, 2}:
                 raise ValueError
-        elif self.semantics is None or self.block_id is None:
+        return value
+
+
+class LegacyNativeFontProof(_NativeFontProofBinding):
+    version: Literal[1] = 1
+    semantics: None = None
+    block_id: None = None
+    visual_authority: Literal[False] = False
+
+    @field_validator("visual_authority", mode="before")
+    @classmethod
+    def reject_coerced_visual_authority(cls, value: JsonValue) -> Literal[False]:
+        if value is not False:
             raise ValueError
-        return self
+        return False
+
+
+class SemanticNativeFontProof(_NativeFontProofBinding):
+    version: Literal[2] = 2
+    semantics: NativeFontSemantics
+    block_id: NativeFontBlockId = Field(pattern=r"^b[0-9]+$", max_length=32)
+    visual_authority: StrictBool = False
+
+
+type NativeFontProof = Annotated[
+    LegacyNativeFontProof | SemanticNativeFontProof, Field(discriminator="version")
+]
+
+
+class NativeFontProofPayload(RootModel[NativeFontProof]):
+    model_config = ConfigDict(frozen=True)
 
 
 @dataclass(frozen=True)
@@ -232,10 +266,15 @@ def capture_native_font_proof(
             position_delta=position_deltas.get(block.id, 0),
             selected_visual=selected_visual,
         )
-        if proof.semantics is not None:
-            interval_count += len(proof.semantics.intervals)
-            if interval_count > MAX_NATIVE_FONT_INTERVALS:
-                raise ValueError
+        match proof:
+            case SemanticNativeFontProof():
+                interval_count += len(proof.semantics.intervals)
+                if interval_count > MAX_NATIVE_FONT_INTERVALS:
+                    raise ValueError
+            case LegacyNativeFontProof():
+                pass
+            case _:
+                assert_never(proof)
         captured_ids.add(block.id)
         result.append(proof)
     _require_font_proof_coverage(
@@ -302,16 +341,32 @@ def _capture_block_font_proof(
         digest = semantic_font_digest(
             document, source.tab_id, element, semantics, require_target_family=False
         )
-    return NativeFontProof(
-        version=2 if semantics is not None else 1,
-        block_id=NativeFontBlockId(block.id) if semantics is not None else None,
-        semantics=semantics,
-        visual_authority=selected_visual,
+    binding = _NativeFontProofBinding(
         tab_id=source.tab_id,
         body_ordinal=ordinal,
         sha256=digest,
         named_styles_sha256=_named_styles_digest(document, source.tab_id),
         components=_optional_components(element),
+    )
+    if semantics is not None:
+        return SemanticNativeFontProof(
+            tab_id=binding.tab_id,
+            body_ordinal=binding.body_ordinal,
+            sha256=binding.sha256,
+            named_styles_sha256=binding.named_styles_sha256,
+            components=binding.components,
+            block_id=NativeFontBlockId(block.id),
+            semantics=semantics,
+            visual_authority=selected_visual,
+        )
+    if selected_visual:
+        raise ValueError
+    return LegacyNativeFontProof(
+        tab_id=binding.tab_id,
+        body_ordinal=binding.body_ordinal,
+        sha256=binding.sha256,
+        named_styles_sha256=binding.named_styles_sha256,
+        components=binding.components,
     )
 
 
@@ -601,16 +656,19 @@ def _native_font_proof_matches(
     for ordinal, proof in enumerate(proofs):
         element = bodies[proof.tab_id][proof.body_ordinal]
         digest = native_paragraph_font_sha256(element)
-        if proof.version == _SEMANTIC_VERSION:
-            digest = _verified_semantic_digest(
-                document,
-                element,
-                proof,
-                preserved_family_block_ids=preserved_family_block_ids,
-                require_target_family=require_target_family,
-            )
-        elif proof.semantics is not None or proof.block_id is not None:
-            return False
+        match proof:
+            case SemanticNativeFontProof():
+                digest = _verified_semantic_digest(
+                    document,
+                    element,
+                    proof,
+                    preserved_family_block_ids=preserved_family_block_ids,
+                    require_target_family=require_target_family,
+                )
+            case LegacyNativeFontProof():
+                pass
+            case _:
+                assert_never(proof)
         if digest != proof.sha256:
             checks["font_proof_reason"] = "paragraph_payload"
             return False
@@ -630,13 +688,16 @@ def _valid_font_bindings(
     interval_count = 0
     semantic_ids: set[str] = set()
     for proof in proofs:
-        if proof.semantics is not None:
-            interval_count += len(proof.semantics.intervals)
-        if proof.version != _SEMANTIC_VERSION:
-            continue
-        if proof.block_id is None or proof.block_id in semantic_ids:
-            return False
-        semantic_ids.add(proof.block_id)
+        match proof:
+            case LegacyNativeFontProof():
+                continue
+            case SemanticNativeFontProof():
+                interval_count += len(proof.semantics.intervals)
+                if proof.block_id in semantic_ids:
+                    return False
+                semantic_ids.add(proof.block_id)
+            case _:
+                assert_never(proof)
     return (
         interval_count <= MAX_NATIVE_FONT_INTERVALS
         and len(preserved_family_ids) == len(set(preserved_family_ids))
@@ -647,24 +708,22 @@ def _valid_font_bindings(
 def _unbound_coverage_ids(
     proofs: tuple[NativeFontProof, ...], block_ids: tuple[str, ...]
 ) -> tuple[str, ...]:
-    semantic_ids = {proof.block_id for proof in proofs if proof.version == _SEMANTIC_VERSION}
+    semantic_ids = {
+        proof.block_id for proof in proofs if isinstance(proof, SemanticNativeFontProof)
+    }
     return tuple(block_id for block_id in block_ids if block_id not in semantic_ids)
 
 
 def _verified_semantic_digest(
     document: dict[str, JsonValue],
     element: dict[str, JsonValue],
-    proof: NativeFontProof,
+    proof: SemanticNativeFontProof,
     *,
     preserved_family_block_ids: tuple[str, ...],
     require_target_family: bool,
 ) -> str:
     semantics = proof.semantics
-    if (
-        semantics is None
-        or proof.block_id is None
-        or semantics.preserve_family != (proof.block_id in preserved_family_block_ids)
-    ):
+    if semantics.preserve_family != (proof.block_id in preserved_family_block_ids):
         raise ValueError
     # Source IR IDs can shift when an approved deletion becomes an empty
     # provider paragraph. The body ordinal and attested UTF-16 range bind it.

@@ -7,6 +7,9 @@ from pydantic import JsonValue
 import pytest
 
 from app.document_transform.brand import SarjBrandProfile, build_copy_mutations
+from app.document_transform.copy_draft_state import (
+    PendingDraftMutation,
+)
 from app.document_transform.copy_font_defense import (
     copy_preserved_font_ids,
     defend_copy_fonts,
@@ -17,7 +20,11 @@ from app.document_transform.errors import (
     OutputConflictError,
     OutputVerificationError,
 )
-from app.document_transform.gateway import OutputVerification, SourceSnapshot
+from app.document_transform.gateway import (
+    NativeDocumentSnapshot,
+    OutputVerification,
+    SourceSnapshot,
+)
 from app.document_transform.google_gateway import GoogleDocumentGateway
 from app.document_transform.ir import DocumentIR, parse_google_document, utf16_length
 from app.document_transform.native_font_defense import apply_native_font_preservation
@@ -296,8 +303,11 @@ async def test_public_copy_gateway_requires_semantic_font_attestation(
     gateway = object.__new__(GoogleDocumentGateway)
     monkeypatch.setattr(gateway, "_get_document_sync", lambda _: deepcopy(actual))
     result = await gateway.verify_output(
-        draft=transform._pending_output_draft(
-            pending_mutation_sha256="hash", mutation_base_revision_sha256="hash"
+        draft=transform._output_draft(
+            mutation=PendingDraftMutation(
+                sha256="d04b98f48e8f8bcc15c6ae5ac050801cd6dcfd428fb5f9e65c4e16e7807340fa",
+                base_revision_sha256="d04b98f48e8f8bcc15c6ae5ac050801cd6dcfd428fb5f9e65c4e16e7807340fa",
+            )
         ),
         source=provenance._snapshot(source),
         expected=planned(source),
@@ -404,8 +414,7 @@ async def test_checkpoint_manifest_binds_source_bold_and_weight_before_writes():
         operation_id=operation, request=request
     )
     before = gateway.applies, gateway.brand_prepares
-    assert gateway.snapshot is not None
-    assert gateway.snapshot.google_document is not None
+    assert isinstance(gateway.snapshot, NativeDocumentSnapshot)
     parts(gateway.snapshot.google_document)[0]["textRun"]["textStyle"]["weightedFontFamily"][
         "weight"
     ] = 400
@@ -476,8 +485,11 @@ async def test_preceding_utf16_edit_updates_rich_family_with_bound_shifted_posit
     if not replacement:
         gateway = readback_gateway_factory(actual)
         verified = await gateway.verify_output(
-            draft=transform._pending_output_draft(
-                pending_mutation_sha256="hash", mutation_base_revision_sha256="hash"
+            draft=transform._output_draft(
+                mutation=PendingDraftMutation(
+                    sha256="d04b98f48e8f8bcc15c6ae5ac050801cd6dcfd428fb5f9e65c4e16e7807340fa",
+                    base_revision_sha256="d04b98f48e8f8bcc15c6ae5ac050801cd6dcfd428fb5f9e65c4e16e7807340fa",
+                )
             ),
             source=provenance._snapshot(source),
             expected=expected,

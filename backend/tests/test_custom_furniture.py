@@ -3,6 +3,7 @@ from dataclasses import dataclass, replace
 from typing import Any
 import uuid
 
+from pydantic import JsonValue, ValidationError
 import pytest
 
 from app.document_transform.brand import (
@@ -11,6 +12,7 @@ from app.document_transform.brand import (
 )
 from app.document_transform.brand_manifest import HEADER_TITLE_SEPARATOR
 from app.document_transform.custom_furniture import (
+    CapturedTerminalNewline,
     CustomFurnitureBinding,
     CustomHeaderTitleTarget,
     custom_furniture_requests_safe,
@@ -45,6 +47,37 @@ from tests.test_document_transform import (
 from tests.test_document_transform_repeat import _inspection_snapshot
 from tests.test_native_font_proof import _formatted
 from tests.test_native_preservation_findings import _native
+
+
+def test_historical_header_capture_decodes_to_one_required_value() -> None:
+    target = CustomHeaderTitleTarget.model_validate(
+        {
+            "tab_id": "tab",
+            "header_id": "header",
+            "terminal_newline_index": 9,
+            "terminal_newline_text_style_json": '{"bold":true}',
+        }
+    )
+    assert target.terminal_newline == CapturedTerminalNewline(
+        index=9, text_style_json='{"bold":true}'
+    )
+    assert "terminal_newline_index" not in target.model_dump()
+    assert CustomHeaderTitleTarget.model_validate(target.model_dump()) == target
+
+
+@pytest.mark.parametrize(
+    "capture",
+    [
+        {"terminal_newline_index": 9},
+        {"terminal_newline_text_style_json": "{}"},
+        {"terminal_newline_index": 9, "terminal_newline_text_style_json": '{ "bold": true }'},
+        {"terminal_newline_index": None, "terminal_newline": None},
+    ],
+    ids=["missing-style", "missing-index", "noncanonical-style", "conflicting-representations"],
+)
+def test_partial_or_conflicting_header_capture_is_held(capture: dict[str, JsonValue]) -> None:
+    with pytest.raises(ValidationError):
+        CustomHeaderTitleTarget.model_validate({"tab_id": "tab", "header_id": "header", **capture})
 
 
 @dataclass(frozen=True, slots=True)
@@ -799,7 +832,7 @@ async def test_custom_body_format_then_repeat_is_noop_with_truthful_receipt(
 
 
 @pytest.mark.parametrize("value", [None, False, [], ""], ids=["null", "bool", "list", "empty"])
-def test_malformed_binding_with_no_segments_is_not_treated_as_missing(value: object) -> None:
+def test_malformed_binding_with_no_segments_is_not_treated_as_missing(value: JsonValue) -> None:
     document = _custom_document()
     tab = document["tabs"][0]["documentTab"]
     tab["headers"] = {}

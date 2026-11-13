@@ -6,8 +6,10 @@ import pytest
 from app.document_transform.ir import DocumentIR
 from app.document_transform.models import PatchGenerator
 from app.document_transform.presentation_executor import PresentationTransformExecutor
+from app.document_transform.presentation_gateway import NativePresentationSource
 from app.document_transform.schemas import OutputStrategy, TextPatch, TransformPhase
 from app.drive.schemas import MIME_SLIDE
+from tests.json_values import json_object_at
 from tests.test_presentation_transform import (
     PresentationCheckpointStore,
     PresentationGatewaySpy,
@@ -71,10 +73,12 @@ async def test_rejected_proposal_requires_review_but_preservation_follows_actual
         "The researchers generally observed males singing at night before pairing and "
         "interpreted this pattern as evidence of mate attraction."
     )
+    assert isinstance(gateway.snapshot, NativePresentationSource)
     for presentation in (gateway.snapshot.presentation, gateway.output_presentation):
-        assert presentation is not None
-        run = presentation["slides"][0]["pageElements"][0]["shape"]["text"]["textElements"][1]
-        run["textRun"]["content"] = text + "\n"
+        run = json_object_at(
+            presentation, "slides", 0, "pageElements", 0, "shape", "text", "textElements", 1
+        )
+        json_object_at(run, "textRun")["content"] = text + "\n"
         run["endIndex"] = len(text) + 1
     gateway.verification_content_preserved = readback_matches
     result = await executor.execute(

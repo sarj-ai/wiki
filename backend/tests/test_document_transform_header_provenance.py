@@ -3,20 +3,24 @@ from dataclasses import replace
 from typing import Any, NamedTuple
 import uuid
 
-from pydantic import ValidationError
+from pydantic import JsonValue, ValidationError
 import pytest
 
 from app.document_transform.brand_manifest import CURRENT_BRAND_MANIFEST
+from app.document_transform.copy_draft_state import (
+    UnmodifiedDraft,
+)
 from app.document_transform.errors import InPlaceNeedsReviewError
-from app.document_transform.gateway import SourceSnapshot
+from app.document_transform.gateway import NativeDocumentSnapshot
 from app.document_transform.google_gateway import GoogleDocumentGateway
 from app.document_transform.header_provenance import HeaderIdentityEvidence, HeaderIdentityProof
 from app.document_transform.schemas import DriveFileSource
+from app.document_transform.source_access import NativeSourceAccess, PersonalDrive
 from app.files.schemas import FileResponse
 from app.files.service import GoogleFilesService
 from app.identifiers import DocsRevisionId, FileId
 from app.models.user import User
-from tests.test_document_transform import _branded_google_document, _pending_output_draft
+from tests.test_document_transform import _branded_google_document, _output_draft
 
 
 class _Captured(NamedTuple):
@@ -24,17 +28,16 @@ class _Captured(NamedTuple):
     evidence: HeaderIdentityEvidence
 
 
-def _snapshot(document: dict[str, Any]) -> SourceSnapshot:
-    return SourceSnapshot(
+def _snapshot(document: dict[str, JsonValue]) -> NativeDocumentSnapshot:
+    revision = document["revisionId"]
+    assert isinstance(revision, str)
+    return NativeDocumentSnapshot(
         title="Decision — Sarj formatted (12345678)",
         parent_folder_id=FileId("folder"),
         modified_time="later",
-        revision_id=DocsRevisionId(document["revisionId"]),
-        media_type="application/vnd.google-apps.document",
+        revision_id=DocsRevisionId(revision),
         google_document=document,
-        owned_by_me=True,
-        can_edit=True,
-        is_personal_drive=True,
+        access=NativeSourceAccess(owned_by_me=True, can_edit=True, location=PersonalDrive()),
     )
 
 
@@ -48,7 +51,7 @@ async def _capture(monkeypatch: pytest.MonkeyPatch) -> _Captured:
     )
     monkeypatch.setattr(gateway, "_get_document_sync", lambda _file_id: deepcopy(document))
     draft = replace(
-        _pending_output_draft(pending_mutation_sha256="", mutation_base_revision_sha256=""),
+        _output_draft(mutation=UnmodifiedDraft()),
         revision_id=DocsRevisionId(document["revisionId"]),
     )
     assert gateway.capture_header_identity is not None
@@ -130,9 +133,7 @@ async def test_unmanaged_headers_are_never_attested(monkeypatch: pytest.MonkeyPa
     assert gateway.capture_header_identity is not None
     assert (
         await gateway.capture_header_identity(
-            draft=_pending_output_draft(
-                pending_mutation_sha256="", mutation_base_revision_sha256=""
-            ),
+            draft=_output_draft(mutation=UnmodifiedDraft()),
             operation_id=uuid.uuid7(),
             managed_headers={},
             title="Decision",
@@ -237,6 +238,7 @@ async def test_fresh_metadata_matches_historical_finalization_not_current_body_r
     )
     if change == "none":
         snapshot = await gateway.load_drive_source(source)
+        assert isinstance(snapshot, NativeDocumentSnapshot)
         assert snapshot.revision_id == "later-body-edit"
     else:
         with pytest.raises(InPlaceNeedsReviewError):

@@ -325,11 +325,8 @@ def build_custom_header_title_requests(
                 },
             ]
         )
-        if (
-            header.terminal_newline_index is not None
-            and header.terminal_newline_text_style_json is not None
-        ):
-            newline_index = end_index + header.terminal_newline_index
+        if header.terminal_newline is not None:
+            newline_index = end_index + header.terminal_newline.index
             requests.append(
                 {
                     "updateTextStyle": {
@@ -339,7 +336,7 @@ def build_custom_header_title_requests(
                             "segmentId": header.header_id,
                             "tabId": header.tab_id,
                         },
-                        "textStyle": json.loads(header.terminal_newline_text_style_json),
+                        "textStyle": json.loads(header.terminal_newline.text_style_json),
                         "fields": "*",
                     }
                 }

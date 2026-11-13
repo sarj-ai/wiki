@@ -44,6 +44,15 @@ from app.document_transform.bullet_style_projection import (
     bullet_style_diagnostics,
     project_branded_bullet_styles,
 )
+from app.document_transform.copy_draft_state import (
+    PendingDraftMutation,
+    UnmodifiedDraft,
+    confirmed_draft_mutation,
+    decode_draft_completion,
+    decode_draft_mutation,
+    prepare_draft_mutation,
+    record_draft_mutation,
+)
 from app.document_transform.copy_font_defense import verify_copy_fonts
 from app.document_transform.copy_identity import (
     align_verified_copy_list_metadata,
@@ -52,6 +61,7 @@ from app.document_transform.copy_identity import (
 from app.document_transform.copy_visual_authority import verify_copy_visual_authority
 from app.document_transform.custom_furniture import (
     MAX_FURNITURE_BYTES,
+    CapturedTerminalNewline,
     CustomFurnitureBinding,
     CustomHeaderTitleTarget,
     furniture_bindings_known,
@@ -73,6 +83,8 @@ from app.document_transform.gateway import (
     DocumentGateway,
     InPlaceInspection,
     InPlaceStageResult,
+    MarkdownSnapshot,
+    NativeDocumentSnapshot,
     OutputDraft,
     OutputVerification,
     SourceSnapshot,
@@ -177,7 +189,7 @@ from app.document_transform.schemas import (
     MarkdownSource,
     TabNamingCheckpoint,
 )
-from app.document_transform.source_access import native_source_access
+from app.document_transform.source_access import PersonalDrive, SharedDrive, native_source_access
 from app.document_transform.tab_metadata import (
     native_tab_properties,
     tab_naming_preimage_unchanged,
@@ -535,32 +547,24 @@ class GoogleDocumentGateway(DocumentGateway):
                 raise DocumentGatewayError
             log_bullet_stage(document, "source_read")
             access = native_source_access(metadata)
-            return SourceSnapshot(
+            return NativeDocumentSnapshot(
                 title=_required_string(metadata, "name"),
                 parent_folder_id=_required_parent(metadata),
                 modified_time=_required_string(metadata, "modifiedTime"),
                 revision_id=DocsRevisionId(revision_id),
-                media_type=file.mime_type,
                 google_document=document,
-                owned_by_me=access.owned_by_me,
-                can_edit=access.can_edit,
-                is_personal_drive=access.is_personal_drive,
-                shared_drive_id=access.shared_drive_id,
-                web_url=(
-                    metadata.get("webViewLink")
-                    if isinstance(metadata.get("webViewLink"), str)
-                    else None
-                ),
+                web_url=metadata.get("webViewLink")
+                if isinstance(metadata.get("webViewLink"), str)
+                else None,
+                access=access,
             )
         if file.mime_type != "text/markdown":
             raise UnsupportedSourceError
         markdown = await asyncio.to_thread(self._download_markdown_sync, source.file_id)
-        return SourceSnapshot(
+        return MarkdownSnapshot(
             title=file.name.removesuffix(".md"),
             parent_folder_id=file.parent_folder_id,
             modified_time=file.modified_time,
-            revision_id=None,
-            media_type=file.mime_type,
             markdown=markdown,
         )
 
@@ -575,7 +579,7 @@ class GoogleDocumentGateway(DocumentGateway):
         inspection = await asyncio.to_thread(self._inspect_in_place_sync, snapshot, title)
         if table_font_plan is None:
             return inspection
-        if snapshot.google_document is None:
+        if not isinstance(snapshot, NativeDocumentSnapshot):
             raise InPlaceNeedsReviewError
         return replace(
             inspection,
@@ -1085,7 +1089,7 @@ class GoogleDocumentGateway(DocumentGateway):
         required_revision_id: DocsRevisionId,
     ) -> OutputDraft:
         del operation_id
-        if draft.applied_mutation_sha256 == mutation_sha256:
+        if confirmed_draft_mutation(draft.mutation) == mutation_sha256:
             return draft
         return await asyncio.to_thread(
             self._apply_requests_sync,
@@ -1172,18 +1176,20 @@ class GoogleDocumentGateway(DocumentGateway):
         snapshot: SourceSnapshot,
         title: str,
     ) -> InPlaceInspection:
+        if not isinstance(snapshot, NativeDocumentSnapshot):
+            raise InPlaceNotAllowedError
         document = snapshot.google_document
         eligible = all(
             (
-                document is not None,
-                snapshot.media_type == MIME_DOC,
-                (snapshot.owned_by_me and snapshot.is_personal_drive)
-                or snapshot.shared_drive_id is not None,
-                snapshot.can_edit,
-                snapshot.revision_id is not None,
+                (
+                    snapshot.access.owned_by_me
+                    and isinstance(snapshot.access.location, PersonalDrive)
+                )
+                or isinstance(snapshot.access.location, SharedDrive),
+                snapshot.access.can_edit,
             )
         )
-        if not eligible or document is None:
+        if not eligible:
             raise InPlaceNotAllowedError
         if _has_active_suggestions(document):
             logger.info(
@@ -1476,14 +1482,8 @@ class GoogleDocumentGateway(DocumentGateway):
             source_sha256=source_sha256,
             headers=(),
             logo_uri=self._logo_uri,
-            applied_mutation_sha256=_optional_property(properties, _PROP_MUTATION),
-            pending_mutation_sha256=_optional_property(properties, _PROP_PENDING_MUTATION),
-            mutation_base_revision_sha256=_optional_property(
-                properties, _PROP_MUTATION_BASE_REVISION_HASH
-            ),
-            completed=properties.get(_PROP_STATE) == _STATE_COMPLETE,
-            result_sha256=_optional_property(properties, _PROP_RESULT_HASH),
-            verified_revision_sha256=_optional_property(properties, _PROP_VERIFIED_REVISION_HASH),
+            mutation=decode_draft_mutation(properties),
+            completion=decode_draft_completion(properties),
             brand_warnings=(),
         )
 
@@ -1503,17 +1503,16 @@ class GoogleDocumentGateway(DocumentGateway):
         log_bullet_stage(document, "pre_header")
         requests: list[dict[str, object]] = []
         warnings: list[str] = [] if self._logo_uri else ["logo_unavailable"]
-        pending_write_may_have_committed = bool(
-            draft.pending_mutation_sha256
-            and draft.mutation_base_revision_sha256
-            and _revision_sha256(draft.revision_id) != draft.mutation_base_revision_sha256
+        pending_write_may_have_committed = (
+            isinstance(draft.mutation, PendingDraftMutation)
+            and _revision_sha256(draft.revision_id) != draft.mutation.base_revision_sha256
         )
         for tab_id, document_tab in tabs:
             style = document_tab.get("documentStyle", {})
             header_id = style.get("defaultHeaderId") if isinstance(style, dict) else None
             headers = document_tab.get("headers", {})
             if (
-                draft.applied_mutation_sha256 is None
+                confirmed_draft_mutation(draft.mutation) is None
                 and not pending_write_may_have_committed
                 and isinstance(header_id, str)
                 and _segment_has_content(headers, header_id)
@@ -1547,21 +1546,11 @@ class GoogleDocumentGateway(DocumentGateway):
             tabs, draft, warnings, pending_write_may_have_committed=pending_write_may_have_committed
         )
         revision_id = _required_string(document, "revisionId")
-        return OutputDraft(
-            output=draft.output,
-            document_id=draft.document_id,
-            tab_id=draft.tab_id,
+        return replace(
+            draft,
             revision_id=DocsRevisionId(revision_id),
-            source_sha256=draft.source_sha256,
             headers=tuple(tab_headers),
             logo_uri=self._logo_uri,
-            applied_mutation_sha256=draft.applied_mutation_sha256,
-            pending_mutation_sha256=draft.pending_mutation_sha256,
-            mutation_base_revision_sha256=draft.mutation_base_revision_sha256,
-            completed=draft.completed,
-            result=draft.result,
-            result_sha256=draft.result_sha256,
-            verified_revision_sha256=draft.verified_revision_sha256,
             brand_warnings=tuple(warnings),
         )
 
@@ -1590,10 +1579,8 @@ class GoogleDocumentGateway(DocumentGateway):
             if tab_id in managed_headers:
                 if managed_headers[tab_id] != header_id:
                     raise SourceChangedError
-                if (
-                    draft.pending_mutation_sha256 is None
-                    and draft.applied_mutation_sha256 is None
-                    and _segment_has_content(segments, header_id)
+                if isinstance(draft.mutation, UnmodifiedDraft) and _segment_has_content(
+                    segments, header_id
                 ):
                     raise SourceChangedError
                 headers.append(TabHeader(DocsTabId(tab_id), DocsSegmentId(header_id)))
@@ -1614,13 +1601,17 @@ class GoogleDocumentGateway(DocumentGateway):
         requests: list[dict[str, Any]],
         required_revision_id: DocsRevisionId,
     ) -> OutputDraft:
-        if draft.pending_mutation_sha256 not in {None, mutation_sha256}:
+        if (
+            isinstance(draft.mutation, PendingDraftMutation)
+            and draft.mutation.sha256 != mutation_sha256
+        ):
             raise IncompatiblePendingOutputError
         marker_name = f"sarj-transform-copy-{mutation_sha256}"
         document = self._get_document_sync(draft.document_id)
         log_bullet_stage(document, "pre_style")
         current_revision = DocsRevisionId(_required_string(document, "revisionId"))
-        if draft.pending_mutation_sha256 == mutation_sha256:
+        prepared_mutation = draft.mutation
+        if isinstance(draft.mutation, PendingDraftMutation):
             marker_range = _terminal_body_marker_range(document)
             if marker_range is not None and _has_exact_named_range(
                 document, marker_name, marker_range
@@ -1636,7 +1627,7 @@ class GoogleDocumentGateway(DocumentGateway):
                 )
             if (
                 current_revision != required_revision_id
-                or draft.mutation_base_revision_sha256 != _revision_sha256(current_revision)
+                or draft.mutation.base_revision_sha256 != _revision_sha256(current_revision)
             ):
                 raise SourceChangedError
         if requests:
@@ -1646,6 +1637,9 @@ class GoogleDocumentGateway(DocumentGateway):
             if marker_range is None:
                 raise DocumentGatewayError(retryable=False)
             expected_marker_range = post_mutation_marker_range(marker_range, requests)
+            prepared_mutation = prepare_draft_mutation(
+                draft.mutation, mutation_sha256, _revision_sha256(required_revision_id)
+            )
             self._update_properties_sync(
                 draft.document_id,
                 {
@@ -1673,20 +1667,10 @@ class GoogleDocumentGateway(DocumentGateway):
         ):
             raise DocumentGatewayError
         log_bullet_stage(document, "post_style")
-        return OutputDraft(
-            output=draft.output,
-            document_id=draft.document_id,
-            tab_id=draft.tab_id,
+        return replace(
+            draft,
             revision_id=DocsRevisionId(_required_string(document, "revisionId")),
-            source_sha256=draft.source_sha256,
-            headers=draft.headers,
-            logo_uri=draft.logo_uri,
-            applied_mutation_sha256=mutation_sha256,
-            pending_mutation_sha256=mutation_sha256 if requests else None,
-            mutation_base_revision_sha256=(
-                _revision_sha256(required_revision_id) if requests else None
-            ),
-            brand_warnings=draft.brand_warnings,
+            mutation=record_draft_mutation(prepared_mutation, mutation_sha256),
         )
 
     def _apply_marked_copy_requests_sync(
@@ -1738,7 +1722,7 @@ class GoogleDocumentGateway(DocumentGateway):
             output_document = verified_footer_coverage_projection(
                 output_document, draft.native_footer
             )
-        if source.markdown is not None:
+        if isinstance(source, MarkdownSnapshot):
             rendered_markdown = rewrite_markdown(
                 source.markdown,
                 parse_markdown(source.markdown, title=source.title),
@@ -1849,22 +1833,10 @@ class GoogleDocumentGateway(DocumentGateway):
         *,
         revision_id: DocsRevisionId | None = None,
     ) -> OutputDraft:
-        return OutputDraft(
-            output=draft.output,
-            document_id=draft.document_id,
-            tab_id=draft.tab_id,
+        return replace(
+            draft,
             revision_id=revision_id or draft.revision_id,
-            source_sha256=draft.source_sha256,
-            headers=draft.headers,
-            logo_uri=draft.logo_uri,
-            applied_mutation_sha256=mutation_sha256,
-            pending_mutation_sha256=draft.pending_mutation_sha256,
-            mutation_base_revision_sha256=draft.mutation_base_revision_sha256,
-            brand_warnings=draft.brand_warnings,
-            completed=draft.completed,
-            result=draft.result,
-            result_sha256=draft.result_sha256,
-            verified_revision_sha256=draft.verified_revision_sha256,
+            mutation=record_draft_mutation(draft.mutation, mutation_sha256),
         )
 
     def _download_markdown_sync(self, file_id: FileId) -> str:
@@ -2159,11 +2131,6 @@ def _required_string(mapping: dict[str, Any], key: str) -> str:
     if not isinstance(value, str) or not value:
         raise DocumentGatewayError
     return value
-
-
-def _optional_property(properties: dict[str, Any], key: str) -> str | None:
-    value = properties.get(key)
-    return value if isinstance(value, str) else None
 
 
 def _revision_sha256(revision_id: DocsRevisionId) -> str:
@@ -2469,12 +2436,14 @@ def _custom_header_element_extent(
         return CustomHeaderTitleTarget(
             tab_id=tab_id,
             header_id=header_id,
-            terminal_newline_index=end_index - 1,
-            terminal_newline_text_style_json=json.dumps(
-                text_style,
-                ensure_ascii=False,
-                separators=(",", ":"),
-                sort_keys=True,
+            terminal_newline=CapturedTerminalNewline(
+                index=end_index - 1,
+                text_style_json=json.dumps(
+                    text_style,
+                    ensure_ascii=False,
+                    separators=(",", ":"),
+                    sort_keys=True,
+                ),
             ),
         )
     start_index, raw_end_index = element.get("startIndex"), element.get("endIndex")
@@ -4916,7 +4885,7 @@ def _copy_shell_headers(
             raise DocumentGatewayError
         headers = document_tab.get("headers", {})
         if (
-            draft.applied_mutation_sha256 is None
+            confirmed_draft_mutation(draft.mutation) is None
             and not pending_write_may_have_committed
             and _segment_has_content(headers, header_id)
         ):

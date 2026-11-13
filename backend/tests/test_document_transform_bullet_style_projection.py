@@ -3,6 +3,7 @@ from dataclasses import dataclass, replace
 import json
 from typing import Any, override
 
+from pydantic import JsonValue
 import pytest
 
 from app.document_transform.brand import SarjBrandProfile, build_copy_mutations
@@ -10,12 +11,13 @@ from app.document_transform.bullet_style_projection import (
     bullet_style_diagnostics,
     project_branded_bullet_styles,
 )
-from app.document_transform.gateway import OutputDraft, SourceSnapshot
+from app.document_transform.gateway import NativeDocumentSnapshot, OutputDraft
 from app.document_transform.google_gateway import GoogleDocumentGateway
 from app.document_transform.ir import DocumentIR, parse_google_document
 from app.document_transform.schemas import DocumentOutput
-from app.drive.schemas import MIME_DOC
+from app.document_transform.source_access import NativeSourceAccess, PersonalDrive
 from app.identifiers import DocsRevisionId, DocsTabId, FileId
+from tests.json_values import json_array_at, json_object_at
 
 
 @pytest.mark.parametrize("changed", [False, True])
@@ -260,23 +262,27 @@ async def test_in_place_rejects_all_native_bullet_style_side_effects(mutation: s
     bullet = tab["body"]["content"][0]["paragraph"]["bullet"]
     match mutation:
         case "provider_defaults":
-            bullet["textStyle"]["weightedFontFamily"]["weight"] = 400
-            rgb = bullet["textStyle"]["foregroundColor"]["color"]["rgbColor"]
-            for channel, value in tuple(rgb.items()):
-                if value == 0:
-                    del rgb[channel]
-                else:
-                    rgb[channel] = value + 0.00000001
+            json_object_at(bullet, "textStyle", "weightedFontFamily")["weight"] = 400
+            color = json_object_at(bullet, "textStyle", "foregroundColor", "color")
+            rgb = json_object_at(color, "rgbColor")
+            rounded: dict[str, JsonValue] = {}
+            for channel, value in rgb.items():
+                assert isinstance(value, int | float)
+                if value != 0:
+                    rounded[channel] = value + 0.00000001
+            color["rgbColor"] = rounded
         case "wrong_weight":
-            bullet["textStyle"]["weightedFontFamily"]["weight"] = 700
+            json_object_at(bullet, "textStyle", "weightedFontFamily")["weight"] = 700
         case "unknown_font_field":
             bullet["textStyle"]["weightedFontFamily"]["unknown"] = True
         case "unknown_color_field":
-            bullet["textStyle"]["foregroundColor"]["color"]["rgbColor"]["alpha"] = 1
+            json_object_at(bullet, "textStyle", "foregroundColor", "color", "rgbColor")["alpha"] = 1
         case "wrong_font":
             bullet["textStyle"]["weightedFontFamily"] = {"fontFamily": "Arial"}
         case "wrong_color":
-            bullet["textStyle"]["foregroundColor"] = {"color": {"rgbColor": {"red": 1}}}
+            json_object_at(bullet, "textStyle")["foregroundColor"] = {
+                "color": {"rgbColor": {"red": 1}}
+            }
         case "nesting":
             bullet["nestingLevel"] = 1
         case "identity":
@@ -284,9 +290,11 @@ async def test_in_place_rejects_all_native_bullet_style_side_effects(mutation: s
         case "unknown":
             bullet["unknown"] = "changed"
         case "link":
-            bullet["textStyle"]["link"] = {"url": "https://example.test/unsafe"}
+            json_object_at(bullet, "textStyle")["link"] = {"url": "https://example.test/unsafe"}
         case "numbering":
-            tab["lists"]["numbered"]["listProperties"]["nestingLevels"][0]["startNumber"] = 1
+            json_object_at(tab, "lists", "numbered", "listProperties", "nestingLevels", 0)[
+                "startNumber"
+            ] = 1
         case "planned":
             pass
         case _:
@@ -294,16 +302,13 @@ async def test_in_place_rejects_all_native_bullet_style_side_effects(mutation: s
     gateway = object.__new__(GoogleDocumentGateway)
     gateway._logo_uri = "https://example.test/logo.png"
     inspection = await gateway.inspect_in_place(
-        snapshot=SourceSnapshot(
+        snapshot=NativeDocumentSnapshot(
             title="Review",
             parent_folder_id=FileId("folder"),
             modified_time="now",
             revision_id=DocsRevisionId("r1"),
-            media_type=MIME_DOC,
             google_document=original,
-            owned_by_me=True,
-            can_edit=True,
-            is_personal_drive=True,
+            access=NativeSourceAccess(owned_by_me=True, can_edit=True, location=PersonalDrive()),
         ),
         title="Review",
     )
@@ -330,12 +335,12 @@ async def test_copy_verifies_exact_bullet_styles_with_independent_identity_proof
     tab = actual["tabs"][0]["documentTab"]
     bullet = tab["body"]["content"][0]["paragraph"]["bullet"]
     if provider_defaults:
-        bullet["textStyle"]["weightedFontFamily"]["weight"] = 400
+        json_object_at(bullet, "textStyle", "weightedFontFamily")["weight"] = 400
     if rename:
         bullet["listId"] = "copy-list"
         tab["lists"]["copy-list"] = tab["lists"].pop("numbered")
     if tamper:
-        bullet["textStyle"]["link"] = {"url": "https://example.test/changed"}
+        json_object_at(bullet, "textStyle")["link"] = {"url": "https://example.test/changed"}
     gateway = object.__new__(GoogleDocumentGateway)
     monkeypatch.setattr(gateway, "_get_document_sync", lambda _: actual)
     verification = await gateway.verify_output(
@@ -348,12 +353,11 @@ async def test_copy_verifies_exact_bullet_styles_with_independent_identity_proof
             revision_id=DocsRevisionId("r1"),
             source_sha256="source",
         ),
-        source=SourceSnapshot(
+        source=NativeDocumentSnapshot(
             title="Review",
             parent_folder_id=FileId("folder"),
             modified_time="now",
             revision_id=DocsRevisionId("r1"),
-            media_type=MIME_DOC,
             google_document=original,
         ),
         expected=expected,
@@ -367,7 +371,7 @@ def test_bullet_diagnostics_emit_only_static_counts_without_document_content():
     original = _document()
     actual = _apply_provider_styles(original)
     bullet = actual["tabs"][0]["documentTab"]["body"]["content"][0]["paragraph"]["bullet"]
-    bullet["textStyle"]["link"] = {"url": "https://private.example/secret"}
+    json_object_at(bullet, "textStyle")["link"] = {"url": "https://private.example/secret"}
     counts = bullet_style_diagnostics(
         parse_google_document(actual, title="Private title"),
         parse_google_document(original, title="Private title"),
@@ -382,9 +386,9 @@ def test_bullet_diagnostics_emit_only_static_counts_without_document_content():
 
 @dataclass(frozen=True, slots=True)
 class _RebasedNativeListCase:
-    source: SourceSnapshot
+    source: NativeDocumentSnapshot
     expected: DocumentIR
-    copied: SourceSnapshot
+    copied: NativeDocumentSnapshot
 
 
 def _rebased_native_list_case() -> _RebasedNativeListCase:
@@ -400,12 +404,11 @@ def _rebased_native_list_case() -> _RebasedNativeListCase:
         "An unnecessarily verbose 🦊 prefix.\n",
         "Moreover, preserve exact measurement context.\n",
     ]
-    source = SourceSnapshot(
+    source = NativeDocumentSnapshot(
         title="Review",
         parent_folder_id=FileId("folder"),
         modified_time="now",
         revision_id=DocsRevisionId("r1"),
-        media_type=MIME_DOC,
         google_document=original,
     )
     _set_native_paragraph_texts(source, texts)
@@ -434,16 +437,17 @@ def _rebased_native_list_case() -> _RebasedNativeListCase:
     return _RebasedNativeListCase(source, expected, copied_snapshot)
 
 
-def _set_native_paragraph_texts(snapshot: SourceSnapshot, texts: list[str]) -> None:
+def _set_native_paragraph_texts(snapshot: NativeDocumentSnapshot, texts: list[str]) -> None:
     document = snapshot.google_document
     assert document is not None
     cursor = 1
-    for element, text in zip(
-        document["tabs"][0]["documentTab"]["body"]["content"], texts, strict=True
+    for raw_element, text in zip(
+        json_array_at(document, "tabs", 0, "documentTab", "body", "content"), texts, strict=True
     ):
+        element = json_object_at(raw_element)
         end = cursor + len(text.encode("utf-16-le")) // 2
         element["startIndex"], element["endIndex"] = cursor, end
-        element["paragraph"]["elements"] = [
+        json_object_at(element, "paragraph")["elements"] = [
             {"startIndex": cursor, "endIndex": end, "textRun": {"content": text}}
         ]
         cursor = end
@@ -473,21 +477,23 @@ async def test_copy_bullet_projection_tracks_shortened_utf16_prefix_and_list_ite
     assert copied.google_document is not None
     untouched = deepcopy(source.google_document)
     actual = copied.google_document
-    tab = actual["tabs"][0]["documentTab"]
-    bullet = tab["body"]["content"][1]["paragraph"]["bullet"]
+    tab = json_object_at(actual, "tabs", 0, "documentTab")
+    bullet = json_object_at(tab, "body", "content", 1, "paragraph", "bullet")
     match mutation:
         case "planned":
             pass
         case "wrong_font":
-            bullet["textStyle"]["weightedFontFamily"]["fontFamily"] = "Arial"
+            json_object_at(bullet, "textStyle", "weightedFontFamily")["fontFamily"] = "Arial"
         case "wrong_weight":
-            bullet["textStyle"]["weightedFontFamily"]["weight"] = 700
+            json_object_at(bullet, "textStyle", "weightedFontFamily")["weight"] = 700
         case "wrong_color":
-            bullet["textStyle"]["foregroundColor"] = {"color": {"rgbColor": {"red": 1}}}
+            json_object_at(bullet, "textStyle")["foregroundColor"] = {
+                "color": {"rgbColor": {"red": 1}}
+            }
         case "link":
-            bullet["textStyle"]["link"] = {"url": "https://example.test/changed"}
+            json_object_at(bullet, "textStyle")["link"] = {"url": "https://example.test/changed"}
         case "unknown_style":
-            bullet["textStyle"]["futureStyle"] = True
+            json_object_at(bullet, "textStyle")["futureStyle"] = True
         case "unknown_bullet":
             bullet["futureBullet"] = True
         case "nesting":
@@ -495,7 +501,9 @@ async def test_copy_bullet_projection_tracks_shortened_utf16_prefix_and_list_ite
         case "identity":
             bullet["listId"] = "other"
         case "numbering":
-            tab["lists"]["numbered"]["listProperties"]["nestingLevels"][0]["startNumber"] = 1
+            json_object_at(tab, "lists", "numbered", "listProperties", "nestingLevels", 0)[
+                "startNumber"
+            ] = 1
         case _:
             pytest.fail(f"Unknown bullet mutation: {mutation}")
     counts = bullet_style_diagnostics(parse_google_document(actual, title="Review"), expected)

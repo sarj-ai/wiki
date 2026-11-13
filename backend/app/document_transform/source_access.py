@@ -1,30 +1,49 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 import re
-from typing import Any
+from typing import Any, Literal
 
 from app.identifiers import DriveId
 
 
 @dataclass(frozen=True, slots=True)
+class PersonalDrive:
+    kind: Literal["personal"] = "personal"
+
+
+@dataclass(frozen=True, slots=True)
+class SharedDrive:
+    drive_id: DriveId
+    kind: Literal["shared"] = "shared"
+
+
+@dataclass(frozen=True, slots=True)
+class UnresolvedDrive:
+    kind: Literal["unresolved"] = "unresolved"
+
+
+type DriveLocation = PersonalDrive | SharedDrive | UnresolvedDrive
+
+
+@dataclass(frozen=True, slots=True)
 class NativeSourceAccess:
-    owned_by_me: bool
-    can_edit: bool
-    is_personal_drive: bool
-    shared_drive_id: DriveId | None
+    owned_by_me: bool = False
+    can_edit: bool = False
+    location: DriveLocation = field(default_factory=UnresolvedDrive)
 
 
 def native_source_access(metadata: dict[str, Any]) -> NativeSourceAccess:
     drive = metadata.get("driveId")
-    personal = "driveId" not in metadata
-    shared_id = (
-        DriveId(drive)
-        if isinstance(drive, str) and re.fullmatch(r"[A-Za-z0-9_-]{1,256}", drive) is not None
-        else None
-    )
+    location: DriveLocation
+    if "driveId" not in metadata:
+        location = PersonalDrive()
+    elif isinstance(drive, str) and re.fullmatch(r"[A-Za-z0-9_-]{1,256}", drive) is not None:
+        location = SharedDrive(DriveId(drive))
+    else:
+        location = UnresolvedDrive()
     capabilities = metadata.get("capabilities")
     restrictions = metadata.get("contentRestrictions", [])
     editable = (
-        (personal or shared_id is not None)
+        not isinstance(location, UnresolvedDrive)
         and metadata.get("trashed", False) is False
         and isinstance(capabilities, dict)
         and capabilities.get("canEdit") is True
@@ -37,6 +56,5 @@ def native_source_access(metadata: dict[str, Any]) -> NativeSourceAccess:
     return NativeSourceAccess(
         owned_by_me=metadata.get("ownedByMe") is True,
         can_edit=editable,
-        is_personal_drive=personal,
-        shared_drive_id=shared_id,
+        location=location,
     )
