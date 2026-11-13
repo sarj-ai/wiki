@@ -98,7 +98,24 @@ from app.document_transform.table_layout import (
         "1’234’567.80 ms",
         "CHF 1'234.50",
         "1’234,50 CHF",
+        "AED 1,250.00",
+        "CAD 1,250.00",
+        "1,250.00 AUD",
+        "−42.00 JPY",
+        "KWD 1.2300",
+        "1.234,50 BHD",
+        "QAR 1250",
+        "OMR 1.250",
+        "CNY 12.30",
+        "12.30 INR",
+        "ZAR 1234.50",
+        "BRL 1.234,50",
+        "1.2300 XAU",
         "1.20e-3 +/- 0.04e-3 s",
+        "12.3 +/− 0.4 ms",
+        "1.20e-3 +/− 0.04e-3 s",
+        "0,125 +/− 0,004 m/s²",
+        "KWD 1.2300 +/− KWD 0.0040",
         pytest.param("١٢٫٣٪", id="arabic-percent"),
         pytest.param("۱۲٫۳۴۰۰٪", id="persian-percent"),
         pytest.param("12٫3٪", id="western-digits-arabic-percent"),
@@ -147,6 +164,18 @@ def test_quantities_use_numeric_alignment_without_rewriting_their_representation
         if "updateParagraphStyle" in request
     ]
     assert alignment == ["START", "END", "START"] * len(rows)
+
+
+@pytest.mark.parametrize("value", ["all 1", "try 2", "1 ABC", "ABC 1", "CAD1", "1 CAD notes"])
+def test_currency_codes_do_not_turn_ordinary_text_or_identifiers_into_amounts(value: str) -> None:
+    assert not numeric_table_value(value)
+
+
+@pytest.mark.parametrize(
+    "value", ["usd 1.2300", "1.2300 eur", "gbp 1.2300", "1.2300 sar", "chf 1.2300"]
+)
+def test_existing_case_insensitive_currency_codes_remain_supported(value: str) -> None:
+    assert numeric_table_value(value)
 
 
 def _native_table(rows: tuple[tuple[str, ...], ...]) -> dict[str, JsonValue]:
