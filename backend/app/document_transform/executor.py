@@ -148,6 +148,7 @@ from app.document_transform.schemas import (
     InPlaceCheckpointPayload,
     InPlaceCheckpointStage,
     InPlaceMutation,
+    ModelPlanningCheckpoint,
     NoopContentInPlaceCheckpoint,
     OutputStrategy,
     PlannedCopyCheckpoint,
@@ -347,6 +348,22 @@ class DocumentTransformExecutor(DocumentTransformRunner):
         except ValueError as error:
             raise OutputConflictError from error
         self._checkpoint_generation = checkpoint_generation
+
+    async def save_model_planning_checkpoint(self, checkpoint: ModelPlanningCheckpoint) -> int:
+        if self._checkpoint is not None:
+            # Model-only progress cannot overwrite a Google mutation checkpoint.
+            raise OutputConflictError
+        if self._checkpoint_store is None or self._task_id is None or self._lease_token is None:
+            raise DocumentGatewayError
+        self._checkpoint_generation = (
+            await self._checkpoint_store.save_document_transform_checkpoint(
+                self._task_id,
+                lease_token=self._lease_token,
+                expected_generation=self._checkpoint_generation,
+                checkpoint=checkpoint,
+            )
+        )
+        return self._checkpoint_generation
 
     @override
     async def execute(

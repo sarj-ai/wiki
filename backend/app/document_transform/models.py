@@ -44,6 +44,7 @@ from app.document_transform.readability_types import (
     ReadabilityEnvelope,
     ReadabilityProposal,
 )
+from app.document_transform.review_checkpoint import ReviewBatchProgress
 from app.document_transform.safety import (
     REPAIRABLE_REWRITE_CODES,
     RewriteConstraints,
@@ -99,7 +100,7 @@ _TRANSIENT_MODEL_STATUSES = frozenset(
 )
 _REVIEW_FALLBACK_STATUSES = _TRANSIENT_MODEL_STATUSES
 _MAX_REVIEW_BATCH_CHARACTERS = 32_000
-_MAX_REVIEW_BATCH_PAIRS = 32
+_MAX_REVIEW_BATCH_PAIRS = 16
 _phase_denied_review_models_var: ContextVar[set[str] | None] = ContextVar(
     "document_phase_denied_review_models", default=None
 )
@@ -868,6 +869,15 @@ class VertexGeminiPatchGenerator(PatchGenerator):
     async def _review_batch(
         self, pairs: list[_ReviewPair], denied_models: set[str]
     ) -> RewriteReview:
+        progress = ReviewBatchProgress(_review_prompt(pairs))
+        if (reviews := progress.reviews) is not None:
+            decision = _validated_reviews(pairs, reviews)
+            logger.info(
+                "document semantic review batch recovered",
+                model_review_pair_count=len(pairs),
+                model_attempt=progress.attempt_count,
+            )
+            return decision
         last_error: Exception | None = None
         model = self._policy.restyle_model
         fallback_model = (
@@ -877,7 +887,21 @@ class VertexGeminiPatchGenerator(PatchGenerator):
         )
         if model in denied_models:
             model = fallback_model
-        for attempt in range(1, _MAX_REVIEW_ATTEMPTS + 1):
+        first_attempt = progress.attempt_count + 1
+        if delay := progress.retry_delay:
+            await _model_retry_delay(
+                delay,
+                sleep=self._writer_sleep,
+            )
+        for attempt in range(first_attempt, _MAX_REVIEW_ATTEMPTS + 1):
+            if progress.durable:
+                # Admit before durably counting the call. An interrupted or
+                # ambiguous provider call consumes its attempt across restarts.
+                _model_request_timeout_seconds(
+                    self._policy.review_timeout or self._policy.timeout,
+                    minimum_budget=_MIN_REVIEW_ATTEMPT_BUDGET,
+                )
+            await progress.begin(attempt)
             try:
                 reviews = await self._review_once(model=model, pairs=pairs)
                 decision = _validated_reviews(pairs, reviews)
@@ -885,18 +909,16 @@ class VertexGeminiPatchGenerator(PatchGenerator):
                 log_model_failure(operation="review", attempt=attempt, model=model, error=exc)
                 failure = _retryable_model_failure(exc)
                 last_error = failure
-                provider_error = exc.__cause__ if isinstance(exc, ModelUnavailableError) else exc
-                if isinstance(provider_error, TimeoutError) or (
-                    isinstance(provider_error, genai_errors.APIError)
-                    and provider_error.code in _REVIEW_FALLBACK_STATUSES
-                ):
-                    model = fallback_model
+                model = _review_retry_model(model=model, fallback_model=fallback_model, error=exc)
                 if attempt < _MAX_REVIEW_ATTEMPTS:
+                    delay = max(2**attempt, failure.retry_after or 0)
+                    await progress.defer(delay)
                     await _model_retry_delay(
-                        max(2**attempt, failure.retry_after or 0),
+                        delay,
                         sleep=self._writer_sleep,
                     )
             else:
+                await progress.complete(reviews)
                 return decision
         raise exhausted_model_failure(last_error) from _model_failure_cause(last_error)
 
@@ -984,12 +1006,14 @@ def _constraint_repair_feedback(block: TextBlock, patch: TextPatch) -> tuple[str
 
 @asynccontextmanager
 async def _model_batch_slot(semaphore: asyncio.Semaphore) -> AsyncGenerator[None]:
+    deadline = asyncio.timeout(_model_remaining_seconds())
     try:
-        async with asyncio.timeout(_model_remaining_seconds()):
-            async with semaphore:
-                yield
+        async with deadline, semaphore:
+            yield
     except TimeoutError as exc:
-        raise ModelDeadlineError from exc
+        if deadline.expired():
+            raise ModelDeadlineError from exc
+        raise
 
 
 def _model_http_options(seconds: float) -> genai_types.HttpOptions:
@@ -1062,6 +1086,16 @@ def _retryable_model_failure(error: Exception) -> ModelUnavailableError:
 def _attempt_models(models: tuple[str, ...]) -> tuple[str, ...]:
     unique = tuple(dict.fromkeys(models))
     return (unique + (unique[-1],) * _MAX_PROVIDER_ATTEMPTS)[:_MAX_PROVIDER_ATTEMPTS]
+
+
+def _review_retry_model(*, model: str, fallback_model: str, error: Exception) -> str:
+    provider_error = _model_failure_cause(error)
+    if isinstance(provider_error, TimeoutError) or (
+        isinstance(provider_error, genai_errors.APIError)
+        and provider_error.code in _REVIEW_FALLBACK_STATUSES
+    ):
+        return fallback_model
+    return model
 
 
 def _model_failure_cause(error: Exception | None) -> Exception | None:
