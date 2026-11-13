@@ -15,6 +15,7 @@ from pydantic import JsonValue
 from app.document_transform.code_syntax import is_code_font_family
 from app.document_transform.errors import SourceTooLargeError, UnsupportedSourceError
 from app.document_transform.limits import MAX_MARKDOWN_BYTES
+from app.document_transform.markdown_inline_code import multiline_inline_code_lines
 from app.document_transform.native_code_source import protect_native_code
 from app.document_transform.native_prose import brandable_prose, linked_prose_tail
 from app.identifiers import DocsSegmentId, DocsTabId
@@ -305,6 +306,7 @@ def parse_markdown(content: str, *, title: str) -> DocumentIR:
     if any(_looks_like_raw_html(line) for line in lines):
         raise UnsupportedSourceError
     protected_lines = _frontmatter_lines(lines) | _table_lines(lines)
+    inline_code_lines = multiline_inline_code_lines(content)
     blocks: list[TextBlock] = []
     fence_marker: str | None = None
     fence_lines: list[str] = []
@@ -332,6 +334,8 @@ def parse_markdown(content: str, *, title: str) -> DocumentIR:
             fence_lines.append(line)
             continue
         _append_markdown_line(blocks, line, protected=line_index in protected_lines)
+        if line_index in inline_code_lines:
+            blocks[-1] = replace(blocks[-1], editable=False)
     if fence_marker is not None:
         raise UnsupportedSourceError
     return DocumentIR(title=title, blocks=tuple(blocks), source_format="markdown")
