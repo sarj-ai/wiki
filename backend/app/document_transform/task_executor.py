@@ -412,17 +412,18 @@ class DriveDocumentTransformTaskExecutor(DocumentTransformTaskExecutor):
         ):
 
             async def save_model_plan(plan: ModelPlanningCheckpoint) -> None:
-                generation = await self._tasks.save_document_transform_checkpoint(
-                    task_id,
-                    lease_token=lease_token,
-                    expected_generation=checkpoint_generation,
-                    checkpoint=plan,
-                )
+                generation = await transform.save_model_planning_checkpoint(plan)
                 logger.info(
                     "document model planning checkpoint saved",
                     task_id=task_id,
                     checkpoint_generation=generation,
                     model_proposal_count=len(plan.proposals),
+                    model_completed_review_batches=sum(
+                        bool(batch.reviews) for batch in plan.review_batches
+                    ),
+                    model_started_review_attempts=sum(
+                        batch.attempt_count for batch in plan.review_batches
+                    ),
                 )
 
             generator = CheckpointingPatchGenerator(

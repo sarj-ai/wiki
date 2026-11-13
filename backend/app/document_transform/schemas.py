@@ -5,6 +5,7 @@ from typing import Annotated, Literal, Self
 import uuid
 
 from pydantic import (
+    AwareDatetime,
     BaseModel,
     ConfigDict,
     Field,
@@ -756,6 +757,13 @@ class ModelPlanningStage(StrEnum):
     REVIEW_PENDING = "review_pending"
 
 
+class ModelReviewBatchCheckpoint(StrictTransformModel):
+    input_sha256: str = Field(pattern=r"^[a-f0-9]{64}$")
+    attempt_count: int = Field(ge=1, le=3)
+    retry_not_before: AwareDatetime | None = None
+    reviews: tuple[TextPatchReview, ...] = Field(default=(), max_length=100)
+
+
 class ModelPlanningCheckpoint(StrictTransformModel):
     version: Literal[1] = 1
     kind: Literal["model_planning"] = "model_planning"
@@ -766,6 +774,19 @@ class ModelPlanningCheckpoint(StrictTransformModel):
     catalog_sha256: str = Field(pattern=r"^[a-f0-9]{64}$")
     model_ids: tuple[ModelId, ...] = Field(min_length=1, max_length=3)
     proposals: tuple[TextPatch, ...] = Field(max_length=MAX_DOCUMENT_BLOCKS)
+    review_batches: tuple[ModelReviewBatchCheckpoint, ...] = Field(
+        default=(), max_length=MAX_DOCUMENT_BLOCKS
+    )
+
+    @field_validator("review_batches")
+    @classmethod
+    def unique_review_inputs(
+        cls, batches: tuple[ModelReviewBatchCheckpoint, ...]
+    ) -> tuple[ModelReviewBatchCheckpoint, ...]:
+        if len({batch.input_sha256 for batch in batches}) != len(batches):
+            msg = "Review checkpoint inputs must be unique"
+            raise ValueError(msg)
+        return batches
 
 
 DocumentTransformCheckpoint = (
