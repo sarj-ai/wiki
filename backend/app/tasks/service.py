@@ -1102,11 +1102,19 @@ class PostgresTaskService(TaskService):
             .values(**values)
             .returning(Task.checkpoint_generation)
         )
-        generation = (await self._db.execute(statement)).scalar_one_or_none()
+        try:
+            generation = (await self._db.execute(statement)).scalar_one_or_none()
+            if generation is not None:
+                await self._db.commit()
+        except BaseException:
+            # Cancellation or an ambiguous commit must leave the session usable
+            # for the owner's bounded defer/failure path. A new delivery reloads
+            # the durable generation before doing any further work.
+            await self._db.rollback()
+            raise
         if generation is None:
             await self._db.rollback()
             raise TaskLeaseLostError
-        await self._db.commit()
         return int(generation)
 
     @override

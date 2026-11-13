@@ -27,6 +27,7 @@ from app.document_transform.schemas import (
 from app.document_transform.unslop import UNSLOP_CATALOG_SHA256
 from app.document_transform.versions import DOCUMENT_PIPELINE_VERSION
 from app.identifiers import ModelId
+from app.performance import provider_retry_remaining_seconds
 
 
 class ModelReviewPendingError(Exception):
@@ -132,8 +133,21 @@ class CheckpointingPatchGenerator(PatchGenerator):
             updated = ModelPlanningCheckpoint.model_validate(
                 {**checkpoint.model_dump(), "review_batches": tuple(batches.values())}
             )
-            await self._save(updated)
-            self._checkpoint = updated
+            committing = asyncio.create_task(self._commit_review_checkpoint(updated))
+            try:
+                await asyncio.shield(committing)
+            except asyncio.CancelledError:
+                # Finish the bounded CAS/commit before releasing the lock or
+                # allowing the worker to defer with this shared DB session.
+                await committing
+                raise
+
+    async def _commit_review_checkpoint(self, checkpoint: ModelPlanningCheckpoint) -> None:
+        remaining = provider_retry_remaining_seconds()
+        timeout = 30.0 if remaining is None else min(30.0, max(remaining, 0))
+        async with asyncio.timeout(timeout):
+            await self._save(checkpoint)
+        self._checkpoint = checkpoint
 
     @override
     async def repair(

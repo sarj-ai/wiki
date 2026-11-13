@@ -455,6 +455,52 @@ async def test_ambiguous_review_checkpoint_commit_recovers_validated_results_wit
     assert completed.isdisjoint(provider.review_calls[count:])
 
 
+async def test_cancellation_waits_for_an_inflight_review_checkpoint_commit() -> None:
+    provider, saved = Provider(), []
+    provider.failure = False
+    document = await saved_writer(provider, saved)
+    patches = list(saved[-1].proposals)
+    started, release = asyncio.Event(), asyncio.Event()
+    interrupted = False
+    block = True
+
+    async def save(plan: ModelPlanningCheckpoint) -> None:
+        nonlocal interrupted, block
+        if block and any(batch.reviews for batch in plan.review_batches):
+            block = False
+            started.set()
+            try:
+                await release.wait()
+            except asyncio.CancelledError:
+                interrupted = True
+                raise
+        saved.append(plan)
+
+    async with generator(provider) as real:
+        staged = CheckpointingPatchGenerator(
+            generator=real, request=request(), checkpoint=saved[-1], save=save
+        )
+        with provider_retry_budget(timedelta(seconds=240)):
+            running = asyncio.create_task(staged.review(document, patches))
+            await asyncio.wait_for(started.wait(), timeout=2)
+            running.cancel()
+            await asyncio.sleep(0)
+            await asyncio.sleep(0)
+            release.set()
+            with pytest.raises(asyncio.CancelledError):
+                await running
+    assert not interrupted
+    completed = {
+        tuple(review.block_id for review in batch.reviews)
+        for batch in saved[-1].review_batches
+        if batch.reviews
+    }
+    assert completed
+    count = len(provider.review_calls)
+    await review_saved(provider, saved, document, patches)
+    assert completed.isdisjoint(provider.review_calls[count:])
+
+
 class GenerationStore:
     def __init__(self) -> None:
         self.saved: list[DocumentTransformCheckpoint] = []

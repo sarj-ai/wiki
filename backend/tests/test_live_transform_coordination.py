@@ -7,7 +7,7 @@ import uuid
 
 import pytest
 from sqlalchemy import delete, func, select
-from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
+from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
 
 from app.document_transform.errors import ModelDeadlineError, ModelUnavailableError
 from app.document_transform.model_failures import exhausted_model_failure
@@ -24,7 +24,7 @@ from app.identifiers import FileId, GoogleUserId, IdempotencyKey, TaskId, UserId
 from app.models.task import Task
 from app.models.user import User
 from app.tasks.errors import TaskExecutionDeferredError, TaskIdempotencyConflictError
-from app.tasks.schemas import TaskKind, TaskRead, TaskStatus
+from app.tasks.schemas import ActiveDocumentTransformTaskRecord, TaskKind, TaskRead, TaskStatus
 from app.tasks.service import PostgresTaskService, TaskService
 from tests import test_document_model_checkpoint as model_checkpoint_tests
 from tests.test_task_source_dedupe_postgres import _completed_result, _markdown_payload, _qa_engine
@@ -37,6 +37,7 @@ class _CoordinationCase:
     task_id: TaskId
     key: IdempotencyKey
     request: DocumentTransformRequest
+    engine: AsyncEngine
 
 
 @pytest.fixture
@@ -58,7 +59,7 @@ async def coordination_case() -> AsyncIterator[_CoordinationCase]:
                 idempotency_key=key,
                 payload=request,
             )
-        yield _CoordinationCase(sessions, owner, reservation.task.id, key, request)
+        yield _CoordinationCase(sessions, owner, reservation.task.id, key, request, engine)
     finally:
         async with sessions() as session:
             await session.execute(delete(User).where(User.id == owner))
@@ -249,3 +250,60 @@ async def test_model_checkpoint_failure_reports_only_evidenced_external_effects(
         assert result.error_code == (
             "external_effect_uncertain" if has_resource else ModelDeadlineError.code
         )
+
+
+class _CheckpointCommitSession(AsyncSession):
+    commit_gate: asyncio.Event | None = None
+    commit_started: asyncio.Event
+
+    @override
+    async def commit(self) -> None:
+        if self.commit_gate is not None:
+            self.commit_started.set()
+            await self.commit_gate.wait()
+        await super().commit()
+
+
+async def test_cancelled_checkpoint_transaction_rolls_back_before_owner_defer(
+    coordination_case: _CoordinationCase,
+) -> None:
+    case = coordination_case
+    sessions = async_sessionmaker(
+        case.engine, class_=_CheckpointCommitSession, expire_on_commit=False
+    )
+    async with sessions() as session:
+        service = PostgresTaskService(db=session)
+        reservation = await service.create_or_replay(
+            kind=TaskKind.FILE_DOCUMENT_TRANSFORM,
+            owner_user_id=case.owner,
+            idempotency_key=IdempotencyKey(uuid.uuid7()),
+            payload=model_checkpoint_tests._request(),
+        )
+        task_id = reservation.task.id
+        claim = await service.claim(task_id, lease_duration=timedelta(minutes=1))
+        checkpoint = await model_checkpoint_tests._saved_plan()
+        session.commit_started = asyncio.Event()
+        session.commit_gate = asyncio.Event()
+        saving = asyncio.create_task(
+            service.save_document_transform_checkpoint(
+                task_id,
+                lease_token=claim.lease_token,
+                expected_generation=0,
+                checkpoint=checkpoint,
+            )
+        )
+        await asyncio.wait_for(session.commit_started.wait(), timeout=2)
+        saving.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await saving
+        session.commit_gate = None
+        deferred = await service.defer(task_id, lease_token=claim.lease_token)
+        record = await service.load_document_transform(task_id)
+        assert isinstance(record, ActiveDocumentTransformTaskRecord)
+        assert deferred.finished_at is None
+        assert record.checkpoint_generation == 0
+        assert record.checkpoint is None
+        assert record.task.resource_id is None
+        resumed = await service.claim(task_id, lease_duration=timedelta(minutes=1))
+        assert resumed.task.attempt_count == 2
+        assert resumed.lease_token != claim.lease_token
