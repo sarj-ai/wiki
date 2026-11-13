@@ -4,7 +4,7 @@ from markdown_it.rules_inline.state_inline import StateInline
 from markdown_it.token import Token
 
 
-def _track_backtick(state: StateInline, silent: bool) -> bool:  # ruff: ignore[boolean-type-hint-positional-argument] - MarkdownIt passes its rule flag positionally.
+def _track_backtick(state: StateInline, *, silent: bool) -> bool:
     start = state.pos
     count = len(state.tokens)
     matched = backtick(state, silent)
@@ -19,7 +19,7 @@ def _track_backtick(state: StateInline, silent: bool) -> bool:  # ruff: ignore[b
 
 
 _MARKDOWN = MarkdownIt("commonmark").enable("table").enable("strikethrough")
-_MARKDOWN.inline.ruler.at("backticks", _track_backtick)
+_MARKDOWN.inline.ruler.at("backticks", lambda state, silent: _track_backtick(state, silent=silent))
 
 
 def multiline_inline_code_lines(source: str) -> frozenset[int]:
