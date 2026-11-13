@@ -39,7 +39,11 @@ from app.document_transform.model_failures import (
     grouped_model_failure,
 )
 from app.document_transform.quotations import SINGLE_QUOTED_SPAN_PATTERN
-from app.document_transform.readability_types import ReadabilityEnvelope, ReadabilityProposal
+from app.document_transform.readability_types import (
+    READABILITY_PARAGRAPH_WORD_LIMIT,
+    ReadabilityEnvelope,
+    ReadabilityProposal,
+)
 from app.document_transform.safety import (
     REPAIRABLE_REWRITE_CODES,
     RewriteConstraints,
@@ -373,13 +377,20 @@ class VertexGeminiPatchGenerator(PatchGenerator):
             "use numbered lists only for an explicit source sequence or procedure. Split dense paragraphs at natural topic/sentence "
             "boundaries. Keep introductions and qualifications attached to the facts they govern. Prefer 2–6 useful list items and "
             "short focused paragraphs. Avoid tiny fragments, one-item lists, gratuitous headings, and lists of narrative sentences. "
+            "Keep already concise one- or two-sentence paragraphs together unless splitting has a clear whole-document benefit. "
+            f"The layout rubric penalizes splitting paragraphs of {READABILITY_PARAGRAPH_WORD_LIMIT} words or fewer into multiple ordinary paragraphs. "
+            "Do not replace a blocked list conversion with several short prose fragments; retain the original paragraph. "
+            "Google Docs can automatically join a new list to a neighboring native list_item/checklist. Preserve existing list "
+            "definitions and separation; leave a bordering paragraph as prose when a new list could attach to that list. "
+            "If validation feedback reports list joining or unrelated list changes, remove that list proposal rather than repeat it. "
             "Promote concise existing section labels to heading2/heading3 when they improve the existing hierarchy. "
             "Preserve document order. Propose only blocks with may_restructure=true. Every proposal must repeat its exact block_id "
             "and source_sha256. Parts must join with a SINGLE SPACE to reproduce the source text CHARACTER FOR CHARACTER. "
             "Do not rewrite, add, omit, round, normalize, reorder, or summarize ANY text, number, unit, qualification, or punctuation. "
             "Do not invent headings, dates, map locations, pills, citations, or code. Native formatting handles typography, "
             "justification, number presentation and tables separately. Return the complete best proposal set; return previous "
-            "unchanged once further restructuring would make the document worse. Return JSON {proposals:[{block_id,source_sha256,"
+            "unchanged once further restructuring would make the document worse. If previous is empty and no safe improvement "
+            "remains, return proposals:[]. Return JSON {proposals:[{block_id,source_sha256,"
             "parts:[{text,role}]}]}; roles: paragraph, bullet, numbered, heading2, heading3. No Markdown markers in text."
         )
         last_error: Exception | None = None

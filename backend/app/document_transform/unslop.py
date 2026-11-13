@@ -5,6 +5,7 @@ import hashlib
 import json
 import re
 
+from app.document_transform.inline_code import INLINE_CODE_POLICY_VERSION, mask_inline_code
 from app.document_transform.ir import BlockKind, DocumentIR, TextBlock
 from app.document_transform.limits import MIN_MODEL_PROSE_WORDS
 from app.document_transform.quotations import SINGLE_QUOTED_SPAN_PATTERN, quoted_block_ids
@@ -150,6 +151,10 @@ UNSLOP_REWRITE_INSTRUCTION = (
     "intention into an achieved capability or discard a goal as writing-style commentary. "
     "Preserve what an action is for, when it applies, and any distinct reason or "
     "restriction. Keep attribution, provenance, observations, uncertainty, comparisons and "
+    "explicit contrast and sequence markers. Retain 'while', 'whereas', 'first', 'next' "
+    "and 'finally' when they express those relationships; do not drop them as empty "
+    "transitions or replace contrast with 'and'. The formatting pass can represent an "
+    "explicit source sequence as native numbering. Preserve comparisons and "
     "their baselines, units, geographic and temporal scope, classification criteria and "
     "nested categories. Do not infer a referent, statistic, necessity, cause or population "
     "claim. The original rewrite_constraints are authoritative. Preserve protected_tokens "
@@ -493,6 +498,7 @@ UNSLOP_CATALOG_SHA256 = hashlib.sha256(
     json.dumps(
         {
             "editorial_policy": UNSLOP_POLICY_VERSION,
+            "inline_code_policy": INLINE_CODE_POLICY_VERSION,
             "rewrite_instruction": UNSLOP_REWRITE_INSTRUCTION,
             "review_instruction": UNSLOP_REVIEW_INSTRUCTION,
             "concision_target": {
@@ -1027,5 +1033,5 @@ def _remove_contained_candidates(
 def _mask_ignored_spans(value: str) -> str:
     return _IGNORED_SPAN.sub(
         lambda match: re.sub(r"[^\n]", " ", match.group(0)),
-        value,
+        mask_inline_code(value),
     )

@@ -3,6 +3,7 @@ import re
 from types import MappingProxyType
 from typing import NamedTuple
 
+from app.document_transform.inline_code import mask_inline_code
 from app.document_transform.ir import BlockKind, DocumentIR
 from app.identifiers import DocsSegmentId, DocsTabId
 
@@ -15,7 +16,6 @@ SINGLE_QUOTED_SPAN_PATTERN = (
 )
 QUOTED_SPAN_PATTERN = rf'"[^"]+"|“[^”]+”|{SINGLE_QUOTED_SPAN_PATTERN}'
 _QUOTE_TOKEN = re.compile(r"""["“”‘’']""")
-_CODE_TOKEN = re.compile(r"`+|\n")
 _CLOSING_QUOTE = MappingProxyType({'"': '"', "'": "'", "“": "”", "‘": "’"})
 _OPENING_QUOTE = MappingProxyType({closing: opening for opening, closing in _CLOSING_QUOTE.items()})
 
@@ -57,7 +57,7 @@ def quoted_block_ids(document: DocumentIR) -> frozenset[str]:
 def _multiblock_quotation_indices(texts: tuple[str, ...]) -> frozenset[int]:
     source = "\n".join(texts)
     # Code delimiters and string literals must not open or close prose quotes.
-    masked = _mask_inline_code(source)
+    masked = mask_inline_code(source)
     positions = _paragraph_positions(texts)
     state = _QuotationState(openings={}, continuations={}, covered_until={}, protected=set())
     # Scan once: repeated unmatched opening marks in a large document must not
@@ -139,32 +139,6 @@ def _previous_text_block(positions: _ParagraphPositions, paragraph: int) -> int:
 
 def _possible_plural_possessive(source: str, mark: str, position: int) -> bool:
     return mark in {"'", "’"} and position > 0 and source[position - 1] in {"s", "S"}
-
-
-def _mask_inline_code(source: str) -> str:
-    tokens = list(_CODE_TOKEN.finditer(source))
-    next_delimiter: dict[int, int] = {}
-    partners: dict[int, int] = {}
-    for index in range(len(tokens) - 1, -1, -1):
-        delimiter = tokens[index].group()
-        if delimiter == "\n":
-            next_delimiter.clear()
-        else:
-            length = len(delimiter)
-            if length in next_delimiter:
-                partners[index] = next_delimiter[length]
-            next_delimiter[length] = index
-    parts: list[str] = []
-    cursor = index = 0
-    while index < len(tokens):
-        partner = partners.get(index)
-        if partner is None:
-            index += 1
-            continue
-        start, end = tokens[index].start(), tokens[partner].end()
-        parts.extend((source[cursor:start], " " * (end - start)))
-        cursor, index = end, partner + 1
-    return "".join((*parts, source[cursor:]))
 
 
 def _word_character(value: str) -> bool:

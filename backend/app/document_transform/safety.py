@@ -7,6 +7,7 @@ import re
 from types import MappingProxyType
 from typing import Final, Literal
 
+from app.document_transform.inline_code import inline_code_spans, mask_inline_code
 from app.document_transform.ir import BlockKind, DocumentIR, TextBlock
 from app.document_transform.measurement_actor import reassigned_measurement_action
 from app.document_transform.quantity_notation import HORIZONTAL_SPACE, UNIT_POWER, UNIT_SYMBOL
@@ -34,7 +35,7 @@ _NUMERIC_POWER = rf"(?:[⁰¹²³⁴⁵⁶⁷⁸⁹⁺⁻]+|{UNIT_POWER})?"
 _NUMERIC_MAGNITUDE = (
     rf"(?:(?:\d+[^\S\n]+)?\d+[^\S\n]*[/⁄][^\S\n]*\d+|"
     rf"(?:\d+[^\S\n]*)?{_VULGAR_FRACTION}|"
-    r"\d+(?:[.,:/⁄-]\d+|[ \u00a0\u2009\u202f]\d{3})*|[.,]\d+)"
+    r"\d+(?:[.,:/⁄-]\d+|[ \u00a0\u2009\u202f'’]\d{3})*|[.,]\d+)"
     rf"(?:\(\d+\))?(?:[eE][+−-]?\d+)?{_NUMERIC_POWER}"
 )
 _SIGNED_NUMBER = rf"[+−-]?(?:[$€£¥₹₩₽₺]\s*)?[+−-]?{_NUMERIC_MAGNITUDE}"
@@ -48,10 +49,10 @@ _NUMERIC_UNIT = (
 _QUANTITY_TERM = rf"{_SIGNED_NUMBER}(?:{HORIZONTAL_SPACE}*{_NUMERIC_UNIT})?"
 _QUANTITY_LITERAL = (
     rf"(?:(?:[<>]=?|[≤≥~≈≃])\s*)?{_QUANTITY_TERM}"
-    rf"(?:{HORIZONTAL_SPACE}*[±∓×xX÷+−–*/⁄:^\-]{HORIZONTAL_SPACE}*{_QUANTITY_TERM})*"
+    rf"(?:{HORIZONTAL_SPACE}*(?:\+/-|[±∓×xX÷+−–*/⁄:^\-]){HORIZONTAL_SPACE}*{_QUANTITY_TERM})*"
 )
+_PROTECTED_CODE = re.compile(r"```[\s\S]*?```|`[^`\n]+`")
 _PROTECTED_TOKEN = re.compile(
-    r"```[\s\S]*?```|`[^`\n]+`|"
     rf"{RFCISH_EMAIL_PATTERN}|{CUSTOM_URI_PATTERN}|"
     # Keep the full notation: signs, exponents, uncertainty, powers, and accounting
     # parentheses can change a value even when every decimal digit survives.
@@ -503,7 +504,24 @@ def _protected_rewrite_names(text: str) -> tuple[str, ...]:
 
 
 def _protected_tokens(value: str) -> list[str]:
-    return [match.group(0) for match in _PROTECTED_TOKEN.finditer(value)]
+    spans = [(match.start(), match.end()) for match in _PROTECTED_TOKEN.finditer(value)]
+    spans.extend(inline_code_spans(value))
+    # Legacy protection still covers malformed and multiline code. Mask complete
+    # inline spans first so their closing ticks cannot open a spurious match in
+    # the prose between two independent literals.
+    spans.extend(
+        (match.start(), match.end()) for match in _PROTECTED_CODE.finditer(mask_inline_code(value))
+    )
+    # Preserve the union of overlapping literals. A URL or citation can start
+    # before a code span yet end inside it; neither protected tail may disappear.
+    merged: list[tuple[int, int]] = []
+    for start, end in sorted(spans):
+        if merged and start < merged[-1][1]:
+            previous_start, previous_end = merged[-1]
+            merged[-1] = (previous_start, max(previous_end, end))
+        else:
+            merged.append((start, end))
+    return [value[start:end] for start, end in merged]
 
 
 def _force_words(value: str) -> list[str]:

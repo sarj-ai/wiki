@@ -91,6 +91,14 @@ from app.document_transform.table_layout import (
         "1 bit/s",
         "64 Kibit/s",
         "2 Gbit/s",
+        "<= 10 ms",
+        ">= 99.9%",
+        "1'234.50 EUR",
+        "1’234,50 EUR",
+        "1’234’567.80 ms",
+        "CHF 1'234.50",
+        "1’234,50 CHF",
+        "1.20e-3 +/- 0.04e-3 s",
     ],
 )
 def test_quantities_use_numeric_alignment_without_rewriting_their_representation(
@@ -226,6 +234,15 @@ def _native_table(rows: tuple[tuple[str, ...], ...]) -> dict[str, JsonValue]:
         "1 bit flip",
         "50 Mbit/s; retry",
         "2 requests/s",
+        "1'23.45 EUR",
+        "1’234’56 ms",
+        "<= 10 ms under load",
+        ">=99.9% of requests",
+        "<< 10 ms",
+        "><10 ms",
+        "1.2 +/ 0.4 ms",
+        "CHF rollout",
+        "CHF123",
     ],
 )
 def test_dates_versions_identifiers_and_unrecognized_quantities_are_not_numbers(text: str) -> None:
