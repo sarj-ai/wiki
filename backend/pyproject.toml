@@ -57,6 +57,8 @@ dev = [
     "import-linter>=2.16",
     "pip-audit>=2.10.1",
     "deptry>=0.25.1",
+    "jsonschema==4.26.0",
+    "types-jsonschema>=4.26.0.20261006",
 ]
 
 [tool.deptry.package_module_name_map]

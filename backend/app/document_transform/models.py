@@ -53,6 +53,7 @@ from app.document_transform.schemas import (
     PatchEnvelope,
     PatchReviewEnvelope,
     TextPatch,
+    TextPatchReview,
     TransformFinding,
     TransformPhase,
 )
@@ -206,6 +207,43 @@ class _ReviewPair:
     source_kind: Literal["sentence", "clause", "dependent_clause"] = "sentence"
     source_span: tuple[int, int] | None = None
     parent_sentence: str | None = None
+
+
+def _review_response_json_schema(pairs: list[_ReviewPair]) -> dict[str, JsonValue]:
+    base = genai_types.JSONSchema.model_validate(TextPatchReview.model_json_schema())
+    properties = base.properties
+    if properties is None:
+        msg = "Semantic review schema requires declared properties"
+        raise ValueError(msg)
+    variants: list[genai_types.JSONSchema] = []
+    for pair in pairs:
+        identity = {
+            "block_id": pair.block_id,
+            "expected_sha256": pair.expected_sha256,
+            "replacement_sha256": pair.replacement_sha256,
+        }
+        bound = {
+            **properties,
+            **{
+                name: properties[name].model_copy(update={"enum": [value]})
+                for name, value in identity.items()
+            },
+        }
+        variants.append(base.model_copy(update={"properties": bound}))
+    # Only the factual verdict and reason are model judgments. Identity tuples
+    # come from the immutable request; local binding and coverage checks remain
+    # mandatory even when the provider constrains decoding.
+    schema = genai_types.JSONSchema(
+        type=genai_types.JSONSchemaType.OBJECT,
+        properties={
+            "reviews": genai_types.JSONSchema(
+                type=genai_types.JSONSchemaType.ARRAY, items=genai_types.JSONSchema(any_of=variants)
+            )
+        },
+        required=["reviews"],
+        additional_properties=False,
+    )
+    return schema.model_dump(mode="json", by_alias=True, exclude_none=True)
 
 
 @dataclass(frozen=True, slots=True)
@@ -884,7 +922,7 @@ class VertexGeminiPatchGenerator(PatchGenerator):
                 config=genai_types.GenerateContentConfig(
                     system_instruction=UNSLOP_REVIEW_INSTRUCTION,
                     response_mime_type="application/json",
-                    response_json_schema=_response_json_schema(PatchReviewEnvelope),
+                    response_json_schema=_review_response_json_schema(pairs),
                     max_output_tokens=_SEMANTIC_REVIEW_RESPONSE_TOKEN_LIMIT,
                     thinking_config=None
                     if (
