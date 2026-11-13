@@ -8,7 +8,7 @@ from google.genai import errors as genai_errors, types as genai_types
 from loguru import logger
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
-from app.document_transform.errors import ModelUnavailableError
+from app.document_transform.errors import ModelDeadlineError, ModelUnavailableError
 from app.document_transform.model_failures import classify_model_failure
 from app.document_transform.schemas import TransformPhase
 
@@ -181,6 +181,8 @@ class ModelFailureDetails:
 def model_failure_details(
     error: Exception,
 ) -> ModelFailureDetails:
+    if isinstance(error, ModelDeadlineError):
+        return ModelFailureDetails("timeout", 0, "DEADLINE_EXCEEDED")
     if isinstance(error, ModelUnavailableError) and isinstance(error.__cause__, Exception):
         return model_failure_details(error.__cause__)
     if isinstance(error, auth_errors.TransportError):

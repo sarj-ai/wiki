@@ -80,8 +80,10 @@ _MIN_MODEL_ATTEMPT_BUDGET = timedelta(seconds=1)
 _UNSLOP_REVIEW_RESERVE = timedelta(seconds=60)
 _MIN_REVIEW_ATTEMPT_BUDGET = timedelta(seconds=15)
 _THINKING_FALLBACK_MODELS = frozenset({"gemini-3.1-pro-preview", "gemini-4-argon"})
-_MAX_EDITOR_BATCH_CHARACTERS = 12_000
-_MAX_EDITOR_BATCH_BLOCKS = 100
+# Pro HIGH must finish generation before the shared independent-review reserve.
+# Bound both source size and the per-block constraint/JSON response workload.
+_MAX_EDITOR_BATCH_CHARACTERS = 6_000
+_MAX_EDITOR_BATCH_BLOCKS = 40
 _MAX_PROVIDER_ATTEMPTS = 3
 _MAX_REVIEW_ATTEMPTS = 3
 _TRANSIENT_MODEL_STATUSES = frozenset(
@@ -557,6 +559,15 @@ class VertexGeminiPatchGenerator(PatchGenerator):
             self._policy.unslop_model
             if phase is TransformPhase.UNSLOP
             else self._policy.restyle_model
+        )
+        logger.info(
+            "document model batch planned",
+            model_id=primary_model,
+            model_operation=str(phase),
+            model_batch_blocks=len(document.blocks),
+            model_batch_source_characters=sum(len(block.text) for block in document.blocks),
+            model_batch_prompt_characters=len(prompt),
+            model_batch_feedback_count=len(feedback),
         )
         attempts = _attempt_models(
             (
