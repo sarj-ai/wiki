@@ -3,7 +3,7 @@ import re
 
 _SENTENCE = re.compile(r"[^.!?;]+(?:[.!?;]+|$)")
 _FRONTED = re.compile(
-    r"\s*(?P<scope>(?:before|after|during|until|since)\s+(?:each|every)\s+"
+    r"\s*(?P<scope>(?:before|after|during|until|since)\s+(?:(?:each|every)\s+)?"
     r"[A-Za-z]+(?:\s+[A-Za-z]+){0,4})\s*,",
     re.IGNORECASE,
 )

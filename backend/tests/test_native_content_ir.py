@@ -144,18 +144,30 @@ def test_planned_exact_iso_date_conversion_has_explicit_equivalence_only() -> No
     )
 
 
+def test_date_only_conversion_accepts_the_providers_omitted_utc_default() -> None:
+    before = _parse([{"textRun": {"content": "2026-09-04\n"}}])
+    chip = _date()
+    chip["dateElement"]["dateElementProperties"].pop("timeZoneId")
+
+    assert verify_planned_date_conversions(
+        before, _parse([chip]), source_block_hashes={"b0": before.blocks[0].sha256}
+    )
+
+
 @pytest.mark.parametrize(
     ("key", "value"),
     [
         ("timestamp", "2026-09-05T00:00:00Z"),
         ("timeZoneId", "America/New_York"),
+        ("timeZoneId", ""),
+        ("timeZoneId", None),
         ("dateFormat", "DATE_FORMAT_MONTH_DAY_FULL"),
         ("timeFormat", "TIME_FORMAT_HOUR_MINUTE"),
         ("locale", "fr"),
         ("unknownFutureProperty", "x"),
     ],
 )
-def test_conversion_rejects_hidden_date_substitution(key: str, value: str) -> None:
+def test_conversion_rejects_hidden_date_substitution(key: str, value: str | None) -> None:
     before = _parse([{"textRun": {"content": "2026-09-04\n"}}])
     chip = _date()
     chip["dateElement"]["dateElementProperties"][key] = value
