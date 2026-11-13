@@ -7,6 +7,7 @@ import pytest
 
 from app.document_transform.ir import parse_google_document
 from app.document_transform.native_pagination import plan_native_pagination
+from app.document_transform.readability_json import obj
 from tests.test_native_spacer_layout import _spaced_document
 from tests.test_transform_diagnostics_workflow import MODULE, TASK, _record
 
@@ -22,7 +23,7 @@ def _named_style_value_diagnostics(style: dict[str, Any]) -> dict[str, Any]:
         )
     finally:
         logger.remove(sink)
-    return records[-1]["diagnostics"]
+    return obj(records[-1]["diagnostics"])
 
 
 def _border() -> dict[str, Any]:
@@ -67,17 +68,23 @@ def test_malformed_dimensions_are_unknown_and_never_throw(value: object) -> None
     "dimension",
     [
         {},
-        {"unit": "PT"},
         {"magnitude": 0},
         {"magnitude": 0, "unit": "PX"},
         {"magnitude": 0, "unit": "PT", "SECRET": "SECRET"},
     ],
-    ids=["empty", "missing-magnitude", "missing-unit", "wrong-unit", "unknown-field"],
+    ids=["empty", "missing-unit", "wrong-unit", "unknown-field"],
 )
 def test_incomplete_dimension_is_not_assumed_zero(dimension: dict[str, Any]) -> None:
     checks = _named_style_value_diagnostics({"indentStart": dimension})
     assert checks["spacer_named_indent_schema_known"] is False
     assert "spacer_named_indent_all_zero" not in checks
+
+
+def test_google_omitted_magnitude_with_explicit_points_is_known_zero() -> None:
+    # Real Docs zero-point readback omits magnitude while retaining the PT unit.
+    checks = _named_style_value_diagnostics({"indentStart": {"unit": "PT"}})
+    assert checks["spacer_named_indent_schema_known"]
+    assert checks["spacer_named_indent_all_zero"]
 
 
 @pytest.mark.parametrize(

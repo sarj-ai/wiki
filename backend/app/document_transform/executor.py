@@ -120,6 +120,7 @@ from app.document_transform.native_table_font import (
     table_font_proof_matches,
     table_font_requests,
 )
+from app.document_transform.native_terminal import plan_terminal_blank
 from app.document_transform.native_visual_authority import (
     apply_visual_authority,
     visual_authority_block_ids,
@@ -2755,15 +2756,17 @@ def _copy_visual_ids(document: DocumentIR) -> tuple[str, ...]:
     return tuple(block.id for block in document.blocks if block.preserved_visual_authority)
 
 
-def _copy_builder_version(document: DocumentIR) -> str:
+def _copy_builder_version(document: DocumentIR, *, compact_terminal: bool = False) -> str:
     version = REQUEST_BUILDER_VERSION
     if document.source_format == "google_doc" and any(
         block.kind is BlockKind.CODE for block in document.blocks
     ):
         version = f"{version}-code-v2"
     if document.copy_font_defended:
-        return f"{version}-copy-font-v2"
-    return f"{version}-visual-v1" if _copy_visual_ids(document) else version
+        version = f"{version}-copy-font-v2"
+    elif _copy_visual_ids(document):
+        version = f"{version}-visual-v1"
+    return f"{version}-terminal-v1" if compact_terminal else version
 
 
 def _new_copy_checkpoint(
@@ -2825,7 +2828,10 @@ def _new_copy_checkpoint(
         brand_profile_id=CURRENT_BRAND_MANIFEST.profile_id,
         brand_profile_sha256=CURRENT_BRAND_MANIFEST.sha256,
         pipeline_version=PIPELINE_VERSION,
-        request_builder_version=_copy_builder_version(original),
+        request_builder_version=_copy_builder_version(
+            original,
+            compact_terminal=_copy_terminal_enabled(snapshot, outcome.document, pagination),
+        ),
         unslop_catalog_sha256=UNSLOP_CATALOG_SHA256,
         original_semantic_sha256=original.semantic_sha256,
         expected_semantic_sha256=outcome.document.semantic_sha256,
@@ -2850,6 +2856,18 @@ def _new_copy_checkpoint(
     )
 
 
+def _copy_terminal_enabled(
+    snapshot: SourceSnapshot, document: DocumentIR, pagination: tuple[NativePaginationRule, ...]
+) -> bool:
+    if not pagination or not isinstance(snapshot, NativeDocumentSnapshot):
+        return False
+    terminal = plan_terminal_blank(snapshot.google_document, document)
+    return terminal is not None and any(
+        rule.block_id == terminal.block_id and rule.below_spacer_sha256 == terminal.spacer_sha256
+        for rule in pagination
+    )
+
+
 def _validate_copy_checkpoint(
     checkpoint: CopyCheckpoint,
     *,
@@ -2870,7 +2888,9 @@ def _validate_copy_checkpoint(
         CURRENT_BRAND_MANIFEST.profile_id,
         CURRENT_BRAND_MANIFEST.sha256,
         PIPELINE_VERSION,
-        _copy_builder_version(original),
+        _copy_builder_version(
+            original, compact_terminal=checkpoint.request_builder_version.endswith("-terminal-v1")
+        ),
         UNSLOP_CATALOG_SHA256,
         original.semantic_sha256,
         _copy_output_name(request, original),
@@ -2956,6 +2976,11 @@ def _copy_checkpoint_document(
     snapshot: SourceSnapshot,
     original: DocumentIR,
 ) -> DocumentIR:
+    compact_terminal = checkpoint.request_builder_version.endswith("-terminal-v1")
+    if compact_terminal and (
+        request.mode is TransformMode.UNSLOP or not isinstance(snapshot, NativeDocumentSnapshot)
+    ):
+        raise OutputConflictError
     if not set(_copy_visual_ids(original)).isdisjoint(checkpoint.replacements) or tuple(
         finding.block_id
         for finding in checkpoint.findings
@@ -2969,10 +2994,13 @@ def _copy_checkpoint_document(
     transformed = apply_authored_labels(
         original.replace_blocks(checkpoint.replacements), checkpoint.authored_labels
     )
+    if compact_terminal != _copy_terminal_enabled(snapshot, transformed, checkpoint.pagination):
+        raise OutputConflictError
     if checkpoint.pagination != (
         plan_native_pagination(
             snapshot.google_document if isinstance(snapshot, NativeDocumentSnapshot) else None,
             transformed,
+            compact_terminal=compact_terminal,
         )
         if request.mode is not TransformMode.UNSLOP
         else ()
