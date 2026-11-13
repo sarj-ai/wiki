@@ -35,12 +35,12 @@ _NUMERIC_POWER = rf"(?:[⁰¹²³⁴⁵⁶⁷⁸⁹⁺⁻]+|{UNIT_POWER})?"
 _NUMERIC_MAGNITUDE = (
     rf"(?:(?:\d+[^\S\n]+)?\d+[^\S\n]*[/⁄][^\S\n]*\d+|"
     rf"(?:\d+[^\S\n]*)?{_VULGAR_FRACTION}|"
-    r"\d+(?:[.,:/⁄-]\d+|[ \u00a0\u2009\u202f'’]\d{3})*|[.,]\d+)"
+    r"\d+(?:[.,٫٬:/⁄-]\d+|[ \u00a0\u2009\u202f'’]\d{3})*|[.,٫]\d+)"
     rf"(?:\(\d+\))?(?:[eE][+−-]?\d+)?{_NUMERIC_POWER}"
 )
 _SIGNED_NUMBER = rf"[+−-]?(?:[$€£¥₹₩₽₺]\s*)?[+−-]?{_NUMERIC_MAGNITUDE}"
 _NUMERIC_UNIT = (
-    rf"(?:%|‰|(?!(?i:and|or|but|nor|yet)\b|[xX]{HORIZONTAL_SPACE}*\d)"
+    rf"(?:%|٪|‰|(?!(?i:and|or|but|nor|yet)\b|[xX]{HORIZONTAL_SPACE}*\d)"
     rf"[A-Za-zµμ°ΩÅ]{{1,5}}{_NUMERIC_POWER})"
     rf"(?:{HORIZONTAL_SPACE}*[/*·]{HORIZONTAL_SPACE}*[A-Za-zµμ°ΩÅ]{{1,5}}{_NUMERIC_POWER}"
     # Unmarked multiplication needs known unit symbols, not arbitrary prose words.
