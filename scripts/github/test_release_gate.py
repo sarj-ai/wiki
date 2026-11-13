@@ -472,7 +472,7 @@ def test_shared_main_dag_qualifies_once_without_release_secrets() -> None:
         GATE["BACKEND_RELEASE_PATHS"]
         + GATE["FRONTEND_RELEASE_PATHS"]
         + GATE["SHARED_RELEASE_PATHS"]
-    )
+    ) | {"backend/tests/**"}
     for name in GATE["REQUIRED_JOBS"] - {"standards-receipt"}:
         assert jobs[name]["uses"] == f"./.github/workflows/{name}.yml"
         assert jobs[name]["permissions"] == {"contents": "read"}

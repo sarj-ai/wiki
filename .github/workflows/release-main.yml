@@ -9,6 +9,7 @@ name: Release Main
       - "backend/alembic.ini"
       - "backend/alembic/**"
       - "backend/app/**"
+      - "backend/tests/**"
       - "backend/pyproject.toml"
       - "backend/uv.lock"
       - "backend/uv.toml"

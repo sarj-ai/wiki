@@ -113,6 +113,8 @@ class _Queries:
         self.sql: list[str] = []
         self.parameters: list[object] = []
         self.fail_insert: int | None = None
+        self.observe_sql: str | None = None
+        self.observed = asyncio.Event()
 
     def record(
         self,
@@ -125,6 +127,8 @@ class _Queries:
     ) -> None:
         self.sql.append(statement)
         self.parameters.append(parameters)
+        if self.observe_sql is not None and self.observe_sql in statement:
+            self.observed.set()
         if "INSERT INTO cache_entries" in statement:
             if self.fail_insert == 1:
                 msg = "Deliberate cache batch failure"
@@ -326,15 +330,18 @@ async def test_owner_lock_interruption_rolls_back_without_committing_caller_writ
                 .values(display_name="Must remain uncommitted")
             )
         queries = _Queries()
+        queries.observe_sql = (
+            "pg_try_advisory_xact_lock(" if writes == "none" else "pg_advisory_xact_lock("
+        )
         event.listen(database.engine.sync_engine, "before_cursor_execute", queries.record)
-        try:
-            waiting = asyncio.create_task(
-                PostgresTaskService(db=db)._lock_document_transform_owner(
-                    database.owner, timeout_seconds=0.05
-                )
+        waiting = asyncio.create_task(
+            PostgresTaskService(db=db)._lock_document_transform_owner(
+                database.owner, timeout_seconds=0.05 if interruption == "timeout" else 2
             )
+        )
+        try:
             if interruption == "cancel":
-                await asyncio.sleep(0.02)
+                await asyncio.wait_for(queries.observed.wait(), timeout=1)
                 waiting.cancel()
                 with pytest.raises(asyncio.CancelledError):
                     await waiting
@@ -343,6 +350,9 @@ async def test_owner_lock_interruption_rolls_back_without_committing_caller_writ
                     await waiting
         finally:
             event.remove(database.engine.sync_engine, "before_cursor_execute", queries.record)
+            if not waiting.done():
+                waiting.cancel()
+            await asyncio.gather(waiting, return_exceptions=True)
         assert not db.in_transaction()
         if writes != "none":
             assert any("pg_advisory_xact_lock(" in sql for sql in queries.sql)
