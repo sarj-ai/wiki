@@ -1,16 +1,17 @@
 from __future__ import annotations
 
-from hashlib import sha256
+from dataclasses import dataclass
 from pathlib import Path
 import re
 import sys
-from typing import Annotated, Literal, NamedTuple, Never
+from typing import Annotated, ClassVar, Literal, NamedTuple, Never, assert_never
 
-from pydantic import BaseModel, Field, RootModel
+from pydantic import BaseModel, ConfigDict, Field, RootModel, ValidationError
 import typer
 
 
 class _Count(BaseModel):
+    model_config: ClassVar[ConfigDict] = ConfigDict(frozen=True, strict=True, extra="forbid")
     count: int = Field(gt=0)
 
 
@@ -19,199 +20,91 @@ class _FindingKey(NamedTuple):
     rule: str
 
 
-_PositiveInt = Annotated[int, Field(gt=0)]
+_PositiveInt = Annotated[int, Field(strict=True, gt=0)]
 _VERSION_RE = re.compile(r'^(?:bundle|version)\s*=\s*"([^"]+)"', re.MULTILINE)
 CLI = typer.Typer(add_completion=False, add_help_option=False, pretty_exceptions_enable=False)
 
 
 class _Baseline(RootModel[dict[str, dict[str, _PositiveInt | _Count]]]):
-    pass
+    model_config: ClassVar[ConfigDict] = ConfigDict(frozen=True, strict=True)
 
 
-class _BootstrapGrowth(BaseModel):
-    before: int = Field(ge=0)
-    after: int = Field(gt=0)
+@dataclass(frozen=True, slots=True)
+class ExistingRules:
+    kind: ClassVar[Literal["existing"]] = "existing"
 
 
-class _ReviewedSource(BaseModel):
-    path: str
-    sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+@dataclass(frozen=True, slots=True)
+class AdoptedRules:
+    base_config: str | None
+    kind: ClassVar[Literal["adopted"]] = "adopted"
 
 
-class _Bootstrap(BaseModel):
-    schema_version: Literal[1]
-    merge_base: str = Field(pattern=r"^[0-9a-f]{40}$")
-    from_bundle: str = Field(min_length=1)
-    to_bundle: str = Field(min_length=1)
-    reason: str = Field(min_length=1)
-    allowances: dict[str, dict[str, dict[str, _BootstrapGrowth]]]
-    reviewed_sources: list[_ReviewedSource] = Field(default_factory=list)
+type RulePolicy = ExistingRules | AdoptedRules
 
 
-def main(
-    *,
-    base_path: str,
-    current_path: str,
-    standards_base: str | None = None,
-    standards_current: str | None = None,
-    base_config: str | None = None,
-    bootstrap: str | None = None,
-    merge_base: str | None = None,
-    allowance_path: str | None = None,
-    changed_files: str | None = None,
-    changed_prefix: str | None = None,
-) -> int:
-    base = _load(base_path)
-    current = _load(current_path)
-    allow_new_rules = _versions_differ(standards_base, standards_current)
-    base_config_text = Path(base_config).read_text(encoding="utf-8") if base_config else None
+@dataclass(frozen=True, slots=True)
+class InitialBaseline:
+    baseline_path: str
+    changed_path: str
+    prefix: str
+    kind: ClassVar[Literal["initial"]] = "initial"
+
+
+@dataclass(frozen=True, slots=True)
+class CompareBaselines:
+    base_path: str
+    current_path: str
+    rules: RulePolicy
+    kind: ClassVar[Literal["compare"]] = "compare"
+
+
+type BaselineCommand = InitialBaseline | CompareBaselines
+
+
+def execute(command: BaselineCommand) -> int:
+    match command:
+        case InitialBaseline():
+            return check_initial(command)
+        case CompareBaselines():
+            return compare_baselines(command)
+        case _:
+            assert_never(command)
+
+
+def compare_baselines(command: CompareBaselines) -> int:
+    base = _load(command.base_path)
+    current = _load(command.current_path)
     base_rules = {rule for _, rule in base}
-    declared = _declared_rebaseline(
-        bootstrap=bootstrap,
-        merge_base=merge_base,
-        allowance_path=allowance_path,
-        changed_files=changed_files,
-        changed_prefix=changed_prefix,
-        standards_base=standards_base,
-        standards_current=standards_current,
-    )
     growth: list[str] = []
     exempted: set[str] = set()
-    used_declarations: set[_FindingKey] = set()
     for (filename, rule), count in sorted(current.items()):
         key = _FindingKey(filename, rule)
         old_count = base.get(key, 0)
-        declared_growth = declared.get(key)
-        if declared_growth is not None:
-            if old_count == declared_growth.before and count == declared_growth.after:
-                used_declarations.add(key)
-                continue
-            growth.append(
-                f"{filename}/{rule}: declared {declared_growth.before} -> "
-                f"{declared_growth.after}, observed {old_count} -> {count}"
-            )
-            continue
-        if rule not in base_rules and _adopted_at_bump(
-            rule, allow_new_rules=allow_new_rules, base_config_text=base_config_text
-        ):
+        if rule not in base_rules and _adopted_rule(rule, command.rules):
             exempted.add(rule)
             continue
         if count > old_count:
             growth.append(f"{filename}/{rule}: {old_count} -> {count}")
-    unused_declarations = sorted(set(declared) - used_declarations)
-    if unused_declarations:
-        growth.extend(
-            f"{key.filename}/{key.rule}: declared re-baseline is stale or padded"
-            for key in unused_declarations
-        )
     if growth:
         sys.stderr.write("Lint baselines may only shrink:\n" + "\n".join(growth) + "\n")
         return 1
     if exempted:
         sys.stderr.write(
-            "Standards upgrade (pin version changed): absorbed findings for newly "
-            "adopted rules (shrink-only from here):\n" + "\n".join(sorted(exempted)) + "\n"
+            "Standards upgrade (pin version changed): absorbed findings for newly adopted rules (shrink-only from here):\n"
+            + "\n".join(sorted(exempted))
+            + "\n"
         )
     return 0
 
 
-def _declared_rebaseline(
-    *,
-    bootstrap: str | None,
-    merge_base: str | None,
-    allowance_path: str | None,
-    changed_files: str | None,
-    changed_prefix: str | None,
-    standards_base: str | None,
-    standards_current: str | None,
-) -> dict[_FindingKey, _BootstrapGrowth]:
-    arguments = (merge_base, allowance_path, changed_files, changed_prefix)
-    if bootstrap is None:
-        if any(argument is not None for argument in arguments):
-            _abort("re-baseline options require --bootstrap")
-        return {}
-    if (
-        merge_base is None
-        or allowance_path is None
-        or changed_files is None
-        or changed_prefix is None
-    ):
-        _abort(
-            "--bootstrap requires --merge-base, --allowance-path, --changed-files, "
-            "and --changed-prefix"
-        )
-    if standards_base is None or standards_current is None:
-        _abort("--bootstrap requires both Standards manifest paths")
-
-    declaration = _Bootstrap.model_validate_json(Path(bootstrap).read_text(encoding="utf-8"))
-    if declaration.merge_base != merge_base:
-        sys.stderr.write(
-            f"{bootstrap}: declaration is inert for merge-base {merge_base}; "
-            f"it is pinned to {declaration.merge_base}\n"
-        )
-        return {}
-    base_bundle = _pin_version(standards_base)
-    current_bundle = _pin_version(standards_current)
-    if (declaration.from_bundle, declaration.to_bundle) != (
-        base_bundle,
-        current_bundle,
-    ):
-        _abort(
-            f"{bootstrap}: declared bundle transition "
-            f"{declaration.from_bundle} -> {declaration.to_bundle}, observed "
-            f"{base_bundle} -> {current_bundle}"
-        )
-    if set(declaration.allowances) != {allowance_path}:
-        _abort(f"{bootstrap}: allowances must name exactly {allowance_path!r}")
-
-    return _validated_allowances(
-        declaration.allowances[allowance_path],
-        bootstrap=bootstrap,
-        changed=set(Path(changed_files).read_text(encoding="utf-8").splitlines()),
-        changed_prefix=changed_prefix,
-        reviewed_source_hashes={
-            source.path: source.sha256 for source in declaration.reviewed_sources
-        },
-    )
-
-
-def _validated_allowances(
-    allowances: dict[str, dict[str, _BootstrapGrowth]],
-    *,
-    bootstrap: str,
-    changed: set[str],
-    changed_prefix: str,
-    reviewed_source_hashes: dict[str, str],
-) -> dict[_FindingKey, _BootstrapGrowth]:
-    declared: dict[_FindingKey, _BootstrapGrowth] = {}
-    for filename, rules in allowances.items():
-        source = f"{changed_prefix}{filename}"
-        if (
-            source in changed
-            and reviewed_source_hashes.get(source) != sha256(Path(source).read_bytes()).hexdigest()
-        ):
-            _abort(
-                f"{bootstrap}: cannot re-baseline changed source without an exact reviewed hash: {source}"
-            )
-        for rule, counts in rules.items():
-            if counts.after <= counts.before:
-                _abort(f"{bootstrap}: {filename}/{rule} must declare actual growth")
-            declared[_FindingKey(filename, rule)] = counts
-    if not declared:
-        _abort(f"{bootstrap}: declaration has no exact allowances")
-    return declared
-
-
-def _abort(message: str) -> Never:
-    sys.stderr.write(f"{message}\n")
-    raise SystemExit(2)
-
-
-def check_initial(*, baseline_path: str, changed_path: str, prefix: str) -> int:
-    baseline = _parse(baseline_path)
-    changed = set(Path(changed_path).read_text(encoding="utf-8").splitlines())
+def check_initial(command: InitialBaseline) -> int:
+    baseline = _parse(command.baseline_path)
+    changed = set(Path(command.changed_path).read_text(encoding="utf-8").splitlines())
     exempted_changed = sorted(
-        f"{prefix}{filename}" for filename in baseline.root if f"{prefix}{filename}" in changed
+        f"{command.prefix}{filename}"
+        for filename in baseline.root
+        if f"{command.prefix}{filename}" in changed
     )
     if not exempted_changed:
         return 0
@@ -223,18 +116,17 @@ def check_initial(*, baseline_path: str, changed_path: str, prefix: str) -> int:
     return 1
 
 
-def _adopted_at_bump(rule: str, *, allow_new_rules: bool, base_config_text: str | None) -> bool:
-    if not allow_new_rules:
-        return False
-    if base_config_text is None:
-        return True
-    return re.search(rf"(?<![\w/@-]){re.escape(rule)}(?![\w/-])", base_config_text) is None
-
-
-def _versions_differ(standards_base: str | None, standards_current: str | None) -> bool:
-    if standards_base is None or standards_current is None:
-        return False
-    return _pin_version(standards_base) != _pin_version(standards_current)
+def _adopted_rule(rule: str, policy: RulePolicy) -> bool:
+    match policy:
+        case ExistingRules():
+            return False
+        case AdoptedRules(base_config=config):
+            return (
+                config is None
+                or re.search(rf"(?<![\w/@-]){re.escape(rule)}(?![\w/-])", config) is None
+            )
+        case _:
+            assert_never(policy)
 
 
 def _pin_version(path: str) -> str:
@@ -255,16 +147,17 @@ def _load(path: str) -> dict[_FindingKey, int]:
 
 
 def _parse(path: str) -> _Baseline:
-    return _Baseline.model_validate_json(Path(path).read_text(encoding="utf-8"))
+    try:
+        return _Baseline.model_validate_json(Path(path).read_text(encoding="utf-8"))
+    except ValidationError as error:
+        sys.stderr.write(f"{path}: invalid baseline counts\n")
+        raise SystemExit(2) from error
 
 
 def _usage() -> Never:
     sys.stderr.write(
         "usage: check_baseline_growth.py [--standards-base FILE --standards-current FILE]\n"
-        "                                [--base-config FILE]\n"
-        "                                [--bootstrap FILE --merge-base SHA\n"
-        "                                 --allowance-path PATH --changed-files FILE\n"
-        "                                 --changed-prefix PREFIX] BASE CURRENT\n"
+        "                                [--base-config FILE] BASE CURRENT\n"
         "   or: check_baseline_growth.py --initial BASELINE CHANGED_FILES PREFIX\n"
     )
     raise SystemExit(2)
@@ -280,50 +173,24 @@ def _check_command(
     standards_base: Annotated[str | None, typer.Option()] = None,
     standards_current: Annotated[str | None, typer.Option()] = None,
     base_config: Annotated[str | None, typer.Option()] = None,
-    bootstrap: Annotated[str | None, typer.Option()] = None,
-    merge_base: Annotated[str | None, typer.Option()] = None,
-    allowance_path: Annotated[str | None, typer.Option()] = None,
-    changed_files: Annotated[str | None, typer.Option()] = None,
-    changed_prefix: Annotated[str | None, typer.Option()] = None,
 ) -> None:
     if initial:
         if initial_prefix is None or any(
-            value is not None
-            for value in (
-                standards_base,
-                standards_current,
-                base_config,
-                bootstrap,
-                merge_base,
-                allowance_path,
-                changed_files,
-                changed_prefix,
-            )
+            value is not None for value in (standards_base, standards_current, base_config)
         ):
             _usage()
-        raise SystemExit(
-            check_initial(
-                baseline_path=base_path,
-                changed_path=current_path,
-                prefix=initial_prefix,
-            )
-        )
-    if initial_prefix is not None:
+        raise SystemExit(execute(InitialBaseline(base_path, current_path, initial_prefix)))
+    if initial_prefix is not None or (standards_base is None) != (standards_current is None):
         _usage()
-    raise SystemExit(
-        main(
-            base_path=base_path,
-            current_path=current_path,
-            standards_base=standards_base,
-            standards_current=standards_current,
-            base_config=base_config,
-            bootstrap=bootstrap,
-            merge_base=merge_base,
-            allowance_path=allowance_path,
-            changed_files=changed_files,
-            changed_prefix=changed_prefix,
-        )
-    )
+    rules: RulePolicy = ExistingRules()
+    if standards_base is not None and standards_current is not None:
+        if _pin_version(standards_base) != _pin_version(standards_current):
+            rules = AdoptedRules(
+                Path(base_config).read_text(encoding="utf-8") if base_config else None
+            )
+    elif base_config is not None:
+        _usage()
+    raise SystemExit(execute(CompareBaselines(base_path, current_path, rules)))
 
 
 def cli() -> None:

@@ -9,7 +9,9 @@ from pydantic import BaseModel, ConfigDict, Field, JsonValue, RootModel
 from app.document_transform.errors import InPlaceNeedsReviewError, SourceChangedError
 from app.document_transform.ir import parse_google_document, utf16_length
 from app.document_transform.native_chip_detection import (
+    BlockedNativeSpan,
     DetectedNativeSpan,
+    LocatedNativePlaceSpan,
     NativeDateProperties,
     NativeDateValue,
     detect_address_spans,
@@ -189,22 +191,30 @@ def _candidate_conversion(
 ) -> NativeChipSpan | NativeChipSkip:
     first = integer(paragraph["startIndex"]) + candidate.start
     end = integer(paragraph["startIndex"]) + candidate.end
-    reason = candidate.skip_reason
-    if candidate.kind == "place" and reason is None:
-        reason = "native_place_insertion_unsupported_by_verified_api"
+    if isinstance(candidate, BlockedNativeSpan | LocatedNativePlaceSpan):
+        return NativeChipSkip(
+            tab_id=tab_id,
+            start=first,
+            end=end,
+            kind=candidate.kind,
+            reason=candidate.skip_reason
+            if isinstance(candidate, BlockedNativeSpan)
+            else "native_place_insertion_unsupported_by_verified_api",
+        )
+    reason: str | None = None
     run = _containing_text_run(paragraph, first, end)
     if reason is None and (run is None or _annotation_inside(tab, first, end)):
         reason = "style_or_annotation_overlap"
     style = obj(native_chip_node(obj(run["textRun"])).text_style) if run is not None else {}
     if reason is None and set(style) - _CHIP_STYLE_FIELDS:
         reason = "unsupported_or_linked_text_style"
-    if reason is not None or candidate.date_value is None:
+    if reason is not None:
         return NativeChipSkip(
             tab_id=tab_id,
             start=first,
             end=end,
             kind=candidate.kind,
-            reason=reason or "unresolved_value",
+            reason=reason,
         )
     return NativeChipSpan(
         tab_id=tab_id,

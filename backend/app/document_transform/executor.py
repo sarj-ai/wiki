@@ -145,6 +145,8 @@ from app.document_transform.schemas import (
     OutputStrategy,
     PlannedCopyCheckpoint,
     TabNamingDeclinedReason,
+    TextDocumentCheckpoint,
+    TextDocumentCheckpointPayload,
     TransformFinding,
     TransformMode,
     ValidationSummary,
@@ -326,7 +328,14 @@ class DocumentTransformExecutor(DocumentTransformRunner):
         self._checkpoint_store = checkpoint_store
         self._task_id = task_id
         self._lease_token = lease_token
-        self._checkpoint: DocumentTransformCheckpoint | None = checkpoint
+        try:
+            self._checkpoint: TextDocumentCheckpoint | None = (
+                TextDocumentCheckpointPayload.model_validate(checkpoint).root
+                if checkpoint is not None
+                else None
+            )
+        except ValueError as error:
+            raise OutputConflictError from error
         self._checkpoint_generation = checkpoint_generation
 
     @override

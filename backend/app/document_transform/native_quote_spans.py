@@ -1,7 +1,7 @@
 from dataclasses import dataclass, field
 import re
 from types import MappingProxyType
-from typing import Literal
+from typing import ClassVar, Literal, assert_never
 
 from app.document_transform.ir import utf16_length
 
@@ -21,17 +21,62 @@ class NativeInlineRange:
     reason: ProtectedInlineReason
 
 
+@dataclass(frozen=True, slots=True)
+class OutsideCode:
+    kind: ClassVar[Literal["outside-code"]] = "outside-code"
+
+
+@dataclass(frozen=True, slots=True)
+class InsideCode:
+    kind: ClassVar[Literal["inside-code"]] = "inside-code"
+    delimiter: str
+    start: int
+
+    def __post_init__(self) -> None:
+        if not self.delimiter or self.delimiter.strip("`") or self.start < 0:
+            msg = "Invalid open inline code state"
+            raise ValueError(msg)
+
+
+@dataclass(frozen=True, slots=True)
+class CodeTransition:
+    state: OutsideCode | InsideCode
+    ranges: tuple[NativeInlineRange, ...]
+
+
+def advance_code(
+    state: OutsideCode | InsideCode, mark: str, start: int, end: int
+) -> CodeTransition:
+    if not mark or mark.strip("`") or start < 0 or end <= start:
+        msg = "Invalid inline code token or UTF-16 range"
+        raise ValueError(msg)
+    if isinstance(state, InsideCode) and start < state.start + len(state.delimiter):
+        msg = "Inline code events must follow the opening delimiter"
+        raise ValueError(msg)
+    match state:
+        case OutsideCode():
+            return CodeTransition(InsideCode(mark, start), ())
+        case InsideCode(delimiter, opened) if delimiter == mark:
+            return CodeTransition(
+                OutsideCode(), (NativeInlineRange(opened, end, "protected_code"),)
+            )
+        case InsideCode():
+            return CodeTransition(state, ())
+        case _:
+            assert_never(state)
+
+
 @dataclass(slots=True)
 class _InlineState:
     openings: dict[str, int] = field(default_factory=dict)
-    code: tuple[str, int] | None = None
+    code: OutsideCode | InsideCode = field(default_factory=OutsideCode)
     ranges: list[NativeInlineRange] = field(default_factory=list)
 
     def accept(self, mark: str, start: int, end: int, *, previous: str, following: str) -> None:
         if mark.startswith("`"):
             self._code_token(mark, start, end)
             return
-        if self.code is not None:
+        if isinstance(self.code, InsideCode):
             return
         if mark in {"'", "’"} and _word(previous) and _word(following):
             return
@@ -50,19 +95,17 @@ class _InlineState:
             self.openings.setdefault(mark, start)
 
     def _code_token(self, mark: str, start: int, end: int) -> None:
-        if self.code is None:
-            self.code = mark, start
-        elif self.code[0] == mark:
-            self.ranges.append(NativeInlineRange(self.code[1], end, "protected_code"))
-            self.code = None
+        transition = advance_code(self.code, mark, start, end)
+        self.code = transition.state
+        self.ranges.extend(transition.ranges)
 
     def finish(self, end: int) -> tuple[NativeInlineRange, ...]:
         result = list(self.ranges)
         result.extend(
             NativeInlineRange(start, end, "unclosed_quotation") for start in self.openings.values()
         )
-        if self.code is not None:
-            result.append(NativeInlineRange(self.code[1], end, "unclosed_code"))
+        if isinstance(self.code, InsideCode):
+            result.append(NativeInlineRange(self.code.start, end, "unclosed_code"))
         return tuple(result)
 
 

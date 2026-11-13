@@ -33,7 +33,7 @@ from app.document_transform.dependencies import (
 from app.document_transform.errors import DocumentTransformError
 from app.document_transform.gcs_uploads import UploadUnavailableError, sign_markdown_upload
 from app.document_transform.inspection import (
-    NativeDocumentInspection,
+    NativeDocumentInspectionRead,
     attach_saved_checkpoint,
     inspect_native_document,
 )
@@ -79,7 +79,7 @@ async def inspect_document(
     tasks: Annotated[TaskService, Depends(task_service_dep)],
     *,
     task_id: Annotated[TaskId | None, Query()] = None,
-) -> NativeDocumentInspection:
+) -> NativeDocumentInspectionRead:
     response.headers["Cache-Control"] = "private, no-store"
     if runtime.native_sources is None:
         raise HTTPException(status_code=503, detail="Native document readback is unavailable")

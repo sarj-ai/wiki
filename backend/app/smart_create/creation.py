@@ -13,11 +13,15 @@ from app.aliases.service import AliasService
 from app.drive.schemas import MIME_DOC, MIME_SLIDE
 from app.extras.schemas import DocIconWrite
 from app.extras.service import ExtrasService
-from app.files.errors import DriveUpstreamError, FilesError
+from app.files.errors import FilesError
 from app.files.schemas import FileResponse
 from app.files.service import FilesService
 from app.identifiers import TaskId
-from app.smart_create.errors import TemplateChangedError, TemplateUnavailableError
+from app.smart_create.errors import (
+    SmartCreateUncertainError,
+    TemplateChangedError,
+    TemplateUnavailableError,
+)
 from app.smart_create.schemas import (
     BlankSource,
     SmartCreateResult,
@@ -25,6 +29,7 @@ from app.smart_create.schemas import (
     SmartFileCreate,
     TemplateSource,
 )
+from app.tasks.schemas import SmartCreateDispatch
 from app.tasks.service import TaskService
 from app.templates.schemas import TemplateRead
 from app.templates.service import TemplateCatalogService
@@ -73,12 +78,18 @@ class DriveSmartFileCreationService(SmartFileCreationService):
         template = await self._validate_template(payload.source, destination)
         file = existing_resource or await self._recover(task_id, destination)
         if file is None:
+            dispatch = await self._tasks.begin_smart_create(task_id, lease_token=lease_token)
+            if dispatch is SmartCreateDispatch.ALREADY_ATTEMPTED:
+                raise SmartCreateUncertainError
             try:
                 file = await self._create_file(task_id, payload, template)
-            except DriveUpstreamError:
-                file = await self._recover(task_id, destination)
+            except Exception as error:
+                try:
+                    file = await self._recover(task_id, destination)
+                except Exception as recovery_error:
+                    raise SmartCreateUncertainError from recovery_error
                 if file is None:
-                    raise
+                    raise SmartCreateUncertainError from error
             await self._tasks.record_resource(
                 task_id,
                 lease_token=lease_token,

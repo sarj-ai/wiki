@@ -175,13 +175,19 @@ async def test_public_task_poll_and_transitions_omit_large_private_columns(
                 await service.record_resource(
                     task_id, lease_token=uuid.uuid7(), resource_id=FileId("unowned-resource")
                 )
+            failure_start = len(observed.sql)
             failed = await service.fail(
                 task_id,
                 lease_token=claim.lease_token,
                 error_code="provider_failed",
                 error_detail=None,
             )
-            assert failed.status is TaskStatus.FAILED
+            assert failed.status is TaskStatus.NEEDS_REVIEW
+            failure_queries = observed.sql[failure_start:]
+            assert len(failure_queries) == 2
+            assert failure_queries[0].startswith("SELECT CASE")
+            assert "SELECT tasks.checkpoint" not in failure_queries[0]
+            assert "SELECT tasks.payload" not in failure_queries[0]
             assert failed.resource_id == "created-resource"
             returned = observed.sql[-1].partition(" RETURNING ")[2]
             assert "tasks.payload" not in returned

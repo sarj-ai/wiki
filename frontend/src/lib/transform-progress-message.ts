@@ -7,11 +7,7 @@ export function transformProgressMessage(
   if (task.status !== "running") return null;
   const attempt = task.attemptCount;
   if (task.executionState === "retrying") {
-    return attempt === undefined
-      ? "Waiting to retry…"
-      : `Waiting to retry after attempt ${attempt}…`;
+    return `Waiting to retry after attempt ${attempt}…`;
   }
-  return attempt === undefined
-    ? "Running and checking the document…"
-    : `Running and checking the document (attempt ${attempt})…`;
+  return `Running and checking the document (attempt ${attempt})…`;
 }

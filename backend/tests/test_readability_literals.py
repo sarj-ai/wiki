@@ -21,6 +21,7 @@ from app.document_transform.readability_tables import (
     readable_table_requests,
 )
 from app.document_transform.readability_types import (
+    LegacyReadabilityRefinement,
     PlannedReadabilityCheckpoint,
     ReadabilityCheckpoint,
     ReadabilityParagraph,
@@ -295,6 +296,7 @@ async def test_saved_literal_split_is_rejected_before_any_provider_write(
         }
     )
     checkpoint = PlannedReadabilityCheckpoint(
+        refinement=LegacyReadabilityRefinement(passes=0, model_invoked=False),
         source_revision_id=DocsRevisionId(str(document["revisionId"])),
         source_sha256=document_digest(document),
         invariant_sha256=document_digest(document),

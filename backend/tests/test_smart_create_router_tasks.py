@@ -29,6 +29,8 @@ from app.smart_create.router import create_smart_file
 from app.smart_create.schemas import BlankSource, SmartCreateResult, SmartFileCreate
 from app.tasks.queue import TaskEnqueuer
 from app.tasks.schemas import (
+    ExistingTaskReservation,
+    NewTaskReservation,
     PendingTaskRead,
     SmartCreateSucceededTaskRead,
     TaskKind,
@@ -128,7 +130,8 @@ class _Tasks(StrictTaskService):
             admit_new()
         self.requested_kind = kind
         task = _succeeded(self.task_id) if self.terminal else _pending(self.task_id, kind=kind)
-        return TaskReservation(task=task, created=self.created)
+        reservation_type = NewTaskReservation if self.created else ExistingTaskReservation
+        return reservation_type.model_validate({"task": task.model_dump()})
 
     @override
     async def discard_pending(self, task_id: TaskId, *, owner_user_id: uuid.UUID) -> bool:

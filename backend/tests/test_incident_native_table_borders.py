@@ -10,6 +10,7 @@ from app.document_transform.readability_json import array, bodies, content, docu
 from app.document_transform.readability_tables import readable_table_requests
 from app.document_transform.readability_types import (
     CURRENT_READABILITY_VERSION,
+    LegacyReadabilityRefinement,
     PlannedReadabilityCheckpoint,
     ReadabilityTable,
 )
@@ -25,6 +26,7 @@ def _fixture(name: str) -> dict[str, JsonValue]:
 def _checkpoint(document: dict[str, JsonValue]) -> PlannedReadabilityCheckpoint:
     target = ReadabilityTable.model_validate(_fixture("original_target"))
     checkpoint = PlannedReadabilityCheckpoint(
+        refinement=LegacyReadabilityRefinement(passes=0, model_invoked=False),
         version=CURRENT_READABILITY_VERSION,
         source_revision_id=DocsRevisionId(str(document["revisionId"])),
         source_sha256=document_digest(document),

@@ -3,17 +3,24 @@ from __future__ import annotations
 import hashlib
 import json
 from types import MappingProxyType
-from typing import TYPE_CHECKING, override
+from typing import TYPE_CHECKING, assert_never, override
 import uuid
 
 from app.document_transform.brand_manifest import CURRENT_BRAND_MANIFEST
+from app.document_transform.checkpoint_transitions import (
+    begin_presentation,
+    record_presentation,
+    verify_presentation,
+)
 from app.document_transform.errors import (
+    ExternalEffectUncertainError,
     InPlaceNotAllowedError,
     OutputConflictError,
     SourceChangedError,
     SourceTooLargeError,
     UnsupportedSourceError,
 )
+from app.document_transform.executor import DocumentTransformCheckpointStore
 from app.document_transform.models import PatchGenerator
 from app.document_transform.planner import TextTransformPlanner
 from app.document_transform.presentation_gateway import (
@@ -21,17 +28,30 @@ from app.document_transform.presentation_gateway import (
     PresentationGateway,
     PresentationSourceSnapshot,
 )
+from app.document_transform.presentation_state import (
+    AppliedPresentationMutation,
+    CompletedPresentationMutation,
+    pending_mutation_plan,
+)
 from app.document_transform.runner import DocumentTransformRunner
 from app.document_transform.schemas import (
+    CreatedPresentationCheckpoint,
+    CreatingPresentationCheckpoint,
     DocumentOutput,
+    DocumentTransformCheckpoint,
     DocumentTransformRequest,
     DocumentTransformResult,
     DriveFileSource,
     FindingSeverity,
     OutputStrategy,
+    PlannedPresentationCheckpoint,
+    PresentationCheckpointPayload,
+    PresentationCopyCheckpoint,
+    PresentationCopyPlan,
     TransformFinding,
     TransformMode,
     ValidationSummary,
+    VerifiedPresentationCheckpoint,
 )
 from app.document_transform.slides_brand import build_slides_mutation_plan
 from app.document_transform.slides_ir import ParsedPresentation, parse_google_presentation
@@ -42,7 +62,7 @@ from app.document_transform.unslop import (
 )
 from app.document_transform.versions import PRESENTATION_PIPELINE_VERSION
 from app.drive.schemas import MIME_SLIDE
-from app.identifiers import DocsRevisionId, ModelId
+from app.identifiers import DocsRevisionId, ModelId, TaskId
 
 
 if TYPE_CHECKING:
@@ -69,6 +89,10 @@ class PresentationTransformExecutor(DocumentTransformRunner):
         gateway: PresentationGateway,
         generator: PatchGenerator,
         logo_uri: str,
+        checkpoint_store: DocumentTransformCheckpointStore,
+        lease_token: uuid.UUID,
+        checkpoint: DocumentTransformCheckpoint | None,
+        checkpoint_generation: int,
     ) -> None:
         self._gateway = gateway
         self._generator = generator
@@ -76,6 +100,10 @@ class PresentationTransformExecutor(DocumentTransformRunner):
             generator=generator, allow_unslop_model=generator.supports_semantic_rewrite
         )
         self._logo_uri = logo_uri
+        self._store = checkpoint_store
+        self._lease_token = lease_token
+        self._checkpoint = checkpoint
+        self._generation = checkpoint_generation
 
     @override
     async def execute(
@@ -95,6 +123,9 @@ class PresentationTransformExecutor(DocumentTransformRunner):
 
         source_parsed = self._parse_native_source(snapshot)
         source_sha256 = _source_sha256(snapshot, source_parsed)
+        checkpoint = await self._checkpoint_for_request(
+            operation_id, request, snapshot, source_sha256
+        )
         recovered = await self._recover_output(
             operation_id=operation_id,
             request=request,
@@ -103,19 +134,32 @@ class PresentationTransformExecutor(DocumentTransformRunner):
         )
         match recovered:
             case DocumentTransformResult():
-                return recovered
-            case _:
+                match checkpoint:
+                    case VerifiedPresentationCheckpoint():
+                        if checkpoint.output.file_id != recovered.output.file_id:
+                            raise OutputConflictError
+                        return checkpoint.result
+                    case (
+                        PlannedPresentationCheckpoint()
+                        | CreatingPresentationCheckpoint()
+                        | CreatedPresentationCheckpoint()
+                    ):
+                        await self._record_result(operation_id, checkpoint, recovered)
+                        return recovered
+                    case _:
+                        assert_never(checkpoint)
+            case PresentationDraft() | None:
                 pass
+            case _:
+                assert_never(recovered)
 
         planned = await self._plan_native_source(snapshot, source_parsed, request)
         if not await self._gateway.source_is_unchanged(snapshot):
             raise SourceChangedError
-        draft = recovered or await self._gateway.create_copy(
-            operation_id=operation_id,
-            source=snapshot,
-            source_sha256=source_sha256,
-            output_name=request.output_name or f"{snapshot.title} — {_OUTPUT_SUFFIX[request.mode]}",
+        checkpoint, draft = await self._draft_for_checkpoint(
+            operation_id, snapshot, source_sha256, checkpoint, recovered
         )
+        checkpoint = await self._record_output(operation_id, checkpoint, _output(draft))
         output_presentation = await self._gateway.get_presentation(draft.file_id)
         try:
             output_parsed = parse_google_presentation(
@@ -125,13 +169,15 @@ class PresentationTransformExecutor(DocumentTransformRunner):
         except SourceTooLargeError, UnsupportedSourceError:
             if snapshot.mime_type == MIME_SLIDE:
                 raise
-            return self._conversion_review_result(
+            result = self._conversion_review_result(
                 operation_id=operation_id,
                 request=request,
                 source_sha256=source_sha256,
                 draft=draft,
                 source_revision_id=snapshot.revision_id,
             )
+            await self._record_result(operation_id, checkpoint, result)
+            return result
 
         findings: list[TransformFinding] = []
         if source_parsed is not None:
@@ -163,7 +209,7 @@ class PresentationTransformExecutor(DocumentTransformRunner):
             logo_uri=self._logo_uri,
         )
         findings.extend(mutation.findings)
-        return await self._apply_and_verify_output(
+        result = await self._apply_and_verify_output(
             operation_id=operation_id,
             request=request,
             snapshot=snapshot,
@@ -174,6 +220,120 @@ class PresentationTransformExecutor(DocumentTransformRunner):
             mutation=mutation,
             findings=findings,
         )
+        await self._record_result(operation_id, checkpoint, result)
+        return result
+
+    async def _draft_for_checkpoint(
+        self,
+        operation_id: uuid.UUID,
+        snapshot: PresentationSourceSnapshot,
+        source_sha256: str,
+        checkpoint: PresentationCopyCheckpoint,
+        recovered: PresentationDraft | None,
+    ) -> tuple[PresentationCopyCheckpoint, PresentationDraft]:
+        if recovered is not None:
+            return checkpoint, recovered
+        match checkpoint:
+            case PlannedPresentationCheckpoint():
+                creating = begin_presentation(checkpoint)
+            case _:
+                raise ExternalEffectUncertainError
+        await self._save(operation_id, creating)
+        try:
+            draft = await self._gateway.create_copy(
+                operation_id=operation_id,
+                source=snapshot,
+                source_sha256=source_sha256,
+                output_name=creating.output_name,
+            )
+        except Exception as error:
+            raise ExternalEffectUncertainError from error
+        return creating, draft
+
+    async def _checkpoint_for_request(
+        self,
+        operation_id: uuid.UUID,
+        request: DocumentTransformRequest,
+        snapshot: PresentationSourceSnapshot,
+        source_sha256: str,
+    ) -> PresentationCopyCheckpoint:
+        plan = PresentationCopyPlan(
+            request_sha256=hashlib.sha256(
+                json.dumps(
+                    request.model_dump(mode="json"), sort_keys=True, separators=(",", ":")
+                ).encode()
+            ).hexdigest(),
+            source_sha256=source_sha256,
+            output_name=request.output_name or f"{snapshot.title} — {_OUTPUT_SUFFIX[request.mode]}",
+        )
+        checkpoint = self._checkpoint
+        if checkpoint is None:
+            planned = PlannedPresentationCheckpoint.model_validate(plan.model_dump())
+            await self._save(operation_id, planned)
+            return planned
+        if not isinstance(checkpoint, PresentationCopyPlan):
+            raise OutputConflictError
+        checkpoint = PresentationCheckpointPayload.model_validate(checkpoint.model_dump()).root
+        if (
+            checkpoint.request_sha256 != plan.request_sha256
+            or checkpoint.source_sha256 != plan.source_sha256
+            or checkpoint.output_name != plan.output_name
+        ):
+            raise OutputConflictError
+        return checkpoint
+
+    async def _record_output(
+        self,
+        operation_id: uuid.UUID,
+        checkpoint: PresentationCopyCheckpoint,
+        output: DocumentOutput,
+    ) -> CreatedPresentationCheckpoint | VerifiedPresentationCheckpoint:
+        match checkpoint:
+            case PlannedPresentationCheckpoint():
+                creating = begin_presentation(checkpoint)
+                await self._save(operation_id, creating)
+                return await self._record_output(operation_id, creating, output)
+            case CreatingPresentationCheckpoint():
+                created = record_presentation(checkpoint, output)
+                await self._save(operation_id, created)
+                return created
+            case CreatedPresentationCheckpoint() | VerifiedPresentationCheckpoint():
+                if checkpoint.output.file_id != output.file_id:
+                    raise OutputConflictError
+                return checkpoint
+            case _:
+                assert_never(checkpoint)
+
+    async def _record_result(
+        self,
+        operation_id: uuid.UUID,
+        checkpoint: PresentationCopyCheckpoint,
+        result: DocumentTransformResult,
+    ) -> None:
+        created = await self._record_output(operation_id, checkpoint, result.output)
+        match created:
+            case VerifiedPresentationCheckpoint():
+                if created.result.output.file_id != result.output.file_id:
+                    raise OutputConflictError
+                return
+            case CreatedPresentationCheckpoint():
+                pass
+            case _:
+                assert_never(created)
+        # The Drive revision and navigation URL can change during mutation.
+        created = CreatedPresentationCheckpoint.model_validate(
+            {**created.model_dump(), "output": result.output.model_dump()}
+        )
+        await self._save(operation_id, verify_presentation(created, result))
+
+    async def _save(self, operation_id: uuid.UUID, checkpoint: PresentationCopyCheckpoint) -> None:
+        self._generation = await self._store.save_document_transform_checkpoint(
+            TaskId(operation_id),
+            lease_token=self._lease_token,
+            expected_generation=self._generation,
+            checkpoint=checkpoint,
+        )
+        self._checkpoint = checkpoint
 
     async def _recover_output(
         self,
@@ -189,19 +349,16 @@ class PresentationTransformExecutor(DocumentTransformRunner):
         )
         if recovered is not None and recovered.source_sha256 != source_sha256:
             raise OutputConflictError
-        if recovered is not None and recovered.pending_mutation_sha256 is not None:
+        if recovered is not None and pending_mutation_plan(recovered.mutation) is not None:
             recovered = await self._gateway.reconcile_pending(recovered)
-        if recovered is not None and recovered.completed:
+        if recovered is not None and isinstance(recovered.mutation, CompletedPresentationMutation):
             return self._recovered_result(
                 operation_id=operation_id,
                 request=request,
                 source_sha256=source_sha256,
                 draft=recovered,
             )
-        if recovered is not None and (
-            recovered.pending_mutation_sha256 is not None
-            and recovered.applied_mutation_sha256 == recovered.pending_mutation_sha256
-        ):
+        if recovered is not None and isinstance(recovered.mutation, AppliedPresentationMutation):
             await self._gateway.complete(draft=recovered)
             return self._recovered_result(
                 operation_id=operation_id,

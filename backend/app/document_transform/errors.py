@@ -1,3 +1,4 @@
+import math
 from typing import override
 
 
@@ -38,6 +39,11 @@ class OutputConflictError(DocumentTransformError):
     public_detail = "The existing output belongs to a different source revision"
 
 
+class ExternalEffectUncertainError(DocumentTransformError):
+    code = "external_effect_uncertain"
+    public_detail = "The provider may have created an output; inspect it before trying again"
+
+
 class OutputVerificationError(DocumentTransformError):
     code = "output_verification_failed"
     public_detail = "The transformed output did not pass lossless verification"
@@ -52,44 +58,63 @@ class ModelUnavailableError(DocumentTransformError):
     code = "model_unavailable"
     public_detail = "The document transformation model is temporarily unavailable"
 
-    def __init__(self, *, retryable: bool = True, retry_after: float | None = None) -> None:
+    def __init__(self, *, retry_after: float | None = None) -> None:
+        if retry_after is not None and (not math.isfinite(retry_after) or retry_after < 0):
+            msg = "Model retry delay must be finite and nonnegative"
+            raise ValueError(msg)
         super().__init__(self.public_detail)
-        self.retryable = retryable
-        self.retry_after = retry_after
+        self._retry_after = retry_after
+
+    @property
+    def retryable(self) -> bool:
+        return True
+
+    @property
+    def retry_after(self) -> float | None:
+        return self._retry_after
 
     @property
     def retry_within_operation(self) -> bool:
         return self.retryable
 
 
-class ModelConfigurationError(ModelUnavailableError):
+class ExhaustedModelError(ModelUnavailableError):
+    @property
+    @override
+    def retryable(self) -> bool:
+        # The bounded operation consumed its attempts; redelivery must not reset them.
+        return False
+
+
+class NoQueueRetryModelError(ModelUnavailableError):
+    def __init__(self) -> None:
+        super().__init__()
+
+    @property
+    @override
+    def retryable(self) -> bool:
+        return False
+
+
+class ModelConfigurationError(NoQueueRetryModelError):
     code = "model_configuration_invalid"
     public_detail = (
         "The configured model or endpoint is unavailable. Contact support with this task ID."
     )
 
-    def __init__(self) -> None:
-        super().__init__(retryable=False)
 
-
-class ModelAuthenticationError(ModelUnavailableError):
+class ModelAuthenticationError(NoQueueRetryModelError):
     code = "model_authentication_failed"
     public_detail = "Model provider authorization failed. Contact support with this task ID."
-
-    def __init__(self) -> None:
-        super().__init__(retryable=False)
 
 
 class ModelPermissionError(ModelAuthenticationError):
     code = "model_permission_denied"
 
 
-class ModelOutputError(ModelUnavailableError):
+class ModelOutputError(NoQueueRetryModelError):
     code = "model_output_invalid"
     public_detail = "The model returned invalid output. No unverified rewrite was applied."
-
-    def __init__(self) -> None:
-        super().__init__(retryable=False)
 
     @property
     @override
@@ -99,14 +124,11 @@ class ModelOutputError(ModelUnavailableError):
         return True
 
 
-class ModelDeadlineError(ModelUnavailableError):
+class ModelDeadlineError(NoQueueRetryModelError):
     code = "model_deadline_exhausted"
     public_detail = (
         "The model could not finish within the execution budget. Review this task before retrying."
     )
-
-    def __init__(self) -> None:
-        super().__init__(retryable=False)
 
 
 class ModelOutputTruncatedError(ModelOutputError):

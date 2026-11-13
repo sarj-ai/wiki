@@ -123,3 +123,76 @@ def test_growth_cli_keeps_per_file_shrink_only_behavior(tmp_path: Path) -> None:
 
     assert result.exit_code == 1
     assert "relocated.py/rule: 0 -> 1" in result.stderr
+
+
+@pytest.mark.parametrize(
+    "count",
+    [
+        pytest.param(True, id="boolean"),
+        pytest.param("1", id="numeric-text"),
+        pytest.param(1.5, id="fractional"),
+        pytest.param({"count": True}, id="boolean-object"),
+        pytest.param({"count": "1"}, id="numeric-text-object"),
+    ],
+)
+def test_growth_cli_rejects_coerced_counts_without_mutating_evidence(
+    tmp_path: Path, count: bool | str | float | dict[str, bool | str]
+) -> None:
+    before, after = tmp_path / "before.json", tmp_path / "after.json"
+    before.write_text('{"existing.py": {"rule": 1}}')
+    after.write_text(json.dumps({"existing.py": {"rule": count}}))
+    evidence = before.read_bytes(), after.read_bytes()
+
+    result = CliRunner().invoke(GROWTH["CLI"], [str(before), str(after)])
+
+    assert result.exit_code == 2
+    assert (before.read_bytes(), after.read_bytes()) == evidence
+
+
+@pytest.mark.parametrize(
+    ("version", "rule", "count", "expected"),
+    [
+        ("1", "new-rule", 1, 1),
+        ("2", "new-rule", 1, 0),
+        ("2", "configured-rule", 1, 1),
+        ("2", "old-rule", 2, 1),
+    ],
+)
+def test_growth_cli_only_adopts_new_rules_at_a_real_bundle_change(
+    tmp_path: Path, version: str, rule: str, count: int, expected: int
+) -> None:
+    before, after = tmp_path / "before.json", tmp_path / "after.json"
+    old_pin, new_pin, config = tmp_path / "old.toml", tmp_path / "new.toml", tmp_path / "config"
+    before.write_text('{"existing.py": {"old-rule": 1}}')
+    after.write_text(json.dumps({"existing.py": {rule: count}}))
+    old_pin.write_text('bundle = "1"\n')
+    new_pin.write_text(f'bundle = "{version}"\n')
+    config.write_text('"old-rule": "error", "configured-rule": "error"')
+
+    result = CliRunner().invoke(
+        GROWTH["CLI"],
+        [
+            "--standards-base",
+            str(old_pin),
+            "--standards-current",
+            str(new_pin),
+            "--base-config",
+            str(config),
+            str(before),
+            str(after),
+        ],
+    )
+
+    assert result.exit_code == expected
+
+
+@pytest.mark.parametrize(
+    "option", ["--standards-base", "--standards-current", "--base-config", "--bootstrap"]
+)
+def test_growth_cli_rejects_partial_or_retired_modes_before_reading_inputs(option: str) -> None:
+    result = CliRunner().invoke(
+        GROWTH["CLI"], [option, "missing", "missing-before", "missing-after"]
+    )
+
+    assert result.exit_code == 2
+    assert not isinstance(result.exception, FileNotFoundError)

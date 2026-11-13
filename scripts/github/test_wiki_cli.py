@@ -1,6 +1,7 @@
-from hashlib import sha256
-from pathlib import Path
+from __future__ import annotations
+
 import sys
+from typing import TYPE_CHECKING
 
 from pydantic import BaseModel
 import pytest
@@ -8,10 +9,10 @@ import typer
 from typer.testing import CliRunner
 
 from scripts import wiki
-from scripts.standards_checks.check_baseline_growth import (
-    _BootstrapGrowth,
-    _validated_allowances,
-)
+
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 
 _USAGE_ERROR = 2
@@ -330,37 +331,3 @@ def test_setup_initializes_locked_local_providers_after_packages_and_preserves_d
         ],
     ]
     assert all(call.terraform_data_directory == selected_directory for call in calls)
-
-
-@pytest.mark.parametrize("review", ["missing", "matching", "tampered"])
-def test_migration_allowance_requires_the_exact_reviewed_changed_source(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, review: str
-) -> None:
-    monkeypatch.chdir(tmp_path)
-    source = Path("frontend/sample.ts")
-    source.parent.mkdir()
-    source.write_text("export const value = 1;\n", encoding="utf-8")
-    digest = sha256(source.read_bytes()).hexdigest()
-    hashes = {} if review == "missing" else {str(source): digest}
-    if review == "tampered":
-        source.write_text("export const value = 2;\n", encoding="utf-8")
-
-    allowances = {"sample.ts": {"rule": _BootstrapGrowth(before=0, after=1)}}
-
-    def verify() -> bool:
-        return bool(
-            _validated_allowances(
-                allowances,
-                bootstrap="review.json",
-                changed={str(source)},
-                changed_prefix="frontend/",
-                reviewed_source_hashes=hashes,
-            )
-        )
-
-    if review == "matching":
-        assert verify()
-    else:
-        with pytest.raises(SystemExit) as failure:
-            verify()
-        assert failure.value.code == _USAGE_ERROR

@@ -155,7 +155,7 @@
         "title": "BreadcrumbItem",
         "type": "object"
       },
-      "CancelledTaskRead": {
+      "CancelledTaskRead_Literal_FILE_DOCUMENT_TRANSFORM__": {
         "properties": {
           "attempt_count": {
             "const": 0,
@@ -186,7 +186,9 @@
             "type": "string"
           },
           "kind": {
-            "$ref": "#/components/schemas/TaskKind"
+            "const": "file.document_transform",
+            "title": "Kind",
+            "type": "string"
           },
           "resource_id": {
             "title": "Resource Id",
@@ -219,7 +221,76 @@
           "started_at",
           "finished_at"
         ],
-        "title": "CancelledTaskRead",
+        "title": "CancelledTaskRead[Literal[<TaskKind.FILE_DOCUMENT_TRANSFORM: 'file.document_transform'>]]",
+        "type": "object"
+      },
+      "CancelledTaskRead_Literal_FILE_SMART_CREATE__": {
+        "properties": {
+          "attempt_count": {
+            "const": 0,
+            "title": "Attempt Count",
+            "type": "integer"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "error_code": {
+            "title": "Error Code",
+            "type": "null"
+          },
+          "error_detail": {
+            "title": "Error Detail",
+            "type": "null"
+          },
+          "finished_at": {
+            "format": "date-time",
+            "title": "Finished At",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "kind": {
+            "const": "file.smart_create",
+            "title": "Kind",
+            "type": "string"
+          },
+          "resource_id": {
+            "title": "Resource Id",
+            "type": "null"
+          },
+          "result": {
+            "title": "Result",
+            "type": "null"
+          },
+          "started_at": {
+            "title": "Started At",
+            "type": "null"
+          },
+          "status": {
+            "const": "cancelled",
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "created_at",
+          "kind",
+          "status",
+          "result",
+          "resource_id",
+          "error_code",
+          "error_detail",
+          "attempt_count",
+          "started_at",
+          "finished_at"
+        ],
+        "title": "CancelledTaskRead[Literal[<TaskKind.FILE_SMART_CREATE: 'file.smart_create'>]]",
         "type": "object"
       },
       "CurrentDocumentPolish": {
@@ -773,6 +844,39 @@
         "title": "DocumentTransformSucceededTaskRead",
         "type": "object"
       },
+      "DocumentTransformTaskRead": {
+        "discriminator": {
+          "mapping": {
+            "cancelled": "#/components/schemas/CancelledTaskRead_Literal_FILE_DOCUMENT_TRANSFORM__",
+            "failed": "#/components/schemas/FailedTaskRead_Literal_FILE_DOCUMENT_TRANSFORM__",
+            "needs_review": "#/components/schemas/NeedsReviewTaskRead_Literal_FILE_DOCUMENT_TRANSFORM__",
+            "pending": "#/components/schemas/PendingTaskRead_Literal_FILE_DOCUMENT_TRANSFORM__",
+            "running": "#/components/schemas/RunningTaskRead_Literal_FILE_DOCUMENT_TRANSFORM__",
+            "succeeded": "#/components/schemas/DocumentTransformSucceededTaskRead"
+          },
+          "propertyName": "status"
+        },
+        "oneOf": [
+          {
+            "$ref": "#/components/schemas/PendingTaskRead_Literal_FILE_DOCUMENT_TRANSFORM__"
+          },
+          {
+            "$ref": "#/components/schemas/RunningTaskRead_Literal_FILE_DOCUMENT_TRANSFORM__"
+          },
+          {
+            "$ref": "#/components/schemas/DocumentTransformSucceededTaskRead"
+          },
+          {
+            "$ref": "#/components/schemas/FailedTaskRead_Literal_FILE_DOCUMENT_TRANSFORM__"
+          },
+          {
+            "$ref": "#/components/schemas/CancelledTaskRead_Literal_FILE_DOCUMENT_TRANSFORM__"
+          },
+          {
+            "$ref": "#/components/schemas/NeedsReviewTaskRead_Literal_FILE_DOCUMENT_TRANSFORM__"
+          }
+        ]
+      },
       "DriveFileSource": {
         "additionalProperties": false,
         "properties": {
@@ -1138,7 +1242,7 @@
         "title": "ErrorResponse",
         "type": "object"
       },
-      "FailedTaskRead": {
+      "FailedTaskRead_Literal_FILE_DOCUMENT_TRANSFORM__": {
         "properties": {
           "attempt_count": {
             "exclusiveMinimum": 0.0,
@@ -1176,7 +1280,9 @@
             "type": "string"
           },
           "kind": {
-            "$ref": "#/components/schemas/TaskKind"
+            "const": "file.document_transform",
+            "title": "Kind",
+            "type": "string"
           },
           "resource_id": {
             "anyOf": [
@@ -1227,7 +1333,101 @@
           "started_at",
           "finished_at"
         ],
-        "title": "FailedTaskRead",
+        "title": "FailedTaskRead[Literal[<TaskKind.FILE_DOCUMENT_TRANSFORM: 'file.document_transform'>]]",
+        "type": "object"
+      },
+      "FailedTaskRead_Literal_FILE_SMART_CREATE__": {
+        "properties": {
+          "attempt_count": {
+            "exclusiveMinimum": 0.0,
+            "title": "Attempt Count",
+            "type": "integer"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "error_code": {
+            "title": "Error Code",
+            "type": "string"
+          },
+          "error_detail": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Detail"
+          },
+          "finished_at": {
+            "format": "date-time",
+            "title": "Finished At",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "kind": {
+            "const": "file.smart_create",
+            "title": "Kind",
+            "type": "string"
+          },
+          "resource_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Resource Id"
+          },
+          "result": {
+            "title": "Result",
+            "type": "null"
+          },
+          "started_at": {
+            "format": "date-time",
+            "title": "Started At",
+            "type": "string"
+          },
+          "status": {
+            "const": "failed",
+            "title": "Status",
+            "type": "string"
+          },
+          "unverified_output": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/UnverifiedTaskOutput"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "created_at",
+          "kind",
+          "status",
+          "result",
+          "resource_id",
+          "error_code",
+          "error_detail",
+          "attempt_count",
+          "started_at",
+          "finished_at"
+        ],
+        "title": "FailedTaskRead[Literal[<TaskKind.FILE_SMART_CREATE: 'file.smart_create'>]]",
         "type": "object"
       },
       "FileCopy": {
@@ -1720,6 +1920,164 @@
         "title": "MarkdownUpload",
         "type": "object"
       },
+      "NeedsReviewTaskRead_Literal_FILE_DOCUMENT_TRANSFORM__": {
+        "properties": {
+          "attempt_count": {
+            "exclusiveMinimum": 0.0,
+            "title": "Attempt Count",
+            "type": "integer"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "error_code": {
+            "const": "external_effect_uncertain",
+            "title": "Error Code",
+            "type": "string"
+          },
+          "error_detail": {
+            "minLength": 1,
+            "title": "Error Detail",
+            "type": "string"
+          },
+          "finished_at": {
+            "format": "date-time",
+            "title": "Finished At",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "kind": {
+            "const": "file.document_transform",
+            "title": "Kind",
+            "type": "string"
+          },
+          "resource_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Resource Id"
+          },
+          "result": {
+            "title": "Result",
+            "type": "null"
+          },
+          "started_at": {
+            "format": "date-time",
+            "title": "Started At",
+            "type": "string"
+          },
+          "status": {
+            "const": "needs_review",
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "created_at",
+          "kind",
+          "status",
+          "result",
+          "resource_id",
+          "error_code",
+          "error_detail",
+          "attempt_count",
+          "started_at",
+          "finished_at"
+        ],
+        "title": "NeedsReviewTaskRead[Literal[<TaskKind.FILE_DOCUMENT_TRANSFORM: 'file.document_transform'>]]",
+        "type": "object"
+      },
+      "NeedsReviewTaskRead_Literal_FILE_SMART_CREATE__": {
+        "properties": {
+          "attempt_count": {
+            "exclusiveMinimum": 0.0,
+            "title": "Attempt Count",
+            "type": "integer"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "error_code": {
+            "const": "external_effect_uncertain",
+            "title": "Error Code",
+            "type": "string"
+          },
+          "error_detail": {
+            "minLength": 1,
+            "title": "Error Detail",
+            "type": "string"
+          },
+          "finished_at": {
+            "format": "date-time",
+            "title": "Finished At",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "kind": {
+            "const": "file.smart_create",
+            "title": "Kind",
+            "type": "string"
+          },
+          "resource_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Resource Id"
+          },
+          "result": {
+            "title": "Result",
+            "type": "null"
+          },
+          "started_at": {
+            "format": "date-time",
+            "title": "Started At",
+            "type": "string"
+          },
+          "status": {
+            "const": "needs_review",
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "created_at",
+          "kind",
+          "status",
+          "result",
+          "resource_id",
+          "error_code",
+          "error_detail",
+          "attempt_count",
+          "started_at",
+          "finished_at"
+        ],
+        "title": "NeedsReviewTaskRead[Literal[<TaskKind.FILE_SMART_CREATE: 'file.smart_create'>]]",
+        "type": "object"
+      },
       "OutputStrategy": {
         "enum": [
           "copy",
@@ -1728,7 +2086,7 @@
         "title": "OutputStrategy",
         "type": "string"
       },
-      "PendingTaskRead": {
+      "PendingTaskRead_Literal_FILE_DOCUMENT_TRANSFORM__": {
         "properties": {
           "attempt_count": {
             "const": 0,
@@ -1758,7 +2116,9 @@
             "type": "string"
           },
           "kind": {
-            "$ref": "#/components/schemas/TaskKind"
+            "const": "file.document_transform",
+            "title": "Kind",
+            "type": "string"
           },
           "resource_id": {
             "title": "Resource Id",
@@ -1791,7 +2151,75 @@
           "started_at",
           "finished_at"
         ],
-        "title": "PendingTaskRead",
+        "title": "PendingTaskRead[Literal[<TaskKind.FILE_DOCUMENT_TRANSFORM: 'file.document_transform'>]]",
+        "type": "object"
+      },
+      "PendingTaskRead_Literal_FILE_SMART_CREATE__": {
+        "properties": {
+          "attempt_count": {
+            "const": 0,
+            "title": "Attempt Count",
+            "type": "integer"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "error_code": {
+            "title": "Error Code",
+            "type": "null"
+          },
+          "error_detail": {
+            "title": "Error Detail",
+            "type": "null"
+          },
+          "finished_at": {
+            "title": "Finished At",
+            "type": "null"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "kind": {
+            "const": "file.smart_create",
+            "title": "Kind",
+            "type": "string"
+          },
+          "resource_id": {
+            "title": "Resource Id",
+            "type": "null"
+          },
+          "result": {
+            "title": "Result",
+            "type": "null"
+          },
+          "started_at": {
+            "title": "Started At",
+            "type": "null"
+          },
+          "status": {
+            "const": "pending",
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "created_at",
+          "kind",
+          "status",
+          "result",
+          "resource_id",
+          "error_code",
+          "error_detail",
+          "attempt_count",
+          "started_at",
+          "finished_at"
+        ],
+        "title": "PendingTaskRead[Literal[<TaskKind.FILE_SMART_CREATE: 'file.smart_create'>]]",
         "type": "object"
       },
       "PreferencesRead": {
@@ -2023,7 +2451,7 @@
         "title": "ReorganizationProposalRead",
         "type": "object"
       },
-      "RunningTaskRead": {
+      "RunningTaskRead_Literal_FILE_DOCUMENT_TRANSFORM__": {
         "properties": {
           "attempt_count": {
             "exclusiveMinimum": 0.0,
@@ -2062,7 +2490,9 @@
             "type": "string"
           },
           "kind": {
-            "$ref": "#/components/schemas/TaskKind"
+            "const": "file.document_transform",
+            "title": "Kind",
+            "type": "string"
           },
           "resource_id": {
             "anyOf": [
@@ -2103,7 +2533,92 @@
           "started_at",
           "finished_at"
         ],
-        "title": "RunningTaskRead",
+        "title": "RunningTaskRead[Literal[<TaskKind.FILE_DOCUMENT_TRANSFORM: 'file.document_transform'>]]",
+        "type": "object"
+      },
+      "RunningTaskRead_Literal_FILE_SMART_CREATE__": {
+        "properties": {
+          "attempt_count": {
+            "exclusiveMinimum": 0.0,
+            "title": "Attempt Count",
+            "type": "integer"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "error_code": {
+            "title": "Error Code",
+            "type": "null"
+          },
+          "error_detail": {
+            "title": "Error Detail",
+            "type": "null"
+          },
+          "execution_state": {
+            "default": "running",
+            "enum": [
+              "running",
+              "retrying"
+            ],
+            "title": "Execution State",
+            "type": "string"
+          },
+          "finished_at": {
+            "title": "Finished At",
+            "type": "null"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "kind": {
+            "const": "file.smart_create",
+            "title": "Kind",
+            "type": "string"
+          },
+          "resource_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Resource Id"
+          },
+          "result": {
+            "title": "Result",
+            "type": "null"
+          },
+          "started_at": {
+            "format": "date-time",
+            "title": "Started At",
+            "type": "string"
+          },
+          "status": {
+            "const": "running",
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "created_at",
+          "kind",
+          "status",
+          "result",
+          "resource_id",
+          "error_code",
+          "error_detail",
+          "attempt_count",
+          "started_at",
+          "finished_at"
+        ],
+        "title": "RunningTaskRead[Literal[<TaskKind.FILE_SMART_CREATE: 'file.smart_create'>]]",
         "type": "object"
       },
       "SearchResult": {
@@ -2317,6 +2832,39 @@
         ],
         "title": "SmartCreateSucceededTaskRead",
         "type": "object"
+      },
+      "SmartCreateTaskRead": {
+        "discriminator": {
+          "mapping": {
+            "cancelled": "#/components/schemas/CancelledTaskRead_Literal_FILE_SMART_CREATE__",
+            "failed": "#/components/schemas/FailedTaskRead_Literal_FILE_SMART_CREATE__",
+            "needs_review": "#/components/schemas/NeedsReviewTaskRead_Literal_FILE_SMART_CREATE__",
+            "pending": "#/components/schemas/PendingTaskRead_Literal_FILE_SMART_CREATE__",
+            "running": "#/components/schemas/RunningTaskRead_Literal_FILE_SMART_CREATE__",
+            "succeeded": "#/components/schemas/SmartCreateSucceededTaskRead"
+          },
+          "propertyName": "status"
+        },
+        "oneOf": [
+          {
+            "$ref": "#/components/schemas/PendingTaskRead_Literal_FILE_SMART_CREATE__"
+          },
+          {
+            "$ref": "#/components/schemas/RunningTaskRead_Literal_FILE_SMART_CREATE__"
+          },
+          {
+            "$ref": "#/components/schemas/SmartCreateSucceededTaskRead"
+          },
+          {
+            "$ref": "#/components/schemas/FailedTaskRead_Literal_FILE_SMART_CREATE__"
+          },
+          {
+            "$ref": "#/components/schemas/CancelledTaskRead_Literal_FILE_SMART_CREATE__"
+          },
+          {
+            "$ref": "#/components/schemas/NeedsReviewTaskRead_Literal_FILE_SMART_CREATE__"
+          }
+        ]
       },
       "SmartCreateWarning": {
         "additionalProperties": false,
@@ -2551,38 +3099,14 @@
         "title": "SortOrderWrite",
         "type": "object"
       },
-      "SucceededTaskRead": {
-        "discriminator": {
-          "mapping": {
-            "file.document_transform": "#/components/schemas/DocumentTransformSucceededTaskRead",
-            "file.smart_create": "#/components/schemas/SmartCreateSucceededTaskRead"
-          },
-          "propertyName": "kind"
-        },
-        "oneOf": [
-          {
-            "$ref": "#/components/schemas/SmartCreateSucceededTaskRead"
-          },
-          {
-            "$ref": "#/components/schemas/DocumentTransformSucceededTaskRead"
-          }
-        ]
-      },
-      "TaskKind": {
-        "enum": [
-          "file.smart_create",
-          "file.document_transform"
-        ],
-        "title": "TaskKind",
-        "type": "string"
-      },
       "TaskStatus": {
         "enum": [
           "pending",
           "running",
           "succeeded",
           "failed",
-          "cancelled"
+          "cancelled",
+          "needs_review"
         ],
         "title": "TaskStatus",
         "type": "string"
@@ -3462,29 +3986,17 @@
                 "schema": {
                   "discriminator": {
                     "mapping": {
-                      "cancelled": "#/components/schemas/CancelledTaskRead",
-                      "failed": "#/components/schemas/FailedTaskRead",
-                      "pending": "#/components/schemas/PendingTaskRead",
-                      "running": "#/components/schemas/RunningTaskRead",
-                      "succeeded": "#/components/schemas/SucceededTaskRead"
+                      "file.document_transform": "#/components/schemas/DocumentTransformTaskRead",
+                      "file.smart_create": "#/components/schemas/SmartCreateTaskRead"
                     },
-                    "propertyName": "status"
+                    "propertyName": "kind"
                   },
                   "oneOf": [
                     {
-                      "$ref": "#/components/schemas/PendingTaskRead"
+                      "$ref": "#/components/schemas/SmartCreateTaskRead"
                     },
                     {
-                      "$ref": "#/components/schemas/RunningTaskRead"
-                    },
-                    {
-                      "$ref": "#/components/schemas/SucceededTaskRead"
-                    },
-                    {
-                      "$ref": "#/components/schemas/FailedTaskRead"
-                    },
-                    {
-                      "$ref": "#/components/schemas/CancelledTaskRead"
+                      "$ref": "#/components/schemas/DocumentTransformTaskRead"
                     }
                   ],
                   "title": "Response Create Document Transform"
@@ -4520,29 +5032,17 @@
                 "schema": {
                   "discriminator": {
                     "mapping": {
-                      "cancelled": "#/components/schemas/CancelledTaskRead",
-                      "failed": "#/components/schemas/FailedTaskRead",
-                      "pending": "#/components/schemas/PendingTaskRead",
-                      "running": "#/components/schemas/RunningTaskRead",
-                      "succeeded": "#/components/schemas/SucceededTaskRead"
+                      "file.document_transform": "#/components/schemas/DocumentTransformTaskRead",
+                      "file.smart_create": "#/components/schemas/SmartCreateTaskRead"
                     },
-                    "propertyName": "status"
+                    "propertyName": "kind"
                   },
                   "oneOf": [
                     {
-                      "$ref": "#/components/schemas/PendingTaskRead"
+                      "$ref": "#/components/schemas/SmartCreateTaskRead"
                     },
                     {
-                      "$ref": "#/components/schemas/RunningTaskRead"
-                    },
-                    {
-                      "$ref": "#/components/schemas/SucceededTaskRead"
-                    },
-                    {
-                      "$ref": "#/components/schemas/FailedTaskRead"
-                    },
-                    {
-                      "$ref": "#/components/schemas/CancelledTaskRead"
+                      "$ref": "#/components/schemas/DocumentTransformTaskRead"
                     }
                   ],
                   "title": "Response Create Smart File"
@@ -5459,29 +5959,17 @@
                 "schema": {
                   "discriminator": {
                     "mapping": {
-                      "cancelled": "#/components/schemas/CancelledTaskRead",
-                      "failed": "#/components/schemas/FailedTaskRead",
-                      "pending": "#/components/schemas/PendingTaskRead",
-                      "running": "#/components/schemas/RunningTaskRead",
-                      "succeeded": "#/components/schemas/SucceededTaskRead"
+                      "file.document_transform": "#/components/schemas/DocumentTransformTaskRead",
+                      "file.smart_create": "#/components/schemas/SmartCreateTaskRead"
                     },
-                    "propertyName": "status"
+                    "propertyName": "kind"
                   },
                   "oneOf": [
                     {
-                      "$ref": "#/components/schemas/PendingTaskRead"
+                      "$ref": "#/components/schemas/SmartCreateTaskRead"
                     },
                     {
-                      "$ref": "#/components/schemas/RunningTaskRead"
-                    },
-                    {
-                      "$ref": "#/components/schemas/SucceededTaskRead"
-                    },
-                    {
-                      "$ref": "#/components/schemas/FailedTaskRead"
-                    },
-                    {
-                      "$ref": "#/components/schemas/CancelledTaskRead"
+                      "$ref": "#/components/schemas/DocumentTransformTaskRead"
                     }
                   ],
                   "title": "Response Get Task"

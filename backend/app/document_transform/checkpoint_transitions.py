@@ -4,14 +4,18 @@ from app.document_transform.errors import OutputConflictError
 from app.document_transform.schemas import (
     CopyCheckpointStage,
     CreatedCopyCheckpoint,
+    CreatedPresentationCheckpoint,
     CreatedWordCheckpoint,
     CreatingCopyCheckpoint,
+    CreatingPresentationCheckpoint,
     CreatingWordCheckpoint,
     DocumentOutput,
     DocumentTransformResult,
     PlannedCopyCheckpoint,
+    PlannedPresentationCheckpoint,
     PlannedWordCheckpoint,
     VerifiedCopyCheckpoint,
+    VerifiedPresentationCheckpoint,
     VerifiedWordCheckpoint,
 )
 from app.identifiers import DocsRevisionId
@@ -77,6 +81,33 @@ def verify_word(
 ) -> VerifiedWordCheckpoint:
     _require_state(checkpoint, CreatedWordCheckpoint)
     return VerifiedWordCheckpoint.model_validate(
+        {**checkpoint.model_dump(), "stage": CopyCheckpointStage.VERIFIED, "result": result}
+    )
+
+
+def begin_presentation(
+    checkpoint: PlannedPresentationCheckpoint,
+) -> CreatingPresentationCheckpoint:
+    _require_state(checkpoint, PlannedPresentationCheckpoint)
+    return CreatingPresentationCheckpoint.model_validate(
+        {**checkpoint.model_dump(), "stage": CopyCheckpointStage.CREATING}
+    )
+
+
+def record_presentation(
+    checkpoint: CreatingPresentationCheckpoint, output: DocumentOutput
+) -> CreatedPresentationCheckpoint:
+    _require_state(checkpoint, CreatingPresentationCheckpoint)
+    return CreatedPresentationCheckpoint.model_validate(
+        {**checkpoint.model_dump(), "stage": CopyCheckpointStage.CREATED, "output": output}
+    )
+
+
+def verify_presentation(
+    checkpoint: CreatedPresentationCheckpoint, result: DocumentTransformResult
+) -> VerifiedPresentationCheckpoint:
+    _require_state(checkpoint, CreatedPresentationCheckpoint)
+    return VerifiedPresentationCheckpoint.model_validate(
         {**checkpoint.model_dump(), "stage": CopyCheckpointStage.VERIFIED, "result": result}
     )
 

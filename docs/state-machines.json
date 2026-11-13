@@ -1,5 +1,5 @@
 {
-  "scope": "All tracked Wiki application, API, frontend, task, OAuth, provider, deployment and infrastructure sources. Existing explicit machines retained; static facts/framework/native-provider boundaries have concrete exceptions.",
+  "scope": "All tracked Wiki application, API, frontend, task, OAuth, provider, deployment and infrastructure sources. Retained explicit machines and concrete framework/provider exceptions are recorded below; source coverage identifies the reviewed content.",
   "machines": [
     {
       "id": "document-copy",
@@ -217,7 +217,7 @@
     {
       "id": "durable-task",
       "oldRepresentation": "SQL status/lease/deadline/checkpoint/result fields",
-      "authoritativeReplacement": "TaskRead closed Pydantic union, canonical TaskService SQL transitions and task constraints",
+      "authoritativeReplacement": "Kind-discriminated TaskRead containing six status-discriminated variants; correlated NewTaskReservation(pending, created) | ExistingTaskReservation and running-only TaskClaim. needs_review retains forensic input/checkpoint and cannot be claimed. The frontend separates running tasks with required positive attempt and execution state from pending/cancelled tasks, which carry neither field.",
       "events": [
         "admit",
         "claim",
@@ -227,27 +227,34 @@
         "succeed",
         "fail",
         "expire",
-        "cancel"
+        "cancel",
+        "require review after uncertain external effect",
+        "reconcile expired execution"
       ],
       "guards": [
-        "one resource reservation",
-        "replay-key uniqueness",
-        "owner/generation/lease CAS",
-        "transactional terminal write"
+        "Strict runtime models for both task kinds and their six states",
+        "Current lease token and checkpoint generation CAS",
+        "Prospective terminal model validation before commit",
+        "Review status and evidence constraints; no lossy downgrade",
+        "Authorization before binding fresh replay keys",
+        "A running SQL projection requires a lease expiry. Live and expired expiries project to running and retrying; the frontend rejects missing or invalid running evidence."
       ],
-      "recovery": "SQL is the authoritative cross-replica machine; relational columns remain for indexes/atomic predicates, not an in-memory optional-field domain model. Pending, running and failed evidence is preserved.",
+      "recovery": "0029 converts expired running leases to needs_review under an exclusive table lock after refusing live leases. Reviews retain original, alias and fresh replay keys and target reservations indefinitely. Pending undispatched tasks may expire safely. Ambiguous external actions are never repeated because an acknowledgement or negative provider search is missing.",
       "decision": "retain-explicit",
       "sources": [
         "backend/app/tasks/service.py",
         "backend/app/tasks/schemas.py",
-        "backend/app/models/task.py"
+        "backend/app/models/task.py",
+        "frontend/src/lib/document-transform-api.ts",
+        "frontend/src/lib/document-transform-types.ts",
+        "frontend/src/lib/transform-progress-message.ts"
       ],
       "resultTyping": {
         "previous": "SucceededTaskRead accepted either command kind with either result type.",
         "replacement": "SmartCreateSucceededTaskRead(kind=file.smart_create, result=SmartCreateResult) | DocumentTransformSucceededTaskRead(kind=file.document_transform, result=DocumentTransformResult), nested under the status discriminator.",
         "invalidTransitions": "Runtime validation rejects a result for another command kind or a result whose task/operation ID differs from its enclosing task. The transition validates the returned state before commit; errors and cancellation roll back.",
-        "migration": "Deployed 0028_task_result_invariants enforces allowed kinds, kind-specific result shape and matching task/operation identity in PostgreSQL. Production read-only catalog confirms both constraints.",
-        "verification": "Native frontend/backend checks, real PostgreSQL invalid-state and concurrency tests, generated API checks and production health/schema readback passed. Historical expired-task evidence remains preserved."
+        "migration": "0028 result invariants were applied and production-verified in merged PR652. Proposed 0029 adds review invariants and retains expired worker evidence; downgrade refuses unresolved review records.",
+        "verification": "PR652 required CI, complete backend/frontend suites, real PostgreSQL result invariants and protected production deployment passed. Follow-up review/copy recovery checks and migration verification remain pending."
       }
     },
     {
@@ -454,6 +461,481 @@
       "sources": [
         "frontend/src/hooks/use-deferred-dialog.ts"
       ]
+    },
+    {
+      "id": "presentation-copy-creation",
+      "oldRepresentation": "Provider appProperties and recovery search without a SQL dispatch checkpoint; missing search result could repeat a successful but unacknowledged copy.",
+      "authoritativeReplacement": "PlannedPresentationCheckpoint | CreatingPresentationCheckpoint | CreatedPresentationCheckpoint(output) | VerifiedPresentationCheckpoint(output,result), encrypted in the existing checkpoint column.",
+      "events": [
+        "plan",
+        "persist creation intent",
+        "dispatch once",
+        "recover positively identified output",
+        "verify",
+        "require review"
+      ],
+      "guards": [
+        "request/source SHA-256 and output-name binding",
+        "owned lease and generation CAS before dispatch",
+        "closed runtime stage parser",
+        "checkpoint output/result identity"
+      ],
+      "recovery": "Creating without positive provider recovery requires review; absence from search does not authorize a second copy. A lost SQL acknowledgement retains creation intent. Positive recovery resumes verification and preserves the saved result. Existing legacy expired workers migrate to review rather than being replayed.",
+      "decision": "convert",
+      "verification": "Native source analysis and four type checkers passed; focused runtime, real PostgreSQL migration/concurrency and MCP transaction fixtures passed on 2026-11-12. Protected full repository and production release qualification remains an independent gate.",
+      "sources": [
+        "backend/app/document_transform/presentation_executor.py",
+        "backend/app/document_transform/checkpoint_transitions.py",
+        "backend/app/document_transform/schemas.py"
+      ]
+    },
+    {
+      "id": "smart-create-dispatch",
+      "oldRepresentation": "Optional resource ID and provider task marker; retry searched then created again after an ambiguous acknowledgement. Active/terminal DTOs shared a mandatory replay payload.",
+      "authoritativeReplacement": "SmartCreateCheckpoint(creating) persisted once under the owned running lease; SmartCreateDispatch started | already_attempted; active and settled kind-scoped task records, with needs_review on uncertain acceptance.",
+      "events": [
+        "recover existing output",
+        "record durable dispatch",
+        "create once",
+        "record resource",
+        "enrich idempotently",
+        "succeed",
+        "require review"
+      ],
+      "guards": [
+        "atomic checkpoint-is-null UPDATE",
+        "lease token and expiry before dispatch",
+        "runtime validation of persisted dispatch marker",
+        "positive provider identity before resumption"
+      ],
+      "recovery": "A persisted dispatch with no positive recovery cannot create again. Unknown provider acknowledgement requires review and preserves payload/checkpoint evidence. Existing alias/icon enrichment operates only after output identity is known.",
+      "decision": "convert",
+      "verification": "Native source analysis and four type checkers passed; focused runtime, real PostgreSQL migration/concurrency and MCP transaction fixtures passed on 2026-11-12. Protected full repository and production release qualification remains an independent gate.",
+      "sources": [
+        "backend/app/smart_create/creation.py",
+        "backend/app/smart_create/executor.py",
+        "backend/app/tasks/service.py",
+        "backend/app/tasks/schemas.py"
+      ]
+    },
+    {
+      "id": "presentation-provider-mutation",
+      "oldRepresentation": "Seven independent optional mutation fields and a completed boolean on PresentationDraft.",
+      "authoritativeReplacement": "ReadyPresentation | PendingPresentationMutation(plan) | AppliedPresentationMutation(plan) | RecordedPresentationMutation(digest) | CompletedPresentationMutation(receipt), with exhaustive receipt/plan selectors.",
+      "events": [
+        "persist expected plan and base revision",
+        "send revision-fenced batch once",
+        "read exact semantic/structure/brand postcondition",
+        "record acknowledged mutation",
+        "complete"
+      ],
+      "guards": [
+        "runtime provider metadata decoder rejects missing/conflicting plan fields and completion without receipt",
+        "required revision CAS",
+        "complete requires a recorded/applied mutation",
+        "pending readback verifies all expected fingerprints before acknowledgement"
+      ],
+      "recovery": "Provider metadata is parsed into one closed state before use. A pending mutation with unchanged base revision may retry its revision-fenced batch; a matching changed postcondition records acknowledgement; any different revision or contradictory marker requires review. Existing digest-only acknowledgements retain an explicit recorded variant without inventing a plan or asserting no external write occurred.",
+      "decision": "convert",
+      "verification": "Native source analysis and four type checkers passed; focused runtime, real PostgreSQL migration/concurrency and MCP transaction fixtures passed on 2026-11-12. Protected full repository and production release qualification remains an independent gate.",
+      "sources": [
+        "backend/app/document_transform/presentation_state.py",
+        "backend/app/document_transform/presentation_gateway.py",
+        "backend/app/document_transform/google_presentation_gateway.py",
+        "backend/app/document_transform/presentation_executor.py"
+      ]
+    },
+    {
+      "id": "task-source-admission",
+      "oldRepresentation": "Active task row plus an expired boolean, scattered deadline/lease checks and removal of old running rows during replacement.",
+      "authoritativeReplacement": "_TransformSlotPhase: live | review | retained_lease | abandoned | expired_pending; one locked recheck after provider admission decides reuse, busy, safe pending replacement, or durable review.",
+      "states": [
+        "live",
+        "review",
+        "retained_lease",
+        "abandoned",
+        "expired_pending"
+      ],
+      "events": [
+        "Reserve source intent",
+        "Authorize a fresh replay key",
+        "Recheck current database clock under row lock",
+        "Recover abandoned execution",
+        "Bind replay alias"
+      ],
+      "guards": [
+        "Owner advisory transaction lock",
+        "Exact source/request intent; request hash remains usable when private input is unreadable",
+        "Current row lock and database clock after authorization await",
+        "Unexpired execution lease and grace period stay busy",
+        "Evidence and target reservation retained for abandoned work"
+      ],
+      "terminalStates": [],
+      "recovery": "The same intent under a fresh, original or alias key reuses the review task. A different intent cannot replace retained source ownership. No review row is deleted to make room for another execution.",
+      "decision": "convert",
+      "sources": [
+        "backend/app/tasks/service.py",
+        "backend/tests/test_task_source_dedupe_postgres.py"
+      ],
+      "verification": "Real PostgreSQL tests cover all three retry keys, expired pending/live/grace/boundary/stale cases, evidence preservation and denial of another claim."
+    },
+    {
+      "id": "task-effect-certainty",
+      "oldRepresentation": "Failure unconditionally became failed, or loaded a private checkpoint blob without distinguishing evidence of dispatch.",
+      "authoritativeReplacement": "_FailureCheckpointPhase: absent | encrypted_copy | uncertain; a bounded SQL projection precedes any necessary validated decryption.",
+      "states": [
+        "absent",
+        "encrypted_copy",
+        "uncertain"
+      ],
+      "events": [
+        "Fail current owned execution",
+        "Inspect checkpoint certainty",
+        "Retain unknown external effect for review"
+      ],
+      "guards": [
+        "Current running lease token under row lock",
+        "Unreadable, oversized or unsupported checkpoint is uncertain",
+        "Only a validated planned copy checkpoint proves dispatch has not started",
+        "Public mutation/poll projections omit private payload and checkpoint bytes"
+      ],
+      "terminalStates": [
+        "failed",
+        "needs_review"
+      ],
+      "recovery": "Creating or later copy checkpoints, Smart Create dispatch markers and unreadable persisted data retain needs_review. A crash does not prove an external action was absent. Read-only negative provider evidence cannot authorize another create.",
+      "decision": "convert",
+      "sources": [
+        "backend/app/tasks/service.py",
+        "backend/tests/test_storage_performance_postgres.py"
+      ],
+      "verification": "Native PostgreSQL projection test proves unreadable large checkpoints become review with two bounded queries and preserve the recorded resource."
+    },
+    {
+      "id": "checkpoint-storage-envelope",
+      "oldRepresentation": "Raw encrypted JSON kind probes and nullable ciphertext fields before payload decoding.",
+      "authoritativeReplacement": "_StoredCheckpointEnvelope: _EncryptedCopyEnvelope(kind copy | word_copy | presentation_copy, version 1, ciphertext) | _EncryptedInPlaceEnvelope(kind in_place, version 2, encrypted plan).",
+      "events": [
+        "Persist encrypted plan",
+        "Validate envelope kind/version/ciphertext",
+        "Decrypt",
+        "Validate complete checkpoint variant"
+      ],
+      "guards": [
+        "Strict frozen copy envelope with no unknown fields",
+        "In-place transport metadata remains typed JSON until the complete strict checkpoint model validates it after decryption",
+        "Exhaustive class/kind dispatch",
+        "Only null retired QA metadata is normalized for legacy copy payloads"
+      ],
+      "terminalStates": [],
+      "recovery": "Malformed envelopes cannot establish an undispatched state or authorize replay; current owned failure handling retains uncertainty. No stored ciphertext is rewritten.",
+      "decision": "convert",
+      "sources": [
+        "backend/app/tasks/service.py"
+      ],
+      "verification": "Complete native source, type, checkpoint and PostgreSQL qualification remains required for the final candidate."
+    },
+    {
+      "id": "cloud-dispatch-configuration",
+      "oldRepresentation": "Separate nullable document-transform parent path and request template derived from two optional configuration inputs.",
+      "authoritativeReplacement": "_DisabledDocumentTransformQueue | _ConfiguredDocumentTransformQueue(parent, immutable request_template).",
+      "states": [
+        "disabled",
+        "configured(parent, request_template)"
+      ],
+      "events": [
+        "validate configuration",
+        "dispatch immutable ID-only task",
+        "duplicate deterministic task name"
+      ],
+      "guards": [
+        "Reject partial queue/URL configuration before client construction",
+        "Exact HTTPS internal path and OIDC audience",
+        "Exhaustive dispatch by the configured queue variant"
+      ],
+      "recovery": "Disabled queues refuse document-transform dispatch. Configured calls deserialize a private protobuf for every operation; concurrent Smart Create and document-transform requests cannot overwrite each other. AlreadyExists is idempotent acknowledgement.",
+      "decision": "convert",
+      "sources": [
+        "backend/app/tasks/queue.py"
+      ],
+      "verification": "Four new queue cases plus the original queue suite; native qualification pending."
+    },
+    {
+      "id": "model-failure-retry-policy",
+      "oldRepresentation": "Failure subclass plus independently mutable retryable/retry_after fields, copied after grouped failures.",
+      "authoritativeReplacement": "Read-only ModelUnavailableError for transient attempts; NoQueueRetryModelError subclasses for permanent failures; ExhaustedModelError preserves validated provider delay but permits neither operation nor queue retry. ModelOutputError permits bounded repair within the same operation.",
+      "states": [
+        "transient: operation and queue retry permitted",
+        "invalid output: bounded operation repair only",
+        "permanent or exhausted deadline: no retry",
+        "attempt budget consumed: terminal ExhaustedModelError with the last observed provider delay"
+      ],
+      "events": [
+        "classify provider/auth/transport/validation failure",
+        "parse bounded Retry-After",
+        "exhaust operation budget",
+        "wrap grouped failures",
+        "defer or fail owned task"
+      ],
+      "guards": [
+        "Failure class determines read-only retry policy",
+        "Terminal constructors accept neither retry flag nor provider delay",
+        "Retry delay is finite and nonnegative",
+        "Existing aggregate deadline and provider attempt cap remain enforced",
+        "No cyclic exception cause graph"
+      ],
+      "terminalStates": [
+        "permanent",
+        "deadline exhausted",
+        "attempt budget consumed"
+      ],
+      "recovery": "An exhausted operation never restarts its provider budget through queue redelivery. Fresh wrappers preserve permanent categories and transient retry delay without mutating policy or creating a cyclic exception cause. Provider/model failures do not prove external writes absent; checkpoint certainty separately governs quarantine.",
+      "decision": "convert",
+      "sources": [
+        "backend/app/document_transform/errors.py",
+        "backend/app/document_transform/model_failures.py",
+        "backend/app/document_transform/models.py",
+        "backend/app/document_transform/task_executor.py"
+      ],
+      "verification": "Original live-model policy/privacy fixtures retained; nine new immutable-policy and delay boundary cases added. Native qualification pending."
+    },
+    {
+      "id": "native-inspection-checkpoint",
+      "oldRepresentation": "Native document output had independent optional checkpoint and generation fields. A new inspector assumed every task record exposed checkpoint fields, including quarantined review records. Its fixture still constructed the superseded task-record class.",
+      "authoritativeReplacement": "Frozen NativeDocumentInspection(kind=native) | SavedNativeDocumentInspection(kind=saved-task, required nonnegative checkpoint generation, nullable observed checkpoint). attach_saved_checkpoint exhaustively handles Active/Terminal/Review records and validates the saved response through its constructor.",
+      "events": [
+        "inspect current native document",
+        "attach owned saved task checkpoint",
+        "refuse quarantined review record"
+      ],
+      "guards": [
+        "Current Wiki account and scoped Drive source reader",
+        "Exact source revision before returning native document",
+        "Exact task owner and matching output file",
+        "Review records return task_not_claimable without exposing or executing their held checkpoint",
+        "Adding a task-record variant fails the exhaustive record match"
+      ],
+      "recovery": "Inspection performs provider reads only. Missing checkpoints are observations; generation is independently required for saved tasks. Held encrypted evidence remains in storage and is never treated as permission to resume.",
+      "decision": "retain-explicit",
+      "sources": [
+        "backend/app/document_transform/inspection.py",
+        "backend/app/document_transform/router.py",
+        "backend/tests/test_native_inspection.py"
+      ]
+    },
+    {
+      "id": "native-chip-resolution",
+      "oldRepresentation": "DetectedNativeSpan combined a date/place tag with optional date value and skip reason; unresolved and resolved data could coexist.",
+      "authoritativeReplacement": "ResolvedNativeDateSpan(required date value) | LocatedNativePlaceSpan | BlockedNativeSpan(required reason), immutable tagged variants. Separate constructors require either a resolved value or refusal reason.",
+      "states": [
+        "resolved-date",
+        "located-place",
+        "blocked"
+      ],
+      "events": [
+        "parse candidate",
+        "resolve date/time/zone",
+        "refuse ambiguous context",
+        "admit supported date or report skipped candidate"
+      ],
+      "guards": [
+        "UTF-16 source offsets",
+        "Ambiguous meridiem, dates, timezone or unsupported place insertion remain refused",
+        "Only a resolved date reaches provider request construction",
+        "Protected quotations and code transition to BlockedNativeSpan, discarding resolved mutation data."
+      ],
+      "recovery": "Pure parsing results. No external side effects; retained nullable read-only projections expose derived absence without permitting contradictory construction.",
+      "decision": "convert",
+      "sources": [
+        "backend/app/document_transform/native_chip_detection.py",
+        "backend/app/document_transform/native_chip_flow.py",
+        "backend/app/document_transform/native_chip_protection.py"
+      ]
+    },
+    {
+      "id": "native-chip-application",
+      "oldRepresentation": "New upstream feature already uses a discriminated pending/completed checkpoint; not a second generic completed flag.",
+      "authoritativeReplacement": "PendingNativeChipCheckpoint(complete=False, no provider revision) | CompletedNativeChipCheckpoint(complete=True, required provider revision), strict closed checkpoint boundary inside the existing durable in-place checkpoint.",
+      "states": [
+        "pending",
+        "completed"
+      ],
+      "events": [
+        "persist exact plan",
+        "write atomic revision-guarded batch",
+        "read exact marker and converted content",
+        "persist verified revision",
+        "resume"
+      ],
+      "guards": [
+        "Source revision and complete source digest",
+        "Recomputed plan, request batch, spans and marker range must match",
+        "Exact provider marker and reversible full-document readback",
+        "Completed checkpoints never dispatch a write",
+        "CAS ownership and durable checkpoint precede side effects",
+        "Version-one plans never newly write protected quotations/code; already-written verified legacy conversions remain review findings."
+      ],
+      "recovery": "A marker permits verification of the original accepted batch. Without it, only the exact original revision/content permits a revision-guarded write; changed or unverified readback requires review. Skipped-only plans still bind the current provider revision. No negative name search or blind duplicate mutation.",
+      "decision": "retain-explicit",
+      "sources": [
+        "backend/app/document_transform/native_chip_flow.py",
+        "backend/app/document_transform/executor.py",
+        "backend/app/document_transform/schemas.py",
+        "backend/tests/test_native_chip_flow.py",
+        "backend/tests/test_native_chip_execution.py"
+      ]
+    },
+    {
+      "id": "readability-refinement-receipt",
+      "oldRepresentation": "Independent model_invoked, passes, accepted_improvements, stop_reason and nullable failure code; local draft mutated these independently.",
+      "authoritativeReplacement": "LegacyReadabilityRefinement | IneligibleReadabilityRefinement | FinishedReadabilityRefinement | DeadlineReadabilityRefinement | InvalidReadabilityRefinement | UnavailableReadabilityRefinement; the immutable draft and checkpoint share this required outcome.",
+      "states": [
+        "legacy-unrecorded",
+        "not-eligible",
+        "converged",
+        "no-improvement",
+        "pass-limit",
+        "deadline-reserve",
+        "invalid-proposal",
+        "provider-unavailable"
+      ],
+      "events": [
+        "admit local optimization",
+        "attempt bounded provider call",
+        "accept an improvement",
+        "stop on convergence or lack of improvement",
+        "reject invalid proposal",
+        "reserve finalization deadline",
+        "provider failure",
+        "decode historical receipt"
+      ],
+      "guards": [
+        "Strict discriminated recorded outcome boundary; no contradictory recorded failure code or invocation flag",
+        "Accepted improvement count never exceeds attempted passes; completed optimization requires a positive pass count",
+        "Legacy unknown improvement counts remain unknown; historical invocation evidence and old counters are preserved independently",
+        "Typed read-only projections and a validated named serializer preserve existing encrypted receipt JSON; competing representations are refused"
+      ],
+      "recovery": "Only the completed local planning outcome is checkpointed. Existing planned/completed readability checkpoints control provider write and exact readback. A no-change, unavailable or deadline receipt remains durable; no new provider calls occur solely to decode history. The named legacy wire DTO is restricted to decoding and serialization projections; it is never an authoritative mutable planning model.",
+      "decision": "convert",
+      "sources": [
+        "backend/app/document_transform/readability.py",
+        "backend/app/document_transform/readability_types.py",
+        "backend/app/document_transform/readability_provider.py",
+        "backend/tests/test_readability_failure_metrics.py",
+        "backend/tests/test_readability_noop_resume.py",
+        "backend/tests/test_readability_receipt_noop.py"
+      ]
+    },
+    {
+      "id": "native-inline-quotation-code-scan",
+      "oldRepresentation": "Nullable (delimiter,start) tuple switches code mode; active quotation opener map and accumulated protected ranges.",
+      "authoritativeReplacement": "OutsideCode | InsideCode(required delimiter, UTF-16 opening); exhaustive advance_code returns CodeTransition(required next state and typed protected ranges). Active quote map is an independent collection of open delimiters with required offsets.",
+      "states": [
+        "outside-code",
+        "inside-code",
+        "open-quotation membership",
+        "closed-quotation absence"
+      ],
+      "events": [
+        "backtick token",
+        "exact matching close",
+        "different delimiter",
+        "quotation open/close",
+        "ambiguous possessive",
+        "end of input"
+      ],
+      "guards": [
+        "Different backtick runs never close each other",
+        "Quote tokens inside code cannot change quote membership",
+        "Malformed code tokens and ranges are refused",
+        "Ambiguous possessives keep the opener; unfinished quotes and code protect the remainder",
+        "Single scan and incremental UTF-16 offsets preserve the upstream bounded-runtime behavior"
+      ],
+      "recovery": "Pure bounded document parsing with no external effects or persistence; end-of-input emits explicit unclosed ranges, never assumes incomplete text is safe to mutate.",
+      "decision": "convert",
+      "sources": [
+        "backend/app/document_transform/native_quote_spans.py",
+        "backend/app/document_transform/native_chip_protection.py",
+        "backend/tests/test_native_chip_protection.py"
+      ]
+    },
+    {
+      "id": "multi-paragraph-quotation-scan",
+      "oldRepresentation": "Independent opener and continuation maps could represent an orphan continuation; closing and repeated paragraph openers coordinated their membership.",
+      "authoritativeReplacement": "One QuoteDelimiter-keyed map of EmptyQuotation(required opening) | ContinuingQuotation(required opening and last nonempty paragraph); opening_quotation is a pure exhaustive decision. Closed is absence from this map.",
+      "states": [
+        "closed",
+        "empty opening",
+        "continuing quotation"
+      ],
+      "events": [
+        "valid delimiter opens",
+        "nonempty paragraph continuation",
+        "new unrelated opener",
+        "ambiguous plural possessive close",
+        "definite close",
+        "end of input"
+      ],
+      "guards": [
+        "Closed enum delimiter boundary",
+        "Only a continuing variant carries a prior paragraph",
+        "Empty unmatched openers cannot imply continuation",
+        "Different tab/segment scopes never join",
+        "Ambiguous possessives retain the active frame",
+        "Monotonic covered-until offsets remain independent deduplication facts; do not reset their bounded-scan behavior"
+      ],
+      "recovery": "Pure bounded parsing; no provider effects or durable progress. Existing exact literal, nested quote, whitespace, empty-paragraph, code masking and unrelated prose oracles remain authoritative.",
+      "decision": "convert",
+      "sources": [
+        "backend/app/document_transform/quotations.py",
+        "backend/app/document_transform/inline_code.py",
+        "backend/tests/test_multiblock_quotations.py",
+        "backend/tests/test_continued_quotations.py",
+        "backend/tests/test_inline_code_preservation.py"
+      ]
+    },
+    {
+      "id": "baseline-command",
+      "oldRepresentation": "Initial-mode boolean, optional positional prefix, optional manifest pair and obsolete bootstrap arguments.",
+      "authoritativeReplacement": "InitialBaseline | CompareBaselines; execute exhaustively dispatches one validated command.",
+      "events": [
+        "parse native CLI",
+        "initialize comparison evidence",
+        "compare counts"
+      ],
+      "guards": [
+        "reject partial version input and retired flags before reading files",
+        "strict positive nonboolean persisted counts",
+        "initial baseline cannot exempt changed source",
+        "per-file existing-rule counts may only shrink"
+      ],
+      "recovery": "Read-only deterministic check; invalid inputs exit2 without changing either baseline. Correct evidence and rerun from the exact comparison base.",
+      "decision": "convert",
+      "sources": [
+        "scripts/standards_checks/check_baseline_growth.py",
+        "scripts/check-baseline-growth.sh"
+      ]
+    },
+    {
+      "id": "baseline-rule-adoption",
+      "oldRepresentation": "allow_new_rules boolean plus optional base-config text.",
+      "authoritativeReplacement": "ExistingRules | AdoptedRules(required base_config observation); exhaustive _adopted_rule.",
+      "events": [
+        "read both pinned versions",
+        "same bundle",
+        "bundle changed",
+        "inspect existing configured rule"
+      ],
+      "guards": [
+        "a real bundle transition is required",
+        "already configured rules and existing baseline rules cannot gain findings",
+        "unknown partial manifest pair is rejected"
+      ],
+      "recovery": "No baseline mutation. A missing prior configuration is an independent legacy observation retained only in AdoptedRules, with the original new-rule policy.",
+      "decision": "convert",
+      "sources": [
+        "scripts/standards_checks/check_baseline_growth.py"
+      ]
     }
   ],
   "exceptions": [
@@ -464,8 +946,18 @@
   ],
   "sourceCoverage": {
     "manifest": "docs/source-coverage.json",
-    "reviewedCommit": "dcb6e9a4a774d5a20b51595bb2f7cad42da0d1ab",
-    "files": 994,
-    "contract": "SHA-256 identities of current tracked application, migration, API, job, configuration and infrastructure sources. Source enumeration supports, but does not replace, the semantic machine inventory."
-  }
+    "reviewedCommit": "dff0c54bfc2005045bb557c2fc57370cc4129e7f",
+    "files": 1045,
+    "contract": "SHA-256 identities of current tracked application, migration, API, job, configuration and infrastructure sources. ReviewedCommit identifies the comparison base; the hashes describe this candidate. Source enumeration supports, but does not replace, the semantic machine inventory.",
+    "reviewedMergeBase": "dff0c54bfc2005045bb557c2fc57370cc4129e7f"
+  },
+  "retiredMachines": [
+    {
+      "id": "completed-native-baseline-bootstrap",
+      "oldRepresentation": "Merge-base-pinned8.208.5 to9.2.3 declaration, per-finding before/after allowances and exact reviewed-source hashes; conditional CLI argument bag.",
+      "decision": "delete",
+      "reason": "The only declaration is inert beyond immutable36304cd43515a555dd77ccca9c4601a4c5cb67ba; the adoption is complete. Removed declaration, parser/validation branches, dedicated three-case tests, diagnostic-adoption toggle and old eslint baseline-name fallback. Generic initial changed-source and all ongoing shrink-only/rule-adoption guards remain.",
+      "evidence": "Original declaration and implementation remain in preserved Git candidate51b25f47d4f9c81149b091ed37e9a72b4fd0e22d and private qualification receipts."
+    }
+  ]
 }

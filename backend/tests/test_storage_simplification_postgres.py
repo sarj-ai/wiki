@@ -3,7 +3,7 @@ from __future__ import annotations
 import asyncio
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 import os
 from pathlib import Path
 import subprocess
@@ -26,13 +26,24 @@ from sqlalchemy import (
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncEngine, async_sessionmaker, create_async_engine
 
+from app.document_transform.schemas import (
+    DocumentTransformRequest,
+    DriveFileSource,
+    MarkdownSource,
+    PlannedPresentationCheckpoint,
+    TransformMode,
+)
 from app.extras.schemas import FolderIconWrite, PreferencesWrite, SortOrderWrite
 from app.extras.service import PostgresExtrasService
-from app.identifiers import DriveId, FileId
+from app.identifiers import DriveId, FileId, GoogleUserId, IdempotencyKey, UserId
 from app.mcp.native_admission import PostgresRegistrationAdmission, RegistrationAdmissionDeniedError
 from app.models.mcp_oauth import MCPOAuthEntry
+from app.models.task import Task
 from app.models.user import User
 from app.models.wiki import CacheEntry
+from app.tasks.errors import TaskNotClaimableError
+from app.tasks.schemas import NeedsReviewTaskRead, ReviewDocumentTransformTaskRecord, TaskKind
+from app.tasks.service import PostgresTaskService
 from tests.test_task_source_dedupe_postgres import _qa_engine
 
 
@@ -40,8 +51,12 @@ _BACKEND = Path(__file__).parents[1]
 
 
 def _upgrade(dsn: str, revision: str) -> None:
+    _alembic(dsn, "upgrade", revision)
+
+
+def _alembic(dsn: str, *arguments: str) -> None:
     subprocess.run(
-        [sys.executable, "-m", "alembic", "upgrade", revision],
+        [sys.executable, "-m", "alembic", *arguments],
         cwd=_BACKEND,
         env=os.environ | {"DATABASE_URL": dsn},  # ruff: ignore[banned-api] — preserve the subprocess toolchain environment.
         check=True,
@@ -257,3 +272,139 @@ async def _migration_database() -> AsyncGenerator[AsyncEngine]:
                 text(f'DROP DATABASE IF EXISTS "{name}" WITH (FORCE)')
             )  # sarj-noqa: SARJ429 -- Exercise legacy schema migration and database invariants before the current ORM applies.
         await admin.dispose()
+
+
+async def test_review_migration_preserves_expired_execution_and_refuses_lossy_downgrade() -> None:
+    async with _migration_database() as engine:
+        dsn = engine.url.render_as_string(hide_password=False)
+        await asyncio.to_thread(_upgrade, dsn, "0028_task_result_invariants")
+        sessions = async_sessionmaker(engine, expire_on_commit=False)
+        owner = UserId(uuid.uuid7())
+        key = IdempotencyKey(uuid.uuid7())
+        payload = DocumentTransformRequest(
+            source=MarkdownSource(
+                kind="markdown",
+                content="Original evidence\n",
+                name="Recovery evidence",
+                destination_folder_id=FileId("qa-folder"),
+            ),
+            mode=TransformMode.FORMAT,
+        )
+        async with sessions() as session:
+            session.add(
+                User(id=owner, email=f"qa-{owner}@sarj.ai", google_id=GoogleUserId(str(owner)))
+            )
+            await session.commit()
+            service = PostgresTaskService(db=session)
+            reservation = await service.create_or_replay(
+                kind=TaskKind.FILE_DOCUMENT_TRANSFORM,
+                owner_user_id=owner,
+                idempotency_key=key,
+                payload=payload,
+            )
+            task_id = reservation.task.id
+            await service.claim(task_id, lease_duration=timedelta(minutes=1))
+        await engine.dispose()
+        with pytest.raises(subprocess.CalledProcessError) as active:
+            await asyncio.to_thread(_upgrade, dsn, "0029_task_review")
+        assert "Drain running executions before migrating task review state" in active.value.stderr
+        async with sessions() as session:
+            row = await session.get(Task, task_id)
+            assert row is not None
+            evidence = dict(row.payload)
+            now = datetime.now(UTC)
+            row.created_at = now - timedelta(days=2)
+            row.started_at = now - timedelta(days=1)
+            row.lease_expires_at = now - timedelta(minutes=2)
+            row.expires_at = now - timedelta(minutes=1)
+            await session.commit()
+        await engine.dispose()
+        await asyncio.to_thread(_upgrade, dsn, "0029_task_review")
+        async with sessions() as session:
+            service = PostgresTaskService(db=session)
+            retained = await service.get_for_owner(task_id, owner)
+            assert isinstance(retained, NeedsReviewTaskRead)
+            record = await service.load_document_transform(task_id)
+            assert isinstance(record, ReviewDocumentTransformTaskRecord)
+            row = await session.get(Task, task_id)
+            assert row is not None
+            assert row.payload == evidence
+            assert row.checkpoint is None
+            assert row.checkpoint_generation == 0
+            with pytest.raises(TaskNotClaimableError):
+                await service.claim(task_id, lease_duration=timedelta(minutes=1))
+            replay = await service.create_or_replay(
+                kind=TaskKind.FILE_DOCUMENT_TRANSFORM,
+                owner_user_id=owner,
+                idempotency_key=key,
+                payload=payload,
+            )
+            assert not replay.created
+            assert replay.task.id == task_id
+            assert isinstance(replay.task, NeedsReviewTaskRead)
+        await engine.dispose()
+        with pytest.raises(subprocess.CalledProcessError) as rejected:
+            await asyncio.to_thread(_alembic, dsn, "downgrade", "0028_task_result_invariants")
+        assert "Resolve review records explicitly before downgrading" in rejected.value.stderr
+        async with sessions() as session:
+            row = await session.get(Task, task_id)
+            assert row is not None
+            assert row.payload == evidence
+
+
+@pytest.mark.parametrize("blocker", ["running", "presentation_checkpoint"])
+async def test_downgrade_refuses_active_work_and_new_checkpoint_formats(blocker: str) -> None:
+    async with _migration_database() as engine:
+        dsn = engine.url.render_as_string(hide_password=False)
+        await asyncio.to_thread(_upgrade, dsn, "0029_task_review")
+        sessions = async_sessionmaker(engine, expire_on_commit=False)
+        owner = UserId(uuid.uuid7())
+        async with sessions() as session:
+            session.add(
+                User(id=owner, email=f"qa-{owner}@sarj.ai", google_id=GoogleUserId(str(owner)))
+            )
+            await session.commit()
+            service = PostgresTaskService(db=session)
+            reservation = await service.create_or_replay(
+                kind=TaskKind.FILE_DOCUMENT_TRANSFORM,
+                owner_user_id=owner,
+                idempotency_key=IdempotencyKey(uuid.uuid7()),
+                payload=DocumentTransformRequest(
+                    source=DriveFileSource(
+                        kind="drive_file",
+                        file_id=FileId("qa-slide-source"),
+                        expected_modified_time="2026-09-05T00:00:00Z",
+                    ),
+                    mode=TransformMode.FORMAT,
+                ),
+            )
+            task_id = reservation.task.id
+            claim = await service.claim(task_id, lease_duration=timedelta(minutes=1))
+            if blocker == "presentation_checkpoint":
+                await service.save_document_transform_checkpoint(
+                    task_id,
+                    lease_token=claim.lease_token,
+                    expected_generation=0,
+                    checkpoint=PlannedPresentationCheckpoint(
+                        request_sha256="a" * 64, source_sha256="b" * 64, output_name="QA output"
+                    ),
+                )
+                await service.fail(
+                    task_id,
+                    lease_token=claim.lease_token,
+                    error_code="cancelled_before_dispatch",
+                    error_detail="No provider request was sent",
+                )
+        await engine.dispose()
+        with pytest.raises(subprocess.CalledProcessError) as refused:
+            await asyncio.to_thread(_alembic, dsn, "downgrade", "0028_task_result_invariants")
+        expected = (
+            "Drain running executions before downgrading"
+            if blocker == "running"
+            else "Retire presentation checkpoints before downgrading"
+        )
+        assert expected in refused.value.stderr
+        async with sessions() as session:
+            row = await session.get(Task, task_id)
+            assert row is not None
+            assert row.status == ("running" if blocker == "running" else "failed")

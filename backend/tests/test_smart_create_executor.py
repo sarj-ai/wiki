@@ -16,8 +16,10 @@ from app.smart_create.executor import DriveSmartCreateTaskExecutor, SmartCreateR
 from app.smart_create.schemas import BlankSource, SmartCreateResult, SmartFileCreate
 from app.tasks.errors import TaskExecutionDeferredError, TaskNotClaimableError
 from app.tasks.schemas import (
+    ActiveSmartCreateTaskRecord,
     PendingTaskRead,
     RunningTaskRead,
+    SettledSmartCreateTaskRecord,
     SmartCreateSucceededTaskRead,
     SmartCreateTaskRecord,
     TaskClaim,
@@ -173,10 +175,20 @@ class _Tasks(TaskService):
 
     @override
     async def load_smart_create(self, task_id: TaskId) -> SmartCreateTaskRecord:
-        return SmartCreateTaskRecord(
-            owner_user_id=self.owner_id,
-            task=self.read(),
-            payload=_payload(),
+        task = self.read()
+        match task:
+            case SmartCreateSucceededTaskRead():
+                return SettledSmartCreateTaskRecord.model_validate(
+                    {"owner_user_id": self.owner_id, "task": task}
+                )
+            case _:
+                pass
+        return ActiveSmartCreateTaskRecord.model_validate(
+            {
+                "owner_user_id": self.owner_id,
+                "task": task,
+                "payload": _payload(),
+            }
         )
 
 

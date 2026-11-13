@@ -3,7 +3,7 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from datetime import timedelta
-from typing import override
+from typing import assert_never, override
 import uuid
 
 import httpx
@@ -21,12 +21,11 @@ from app.models.user import User
 from app.sidebar.cache import PostgresSidebarCacheService, SidebarCacheService
 from app.sidebar.singleflight import Singleflight
 from app.smart_create.creation import DriveSmartFileCreationService
+from app.smart_create.errors import SmartCreateUncertainError
 from app.tasks.errors import TaskExecutionDeferredError, TaskNotClaimableError
 from app.tasks.schemas import (
-    CancelledTaskRead,
-    DocumentTransformSucceededTaskRead,
-    FailedTaskRead,
-    SmartCreateSucceededTaskRead,
+    ActiveSmartCreateTaskRecord,
+    SettledSmartCreateTaskRecord,
     TaskRead,
 )
 from app.tasks.service import TaskService
@@ -67,15 +66,24 @@ class DriveSmartCreateTaskExecutor(SmartCreateTaskExecutor):
     @override
     async def execute(self, task_id: TaskId) -> TaskRead:
         record = await self._tasks.load_smart_create(task_id)
-        if _is_terminal(record.task):
-            return record.task
+        match record:
+            case SettledSmartCreateTaskRecord():
+                return record.task
+            case ActiveSmartCreateTaskRecord():
+                pass
+            case _:
+                assert_never(record)
         try:
             claim = await self._tasks.claim(task_id, lease_duration=_EXECUTION_LEASE)
         except TaskNotClaimableError as exc:
-            current = (await self._tasks.load_smart_create(task_id)).task
-            if _is_terminal(current):
-                return current
-            raise TaskExecutionDeferredError from exc
+            current = await self._tasks.load_smart_create(task_id)
+            match current:
+                case SettledSmartCreateTaskRecord():
+                    return current.task
+                case ActiveSmartCreateTaskRecord():
+                    raise TaskExecutionDeferredError from exc
+                case _:
+                    assert_never(current)
 
         runtime = await self._runtime(record.owner_user_id)
         try:
@@ -90,6 +98,8 @@ class DriveSmartCreateTaskExecutor(SmartCreateTaskExecutor):
                 payload=record.payload,
                 existing_resource=existing,
             )
+        except SmartCreateUncertainError:
+            return await self._tasks.require_review(task_id, lease_token=claim.lease_token)
         except DriveUpstreamError as exc:
             await self._tasks.defer(task_id, lease_token=claim.lease_token)
             raise TaskExecutionDeferredError from exc
@@ -143,13 +153,3 @@ class DriveSmartCreateTaskExecutor(SmartCreateTaskExecutor):
             sessionmaker=self._sessionmaker,
         )
         return SmartCreateRuntime(creation=creation, files=files, sidebar=sidebar)
-
-
-def _is_terminal(task: TaskRead) -> bool:
-    return isinstance(
-        task,
-        SmartCreateSucceededTaskRead
-        | DocumentTransformSucceededTaskRead
-        | FailedTaskRead
-        | CancelledTaskRead,
-    )

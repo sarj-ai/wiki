@@ -29,7 +29,7 @@ class Task(Base):
             name="ck_tasks_kind",
         ),
         CheckConstraint(
-            "status IN ('pending', 'running', 'succeeded', 'failed', 'cancelled')",
+            "status IN ('pending', 'running', 'succeeded', 'failed', 'cancelled', 'needs_review')",
             name="ck_tasks_status",
         ),
         CheckConstraint("char_length(request_hash) = 64", name="ck_tasks_request_hash"),
@@ -64,7 +64,7 @@ class Task(Base):
         CheckConstraint(
             "(status = 'pending' AND attempt_count = 0) OR "
             "(status = 'cancelled' AND attempt_count = 0) OR "
-            "status IN ('running', 'succeeded', 'failed') AND attempt_count > 0",
+            "status IN ('running', 'succeeded', 'failed', 'needs_review') AND attempt_count > 0",
             name="ck_tasks_attempt_count_matches_state",
         ),
         CheckConstraint("expires_at > created_at", name="ck_tasks_expiry_after_creation"),
@@ -91,8 +91,16 @@ class Task(Base):
             "AND error_code IS NOT NULL) OR "
             "(status = 'cancelled' AND started_at IS NULL AND finished_at IS NOT NULL "
             "AND lease_token IS NULL AND lease_expires_at IS NULL AND result IS NULL "
-            "AND error_code IS NULL AND error_detail IS NULL)",
+            "AND error_code IS NULL AND error_detail IS NULL) OR "
+            "(status = 'needs_review' AND started_at IS NOT NULL AND finished_at IS NOT NULL "
+            "AND lease_token IS NULL AND lease_expires_at IS NULL AND result IS NULL "
+            "AND error_code IS NOT NULL AND error_code = 'external_effect_uncertain' "
+            "AND error_detail IS NOT NULL AND char_length(error_detail) > 0)",
             name="ck_tasks_legal_state",
+        ),
+        CheckConstraint(
+            "status != 'needs_review' OR payload <> '{\"redacted\": true}'::jsonb",
+            name="ck_tasks_review_evidence",
         ),
         UniqueConstraint(
             "owner_user_id",
@@ -123,7 +131,7 @@ class Task(Base):
             "in_place_target",
             unique=True,
             postgresql_where=text(
-                "in_place_target IS NOT NULL AND status IN ('pending', 'running')"
+                "in_place_target IS NOT NULL AND status IN ('pending', 'running', 'needs_review')"
             ),
         ),
     )
