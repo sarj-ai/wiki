@@ -995,6 +995,9 @@ def _append_nonlist_block(document: Document, block: _Block, *, branded: bool) -
         _append_inlines(paragraph, block.inlines, branded=branded)
     elif block.kind == "quote":
         paragraph = document.add_paragraph(style="Sarj Quote" if branded else "Quote")
+        if not branded:
+            # Google import drops indentation inherited from Word's Quote style.
+            paragraph.paragraph_format.left_indent = Inches(0.25)
         if branded:
             _set_paragraph_box(paragraph, fill=_SARJ_PURPLE_LIGHT, left_border=_SARJ_PURPLE)
         _append_inlines(paragraph, block.inlines, branded=branded)
