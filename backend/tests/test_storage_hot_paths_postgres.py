@@ -4,7 +4,7 @@ import asyncio
 from collections.abc import AsyncGenerator
 from contextlib import AsyncExitStack
 from datetime import UTC, datetime, timedelta
-from typing import NamedTuple, override
+from typing import TYPE_CHECKING, NamedTuple, override
 import uuid
 
 from cryptography.fernet import Fernet
@@ -46,6 +46,11 @@ from app.tasks.errors import TaskNotFoundError
 from app.tasks.schemas import TaskKind
 from app.tasks.service import PostgresTaskService
 from tests.test_task_source_dedupe_postgres import _qa_engine
+
+
+if TYPE_CHECKING:
+    from sqlalchemy.engine import Connection, ExecutionContext
+    from sqlalchemy.engine.interfaces import DBAPICursor, _DBAPIAnyExecuteParams
 
 
 class _Database(NamedTuple):
@@ -326,15 +331,32 @@ async def test_owner_lock_interruption_rolls_back_without_committing_caller_writ
                 .values(display_name="Must remain uncommitted")
             )
         queries = _Queries()
-        event.listen(database.engine.sync_engine, "before_cursor_execute", queries.record)
-        try:
-            waiting = asyncio.create_task(
-                PostgresTaskService(db=db)._lock_document_transform_owner(
-                    database.owner, timeout_seconds=0.05
-                )
+        lock_waiting = asyncio.Event()
+
+        def record(
+            _connection: Connection,
+            _cursor: DBAPICursor,
+            statement: str,
+            parameters: _DBAPIAnyExecuteParams,
+            _context: ExecutionContext | None,
+            _executemany: bool,
+        ) -> None:
+            queries.record(_connection, _cursor, statement, parameters, _context, _executemany)
+            lock_query = (
+                "pg_try_advisory_xact_lock(" if writes == "none" else "pg_advisory_xact_lock("
             )
+            if lock_query in statement:
+                lock_waiting.set()
+
+        event.listen(database.engine.sync_engine, "before_cursor_execute", record)
+        waiting = asyncio.create_task(
+            PostgresTaskService(db=db)._lock_document_transform_owner(
+                database.owner, timeout_seconds=2 if interruption == "cancel" else 0.05
+            )
+        )
+        try:
             if interruption == "cancel":
-                await asyncio.sleep(0.02)
+                await asyncio.wait_for(lock_waiting.wait(), timeout=1)
                 waiting.cancel()
                 with pytest.raises(asyncio.CancelledError):
                     await waiting
@@ -342,7 +364,10 @@ async def test_owner_lock_interruption_rolls_back_without_committing_caller_writ
                 with pytest.raises(TimeoutError):
                     await waiting
         finally:
-            event.remove(database.engine.sync_engine, "before_cursor_execute", queries.record)
+            if not waiting.done():
+                waiting.cancel()
+            await asyncio.gather(waiting, return_exceptions=True)
+            event.remove(database.engine.sync_engine, "before_cursor_execute", record)
         assert not db.in_transaction()
         if writes != "none":
             assert any("pg_advisory_xact_lock(" in sql for sql in queries.sql)

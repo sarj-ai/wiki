@@ -56,10 +56,13 @@ def test_captured_native_google_date_range_passes_with_surrounding_content_prese
 
 @pytest.mark.parametrize("complete", [False, True])
 @pytest.mark.parametrize("fixture", ["weekend_range_pending", "neighbor_date_pending"])
+@pytest.mark.parametrize("planner_version", [2, 3])
 async def test_unsafe_saved_weekend_dates_require_review_without_writing(
-    fixture: str, *, complete: bool
+    fixture: str, planner_version: int, *, complete: bool
 ) -> None:
-    pending = PendingNativeChipCheckpoint.model_validate(_fixture(fixture))
+    pending = PendingNativeChipCheckpoint.model_validate(
+        {**_fixture(fixture), "planner_version": planner_version}
+    )
     checkpoint: NativeChipCheckpoint = (
         CompletedNativeChipCheckpoint.model_validate(
             {**pending.model_dump(), "complete": True, "revision_id": "written-r2"}
