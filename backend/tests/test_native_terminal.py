@@ -30,6 +30,7 @@ from app.document_transform.schemas import (
     PlannedCopyCheckpoint,
     TransformMode,
 )
+from app.document_transform.unslop import UNSLOP_CATALOG_SHA256
 from app.identifiers import FileId, TaskId
 from tests.test_authored_labels import _snapshot
 from tests.test_document_transform import _copy_executor, _CopyCheckpointStore, _Gateway
@@ -276,19 +277,32 @@ class _InterruptedStore(_CopyCheckpointStore):
         raise RuntimeError(message)
 
 
-@pytest.mark.parametrize("legacy", [False, True])
-async def test_interrupted_current_and_pre_upgrade_plans_resume_and_repeat_without_extra_writes(
-    legacy: bool,
+@pytest.mark.parametrize(
+    "legacy_checkpoint",
+    [None, "pre-upgrade-copy-checkpoint.json", "pre-middle-dot-copy-checkpoint.json"],
+)
+async def test_interrupted_current_and_compatible_pre_upgrade_plans_resume_without_extra_writes(
+    legacy_checkpoint: str | None,
 ) -> None:
     fixture = _checkpoint_fixture()
     checkpoint: CopyCheckpoint
+    legacy = legacy_checkpoint is not None
     if legacy:
+        assert legacy_checkpoint is not None
         saved = json.loads(
-            (
-                Path(__file__).parent / "data/native_terminal/pre-upgrade-copy-checkpoint.json"
-            ).read_text()
+            (Path(__file__).parent / "data/native_terminal" / legacy_checkpoint).read_text()
         )
         checkpoint = PlannedCopyCheckpoint.model_validate(saved["checkpoint"])
+        if checkpoint.unslop_catalog_sha256 != UNSLOP_CATALOG_SHA256:
+            with pytest.raises(OutputConflictError):
+                await _copy_executor(
+                    gateway=fixture.gateway,
+                    store=fixture.store,
+                    task_id=fixture.task_id,
+                    checkpoint=checkpoint,
+                ).execute(operation_id=fixture.task_id, request=fixture.request)
+            assert fixture.gateway.applies == 0
+            return
     else:
         interrupted_store = _InterruptedStore()
         with pytest.raises(RuntimeError, match="durable terminal plan"):
