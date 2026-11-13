@@ -62,7 +62,7 @@ _NUMERIC_UNIT = (
 _QUANTITY_TERM = rf"{_SIGNED_NUMBER}(?:{HORIZONTAL_SPACE}*{_NUMERIC_UNIT})?"
 _QUANTITY_LITERAL = (
     rf"(?:(?:[<>]=?|[≤≥~≈≃])\s*)?{_QUANTITY_TERM}"
-    rf"(?:{HORIZONTAL_SPACE}*(?:\+/-|[±∓×xX÷+−–*/⁄:^\-]){HORIZONTAL_SPACE}*{_QUANTITY_TERM})*"
+    rf"(?:{HORIZONTAL_SPACE}*(?:\+/-|[±∓×xX·÷+−–*/⁄:^\-]){HORIZONTAL_SPACE}*{_QUANTITY_TERM})*"
 )
 _PROTECTED_CODE = re.compile(r"```[\s\S]*?```|`[^`\n]+`")
 _PROTECTED_TOKEN = re.compile(
