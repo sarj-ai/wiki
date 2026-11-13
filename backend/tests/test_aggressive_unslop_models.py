@@ -294,22 +294,26 @@ async def _yield_writer_sleep(_delay: float) -> None:
     [
         pytest.param(None, "gemini-3.1-pro-preview", types.ThinkingLevel.HIGH, id="normal-default"),
         pytest.param(
-            "gemini-3.8-flash",
-            "gemini-3.8-flash",
-            types.ThinkingLevel.LOW,
-            id="explicit-3.8-override",
+            "gemini-4-argon",
+            "gemini-4-argon",
+            types.ThinkingLevel.HIGH,
+            id="explicit-pro-override",
         ),
     ],
 )
+@pytest.mark.parametrize("phase", list(TransformPhase))
 async def test_normal_model_settings_reach_the_real_sdk_without_overriding_explicit_models(
     model_override: str | None,
     expected_model: str,
     thinking_level: types.ThinkingLevel | None,
+    phase: TransformPhase,
 ) -> None:
     settings = (
         DocumentSettings()
         if model_override is None
-        else DocumentSettings(TRANSFORM_UNSLOP_MODEL=model_override)
+        else DocumentSettings(
+            TRANSFORM_UNSLOP_MODEL=model_override, TRANSFORM_RESTYLE_MODEL=model_override
+        )
     )
     policy = document_model_policy(project="offline-fixture", document=settings)
     document = parse_markdown(SOURCE, title="Bird")
@@ -353,7 +357,7 @@ async def test_normal_model_settings_reach_the_real_sdk_without_overriding_expli
         )
         generator = VertexGeminiPatchGenerator(policy=policy, client=client)
         try:
-            assert await generator.generate(document, phase=TransformPhase.UNSLOP) == [patch]
+            assert await generator.generate(document, phase=phase) == [patch]
         finally:
             await client.aio.aclose()
 

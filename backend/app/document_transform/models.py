@@ -670,6 +670,8 @@ class VertexGeminiPatchGenerator(PatchGenerator):
         phase: TransformPhase,
         repair: bool,
     ) -> genai_types.ThinkingConfig | None:
+        if model in _THINKING_FALLBACK_MODELS:
+            return genai_types.ThinkingConfig(thinking_level=genai_types.ThinkingLevel.HIGH)
         if (
             phase is TransformPhase.UNSLOP
             and model == primary_model
@@ -680,14 +682,8 @@ class VertexGeminiPatchGenerator(PatchGenerator):
                 if repair
                 else genai_types.ThinkingLevel.LOW
             )
-        if phase is TransformPhase.UNSLOP and model in _THINKING_FALLBACK_MODELS:
-            return genai_types.ThinkingConfig(thinking_level=genai_types.ThinkingLevel.HIGH)
         if model == self._policy.fallback_model:
-            if model not in _THINKING_FALLBACK_MODELS:
-                return None
-            if phase is TransformPhase.UNSLOP and not repair and model != primary_model:
-                return genai_types.ThinkingConfig(thinking_level=genai_types.ThinkingLevel.MEDIUM)
-            return genai_types.ThinkingConfig(thinking_level=genai_types.ThinkingLevel.HIGH)
+            return None
         return genai_types.ThinkingConfig(
             thinking_level=genai_types.ThinkingLevel.HIGH
             if repair or model != primary_model

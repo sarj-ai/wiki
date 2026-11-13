@@ -6,6 +6,11 @@ from pydantic_settings import BaseSettings, PydanticBaseSettingsSource, Settings
 from app.database_config import NonEmptyStr
 
 
+# Admit model IDs only after checking Google's Pro-class capability and support
+# for thinking_level=HIGH. Configuration must never downgrade to Flash.
+_HIGH_THINKING_DOCUMENT_MODELS = frozenset({"gemini-3.1-pro-preview", "gemini-4-argon"})
+
+
 class DocumentSettings(BaseSettings):
     """Document transformation settings resolved through the parent sources."""
 
@@ -54,5 +59,8 @@ class DocumentSettings(BaseSettings):
     def document_transform_models_are_exact(cls, value: str) -> str:
         if value == "latest" or value.endswith("-latest"):
             msg = "Document Transform requires an exact Gemini model ID"
+            raise ValueError(msg)
+        if value not in _HIGH_THINKING_DOCUMENT_MODELS:
+            msg = "Document Transform requires a verified Pro-class model with HIGH thinking"
             raise ValueError(msg)
         return value
