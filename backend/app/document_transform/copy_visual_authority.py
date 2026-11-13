@@ -51,6 +51,7 @@ def _verify(source: dict[str, Any], actual: dict[str, Any], expected: DocumentIR
         target_font_family="Nunito",
         preserved_family_block_ids=selected,
         visual_authority=NativeVisualAuthoritySelection(selected),
+        visual_authority_only=True,
     )
     return verify_native_font_proof(
         actual,

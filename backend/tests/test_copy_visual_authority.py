@@ -8,14 +8,17 @@ from pydantic import JsonValue
 import pytest
 
 from app.document_transform.authored_labels import plan_authored_labels
+from app.document_transform.copy_font_defense import copy_preserved_font_ids
 from app.document_transform.copy_visual_authority import verify_copy_visual_authority
 from app.document_transform.errors import OutputConflictError, OutputVerificationError
 from app.document_transform.gateway import OutputVerification, SourceSnapshot
 from app.document_transform.google_gateway import GoogleDocumentGateway
 from app.document_transform.ir import DocumentIR, parse_google_document
+from app.document_transform.native_font_defense import apply_native_font_preservation
 from app.document_transform.native_visual_authority import (
     apply_visual_authority,
 )
+from app.document_transform.readability_json import array, bodies, obj
 from app.document_transform.schemas import OutputStrategy, TransformMode
 from app.document_transform.tab_structure import plan_tab_structure
 from app.document_transform.tab_structure_execution import (
@@ -114,6 +117,95 @@ def test_copy_visual_proof_accounts_for_preceding_utf16_text_edits():
     expected = parse_google_document(source, title="").replace_blocks({"b0": "A sentence."})
     assert verify_copy_visual_authority(source, actual, expected)
     assert not verify_copy_visual_authority(source, actual, parse_google_document(source, title=""))
+
+
+def _manual_title_with_linked_prose() -> dict[str, JsonValue]:
+    source = _document()
+    _prepend(source, "Earlier facts. Reference")
+    parts = _paragraph(source)["elements"]
+    parts[0]["endIndex"] = 16
+    parts[0]["textRun"] = {
+        "content": "Earlier facts. ",
+        "textStyle": {"bold": False, "weightedFontFamily": {"fontFamily": "Arial", "weight": 400}},
+    }
+    parts.append(
+        {
+            "startIndex": 16,
+            "endIndex": 25,
+            "textRun": {
+                "content": "Reference",
+                "textStyle": {
+                    "bold": False,
+                    "weightedFontFamily": {"fontFamily": "Arial", "weight": 400},
+                    "link": {"url": "https://example.test/reference"},
+                },
+            },
+        }
+    )
+    parts.append(
+        {
+            "startIndex": 25,
+            "endIndex": 26,
+            "textRun": {
+                "content": "\n",
+                "textStyle": {
+                    "bold": False,
+                    "weightedFontFamily": {"fontFamily": "Arial", "weight": 400},
+                },
+            },
+        }
+    )
+    return source
+
+
+def test_exact_copy_keeps_visual_proof_independent_of_linked_prose_font():
+    source = _manual_title_with_linked_prose()
+    expected = parse_google_document(source, title="Source")
+    assert expected.blocks[0].protected_suffix == "Reference"
+    assert verify_copy_visual_authority(source, deepcopy(source), expected)
+
+
+@pytest.mark.parametrize("change", ["none", "title", "citation_bold", "citation_url"])
+async def test_visual_proof_scope_keeps_other_native_preservation_checks(
+    change: str,
+    copy_verification_gateway_factory: Callable[
+        [FileId, dict[str, JsonValue]], GoogleDocumentGateway
+    ],
+):
+    source = _manual_title_with_linked_prose()
+    actual = deepcopy(source)
+    tab = dict(bodies(actual))[DocsTabId("t.0")]
+    paragraphs = [obj(obj(value)["paragraph"]) for value in array(obj(tab["body"])["content"])]
+    paragraphs[0]["paragraphStyle"] = {"alignment": "JUSTIFIED"}
+    runs = [obj(obj(value)["textRun"]) for value in array(paragraphs[0]["elements"])]
+    for run in runs[:-1]:
+        obj(obj(run["textStyle"])["weightedFontFamily"])["fontFamily"] = "Nunito"
+    if change == "title":
+        title = obj(obj(array(paragraphs[1]["elements"])[0])["textRun"])
+        obj(obj(title["textStyle"])["fontSize"])["magnitude"] = 11
+    elif change == "citation_bold":
+        obj(runs[1]["textStyle"])["bold"] = True
+    elif change == "citation_url":
+        obj(obj(runs[1]["textStyle"])["link"])["url"] = "https://example.test/changed"
+    expected = replace(
+        apply_visual_authority(parse_google_document(source, title="Decision"), ("b1",)),
+        copy_font_defended=True,
+    )
+    expected = apply_native_font_preservation(
+        expected, copy_preserved_font_ids(source, expected, expected)
+    )
+    draft = _pending_output_draft(
+        pending_mutation_sha256="hash", mutation_base_revision_sha256="hash"
+    )
+    gateway = copy_verification_gateway_factory(draft.document_id, actual)
+    result = await gateway.verify_output(
+        draft=draft,
+        source=_snapshot(source),
+        expected=expected,
+        verify_brand=True,
+        header_title="Decision",
+    )
+    assert result.structure_preserved is (change == "none")
 
 
 def test_copy_cannot_promote_preserved_manual_labels_to_new_heading_roles():

@@ -200,6 +200,7 @@ def capture_native_font_proof(
     target_font_family: str | None = None,
     transformed: DocumentIR | None = None,
     visual_authority: NativeVisualAuthoritySelection | None = None,
+    visual_authority_only: bool = False,
 ) -> tuple[NativeFontProof, ...]:
     if document is None:
         raise ValueError
@@ -213,6 +214,8 @@ def capture_native_font_proof(
     )
     for block in original.blocks:
         selected_visual = block.id in visual_authority_block_ids
+        if visual_authority_only and not selected_visual:
+            continue
         if not _needs_font_proof(
             block,
             selected_visual=selected_visual,
