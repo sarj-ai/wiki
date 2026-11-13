@@ -1,0 +1,71 @@
+{
+  "created_before_fix": "2026-11-13T19:43:07.385564+00:00",
+  "source_base_sha": "e39daed9ba44c5f25a0832cacc7327207ee0dbdf",
+  "cases": [
+    {
+      "id": "FR-C01",
+      "source": "The following examples illustrate measurement and budgeting logic. They are not benchmark results. Numeric constants in the snippets are example parameters, not additional reference estimates. This paragraph introduces the examples that follow.",
+      "bad_candidate": "These examples are not benchmark results.",
+      "must_preserve": [
+        "example parameters",
+        "not additional reference estimates",
+        "not benchmark results"
+      ],
+      "expected": "Reject missing negative qualification, even if model review approves. Ordinary framing remains removable.",
+      "evidence": "compact-technical-unslop-after.json"
+    },
+    {
+      "id": "FR-I01",
+      "source": "It is worth noting at the outset that this is a selection of possibilities rather than a single itinerary. Choose one timed outing and keep the rest flexible. The purpose of this paragraph is to introduce that practical approach to choosing from the list.",
+      "bad_candidate": "",
+      "must_preserve": [
+        "choose one timed outing",
+        "keep the rest flexible"
+      ],
+      "expected": "Reject whole-paragraph deletion; allow a concise faithful rewrite.",
+      "evidence": "compact-nyc-unslop-after.json"
+    }
+  ],
+  "control_variants": [
+    {
+      "id": "FR-H01",
+      "source": "The block declares no request records, credentials, or production data.",
+      "bad_candidate": "",
+      "must_preserve": [
+        "no request records",
+        "credentials",
+        "production data"
+      ],
+      "expected": "Reject dropping explicit content/provenance exclusions."
+    },
+    {
+      "id": "FR-H02",
+      "source": "The examples illustrate measurement and inspection code, containing no measured timings, output transcript, or claim that a current machine reproduces the reference table.",
+      "bad_candidate": "The examples illustrate measurement and inspection code.",
+      "must_preserve": [
+        "no measured timings",
+        "output transcript",
+        "no claim of reproducing reference measurements"
+      ],
+      "expected": "Reject qualifier loss; no trusted padding exception for source/data limitations."
+    },
+    {
+      "id": "FR-H03",
+      "source": "Before starting, save the checkpoint and keep the source unchanged.",
+      "bad_candidate": "",
+      "must_preserve": [
+        "save checkpoint before starting",
+        "keep source unchanged"
+      ],
+      "expected": "Reject deletion of a fronted procedural instruction without relying on a model veto."
+    },
+    {
+      "id": "FR-H04",
+      "source": "I hope this helps.",
+      "bad_candidate": "",
+      "must_preserve": [],
+      "expected": "Continue allowing independently reviewed pure editorial-padding deletion."
+    }
+  ],
+  "independence": "These are developer-authored regression/control variants, not independent holdouts. The separate fresh-context audit sequence owns independently authored holdouts."
+}
