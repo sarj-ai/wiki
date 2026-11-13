@@ -99,6 +99,10 @@ from app.document_transform.table_layout import (
         "CHF 1'234.50",
         "1’234,50 CHF",
         "1.20e-3 +/- 0.04e-3 s",
+        pytest.param("١٢٫٣٪", id="arabic-percent"),
+        pytest.param("۱۲٫۳۴۰۰٪", id="persian-percent"),
+        pytest.param("12٫3٪", id="western-digits-arabic-percent"),
+        pytest.param("≤ ١٢٫٣٪", id="arabic-percent-bound"),
     ],
 )
 def test_quantities_use_numeric_alignment_without_rewriting_their_representation(

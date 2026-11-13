@@ -61,6 +61,12 @@ from tests.test_editorial_refinement import _RefiningEditor, _request
         pytest.param("1’234,50 ms", "1’234.50 ms", id="grouped-decimal-separator"),
         pytest.param("12.3 +/- 0.4 ms", "12.3 /- 0.4 ms", id="ascii-uncertainty-operator"),
         pytest.param("1\u202f234.50 ms", "1234.5 ms", id="grouping-and-precision"),
+        pytest.param("١٢٫٣ ms", "١٢٬٣ ms", id="arabic-decimal-separator"),
+        pytest.param("١٬٢٣٤٫٥٠ ms", "١٫٢٣٤٫٥٠ ms", id="arabic-group-separator"),
+        pytest.param("12٫3 ms", "12٬3 ms", id="western-digits-arabic-separators"),
+        pytest.param("۱۲٫۳۴۰۰ ms", "۱۲٬۳۴۰۰ ms", id="persian-digits-arabic-separators"),
+        pytest.param("٫٥ ms", "٥ ms", id="arabic-leading-decimal"),
+        pytest.param("١٢٫٣٪", "١٢٫٣", id="arabic-percent-sign"),
         pytest.param("3‰", "3%", id="per-mille"),
         pytest.param("sensorA123", "sensorA124", id="numeric-identifier"),
         pytest.param("v1.2.3", "v1.2.4", id="version-literal"),
@@ -134,6 +140,13 @@ def test_numeric_mutations_are_rejected_before_review_while_active_voice_is_allo
         "3 m⁻",
         "3 m²⁻",
         "1–2 ms",
+        "١٬٢٣٤٫٥٠ ms",
+        "12٬345٫6700 ms",
+        "۱۲٫۳۴۰۰ ms",
+        "٫٥ ms",
+        "−١٢٫٣ ms",
+        "١٫٢٣٤(٥) ms",
+        "١٢٫٣٪",
     ],
 )
 def test_repair_constraints_include_the_complete_numeric_notation(literal: str) -> None:
@@ -171,6 +184,10 @@ def numeric_editor_factory() -> Callable[[tuple[str, ...]], _RefiningEditor]:
         ("9.81 m / s²", "9.81 m / s³"),
         ("3 kg m s⁻²", "3 kg m s⁻³"),
         ("12.3 ms ± 0.4 ms", "12.3 ms + 0.4 ms"),
+        ("١٢٫٣ ms", "١٢٬٣ ms"),
+        ("١٬٢٣٤٫٥٠ ms", "١٫٢٣٤٫٥٠ ms"),
+        ("٫٥ ms", "٥ ms"),
+        ("١٢٫٣٪", "١٢٫٣"),
     ],
 )
 async def test_changed_quantity_never_reaches_even_a_permissive_factual_reviewer(
