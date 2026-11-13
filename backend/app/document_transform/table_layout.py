@@ -27,7 +27,7 @@ _CURRENCY_CODE = r"(?:USD|EUR|GBP|SAR|CHF)"
 _CURRENCY = rf"(?:[$€£¥₹₩₽₺]|{_CURRENCY_CODE}(?=\s))"
 _NUMBER = rf"(?:[+−-]?\s*(?:{_CURRENCY}\s*)?|{_CURRENCY}\s*[+−-]?)\s*{_MAGNITUDE}"
 _UNIT = rf"{UNIT_SYMBOL}(?:{_POWER})?(?:{UNIT_PRODUCT}{UNIT_SYMBOL}(?:{_POWER})?)*"
-_QUANTITY_TERM = rf"{_NUMBER}(?:\s*(?:%|‰|×|x|{_CURRENCY_CODE}|{_UNIT}))?"
+_QUANTITY_TERM = rf"{_NUMBER}(?:\s*(?:%|٪|‰|×|x|{_CURRENCY_CODE}|{_UNIT}))?"
 _QUANTITY = re.compile(
     rf"(?:(?:approximately|about|roughly|approx\.)\s+)?"
     rf"(?:[<>]=?\s*|[≤≥~≈±]\s*)?{_QUANTITY_TERM}(?:\s*:\s*{_QUANTITY_TERM})?"
