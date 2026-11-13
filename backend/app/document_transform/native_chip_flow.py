@@ -12,6 +12,7 @@ from app.document_transform.native_chip_detection import (
     BlockedNativeSpan,
     DetectedNativeSpan,
     LocatedNativePlaceSpan,
+    NativeChipContext,
     NativeDateProperties,
     NativeDateValue,
     detect_address_spans,
@@ -20,9 +21,14 @@ from app.document_transform.native_chip_detection import (
 )
 from app.document_transform.native_chip_nodes import native_chip_node
 from app.document_transform.native_chip_protection import (
+    ProtectedNativeChipRange,
+    mask_native_code_text,
+    native_code_chip_ranges,
     protect_native_chip_candidates,
+    protect_native_code_candidates,
     protected_native_chip_ranges,
 )
+from app.document_transform.native_quote_spans import NativeInlineRange
 from app.document_transform.readability_json import (
     array,
     bodies,
@@ -34,6 +40,8 @@ from app.document_transform.readability_json import (
 from app.identifiers import DocsRevisionId, DocsTabId, FileId
 
 
+_INLINE_CODE_PLANNER_VERSION: Literal[3] = 3
+_CURRENT_CHIP_PLANNER_VERSION = _INLINE_CODE_PLANNER_VERSION
 _MAX_CHIPS = 100
 _MAX_MARKER_NAME = 128
 _CHIP_STYLE_FIELDS = frozenset(
@@ -77,7 +85,7 @@ class NativeChipSkip(BaseModel):
 
 class NativeChipPlan(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
-    planner_version: Literal[1, 2] = 1
+    planner_version: Literal[1, 2, 3] = 1
     document_id: FileId
     source_revision_id: DocsRevisionId
     source_sha256: str
@@ -104,6 +112,15 @@ NativeChipCheckpoint = Annotated[
 ]
 
 
+@dataclass(frozen=True, slots=True)
+class _ChipParagraph:
+    tab_id: DocsTabId
+    node: dict[str, JsonValue]
+    text: str
+    detection_text: str
+    code_ranges: tuple[NativeInlineRange, ...]
+
+
 def _paragraphs(value: JsonValue) -> Iterator[dict[str, JsonValue]]:
     match value:
         case dict():
@@ -120,49 +137,39 @@ def _paragraphs(value: JsonValue) -> Iterator[dict[str, JsonValue]]:
 
 
 def plan_native_chips(
-    document: dict[str, JsonValue], *, operation_id: uuid.UUID, planner_version: Literal[1, 2] = 2
+    document: dict[str, JsonValue],
+    *,
+    operation_id: uuid.UUID,
+    planner_version: Literal[1, 2, 3] = _CURRENT_CHIP_PLANNER_VERSION,
 ) -> NativeChipCheckpoint | None:
     protected = protected_native_chip_ranges(
         parse_google_document(document, title=native_chip_node(document).title)
     )
     tabs = dict(bodies(document))
-    context_text = "\n".join(
-        _paragraph_text(p) for tab in tabs.values() for p in _paragraphs(native_chip_node(tab).body)
-    )
+    paragraphs = tuple(_chip_paragraphs(document, planner_version=planner_version))
+    context_text = "\n".join(item.detection_text for item in paragraphs)
     context = native_chip_context(str(native_chip_node(document).title), context_text)
     spans: list[NativeChipSpan] = []
     skipped: list[NativeChipSkip] = []
-    for tab_id, tab in tabs.items():
-        for paragraph in _paragraphs(native_chip_node(tab).body):
-            text = _paragraph_text(paragraph)
-            start = integer(paragraph["startIndex"])
-            candidates = protect_native_chip_candidates(
-                (
-                    *detect_address_spans(text, context=context),
-                    *detect_date_spans(text, context=context),
-                ),
-                text=text,
-                tab_id=tab_id,
-                paragraph_start=start,
-                protected=protected,
-                enabled=planner_version != 1,
-            )
-            for candidate in candidates:
-                conversion = _candidate_conversion(tab_id, tab, paragraph, candidate)
-                if isinstance(conversion, NativeChipSkip):
-                    skipped.append(conversion)
-                elif len(spans) >= _MAX_CHIPS:
-                    skipped.append(
-                        NativeChipSkip(
-                            tab_id=tab_id,
-                            start=start + candidate.start,
-                            end=start + candidate.end,
-                            kind=candidate.kind,
-                            reason="conversion_limit",
-                        )
+    for item in paragraphs:
+        for candidate in _paragraph_candidates(
+            item, context=context, protected=protected, planner_version=planner_version
+        ):
+            conversion = _candidate_conversion(item.tab_id, tabs[item.tab_id], item.node, candidate)
+            if isinstance(conversion, NativeChipSkip):
+                skipped.append(conversion)
+            elif len(spans) >= _MAX_CHIPS:
+                skipped.append(
+                    NativeChipSkip(
+                        tab_id=item.tab_id,
+                        start=integer(item.node["startIndex"]) + candidate.start,
+                        end=integer(item.node["startIndex"]) + candidate.end,
+                        kind=candidate.kind,
+                        reason="conversion_limit",
                     )
-                else:
-                    spans.append(conversion)
+                )
+            else:
+                spans.append(conversion)
     if not spans and not skipped:
         return None
     first_tab = next(iter(tabs))
@@ -180,6 +187,49 @@ def plan_native_chips(
         spans=ordered,
         skipped=tuple(skipped),
         requests=chip_requests(ordered),
+    )
+
+
+def _chip_paragraphs(
+    document: dict[str, JsonValue], *, planner_version: Literal[1, 2, 3]
+) -> Iterator[_ChipParagraph]:
+    for tab_id, tab in bodies(document):
+        for node in _paragraphs(native_chip_node(tab).body):
+            text = _paragraph_text(node)
+            ranges = (
+                native_code_chip_ranges(document, tab_id=tab_id, node=node, text=text)
+                if planner_version >= _INLINE_CODE_PLANNER_VERSION
+                else ()
+            )
+            yield _ChipParagraph(tab_id, node, text, mask_native_code_text(text, ranges), ranges)
+
+
+def _paragraph_candidates(
+    paragraph: _ChipParagraph,
+    *,
+    context: NativeChipContext,
+    protected: tuple[ProtectedNativeChipRange, ...],
+    planner_version: Literal[1, 2, 3],
+) -> tuple[DetectedNativeSpan, ...]:
+    original = (
+        *detect_address_spans(paragraph.text, context=context),
+        *detect_date_spans(paragraph.text, context=context),
+    )
+    prose = (
+        original
+        if paragraph.detection_text == paragraph.text
+        else (
+            *detect_address_spans(paragraph.detection_text, context=context),
+            *detect_date_spans(paragraph.detection_text, context=context),
+        )
+    )
+    return protect_native_chip_candidates(
+        protect_native_code_candidates(original, prose, paragraph.code_ranges),
+        text=paragraph.text,
+        tab_id=paragraph.tab_id,
+        paragraph_start=integer(paragraph.node["startIndex"]),
+        protected=protected,
+        enabled=planner_version != 1,
     )
 
 
@@ -551,7 +601,7 @@ def _validate_chip_checkpoint(checkpoint: NativeChipCheckpoint) -> None:
 
 
 def legacy_protected_conversion_count(checkpoint: NativeChipCheckpoint) -> int:
-    if checkpoint.planner_version != 1:
+    if checkpoint.planner_version == _CURRENT_CHIP_PLANNER_VERSION:
         return 0
     current = plan_native_chips(checkpoint.before, operation_id=uuid.UUID(int=0))
     current_spans = current.spans if current is not None else ()

@@ -103,6 +103,16 @@ def test_signing_binds_upload_to_owner_and_limits_size(monkeypatch: pytest.Monke
     gcs_uploads._signing_credentials.cache_clear()
 
 
+@pytest.mark.parametrize("entropy", ["0" * 32, "e" * 32, "f" * 32])
+def test_upload_handle_satisfies_frontend_uuid_contract(entropy: str) -> None:
+    upload_id = gcs_uploads._upload_uuid(entropy)
+    # The client accepts RFC UUIDs with versions 1 through 8, independently
+    # of the server's chosen random-ID implementation.
+    assert upload_id.variant == uuid.RFC_4122
+    assert upload_id.version is not None
+    assert 1 <= upload_id.version <= 8
+
+
 def test_download_is_generation_bound_and_utf8_checked(monkeypatch: pytest.MonkeyPatch) -> None:
     blob = FakeBlob()
     client = FakeClient(blob)
