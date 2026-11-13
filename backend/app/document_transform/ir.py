@@ -302,7 +302,11 @@ def parse_markdown(content: str, *, title: str) -> DocumentIR:
         raise UnsupportedSourceError from exc
     if len(encoded) > MAX_MARKDOWN_BYTES:
         raise SourceTooLargeError
-    lines = content.splitlines()
+    # CommonMark line maps count CR/LF boundaries. Other Unicode separators
+    # remain literal characters, including inside inline code.
+    lines = re.split(r"\r\n?|\n", content)
+    if not lines[-1]:
+        lines.pop()
     if any(_looks_like_raw_html(line) for line in lines):
         raise UnsupportedSourceError
     protected_lines = _frontmatter_lines(lines) | _table_lines(lines)

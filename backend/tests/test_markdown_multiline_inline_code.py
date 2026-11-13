@@ -107,3 +107,31 @@ def test_multiline_code_in_a_list_preserves_the_next_item_as_editable_prose() ->
     editable = model_editable_blocks(document)
 
     assert tuple(block.text for block in editable) == (_OUTSIDE,)
+
+
+@pytest.mark.parametrize("separator", ["\u0085", "\u2028", "\u2029"])
+@pytest.mark.parametrize("inside", [False, True])
+async def test_unicode_separators_cannot_shift_or_split_protected_code(
+    separator: str, *, inside: bool, generator: _Generator
+) -> None:
+    prefix = f"Preface{separator}continued{separator}again.\n\n"
+    literal = _LITERALS[0].replace("\n", separator) if inside else _LITERALS[0]
+    source = f"{prefix}The literal is {literal}.\n\n{_OUTSIDE}\n"
+    original = parse_markdown(source, title="Unicode code boundaries")
+    request = DocumentTransformRequest.model_validate(
+        {
+            "mode": "both",
+            "source": {
+                "kind": "markdown",
+                "name": "Unicode code boundaries",
+                "content": source,
+                "destination_folder_id": "qa-folder",
+            },
+        }
+    )
+
+    result = await TextTransformPlanner(generator=generator).transform(original, request)
+
+    assert rewrite_markdown(source, original, result.document) == source.replace(
+        _OUTSIDE, "The operator stores the report."
+    )
