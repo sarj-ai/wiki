@@ -24,6 +24,7 @@ from tests.test_editorial_refinement import _RefiningEditor, _request
         pytest.param("3 W/℃", "3 W/℉", id="temperature-denominator-unit"),
         pytest.param("20 ℃²", "20 ℉²", id="temperature-unit-power"),
         pytest.param("3 W/° C", "3 W/° F", id="spaced-temperature-denominator"),
+        pytest.param("3 W/(m ° C)", "3 W/(m ° F)", id="grouped-temperature-denominator"),
         pytest.param("3 W m⁻¹ K⁻¹", "3 W m⁻¹ C⁻¹", id="kelvin-product-unit"),
         pytest.param("1.20e-6 s", "1.20e+6 s", id="exponent-sign"),
         pytest.param("1.20e-6 s", "1.2e-6 s", id="significant-zeros"),

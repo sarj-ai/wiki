@@ -29,6 +29,7 @@ from tests.test_table_layout import _native_table
         "3 W/℃",
         "20 ℃²",
         "3 W/° C",
+        "3 W/(m ° C)",
         "<= 10 ms",
         ">= 99.90%",
         "1.234.567",
