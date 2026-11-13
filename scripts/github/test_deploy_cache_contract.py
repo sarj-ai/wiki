@@ -14,6 +14,7 @@ from scripts.github.release_gate import (
     ReleaseBlockedError,
     command_output,
     require_ci_gates,
+    selected_components,
 )
 
 
@@ -117,7 +118,7 @@ def test_backend_deploy_runs_only_for_production_inputs() -> None:
     ci_workflow = _workflow("ci-backend.yml")
     deploy_workflow = _workflow("deploy-backend.yml")
     release = _workflow("release-main.yml")
-    deploy_paths = set(release["on"]["push"]["paths"])
+    qualification_paths = set(release["on"]["push"]["paths"])
     production_inputs = {
         "backend/.dockerignore",
         "backend/Dockerfile",
@@ -131,15 +132,15 @@ def test_backend_deploy_runs_only_for_production_inputs() -> None:
 
     assert ci_workflow["on"]["pull_request"] is None
     assert release["on"]["push"]["branches"] == ["main"]
-    assert production_inputs <= deploy_paths
-    assert "backend/**" not in deploy_paths
-    assert ".github/workflows/ci-backend.yml" not in deploy_paths
-    assert deploy_paths.isdisjoint(
-        {
-            "backend/tests/**",
-            "backend/scripts/**",
-        }
-    )
+    assert production_inputs <= qualification_paths
+    assert "backend/**" not in qualification_paths
+    assert ".github/workflows/ci-backend.yml" not in qualification_paths
+    assert "backend/scripts/**" not in qualification_paths
+    assert "backend/tests/**" in qualification_paths
+    assert selected_components(["backend/tests/test_main.py"]) == {
+        "backend": False,
+        "frontend": False,
+    }
     assert deploy_workflow["jobs"]["ci-backend"]["uses"] == ("./.github/workflows/ci-backend.yml")
     assert "ci-backend" in deploy_workflow["jobs"]["deploy"]["needs"]
 
@@ -283,7 +284,7 @@ def _quality_history(
     ("paths", "run_quality"),
     [
         (["backend/app/nested/module.py"], False),
-        (["backend/tests/test_module.py"], True),
+        (["backend/tests/test_module.py"], False),
         (["backend/app/nested/module.py", "backend/tests/test_module.py"], False),
         (["frontend/src/page.tsx", "scripts/shared-helper.py"], False),
         (["scripts/shared-helper.py"], True),
