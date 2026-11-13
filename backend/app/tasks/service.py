@@ -35,6 +35,7 @@ from app.document_transform.schemas import (
     DriveFileSource,
     InPlaceCheckpointPayload,
     MarkdownSource,
+    ModelPlanningCheckpoint,
     OutputStrategy,
     PlannedCopyCheckpoint,
     PlannedPresentationCheckpoint,
@@ -105,7 +106,7 @@ class _TaskJsonObject(RootModel[dict[str, JsonValue]]):
 
 class _EncryptedCopyEnvelope(BaseModel):
     model_config = ConfigDict(strict=True, extra="forbid", frozen=True)
-    kind: Literal["copy", "word_copy", "presentation_copy"]
+    kind: Literal["copy", "word_copy", "presentation_copy", "model_planning"]
     version: Literal[1]
     checkpoint_ciphertext: str
 
@@ -1087,7 +1088,7 @@ class PostgresTaskService(TaskService):
         }
         if checkpoint is not None and checkpoint.kind == "in_place":
             values["resource_id"] = checkpoint.document_id
-        elif checkpoint.output is not None:
+        elif checkpoint.kind != "model_planning" and checkpoint.output is not None:
             values["resource_id"] = checkpoint.output.file_id
         statement = (
             update(Task)
@@ -1599,7 +1600,9 @@ def _terminal_payload() -> ColumnElement[dict[str, JsonValue]]:
 
 def _serialize_checkpoint(checkpoint: DocumentTransformCheckpoint) -> dict[str, JsonValue]:
     serialized = checkpoint.model_dump(mode="json")
-    if isinstance(checkpoint, CopyPlan | WordCopyPlan | PresentationCopyPlan):
+    if isinstance(
+        checkpoint, CopyPlan | WordCopyPlan | PresentationCopyPlan | ModelPlanningCheckpoint
+    ):
         plaintext = json.dumps(serialized, ensure_ascii=False, separators=(",", ":"))
         if len(plaintext.encode()) > _MAX_CHECKPOINT_PLAN_BYTES:
             raise CheckpointTooLargeError
@@ -1637,6 +1640,8 @@ def _deserialize_checkpoint(raw: Mapping[str, object]) -> DocumentTransformCheck
                     return WordCheckpointPayload.model_validate(payload).root
                 case "copy":
                     return CopyCheckpointPayload.model_validate(payload).root
+                case "model_planning":
+                    return ModelPlanningCheckpoint.model_validate(payload)
                 case _:
                     assert_never(envelope.kind)
         case _EncryptedInPlaceEnvelope():

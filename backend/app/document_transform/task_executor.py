@@ -29,6 +29,8 @@ from app.document_transform.errors import (
     ExternalEffectUncertainError,
     InPlaceNeedsReviewError,
     ModelUnavailableError,
+    OutputConflictError,
+    SourceChangedError,
     UnsupportedSourceError,
 )
 from app.document_transform.executor import (
@@ -40,6 +42,10 @@ from app.document_transform.google_presentation_gateway import (
     GooglePresentationGateway,
 )
 from app.document_transform.header_provenance import HeaderIdentityEvidence, HeaderIdentityProof
+from app.document_transform.model_planning import (
+    CheckpointingPatchGenerator,
+    ModelReviewPendingError,
+)
 from app.document_transform.models import PatchGenerator
 from app.document_transform.naming import polish_alias_candidates
 from app.document_transform.presentation_executor import PresentationTransformExecutor
@@ -49,6 +55,7 @@ from app.document_transform.schemas import (
     DocumentTransformRequest,
     DocumentTransformResult,
     DriveFileSource,
+    ModelPlanningCheckpoint,
     OutputStrategy,
     TransformMode,
 )
@@ -66,7 +73,11 @@ from app.identifiers import FileId, TaskId
 from app.models.user import User
 from app.models.wiki import DocumentHeaderProvenance
 from app.performance import provider_retry_budget
-from app.tasks.errors import TaskExecutionDeferredError, TaskNotClaimableError
+from app.tasks.errors import (
+    TaskCheckpointContinuationError,
+    TaskExecutionDeferredError,
+    TaskNotClaimableError,
+)
 from app.tasks.schemas import (
     ActiveDocumentTransformTaskRecord,
     ReviewDocumentTransformTaskRecord,
@@ -343,6 +354,11 @@ class DriveDocumentTransformTaskExecutor(DocumentTransformTaskExecutor):
             source_file, header_identity = await self._authorized_drive_source(
                 owner_user_id, payload, files
             )
+            if (
+                isinstance(checkpoint, ModelPlanningCheckpoint)
+                and source_file.modified_time != payload.source.expected_modified_time
+            ):
+                raise SourceChangedError
             if source_file.mime_type == WORD_MIME:
                 return DocumentTransformRuntime(
                     short_links=short_links,
@@ -387,14 +403,44 @@ class DriveDocumentTransformTaskExecutor(DocumentTransformTaskExecutor):
             header_identity=header_identity,
         )
 
+        planning = checkpoint if isinstance(checkpoint, ModelPlanningCheckpoint) else None
+        generator = self._generator
+        if (
+            payload.mode is not TransformMode.FORMAT
+            and generator.supports_semantic_rewrite
+            and (checkpoint is None or planning is not None)
+        ):
+
+            async def save_model_plan(plan: ModelPlanningCheckpoint) -> None:
+                generation = await self._tasks.save_document_transform_checkpoint(
+                    task_id,
+                    lease_token=lease_token,
+                    expected_generation=checkpoint_generation,
+                    checkpoint=plan,
+                )
+                logger.info(
+                    "document model planning checkpoint saved",
+                    task_id=task_id,
+                    checkpoint_generation=generation,
+                    model_proposal_count=len(plan.proposals),
+                )
+
+            generator = CheckpointingPatchGenerator(
+                generator=generator,
+                request=payload,
+                checkpoint=planning,
+                save=save_model_plan,
+            )
+        elif planning is not None:
+            raise OutputConflictError
         transform = ThreadedMarkdownExecutor(
             gateway=document_gateway,
-            generator=self._generator,
+            generator=generator,
             logo_bytes=logo_bytes,
             checkpoint_store=self._tasks,
             task_id=task_id,
             lease_token=lease_token,
-            checkpoint=checkpoint,
+            checkpoint=None if planning is not None else checkpoint,
             checkpoint_generation=checkpoint_generation,
         )
         transform.upload_owner = owner_user_id
@@ -505,6 +551,19 @@ async def _execute_claimed(
     )
     try:
         result = await transform.execute(operation_id=task_id, request=payload)
+    except ModelReviewPendingError as exc:
+        logger.info(
+            "document model proposals checkpointed; independent review pending", task_id=task_id
+        )
+        return await defer_or_fail_retryable_task(
+            task_id,
+            tasks=tasks,
+            claim=claim,
+            error_code="model_review_budget_exhausted",
+            error_detail="Saved model proposals require independent review before any document mutation.",
+            cause=exc,
+            deferred_error=TaskCheckpointContinuationError,
+        )
     except ExternalEffectUncertainError:
         return await tasks.require_review(task_id, lease_token=claim.lease_token)
     except ProviderDeadlineError as exc:
@@ -658,6 +717,7 @@ async def defer_or_fail_retryable_task(
     error_code: str,
     error_detail: str,
     cause: Exception,
+    deferred_error: type[TaskExecutionDeferredError] = TaskExecutionDeferredError,
 ) -> TaskRead:
     if (
         claim.task.attempt_count >= _MAX_TASK_ATTEMPTS
@@ -670,4 +730,4 @@ async def defer_or_fail_retryable_task(
             error_detail=error_detail,
         )
     await tasks.defer(task_id, lease_token=claim.lease_token)
-    raise TaskExecutionDeferredError from cause
+    raise deferred_error from cause

@@ -752,4 +752,22 @@ class TextDocumentCheckpointPayload(RootModel[TextDocumentCheckpoint]):
     pass
 
 
-DocumentTransformCheckpoint = TextDocumentCheckpoint | PresentationCopyCheckpoint
+class ModelPlanningStage(StrEnum):
+    REVIEW_PENDING = "review_pending"
+
+
+class ModelPlanningCheckpoint(StrictTransformModel):
+    version: Literal[1] = 1
+    kind: Literal["model_planning"] = "model_planning"
+    stage: ModelPlanningStage = ModelPlanningStage.REVIEW_PENDING
+    request_sha256: str = Field(pattern=r"^[a-f0-9]{64}$")
+    document_sha256: str = Field(pattern=r"^[a-f0-9]{64}$")
+    pipeline_version: str
+    catalog_sha256: str = Field(pattern=r"^[a-f0-9]{64}$")
+    model_ids: tuple[ModelId, ...] = Field(min_length=1, max_length=3)
+    proposals: tuple[TextPatch, ...] = Field(max_length=MAX_DOCUMENT_BLOCKS)
+
+
+DocumentTransformCheckpoint = (
+    TextDocumentCheckpoint | PresentationCopyCheckpoint | ModelPlanningCheckpoint
+)
