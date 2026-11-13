@@ -191,6 +191,20 @@ def test_explicit_single_date_in_title_anchors_inline_times_without_using_today(
         "NYC November 14, 2026 and November 15, 2026",
         "NYC capability canary 2026-11-12",
         "NYC November 14–15, 2026",
+        "NYC this weekend · 13–15 November 2026 — Before",
+        "NYC 13-15 November 2026",
+        "NYC 13—15 November 2026",
+        "NYC 13 to 15 November 2026",
+        "NYC 13 through 15 November 2026",
+        "NYC November 13 to 15, 2026",
+        "NYC November 13 through 15, 2026",
+        "NYC 13 and 15 November 2026",
+        "NYC November 13 or 15, 2026",
+        "NYC 30 Oct–2 November 2026",
+        "NYC Oct 30–2 November 2026",
+        "NYC October 30–Nov 2, 2026",
+        "NYC 13 November–2 Dec 2026",
+        "NYC 13 Nov.–15 November 2026",
     ],
 )
 def test_missing_or_multiple_title_dates_leave_bare_times_unanchored(title: str) -> None:
@@ -201,3 +215,30 @@ def test_missing_or_multiple_title_dates_leave_bare_times_unanchored(title: str)
 def test_recurring_hours_do_not_inherit_an_explicit_title_date() -> None:
     context = native_chip_context("NYC • November 14, 2026", "Opening hours: Tue–Sat 10 am–6 pm.")
     assert detect_date_spans("Opening hours: Tue–Sat 10 am–6 pm.", context=context) == ()
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "Friday, November 13, 2026, at 6:45 pm ET; doors 5:45 pm ET.",
+        "Friday, November 13, at 6:45 pm ET; doors 5:45 pm ET.",
+        "Friday, November 13, 2026, 6:45 pm ET; doors 5:45 pm ET.",
+    ],
+)
+def test_paragraph_dates_prevent_title_date_from_reassigning_other_times(text: str) -> None:
+    context = native_chip_context("NYC · Sunday, November 15, 2026", text)
+    spans = detect_date_spans(text, context=context)
+    assert spans
+    assert all(
+        span.date_value is None or span.date_value.timestamp.startswith("2026-11-13")
+        for span in spans
+    )
+    assert all("5:45" not in span.text for span in spans)
+
+
+def test_unresolved_paragraph_date_does_not_borrow_a_day_from_the_title() -> None:
+    text = "Friday, November 13, at 6:45 pm. Exhibition ends January 10, 2027."
+    context = native_chip_context("NYC · Sunday, November 15, 2026", text)
+    spans = detect_date_spans(text, context=context)
+    assert any(span.skip_reason == "ambiguous_or_invalid_date" for span in spans)
+    assert not any(span.date_value and span.date_value.has_time for span in spans)
