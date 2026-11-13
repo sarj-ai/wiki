@@ -164,6 +164,56 @@ def test_quality_suppression_failure_stops_before_other_gates(native_tool: Path)
 
 
 @pytest.mark.parametrize(
+    "scopes",
+    [["quality"], ["quality", "frontend"], []],
+    ids=["quality", "combined-scopes", "full-qualification"],
+)
+def test_quality_prepares_generated_api_once_before_source_analysis(
+    native_tool: Path, scopes: list[str]
+) -> None:
+    executable = native_tool.parent / "fixture-tool"
+    generated = native_tool.parent / "generated-api"
+    preparation = (
+        "if pathlib.Path(sys.argv[0]).name == 'node':\n"
+        "    print('v99.0.0')\n"
+        "if 'generate:api' in sys.argv:\n"
+        f"    pathlib.Path({str(generated)!r}).write_text('current API')\n"
+        "if 'code-standards' in sys.argv and 'check' in sys.argv "
+        f"and not pathlib.Path({str(generated)!r}).is_file():\n"
+        f"    raise SystemExit({_NATIVE_FAILURE})\n"
+    )
+    program = executable.read_text().replace("raise SystemExit(", preparation + "raise SystemExit(")
+    for name in ("uv", "uvx", "npm", "node", "bash"):
+        target = native_tool.parent / name
+        target.write_text(program)
+        target.chmod(0o700)
+
+    result = CliRunner().invoke(wiki.CLI, ["check", *scopes])
+
+    assert result.exit_code == 0, result.output
+    calls = _invocations(native_tool)
+    assert sum("generate:api" in call.arguments for call in calls) == 1
+    assert any("code-standards" in call.arguments and "check" in call.arguments for call in calls)
+
+
+def test_quality_generation_failure_stops_before_source_analysis(native_tool: Path) -> None:
+    executable = native_tool.parent / "fixture-tool"
+    for name in ("uv", "uvx", "npm"):
+        target = native_tool.parent / name
+        target.write_text(
+            executable.read_text().replace("'fail' in sys.argv", "'generate:api' in sys.argv")
+        )
+        target.chmod(0o700)
+
+    result = CliRunner().invoke(wiki.CLI, ["check", "quality"])
+
+    assert result.exit_code == _NATIVE_FAILURE
+    ratchet, generation = _invocations(native_tool)
+    assert "sarj-ratchet" in ratchet.arguments
+    assert generation.arguments == ["--prefix", "frontend", "run", "generate:api"]
+
+
+@pytest.mark.parametrize(
     ("scopes", "expected_count"),
     [(["backend", "frontend"], 18), (["backend", "backend"], 9)],
     ids=["ordered-subsystems", "duplicate-subsystem-runs-once"],

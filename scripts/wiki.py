@@ -184,6 +184,7 @@ def checks(scope: Check, *, platform: str = sys.platform) -> tuple[Command, ...]
 def _quality_checks(*, platform: str) -> tuple[Command, ...]:
     return (
         _project("sarj-ratchet", "."),
+        _frontend("generate:api"),
         *_repository_checks(),
         _standards("doctor"),
         _standards(
