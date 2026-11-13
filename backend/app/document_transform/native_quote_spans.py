@@ -3,7 +3,10 @@ import re
 from types import MappingProxyType
 from typing import ClassVar, Literal, assert_never
 
+from app.document_transform.inline_code import mask_inline_code
 from app.document_transform.ir import utf16_length
+from app.document_transform.quantity_notation import mask_unit_annotation_marks
+from app.document_transform.quotations import quotation_scan_sources
 
 
 type ProtectedInlineReason = Literal[
@@ -114,11 +117,32 @@ def _word(value: str) -> bool:
 
 
 def native_inline_protected_ranges(text: str) -> tuple[NativeInlineRange, ...]:
+    primary = _scan_inline_ranges(text, mask_unit_annotation_marks(text))
+    if len(quotation_scan_sources(mask_inline_code(text))) == 1:
+        return primary
+    original_quotes = tuple(
+        span for span in _scan_inline_ranges(text, text) if span.reason == "protected_quotation"
+    )
+    # An original matched opener can retain its original closing interpretation.
+    # A raw closing mark may instead open a genuine later unfinished quotation;
+    # keep that primary protection even if it conservatively covers later text.
+    original_openings = {span.start for span in original_quotes}
+    retained = tuple(
+        span
+        for span in primary
+        if span.reason != "unclosed_quotation" or span.start not in original_openings
+    )
+    return tuple(
+        sorted({*retained, *original_quotes}, key=lambda span: (span.start, span.end, span.reason))
+    )
+
+
+def _scan_inline_ranges(text: str, source: str) -> tuple[NativeInlineRange, ...]:
     # Scan tokens once and accumulate UTF-16 offsets once. Repeated unmatched
     # opening marks must not rescan the remaining document for every candidate.
     state = _InlineState()
     cursor = offset = 0
-    for token in _TOKENS.finditer(text):
+    for token in _TOKENS.finditer(source):
         offset += utf16_length(text[cursor : token.start()])
         start = offset
         offset += utf16_length(token.group())

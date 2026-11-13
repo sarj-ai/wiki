@@ -7,6 +7,7 @@ from typing import ClassVar, Literal, assert_never
 
 from app.document_transform.inline_code import mask_inline_code
 from app.document_transform.ir import BlockKind, DocumentIR
+from app.document_transform.quantity_notation import mask_unit_annotation_marks
 from app.identifiers import DocsSegmentId, DocsTabId
 
 
@@ -18,6 +19,22 @@ SINGLE_QUOTED_SPAN_PATTERN = (
 )
 QUOTED_SPAN_PATTERN = rf'"[^"]+"|“[^”]+”|{SINGLE_QUOTED_SPAN_PATTERN}'
 _QUOTE_TOKEN = re.compile(r"""["“”‘’']""")
+_QUOTED_SPAN = re.compile(QUOTED_SPAN_PATTERN)
+
+
+def quotation_scan_sources(source: str) -> tuple[str, ...]:
+    masked = mask_unit_annotation_marks(source)
+    if masked == source:
+        return (source,)
+    # The apparent abbreviation may instead close malformed quoted source.
+    # Preserve both readings when an existing quotation ends at that mark.
+    if any(
+        masked[span.start()] == source[span.start()]
+        and masked[span.end() - 1] != source[span.end() - 1]
+        for span in _QUOTED_SPAN.finditer(source)
+    ):
+        return masked, source
+    return (masked,)
 
 
 class QuoteDelimiter(StrEnum):
@@ -92,8 +109,17 @@ def quoted_block_ids(document: DocumentIR) -> frozenset[str]:
 def _multiblock_quotation_indices(texts: tuple[str, ...]) -> frozenset[int]:
     source = "\n".join(texts)
     # Code delimiters and string literals must not open or close prose quotes.
-    masked = mask_inline_code(source)
     positions = _paragraph_positions(texts)
+    return frozenset(
+        index
+        for masked in quotation_scan_sources(mask_inline_code(source))
+        for index in _scan_multiblock_quotation_indices(masked, positions)
+    )
+
+
+def _scan_multiblock_quotation_indices(
+    masked: str, positions: _ParagraphPositions
+) -> frozenset[int]:
     state = _QuotationState(quotes={}, covered_until={}, protected=set())
     # Scan once: repeated unmatched opening marks in a large document must not
     # cause a regular expression to rescan the remainder at every position.
