@@ -230,3 +230,36 @@ def test_document_preamble_exception_does_not_relax_a_different_sentences_real_g
     )
     assert not decision.accepted
     assert decision.findings[0].code == "force_language_changed"
+
+
+@pytest.mark.parametrize("retain_intention", [True, False])
+def test_cited_reference_allows_direct_note_prose_while_service_intention_stays_protected(
+    *, retain_intention: bool
+) -> None:
+    source = (
+        "This note is intended to bring together latency estimates from the Google SRE "
+        "reference so the same information can be read in one place. The figures are rules "
+        "of thumb, rather than current benchmarks. The calibration reading was measured "
+        "by the team at 20 ℃ on 2026-11-11. The service is intended to reduce retry traffic."
+    )
+    replacement = (
+        "Google SRE reference latency estimates are rules of thumb, rather than current "
+        "benchmarks. The team measured the calibration reading at 20 ℃ on 2026-11-11. "
+        + (
+            "The service is intended to reduce retry traffic."
+            if retain_intention
+            else "The service reduces retry traffic."
+        )
+    )
+    document = parse_markdown(source, title="Reference source")
+    block = document.blocks[0]
+    decision = validate_patches(
+        document,
+        [TextPatch(block_id=block.id, expected_sha256=block.sha256, replacement=replacement)],
+        phase=TransformPhase.UNSLOP,
+        aggressive_unslop=True,
+    )
+
+    assert bool(decision.accepted) is retain_intention
+    if not retain_intention:
+        assert decision.findings[0].code == "force_language_changed"

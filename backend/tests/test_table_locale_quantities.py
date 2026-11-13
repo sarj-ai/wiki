@@ -15,6 +15,21 @@ from tests.test_table_layout import _native_table
 @pytest.mark.parametrize(
     "quantity",
     [
+        "20 ℃",
+        "68 ℉",
+        "293.15 K",
+        "293.15 K",
+        "−20.00 ° C",
+        "20 ° c",
+        "68 °\u202fF",
+        "20 ℃ ± 0.2 ℃",
+        "20 ° C to 25 ° C",
+        "3 W m⁻¹ K⁻¹",
+        "0.05 ℃/s",
+        "3 W/℃",
+        "20 ℃²",
+        "3 W/° C",
+        "3 W/(m ° C)",
         "<= 10 ms",
         ">= 99.90%",
         "1.234.567",
@@ -53,7 +68,18 @@ def test_locale_quantities_keep_their_exact_text_and_numeric_alignment(quantity:
 
 @pytest.mark.parametrize(
     "text",
-    ["v1.234.567", "1.2.3", "192.168.1.1", "1'23.50", "١٬٢٣٫٥٠", "<= latency"],
+    [
+        "v1.234.567",
+        "1.2.3",
+        "192.168.1.1",
+        "1'23.50",
+        "١٬٢٣٫٥٠",
+        "<= latency",
+        "20 °",
+        "20 ° Q",
+        "20 ℃ sensor",
+        "20 °\nC",
+    ],
 )
 def test_identifiers_and_malformed_grouping_remain_text(text: str) -> None:
     assert not numeric_table_value(text)

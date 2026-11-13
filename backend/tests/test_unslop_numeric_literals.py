@@ -12,6 +12,20 @@ from tests.test_editorial_refinement import _RefiningEditor, _request
 @pytest.mark.parametrize(
     ("before", "after"),
     [
+        pytest.param("20 ℃", "20 ℉", id="celsius-symbol-unit"),
+        pytest.param("20 ℉", "20 ℃", id="fahrenheit-symbol-unit"),
+        pytest.param("20 ℃", "20", id="dropped-celsius-unit"),
+        pytest.param("20 ° C", "20 ° F", id="spaced-temperature-unit"),
+        pytest.param("20 ° c", "20 ° f", id="authored-lowercase-temperature-unit"),
+        pytest.param("293 K", "293", id="dropped-kelvin-symbol"),
+        pytest.param("20 °\u202fC", "20 °\u202fF", id="narrow-space-temperature-unit"),
+        pytest.param("20 ° C", "20 °C", id="temperature-unit-spacing"),
+        pytest.param("20 ℃/s", "20 ℉/s", id="temperature-rate-unit"),
+        pytest.param("3 W/℃", "3 W/℉", id="temperature-denominator-unit"),
+        pytest.param("20 ℃²", "20 ℉²", id="temperature-unit-power"),
+        pytest.param("3 W/° C", "3 W/° F", id="spaced-temperature-denominator"),
+        pytest.param("3 W/(m ° C)", "3 W/(m ° F)", id="grouped-temperature-denominator"),
+        pytest.param("3 W m⁻¹ K⁻¹", "3 W m⁻¹ C⁻¹", id="kelvin-product-unit"),
         pytest.param("1.20e-6 s", "1.20e+6 s", id="exponent-sign"),
         pytest.param("1.20e-6 s", "1.2e-6 s", id="significant-zeros"),
         pytest.param("1.234(5) ms", "1.234(5) s", id="parenthetical-uncertainty-unit"),
@@ -180,6 +194,8 @@ def numeric_editor_factory() -> Callable[[tuple[str, ...]], _RefiningEditor]:
 @pytest.mark.parametrize(
     ("before", "after"),
     [
+        ("20 ℃", "20 ℉"),
+        ("20 ° C", "20 ° F"),
         ("1.20e-6 s", "1.20e+6 s"),
         ("9.81 m / s²", "9.81 m / s³"),
         ("3 kg m s⁻²", "3 kg m s⁻³"),
