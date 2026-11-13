@@ -23,6 +23,7 @@ from app.document_transform.readability_paragraphs import (
 from app.document_transform.readability_provider import ReadabilityProvider
 from app.document_transform.readability_types import (
     CURRENT_READABILITY_VERSION,
+    PlannedReadabilityCheckpoint,
     ReadabilityCheckpoint,
     ReadabilityPart,
     ReadabilityProposal,
@@ -145,6 +146,170 @@ async def _plan(editor: _LayoutEditor | None = None) -> ReadabilityCheckpoint:
     )
     assert plan is not None
     return plan
+
+
+def _table_ending_tabs_fixture(
+    stage: Literal["before", "after"] = "before",
+) -> dict[str, JsonValue]:
+    document = _fixture(stage)
+    additional = deepcopy(obj(array(_fixture("before")["tabs"])[0]))
+    obj(additional["tabProperties"]).update(
+        {"tabId": "t.appendix", "title": "Appendix", "index": 1}
+    )
+    obj(additional["documentTab"])["body"] = {
+        "content": [
+            {
+                "startIndex": 1,
+                "endIndex": 2,
+                "paragraph": {
+                    "elements": [
+                        {
+                            "startIndex": 1,
+                            "endIndex": 2,
+                            "textRun": {"content": "\n", "textStyle": {}},
+                        }
+                    ],
+                    "paragraphStyle": {"namedStyleType": "NORMAL_TEXT"},
+                },
+            }
+        ]
+    }
+    array(document["tabs"]).append(additional)
+    return document
+
+
+@pytest.mark.asyncio
+async def test_layout_compacts_only_the_unstyled_empty_tail_after_a_table() -> None:
+    document = _table_ending_tabs_fixture()
+    original = deepcopy(document)
+    plan = await plan_readability(
+        document, title="Table at tab boundary", generator=_LayoutEditor()
+    )
+    assert plan is not None
+    assert {
+        "updateTextStyle": {
+            "range": {"startIndex": 392, "endIndex": 393, "tabId": "t.0"},
+            "textStyle": {"fontSize": {"magnitude": 1, "unit": "PT"}},
+            "fields": "fontSize",
+        }
+    } in plan.requests
+    assert document == original
+
+
+@pytest.mark.asyncio
+async def test_terminal_font_readback_rejects_unplanned_content_and_styles() -> None:
+    before = _table_ending_tabs_fixture()
+    plan = await plan_readability(before, title="Table boundary", generator=_LayoutEditor())
+    assert plan is not None
+    after = _table_ending_tabs_fixture("after")
+    terminal = obj(content(obj(obj(array(after["tabs"])[0])["documentTab"]))[-1])
+    run = obj(array(obj(terminal["paragraph"])["elements"])[0])
+    obj(run["textRun"])["textStyle"] = {"fontSize": {"magnitude": 1, "unit": "PT"}}
+    assert verify_readability(after, plan)
+    obj(run["textRun"])["textStyle"] = {"fontSize": {"magnitude": 2, "unit": "PT"}}
+    assert not verify_readability(after, plan)
+
+
+@pytest.mark.parametrize("authored", ["font", "break", "border", "content"])
+@pytest.mark.asyncio
+async def test_terminal_compaction_preserves_authored_tail_treatment(
+    authored: Literal["font", "break", "border", "content"],
+) -> None:
+    document = _table_ending_tabs_fixture()
+    terminal = obj(content(obj(obj(array(document["tabs"])[0])["documentTab"]))[-1])
+    paragraph = obj(terminal["paragraph"])
+    run = obj(array(paragraph["elements"])[0])
+    match authored:
+        case "font":
+            obj(run["textRun"])["textStyle"] = {"fontSize": {"magnitude": 11, "unit": "PT"}}
+        case "break":
+            obj(paragraph["paragraphStyle"])["pageBreakBefore"] = True
+        case "border":
+            obj(paragraph["paragraphStyle"])["borderBottom"] = {"width": {"magnitude": 1}}
+        case "content":
+            obj(run["textRun"])["content"] = "Authored ending.\n"
+            run["endIndex"] = 408
+            terminal["endIndex"] = 408
+    plan = await plan_readability(document, title="Authored tail", generator=_LayoutEditor())
+    assert plan is not None
+    assert not plan.terminals
+
+
+@pytest.mark.asyncio
+async def test_terminal_compaction_preserves_pageless_geometry() -> None:
+    document = _table_ending_tabs_fixture()
+    tab = obj(obj(array(document["tabs"])[0])["documentTab"])
+    obj(tab["documentStyle"])["documentFormat"] = {"documentMode": "PAGELESS"}
+    plan = await plan_readability(document, title="Pageless table", generator=_LayoutEditor())
+    assert plan is not None
+    assert not plan.terminals
+
+
+@pytest.mark.asyncio
+async def test_older_checkpoint_cannot_claim_a_new_terminal_source_proof() -> None:
+    plan = await plan_readability(
+        _table_ending_tabs_fixture(), title="Legacy receipt", generator=_LayoutEditor()
+    )
+    assert plan is not None
+    assert plan.terminals
+    receipt = plan.model_dump(mode="json")
+    receipt["version"] = 6
+    with pytest.raises(ValueError, match="Terminal paragraph proofs require readability version 7"):
+        PlannedReadabilityCheckpoint.model_validate(receipt)
+
+
+@pytest.mark.asyncio
+async def test_provider_applies_terminal_proof_once_and_recovers_the_pending_receipt() -> None:
+    document = _table_ending_tabs_fixture()
+    plan = await plan_readability(document, title="Table boundary", generator=_LayoutEditor())
+    assert plan is not None
+    calls: list[FileId] = []
+
+    async def read(_file_id: FileId) -> dict[str, JsonValue]:
+        return deepcopy(document)
+
+    async def write(file_id: FileId, pending: ReadabilityCheckpoint) -> None:
+        assert pending == plan
+        calls.append(file_id)
+        document.clear()
+        document.update(_table_ending_tabs_fixture("after"))
+        terminal = obj(content(obj(obj(array(document["tabs"])[0])["documentTab"]))[-1])
+        run = obj(array(obj(terminal["paragraph"])["elements"])[0])
+        obj(run["textRun"])["textStyle"] = {"fontSize": {"magnitude": 1, "unit": "PT"}}
+
+    provider = ReadabilityProvider(read, write)
+    file_id = FileId("readability-fixture")
+    completed = await provider.apply(document_id=file_id, checkpoint=plan)
+    assert await provider.apply(document_id=file_id, checkpoint=plan) == completed
+    assert await provider.apply(document_id=file_id, checkpoint=completed) == completed
+    assert calls == [file_id]
+
+
+@pytest.mark.asyncio
+async def test_provider_rejects_a_forged_terminal_source_before_writing() -> None:
+    document = _table_ending_tabs_fixture()
+    plan = await plan_readability(document, title="Table boundary", generator=_LayoutEditor())
+    assert plan is not None
+    source = deepcopy(plan.terminals[0].source)
+    obj(obj(source["paragraph"])["paragraphStyle"])["spaceBelow"] = {
+        "magnitude": 99,
+        "unit": "PT",
+    }
+    forged = plan.model_copy(
+        update={"terminals": (plan.terminals[0].model_copy(update={"source": source}),)}
+    )
+    assert forged.requests == plan.requests
+
+    async def read(_file_id: FileId) -> dict[str, JsonValue]:
+        return deepcopy(document)
+
+    async def write(_file_id: FileId, _pending: ReadabilityCheckpoint) -> None:
+        pytest.fail("A forged terminal proof must fail before any write")
+
+    with pytest.raises(OutputConflictError):
+        await ReadabilityProvider(read, write).apply(
+            document_id=FileId("readability-fixture"), checkpoint=forged
+        )
 
 
 async def test_google_docs_readback_verifies_native_lists_heading_and_content_fitted_table() -> (

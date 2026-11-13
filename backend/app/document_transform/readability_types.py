@@ -15,10 +15,11 @@ from pydantic import (
 from app.identifiers import DocsRevisionId, DocsTabId
 
 
-type ReadabilityVersion = Literal[1, 2, 3, 4, 5, 6]
+type ReadabilityVersion = Literal[1, 2, 3, 4, 5, 6, 7]
 READABILITY_PARAGRAPH_WORD_LIMIT = 45
 
-CURRENT_READABILITY_VERSION: Literal[6] = 6
+CURRENT_READABILITY_VERSION: Literal[7] = 7
+TERMINAL_PROOF_VERSION = 7
 
 type ReadabilityStopReason = Literal[
     "unrecorded",
@@ -233,6 +234,15 @@ class ReadabilityParagraph(BaseModel):
     parts: tuple[ReadabilityPart, ...]
 
 
+class ReadabilityTerminal(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    tab_id: DocsTabId
+    start: int = Field(ge=0)
+    end: int = Field(gt=0)
+    source: dict[str, JsonValue]
+
+
 class ReadabilityTable(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
@@ -257,10 +267,18 @@ class ReadabilityPlan(BaseModel):
     invariant_sha256: str
     paragraphs: tuple[ReadabilityParagraph, ...] = ()
     tables: tuple[ReadabilityTable, ...] = ()
+    terminals: tuple[ReadabilityTerminal, ...] = ()
     original_lists: dict[str, dict[str, JsonValue]]
     requests: list[dict[str, JsonValue]]
     # One authoritative model. Computed fields preserve the encrypted receipt wire format.
     refinement: ReadabilityRefinement = Field(exclude=True)
+
+    @model_validator(mode="after")
+    def terminal_proofs_require_current_version(self) -> Self:
+        if self.terminals and self.version < TERMINAL_PROOF_VERSION:
+            msg = "Terminal paragraph proofs require readability version 7"
+            raise ValueError(msg)
+        return self
 
     @model_validator(mode="before")
     @classmethod
@@ -282,6 +300,8 @@ class ReadabilityPlan(BaseModel):
         self, handler: SerializerFunctionWrapHandler, info: SerializationInfo
     ) -> dict[str, ReadabilityReceiptValue]:
         source = _SerializedReadabilityReceipt.model_validate(handler(self)).root
+        if self.version < TERMINAL_PROOF_VERSION:
+            source.pop("terminals", None)
         projection = _ReadabilityRefinementWire(
             model_invoked=self.model_invoked,
             passes=self.passes,
