@@ -116,6 +116,7 @@ def _unverified_output_id(
         if (
             (payload is not None and payload.output_strategy is not OutputStrategy.COPY)
             or checkpoint is None
+            or checkpoint.kind == "model_planning"
             or checkpoint.output is None
         ):
             return None

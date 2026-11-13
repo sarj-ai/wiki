@@ -65,3 +65,8 @@ class TaskExecutionDeferredError(TaskError):
 
     def __init__(self) -> None:
         super().__init__("Task execution will be retried")
+
+
+class TaskCheckpointContinuationError(TaskExecutionDeferredError):
+    code = "task_checkpoint_continuation"
+    http_status = 409
