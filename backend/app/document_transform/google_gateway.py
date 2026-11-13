@@ -175,6 +175,7 @@ from app.document_transform.native_safety_diagnostics import (
     native_safety_error,
 )
 from app.document_transform.native_table_font import TableFontPlan, project_table_fonts
+from app.document_transform.native_terminal import verify_terminal_blank
 from app.document_transform.native_visual_authority import (
     apply_visual_authority,
     visual_authority_block_ids,
@@ -4930,6 +4931,8 @@ def _copy_style_projection(
     if not verify_brand:
         return actual
     try:
+        if source is not None and not verify_terminal_blank(source, actual, expected):
+            return None
         projected = actual
         if source is not None:
             plan = plan_native_code_styles(

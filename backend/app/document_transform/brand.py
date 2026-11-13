@@ -20,6 +20,7 @@ from app.document_transform.gateway import TabHeader
 from app.document_transform.ir import BlockKind, DocumentIR, SourceRange, TextBlock, utf16_length
 from app.document_transform.native_code import plan_native_code_styles
 from app.document_transform.native_prose import NATIVE_TEXT_STYLE_FIELDS
+from app.document_transform.native_terminal import terminal_blank_requests
 from app.identifiers import DocsTabId
 
 
@@ -168,6 +169,7 @@ def build_copy_mutations(
     )
     if source_document is not None:
         requests.extend(plan_native_code_styles(source_document, original, transformed).requests)
+        requests.extend(terminal_blank_requests(source_document, transformed))
     return requests
 
 
