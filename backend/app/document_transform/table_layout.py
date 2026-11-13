@@ -12,7 +12,12 @@ _MISSING = frozenset({"", "-", "–", "—", "n/a", "na", "null", "…"})
 _CHARACTER_WIDTH_TWIPS = 110  # Conservative 5.5 pt at the shared 10 pt table font size.
 _INTEGER = r"(?:\d{1,3}(?:[,\u00a0\u2009\u202f '’]\d{3})+|\d{1,2}(?:,\d{2})+,\d{3}|\d+)"
 _COMMA_INTEGER = r"(?:\d{1,3}(?:[.\u00a0\u2009\u202f '’]\d{3})+|\d+)"
-_DECIMAL = rf"(?:{_INTEGER}(?:\.\d+)?|{_COMMA_INTEGER},\d+|[.,]\d+)"
+_DOT_GROUPED_INTEGER = r"\d{1,3}(?:\.\d{3})+"
+_ARABIC_NUMBER = r"(?:(?:\d{1,3}(?:٬\d{3})+|\d+)(?:٫\d+)?|٫\d+)"
+_DECIMAL = (
+    rf"(?:{_INTEGER}(?:\.\d+)?|{_COMMA_INTEGER},\d+|"
+    rf"{_DOT_GROUPED_INTEGER}|{_ARABIC_NUMBER}|[.,]\d+)"
+)
 _POWER = UNIT_POWER
 _SCIENTIFIC = rf"(?:{_DECIMAL}(?:\(\d+\))?(?:[eE][+−-]?\d+|\s*[×x·]\s*10{_POWER})?|10{_POWER})"
 _VULGAR_FRACTION = r"[¼½¾⅐⅑⅒⅓⅔⅕⅖⅗⅘⅙⅚⅛⅜⅝⅞]"
