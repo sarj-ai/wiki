@@ -64,6 +64,10 @@ from tests.test_editorial_refinement import _RefiningEditor, _request
         pytest.param("6.02×10²³", "6.02÷10²³", id="scientific-operator"),
         pytest.param("6.02×10²³", "6.02×10⁻²³", id="superscript-exponent-sign"),
         pytest.param("6.02 * 10^23", "6.02 / 10^23", id="ascii-scientific-operator"),
+        pytest.param("3 · 10⁻⁶ s", "3 10⁻⁶ s", id="dropped-middle-dot"),
+        pytest.param("3·10⁻⁶ s", "3 10⁻⁶ s", id="unspaced-middle-dot"),
+        pytest.param("3 · 10⁻⁶ s", "3 × 10⁻⁶ s", id="changed-middle-dot"),
+        pytest.param("2 · 3 ms", "2 3 ms", id="middle-dot-product"),
         pytest.param("($1,250.00)", "$1,250.00", id="accounting-negative"),
         pytest.param("-$1,250.00", "$1,250.00", id="signed-currency"),
         pytest.param("$-1,250.00", "$1,250.00", id="currency-signed-amount"),
@@ -124,6 +128,9 @@ def test_numeric_mutations_are_rejected_before_review_while_active_voice_is_allo
         "-5 s",
         "3 m²",
         "6.02×10²³",
+        "3 · 10⁻⁶ s",
+        "3·10⁻⁶ s",
+        "2 · 3 ms",
         "($1,250.00)",
         "1 234.50 ms",
         "1\u00a0234.50 ms",
@@ -204,6 +211,7 @@ def numeric_editor_factory() -> Callable[[tuple[str, ...]], _RefiningEditor]:
         ("١٬٢٣٤٫٥٠ ms", "١٫٢٣٤٫٥٠ ms"),
         ("٫٥ ms", "٥ ms"),
         ("١٢٫٣٪", "١٢٫٣"),
+        ("3 · 10⁻⁶ s", "3 10⁻⁶ s"),
     ],
 )
 async def test_changed_quantity_never_reaches_even_a_permissive_factual_reviewer(
