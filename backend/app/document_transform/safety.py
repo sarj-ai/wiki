@@ -10,7 +10,12 @@ from typing import Final, Literal
 from app.document_transform.inline_code import inline_code_spans, mask_inline_code
 from app.document_transform.ir import BlockKind, DocumentIR, TextBlock
 from app.document_transform.measurement_actor import reassigned_measurement_action
-from app.document_transform.quantity_notation import HORIZONTAL_SPACE, UNIT_POWER, UNIT_SYMBOL
+from app.document_transform.quantity_notation import (
+    HORIZONTAL_SPACE,
+    UNIT_GROUP,
+    UNIT_POWER,
+    UNIT_SYMBOL,
+)
 from app.document_transform.quotations import QUOTED_SPAN_PATTERN, quoted_block_ids
 from app.document_transform.recurring_scope import fronted_recurring_scope_expanded
 from app.document_transform.revision_arguments import revision_arguments
@@ -41,10 +46,11 @@ _NUMERIC_MAGNITUDE = (
 _SIGNED_NUMBER = rf"[+−-]?(?:[$€£¥₹₩₽₺]\s*)?[+−-]?{_NUMERIC_MAGNITUDE}"
 _NUMERIC_UNIT = (
     rf"(?:%|٪|‰|(?!(?i:and|or|but|nor|yet)\b|[xX]{HORIZONTAL_SPACE}*\d)"
-    rf"[A-Za-zµμ°ΩÅ]{{1,5}}{_NUMERIC_POWER})"
-    rf"(?:{HORIZONTAL_SPACE}*[/*·]{HORIZONTAL_SPACE}*[A-Za-zµμ°ΩÅ]{{1,5}}{_NUMERIC_POWER}"
+    rf"[A-Za-zµμ°ΩÅ]{{1,5}}{_NUMERIC_POWER}|{UNIT_GROUP})"
+    rf"(?:{HORIZONTAL_SPACE}*[/*·]{HORIZONTAL_SPACE}*"
+    rf"(?:[A-Za-zµμ°ΩÅ]{{1,5}}{_NUMERIC_POWER}|{UNIT_GROUP})"
     # Unmarked multiplication needs known unit symbols, not arbitrary prose words.
-    rf"|{HORIZONTAL_SPACE}+{UNIT_SYMBOL}{_NUMERIC_POWER}(?![A-Za-zµμ°ΩÅ]))*"
+    rf"|{HORIZONTAL_SPACE}+(?:{UNIT_SYMBOL}{_NUMERIC_POWER}(?![A-Za-zµμ°ΩÅ])|{UNIT_GROUP}))*"
 )
 _QUANTITY_TERM = rf"{_SIGNED_NUMBER}(?:{HORIZONTAL_SPACE}*{_NUMERIC_UNIT})?"
 _QUANTITY_LITERAL = (

@@ -5,7 +5,7 @@ import math
 import re
 import unicodedata
 
-from app.document_transform.quantity_notation import UNIT_POWER, UNIT_PRODUCT, UNIT_SYMBOL
+from app.document_transform.quantity_notation import UNIT_EXPRESSION, UNIT_POWER
 
 
 _MISSING = frozenset({"", "-", "–", "—", "n/a", "na", "null", "…"})
@@ -26,7 +26,7 @@ _MAGNITUDE = rf"(?:\d+\s+{_FRACTION}|(?:\d+\s*)?{_VULGAR_FRACTION}|{_FRACTION}|{
 _CURRENCY_CODE = r"(?:USD|EUR|GBP|SAR|CHF)"
 _CURRENCY = rf"(?:[$€£¥₹₩₽₺]|{_CURRENCY_CODE}(?=\s))"
 _NUMBER = rf"(?:[+−-]?\s*(?:{_CURRENCY}\s*)?|{_CURRENCY}\s*[+−-]?)\s*{_MAGNITUDE}"
-_UNIT = rf"{UNIT_SYMBOL}(?:{_POWER})?(?:{UNIT_PRODUCT}{UNIT_SYMBOL}(?:{_POWER})?)*"
+_UNIT = UNIT_EXPRESSION
 _QUANTITY_TERM = rf"{_NUMBER}(?:\s*(?:%|٪|‰|×|x|{_CURRENCY_CODE}|{_UNIT}))?"
 _QUANTITY = re.compile(
     rf"(?:(?:approximately|about|roughly|approx\.)\s+)?"
