@@ -20,6 +20,11 @@ from app.document_transform.readability_tables import (
     project_readable_tables,
     readable_table_requests,
 )
+from app.document_transform.readability_terminal import (
+    plan_readable_terminals,
+    project_readable_terminals,
+    readable_terminal_requests,
+)
 from app.document_transform.readability_types import (
     CURRENT_READABILITY_VERSION,
     READABILITY_PARAGRAPH_WORD_LIMIT,
@@ -33,6 +38,7 @@ from app.document_transform.readability_types import (
     ReadabilityPart,
     ReadabilityProposal,
     ReadabilityTable,
+    ReadabilityTerminal,
     RecordedReadabilityRefinement,
     UnavailableReadabilityRefinement,
 )
@@ -89,6 +95,7 @@ class _LayoutDraft:
 class _ReadabilityMutations:
     paragraphs: tuple[ReadabilityParagraph, ...]
     tables: tuple[ReadabilityTable, ...]
+    terminals: tuple[ReadabilityTerminal, ...]
     requests: list[dict[str, JsonValue]]
 
 
@@ -113,6 +120,7 @@ async def plan_readability(
         invariant_sha256="",
         paragraphs=mutations.paragraphs,
         tables=mutations.tables,
+        terminals=mutations.terminals,
         original_lists={
             str(tab_id): deepcopy(obj(tab.get("lists", {}))) for tab_id, tab in bodies(document)
         },
@@ -131,7 +139,9 @@ async def plan_readability(
     # Retain the attempted model outcome even when no native edits are needed.
     # A pending zero-request plan is durably saved and strictly read back by the
     # ordinary provider path, which performs no write for an already exact match.
-    unchanged = checkpoint.model_copy(update={"paragraphs": (), "tables": (), "requests": []})
+    unchanged = checkpoint.model_copy(
+        update={"paragraphs": (), "tables": (), "terminals": (), "requests": []}
+    )
     return unchanged.model_copy(
         update={
             "invariant_sha256": readability_invariant_sha256(document, unchanged, applied=False)
@@ -149,8 +159,11 @@ def _bounded_readability_mutations(
         except ValueError:
             paragraphs = paragraphs[:-1]
             continue
-        requests = readable_paragraph_requests(paragraphs) + readable_table_requests(
-            document, tables
+        terminals = plan_readable_terminals(document, paragraphs)
+        requests = (
+            readable_paragraph_requests(paragraphs)
+            + readable_table_requests(document, tables)
+            + readable_terminal_requests(terminals)
         )
         try:
             mutation_sha256(requests)
@@ -160,8 +173,8 @@ def _bounded_readability_mutations(
             else:
                 paragraphs = paragraphs[:-1]
         else:
-            return _ReadabilityMutations(paragraphs, tables, requests)
-    return _ReadabilityMutations((), (), [])
+            return _ReadabilityMutations(paragraphs, tables, terminals, requests)
+    return _ReadabilityMutations((), (), (), [])
 
 
 async def _refine_layout(
@@ -344,6 +357,7 @@ def _project(
         projected, checkpoint.tables, applied=applied, version=checkpoint.version
     )
     project_readable_paragraphs(projected, checkpoint.paragraphs, applied=applied)
+    project_readable_terminals(projected, checkpoint.terminals, applied=applied)
     for tab_id, tab in bodies(projected):
         original = checkpoint.original_lists[str(tab_id)]
         lists = obj(tab.get("lists", {}))

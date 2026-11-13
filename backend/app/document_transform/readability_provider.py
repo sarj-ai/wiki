@@ -9,7 +9,13 @@ from app.document_transform.readability_json import document_digest
 from app.document_transform.readability_lists import validate_readable_lists
 from app.document_transform.readability_paragraphs import readable_paragraph_requests
 from app.document_transform.readability_tables import readable_table_requests
-from app.document_transform.readability_types import ReadabilityCheckpoint, complete_readability
+from app.document_transform.readability_terminal import (
+    validated_readable_terminal_requests,
+)
+from app.document_transform.readability_types import (
+    ReadabilityCheckpoint,
+    complete_readability,
+)
 from app.identifiers import DocsRevisionId, FileId
 
 
@@ -37,9 +43,15 @@ class ReadabilityProvider:
                 raise OutputConflictError
             try:
                 validate_readable_lists(document, checkpoint.paragraphs)
-                requests = readable_paragraph_requests(
-                    checkpoint.paragraphs, grouped_lists=checkpoint.version != 1
-                ) + readable_table_requests(document, checkpoint.tables, version=checkpoint.version)
+                requests = (
+                    readable_paragraph_requests(
+                        checkpoint.paragraphs, grouped_lists=checkpoint.version != 1
+                    )
+                    + readable_table_requests(
+                        document, checkpoint.tables, version=checkpoint.version
+                    )
+                    + validated_readable_terminal_requests(document, checkpoint)
+                )
             except (KeyError, TypeError, ValueError) as error:
                 raise OutputConflictError from error
             if requests != checkpoint.requests:
