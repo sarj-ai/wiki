@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+from collections.abc import Callable
 from dataclasses import dataclass, replace
 from datetime import timedelta
 import hashlib
@@ -45,6 +46,9 @@ from app.document_transform.unslop import (
 from app.identifiers import FileId
 from app.performance import provider_retry_budget
 from tests.support import dependency
+
+
+_credentials: Callable[[str], Credentials] = Credentials
 
 
 SOURCE = (
@@ -349,7 +353,7 @@ async def test_normal_model_settings_reach_the_real_sdk_without_overriding_expli
             vertexai=True,
             project=policy.project,
             location=policy.location,
-            credentials=Credentials(token="offline-fixture-not-a-real-token"),
+            credentials=_credentials("offline-fixture-not-a-real-token"),
             http_options=types.HttpOptions(
                 base_url="http://127.0.0.1:9",
                 httpx_async_client=http,
@@ -410,7 +414,7 @@ async def test_high_pro_writer_bounds_wire_workload_without_losing_any_source_bl
             vertexai=True,
             project=policy.project,
             location=policy.location,
-            credentials=Credentials(token="offline-workload-not-a-real-token"),
+            credentials=_credentials("offline-workload-not-a-real-token"),
             http_options=types.HttpOptions(base_url="http://127.0.0.1:9", httpx_async_client=http),
         )
         try:
@@ -1036,7 +1040,7 @@ def test_conventional_framing_can_go_without_relaxing_the_following_obligation(p
     )
     assert decision.accepted == {block.id: proposed}
     assert not decision.findings
-    assert UNSLOP_POLICY_VERSION == "sarj-concise-v43"
+    assert UNSLOP_POLICY_VERSION == "sarj-concise-v44"
 
 
 @pytest.mark.parametrize(
