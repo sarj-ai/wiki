@@ -117,9 +117,8 @@
     "SARJ528": 2
   },
   "backend/app/document_transform/native_pagination.py": {
-    "SARJ444": 4,
-    "SARJ447": 10,
-    "SARJ481": 1,
+    "SARJ444": 3,
+    "SARJ447": 5,
     "SARJ528": 2
   },
   "backend/app/document_transform/native_paragraph_layout.py": {

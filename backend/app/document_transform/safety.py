@@ -137,6 +137,12 @@ _RHETORICAL_COMPOUNDS = frozenset(
 )
 _PROPER_NOUN = re.compile(r"\b(?:[A-Z][a-z]+|[A-Z]{2,}|[A-Z][A-Za-z0-9]*[A-Z][A-Za-z0-9]*)\b")
 _SENTENCE = re.compile(r".*?(?:[.!?]+(?=\s+|$)|$)", re.DOTALL)
+_PROCEDURAL_IMPERATIVE = re.compile(
+    r"(?:\A|[.!?;,\n])[ \t]*"
+    r"(?:choose|select|reserve|keep|retain|save|record|collect|measure|compare|"
+    r"distinguish|run|restart|retry|stop|wait|check|verify|obtain|read|write)\b",
+    re.IGNORECASE,
+)
 _ISO_DATE = r"\b\d{4}-\d{2}-\d{2}\b"
 _DATE = re.compile(_ISO_DATE)
 _TEMPORAL_SCOPE = re.compile(
@@ -341,6 +347,10 @@ def _empty_replacement_code(
         block.protected_suffix is not None
         or block.native_content
         or re.search(r"[\r\n\v\f\u2028\u2029]", block.text)
+    ):
+        return "empty_replacement"
+    if _PROCEDURAL_IMPERATIVE.search(
+        without_editorial_framing(block.text, framing_source=framing_source)
     ):
         return "empty_replacement"
     constraints = rewrite_constraints(block.text, framing_source=framing_source)

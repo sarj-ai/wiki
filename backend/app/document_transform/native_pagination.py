@@ -1,4 +1,4 @@
-from dataclasses import replace
+from dataclasses import dataclass, replace
 import hashlib
 import json
 import math
@@ -9,6 +9,7 @@ from pydantic import BaseModel, ConfigDict, Field, JsonValue, StrictBool
 
 from app.document_transform.errors import InPlaceNeedsReviewError, OutputConflictError
 from app.document_transform.ir import BlockKind, DocumentIR, TextBlock, utf16_length
+from app.document_transform.native_terminal import plan_terminal_blank
 from app.document_transform.readability_json import array, obj
 
 
@@ -32,6 +33,73 @@ class _ParagraphGrouping(BaseModel):
     keep_lines_together: JsonValue = Field(default=None, alias="keepLinesTogether")
 
 
+class _PaginationStyle(_ParagraphGrouping):
+    space_above: JsonValue = Field(default=None, alias="spaceAbove")
+    space_below: JsonValue = Field(default=None, alias="spaceBelow")
+
+
+class _PageBreakStyle(BaseModel):
+    model_config = ConfigDict(strict=True, extra="ignore")
+
+    page_break_before: JsonValue = Field(default=False, alias="pageBreakBefore")
+
+
+class _PageNamedStyle(BaseModel):
+    model_config = ConfigDict(strict=True, extra="ignore")
+
+    paragraph_style: _PageBreakStyle = Field(
+        default_factory=_PageBreakStyle, alias="paragraphStyle"
+    )
+
+
+class _PageNamedStyles(BaseModel):
+    model_config = ConfigDict(strict=True, extra="ignore")
+
+    styles: list[_PageNamedStyle] = Field(default_factory=list, max_length=MAX_PAGINATION_RULES)
+
+
+class _PageFormat(BaseModel):
+    model_config = ConfigDict(strict=True, extra="ignore")
+
+    document_mode: str | None = Field(default=None, alias="documentMode")
+
+
+class _PageDocumentStyle(BaseModel):
+    model_config = ConfigDict(strict=True, extra="ignore")
+
+    document_format: _PageFormat = Field(default_factory=_PageFormat, alias="documentFormat")
+
+
+class _PageScope(BaseModel):
+    model_config = ConfigDict(strict=True, extra="ignore")
+
+    document_style: _PageDocumentStyle = Field(
+        default_factory=_PageDocumentStyle, alias="documentStyle"
+    )
+    named_styles: _PageNamedStyles = Field(default_factory=_PageNamedStyles, alias="namedStyles")
+
+
+class _StyledParagraph(BaseModel):
+    model_config = ConfigDict(strict=True, extra="ignore")
+
+    paragraph_style: _PaginationStyle = Field(
+        default_factory=_PaginationStyle, alias="paragraphStyle"
+    )
+
+
+class _StyledElement(BaseModel):
+    model_config = ConfigDict(strict=True, extra="ignore")
+
+    start_index: int = Field(alias="startIndex")
+    paragraph: _StyledParagraph
+
+
+@dataclass(frozen=True, slots=True)
+class _RuleStyleMatch:
+    found: bool
+    matches: bool
+
+
 class NativePaginationRule(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
@@ -43,10 +111,16 @@ class NativePaginationRule(BaseModel):
 
 
 def plan_native_pagination(
-    native: dict[str, Any] | None, document: DocumentIR, *, emit_diagnostics: bool = False
+    native: dict[str, JsonValue] | None,
+    document: DocumentIR,
+    *,
+    emit_diagnostics: bool = False,
+    compact_terminal: bool = True,
 ) -> tuple[NativePaginationRule, ...]:
     diagnostics: dict[str, int | bool] = {}
-    rules = _plan_native_pagination(native, document, diagnostics)
+    rules = _plan_native_pagination(
+        native, document, diagnostics, compact_terminal=compact_terminal
+    )
     if not emit_diagnostics:
         return rules
     logger.info(
@@ -65,9 +139,11 @@ def plan_native_pagination(
 
 
 def _plan_native_pagination(
-    native: dict[str, Any] | None,
+    native: dict[str, JsonValue] | None,
     document: DocumentIR,
     diagnostics: dict[str, int | bool],
+    *,
+    compact_terminal: bool,
 ) -> tuple[NativePaginationRule, ...]:
     body = _pagination_body(native, document)
     if body is None or native is None:
@@ -89,19 +165,57 @@ def _plan_native_pagination(
     rules = _group_rules(mapped)
     if rules is None:
         return ()
+    rules = _plan_spacers(
+        native,
+        body,
+        content,
+        mapped,
+        tab_id=document.tab_ids[0],
+        rules=rules,
+        diagnostics=diagnostics,
+    )
+    if rules is None:
+        return ()
+    if compact_terminal:
+        rules = _with_terminal_rule(native, document, rules)
+    return tuple(rules[block.id] for block in document.blocks if block.id in rules)
+
+
+def _plan_spacers(
+    native: dict[str, JsonValue],
+    body: dict[str, JsonValue],
+    content: list[JsonValue],
+    mapped: list[TextBlock | None],
+    *,
+    tab_id: str,
+    rules: dict[str, NativePaginationRule],
+    diagnostics: dict[str, int | bool],
+) -> dict[str, NativePaginationRule] | None:
     diagnostics["spacer_scope_checked"] = True
-    dependencies = _spacer_dependencies(content, mapped, document.tab_ids[0])
+    dependencies = _spacer_dependencies(content, mapped, tab_id)
     diagnostics["spacer_dependency_identity_known"] = dependencies is not None
     diagnostics["spacer_named_styles_known"] = _spacer_named_styles_known(native, body)
     styles_known = dependencies is not None and _spacer_dependencies_known(
         native, body, dependencies, diagnostics
     )
     diagnostics["spacer_used_named_styles_known"] = styles_known
-    if styles_known and not _add_spacer_rules(
-        content, mapped, document.tab_ids[0], rules, diagnostics
-    ):
-        return ()
-    return tuple(rules[block.id] for block in document.blocks if block.id in rules)
+    return _add_spacer_rules(content, mapped, tab_id, rules, diagnostics) if styles_known else rules
+
+
+def _with_terminal_rule(
+    native: dict[str, JsonValue], document: DocumentIR, rules: dict[str, NativePaginationRule]
+) -> dict[str, NativePaginationRule]:
+    terminal = plan_terminal_blank(native, document)
+    if terminal is not None and (terminal.block_id in rules or len(rules) < MAX_PAGINATION_RULES):
+        block = next(block for block in document.blocks if block.id == terminal.block_id)
+        rule = rules.get(block.id) or NativePaginationRule(
+            block_id=block.id, text_sha256=block.sha256
+        )
+        return {
+            **rules,
+            block.id: rule.model_copy(update={"below_spacer_sha256": terminal.spacer_sha256}),
+        }
+    return rules
 
 
 def _pagination_body(
@@ -192,7 +306,8 @@ def _add_spacer_rules(
     tab_id: str,
     rules: dict[str, NativePaginationRule],
     diagnostics: dict[str, int | bool],
-) -> bool:
+) -> dict[str, NativePaginationRule] | None:
+    planned_rules = dict(rules)
     for index in range(1, len(content) - 1):
         diagnostics["spacer_examined_count"] = diagnostics.get("spacer_examined_count", 0) + 1
         if not all(
@@ -207,13 +322,13 @@ def _add_spacer_rules(
         if spacer is None or first is None or third is None:
             continue
         for block, field in ((first, "below_spacer_sha256"), (third, "above_spacer_sha256")):
-            existing = rules.get(block.id) or NativePaginationRule(
+            existing = planned_rules.get(block.id) or NativePaginationRule(
                 block_id=block.id, text_sha256=block.sha256
             )
-            rules[block.id] = existing.model_copy(update={field: spacer})
-        if len(rules) > MAX_PAGINATION_RULES:
-            return False
-    return True
+            planned_rules[block.id] = existing.model_copy(update={field: spacer})
+        if len(planned_rules) > MAX_PAGINATION_RULES:
+            return None
+    return planned_rules
 
 
 def _plain_spacing_neighbor(element: object) -> bool:
@@ -355,9 +470,11 @@ def _named_style_value_diagnostics(style: dict[str, Any]) -> dict[str, bool]:
 
 
 def _dimension_state(value: object) -> Literal["zero", "nonzero", "unknown"]:
-    if not isinstance(value, dict) or set(value) != {"magnitude", "unit"}:
+    if not isinstance(value, dict) or set(value) - {"magnitude", "unit"}:
         return "unknown"
-    magnitude = value.get("magnitude")
+    # Google serializes an accepted zero-point style as {"unit": "PT"}.
+    # An absent magnitude is zero only with the explicit, supported unit.
+    magnitude = value.get("magnitude", 0)
     # Bound before any float conversion; arbitrarily large JSON ints must not raise.
     if (
         not isinstance(magnitude, (int, float))
@@ -559,34 +676,18 @@ def _spacer_style_values_known(style: object) -> bool:
     )
 
 
-def _page_boundaries_known(native: dict[str, Any], body: dict[str, Any]) -> bool:
-    for scope in (native, body):
-        style = scope.get("documentStyle", {})
-        if not isinstance(style, dict):
-            return False
-        document_format = style.get("documentFormat", {})
-        if not isinstance(document_format, dict) or (
-            document_format.get("documentMode") is not None
-            and document_format.get("documentMode") != "PAGES"
-        ):
-            return False
-        named = scope.get("namedStyles", {})
-        if (
-            not isinstance(named, dict)
-            or not isinstance(named.get("styles", []), list)
-            or len(named.get("styles", [])) > MAX_PAGINATION_RULES
-        ):
-            return False
-        for entry in named.get("styles", []):
-            if not isinstance(entry, dict):
-                return False
-            paragraph = entry.get("paragraphStyle", {})
-            if (
-                not isinstance(paragraph, dict)
-                or paragraph.get("pageBreakBefore", False) is not False
-            ):
-                return False
-    return True
+def _page_boundaries_known(native: dict[str, JsonValue], body: dict[str, JsonValue]) -> bool:
+    try:
+        scopes = tuple(_PageScope.model_validate(scope) for scope in (native, body))
+    except ValueError:
+        return False
+    return all(
+        scope.document_style.document_format.document_mode in {None, "PAGES"}
+        and all(
+            style.paragraph_style.page_break_before is False for style in scope.named_styles.styles
+        )
+        for scope in scopes
+    )
 
 
 def _body_paragraph(element: object, by_start: dict[int, TextBlock]) -> TextBlock | None:
@@ -710,18 +811,24 @@ def apply_native_pagination(
 
 
 def existing_native_pagination(
-    native: dict[str, Any] | None, document: DocumentIR
+    native: dict[str, JsonValue] | None, document: DocumentIR
 ) -> tuple[NativePaginationRule, ...]:
     # Recognize existing exact layout only; never plan new in-place groups.
-    rules = plan_native_pagination(native, document)
+    terminal = plan_terminal_blank(native, document)
+    rules = plan_native_pagination(
+        native, document, compact_terminal=terminal is not None and not terminal.needs_write
+    )
     if not rules or native is None:
         return ()
-    content = native["tabs"][0]["documentTab"]["body"]["content"]
-    styles = {
-        item.get("startIndex"): item.get("paragraph", {}).get("paragraphStyle", {})
-        for item in content
-        if isinstance(item, dict) and isinstance(item.get("paragraph"), dict)
-    }
+    body = _pagination_body(native, document)
+    if body is None:
+        return ()
+    styles = {}
+    for value in array(obj(body["body"])["content"]):
+        if isinstance(value, dict) and "paragraph" in value:
+            element = value
+            paragraph = _StyledElement.model_validate(element)
+            styles[paragraph.start_index] = paragraph.paragraph.paragraph_style
     blocks = {block.id: block for block in document.blocks}
     found = False
     matches = True
@@ -729,27 +836,30 @@ def existing_native_pagination(
         block = blocks[rule.block_id]
         if block.source_range is None:
             raise InPlaceNeedsReviewError
-        style = styles.get(block.source_range.start_index, {})
-        for field, digest in (
-            ("spaceAbove", rule.above_spacer_sha256),
-            ("spaceBelow", rule.below_spacer_sha256),
-        ):
-            if digest is not None:
-                dimension = style.get(field)
-                exact = (
-                    isinstance(dimension, dict)
-                    and type(dimension.get("magnitude")) in {int, float}
-                    and dimension == {"magnitude": 0, "unit": "PT"}
-                )
-                found = found or exact
-                matches = matches and exact
-        if rule.keep_with_next is not None:
-            exact = (
-                style.get("keepWithNext") is rule.keep_with_next
-                and style.get("keepLinesTogether") is True
-            )
-            found = found or (exact and block.kind is not BlockKind.HEADING)
-            matches = matches and exact
+        style = styles.get(block.source_range.start_index, _PaginationStyle())
+        result = _existing_rule_style(rule, block, style)
+        found = found or result.found
+        matches = matches and result.matches
     if found and not matches:
         raise InPlaceNeedsReviewError
     return rules if found else ()
+
+
+def _existing_rule_style(
+    rule: NativePaginationRule, block: TextBlock, style: _PaginationStyle
+) -> _RuleStyleMatch:
+    found = False
+    matches = True
+    for digest, dimension in (
+        (rule.above_spacer_sha256, style.space_above),
+        (rule.below_spacer_sha256, style.space_below),
+    ):
+        if digest is not None:
+            exact = _dimension_state(dimension) == "zero"
+            found = found or exact
+            matches = matches and exact
+    if rule.keep_with_next is not None:
+        exact = style.keep_with_next is rule.keep_with_next and style.keep_lines_together is True
+        found = found or (exact and block.kind is not BlockKind.HEADING)
+        matches = matches and exact
+    return _RuleStyleMatch(found=found, matches=matches)

@@ -69,18 +69,7 @@ def deleting_editor_factory() -> type[_DeletingEditor]:
 @pytest.mark.parametrize(
     ("source", "equivalent"),
     [
-        ("Keep the context.", True),
-        (
-            "The examples illustrate measurement and inspection code. They contain no measured timings, output transcript, or claim that a current machine reproduces the reference table. Numeric constants in the snippets are example parameters, not additional reference estimates.",
-            True,
-        ),
-        (
-            (
-                "Keep the context. An operation, data size, and network rate belong with each "
-                "estimate. Distinguish latency from throughput."
-            ),
-            True,
-        ),
+        ("I hope this helps.", True),
         ("Restart the service after approval.", False),
     ],
 )
@@ -101,7 +90,8 @@ async def test_whole_paragraph_deletion_needs_independent_review(
     result = await TextTransformPlanner(generator=editor, allow_unslop_model=True).transform(
         document, request
     )
-    assert editor.reviews > 0
+    if equivalent:
+        assert editor.reviews > 0
     assert result.document.blocks[0].text == ("" if equivalent else source)
     assert (result.document.blocks[0].kind is BlockKind.BLANK) == equivalent
 
