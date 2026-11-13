@@ -76,6 +76,10 @@ from tests.test_readability_lists import _prose_document
         "Measurements remain approximately 12.3 ms ±|0.4 ms under load.",
         "Measurements remain approximately 1.2|x 10^3 s under load.",
         "Measurements remain approximately 1.2 x|10^3 s under load.",
+        "Measurements remain approximately 1'234.50|ms under load.",
+        "Measurements remain approximately 1’234,50|ms under load.",
+        "Measurements remain approximately 12.3|+/- 0.4 ms under load.",
+        "Measurements remain approximately 12.3 +/-|0.4 ms under load.",
     ],
 )
 def test_layout_rejects_paragraph_breaks_inside_source_literals(marked: str) -> None:

@@ -34,7 +34,7 @@ _NUMERIC_POWER = rf"(?:[⁰¹²³⁴⁵⁶⁷⁸⁹⁺⁻]+|{UNIT_POWER})?"
 _NUMERIC_MAGNITUDE = (
     rf"(?:(?:\d+[^\S\n]+)?\d+[^\S\n]*[/⁄][^\S\n]*\d+|"
     rf"(?:\d+[^\S\n]*)?{_VULGAR_FRACTION}|"
-    r"\d+(?:[.,:/⁄-]\d+|[ \u00a0\u2009\u202f]\d{3})*|[.,]\d+)"
+    r"\d+(?:[.,:/⁄-]\d+|[ \u00a0\u2009\u202f'’]\d{3})*|[.,]\d+)"
     rf"(?:\(\d+\))?(?:[eE][+−-]?\d+)?{_NUMERIC_POWER}"
 )
 _SIGNED_NUMBER = rf"[+−-]?(?:[$€£¥₹₩₽₺]\s*)?[+−-]?{_NUMERIC_MAGNITUDE}"
@@ -48,7 +48,7 @@ _NUMERIC_UNIT = (
 _QUANTITY_TERM = rf"{_SIGNED_NUMBER}(?:{HORIZONTAL_SPACE}*{_NUMERIC_UNIT})?"
 _QUANTITY_LITERAL = (
     rf"(?:(?:[<>]=?|[≤≥~≈≃])\s*)?{_QUANTITY_TERM}"
-    rf"(?:{HORIZONTAL_SPACE}*[±∓×xX÷+−–*/⁄:^\-]{HORIZONTAL_SPACE}*{_QUANTITY_TERM})*"
+    rf"(?:{HORIZONTAL_SPACE}*(?:\+/-|[±∓×xX÷+−–*/⁄:^\-]){HORIZONTAL_SPACE}*{_QUANTITY_TERM})*"
 )
 _PROTECTED_TOKEN = re.compile(
     r"```[\s\S]*?```|`[^`\n]+`|"
