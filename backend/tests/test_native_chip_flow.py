@@ -12,6 +12,7 @@ from app.document_transform.native_chip_flow import (
     CompletedNativeChipCheckpoint,
     NativeChipCheckpoint,
     NativeChipProvider,
+    PendingNativeChipCheckpoint,
     has_chip_marker,
     plan_native_chips,
     verify_native_chips,
@@ -51,6 +52,32 @@ def test_captured_native_google_date_range_passes_with_surrounding_content_prese
     after = _fixture("after")
     assert has_chip_marker(after, checkpoint)
     verify_native_chips(after, checkpoint)
+
+
+@pytest.mark.parametrize("complete", [False, True])
+@pytest.mark.parametrize("fixture", ["weekend_range_pending", "neighbor_date_pending"])
+async def test_unsafe_saved_weekend_dates_require_review_without_writing(
+    fixture: str, *, complete: bool
+) -> None:
+    pending = PendingNativeChipCheckpoint.model_validate(_fixture(fixture))
+    checkpoint: NativeChipCheckpoint = (
+        CompletedNativeChipCheckpoint.model_validate(
+            {**pending.model_dump(), "complete": True, "revision_id": "written-r2"}
+        )
+        if complete
+        else pending
+    )
+    before = deepcopy(checkpoint.before)
+
+    async def read(_: FileId) -> dict[str, JsonValue]:
+        return deepcopy(before)
+
+    async def forbidden_write(_: FileId, __: NativeChipCheckpoint) -> None:
+        pytest.fail("Persisted Sunday timestamps cannot be applied to Friday plans")
+
+    with pytest.raises(InPlaceNeedsReviewError):
+        await NativeChipProvider(read, forbidden_write).apply(checkpoint)
+    assert checkpoint.before == before
 
 
 def test_captured_date_only_overnight_and_emoji_chips_preserve_native_semantics_and_punctuation() -> (

@@ -13,6 +13,11 @@ _ADDRESS = re.compile(
 )
 _MONTHS = "January February March April May June July August September October November December"
 _MONTH = "(?:" + "|".join(_MONTHS.split()) + ")"
+_RANGE_MONTH = (
+    "(?:"
+    + "|".join((*_MONTHS.split(), *(month[:3] for month in _MONTHS.split()), "Sept"))
+    + r")\.?"
+)
 _DATE = re.compile(
     rf"(?<!\w)(?:\d{{4}}-\d{{2}}-\d{{2}}|{_MONTH}\s+\d{{1,2}}(?:,?\s+\d{{4}})?|\d{{1,2}}\s+{_MONTH}(?:\s+\d{{4}})?|\d{{1,2}}/\d{{1,2}}/\d{{4}})(?!\w)",
     re.IGNORECASE,
@@ -153,7 +158,15 @@ def _title_date(title: str, *, context: NativeChipContext) -> date | None:
     if len(matches) != 1:
         return None
     match = matches[0]
-    if re.match(r"\s*[–—-]\s*\d", title[match.end() :]):
+    if re.search(
+        rf"(?<!\w)(?:{_RANGE_MONTH}\s*)?\d{{1,2}}(?:\s*{_RANGE_MONTH})?\s*(?:[–—-]|to|through|until|and|or|&)\s*$",
+        title[: match.start()],
+        re.IGNORECASE,
+    ) or re.match(
+        rf"\s*(?:[–—-]|to|through|until|and|or|&)\s*(?:{_RANGE_MONTH}\s*)?\d",
+        title[match.end() :],
+        re.IGNORECASE,
+    ):
         return None
     value = _parse_date(match[0], context=context)
     weekday = _WEEKDAY_PREFIX.search(title[: match.start()])
@@ -200,7 +213,9 @@ def detect_date_spans(text: str, *, context: NativeChipContext) -> tuple[Detecte
         for match in _DATE.finditer(text)
         for span in _detected_date_spans(text, match, context=context)
     )
-    if context.anchored_date is None or _RECURRING.search(text):
+    # An explicit paragraph date owns its local scope. A title date must never
+    # assign a different day to a remaining clock, including an unresolved date.
+    if spans or context.anchored_date is None or _RECURRING.search(text):
         return spans
     anchored: list[DetectedNativeSpan] = []
     for match in _ANCHORED_CLOCK.finditer(text):

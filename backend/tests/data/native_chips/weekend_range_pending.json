@@ -1,0 +1,689 @@
+{
+  "planner_version": 2,
+  "document_id": "weekend-range-qa",
+  "source_revision_id": "weekend-source-r1",
+  "source_sha256": "c77113b5804643cff9c9d62526212ddb35d6265113ed9a6f7b4259648a2db6f8",
+  "before": {
+    "documentId": "weekend-range-qa",
+    "title": "NYC · 13–15 November 2026 · date scope QA",
+    "revisionId": "weekend-source-r1",
+    "suggestionsViewMode": "SUGGESTIONS_INLINE",
+    "documentStyle": {
+      "background": {
+        "color": {}
+      },
+      "pageNumberStart": 1,
+      "marginTop": {
+        "magnitude": 72,
+        "unit": "PT"
+      },
+      "marginBottom": {
+        "magnitude": 72,
+        "unit": "PT"
+      },
+      "marginRight": {
+        "magnitude": 72,
+        "unit": "PT"
+      },
+      "marginLeft": {
+        "magnitude": 72,
+        "unit": "PT"
+      },
+      "pageSize": {
+        "height": {
+          "magnitude": 792,
+          "unit": "PT"
+        },
+        "width": {
+          "magnitude": 612,
+          "unit": "PT"
+        }
+      },
+      "marginHeader": {
+        "magnitude": 36,
+        "unit": "PT"
+      },
+      "marginFooter": {
+        "magnitude": 36,
+        "unit": "PT"
+      },
+      "useCustomHeaderFooterMargins": true,
+      "documentFormat": {
+        "documentMode": "PAGES"
+      }
+    },
+    "namedStyles": {
+      "styles": [
+        {
+          "namedStyleType": "NORMAL_TEXT",
+          "textStyle": {
+            "bold": false,
+            "italic": false,
+            "underline": false,
+            "strikethrough": false,
+            "smallCaps": false,
+            "backgroundColor": {},
+            "foregroundColor": {
+              "color": {
+                "rgbColor": {}
+              }
+            },
+            "fontSize": {
+              "magnitude": 11,
+              "unit": "PT"
+            },
+            "weightedFontFamily": {
+              "fontFamily": "Arial",
+              "weight": 400
+            },
+            "baselineOffset": "NONE"
+          },
+          "paragraphStyle": {
+            "namedStyleType": "NORMAL_TEXT",
+            "alignment": "START",
+            "lineSpacing": 115,
+            "direction": "LEFT_TO_RIGHT",
+            "spacingMode": "COLLAPSE_LISTS",
+            "spaceAbove": {
+              "unit": "PT"
+            },
+            "spaceBelow": {
+              "unit": "PT"
+            },
+            "borderBetween": {
+              "color": {},
+              "width": {
+                "unit": "PT"
+              },
+              "padding": {
+                "unit": "PT"
+              },
+              "dashStyle": "SOLID"
+            },
+            "borderTop": {
+              "color": {},
+              "width": {
+                "unit": "PT"
+              },
+              "padding": {
+                "unit": "PT"
+              },
+              "dashStyle": "SOLID"
+            },
+            "borderBottom": {
+              "color": {},
+              "width": {
+                "unit": "PT"
+              },
+              "padding": {
+                "unit": "PT"
+              },
+              "dashStyle": "SOLID"
+            },
+            "borderLeft": {
+              "color": {},
+              "width": {
+                "unit": "PT"
+              },
+              "padding": {
+                "unit": "PT"
+              },
+              "dashStyle": "SOLID"
+            },
+            "borderRight": {
+              "color": {},
+              "width": {
+                "unit": "PT"
+              },
+              "padding": {
+                "unit": "PT"
+              },
+              "dashStyle": "SOLID"
+            },
+            "indentFirstLine": {
+              "unit": "PT"
+            },
+            "indentStart": {
+              "unit": "PT"
+            },
+            "indentEnd": {
+              "unit": "PT"
+            },
+            "keepLinesTogether": false,
+            "keepWithNext": false,
+            "avoidWidowAndOrphan": true,
+            "shading": {
+              "backgroundColor": {}
+            },
+            "pageBreakBefore": false
+          }
+        },
+        {
+          "namedStyleType": "HEADING_1",
+          "textStyle": {
+            "fontSize": {
+              "magnitude": 20,
+              "unit": "PT"
+            }
+          },
+          "paragraphStyle": {
+            "namedStyleType": "NORMAL_TEXT",
+            "direction": "LEFT_TO_RIGHT",
+            "spaceAbove": {
+              "magnitude": 20,
+              "unit": "PT"
+            },
+            "spaceBelow": {
+              "magnitude": 6,
+              "unit": "PT"
+            },
+            "keepLinesTogether": true,
+            "keepWithNext": true,
+            "pageBreakBefore": false
+          }
+        },
+        {
+          "namedStyleType": "HEADING_2",
+          "textStyle": {
+            "bold": false,
+            "fontSize": {
+              "magnitude": 16,
+              "unit": "PT"
+            }
+          },
+          "paragraphStyle": {
+            "namedStyleType": "NORMAL_TEXT",
+            "direction": "LEFT_TO_RIGHT",
+            "spaceAbove": {
+              "magnitude": 18,
+              "unit": "PT"
+            },
+            "spaceBelow": {
+              "magnitude": 6,
+              "unit": "PT"
+            },
+            "keepLinesTogether": true,
+            "keepWithNext": true,
+            "pageBreakBefore": false
+          }
+        },
+        {
+          "namedStyleType": "HEADING_3",
+          "textStyle": {
+            "bold": false,
+            "foregroundColor": {
+              "color": {
+                "rgbColor": {
+                  "red": 0.2627451,
+                  "green": 0.2627451,
+                  "blue": 0.2627451
+                }
+              }
+            },
+            "fontSize": {
+              "magnitude": 14,
+              "unit": "PT"
+            }
+          },
+          "paragraphStyle": {
+            "namedStyleType": "NORMAL_TEXT",
+            "direction": "LEFT_TO_RIGHT",
+            "spaceAbove": {
+              "magnitude": 16,
+              "unit": "PT"
+            },
+            "spaceBelow": {
+              "magnitude": 4,
+              "unit": "PT"
+            },
+            "keepLinesTogether": true,
+            "keepWithNext": true,
+            "pageBreakBefore": false
+          }
+        },
+        {
+          "namedStyleType": "HEADING_4",
+          "textStyle": {
+            "foregroundColor": {
+              "color": {
+                "rgbColor": {
+                  "red": 0.4,
+                  "green": 0.4,
+                  "blue": 0.4
+                }
+              }
+            },
+            "fontSize": {
+              "magnitude": 12,
+              "unit": "PT"
+            }
+          },
+          "paragraphStyle": {
+            "namedStyleType": "NORMAL_TEXT",
+            "direction": "LEFT_TO_RIGHT",
+            "spaceAbove": {
+              "magnitude": 14,
+              "unit": "PT"
+            },
+            "spaceBelow": {
+              "magnitude": 4,
+              "unit": "PT"
+            },
+            "keepLinesTogether": true,
+            "keepWithNext": true,
+            "pageBreakBefore": false
+          }
+        },
+        {
+          "namedStyleType": "HEADING_5",
+          "textStyle": {
+            "foregroundColor": {
+              "color": {
+                "rgbColor": {
+                  "red": 0.4,
+                  "green": 0.4,
+                  "blue": 0.4
+                }
+              }
+            },
+            "fontSize": {
+              "magnitude": 11,
+              "unit": "PT"
+            }
+          },
+          "paragraphStyle": {
+            "namedStyleType": "NORMAL_TEXT",
+            "direction": "LEFT_TO_RIGHT",
+            "spaceAbove": {
+              "magnitude": 12,
+              "unit": "PT"
+            },
+            "spaceBelow": {
+              "magnitude": 4,
+              "unit": "PT"
+            },
+            "keepLinesTogether": true,
+            "keepWithNext": true,
+            "pageBreakBefore": false
+          }
+        },
+        {
+          "namedStyleType": "HEADING_6",
+          "textStyle": {
+            "italic": true,
+            "foregroundColor": {
+              "color": {
+                "rgbColor": {
+                  "red": 0.4,
+                  "green": 0.4,
+                  "blue": 0.4
+                }
+              }
+            },
+            "fontSize": {
+              "magnitude": 11,
+              "unit": "PT"
+            }
+          },
+          "paragraphStyle": {
+            "namedStyleType": "NORMAL_TEXT",
+            "direction": "LEFT_TO_RIGHT",
+            "spaceAbove": {
+              "magnitude": 12,
+              "unit": "PT"
+            },
+            "spaceBelow": {
+              "magnitude": 4,
+              "unit": "PT"
+            },
+            "keepLinesTogether": true,
+            "keepWithNext": true,
+            "pageBreakBefore": false
+          }
+        },
+        {
+          "namedStyleType": "TITLE",
+          "textStyle": {
+            "fontSize": {
+              "magnitude": 26,
+              "unit": "PT"
+            }
+          },
+          "paragraphStyle": {
+            "namedStyleType": "NORMAL_TEXT",
+            "direction": "LEFT_TO_RIGHT",
+            "spaceAbove": {
+              "unit": "PT"
+            },
+            "spaceBelow": {
+              "magnitude": 3,
+              "unit": "PT"
+            },
+            "keepLinesTogether": true,
+            "keepWithNext": true,
+            "pageBreakBefore": false
+          }
+        },
+        {
+          "namedStyleType": "SUBTITLE",
+          "textStyle": {
+            "italic": false,
+            "foregroundColor": {
+              "color": {
+                "rgbColor": {
+                  "red": 0.4,
+                  "green": 0.4,
+                  "blue": 0.4
+                }
+              }
+            },
+            "fontSize": {
+              "magnitude": 15,
+              "unit": "PT"
+            },
+            "weightedFontFamily": {
+              "fontFamily": "Arial",
+              "weight": 400
+            }
+          },
+          "paragraphStyle": {
+            "namedStyleType": "NORMAL_TEXT",
+            "direction": "LEFT_TO_RIGHT",
+            "spaceAbove": {
+              "unit": "PT"
+            },
+            "spaceBelow": {
+              "magnitude": 16,
+              "unit": "PT"
+            },
+            "keepLinesTogether": true,
+            "keepWithNext": true,
+            "pageBreakBefore": false
+          }
+        }
+      ]
+    },
+    "tabs": [
+      {
+        "tabProperties": {
+          "tabId": "t.0",
+          "title": "Tab 1",
+          "index": 0
+        },
+        "documentTab": {
+          "body": {
+            "content": [
+              {
+                "endIndex": 1,
+                "sectionBreak": {
+                  "sectionStyle": {
+                    "columnSeparatorStyle": "NONE",
+                    "contentDirection": "LEFT_TO_RIGHT",
+                    "sectionType": "CONTINUOUS"
+                  }
+                }
+              },
+              {
+                "startIndex": 1,
+                "endIndex": 13,
+                "paragraph": {
+                  "elements": [
+                    {
+                      "startIndex": 1,
+                      "endIndex": 13,
+                      "textRun": {
+                        "content": "Friday plan\n",
+                        "textStyle": {}
+                      }
+                    }
+                  ],
+                  "paragraphStyle": {
+                    "namedStyleType": "NORMAL_TEXT",
+                    "direction": "LEFT_TO_RIGHT"
+                  }
+                }
+              },
+              {
+                "startIndex": 13,
+                "endIndex": 49,
+                "paragraph": {
+                  "elements": [
+                    {
+                      "startIndex": 13,
+                      "endIndex": 49,
+                      "textRun": {
+                        "content": "When: 6:45 pm ET; doors 5:45 pm ET.\n",
+                        "textStyle": {}
+                      }
+                    }
+                  ],
+                  "paragraphStyle": {
+                    "namedStyleType": "NORMAL_TEXT",
+                    "direction": "LEFT_TO_RIGHT"
+                  }
+                }
+              },
+              {
+                "startIndex": 49,
+                "endIndex": 63,
+                "paragraph": {
+                  "elements": [
+                    {
+                      "startIndex": 49,
+                      "endIndex": 63,
+                      "textRun": {
+                        "content": "Saturday plan\n",
+                        "textStyle": {}
+                      }
+                    }
+                  ],
+                  "paragraphStyle": {
+                    "namedStyleType": "NORMAL_TEXT",
+                    "direction": "LEFT_TO_RIGHT"
+                  }
+                }
+              },
+              {
+                "startIndex": 63,
+                "endIndex": 103,
+                "paragraph": {
+                  "elements": [
+                    {
+                      "startIndex": 63,
+                      "endIndex": 103,
+                      "textRun": {
+                        "content": "Saturday, November 14, 2026, 7:30–9 pm.\n",
+                        "textStyle": {}
+                      }
+                    }
+                  ],
+                  "paragraphStyle": {
+                    "namedStyleType": "NORMAL_TEXT",
+                    "direction": "LEFT_TO_RIGHT"
+                  }
+                }
+              },
+              {
+                "startIndex": 103,
+                "endIndex": 104,
+                "paragraph": {
+                  "elements": [
+                    {
+                      "startIndex": 103,
+                      "endIndex": 104,
+                      "textRun": {
+                        "content": "\n",
+                        "textStyle": {}
+                      }
+                    }
+                  ],
+                  "paragraphStyle": {
+                    "namedStyleType": "NORMAL_TEXT",
+                    "direction": "LEFT_TO_RIGHT"
+                  }
+                }
+              }
+            ]
+          }
+        }
+      }
+    ]
+  },
+  "marker_name": "sarj_native_chips_00000000000000000000000000000007",
+  "marker_range": {
+    "tabId": "t.0",
+    "startIndex": 103,
+    "endIndex": 104
+  },
+  "spans": [
+    {
+      "tab_id": "t.0",
+      "start": 97,
+      "end": 101,
+      "original_text": "9 pm",
+      "text_style": {},
+      "date_value": {
+        "timestamp": "2026-11-15T02:00:00Z",
+        "time_zone": "America/New_York",
+        "has_time": true
+      }
+    },
+    {
+      "tab_id": "t.0",
+      "start": 73,
+      "end": 96,
+      "original_text": "November 14, 2026, 7:30",
+      "text_style": {},
+      "date_value": {
+        "timestamp": "2026-11-15T00:30:00Z",
+        "time_zone": "America/New_York",
+        "has_time": true
+      }
+    },
+    {
+      "tab_id": "t.0",
+      "start": 37,
+      "end": 44,
+      "original_text": "5:45 pm",
+      "text_style": {},
+      "date_value": {
+        "timestamp": "2026-11-15T22:45:00Z",
+        "time_zone": "America/New_York",
+        "has_time": true
+      }
+    },
+    {
+      "tab_id": "t.0",
+      "start": 19,
+      "end": 26,
+      "original_text": "6:45 pm",
+      "text_style": {},
+      "date_value": {
+        "timestamp": "2026-11-15T23:45:00Z",
+        "time_zone": "America/New_York",
+        "has_time": true
+      }
+    }
+  ],
+  "skipped": [],
+  "requests": [
+    {
+      "deleteContentRange": {
+        "range": {
+          "tabId": "t.0",
+          "startIndex": 97,
+          "endIndex": 101
+        }
+      }
+    },
+    {
+      "insertDate": {
+        "location": {
+          "tabId": "t.0",
+          "index": 97
+        },
+        "dateElementProperties": {
+          "timestamp": "2026-11-15T02:00:00Z",
+          "timeZoneId": "America/New_York",
+          "locale": "en",
+          "dateFormat": "DATE_FORMAT_ISO8601",
+          "timeFormat": "TIME_FORMAT_HOUR_MINUTE_TIMEZONE"
+        }
+      }
+    },
+    {
+      "deleteContentRange": {
+        "range": {
+          "tabId": "t.0",
+          "startIndex": 73,
+          "endIndex": 96
+        }
+      }
+    },
+    {
+      "insertDate": {
+        "location": {
+          "tabId": "t.0",
+          "index": 73
+        },
+        "dateElementProperties": {
+          "timestamp": "2026-11-15T00:30:00Z",
+          "timeZoneId": "America/New_York",
+          "locale": "en",
+          "dateFormat": "DATE_FORMAT_ISO8601",
+          "timeFormat": "TIME_FORMAT_HOUR_MINUTE_TIMEZONE"
+        }
+      }
+    },
+    {
+      "deleteContentRange": {
+        "range": {
+          "tabId": "t.0",
+          "startIndex": 37,
+          "endIndex": 44
+        }
+      }
+    },
+    {
+      "insertDate": {
+        "location": {
+          "tabId": "t.0",
+          "index": 37
+        },
+        "dateElementProperties": {
+          "timestamp": "2026-11-15T22:45:00Z",
+          "timeZoneId": "America/New_York",
+          "locale": "en",
+          "dateFormat": "DATE_FORMAT_ISO8601",
+          "timeFormat": "TIME_FORMAT_HOUR_MINUTE_TIMEZONE"
+        }
+      }
+    },
+    {
+      "deleteContentRange": {
+        "range": {
+          "tabId": "t.0",
+          "startIndex": 19,
+          "endIndex": 26
+        }
+      }
+    },
+    {
+      "insertDate": {
+        "location": {
+          "tabId": "t.0",
+          "index": 19
+        },
+        "dateElementProperties": {
+          "timestamp": "2026-11-15T23:45:00Z",
+          "timeZoneId": "America/New_York",
+          "locale": "en",
+          "dateFormat": "DATE_FORMAT_ISO8601",
+          "timeFormat": "TIME_FORMAT_HOUR_MINUTE_TIMEZONE"
+        }
+      }
+    }
+  ],
+  "complete": false,
+  "revision_id": null
+}

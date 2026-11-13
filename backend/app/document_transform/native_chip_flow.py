@@ -1,6 +1,6 @@
 from collections.abc import Awaitable, Callable, Iterator
 from copy import deepcopy
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Annotated, Literal
 import uuid
 
@@ -211,16 +211,17 @@ def _paragraph_candidates(
     protected: tuple[ProtectedNativeChipRange, ...],
     planner_version: Literal[1, 2, 3],
 ) -> tuple[DetectedNativeSpan, ...]:
+    date_context = _paragraph_date_context(context, paragraph.node)
     original = (
         *detect_address_spans(paragraph.text, context=context),
-        *detect_date_spans(paragraph.text, context=context),
+        *detect_date_spans(paragraph.text, context=date_context),
     )
     prose = (
         original
         if paragraph.detection_text == paragraph.text
         else (
             *detect_address_spans(paragraph.detection_text, context=context),
-            *detect_date_spans(paragraph.detection_text, context=context),
+            *detect_date_spans(paragraph.detection_text, context=date_context),
         )
     )
     return protect_native_chip_candidates(
@@ -231,6 +232,14 @@ def _paragraph_candidates(
         protected=protected,
         enabled=planner_version != 1,
     )
+
+
+def _paragraph_date_context(
+    context: NativeChipContext, paragraph: dict[str, JsonValue]
+) -> NativeChipContext:
+    if any("dateElement" in obj(part) for part in array(obj(paragraph["paragraph"])["elements"])):
+        return replace(context, anchored_date=None)
+    return context
 
 
 def _candidate_conversion(
