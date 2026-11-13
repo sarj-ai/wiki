@@ -790,6 +790,12 @@ class VertexGeminiPatchGenerator(PatchGenerator):
         denied_models = _phase_denied_review_models_var.get()
         if denied_models is None:
             denied_models = set()
+        batches = _review_batches(pairs)
+        logger.info(
+            "document semantic review plan",
+            model_review_pair_count=len(pairs),
+            model_review_batch_count=len(batches),
+        )
         failure = _ModelBatchFailure(None)
         try:
             async with asyncio.TaskGroup() as group:
@@ -799,7 +805,7 @@ class VertexGeminiPatchGenerator(PatchGenerator):
                             batch, self._model_semaphore, denied_models, failure
                         )
                     )
-                    for batch in _review_batches(pairs)
+                    for batch in batches
                 ]
         except* ModelUnavailableError as error:
             raise grouped_model_failure(error) from error
@@ -858,6 +864,12 @@ class VertexGeminiPatchGenerator(PatchGenerator):
 
     async def _review_once(self, *, model: str, pairs: list[_ReviewPair]) -> PatchReviewEnvelope:
         prompt = _review_prompt(pairs)
+        logger.info(
+            "document semantic review batch planned",
+            model_id=model,
+            model_review_pair_count=len(pairs),
+            model_review_prompt_characters=len(prompt),
+        )
         seconds = _model_request_timeout_seconds(
             self._policy.timeout
             if self._policy.review_timeout is None
@@ -1306,18 +1318,35 @@ def _review_prompt(pairs: list[_ReviewPair]) -> str:
 def _validated_reviews(pairs: list[_ReviewPair], reviews: PatchReviewEnvelope) -> RewriteReview:
     expected = {pair.block_id: pair for pair in pairs}
     seen: set[str] = set()
-    for review in reviews.reviews:
+    for index, review in enumerate(reviews.reviews):
         pair = expected.get(review.block_id)
-        if (
-            pair is None
-            or review.block_id in seen
-            or review.expected_sha256 != pair.expected_sha256
-            or review.replacement_sha256 != pair.replacement_sha256
-        ):
+        mismatch = None
+        if pair is None:
+            mismatch = "unknown_id"
+        elif review.block_id in seen:
+            mismatch = "duplicate_id"
+        elif review.expected_sha256 != pair.expected_sha256:
+            mismatch = "source_hash"
+        elif review.replacement_sha256 != pair.replacement_sha256:
+            mismatch = "replacement_hash"
+        if mismatch is not None:
+            logger.warning(
+                "document semantic review binding mismatch",
+                model_binding_mismatch=mismatch,
+                model_expected_review_count=len(pairs),
+                model_observed_review_count=len(reviews.reviews),
+                model_review_index=index,
+            )
             msg = "Semantic verdict is not bound to its exact proposal"
             raise ModelBindingError(msg)
         seen.add(review.block_id)
     if seen != expected.keys():
+        logger.warning(
+            "document semantic review binding mismatch",
+            model_binding_mismatch="missing_ids",
+            model_expected_review_count=len(pairs),
+            model_observed_review_count=len(reviews.reviews),
+        )
         msg = "Semantic verdicts are incomplete"
         raise ModelCoverageError(msg)
     return RewriteReview(
