@@ -103,6 +103,9 @@ _phase_denied_review_models_var: ContextVar[set[str] | None] = ContextVar(
     "document_phase_denied_review_models", default=None
 )
 _MAX_CONCURRENT_MODEL_BATCHES = 2
+_checkpointed_writer_var: ContextVar[bool] = ContextVar(
+    "checkpointed_document_writer", default=False
+)
 _INITIAL_WRITER_START_INTERVAL = timedelta(seconds=1)
 _WRITER_JITTER_MILLISECONDS = 250
 _MAX_BLOCK_CLAUSE_AUDITS = 4
@@ -268,6 +271,16 @@ class _RepairProposal:
 class RewriteReview:
     approved: frozenset[str]
     rejected: dict[str, str]
+
+
+@contextmanager
+def checkpointed_writer_scope() -> Generator[None]:
+    # The caller persists proposals and resumes mandatory review next delivery.
+    token = _checkpointed_writer_var.set(True)
+    try:
+        yield
+    finally:
+        _checkpointed_writer_var.reset(token)
 
 
 @asynccontextmanager
@@ -469,6 +482,14 @@ class VertexGeminiPatchGenerator(PatchGenerator):
         config: genai_types.GenerateContentConfig,
     ) -> genai_types.GenerateContentResponse:
         started = monotonic()
+        logger.info(
+            "document model request started",
+            model_id=model,
+            model_operation=str(operation),
+            model_timeout_ms=config.http_options.timeout
+            if config.http_options is not None
+            else None,
+        )
         try:
             response = await self._client.aio.models.generate_content(
                 model=model, contents=contents, config=config
@@ -703,6 +724,8 @@ class VertexGeminiPatchGenerator(PatchGenerator):
             review_reserve = self._policy.writer_review_reserve
             if model != self._policy.unslop_model:
                 review_reserve = max(review_reserve, _UNSLOP_REVIEW_RESERVE)
+            if _checkpointed_writer_var.get():
+                review_reserve = timedelta(0)
         timeout_seconds = _model_request_timeout_seconds(
             self._policy.timeout, reserve=review_reserve
         )

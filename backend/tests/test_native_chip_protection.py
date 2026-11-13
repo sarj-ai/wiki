@@ -11,6 +11,7 @@ from app.document_transform.native_quote_spans import (
     advance_code,
     native_inline_protected_ranges,
 )
+from app.document_transform.readability_json import array, bodies, obj
 
 
 def _document(texts: tuple[str, ...]) -> dict[str, JsonValue]:
@@ -44,6 +45,47 @@ def _document(texts: tuple[str, ...]) -> dict[str, JsonValue]:
             {"tabProperties": {"tabId": "t.0"}, "documentTab": {"body": {"content": content}}}
         ],
     }
+
+
+def test_existing_date_pill_does_not_assign_a_title_day_to_its_neighboring_clock() -> None:
+    prefix = "When: "
+    suffix = " · 6:45 pm ET; doors 5:45 pm ET.\n"
+    document = _document(
+        (prefix + "\ufffc" + suffix.rstrip("\n"), "Saturday, November 14, 2026, 7:30–9 pm.")
+    )
+    document["title"] = "NYC · Sunday, November 15, 2026"
+    _, tab = next(bodies(document))
+    paragraph = obj(obj(array(obj(tab["body"])["content"])[0])["paragraph"])
+    first = 1 + utf16_length(prefix)
+    paragraph["elements"] = [
+        {"startIndex": 1, "endIndex": first, "textRun": {"content": prefix, "textStyle": {}}},
+        {
+            "startIndex": first,
+            "endIndex": first + 1,
+            "dateElement": {
+                "dateId": "existing-friday",
+                "textStyle": {},
+                "dateElementProperties": {
+                    "timestamp": "2026-11-13T00:00:00Z",
+                    "locale": "en",
+                    "dateFormat": "DATE_FORMAT_MONTH_DAY_YEAR_ABBREVIATED",
+                    "timeFormat": "TIME_FORMAT_DISABLED",
+                    "displayText": "Nov 13, 2026",
+                },
+            },
+        },
+        {
+            "startIndex": first + 1,
+            "endIndex": first + 1 + utf16_length(suffix),
+            "textRun": {"content": suffix, "textStyle": {}},
+        },
+    ]
+    plan = plan_native_chips(document, operation_id=uuid.UUID(int=9))
+    assert plan is not None
+    assert len(plan.spans) == 2
+    assert all(
+        "6:45" not in span.original_text and "5:45" not in span.original_text for span in plan.spans
+    )
 
 
 @pytest.mark.parametrize(
