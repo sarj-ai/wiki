@@ -7,6 +7,7 @@ import re
 from types import MappingProxyType
 from typing import Final, Literal
 
+from app.document_transform.conditional_actor import reassigned_conditional_action
 from app.document_transform.inline_code import inline_code_spans, mask_inline_code
 from app.document_transform.ir import BlockKind, DocumentIR, TextBlock
 from app.document_transform.measurement_actor import reassigned_measurement_action
@@ -154,6 +155,7 @@ REPAIRABLE_REWRITE_CODES = frozenset(
         "scope_qualifier_changed",
         "document_writing_actor_changed",
         "measurement_actor_changed",
+        "conditional_actor_changed",
         "document_reference_identity_ambiguous",
         "temporal_scope_changed",
         "negative_transformation_scope_changed",
@@ -384,6 +386,8 @@ def _aggressive_unslop_code(
         return "document_writing_actor_changed"
     if reassigned_measurement_action(block.text, replacement):
         return "measurement_actor_changed"
+    if reassigned_conditional_action(block.text, replacement):
+        return "conditional_actor_changed"
     if (
         _fronted_date_scope_expanded(block.text, replacement)
         or fronted_recurring_scope_expanded(block.text, replacement)
