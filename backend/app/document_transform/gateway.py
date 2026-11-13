@@ -1,10 +1,18 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any, Protocol
+from dataclasses import dataclass, field
+from typing import TYPE_CHECKING, Any, Literal, Protocol
 import uuid
 
+from pydantic import JsonValue
+
+from app.document_transform.copy_draft_state import (
+    DraftCompletion,
+    DraftMutation,
+    IncompleteDraft,
+    UnmodifiedDraft,
+)
 from app.document_transform.custom_furniture import CustomFurnitureBinding, CustomHeaderTitleTarget
 from app.document_transform.header_provenance import HeaderIdentityEvidence
 from app.document_transform.ir import DocumentIR
@@ -17,8 +25,9 @@ from app.document_transform.schemas import (
     MarkdownSource,
     TabNamingCheckpoint,
 )
+from app.document_transform.source_access import NativeSourceAccess
 from app.document_transform.tab_structure_execution import StructureProvider
-from app.identifiers import DocsRevisionId, DocsSegmentId, DocsTabId, DriveId, FileId
+from app.identifiers import DocsRevisionId, DocsSegmentId, DocsTabId, FileId
 
 
 if TYPE_CHECKING:
@@ -26,21 +35,32 @@ if TYPE_CHECKING:
     from app.document_transform.readability_provider import ReadabilityProvider
 
 
-@dataclass(frozen=True, slots=True)
-class SourceSnapshot:
+@dataclass(frozen=True, slots=True, kw_only=True)
+class _SourceMetadata:
     title: str
     parent_folder_id: FileId
     modified_time: str | None
-    revision_id: DocsRevisionId | None
-    media_type: str
-    markdown: str | None = None
-    google_document: dict[str, Any] | None = None
-    owned_by_me: bool = False
-    can_edit: bool = False
-    is_personal_drive: bool = False
-    shared_drive_id: DriveId | None = None
     web_url: str | None = None
+
+
+@dataclass(frozen=True, slots=True, kw_only=True)
+class NativeDocumentSnapshot(_SourceMetadata):
+    revision_id: DocsRevisionId
+    google_document: dict[str, JsonValue]
+    access: NativeSourceAccess = field(default_factory=NativeSourceAccess)
+    media_type: Literal["application/vnd.google-apps.document"] = field(
+        default="application/vnd.google-apps.document", init=False
+    )
+
+
+@dataclass(frozen=True, slots=True, kw_only=True)
+class MarkdownSnapshot(_SourceMetadata):
+    markdown: str
     compact_markdown: bool = False
+    media_type: Literal["text/markdown"] = field(default="text/markdown", init=False)
+
+
+type SourceSnapshot = NativeDocumentSnapshot | MarkdownSnapshot
 
 
 @dataclass(frozen=True, slots=True)
@@ -58,14 +78,9 @@ class OutputDraft:
     source_sha256: str
     headers: tuple[TabHeader, ...] = ()
     logo_uri: str | None = None
-    applied_mutation_sha256: str | None = None
-    pending_mutation_sha256: str | None = None
-    mutation_base_revision_sha256: str | None = None
+    mutation: DraftMutation = field(default_factory=UnmodifiedDraft)
     brand_warnings: tuple[str, ...] = ()
-    completed: bool = False
-    result: dict[str, Any] | None = None
-    result_sha256: str | None = None
-    verified_revision_sha256: str | None = None
+    completion: DraftCompletion = field(default_factory=IncompleteDraft)
     native_footer: NativeFooterCheckpoint | None = None
     native_dates: NativeDateCheckpoint | None = None
 

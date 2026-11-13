@@ -22,6 +22,8 @@ from app.document_transform.models import PatchGenerator
 from app.document_transform.presentation_executor import PresentationTransformExecutor
 from app.document_transform.presentation_gateway import (
     DriveFileVersion,
+    NativePresentationSource,
+    PptxPresentationSource,
     PresentationDraft,
     PresentationRevisionId,
     PresentationSourceSnapshot,
@@ -46,6 +48,7 @@ from app.document_transform.schemas import (
 from app.document_transform.slides_ir import MAX_PRESENTATION_SLIDES, ParsedPresentation
 from app.drive.schemas import MIME_SLIDE
 from app.identifiers import FileId, TaskId
+from tests.json_values import json_object_at
 
 
 class _SlidesPlanArguments(TypedDict):
@@ -102,23 +105,38 @@ class NoopPatchGenerator(PatchGenerator):
 class PresentationGatewaySpy:
     def __init__(self, *, mime_type: str) -> None:
         source_presentation = _presentation("source", "source-revision")
-        self.snapshot = PresentationSourceSnapshot(
-            file_id=FileId("source"),
-            title="Review",
-            source_name="Review.pptx" if mime_type == PPTX_MIME_TYPE else "Review",
-            parent_folder_id=FileId("folder"),
-            modified_time="2026-09-04T00:00:00Z",
-            revision_id=(
-                PresentationRevisionId("source-revision") if mime_type == MIME_SLIDE else None
-            ),
-            drive_version=DriveFileVersion("7"),
-            mime_type=mime_type,
-            size=1_024 if mime_type == PPTX_MIME_TYPE else None,
-            md5_checksum="a" * 32 if mime_type == PPTX_MIME_TYPE else None,
-            can_download=mime_type == PPTX_MIME_TYPE,
-            can_copy=mime_type == MIME_SLIDE,
-            presentation=source_presentation if mime_type == MIME_SLIDE else None,
-        )
+        self.snapshot: PresentationSourceSnapshot
+        if mime_type == PPTX_MIME_TYPE:
+            self.snapshot = PptxPresentationSource(
+                file_id=FileId("source"),
+                title="Review",
+                source_name="Review.pptx",
+                parent_folder_id=FileId("folder"),
+                modified_time="2026-09-04T00:00:00Z",
+                drive_version=DriveFileVersion("7"),
+                size=1024,
+                md5_checksum="a" * 32,
+                can_download=True,
+                can_copy=False,
+            )
+        elif mime_type == MIME_SLIDE:
+            self.snapshot = NativePresentationSource(
+                file_id=FileId("source"),
+                title="Review",
+                source_name="Review",
+                parent_folder_id=FileId("folder"),
+                modified_time="2026-09-04T00:00:00Z",
+                revision_id=PresentationRevisionId("source-revision"),
+                drive_version=DriveFileVersion("7"),
+                size=None,
+                md5_checksum=None,
+                can_download=False,
+                can_copy=True,
+                presentation=source_presentation,
+            )
+        else:
+            message = "Unsupported presentation fixture kind"
+            raise ValueError(message)
         self.output_presentation = _presentation("output", "output-revision")
         self.created = 0
         self.completed = 0
@@ -296,10 +314,12 @@ async def test_presentation_result_distinguishes_review_rejections_from_informat
     text = "The sensor records exactly 15 samples each night."
     if verbose:
         text += " The report presents the details of the account in extended prose." * 4
+    assert isinstance(gateway.snapshot, NativePresentationSource)
     for presentation in (gateway.snapshot.presentation, gateway.output_presentation):
-        assert presentation is not None
-        run = presentation["slides"][0]["pageElements"][0]["shape"]["text"]["textElements"][1]
-        run["textRun"]["content"] = text + "\n"
+        run = json_object_at(
+            presentation, "slides", 0, "pageElements", 0, "shape", "text", "textElements", 1
+        )
+        json_object_at(run, "textRun")["content"] = text + "\n"
         run["endIndex"] = len(text) + 1
     source_before = deepcopy(gateway.snapshot)
     generator = QuantityPatchGenerator(change_quantity=change_quantity)
@@ -382,7 +402,7 @@ async def test_native_copy_fingerprint_mismatch_rejects_before_mutation(
     if changed_field == "text":
         text_run = output_body["shape"]["text"]["textElements"][1]
         changed_text = "This copy has different text.\n"
-        text_run["textRun"]["content"] = changed_text
+        json_object_at(text_run, "textRun")["content"] = changed_text
         text_run["endIndex"] = len(changed_text)
     else:
         output_body["objectId"] = "changed-body"
@@ -562,10 +582,12 @@ async def test_presentation_contextual_unslop_never_invokes_model(
     presentation_gateway_factory: type[PresentationGatewaySpy],
 ) -> None:
     gateway = presentation_gateway_factory(mime_type=MIME_SLIDE)
+    assert isinstance(gateway.snapshot, NativePresentationSource)
     for presentation in (gateway.snapshot.presentation, gateway.output_presentation):
-        assert presentation is not None
-        text_run = presentation["slides"][0]["pageElements"][0]["shape"]["text"]["textElements"][1]
-        text_run["textRun"]["content"] = "This is a game changer.\n"
+        text_run = json_object_at(
+            presentation, "slides", 0, "pageElements", 0, "shape", "text", "textElements", 1
+        )
+        json_object_at(text_run, "textRun")["content"] = "This is a game changer.\n"
         text_run["endIndex"] = len("This is a game changer.\n")
     generator = NoopPatchGenerator()
     executor = _executor(

@@ -5,12 +5,15 @@ import uuid
 
 import pytest
 
+from app.document_transform.copy_draft_state import (
+    PendingDraftMutation,
+)
 from app.document_transform.gateway import OutputDraft, OutputVerification
 from app.document_transform.google_gateway import GoogleDocumentGateway
 from app.document_transform.ir import parse_google_document
 from app.document_transform.native_date_flow import plan_copy_dates
 from app.identifiers import FileId
-from tests.test_document_transform import _branded_google_document, _pending_output_draft
+from tests.test_document_transform import _branded_google_document, _output_draft
 from tests.test_document_transform_footer_flow import _plan
 from tests.test_document_transform_header_provenance import _snapshot
 from tests.test_document_transform_native_date_flow import _converted, _document
@@ -57,8 +60,11 @@ async def _verify(
     monkeypatch.setattr(gateway, "_get_document_sync", lambda _file_id: deepcopy(actual))
     return await gateway.verify_output(
         draft=draft
-        or _pending_output_draft(
-            pending_mutation_sha256="hash", mutation_base_revision_sha256="hash"
+        or _output_draft(
+            mutation=PendingDraftMutation(
+                sha256="d04b98f48e8f8bcc15c6ae5ac050801cd6dcfd428fb5f9e65c4e16e7807340fa",
+                base_revision_sha256="d04b98f48e8f8bcc15c6ae5ac050801cd6dcfd428fb5f9e65c4e16e7807340fa",
+            )
         ),
         source=_snapshot(source),
         expected=parse_google_document(source, title="Decision"),
@@ -171,7 +177,12 @@ async def test_copy_font_proof_runs_after_exact_native_date_projection(
     checkpoint = plan_copy_dates(before_date, operation_id=uuid.uuid7())
     assert checkpoint is not None
     draft = replace(
-        _pending_output_draft(pending_mutation_sha256="hash", mutation_base_revision_sha256="hash"),
+        _output_draft(
+            mutation=PendingDraftMutation(
+                sha256="d04b98f48e8f8bcc15c6ae5ac050801cd6dcfd428fb5f9e65c4e16e7807340fa",
+                base_revision_sha256="d04b98f48e8f8bcc15c6ae5ac050801cd6dcfd428fb5f9e65c4e16e7807340fa",
+            )
+        ),
         native_dates=checkpoint,
     )
     result = await _verify(monkeypatch, source, actual, draft)
@@ -188,7 +199,12 @@ async def test_copy_font_proof_runs_after_exact_native_footer_projection(
     created = await gateway.apply_copy_footer_stage(document_id=FileId("doc"), checkpoint=initial)
     complete = await gateway.apply_copy_footer_stage(document_id=FileId("doc"), checkpoint=created)
     draft = replace(
-        _pending_output_draft(pending_mutation_sha256="hash", mutation_base_revision_sha256="hash"),
+        _output_draft(
+            mutation=PendingDraftMutation(
+                sha256="d04b98f48e8f8bcc15c6ae5ac050801cd6dcfd428fb5f9e65c4e16e7807340fa",
+                base_revision_sha256="d04b98f48e8f8bcc15c6ae5ac050801cd6dcfd428fb5f9e65c4e16e7807340fa",
+            )
+        ),
         native_footer=complete,
     )
     result = await _verify(monkeypatch, source, actual, draft)

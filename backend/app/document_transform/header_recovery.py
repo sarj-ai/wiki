@@ -4,7 +4,12 @@ import uuid
 from loguru import logger
 
 from app.document_transform.brand import mutation_sha256
-from app.document_transform.gateway import InPlaceInspection, InPlaceStageResult, SourceSnapshot
+from app.document_transform.gateway import (
+    InPlaceInspection,
+    InPlaceStageResult,
+    NativeDocumentSnapshot,
+    SourceSnapshot,
+)
 from app.document_transform.ir import MAX_DOC_TABS, parse_google_document
 from app.document_transform.schemas import InPlaceCheckpoint, InPlaceCheckpointStage
 
@@ -35,13 +40,13 @@ def _recover_empty_header_postcondition(
 ) -> InPlaceStageResult | None:
     if checkpoint.stage is not InPlaceCheckpointStage.HEADERS:
         return None
+    if not isinstance(snapshot, NativeDocumentSnapshot):
+        return None
     document = snapshot.google_document
     targets = _requested_tabs(checkpoint.requests)
     digest = mutation_sha256(checkpoint.requests)
     if (
         checkpoint.stage is not InPlaceCheckpointStage.HEADERS
-        or document is None
-        or snapshot.revision_id is None
         or snapshot.revision_id == checkpoint.current_revision_id
         or not targets
     ):

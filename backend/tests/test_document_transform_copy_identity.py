@@ -4,11 +4,11 @@ from typing import Any
 import pytest
 
 from app.document_transform.copy_identity import normalize_copy_list_identity
-from app.document_transform.gateway import OutputDraft, SourceSnapshot
+from app.document_transform.gateway import NativeDocumentSnapshot, OutputDraft
 from app.document_transform.google_gateway import GoogleDocumentGateway
 from app.document_transform.ir import parse_google_document
 from app.document_transform.schemas import DocumentOutput
-from app.drive.schemas import MIME_DOC
+from app.document_transform.source_access import NativeSourceAccess, PersonalDrive
 from app.identifiers import DocsRevisionId, DocsTabId, FileId
 
 
@@ -175,12 +175,11 @@ async def test_copy_list_alpha_equivalence_preserves_exact_semantics(
             revision_id=DocsRevisionId("r1"),
             source_sha256="source",
         ),
-        source=SourceSnapshot(
+        source=NativeDocumentSnapshot(
             title="Original",
             parent_folder_id=FileId("folder"),
             modified_time="now",
             revision_id=DocsRevisionId("r1"),
-            media_type=MIME_DOC,
             google_document=original,
         ),
         expected=parse_google_document(original, title="Original"),
@@ -197,16 +196,15 @@ async def test_in_place_list_identity_remains_strict() -> None:
     digests = []
     for document in (_document(), _document("copy-a", "copy-b")):
         inspection = await gateway.inspect_in_place(
-            snapshot=SourceSnapshot(
+            snapshot=NativeDocumentSnapshot(
                 title="Original",
                 parent_folder_id=FileId("folder"),
                 modified_time="now",
                 revision_id=DocsRevisionId("r1"),
-                media_type=MIME_DOC,
                 google_document=document,
-                owned_by_me=True,
-                can_edit=True,
-                is_personal_drive=True,
+                access=NativeSourceAccess(
+                    owned_by_me=True, can_edit=True, location=PersonalDrive()
+                ),
             ),
             title="Original",
         )

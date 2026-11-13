@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import Callable, Iterator, Mapping
+from dataclasses import dataclass
 from functools import cache
 import hashlib
 from http import HTTPStatus
@@ -10,7 +11,7 @@ import json
 from pathlib import PurePosixPath
 import stat
 import threading
-from typing import Any, Protocol, override, runtime_checkable
+from typing import Any, Literal, Protocol, TypedDict, assert_never, override, runtime_checkable
 from urllib.parse import urlsplit
 import uuid
 from zipfile import ZIP_DEFLATED, ZIP_STORED, BadZipFile, ZipFile, ZipInfo
@@ -35,6 +36,8 @@ from app.document_transform.errors import (
 )
 from app.document_transform.presentation_gateway import (
     DriveFileVersion,
+    NativePresentationSource,
+    PptxPresentationSource,
     PresentationDraft,
     PresentationFingerprints,
     PresentationGateway,
@@ -67,6 +70,33 @@ from app.models.user import User
 
 PPTX_MIME_TYPE = "application/vnd.openxmlformats-officedocument.presentationml.presentation"
 _MAX_PPTX_BYTES = 25 * 1024 * 1024
+
+
+class _CopyBody(TypedDict):
+    name: str
+    parents: list[FileId]
+    appProperties: dict[str, str]
+
+
+class _ImportBody(_CopyBody):
+    mimeType: Literal["application/vnd.google-apps.presentation"]
+
+
+@dataclass(frozen=True, slots=True)
+class _CopyPresentation:
+    file_id: FileId
+    body: _CopyBody
+    kind: Literal["copy"] = "copy"
+
+
+@dataclass(frozen=True, slots=True)
+class _ImportPresentation:
+    content: bytes
+    body: _ImportBody
+    kind: Literal["import"] = "import"
+
+
+type _PresentationCreation = _CopyPresentation | _ImportPresentation
 _MAX_ZIP_ENTRIES = 10_000
 _MAX_ZIP_ENTRY_BYTES = 50 * 1024 * 1024
 _MAX_ZIP_UNCOMPRESSED_BYTES = 250 * 1024 * 1024
@@ -231,39 +261,44 @@ class GooglePresentationGateway(PresentationGateway):
         can_copy = capabilities.get("canCopy") is True
         size = _optional_nonnegative_int(metadata, "size")
         md5_checksum = _optional_string(metadata, "md5Checksum")
-        _validate_source_kind(
-            name=_required_string(metadata, "name"),
-            mime_type=mime_type,
-            size=size,
-            md5_checksum=md5_checksum,
-            can_download=can_download,
-            can_copy=can_copy,
-        )
-        presentation = (
-            await asyncio.to_thread(self._get_presentation_sync, source.file_id)
-            if mime_type == MIME_SLIDE
-            else None
-        )
-        revision_id = (
-            PresentationRevisionId(_required_string(presentation, "revisionId"))
-            if presentation is not None
-            else None
-        )
         name = _required_string(metadata, "name")
-        return PresentationSourceSnapshot(
+        if mime_type == MIME_SLIDE:
+            if name.casefold().endswith((".ppt", ".pptm", ".pptx")) or not can_copy:
+                raise UnsupportedSourceError
+            presentation = await asyncio.to_thread(self._get_presentation_sync, source.file_id)
+            return NativePresentationSource(
+                file_id=source.file_id,
+                title=name,
+                source_name=name,
+                parent_folder_id=file.parent_folder_id,
+                modified_time=file.modified_time,
+                revision_id=PresentationRevisionId(_required_string(presentation, "revisionId")),
+                drive_version=DriveFileVersion(_required_string(metadata, "version")),
+                size=size,
+                md5_checksum=md5_checksum,
+                can_download=can_download,
+                can_copy=can_copy,
+                presentation=presentation,
+            )
+        if (
+            mime_type != PPTX_MIME_TYPE
+            or not name.casefold().endswith(".pptx")
+            or size is None
+            or md5_checksum is None
+            or not can_download
+        ):
+            raise UnsupportedSourceError
+        return PptxPresentationSource(
             file_id=source.file_id,
-            title=name[:-5] if mime_type == PPTX_MIME_TYPE else name,
+            title=name[:-5],
             source_name=name,
             parent_folder_id=file.parent_folder_id,
             modified_time=file.modified_time,
-            revision_id=revision_id,
             drive_version=DriveFileVersion(_required_string(metadata, "version")),
-            mime_type=mime_type,
             size=size,
             md5_checksum=md5_checksum,
             can_download=can_download,
             can_copy=can_copy,
-            presentation=presentation,
         )
 
     @override
@@ -308,24 +343,27 @@ class GooglePresentationGateway(PresentationGateway):
         if not await self.source_is_unchanged(source):
             raise SourceChangedError
         name = await asyncio.to_thread(self._unique_name_sync, source.parent_folder_id, output_name)
-        body: dict[str, object] = {
+        body: _CopyBody = {
             "name": name,
             "parents": [source.parent_folder_id],
             "appProperties": _initial_properties(operation_id, source_sha256),
         }
-        pptx: bytes | None = None
-        if source.mime_type == PPTX_MIME_TYPE:
-            if not await asyncio.to_thread(self._pptx_import_is_supported_sync):
-                raise UnsupportedSourceError
-            pptx = await asyncio.to_thread(self._download_pptx_sync, source)
-            body["mimeType"] = MIME_SLIDE
-        elif source.mime_type != MIME_SLIDE:
-            raise UnsupportedSourceError
+        creation: _PresentationCreation
+        match source:
+            case PptxPresentationSource():
+                if not await asyncio.to_thread(self._pptx_import_is_supported_sync):
+                    raise UnsupportedSourceError
+                content = await asyncio.to_thread(self._download_pptx_sync, source)
+                creation = _ImportPresentation(content, {**body, "mimeType": MIME_SLIDE})
+            case NativePresentationSource():
+                creation = _CopyPresentation(source.file_id, body)
+            case _:
+                assert_never(source)
         if not await self.source_is_unchanged(source):
             raise SourceChangedError
         await self._validate_destination_folder(source.parent_folder_id)
         try:
-            raw = await asyncio.to_thread(self._perform_create_sync, source, body, pptx)
+            raw = await asyncio.to_thread(self._perform_create_sync, creation)
         except (DocumentGatewayError, ProviderDeadlineError) as exc:
             recovered = await self.recover_output(
                 operation_id,
@@ -413,39 +451,33 @@ class GooglePresentationGateway(PresentationGateway):
 
     def _perform_create_sync(
         self,
-        source: PresentationSourceSnapshot,
-        body: dict[str, object],
-        pptx: bytes | None,
+        creation: _PresentationCreation,
     ) -> dict[str, Any]:
-        if source.mime_type == MIME_SLIDE:
-            if pptx is not None:
-                raise DocumentGatewayError
-            return self._execute_mutation_dict(
-                _request(
-                    _member(self._drive().files(), "copy"),
-                    fileId=source.file_id,
-                    body=body,
-                    supportsAllDrives=True,
-                    fields=_OUTPUT_FIELDS,
+        match creation:
+            case _CopyPresentation():
+                return self._execute_mutation_dict(
+                    _request(
+                        _member(self._drive().files(), "copy"),
+                        fileId=creation.file_id,
+                        body=creation.body,
+                        supportsAllDrives=True,
+                        fields=_OUTPUT_FIELDS,
+                    )
                 )
-            )
-        if source.mime_type != PPTX_MIME_TYPE:
-            raise UnsupportedSourceError
-        if pptx is None:
-            raise DocumentGatewayError
-        return self._execute_import_mutation_dict(
-            _request(
-                _member(self._drive().files(), "create"),
-                body=body,
-                media_body=MediaIoBaseUpload(
-                    BytesIO(pptx),
-                    mimetype=PPTX_MIME_TYPE,
-                    resumable=False,
-                ),
-                supportsAllDrives=True,
-                fields=_OUTPUT_FIELDS,
-            )
-        )
+            case _ImportPresentation():
+                return self._execute_import_mutation_dict(
+                    _request(
+                        _member(self._drive().files(), "create"),
+                        body=creation.body,
+                        media_body=MediaIoBaseUpload(
+                            BytesIO(creation.content), mimetype=PPTX_MIME_TYPE, resumable=False
+                        ),
+                        supportsAllDrives=True,
+                        fields=_OUTPUT_FIELDS,
+                    )
+                )
+            case _:
+                assert_never(creation)
 
     def _source_is_unchanged_sync(self, source: PresentationSourceSnapshot) -> bool:
         metadata = self._files_get_sync(source.file_id)
@@ -474,7 +506,7 @@ class GooglePresentationGateway(PresentationGateway):
         )
         if observed != expected:
             return False
-        if source.revision_id is None:
+        if isinstance(source, PptxPresentationSource):
             return True
         presentation = self._get_presentation_sync(source.file_id)
         return presentation.get("revisionId") == source.revision_id
@@ -492,7 +524,7 @@ class GooglePresentationGateway(PresentationGateway):
         targets = formats.get(PPTX_MIME_TYPE)
         return isinstance(targets, list) and MIME_SLIDE in targets
 
-    def _download_pptx_sync(self, source: PresentationSourceSnapshot) -> bytes:
+    def _download_pptx_sync(self, source: PptxPresentationSource) -> bytes:
         metadata = self._files_get_sync(source.file_id)
         size = _required_nonnegative_int(metadata, "size")
         if size > _MAX_PPTX_BYTES:
@@ -512,10 +544,7 @@ class GooglePresentationGateway(PresentationGateway):
             raise SourceTooLargeError
         if len(raw) != size:
             raise SourceChangedError
-        if (
-            source.md5_checksum is None
-            or hashlib.md5(raw, usedforsecurity=False).hexdigest() != source.md5_checksum
-        ):
+        if hashlib.md5(raw, usedforsecurity=False).hexdigest() != source.md5_checksum:
             raise SourceChangedError
         _validate_pptx_archive(raw)
         return raw
@@ -1063,31 +1092,6 @@ def _validate_scoped_metadata(file: FileResponse, metadata: dict[str, Any]) -> N
         or _optional_parent(metadata) != file.parent_folder_id
     ):
         raise SourceChangedError
-
-
-def _validate_source_kind(
-    *,
-    name: str,
-    mime_type: str,
-    size: int | None,
-    md5_checksum: str | None,
-    can_download: bool,
-    can_copy: bool,
-) -> None:
-    lower_name = name.casefold()
-    has_powerpoint_extension = lower_name.endswith((".ppt", ".pptm", ".pptx"))
-    if mime_type == MIME_SLIDE:
-        if has_powerpoint_extension or not can_copy:
-            raise UnsupportedSourceError
-        return
-    if (
-        mime_type != PPTX_MIME_TYPE
-        or not lower_name.endswith(".pptx")
-        or size is None
-        or md5_checksum is None
-        or not can_download
-    ):
-        raise UnsupportedSourceError
 
 
 def _validate_pptx_archive(raw: bytes) -> None:

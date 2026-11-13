@@ -1,5 +1,5 @@
 {
-  "scope": "All tracked Wiki application, API, frontend, task, OAuth, provider, deployment and infrastructure sources. Retained explicit machines and concrete framework/provider exceptions are recorded below; source coverage identifies the reviewed content.",
+  "scope": "Wiki application, API, frontend, durable tasks, provider adapters and deployment. Each entry records the authoritative model and its recovery boundary; Git retains source identities. Remaining semantic review is explicit below.",
   "machines": [
     {
       "id": "document-copy",
@@ -436,7 +436,10 @@
         "required exact-head checks",
         "trusted release workflow",
         "migration job exact argv",
-        "authenticated smoke"
+        "authenticated smoke",
+        "Shared frontend requires a successful selected backend, or an explicitly unselected/skipped backend",
+        "All five CI gates and exact Standards SHA remain mandatory",
+        "Standalone releases retain exactly five gates; shared frontend requires exactly six"
       ],
       "recovery": "Deployment failures remain failures; migration job cannot be repurposed as arbitrary diagnostics. Temporary read-only audit job is removed after production verification.",
       "decision": "retain-explicit",
@@ -936,21 +939,222 @@
       "sources": [
         "scripts/standards_checks/check_baseline_growth.py"
       ]
+    },
+    {
+      "id": "database-connection-choice",
+      "oldRepresentation": "Three nullable environment selectors reconstructed by engine and connector.",
+      "authoritativeReplacement": "DirectDatabaseConnection | CloudSqlDatabaseConnection; immutable decoded DatabaseSettings.connection",
+      "events": [
+        "load environment"
+      ],
+      "guards": [
+        "XOR environment validation",
+        "frozen original environment fields",
+        "exhaustive engine dispatch",
+        "IAM identity and database required only for Cloud SQL"
+      ],
+      "recovery": "Invalid configuration fails before engine creation. The connector receives the captured typed connection, including reconnects. Existing environment names are unchanged.",
+      "decision": "convert",
+      "sources": [
+        "backend/app/database_config.py",
+        "backend/app/database.py"
+      ]
+    },
+    {
+      "id": "metadata-batch-ownership",
+      "oldRepresentation": "None | record mapping | BaseException result slots; Task[Any] owners.",
+      "authoritativeReplacement": "_MetadataPending | _MetadataSucceeded[Record] | _MetadataFailed; Task[None]",
+      "events": [
+        "admit batch",
+        "read succeeds",
+        "read fails",
+        "waiter cancellation",
+        "owner finishes"
+      ],
+      "guards": [
+        "four retained semaphore slots",
+        "shielded thread ownership",
+        "no partial result publication",
+        "unfinished slot after successful owners is an explicit failure"
+      ],
+      "recovery": "Cancellation stops new batches but retains each running owner and its semaphore until the thread exits. Failed reads propagate before publishing any map.",
+      "decision": "convert",
+      "sources": [
+        "backend/app/files/service.py",
+        "backend/tests/test_files_service.py"
+      ]
+    },
+    {
+      "id": "document-copy-provider-mutation",
+      "oldRepresentation": "Optional applied/pending/base hashes with independently populated combinations.",
+      "authoritativeReplacement": "UnmodifiedDraft | RecordedDraftMutation | PendingDraftMutation; prepare_draft_mutation and record_draft_mutation",
+      "events": [
+        "prepare",
+        "persist pending intent",
+        "dispatch marked batch",
+        "read exact marker",
+        "record acknowledgment"
+      ],
+      "guards": [
+        "pending requires its base revision and digest",
+        "prior applied receipt remains distinct and may coexist",
+        "foreign pending digest or base is rejected",
+        "strict SHA-256 property decoding",
+        "provider revision and exact atomic marker remain required"
+      ],
+      "recovery": "A crash never implies nonexecution. An unchanged base permits the original dispatch; an exact marker proves that batch committed; any other changed revision remains held. Existing Drive property names are decoded without rewriting audit evidence.",
+      "decision": "convert",
+      "sources": [
+        "backend/app/document_transform/copy_draft_state.py",
+        "backend/app/document_transform/google_gateway.py"
+      ]
+    },
+    {
+      "id": "document-copy-completion",
+      "oldRepresentation": "Completed boolean plus optional result/result digest/verified revision digest, including an undurable fake-result fallback.",
+      "authoritativeReplacement": "IncompleteDraft | CompletedDraft(result_sha256, verified_revision_sha256)",
+      "events": [
+        "verify content and revision",
+        "write completion properties",
+        "recover completion properties"
+      ],
+      "guards": [
+        "both completion digests are required",
+        "partial or contradictory provider properties are held",
+        "exact result and verified revision match",
+        "no serialized-result fallback"
+      ],
+      "recovery": "Lost metadata acknowledgments are resolved by provider readback. A completed output with a different receipt is rejected. No uncertain effect is replayed as a fresh copy.",
+      "decision": "convert",
+      "sources": [
+        "backend/app/document_transform/copy_draft_state.py",
+        "backend/app/document_transform/executor.py",
+        "backend/tests/test_copy_draft_state.py"
+      ]
+    },
+    {
+      "id": "document-source-format",
+      "oldRepresentation": "Optional Google document/Markdown/revision combined with an unconstrained MIME string.",
+      "authoritativeReplacement": "NativeDocumentSnapshot | MarkdownSnapshot, discriminated by fixed MIME type",
+      "events": [
+        "read scoped source",
+        "parse native or Markdown",
+        "revalidate source"
+      ],
+      "guards": [
+        "native requires document and revision",
+        "Markdown requires text",
+        "in-place consumers require NativeDocumentSnapshot",
+        "source and checkpoint hash projections are unchanged"
+      ],
+      "recovery": "Fresh source reads are validated again on resumption. Required native data cannot disappear into nullable fields; provider JSON still passes the existing bounded IR and revision checks.",
+      "decision": "convert",
+      "sources": [
+        "backend/app/document_transform/gateway.py",
+        "backend/app/document_transform/executor.py",
+        "backend/app/document_transform/inspection.py"
+      ]
+    },
+    {
+      "id": "native-source-drive-location",
+      "oldRepresentation": "Personal-drive boolean plus nullable shared-drive identity.",
+      "authoritativeReplacement": "PersonalDrive | SharedDrive(drive_id) | UnresolvedDrive; NativeSourceAccess captures independent ownership/edit observations",
+      "events": [
+        "read fresh Drive metadata"
+      ],
+      "guards": [
+        "malformed explicit shared identity remains unresolved",
+        "unresolved location never authorizes in-place edits",
+        "personal requires ownership",
+        "shared membership still requires edit capability"
+      ],
+      "recovery": "Cached file capability never replaces fresh metadata. Revoked permissions and unknown locations remain rejected; all valid personal/shared paths remain supported.",
+      "decision": "convert",
+      "sources": [
+        "backend/app/document_transform/source_access.py",
+        "backend/tests/test_shared_drive_transform_access.py"
+      ]
+    },
+    {
+      "id": "presentation-source-format",
+      "oldRepresentation": "MIME plus optional presentation/revision and optional import size/checksum.",
+      "authoritativeReplacement": "NativePresentationSource | PptxPresentationSource",
+      "events": [
+        "load scoped source",
+        "parse native presentation",
+        "download supported import",
+        "revalidate source"
+      ],
+      "guards": [
+        "native requires presentation and revision",
+        "PPTX requires size and checksum",
+        "existing capability/extension checks",
+        "archive relationship and decompression limits",
+        "fresh Drive version and source hash checks"
+      ],
+      "recovery": "Native copy and imported PPTX retain their exact prior checkpoint hash projections. Unknown/changed input is rejected before creation. Immutable capability and native optional metadata observations are independent facts.",
+      "decision": "convert",
+      "sources": [
+        "backend/app/document_transform/presentation_gateway.py",
+        "backend/app/document_transform/google_presentation_gateway.py",
+        "backend/app/document_transform/presentation_executor.py"
+      ]
+    },
+    {
+      "id": "presentation-creation-command",
+      "oldRepresentation": "Source kind plus optional PPTX byte payload; invalid pairings rejected only in side-effect execution.",
+      "authoritativeReplacement": "_CopyPresentation(file_id, _CopyBody) | _ImportPresentation(content, _ImportBody)",
+      "events": [
+        "prepare creation request",
+        "revalidate source/destination",
+        "dispatch",
+        "recover lost response"
+      ],
+      "guards": [
+        "import bytes and exact MIME type required together",
+        "copy has no upload payload",
+        "exhaustive dispatch",
+        "operation/source properties remain attached",
+        "mutation retry policy unchanged"
+      ],
+      "recovery": "Provider failure after dispatch uses exact operation recovery and source binding. It cannot silently switch from copy to import or create a second output because acknowledgment was lost.",
+      "decision": "convert",
+      "sources": [
+        "backend/app/document_transform/google_presentation_gateway.py",
+        "backend/tests/test_google_presentation_gateway.py"
+      ]
+    },
+    {
+      "id": "native-font-proof-version",
+      "oldRepresentation": "Version 1/2 with optional semantics/block ID and a cross-field after-validator.",
+      "authoritativeReplacement": "LegacyNativeFontProof | SemanticNativeFontProof; NativeFontProofPayload",
+      "events": [
+        "capture immutable evidence",
+        "decode historical evidence",
+        "verify native output"
+      ],
+      "guards": [
+        "v2 requires semantics and bound block ID",
+        "v1 cannot carry v2 authority",
+        "noninteger/coerced versions rejected",
+        "exhaustive verification dispatch",
+        "all interval/topology/family/coverage checks retained"
+      ],
+      "recovery": "Historical v1 evidence remains v1. It is never upgraded by assumption or rewritten; v2 captures additional required semantic evidence. Optional component hashes remain independent diagnostic evidence, not a completion or dispatch flag.",
+      "decision": "convert",
+      "sources": [
+        "backend/app/document_transform/native_font_proof.py",
+        "backend/tests/test_native_font_proof.py",
+        "backend/tests/test_native_font_proof_v2.py"
+      ]
     }
   ],
   "exceptions": [
-    "Google Docs/Drive/Word JSON uses provider-specific request objects at runtime boundaries. Existing Any annotations are wire adapters; new authoritative checkpoint unions and transition data are closed, validated models.",
     "SQL relational task/session/MCP/alias columns are retained where transactional predicates, uniqueness and audit queries require them. Runtime APIs expose validated state-specific models; no new generic workflow engine or duplicate state column is introduced.",
     "Historical encrypted v1/v2 checkpoints preserve their version and content. Every valid old shape decodes into a state variant. Invalid or contradictory state fails closed and remains evidence rather than being silently deleted.",
-    "Independent UI selections, form values, immutable policy/capability flags, caches and timeout resource handles are not all-or-nothing workflow payloads. React, AbortController and provider schedulers own their lifecycle; application ownership/generation fences remain explicit."
+    "Independent UI selections, form values, immutable policy/capability flags, caches and timeout resource handles are not all-or-nothing workflow payloads. React, AbortController and provider schedulers own their lifecycle; application ownership/generation fences remain explicit.",
+    "The files-service batch callback retains Any only at the pinned external SDK boundary: the stub declares HttpRequest, but the implementation delivers request.postproc JSON. GoogleFile/GoogleFileAccessLocation model_validate immediately validates it; owned worker results use the explicit chunk union."
   ],
-  "sourceCoverage": {
-    "manifest": "docs/source-coverage.json",
-    "reviewedCommit": "dff0c54bfc2005045bb557c2fc57370cc4129e7f",
-    "files": 1045,
-    "contract": "SHA-256 identities of current tracked application, migration, API, job, configuration and infrastructure sources. ReviewedCommit identifies the comparison base; the hashes describe this candidate. Source enumeration supports, but does not replace, the semantic machine inventory.",
-    "reviewedMergeBase": "dff0c54bfc2005045bb557c2fc57370cc4129e7f"
-  },
   "retiredMachines": [
     {
       "id": "completed-native-baseline-bootstrap",
@@ -958,6 +1162,47 @@
       "decision": "delete",
       "reason": "The only declaration is inert beyond immutable36304cd43515a555dd77ccca9c4601a4c5cb67ba; the adoption is complete. Removed declaration, parser/validation branches, dedicated three-case tests, diagnostic-adoption toggle and old eslint baseline-name fallback. Generic initial changed-source and all ongoing shrink-only/rule-adoption guards remain.",
       "evidence": "Original declaration and implementation remain in preserved Git candidate51b25f47d4f9c81149b091ed37e9a72b4fd0e22d and private qualification receipts."
+    },
+    {
+      "id": "unused-boolean-tab-creation-retry",
+      "oldRepresentation": "dispatch_started boolean plus nullable persisted_tab_id",
+      "decision": "delete",
+      "reason": "No production reader. The only consumer was a four-assertion test mirroring the predicate. Native prepare_tab_creation already requires PlannedStructureCheckpoint and returns a durable CreatingStructureCheckpoint before dispatch; exact recovery/binding tests remain.",
+      "sources": [
+        "backend/app/document_transform/tab_structure.py",
+        "backend/tests/test_document_transform_tab_structure.py"
+      ]
     }
-  ]
+  ],
+  "dataConsolidations": [
+    {
+      "id": "custom-header-terminal-newline",
+      "oldRepresentation": "Two independently nullable fields for newline position and canonical style JSON.",
+      "replacement": "One optional CapturedTerminalNewline with both fields required and canonical JSON validation.",
+      "persistence": "Historical encrypted checkpoint pairs decode only when complete and consistent; the next checkpoint write emits the consolidated representation. Partial/conflicting evidence is rejected and remains recoverable, without rewriting immutable completed records.",
+      "sources": [
+        "backend/app/document_transform/custom_furniture.py",
+        "backend/app/document_transform/brand.py",
+        "backend/app/document_transform/google_gateway.py"
+      ]
+    }
+  ],
+  "auditStatus": {
+    "semanticReviewComplete": false,
+    "remaining": [
+      "Drive provider pagination: five nullable-token loops need a shared explicit transition model and duplicate-token recovery tests.",
+      "Finish the concrete remaining provider-boundary review; do not interpret a filename or an Any annotation alone as a justified exception."
+    ],
+    "completedThisChange": [
+      "database-connection-choice",
+      "metadata-batch-ownership",
+      "document-copy-provider-mutation",
+      "document-copy-completion",
+      "document-source-format",
+      "native-source-drive-location",
+      "presentation-source-format",
+      "presentation-creation-command",
+      "native-font-proof-version"
+    ]
+  }
 }

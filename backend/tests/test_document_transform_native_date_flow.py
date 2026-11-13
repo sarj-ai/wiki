@@ -7,7 +7,11 @@ from pydantic import JsonValue, ValidationError
 import pytest
 
 from app.document_transform.errors import DocumentGatewayError, InPlaceNeedsReviewError
-from app.document_transform.gateway import InPlaceStageResult, OutputDraft, SourceSnapshot
+from app.document_transform.gateway import (
+    InPlaceStageResult,
+    NativeDocumentSnapshot,
+    OutputDraft,
+)
 from app.document_transform.google_gateway import GoogleDocumentGateway, stage_request_kinds
 from app.document_transform.native_date_flow import (
     NativeDateCheckpoint,
@@ -375,12 +379,11 @@ async def test_executor_persists_decline_and_reports_finding_on_recovery() -> No
                     return checkpoint
 
     gateway = Gateway(
-        SourceSnapshot(
+        NativeDocumentSnapshot(
             title="Dated notes",
             parent_folder_id=FileId("folder"),
             modified_time="before",
             revision_id=DocsRevisionId("r1"),
-            media_type="application/vnd.google-apps.document",
             google_document=_document(),
         )
     )

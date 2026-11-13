@@ -6,6 +6,8 @@ from itertools import pairwise
 import json
 from typing import Any
 
+from pydantic import JsonValue
+
 from app.document_transform.ir import utf16_length
 from app.document_transform.naming import (
     supported_tab_icon,
@@ -122,13 +124,7 @@ def plan_tab_structure(
     )
 
 
-def can_retry_tab_creation(*, dispatch_started: bool, persisted_tab_id: str | None) -> bool:
-    # Dispatch intent must be committed before the provider call. A known ID
-    # means resume that tab, not create again; timeouts can follow success.
-    return not dispatch_started and persisted_tab_id is None
-
-
-def _safe_native(native: object) -> bool:
+def _safe_native(native: JsonValue) -> bool:
     native = _mapping(native)
     if native is None:
         return False

@@ -67,6 +67,29 @@ class CustomFurnitureBinding(BaseModel):
         return self
 
 
+class CapturedTerminalNewline(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    index: int = Field(ge=0)
+    text_style_json: str = Field(max_length=16_384)
+
+    @model_validator(mode="after")
+    def validate_terminal_newline_style(self) -> Self:
+        try:
+            style = json.loads(self.text_style_json)
+        except (json.JSONDecodeError, TypeError) as error:
+            message = "Terminal newline style must be canonical JSON"
+            raise ValueError(message) from error
+        if (
+            not isinstance(style, dict)
+            or json.dumps(style, ensure_ascii=False, separators=(",", ":"), sort_keys=True)
+            != self.text_style_json
+        ):
+            message = "Terminal newline style must be a canonical JSON object"
+            raise ValueError(message)
+        return self
+
+
 class CustomHeaderTitleTarget(BaseModel):
     """One existing native header that Wiki may prefix without replacing."""
 
@@ -74,28 +97,31 @@ class CustomHeaderTitleTarget(BaseModel):
 
     tab_id: DocsTabId
     header_id: DocsSegmentId
-    terminal_newline_index: int | None = Field(default=None, ge=0)
-    terminal_newline_text_style_json: str | None = Field(default=None, max_length=16_384)
+    terminal_newline: CapturedTerminalNewline | None = None
 
-    @model_validator(mode="after")
-    def validate_terminal_newline_style(self) -> Self:
-        if (self.terminal_newline_index is None) != (self.terminal_newline_text_style_json is None):
-            message = "Terminal newline index and style must be captured together"
+    @model_validator(mode="before")
+    @classmethod
+    def decode_historical_newline_capture(cls, value: object) -> object:
+        if not isinstance(value, dict) or {
+            "terminal_newline_index",
+            "terminal_newline_text_style_json",
+        }.isdisjoint(value):
+            return value
+        if "terminal_newline" in value:
+            message = "Conflicting terminal newline representations"
             raise ValueError(message)
-        if self.terminal_newline_text_style_json is not None:
-            try:
-                style = json.loads(self.terminal_newline_text_style_json)
-            except (json.JSONDecodeError, TypeError) as error:
-                message = "Terminal newline style must be canonical JSON"
-                raise ValueError(message) from error
-            if (
-                not isinstance(style, dict)
-                or json.dumps(style, ensure_ascii=False, separators=(",", ":"), sort_keys=True)
-                != self.terminal_newline_text_style_json
-            ):
-                message = "Terminal newline style must be a canonical JSON object"
-                raise ValueError(message)
-        return self
+        index = value.get("terminal_newline_index")
+        style = value.get("terminal_newline_text_style_json")
+        return {
+            **{
+                key: item
+                for key, item in value.items()
+                if key not in {"terminal_newline_index", "terminal_newline_text_style_json"}
+            },
+            "terminal_newline": None
+            if index is None and style is None
+            else {"index": index, "text_style_json": style},
+        }
 
 
 def custom_furniture_requests_safe(

@@ -16,7 +16,7 @@ from docx import Document as WordDocument
 from docx.opc.constants import RELATIONSHIP_TYPE
 from googleapiclient.errors import HttpError
 from loguru import logger
-from pydantic import ValidationError
+from pydantic import JsonValue, ValidationError
 import pytest
 
 from app.auth.encryption import encrypt_cache
@@ -26,6 +26,14 @@ from app.document_transform import (
     threaded_markdown_executor as threaded_executor_module,
 )
 from app.document_transform.brand import SarjBrandProfile, build_copy_mutations
+from app.document_transform.copy_draft_state import (
+    CompletedDraft,
+    DraftMutation,
+    PendingDraftMutation,
+    RecordedDraftMutation,
+    UnmodifiedDraft,
+    confirmed_draft_mutation,
+)
 from app.document_transform.custom_furniture import CustomFurnitureBinding
 from app.document_transform.docx_renderer import markdown_import_manifest, render_markdown_docx
 from app.document_transform.errors import (
@@ -50,6 +58,8 @@ from app.document_transform.gateway import (
     DocumentGateway,
     InPlaceInspection,
     InPlaceStageResult,
+    MarkdownSnapshot,
+    NativeDocumentSnapshot,
     OutputDraft,
     OutputVerification,
     SourceSnapshot,
@@ -98,6 +108,7 @@ from app.document_transform.schemas import (
     TransformMode,
     TransformPhase,
 )
+from app.document_transform.source_access import NativeSourceAccess, PersonalDrive
 from app.document_transform.tab_names import TabNamingPlan
 from app.document_transform.threaded_markdown_executor import ThreadedMarkdownExecutor
 from app.document_transform.unslop import (
@@ -105,7 +116,6 @@ from app.document_transform.unslop import (
     deterministic_unslop_replacement,
     scan_unslop_candidates,
 )
-from app.drive.schemas import MIME_DOC
 from app.files.errors import FileNotInScopeError
 from app.files.schemas import FileResponse
 from app.identifiers import DocsRevisionId, DocsSegmentId, DocsTabId, FileId, TaskId
@@ -867,7 +877,7 @@ def test_native_mixed_text_paragraph_is_preserved_as_uneditable_for_review() -> 
 async def test_native_mutation_budget_is_checked_before_copy_creation(
     native_list: bool, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    content: list[dict[str, Any]] = []
+    content: list[JsonValue] = []
     cursor = 1
     paragraph = "Review evidence.\n" if native_list else "Moreover, we approved.\n"
     if native_list:
@@ -893,7 +903,7 @@ async def test_native_mutation_budget_is_checked_before_copy_creation(
             }
         )
         cursor = end
-    document = {
+    document: dict[str, JsonValue] = {
         "revisionId": "source-revision-1",
         "tabs": [
             {
@@ -904,12 +914,11 @@ async def test_native_mutation_budget_is_checked_before_copy_creation(
         ],
     }
     gateway = _Gateway(
-        SourceSnapshot(
+        NativeDocumentSnapshot(
             title="Large review",
             parent_folder_id=FileId("folder"),
             modified_time="2026-09-03T00:00:00Z",
             revision_id=DocsRevisionId("source-revision-1"),
-            media_type="application/vnd.google-apps.document",
             google_document=document,
         )
     )
@@ -1057,12 +1066,8 @@ class _Gateway(DocumentGateway):
         managed_headers: dict[str, str] | None = None,
     ) -> OutputDraft:
         del managed_headers
-        self.draft = OutputDraft(
-            output=draft.output,
-            document_id=draft.document_id,
-            tab_id=draft.tab_id,
-            revision_id=draft.revision_id,
-            source_sha256=draft.source_sha256,
+        self.draft = replace(
+            draft,
             headers=(
                 TabHeader(
                     tab_id=DocsTabId("tab-1"),
@@ -1108,14 +1113,10 @@ class _Gateway(DocumentGateway):
         assert mutation_sha256
         self.applies += 1
         self.requests = requests
-        self.draft = OutputDraft(
-            output=draft.output,
-            document_id=draft.document_id,
-            tab_id=draft.tab_id,
+        self.draft = replace(
+            draft,
             revision_id=DocsRevisionId("output-revision-2"),
-            source_sha256=draft.source_sha256,
-            headers=draft.headers,
-            logo_uri=draft.logo_uri,
+            mutation=RecordedDraftMutation(sha256=mutation_sha256),
         )
         return self.draft
 
@@ -1148,19 +1149,12 @@ class _Gateway(DocumentGateway):
         result: dict[str, Any],
     ) -> None:
         self.completed_result = result
-        self.draft = OutputDraft(
-            output=draft.output,
-            document_id=draft.document_id,
-            tab_id=draft.tab_id,
-            revision_id=draft.revision_id,
-            source_sha256=draft.source_sha256,
-            headers=draft.headers,
-            logo_uri=draft.logo_uri,
-            completed=True,
-            result=result,
-            result_sha256=google_gateway_module._json_sha256(result),
-            verified_revision_sha256=google_gateway_module._revision_sha256(draft.revision_id),
-            brand_warnings=draft.brand_warnings,
+        self.draft = replace(
+            draft,
+            completion=CompletedDraft(
+                result_sha256=google_gateway_module._json_sha256(result),
+                verified_revision_sha256=google_gateway_module._revision_sha256(draft.revision_id),
+            ),
         )
 
 
@@ -1251,12 +1245,10 @@ async def test_markdown_render_keeps_worker_event_loop_responsive(
 
 async def test_drive_markdown_uses_threaded_renderer_and_keeps_source_parent() -> None:
     gateway = _Gateway(
-        SourceSnapshot(
+        MarkdownSnapshot(
             title="Drive report",
             parent_folder_id=FileId("source-parent"),
             modified_time="2026-09-23T00:00:00Z",
-            revision_id=None,
-            media_type="text/markdown",
             markdown="# Report\n\nBody",
         )
     )
@@ -1427,7 +1419,10 @@ async def test_completed_output_recovery_never_reruns_model_or_mutations() -> No
         tab_id=gateway.draft.tab_id,
         revision_id=gateway.draft.revision_id,
         source_sha256=first.source_sha256,
-        completed=True,
+        completion=CompletedDraft(
+            result_sha256="aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            verified_revision_sha256="bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        ),
     )
     generator.calls.clear()
     gateway.applies = 0
@@ -1573,12 +1568,11 @@ async def test_native_doc_post_write_mismatch_is_reported_for_review(
             {"inlineObjectElement": {"inlineObjectId": "authored-object"}}
         )
     gateway = _Gateway(
-        SourceSnapshot(
+        NativeDocumentSnapshot(
             title="Decision",
             parent_folder_id=FileId("folder"),
             modified_time="2026-09-03T00:00:00Z",
             revision_id=DocsRevisionId("source-revision-1"),
-            media_type="application/vnd.google-apps.document",
             google_document=document,
         ),
         verification=verification,
@@ -2009,16 +2003,13 @@ async def test_in_place_native_list_preservation_keeps_protected_hash_strict() -
     ]
     gateway = object.__new__(GoogleDocumentGateway)
     gateway._logo_uri = "https://assets.example.test/sarj-logo.png"
-    snapshot = SourceSnapshot(
+    snapshot = NativeDocumentSnapshot(
         title="Decision",
         parent_folder_id=FileId("folder"),
         modified_time="now",
         revision_id=DocsRevisionId("revision-2"),
-        media_type=MIME_DOC,
         google_document=document,
-        owned_by_me=True,
-        can_edit=True,
-        is_personal_drive=True,
+        access=NativeSourceAccess(owned_by_me=True, can_edit=True, location=PersonalDrive()),
     )
     inspection = await gateway.inspect_in_place(snapshot=snapshot, title="Decision")
     assert inspection.supported_brand_applied
@@ -2347,37 +2338,36 @@ def test_foreign_pending_mutation_fails_terminal_before_google_write() -> None:
         tab_id=DocsTabId("tab-a"),
         revision_id=DocsRevisionId("revision-2"),
         source_sha256="source-hash",
-        pending_mutation_sha256="v2-mutation",
+        mutation=PendingDraftMutation(
+            sha256="1d72325ddbccac7cff6f62e30182db8d323e63e86f5d61c5625403df7919100f",
+            base_revision_sha256="bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        ),
     )
 
     with pytest.raises(IncompatiblePendingOutputError):
         gateway._apply_requests_sync(
             draft,
-            "v3-mutation",
+            "492ce4194bb5b4b86ef787da1deba2ecf9c54f1ab422fd0847aec5ee9fde34a1",
             [{"insertText": {"text": "unsafe"}}],
             DocsRevisionId("revision-2"),
         )
 
 
-def _pending_output_draft(
+def _output_draft(
     *,
-    pending_mutation_sha256: str,
-    mutation_base_revision_sha256: str,
+    mutation: DraftMutation | None = None,
     logo_uri: str | None = None,
 ) -> OutputDraft:
     return OutputDraft(
         output=DocumentOutput(
-            file_id=FileId("output"),
-            name="Output",
-            parent_folder_id=FileId("parent"),
+            file_id=FileId("output"), name="Output", parent_folder_id=FileId("parent")
         ),
         document_id=FileId("output"),
         tab_id=DocsTabId("tab-a"),
         revision_id=DocsRevisionId("revision-2"),
         source_sha256="source-hash",
         logo_uri=logo_uri,
-        pending_mutation_sha256=pending_mutation_sha256,
-        mutation_base_revision_sha256=mutation_base_revision_sha256,
+        mutation=mutation if mutation is not None else UnmodifiedDraft(),
     )
 
 
@@ -2399,11 +2389,13 @@ def test_copy_pending_mutation_does_not_treat_ambient_revision_as_commit(
         pytest.fail("a committed copy mutation must not be written twice")
 
     monkeypatch.setattr(gateway, "_execute_mutation_dict", reject_duplicate_write)
-    draft = _pending_output_draft(
+    draft = _output_draft(
         logo_uri=gateway._logo_uri,
-        pending_mutation_sha256="v3-mutation",
-        mutation_base_revision_sha256=google_gateway_module._revision_sha256(
-            DocsRevisionId("revision-1")
+        mutation=PendingDraftMutation(
+            sha256="492ce4194bb5b4b86ef787da1deba2ecf9c54f1ab422fd0847aec5ee9fde34a1",
+            base_revision_sha256=google_gateway_module._revision_sha256(
+                DocsRevisionId("revision-1")
+            ),
         ),
     )
 
@@ -2411,7 +2403,7 @@ def test_copy_pending_mutation_does_not_treat_ambient_revision_as_commit(
     with pytest.raises(SourceChangedError):
         gateway._apply_requests_sync(
             prepared,
-            "v3-mutation",
+            "492ce4194bb5b4b86ef787da1deba2ecf9c54f1ab422fd0847aec5ee9fde34a1",
             [{"insertText": {"text": "not known to be committed"}}],
             DocsRevisionId("revision-1"),
         )
@@ -2450,11 +2442,13 @@ def test_copy_pending_mutation_recovers_only_with_exact_atomic_marker(
         "_execute_mutation_dict",
         lambda _request: pytest.fail("exact marker recovery must not write twice"),
     )
-    draft = _pending_output_draft(
-        pending_mutation_sha256=digest,
-        mutation_base_revision_sha256=google_gateway_module._revision_sha256(
-            DocsRevisionId("revision-1")
-        ),
+    draft = _output_draft(
+        mutation=PendingDraftMutation(
+            sha256=digest,
+            base_revision_sha256=google_gateway_module._revision_sha256(
+                DocsRevisionId("revision-1")
+            ),
+        )
     )
 
     applied = gateway._apply_requests_sync(
@@ -2464,7 +2458,7 @@ def test_copy_pending_mutation_recovers_only_with_exact_atomic_marker(
         DocsRevisionId("revision-2"),
     )
 
-    assert applied.applied_mutation_sha256 == digest
+    assert confirmed_draft_mutation(applied.mutation) == digest
     assert applied.revision_id == "revision-2"
     assert writes == [{google_gateway_module._PROP_MUTATION: digest}]
 
@@ -2492,9 +2486,11 @@ def test_ambiguous_create_rejects_recovery_in_wrong_destination(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     gateway = object.__new__(GoogleDocumentGateway)
-    recovered = _pending_output_draft(
-        pending_mutation_sha256="mutation",
-        mutation_base_revision_sha256="revision",
+    recovered = _output_draft(
+        mutation=PendingDraftMutation(
+            sha256="d3336a334a5e8a2e6266703c54eaa332034daa74461ad1271507bb5ec6188d35",
+            base_revision_sha256="2b214ddf3326016519afcb268f63623b80b91a65265277668e4d020d87dd9078",
+        )
     )
     monkeypatch.setattr(gateway, "_recover_output_sync", lambda _operation_id: recovered)
 
@@ -2880,12 +2876,11 @@ def _copy_executor(
 
 def _native_copy_gateway() -> _Gateway:
     return _Gateway(
-        SourceSnapshot(
+        NativeDocumentSnapshot(
             title="Decision",
             parent_folder_id=FileId("source-folder"),
             modified_time="2026-09-03T00:00:00Z",
             revision_id=DocsRevisionId("source-revision-1"),
-            media_type="application/vnd.google-apps.document",
             google_document=_in_place_document(
                 "The team approved the plan.", revision="source-revision-1"
             ),
@@ -3134,12 +3129,11 @@ async def test_copy_native_footer_persists_each_stage_and_does_not_replay_body(
             return result
 
     gateway = FooterGateway(
-        SourceSnapshot(
+        NativeDocumentSnapshot(
             title="Decision",
             parent_folder_id=FileId("folder"),
             modified_time="2026-09-03T00:00:00Z",
             revision_id=DocsRevisionId("source-revision"),
-            media_type="application/vnd.google-apps.document",
             google_document=_in_place_document(
                 "The team approved the plan.", revision="source-revision"
             ),
@@ -3336,7 +3330,14 @@ async def test_completed_copy_recovery_rejects_tampered_result_digest() -> None:
         lease_token=uuid.uuid7(),
     ).execute(operation_id=task_id, request=request)
     assert gateway.draft is not None
-    gateway.draft = replace(gateway.draft, result_sha256="0" * 64)
+    assert isinstance(gateway.draft.completion, CompletedDraft)
+    gateway.draft = replace(
+        gateway.draft,
+        completion=CompletedDraft(
+            result_sha256="0" * 64,
+            verified_revision_sha256=gateway.draft.completion.verified_revision_sha256,
+        ),
+    )
 
     with pytest.raises(OutputConflictError):
         await _copy_executor(
@@ -3351,17 +3352,16 @@ class _InPlaceGateway(_Gateway):
     def __init__(self, text: str, *, missing_header: bool = False) -> None:
         document = _in_place_document(text)
         super().__init__(
-            SourceSnapshot(
+            NativeDocumentSnapshot(
                 title="Source",
                 parent_folder_id=FileId("folder"),
                 modified_time="2026-09-03T00:00:00Z",
                 revision_id=DocsRevisionId("revision-1"),
-                media_type="application/vnd.google-apps.document",
                 google_document=document,
-                owned_by_me=True,
-                can_edit=True,
-                is_personal_drive=True,
                 web_url="https://docs.google.com/document/d/source/edit",
+                access=NativeSourceAccess(
+                    owned_by_me=True, can_edit=True, location=PersonalDrive()
+                ),
             )
         )
         self.document = document
@@ -3461,19 +3461,16 @@ class _CrashReplayInPlaceGateway(_InPlaceGateway):
         self.stage_results: dict[str, InPlaceStageResult] = {}
 
     @override
-    async def load_drive_source(self, source: DriveFileSource) -> SourceSnapshot:
+    async def load_drive_source(self, source: DriveFileSource) -> NativeDocumentSnapshot:
         del source
-        return SourceSnapshot(
+        return NativeDocumentSnapshot(
             title=self.drive_title,
             parent_folder_id=FileId("folder"),
             modified_time="2026-09-03T00:00:00Z",
             revision_id=DocsRevisionId(self.document["revisionId"]),
-            media_type="application/vnd.google-apps.document",
             google_document=deepcopy(self.document),
-            owned_by_me=True,
-            can_edit=True,
-            is_personal_drive=True,
             web_url="https://docs.google.com/document/d/source/edit",
+            access=NativeSourceAccess(owned_by_me=True, can_edit=True, location=PersonalDrive()),
         )
 
     @override
@@ -3518,19 +3515,16 @@ class _PreMutationRevisionDriftGateway(_InPlaceGateway):
         self.mutations = {"headers": 0, "content": 0}
 
     @override
-    async def load_drive_source(self, source: DriveFileSource) -> SourceSnapshot:
+    async def load_drive_source(self, source: DriveFileSource) -> NativeDocumentSnapshot:
         del source
-        return SourceSnapshot(
+        return NativeDocumentSnapshot(
             title="Source",
             parent_folder_id=FileId("folder"),
             modified_time="2026-09-03T00:00:00Z",
             revision_id=DocsRevisionId(self.document["revisionId"]),
-            media_type="application/vnd.google-apps.document",
             google_document=deepcopy(self.document),
-            owned_by_me=True,
-            can_edit=True,
-            is_personal_drive=True,
             web_url="https://docs.google.com/document/d/source/edit",
+            access=NativeSourceAccess(owned_by_me=True, can_edit=True, location=PersonalDrive()),
         )
 
     @override
@@ -4101,18 +4095,17 @@ async def test_in_place_provider_split_native_list_reaches_verified_post_write_s
             self.calls: list[list[dict[str, Any]]] = []
 
         @override
-        async def load_drive_source(self, source: DriveFileSource) -> SourceSnapshot:
+        async def load_drive_source(self, source: DriveFileSource) -> NativeDocumentSnapshot:
             assert source.file_id == "source"
-            return SourceSnapshot(
+            return NativeDocumentSnapshot(
                 title="Decision",
                 parent_folder_id=FileId("folder"),
                 modified_time="2026-09-03T00:00:00Z",
                 revision_id=DocsRevisionId(self.document["revisionId"]),
-                media_type=MIME_DOC,
                 google_document=deepcopy(self.document),
-                owned_by_me=True,
-                can_edit=True,
-                is_personal_drive=True,
+                access=NativeSourceAccess(
+                    owned_by_me=True, can_edit=True, location=PersonalDrive()
+                ),
             )
 
         @override

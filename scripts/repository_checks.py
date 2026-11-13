@@ -20,14 +20,14 @@ if TYPE_CHECKING:
 ROOT = Path(__file__).resolve().parents[1]
 ENV_KEY = re.compile(r"^\s*(?:#\s*)?([A-Z][A-Z0-9_]*)\s*=")
 SETTINGS_FIELD = re.compile(r"^    ([A-Z][A-Z0-9_]*):")
-_SETTINGS_FIELDS_CODE = """from pydantic_settings import BaseSettings
+_SETTINGS_FIELDS_CODE = """from pydantic import BaseModel
 from app.config import Settings
 
 delimiter = Settings.model_config.get("env_nested_delimiter")
 expected = set()
 for name, field in Settings.model_fields.items():
     annotation = field.annotation
-    if delimiter and isinstance(annotation, type) and issubclass(annotation, BaseSettings):
+    if delimiter and isinstance(annotation, type) and issubclass(annotation, BaseModel):
         expected.update(f"{name}{delimiter}{child}" for child in annotation.model_fields)
     else:
         expected.add(name)

@@ -5,7 +5,7 @@ from typing import Any
 import pytest
 
 from app.document_transform.ir import utf16_length
-from app.document_transform.tab_structure import can_retry_tab_creation, plan_tab_structure
+from app.document_transform.tab_structure import plan_tab_structure
 
 
 def _document() -> dict[str, Any]:
@@ -139,10 +139,3 @@ def test_native_lists_are_retained_in_inventory():
     assert plan is not None
     assert '"glyphType":"DECIMAL"' in plan.lists_json
     assert '"listId":"list1"' in plan.sections[0].paragraphs[1]
-
-
-def test_creation_can_only_begin_before_durable_dispatch_intent():
-    assert can_retry_tab_creation(dispatch_started=False, persisted_tab_id=None)
-    assert not can_retry_tab_creation(dispatch_started=True, persisted_tab_id=None)
-    assert not can_retry_tab_creation(dispatch_started=True, persisted_tab_id="created")
-    assert not can_retry_tab_creation(dispatch_started=False, persisted_tab_id="created")

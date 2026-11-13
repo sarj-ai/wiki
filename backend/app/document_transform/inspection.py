@@ -3,7 +3,7 @@ from typing import Annotated, Literal, Protocol, assert_never
 from pydantic import ConfigDict, Field, JsonValue, NonNegativeInt
 
 from app.document_transform.errors import SourceChangedError, UnsupportedSourceError
-from app.document_transform.gateway import SourceSnapshot
+from app.document_transform.gateway import NativeDocumentSnapshot, SourceSnapshot
 from app.document_transform.ir import parse_google_document
 from app.document_transform.schemas import (
     DocumentTransformCheckpoint,
@@ -55,7 +55,7 @@ async def inspect_native_document(
     snapshot = await reader.load_drive_source(source)
     if snapshot.modified_time != source.expected_modified_time:
         raise SourceChangedError
-    if snapshot.google_document is None or snapshot.revision_id is None:
+    if not isinstance(snapshot, NativeDocumentSnapshot):
         raise UnsupportedSourceError
     parse_google_document(snapshot.google_document, title=snapshot.title)
     return NativeDocumentInspection(

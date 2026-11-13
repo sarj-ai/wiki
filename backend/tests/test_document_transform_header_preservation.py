@@ -3,11 +3,10 @@ from typing import Any
 
 import pytest
 
-from app.document_transform.gateway import OutputDraft, SourceSnapshot
+from app.document_transform.gateway import NativeDocumentSnapshot, OutputDraft
 from app.document_transform.google_gateway import GoogleDocumentGateway
 from app.document_transform.ir import parse_google_document
 from app.document_transform.schemas import DocumentOutput
-from app.drive.schemas import MIME_DOC
 from app.identifiers import DocsRevisionId, DocsTabId, FileId
 from tests.test_document_transform import _branded_google_document
 
@@ -111,12 +110,11 @@ async def test_copy_verifies_custom_headers(
             revision_id=DocsRevisionId("r1"),
             source_sha256="source",
         ),
-        source=SourceSnapshot(
+        source=NativeDocumentSnapshot(
             title="Original",
             parent_folder_id=FileId("folder"),
             modified_time="now",
             revision_id=DocsRevisionId("r1"),
-            media_type=MIME_DOC,
             google_document=original,
         ),
         expected=parse_google_document(original, title="Original"),
@@ -172,12 +170,11 @@ async def test_copy_attests_supported_brand_only_after_exact_custom_header_prese
             source_sha256="source",
             brand_warnings=(warning,) if warning else (),
         ),
-        source=SourceSnapshot(
+        source=NativeDocumentSnapshot(
             title="Decision",
             parent_folder_id=FileId("folder"),
             modified_time="now",
             revision_id=DocsRevisionId("revision-2"),
-            media_type=MIME_DOC,
             google_document=original,
         ),
         expected=parse_google_document(original, title="Decision"),

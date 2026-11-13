@@ -4,10 +4,10 @@ import uuid
 
 import pytest
 
-from app.document_transform.gateway import OutputDraft, SourceSnapshot
+from app.document_transform.gateway import NativeDocumentSnapshot, OutputDraft
 from app.document_transform.google_gateway import GoogleDocumentGateway
 from app.document_transform.schemas import DocumentOutput
-from app.drive.schemas import MIME_DOC
+from app.document_transform.source_access import NativeSourceAccess, PersonalDrive
 from app.identifiers import DocsRevisionId, DocsTabId, FileId
 
 
@@ -49,16 +49,13 @@ async def _protected_digest(document: dict[str, Any]) -> str:
     gateway = object.__new__(GoogleDocumentGateway)
     gateway._logo_uri = "https://example.test/logo.png"
     inspection = await gateway.inspect_in_place(
-        snapshot=SourceSnapshot(
+        snapshot=NativeDocumentSnapshot(
             title="Document",
             parent_folder_id=FileId("folder"),
             modified_time="now",
             revision_id=DocsRevisionId("revision-1"),
-            media_type=MIME_DOC,
             google_document=document,
-            owned_by_me=True,
-            can_edit=True,
-            is_personal_drive=True,
+            access=NativeSourceAccess(owned_by_me=True, can_edit=True, location=PersonalDrive()),
         ),
         title="Document",
     )

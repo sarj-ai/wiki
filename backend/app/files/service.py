@@ -7,7 +7,7 @@ from contextlib import contextmanager
 from dataclasses import dataclass
 from functools import partial
 from itertools import batched
-from typing import TYPE_CHECKING, Any, override
+from typing import TYPE_CHECKING, Any, Literal, assert_never, override
 
 from googleapiclient.errors import HttpError
 from pydantic import BaseModel, Field, ValidationError
@@ -73,6 +73,26 @@ class _DriveErrorPayload(BaseModel):
 class _AccessibleFile:
     id: FileId
     response: FileResponse
+
+
+@dataclass(frozen=True, slots=True)
+class _MetadataPending:
+    kind: Literal["pending"] = "pending"
+
+
+@dataclass(frozen=True, slots=True)
+class _MetadataSucceeded[Record]:
+    records: dict[FileId, Record]
+    kind: Literal["succeeded"] = "succeeded"
+
+
+@dataclass(frozen=True, slots=True)
+class _MetadataFailed:
+    error: BaseException
+    kind: Literal["failed"] = "failed"
+
+
+type _MetadataChunk[Record] = _MetadataPending | _MetadataSucceeded[Record] | _MetadataFailed
 
 
 class FilesService(ABC):
@@ -158,7 +178,7 @@ class GoogleFilesService(FilesService):
         self._client_factory = client_factory
         self._clients: dict[int, DriveResource] = {}
         self._metadata_slots = asyncio.Semaphore(_FILE_GET_BATCH_CONCURRENCY)
-        self._metadata_reads: set[asyncio.Task[Any]] = set()
+        self._metadata_reads: set[asyncio.Task[None]] = set()
 
     @override
     async def create(self, parent_folder_id: FileId, name: str, mime_type: str) -> FileResponse:
@@ -325,7 +345,7 @@ class GoogleFilesService(FilesService):
         failed = asyncio.Event()
         chunk_count = (len(file_ids) + _FILE_GET_BATCH_SIZE - 1) // _FILE_GET_BATCH_SIZE
         pending = iter(enumerate(batched(file_ids, _FILE_GET_BATCH_SIZE, strict=False)))
-        chunks: list[dict[FileId, Record] | BaseException | None] = [None] * chunk_count
+        chunks: list[_MetadataChunk[Record]] = [_MetadataPending()] * chunk_count
 
         async def run_chunk(chunk: tuple[FileId, ...]) -> dict[FileId, Record]:
             async with self._metadata_slots:
@@ -343,9 +363,9 @@ class GoogleFilesService(FilesService):
         async def run_chunks() -> None:
             for index, chunk in pending:
                 try:
-                    chunks[index] = await run_chunk(chunk)
+                    chunks[index] = _MetadataSucceeded(await run_chunk(chunk))
                 except BaseException as exc:
-                    chunks[index] = exc
+                    chunks[index] = _MetadataFailed(exc)
                     raise
 
         async def read_chunks() -> None:
@@ -365,18 +385,24 @@ class GoogleFilesService(FilesService):
             *(read_chunks() for _ in range(min(chunk_count, _FILE_GET_BATCH_CONCURRENCY))),
             return_exceptions=True,
         )
-        records: dict[FileId, Record] = {}
-        for result in chunks:
-            if isinstance(result, BaseException):
-                raise result
-            if result is not None:
-                records.update(result)
         for owner in owners:
             if isinstance(owner, BaseException):
                 raise owner
+        records: dict[FileId, Record] = {}
+        for result in chunks:
+            match result:
+                case _MetadataSucceeded(completed):
+                    records.update(completed)
+                case _MetadataFailed(error):
+                    raise error
+                case _MetadataPending():
+                    msg = "Metadata workers returned before completing all admitted reads"
+                    raise RuntimeError(msg)
+                case _:
+                    assert_never(result)
         return records
 
-    def _finish_metadata_read(self, task: asyncio.Task[Any]) -> None:
+    def _finish_metadata_read(self, task: asyncio.Task[None]) -> None:
         self._metadata_reads.discard(task)
         if not task.cancelled():
             task.exception()
@@ -527,6 +553,8 @@ class GoogleFilesService(FilesService):
         responses: dict[FileId, Record] = {}
         failures: list[BaseException] = []
 
+        # The SDK stub promises HttpRequest here, but BatchHttpRequest passes
+        # request.postproc's JSON result. Validate that opaque result immediately.
         def collect(request_id: str, response: Any, exception: BaseException | None) -> None:
             if exception is not None:
                 status = provider_response_status(exception)

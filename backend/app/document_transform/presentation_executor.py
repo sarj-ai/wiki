@@ -24,6 +24,7 @@ from app.document_transform.executor import DocumentTransformCheckpointStore
 from app.document_transform.models import PatchGenerator
 from app.document_transform.planner import TextTransformPlanner
 from app.document_transform.presentation_gateway import (
+    NativePresentationSource,
     PresentationDraft,
     PresentationGateway,
     PresentationSourceSnapshot,
@@ -167,14 +168,14 @@ class PresentationTransformExecutor(DocumentTransformRunner):
                 title=draft.name,
             )
         except SourceTooLargeError, UnsupportedSourceError:
-            if snapshot.mime_type == MIME_SLIDE:
+            if isinstance(snapshot, NativePresentationSource):
                 raise
             result = self._conversion_review_result(
                 operation_id=operation_id,
                 request=request,
                 source_sha256=source_sha256,
                 draft=draft,
-                source_revision_id=snapshot.revision_id,
+                source_revision_id=None,
             )
             await self._record_result(operation_id, checkpoint, result)
             return result
@@ -447,7 +448,9 @@ class PresentationTransformExecutor(DocumentTransformRunner):
             output_strategy=OutputStrategy.COPY,
             changed=bool(mutation.requests),
             source_revision_id=(
-                DocsRevisionId(snapshot.revision_id) if snapshot.revision_id is not None else None
+                DocsRevisionId(snapshot.revision_id)
+                if isinstance(snapshot, NativePresentationSource)
+                else None
             ),
             output_revision_id=DocsRevisionId(applied.revision_id),
             artifact_kind="presentation",
@@ -476,7 +479,7 @@ class PresentationTransformExecutor(DocumentTransformRunner):
             if planned is None:  # pragma: no cover - mirrors source parser branch
                 message = "Native presentation plan was not created"
                 raise RuntimeError(message)
-            if snapshot.presentation is None:  # pragma: no cover - guarded by parser result
+            if not isinstance(snapshot, NativePresentationSource):
                 raise UnsupportedSourceError
             build_slides_mutation_plan(
                 snapshot.presentation,
@@ -491,7 +494,7 @@ class PresentationTransformExecutor(DocumentTransformRunner):
     def _parse_native_source(
         snapshot: PresentationSourceSnapshot,
     ) -> ParsedPresentation | None:
-        if snapshot.presentation is None:
+        if not isinstance(snapshot, NativePresentationSource):
             return None
         if snapshot.presentation.get("revisionId") != snapshot.revision_id:
             raise SourceChangedError
@@ -596,7 +599,9 @@ def _source_sha256(
         "md5_checksum": snapshot.md5_checksum,
         "media_type": snapshot.mime_type,
         "modified_time": snapshot.modified_time,
-        "revision_id": snapshot.revision_id,
+        "revision_id": snapshot.revision_id
+        if isinstance(snapshot, NativePresentationSource)
+        else None,
         "size": snapshot.size,
         "source_name": snapshot.source_name,
     }

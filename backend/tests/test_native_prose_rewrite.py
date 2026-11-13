@@ -14,7 +14,7 @@ from app.document_transform.brand import (
     build_copy_mutations,
     build_copy_text_mutations,
 )
-from app.document_transform.gateway import OutputDraft, SourceSnapshot
+from app.document_transform.gateway import NativeDocumentSnapshot, OutputDraft
 from app.document_transform.google_gateway import GoogleDocumentGateway
 from app.document_transform.ir import parse_google_document, utf16_length
 from app.document_transform.native_font_proof import (
@@ -144,12 +144,11 @@ async def test_native_readback_accepts_rewritten_prose_but_requires_original_lin
     original = parse_google_document(_document(), title="Bird")
     prefix = "The hidden bird can sing from scrub. "
     expected = original.replace_blocks({original.blocks[0].id: prefix + SUFFIX})
-    source = SourceSnapshot(
+    source = NativeDocumentSnapshot(
         title="Bird",
         parent_folder_id=FileId("folder"),
         modified_time=None,
         revision_id=DocsRevisionId("revision"),
-        media_type="application/vnd.google-apps.document",
         google_document=_document(),
     )
     draft = OutputDraft(
@@ -179,12 +178,11 @@ async def test_native_readback_preserves_authored_link_color_across_prose_edits(
     parsed = parse_google_document(original, title="Bird")
     prefix = "The hidden bird can sing from scrub. "
     expected = parsed.replace_blocks({parsed.blocks[0].id: prefix + SUFFIX})
-    source = SourceSnapshot(
+    source = NativeDocumentSnapshot(
         title="Bird",
         parent_folder_id=FileId("folder"),
         modified_time=None,
         revision_id=DocsRevisionId("revision"),
-        media_type="application/vnd.google-apps.document",
         google_document=original,
     )
     draft = OutputDraft(

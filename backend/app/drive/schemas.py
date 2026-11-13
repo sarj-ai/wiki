@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import Final
 
 from pydantic import BaseModel, Field
 
@@ -10,7 +11,7 @@ from app.identifiers import DriveId, FileId
 MIME_FOLDER = "application/vnd.google-apps.folder"
 MIME_DOC = "application/vnd.google-apps.document"
 MIME_SHEET = "application/vnd.google-apps.spreadsheet"
-MIME_SLIDE = "application/vnd.google-apps.presentation"
+MIME_SLIDE: Final = "application/vnd.google-apps.presentation"
 MIME_DRAWING = "application/vnd.google-apps.drawing"
 MIME_FORM = "application/vnd.google-apps.form"
 MIME_SHORTCUT = "application/vnd.google-apps.shortcut"

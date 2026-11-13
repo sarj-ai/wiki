@@ -8,7 +8,12 @@ from pydantic import JsonValue
 import pytest
 
 from app.document_transform.executor import DocumentTransformExecutor
-from app.document_transform.gateway import InPlaceInspection, OutputVerification, SourceSnapshot
+from app.document_transform.gateway import (
+    InPlaceInspection,
+    NativeDocumentSnapshot,
+    OutputVerification,
+    SourceSnapshot,
+)
 from app.document_transform.google_gateway import GoogleDocumentGateway
 from app.document_transform.ir import parse_google_document
 from app.document_transform.native_table_font import TableFontPlan
@@ -19,6 +24,7 @@ from app.document_transform.schemas import (
     OutputStrategy,
     TransformMode,
 )
+from app.document_transform.source_access import NativeSourceAccess, PersonalDrive
 from app.files.service import FilesService
 from app.identifiers import DocsRevisionId, FileId, TaskId
 from app.models.user import User
@@ -68,17 +74,14 @@ def _tab(document: dict[str, JsonValue]) -> dict[str, JsonValue]:
     return next(bodies(document))[1]
 
 
-def _snapshot(document: dict[str, JsonValue]) -> SourceSnapshot:
-    return SourceSnapshot(
+def _snapshot(document: dict[str, JsonValue]) -> NativeDocumentSnapshot:
+    return NativeDocumentSnapshot(
         title=str(document["title"]),
         parent_folder_id=FileId("folder"),
         modified_time="now",
         revision_id=DocsRevisionId(str(document["revisionId"])),
-        media_type="application/vnd.google-apps.document",
         google_document=document,
-        owned_by_me=True,
-        can_edit=True,
-        is_personal_drive=True,
+        access=NativeSourceAccess(owned_by_me=True, can_edit=True, location=PersonalDrive()),
     )
 
 

@@ -7,6 +7,7 @@ import pytest
 from app.document_transform.ir import parse_google_document
 from app.document_transform.native_font_proof import (
     NativeFontProof,
+    NativeFontProofPayload,
     capture_native_font_proof,
     verify_native_font_proof,
 )
@@ -55,7 +56,8 @@ def test_components_isolate_mismatch_without_changing_acceptance(component: str)
         case _:
             actual["namedStyles"] = {"styles": []}
     legacy = tuple(
-        NativeFontProof.model_validate(item.model_dump(exclude={"components"})) for item in proofs
+        NativeFontProofPayload.model_validate(item.model_dump(exclude={"components"})).root
+        for item in proofs
     )
     assert [item.sha256 for item in legacy] == [item.sha256 for item in proofs]
     assert [item.named_styles_sha256 for item in legacy] == [

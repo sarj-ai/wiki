@@ -7,8 +7,17 @@ import pytest
 
 from app.document_transform import google_gateway as gateway_module
 from app.document_transform.brand import SarjBrandProfile, build_copy_mutations, mutation_sha256
+from app.document_transform.copy_draft_state import (
+    PendingDraftMutation,
+    RecordedDraftMutation,
+    confirmed_draft_mutation,
+)
 from app.document_transform.errors import DocumentGatewayError, SourceChangedError
-from app.document_transform.gateway import OutputDraft, OutputVerification, SourceSnapshot
+from app.document_transform.gateway import (
+    NativeDocumentSnapshot,
+    OutputDraft,
+    OutputVerification,
+)
 from app.document_transform.google_gateway import GoogleDocumentGateway
 from app.document_transform.ir import parse_google_document
 from app.document_transform.schemas import (
@@ -19,7 +28,6 @@ from app.document_transform.schemas import (
     TransformMode,
 )
 from app.document_transform.tab_names import TabNamingPlan
-from app.drive.schemas import MIME_DOC
 from app.identifiers import DocsRevisionId, DocsTabId, FileId, TaskId
 from tests.test_document_transform import _copy_executor, _CopyCheckpointStore, _Gateway
 from tests.test_document_transform_protected_content import _document
@@ -95,9 +103,11 @@ def test_persisted_header_ownership_rebuilds_identical_requests_and_recovers_mar
     pending = replace(
         _draft(),
         revision_id=DocsRevisionId("revision-2"),
-        pending_mutation_sha256=digest,
-        applied_mutation_sha256=None if ambiguous else digest,
-        mutation_base_revision_sha256=gateway_module._revision_sha256(DocsRevisionId("revision-1")),
+        mutation=PendingDraftMutation(
+            sha256=digest,
+            base_revision_sha256=gateway_module._revision_sha256(DocsRevisionId("revision-1")),
+            previous=None if ambiguous else RecordedDraftMutation(sha256=digest),
+        ),
     )
     before = deepcopy(document)
     recovered = gateway._prepare_brand_shell_sync(uuid.uuid7(), pending, owned)
@@ -123,7 +133,7 @@ def test_persisted_header_ownership_rebuilds_identical_requests_and_recovers_mar
         gateway, "_update_properties_sync", lambda _document_id, value: properties.append(value)
     )
     applied = gateway._apply_requests_sync(recovered, digest, replay, recovered.revision_id)
-    assert applied.applied_mutation_sha256 == digest
+    assert confirmed_draft_mutation(applied.mutation) == digest
     assert properties == [{gateway_module._PROP_MUTATION: digest}]
 
 
@@ -163,10 +173,10 @@ def test_uncommitted_owned_header_rejects_concurrent_content(
         gateway._prepare_brand_shell_sync(uuid.uuid7(), _draft(), {"tab-b": "owned-header"})
 
 
-@pytest.mark.parametrize("base", [None, "wrong-base", "original"])
+@pytest.mark.parametrize("base", ["f" * 64, "original"])
 @pytest.mark.parametrize("marker", ["absent", "wrong_range", "wrong_digest"])
 def test_pending_recovery_never_rebases_onto_concurrent_revision_without_exact_marker(
-    monkeypatch: pytest.MonkeyPatch, base: str | None, marker: str
+    monkeypatch: pytest.MonkeyPatch, base: str, marker: str
 ) -> None:
     document = _native()
     document["revisionId"] = "concurrent"
@@ -180,10 +190,12 @@ def test_pending_recovery_never_rebases_onto_concurrent_revision_without_exact_m
     draft = replace(
         _draft(),
         revision_id=DocsRevisionId("concurrent"),
-        pending_mutation_sha256=digest,
-        mutation_base_revision_sha256=gateway_module._revision_sha256(DocsRevisionId("revision-1"))
-        if base == "original"
-        else base,
+        mutation=PendingDraftMutation(
+            sha256=digest,
+            base_revision_sha256=gateway_module._revision_sha256(DocsRevisionId("revision-1"))
+            if base == "original"
+            else base,
+        ),
     )
     if marker != "absent":
         name = f"sarj-transform-copy-{digest if marker == 'wrong_range' else 'b' * 64}"
@@ -205,12 +217,11 @@ class _OutageGateway(_Gateway):
     def __init__(self, monkeypatch: pytest.MonkeyPatch) -> None:
         self.native = _native()
         super().__init__(
-            SourceSnapshot(
+            NativeDocumentSnapshot(
                 title="Source",
                 parent_folder_id=FileId("folder"),
                 modified_time="modified",
                 revision_id=DocsRevisionId("revision-1"),
-                media_type=MIME_DOC,
                 google_document=deepcopy(self.native),
             ),
             verification=OutputVerification(True, True, False),
@@ -239,11 +250,11 @@ class _OutageGateway(_Gateway):
         requests: list[dict[str, Any]],
         required_revision_id: DocsRevisionId,
     ) -> OutputDraft:
-        del operation_id, required_revision_id
+        assert isinstance(operation_id, uuid.UUID)
         self.body_digests.append(mutation_sha256)
-        if draft.applied_mutation_sha256 == mutation_sha256:
+        if confirmed_draft_mutation(draft.mutation) == mutation_sha256:
             return draft
-        assert draft.pending_mutation_sha256 is None
+        assert not isinstance(draft.mutation, PendingDraftMutation)
         self.applies += 1
         self.requests = requests
         self.native["revisionId"] = "revision-2"
@@ -251,8 +262,11 @@ class _OutageGateway(_Gateway):
             draft,
             revision_id=DocsRevisionId("revision-2"),
             headers=(),
-            applied_mutation_sha256=mutation_sha256,
-            pending_mutation_sha256=mutation_sha256,
+            mutation=PendingDraftMutation(
+                sha256=mutation_sha256,
+                base_revision_sha256=gateway_module._revision_sha256(required_revision_id),
+                previous=RecordedDraftMutation(sha256=mutation_sha256),
+            ),
         )
         return self.draft
 

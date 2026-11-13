@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import timedelta
+from math import isfinite
 from typing import TYPE_CHECKING, Any, NamedTuple, Protocol, override, runtime_checkable
 
 from googleapiclient.errors import HttpError
@@ -86,11 +87,13 @@ def retry_after_seconds(exc: BaseException | None) -> float | None:
     except AttributeError:
         return None
     raw: object = header_get("retry-after") if callable(header_get) else None
-    if not isinstance(raw, str | int | float):
+    if not isinstance(raw, str):
         return None
     try:
         seconds = float(raw)
     except ValueError:
+        return None
+    if not isfinite(seconds):
         return None
     return min(max(seconds, 0.0), _MAX_RETRY_AFTER_SECONDS)
 

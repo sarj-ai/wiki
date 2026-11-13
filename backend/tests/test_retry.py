@@ -50,6 +50,11 @@ def test_retry_after_parses_and_caps() -> None:
     assert retry_after_seconds(ValueError("not http")) is None
 
 
+@pytest.mark.parametrize("header", ["nan", "NaN", "inf", "+inf", "-inf", "Infinity", "1e999"])
+def test_nonfinite_retry_after_uses_the_bounded_fallback(header: str) -> None:
+    assert retry_after_seconds(_http_error(429, {"retry-after": header})) is None
+
+
 def test_execute_with_retry_retries_transient_5xx() -> None:
     req = _FlakyRequest(1, _http_error(503, {"retry-after": "0"}))
     assert execute_with_retry(dependency(req)) == {"ok": True}
