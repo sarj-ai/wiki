@@ -41,8 +41,8 @@ def test_body_only_tables_classify_every_row_without_inventing_a_header(
     assert alignments == [
         "END" if column in numeric else "START" for _ in rows for column in range(len(rows[0]))
     ]
-    assert not any(
-        "bold" in obj(obj(request["updateTextStyle"])["textStyle"])
+    assert all(
+        obj(obj(request["updateTextStyle"])["textStyle"])["bold"] is False
         for request in requests
         if "updateTextStyle" in request
     )

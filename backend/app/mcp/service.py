@@ -28,7 +28,13 @@ from app.mcp.schemas import (
     TaskResponse,
 )
 from app.tasks.errors import TaskNotFoundError
-from app.tasks.schemas import FailedTaskRead, PendingTaskRead, RunningTaskRead, TaskKind
+from app.tasks.schemas import (
+    FailedTaskRead,
+    NeedsReviewTaskRead,
+    PendingTaskRead,
+    RunningTaskRead,
+    TaskKind,
+)
 
 
 class McpReader(Protocol):
@@ -132,6 +138,8 @@ class McpReadService(McpReader):
                                 "error_detail": "Document transformation failed; review the task in Wiki.",
                             }
                         )
+                    case NeedsReviewTaskRead():
+                        task = task.model_copy(update={"resource_id": None})
                     case RunningTaskRead():
                         task = task.model_copy(update={"resource_id": None})
                     case _:

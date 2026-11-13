@@ -1,10 +1,14 @@
 from __future__ import annotations
 
+from copy import deepcopy
+import json
+from pathlib import Path
 from typing import override
 
 from pydantic import JsonValue
 import pytest
 
+from app.document_transform import google_gateway as native_gateway
 from app.document_transform.brand import (
     SarjBrandProfile,
     build_copy_mutations,
@@ -13,7 +17,11 @@ from app.document_transform.brand import (
 from app.document_transform.gateway import OutputDraft, SourceSnapshot
 from app.document_transform.google_gateway import GoogleDocumentGateway
 from app.document_transform.ir import parse_google_document, utf16_length
-from app.document_transform.native_font_proof import capture_native_font_proof
+from app.document_transform.native_font_proof import (
+    NativeFontVerificationPolicy,
+    capture_native_font_proof,
+    verify_native_font_proof,
+)
 from app.document_transform.safety import validate_patches
 from app.document_transform.schemas import DocumentOutput, TextPatch, TransformPhase
 from app.identifiers import DocsRevisionId, DocsTabId, FileId
@@ -26,13 +34,20 @@ URL = "https://www.rspb.org.uk/birds-and-wildlife/nightingale"
 
 
 def _document(
-    prefix: str = PREFIX, url: str = URL, *, suggested: bool = False
+    prefix: str = PREFIX,
+    url: str = URL,
+    *,
+    suggested: bool = False,
+    link_red: float | None = None,
 ) -> dict[str, JsonValue]:
     cursor = 1
     parts: list[JsonValue] = []
+    link_style: dict[str, JsonValue] = {"link": {"url": url}}
+    if link_red is not None:
+        link_style["foregroundColor"] = {"color": {"rgbColor": {"red": link_red}}}
     styled_runs: list[tuple[str, JsonValue]] = [
         (prefix, {"bold": False}),
-        (SUFFIX, {"link": {"url": url}}),
+        (SUFFIX, link_style),
         ("\n", {}),
     ]
     for text, style in styled_runs:
@@ -153,6 +168,40 @@ async def test_native_readback_accepts_rewritten_prose_but_requires_original_lin
     assert verification.structure_preserved is (url == URL)
 
 
+@pytest.mark.parametrize("verify_brand", [False, True])
+@pytest.mark.parametrize(
+    ("actual_red", "preserved"), [(0.300000012, True), (0.6, False), (None, False)]
+)
+async def test_native_readback_preserves_authored_link_color_across_prose_edits(
+    actual_red: float | None, *, preserved: bool, verify_brand: bool
+) -> None:
+    original = _document(link_red=0.3)
+    parsed = parse_google_document(original, title="Bird")
+    prefix = "The hidden bird can sing from scrub. "
+    expected = parsed.replace_blocks({parsed.blocks[0].id: prefix + SUFFIX})
+    source = SourceSnapshot(
+        title="Bird",
+        parent_folder_id=FileId("folder"),
+        modified_time=None,
+        revision_id=DocsRevisionId("revision"),
+        media_type="application/vnd.google-apps.document",
+        google_document=original,
+    )
+    draft = OutputDraft(
+        output=DocumentOutput(
+            file_id=FileId("doc"), name="Bird", parent_folder_id=FileId("folder")
+        ),
+        document_id=FileId("doc"),
+        tab_id=DocsTabId("tab"),
+        revision_id=DocsRevisionId("revision"),
+        source_sha256="source",
+    )
+    verification = await _Gateway(_document(prefix, link_red=actual_red)).verify_output(
+        draft=draft, source=source, expected=expected, verify_brand=verify_brand
+    )
+    assert verification.structure_preserved is preserved
+
+
 def test_native_link_write_ranges_use_utf16_before_astral_characters() -> None:
     original = parse_google_document(
         _document("A 🐦 bird can sing from dense scrub beside the path. "), title="Bird"
@@ -171,7 +220,12 @@ def test_both_formats_shortened_prefix_and_leaves_citation_at_its_new_location()
     prefix = "The hidden bird can sing from scrub. "
     transformed = original.replace_blocks({original.blocks[0].id: prefix + SUFFIX})
     assert transformed.blocks[0].editable
-    assert not parse_google_document(_document(prefix), title="Bird").blocks[0].editable
+    shortened = parse_google_document(_document(prefix), title="Bird").blocks[0]
+    assert shortened.editable
+    assert shortened.protected_suffix == SUFFIX
+    assert (
+        shortened.protected_suffix_links_sha256 == original.blocks[0].protected_suffix_links_sha256
+    )
     assert (
         capture_native_font_proof(
             _document(), original, transformed=transformed, target_font_family="Nunito"
@@ -197,3 +251,67 @@ def test_both_formats_shortened_prefix_and_leaves_citation_at_its_new_location()
 def test_suggestions_keep_rich_paragraph_protected() -> None:
     source = _document(suggested=True)
     assert not parse_google_document(source, title="Bird").blocks[0].editable
+
+
+def _captured_citation_document() -> dict[str, JsonValue]:
+    return json.loads(
+        (Path(__file__).parent / "data/native_chips/table_style_after.json").read_text()
+    )
+
+
+def test_preserved_native_citation_receives_the_planned_font_only_brand_check() -> None:
+    document = _captured_citation_document()
+    parsed = parse_google_document(document, title=str(document["title"]))
+    block = next(block for block in parsed.blocks if block.editable and block.protected_suffix)
+    assert block.source_range is not None
+    source = block.source_range
+    paragraph = native_gateway._paragraphs_by_range(tuple(native_gateway._document_tabs(document)))[
+        native_gateway.ParagraphRangeKey(
+            tab_id=source.tab_id, start_index=source.start_index, end_index=source.end_index
+        )
+    ]
+    checks = native_gateway._paragraph_brand_diagnostics(paragraph, block)
+    assert checks["text_style"]
+
+
+@pytest.mark.parametrize("change", ["none", "color", "size", "bold", "link", "family"])
+def test_unchanged_citation_font_proof_keeps_nonfamily_styles_and_link_targets(change: str) -> None:
+    before = _captured_citation_document()
+    parsed = parse_google_document(before, title=str(before["title"]))
+    block = next(block for block in parsed.blocks if block.editable and block.protected_suffix)
+    proof = capture_native_font_proof(
+        before, parsed, transformed=parsed, target_font_family="Nunito"
+    )
+    assert any(item.block_id == block.id for item in proof)
+    source = block.source_range
+    assert source is not None
+    after = deepcopy(before)
+    tab = next(iter(native_gateway._document_tabs(after)))[1]
+    paragraph = next(
+        node["paragraph"]
+        for node in tab["body"]["content"]
+        if node.get("startIndex") == source.start_index
+    )
+    linked = next(
+        part["textRun"]["textStyle"]
+        for part in paragraph["elements"]
+        if part.get("textRun", {}).get("textStyle", {}).get("link")
+    )
+    match change:
+        case "color":
+            linked["foregroundColor"] = {"color": {"rgbColor": {"red": 1}}}
+        case "size":
+            linked["fontSize"] = {"magnitude": 14, "unit": "PT"}
+        case "bold":
+            linked["bold"] = True
+        case "link":
+            linked["link"] = {"url": "https://example.test/changed"}
+        case "family":
+            linked["weightedFontFamily"] = {"fontFamily": "Arial", "weight": 400}
+        case "none":
+            pass
+        case _:
+            raise AssertionError(change)
+    assert verify_native_font_proof(
+        after, proof, font_policy=NativeFontVerificationPolicy(require_target_family=True)
+    ) is (change == "none")

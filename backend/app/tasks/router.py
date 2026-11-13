@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Annotated, Protocol
+from typing import Annotated, Literal, Protocol
 
 from fastapi import APIRouter, Depends, Path, Response, status
 
@@ -23,6 +23,7 @@ from app.tasks.schemas import (
     RunningTaskRead,
     TaskKind,
     TaskRead,
+    TerminalDocumentTransformTaskRecord,
     UnverifiedTaskOutput,
 )
 
@@ -72,38 +73,19 @@ async def get_task(
 
 
 async def _with_unverified_output(
-    task: FailedTaskRead, service: TaskReader, user: User, files: OutputReader
-) -> FailedTaskRead:
+    task: FailedTaskRead[Literal[TaskKind.FILE_DOCUMENT_TRANSFORM]],
+    service: TaskReader,
+    user: User,
+    files: OutputReader,
+) -> FailedTaskRead[Literal[TaskKind.FILE_DOCUMENT_TRANSFORM]]:
     record = await service.load_document_transform(task.id)
-    checkpoint = record.checkpoint
-    payload = record.payload
+    if not isinstance(record, TerminalDocumentTransformTaskRecord):
+        return task
     if record.owner_user_id != user.id:
         return task
-    if task.error_code == "in_place_verification_failed":
-        if checkpoint is None or checkpoint.kind != "in_place":
-            return task
-        payload_matches_original = payload is None or (
-            payload.output_strategy is OutputStrategy.IN_PLACE
-            and isinstance(payload.source, DriveFileSource)
-            and payload.source.file_id == checkpoint.document_id
-        )
-        if task.resource_id != checkpoint.document_id or not payload_matches_original:
-            return task
-        output_id = checkpoint.document_id
-    else:
-        if (
-            (payload is not None and payload.output_strategy is not OutputStrategy.COPY)
-            or (checkpoint is None or checkpoint.kind == "in_place")
-            or checkpoint.output is None
-        ):
-            return task
-        output_id = checkpoint.output.file_id
-        if (
-            payload is not None
-            and isinstance(payload.source, DriveFileSource)
-            and output_id == payload.source.file_id
-        ):
-            return task
+    output_id = _unverified_output_id(task, record)
+    if output_id is None:
+        return task
     try:
         accessible = await files.get(output_id)
     except FilesError:
@@ -111,3 +93,37 @@ async def _with_unverified_output(
     if accessible.id != output_id:
         return task
     return task.model_copy(update={"unverified_output": UnverifiedTaskOutput(file_id=output_id)})
+
+
+def _unverified_output_id(
+    task: FailedTaskRead[Literal[TaskKind.FILE_DOCUMENT_TRANSFORM]],
+    record: TerminalDocumentTransformTaskRecord,
+) -> FileId | None:
+    checkpoint = record.checkpoint
+    payload = record.payload
+    # Any later failure can follow an accepted or ambiguous in-place stage.
+    # Expose only its original document, without implying that the write succeeded.
+    if checkpoint is not None and checkpoint.kind == "in_place":
+        payload_matches_original = payload is None or (
+            payload.output_strategy is OutputStrategy.IN_PLACE
+            and isinstance(payload.source, DriveFileSource)
+            and payload.source.file_id == checkpoint.document_id
+        )
+        if task.resource_id != checkpoint.document_id or not payload_matches_original:
+            return None
+        output_id = checkpoint.document_id
+    else:
+        if (
+            (payload is not None and payload.output_strategy is not OutputStrategy.COPY)
+            or checkpoint is None
+            or checkpoint.output is None
+        ):
+            return None
+        output_id = checkpoint.output.file_id
+        if (
+            payload is not None
+            and isinstance(payload.source, DriveFileSource)
+            and output_id == payload.source.file_id
+        ):
+            return None
+    return output_id

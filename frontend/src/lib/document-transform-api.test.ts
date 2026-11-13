@@ -33,6 +33,46 @@ const UPLOAD_FIELDS = {
 } as const;
 
 describe("documentTransformApi", () => {
+  it.each(["running", "retrying"] as const)(
+    "requires positive attempt evidence when a task is %s",
+    async (executionState) => {
+      ACTION_MOCKS.getTask.mockResolvedValue({
+        data: JSON.stringify({
+          id: TASK_ID,
+          status: "running",
+          "attempt_count": 2,
+          "execution_state": executionState,
+        }),
+        ok: true,
+      });
+      await expect(DOCUMENT_TRANSFORM_API.getTask(TASK_ID)).resolves.toEqual({
+        id: TASK_ID,
+        status: "running",
+        attemptCount: 2,
+        executionState,
+      });
+    },
+  );
+
+  it.each([
+    { label: "no attempt", evidence: { "execution_state": "running" } },
+    {
+      label: "zero attempt",
+      evidence: { "attempt_count": 0, "execution_state": "running" },
+    },
+    { label: "no execution state", evidence: { "attempt_count": 1 } },
+    {
+      label: "unknown execution state",
+      evidence: { "attempt_count": 1, "execution_state": "done" },
+    },
+  ])("rejects running-task evidence with $label", async ({ evidence }) => {
+    ACTION_MOCKS.getTask.mockResolvedValue({
+      data: JSON.stringify({ id: TASK_ID, status: "running", ...evidence }),
+      ok: true,
+    });
+    await expect(DOCUMENT_TRANSFORM_API.getTask(TASK_ID)).rejects.toThrow();
+  });
+
   it("does not poll as the replacement session after the original owner retires during sleep", async () => {
     vi.useFakeTimers();
     const owner = {};
@@ -40,8 +80,8 @@ describe("documentTransformApi", () => {
     claimBrowserSession(owner);
     ACTION_MOCKS.getTask.mockResolvedValue({
       data: JSON.stringify({
-        error_code: "stopped",
-        error_detail: null,
+        "error_code": "stopped",
+        "error_detail": null,
         id: TASK_ID,
         status: "failed",
       }),
@@ -50,6 +90,8 @@ describe("documentTransformApi", () => {
     const pending = DOCUMENT_TRANSFORM_API.waitForCompletion({
       id: TASK_ID,
       status: "running",
+      attemptCount: 1,
+      executionState: "running",
     }).catch((error: unknown) => error);
     try {
       retireBrowserSession(owner);
@@ -69,15 +111,20 @@ describe("documentTransformApi", () => {
       data: JSON.stringify({
         id: TASK_ID,
         status: "failed",
-        error_code: "output_verification_failed",
-        error_detail: "Task could not be completed",
-        unverified_output: { file_id: "known-copy" },
+        "error_code": "output_verification_failed",
+        "error_detail": "Task could not be completed",
+        "unverified_output": { "file_id": "known-copy" },
       }),
       ok: true,
     });
     await expect(
       DOCUMENT_TRANSFORM_API.waitForCompletion(
-        { id: TASK_ID, status: "running" },
+        {
+          id: TASK_ID,
+          status: "running",
+          attemptCount: 1,
+          executionState: "running",
+        },
         undefined,
         0,
       ),
@@ -93,7 +140,7 @@ describe("documentTransformApi", () => {
 
   it("parses the server-gated in-place capability", async () => {
     ACTION_MOCKS.capabilities.mockResolvedValue({
-      data: JSON.stringify({ copy: true, in_place: true }),
+      data: JSON.stringify({ copy: true, "in_place": true }),
       ok: true,
     });
 
@@ -157,11 +204,11 @@ describe("documentTransformApi", () => {
     expect(ACTION_MOCKS.create).toHaveBeenCalledWith(
       JSON.stringify({
         mode: "both",
-        output_name: null,
-        output_strategy: "copy",
+        "output_name": null,
+        "output_strategy": "copy",
         source: {
-          expected_modified_time: "2026-09-03T12:00:00Z",
-          file_id: "doc-1",
+          "expected_modified_time": "2026-09-03T12:00:00Z",
+          "file_id": "doc-1",
           kind: "drive_file",
         },
       }),
@@ -187,7 +234,11 @@ describe("documentTransformApi", () => {
         "both",
         "66666666-6666-4666-8666-666666666666",
       ),
-    ).resolves.toEqual({ id: TASK_ID, replayed: true, status: "pending" });
+    ).resolves.toEqual({
+      id: TASK_ID,
+      replayed: true,
+      status: "pending",
+    });
   });
 
   it("sends the explicit copy name without changing the source", async () => {
@@ -210,9 +261,9 @@ describe("documentTransformApi", () => {
     expect(
       JSON.parse(ACTION_MOCKS.create.mock.calls[0]?.[0] ?? ""),
     ).toMatchObject({
-      output_name: "Architecture decisions",
-      output_strategy: "copy",
-      source: { file_id: "doc-1" },
+      "output_name": "Architecture decisions",
+      "output_strategy": "copy",
+      source: { "file_id": "doc-1" },
     });
   });
 
@@ -237,11 +288,11 @@ describe("documentTransformApi", () => {
       JSON.parse(ACTION_MOCKS.create.mock.calls[0]?.[0] ?? ""),
     ).toMatchObject({
       mode: "format",
-      output_name: null,
-      output_strategy: "copy",
+      "output_name": null,
+      "output_strategy": "copy",
       source: {
         content: "# Launch",
-        destination_folder_id: "folder-1",
+        "destination_folder_id": "folder-1",
         kind: "markdown",
         name: "Launch brief",
       },
@@ -252,14 +303,14 @@ describe("documentTransformApi", () => {
     const uploadId = "77777777-7777-4777-8777-777777777777";
     ACTION_MOCKS.create.mockResolvedValueOnce({
       data: JSON.stringify({
-        upload_id: uploadId,
+        "upload_id": uploadId,
         url: "https://storage.googleapis.com/bucket/object?signature=secret",
         method: "PUT",
         headers: {
           "Content-Type": "text/markdown",
           "x-goog-if-generation-match": "0",
         },
-        expires_in_seconds: 600,
+        "expires_in_seconds": 600,
       }),
       ok: true,
     });
@@ -295,9 +346,9 @@ describe("documentTransformApi", () => {
     ).toMatchObject({
       source: {
         kind: "uploaded_markdown",
-        upload_id: uploadId,
+        "upload_id": uploadId,
         name: "Launch",
-        destination_folder_id: "folder",
+        "destination_folder_id": "folder",
       },
     });
     put.mockRestore();
@@ -373,8 +424,8 @@ describe("documentTransformApi", () => {
     expect(
       JSON.parse(ACTION_MOCKS.create.mock.calls[0]?.[0] ?? ""),
     ).toMatchObject({
-      output_name: null,
-      output_strategy: "in_place",
+      "output_name": null,
+      "output_strategy": "in_place",
     });
   });
 
@@ -385,37 +436,37 @@ describe("documentTransformApi", () => {
         data: JSON.stringify({
           ...task("succeeded"),
           result: {
-            access_scope: "inherited",
-            applied_patch_count: 1,
-            promoted_heading_count: count,
-            artifact_kind: "presentation",
+            "access_scope": "inherited",
+            "applied_patch_count": 1,
+            "promoted_heading_count": count,
+            "artifact_kind": "presentation",
             findings: [
               {
-                block_id: "paragraph-1",
+                "block_id": "paragraph-1",
                 code: "native_rich_text_preserved",
                 detail: "Rich text was preserved",
                 severity: "informational",
               },
             ],
             mode: "unslop",
-            model_ids: ["gemini-flash"],
-            needs_review: false,
-            operation_id: TASK_ID,
+            "model_ids": ["gemini-flash"],
+            "needs_review": false,
+            "operation_id": TASK_ID,
             output: {
-              file_id: "output-1",
-              media_type: "application/vnd.google-apps.presentation",
+              "file_id": "output-1",
+              "media_type": "application/vnd.google-apps.presentation",
               name: "Source — Unslopped",
-              parent_folder_id: "folder-1",
-              web_url: "https://docs.google.com/document/d/output-1/edit",
+              "parent_folder_id": "folder-1",
+              "web_url": "https://docs.google.com/document/d/output-1/edit",
             },
-            pipeline_version: "sarj-v1",
-            source_sha256: "a".repeat(64),
-            tool_versions: { unslop: "d81f519" },
+            "pipeline_version": "sarj-v1",
+            "source_sha256": "a".repeat(64),
+            "tool_versions": { unslop: "d81f519" },
             validation: {
-              protected_content_preserved: true,
-              source_unchanged: true,
-              structure_preserved: true,
-              unsafe_patch_count: 0,
+              "protected_content_preserved": true,
+              "source_unchanged": true,
+              "structure_preserved": true,
+              "unsafe_patch_count": 0,
             },
           },
         }),
@@ -424,7 +475,12 @@ describe("documentTransformApi", () => {
 
       await expect(
         DOCUMENT_TRANSFORM_API.waitForCompletion(
-          { id: TASK_ID, status: "running" },
+          {
+            id: TASK_ID,
+            status: "running",
+            attemptCount: 1,
+            executionState: "running",
+          },
           undefined,
           0,
         ),
@@ -458,33 +514,33 @@ describe("documentTransformApi", () => {
       data: JSON.stringify({
         ...task("succeeded"),
         result: {
-          access_scope: "inherited",
-          applied_patch_count: 0,
+          "access_scope": "inherited",
+          "applied_patch_count": 0,
           findings: [
             {
-              block_id: null,
+              "block_id": null,
               code: "legacy_warning",
               detail: "Review the preserved structure.",
             },
           ],
           mode: "format",
-          model_ids: [],
-          needs_review: false,
-          operation_id: TASK_ID,
+          "model_ids": [],
+          "needs_review": false,
+          "operation_id": TASK_ID,
           output: {
-            file_id: "output-1",
+            "file_id": "output-1",
             name: "Review",
-            parent_folder_id: "folder-1",
-            web_url: "https://docs.google.com/document/d/output-1/edit",
+            "parent_folder_id": "folder-1",
+            "web_url": "https://docs.google.com/document/d/output-1/edit",
           },
-          pipeline_version: "sarj-v1",
-          source_sha256: "a".repeat(64),
-          tool_versions: {},
+          "pipeline_version": "sarj-v1",
+          "source_sha256": "a".repeat(64),
+          "tool_versions": {},
           validation: {
-            protected_content_preserved: true,
-            source_unchanged: true,
-            structure_preserved: true,
-            unsafe_patch_count: 0,
+            "protected_content_preserved": true,
+            "source_unchanged": true,
+            "structure_preserved": true,
+            "unsafe_patch_count": 0,
           },
         },
       }),
@@ -493,7 +549,12 @@ describe("documentTransformApi", () => {
 
     await expect(
       DOCUMENT_TRANSFORM_API.waitForCompletion(
-        { id: TASK_ID, status: "running" },
+        {
+          id: TASK_ID,
+          status: "running",
+          attemptCount: 1,
+          executionState: "running",
+        },
         undefined,
         0,
       ),
@@ -551,6 +612,22 @@ describe("documentTransformApi", () => {
     });
   });
 
+  it("reports model response truncation without retrying or implying that preservation succeeded", async () => {
+    await expect(
+      DOCUMENT_TRANSFORM_API.waitForCompletion({
+        errorCode: "model_output_truncated",
+        errorDetail: "Task could not be completed",
+        id: TASK_ID,
+        status: "failed",
+      }),
+    ).rejects.toMatchObject({
+      code: "model_output_truncated",
+      message:
+        "The model reached its response limit. Review this task before retrying a smaller document.",
+      name: "DocumentTransformTerminalError",
+    });
+  });
+
   it("truthfully identifies an original that may have changed after verification", async () => {
     const result = DOCUMENT_TRANSFORM_API.waitForCompletion({
       errorCode: "in_place_verification_failed",
@@ -575,7 +652,12 @@ describe("documentTransformApi", () => {
 
     await expect(
       DOCUMENT_TRANSFORM_API.waitForCompletion(
-        { id: TASK_ID, status: "running" },
+        {
+          id: TASK_ID,
+          status: "running",
+          attemptCount: 1,
+          executionState: "running",
+        },
         undefined,
         0,
         1,
@@ -597,40 +679,40 @@ describe("documentTransformApi", () => {
         data: JSON.stringify({
           ...task("succeeded"),
           result: {
-            access_scope: "inherited",
-            applied_patch_count: 0,
-            artifact_kind: "document",
-            brand_profile_id: "sarj-2026-v4",
-            brand_profile_sha256: "b".repeat(64),
+            "access_scope": "inherited",
+            "applied_patch_count": 0,
+            "artifact_kind": "document",
+            "brand_profile_id": "sarj-2026-v4",
+            "brand_profile_sha256": "b".repeat(64),
             changed: false,
-            deterministic_patch_count: 0,
+            "deterministic_patch_count": 0,
             findings: [],
-            llm_invoked: false,
+            "llm_invoked": false,
             mode: "format",
-            model_ids: [],
-            model_patch_count: 0,
-            needs_review: false,
-            operation_id: TASK_ID,
+            "model_ids": [],
+            "model_patch_count": 0,
+            "needs_review": false,
+            "operation_id": TASK_ID,
             output: {
-              file_id: "doc-1",
-              media_type: "application/vnd.google-apps.document",
+              "file_id": "doc-1",
+              "media_type": "application/vnd.google-apps.document",
               name: "Source",
-              parent_folder_id: "folder-1",
-              web_url: null,
+              "parent_folder_id": "folder-1",
+              "web_url": null,
             },
-            output_revision_id: "revision-2",
-            output_strategy: "in_place",
-            pipeline_version: "document-transform-v3",
-            source_revision_id: "revision-1",
-            source_sha256: "a".repeat(64),
-            short_link_alias: "architecture-decisions",
-            short_link_status: "ready",
-            tool_versions: {},
+            "output_revision_id": "revision-2",
+            "output_strategy": "in_place",
+            "pipeline_version": "document-transform-v3",
+            "source_revision_id": "revision-1",
+            "source_sha256": "a".repeat(64),
+            "short_link_alias": "architecture-decisions",
+            "short_link_status": "ready",
+            "tool_versions": {},
             validation: {
-              protected_content_preserved: true,
-              source_unchanged: false,
-              structure_preserved: true,
-              unsafe_patch_count: 0,
+              "protected_content_preserved": true,
+              "source_unchanged": false,
+              "structure_preserved": true,
+              "unsafe_patch_count": 0,
             },
           },
         }),
@@ -639,7 +721,12 @@ describe("documentTransformApi", () => {
 
     await expect(
       DOCUMENT_TRANSFORM_API.waitForCompletion(
-        { id: TASK_ID, status: "running" },
+        {
+          id: TASK_ID,
+          status: "running",
+          attemptCount: 1,
+          executionState: "running",
+        },
         undefined,
         0,
         3,
@@ -656,54 +743,54 @@ describe("documentTransformApi", () => {
 
 function task(status: "pending" | "succeeded") {
   return {
-    attempt_count: status === "pending" ? 0 : 1,
-    created_at: "2026-09-03T12:00:00Z",
-    error_code: null,
-    error_detail: null,
-    finished_at: status === "pending" ? null : "2026-09-03T12:01:00Z",
+    "attempt_count": status === "pending" ? 0 : 1,
+    "created_at": "2026-09-03T12:00:00Z",
+    "error_code": null,
+    "error_detail": null,
+    "finished_at": status === "pending" ? null : "2026-09-03T12:01:00Z",
     id: TASK_ID,
     kind: "file.document_transform",
-    resource_id: null,
+    "resource_id": null,
     result: null,
-    started_at: status === "pending" ? null : "2026-09-03T12:00:01Z",
+    "started_at": status === "pending" ? null : "2026-09-03T12:00:01Z",
     status,
   };
 }
 
 function currentResult() {
   return {
-    access_scope: "inherited",
-    applied_patch_count: 1,
-    artifact_kind: "document",
-    brand_profile_id: "sarj-2026-v4",
-    brand_profile_sha256: "b".repeat(64),
+    "access_scope": "inherited",
+    "applied_patch_count": 1,
+    "artifact_kind": "document",
+    "brand_profile_id": "sarj-2026-v4",
+    "brand_profile_sha256": "b".repeat(64),
     changed: true,
-    deterministic_patch_count: 1,
+    "deterministic_patch_count": 1,
     findings: [],
-    llm_invoked: false,
+    "llm_invoked": false,
     mode: "format",
-    model_ids: [],
-    model_patch_count: 0,
-    needs_review: false,
-    operation_id: TASK_ID,
+    "model_ids": [],
+    "model_patch_count": 0,
+    "needs_review": false,
+    "operation_id": TASK_ID,
     output: {
-      file_id: "document-1",
-      media_type: "application/vnd.google-apps.document",
+      "file_id": "document-1",
+      "media_type": "application/vnd.google-apps.document",
       name: "Decision",
-      parent_folder_id: "folder-1",
-      web_url: "https://docs.google.com/document/d/document-1/edit",
+      "parent_folder_id": "folder-1",
+      "web_url": "https://docs.google.com/document/d/document-1/edit",
     },
-    output_revision_id: "revision-current",
-    output_strategy: "in_place",
-    pipeline_version: "document-transform-v3",
-    source_revision_id: "revision-source",
-    source_sha256: "a".repeat(64),
-    tool_versions: { format: "v1" },
+    "output_revision_id": "revision-current",
+    "output_strategy": "in_place",
+    "pipeline_version": "document-transform-v3",
+    "source_revision_id": "revision-source",
+    "source_sha256": "a".repeat(64),
+    "tool_versions": { format: "v1" },
     validation: {
-      protected_content_preserved: true,
-      source_unchanged: false,
-      structure_preserved: true,
-      unsafe_patch_count: 0,
+      "protected_content_preserved": true,
+      "source_unchanged": false,
+      "structure_preserved": true,
+      "unsafe_patch_count": 0,
     },
   };
 }

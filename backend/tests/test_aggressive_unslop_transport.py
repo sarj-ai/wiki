@@ -637,7 +637,7 @@ async def test_review_batches_limit_concurrency_and_wait_for_cancellation(
     sdk_client_factory: Callable[[httpx.AsyncClient], genai.Client], *, fail: bool
 ) -> None:
     source = "The hidden bird can sing unseen from dense scrub beside the path."
-    document = parse_markdown("\n\n".join(source for _ in range(25)), title="Concurrent review")
+    document = parse_markdown("\n\n".join(source for _ in range(65)), title="Concurrent review")
     patches = [
         TextPatch(block_id=block.id, expected_sha256=block.sha256, replacement=source)
         for block in document.blocks
@@ -1013,17 +1013,19 @@ async def test_review_collision_uses_a_sticky_configured_fallback_effort(
             client=client,
         )
         try:
-            decision = await generator.review(document, [patch])
+            if status is HTTPStatus.FORBIDDEN:
+                with pytest.raises(ModelUnavailableError) as caught:
+                    await generator.review(document, [patch])
+                assert caught.value.code == "model_permission_denied"
+                assert not caught.value.retryable
+                assert models == [reviewer]
+            else:
+                decision = await generator.review(document, [patch])
+                assert decision.approved == {block.id}
+                assert not decision.rejected
+                assert models == [reviewer, primary, primary]
         finally:
             await client.aio.aclose()
-
-    assert decision.approved == {block.id}
-    assert not decision.rejected
-    assert models == [
-        reviewer,
-        primary,
-        primary,
-    ]
 
 
 @pytest.mark.parametrize(
@@ -1031,12 +1033,12 @@ async def test_review_collision_uses_a_sticky_configured_fallback_effort(
     [ModelId("gemini-4-argon"), ModelId("gemini-3.1-flash-lite")],
     ids=["default-flash-fallback", "custom-fallback-none"],
 )
-async def test_queued_review_batches_share_forbidden_models_only_within_one_invocation(
+async def test_queued_review_batches_terminate_on_permission_denial_without_fallback(
     sdk_client_factory: Callable[[httpx.AsyncClient], genai.Client], fallback: ModelId
 ) -> None:
     document = parse_markdown(
         "\n\n".join(
-            "The hidden bird can sing unseen from dense scrub beside the path." for _ in range(49)
+            "The hidden bird can sing unseen from dense scrub beside the path." for _ in range(97)
         ),
         title="Queued review",
     )
@@ -1044,36 +1046,15 @@ async def test_queued_review_batches_share_forbidden_models_only_within_one_invo
         TextPatch(block_id=block.id, expected_sha256=block.sha256, replacement=block.text)
         for block in model_editable_blocks(document)
     ]
-    assert len(patches) == 49
-    models: list[ModelId] = []
-    submitted: list[_WireReview] = []
+    models: list[str] = []
     started = asyncio.Event()
-    fallback_model = ModelId("gemini-3.8-flash") if fallback == "gemini-4-argon" else fallback
 
     async def respond(request: httpx.Request) -> httpx.Response:
-        model = ModelId(request.url.path.rsplit("/", 1)[-1].removesuffix(":generateContent"))
-        models.append(model)
-        config = _VendorRequest.model_validate_json(request.content).generation_config
-        assert config.max_output_tokens == 32_768
-        assert request.headers.get("X-Server-Timeout") == "120"
-        if model == "gemini-4-argon":
-            assert config.thinking_config is not None
-            assert config.thinking_config.thinking_level == types.ThinkingLevel.HIGH
-            if models.count(ModelId("gemini-4-argon")) % 2 == 0:
-                started.set()
-            await started.wait()
-            return httpx.Response(HTTPStatus.FORBIDDEN, json={"error": {"code": 403}})
-        assert model == fallback_model
-        if model == "gemini-3.1-flash-lite":
-            assert config.thinking_config is None
-        else:
-            assert config.thinking_config is not None
-            assert config.thinking_config.thinking_level == types.ThinkingLevel.MEDIUM
-        wire = _WireReview.model_validate_json(
-            _WireReviewRequest.model_validate_json(request.content).contents[0].parts[0].text
-        )
-        submitted.append(wire)
-        return _review_response(_functional_audit_envelope(wire))
+        models.append(request.url.path.rsplit("/", 1)[-1].removesuffix(":generateContent"))
+        if len(models) % 2 == 0:
+            started.set()
+        await started.wait()
+        return httpx.Response(HTTPStatus.FORBIDDEN, json={"error": {"code": 403}})
 
     async with httpx.AsyncClient(transport=httpx.MockTransport(respond)) as http:
         client = sdk_client_factory(http)
@@ -1084,29 +1065,23 @@ async def test_queued_review_batches_share_forbidden_models_only_within_one_invo
                 unslop_model="gemini-3.8-flash",
                 fallback_model=fallback,
                 restyle_model="gemini-4-argon",
-                review_timeout=timedelta(seconds=120),
             ),
             client=client,
         )
         try:
             for invocation in range(1, 3):
                 started.clear()
-                decision = await generator.review(document, patches)
-                assert decision.approved == {patch.block_id for patch in patches}
-                assert not decision.rejected
-                assert models.count(ModelId("gemini-4-argon")) == invocation * 2
-                assert models.count(fallback_model) == len(submitted)
-                assert len(submitted) > 2
-                assert sorted(
-                    audit.block_id for wire in submitted for audit in wire.sentence_audits
-                ) == sorted([patch.block_id for patch in patches] * invocation)
-                assert all(0 < len(wire.sentence_audits) <= 12 for wire in submitted)
+                with pytest.raises(ModelUnavailableError) as caught:
+                    await generator.review(document, patches)
+                assert caught.value.code == "model_permission_denied"
+                assert not caught.value.retryable
+                assert models == ["gemini-4-argon"] * (invocation * 2)
         finally:
             await client.aio.aclose()
 
 
 @pytest.mark.parametrize("phase_count", [1, 2], ids=["initial-and-repair", "concurrent-isolation"])
-async def test_model_phase_shares_forbidden_reviewer_only_with_its_own_repair(
+async def test_model_phase_transient_reviewer_failure_stays_isolated_during_repair(
     normal_sdk_client_factory: Callable[[httpx.AsyncClient], genai.Client], phase_count: int
 ) -> None:
     source = "The hidden bird can sing from dense scrub beside the path while remaining unseen by observers."
@@ -1122,7 +1097,7 @@ async def test_model_phase_shares_forbidden_reviewer_only_with_its_own_repair(
             subject = "robin" if "robin" in payload.document_contexts[0].source_block else "bird"
             review_models[subject].append(model)
             if model == "gemini-4-argon":
-                return httpx.Response(HTTPStatus.FORBIDDEN, json={"error": {"code": 403}})
+                return httpx.Response(HTTPStatus.SERVICE_UNAVAILABLE, json={"error": {"code": 503}})
             assert model == "gemini-3.7-flash"
             if subject == "bird":
                 first_fallback.set()
@@ -1186,6 +1161,7 @@ async def test_model_phase_shares_forbidden_reviewer_only_with_its_own_repair(
             assert review_models[subject] == [
                 "gemini-4-argon",
                 "gemini-3.7-flash",
+                "gemini-4-argon",
                 "gemini-3.7-flash",
             ]
 
@@ -1204,7 +1180,7 @@ async def test_queued_review_batches_do_not_share_transient_model_failures(
 ) -> None:
     document = parse_markdown(
         "\n\n".join(
-            "The hidden bird can sing unseen from dense scrub beside the path." for _ in range(49)
+            "The hidden bird can sing unseen from dense scrub beside the path." for _ in range(97)
         ),
         title="Transient review",
     )
@@ -1212,7 +1188,7 @@ async def test_queued_review_batches_do_not_share_transient_model_failures(
         TextPatch(block_id=block.id, expected_sha256=block.sha256, replacement=block.text)
         for block in model_editable_blocks(document)
     ]
-    assert len(patches) == 49
+    assert len(patches) == 97
     models: list[ModelId] = []
     submitted: list[_WireReview] = []
 
@@ -1631,7 +1607,7 @@ async def test_sdk_writer_batches_share_cap_preserve_order_and_reap_cancellation
     sdk_client_factory: Callable[[httpx.AsyncClient], genai.Client], *, fail: bool
 ) -> None:
     source = "The hidden bird can sing unseen from dense scrub beside the path."
-    document = parse_markdown("\n\n".join(source for _ in range(13)), title="Writer concurrency")
+    document = parse_markdown("\n\n".join(source for _ in range(201)), title="Writer concurrency")
     blocks = [block for block in document.blocks if block.text]
     first_id = blocks[0].id
     started = asyncio.Event()
@@ -1645,7 +1621,7 @@ async def test_sdk_writer_batches_share_cap_preserve_order_and_reap_cancellation
         assert request.headers.get("X-Server-Timeout") == "90"
         assert (
             _VendorRequest.model_validate_json(request.content).generation_config.max_output_tokens
-            == 16_384
+            == 32_768
         )
         contents = _WireReviewRequest.model_validate_json(request.content).contents[0].parts[0].text
         batch = _WireRewriteBlocks.model_validate_json(
@@ -1836,7 +1812,9 @@ async def test_sdk_document_budget_is_shared_across_separate_editor_batches(
         "The logger records temperature at night, stores the readings in its archive, "
         "and sends the complete log to the laboratory."
     )
-    padding = " The account restates this description in extended and repetitive wording."
+    padding = (
+        " The account restates this " + "description" * 30 + " in extended and repetitive wording."
+    )
     source = "\n\n".join(fact + padding * 8 for _ in range(7))
     document = parse_markdown(source, title="Batch allocation")
     blocks = model_editable_blocks(document)
@@ -2116,10 +2094,10 @@ async def test_sdk_initial_fallback_and_flash_repair_keep_independent_review_hig
         types.ThinkingLevel.HIGH,
     ]
     assert [config.max_output_tokens for _model, config in received] == [
-        16_384,
-        16_384,
-        16_384,
-        *([16_384] if repair_fault else []),
+        32_768,
+        32_768,
+        32_768,
+        *([32_768] if repair_fault else []),
         32_768,
     ]
 
@@ -2129,7 +2107,7 @@ async def test_sdk_initial_fallback_and_flash_repair_keep_independent_review_hig
     [ModelId("gemini-3.1-pro-preview"), ModelId("gemini-4-argon")],
     ids=["legacy-pro", "ga-argon"],
 )
-async def test_sdk_pro_primary_override_and_format_keep_high_thinking(
+async def test_sdk_pro_primary_reserves_output_and_format_keeps_high_thinking(
     sdk_client_factory: Callable[[httpx.AsyncClient], genai.Client],
     model: ModelId,
 ) -> None:
@@ -2178,7 +2156,10 @@ async def test_sdk_pro_primary_override_and_format_keep_high_thinking(
     assert all(config.thinking_config is not None for config in received)
     assert [
         config.thinking_config.thinking_level for config in received if config.thinking_config
-    ] == [types.ThinkingLevel.HIGH, types.ThinkingLevel.HIGH]
+    ] == [
+        types.ThinkingLevel.HIGH,
+        types.ThinkingLevel.HIGH,
+    ]
 
 
 @dataclass(slots=True)
@@ -2629,7 +2610,7 @@ async def test_model_deadline_or_cancellation_reaps_active_and_queued_sdk_batche
     external_cancel: bool,
 ) -> None:
     document = parse_markdown(
-        "\n\n".join(deadline_document.patch.replacement for _ in range(13)),
+        "\n\n".join(deadline_document.patch.replacement for _ in range(201)),
         title="Deadline cancellation",
     )
     started = asyncio.Event()
@@ -2793,7 +2774,7 @@ async def test_no_operation_deadline_keeps_native_timeout_and_format_protocol(
     assert result.approved == {deadline_document.patch.block_id}
     assert not result.rejected
     assert timeouts == ["90", "90", "90"]
-    assert token_limits == [16_384, 16_384, 32_768]
+    assert token_limits == [32_768, 32_768, 32_768]
 
 
 async def test_shared_provider_clock_follows_nested_budgets_and_threads(
@@ -2857,7 +2838,7 @@ async def test_paced_writer_starts_keep_two_real_sdk_requests_active_and_ordered
     writer_admission_wait: _WriterAdmissionWait,
 ) -> None:
     document = parse_markdown(
-        "\n\n".join(deadline_document.patch.replacement for _ in range(13)),
+        "\n\n".join(deadline_document.patch.replacement for _ in range(201)),
         title="Paced writer admission",
     )
     first = asyncio.Event()
@@ -2900,7 +2881,7 @@ async def test_paced_writer_starts_keep_two_real_sdk_requests_active_and_ordered
         assert [patch.block_id for patch in operation.result()] == [
             block.id for block in model_editable_blocks(document)
         ]
-    assert len(requests) == 3
+    assert len(requests) > 2
     assert active == 0
     assert peak == 2
 
@@ -2957,6 +2938,18 @@ async def test_writer_backoff_only_follows_transient_errors_without_extra_attemp
     async with _deadline_generator(
         sdk_client_factory, respond, writer_sleep=writer_admission_wait
     ) as generator:
+        if status in {HTTPStatus.BAD_REQUEST, HTTPStatus.FORBIDDEN}:
+            with pytest.raises(ModelUnavailableError) as failure:
+                await generator.generate(deadline_document.document, phase=TransformPhase.UNSLOP)
+            assert failure.value.code == (
+                "model_permission_denied"
+                if status == HTTPStatus.FORBIDDEN
+                else "model_configuration_invalid"
+            )
+            assert not failure.value.retryable
+            assert len(requests) == 1
+            assert not writer_admission_wait.delays
+            return
         async with asyncio.TaskGroup() as group:
             operation = group.create_task(
                 generator.generate(deadline_document.document, phase=TransformPhase.UNSLOP)
@@ -2964,7 +2957,7 @@ async def test_writer_backoff_only_follows_transient_errors_without_extra_attemp
             try:
                 if transient:
                     delay = await writer_admission_wait.entered.get()
-                    assert 1 <= delay <= 1.25
+                    assert 2 <= delay <= 2.5
                     assert len(requests) == 1
             finally:
                 writer_admission_wait.release.set()
@@ -3142,10 +3135,10 @@ async def test_sdk_repair_uses_the_configured_editor_while_format_and_review_use
         for _model, config in received
     ] == [initial_level, repair_level, types.ThinkingLevel.HIGH, types.ThinkingLevel.HIGH]
     assert [config.max_output_tokens for _model, config in received] == [
-        16_384,
-        16_384,
         32_768,
-        16_384,
+        32_768,
+        32_768,
+        32_768,
     ]
 
 
@@ -3222,7 +3215,7 @@ async def test_pro_defaults_and_explicit_override_recover_capacity_with_full_sou
             assert config.thinking_config is not None
             assert config.thinking_config.thinking_level == types.ThinkingLevel.HIGH
             if len(reviews) == 1:
-                status = HTTPStatus.FORBIDDEN if explicit_flash else HTTPStatus.TOO_MANY_REQUESTS
+                status = HTTPStatus.TOO_MANY_REQUESTS
                 return httpx.Response(status, json={"error": {"code": status.value}})
             assert model == "gemini-3.1-pro-preview"
             return _review_response(_functional_audit_envelope(payload))
@@ -3247,7 +3240,9 @@ async def test_pro_defaults_and_explicit_override_recover_capacity_with_full_sou
     async with httpx.AsyncClient(transport=httpx.MockTransport(respond)) as http:
         client = normal_sdk_client_factory(http)
         try:
-            generator = VertexGeminiPatchGenerator(policy=policy, client=client)
+            generator = VertexGeminiPatchGenerator(
+                policy=policy, client=client, writer_sleep=_yield_writer_sleep
+            )
             async with asyncio.timeout(30):
                 result = await TextTransformPlanner(
                     max_editorial_passes=1, generator=generator, allow_unslop_model=True
@@ -3258,8 +3253,6 @@ async def test_pro_defaults_and_explicit_override_recover_capacity_with_full_sou
     assert models == (
         [
             ModelId("gemini-3.5-flash"),
-            ModelId("gemini-3.5-flash"),
-            ModelId("gemini-3.5-flash"),
             ModelId("gemini-3.1-pro-preview"),
             ModelId("gemini-3.5-flash"),
             ModelId("gemini-3.1-pro-preview"),
@@ -3267,7 +3260,7 @@ async def test_pro_defaults_and_explicit_override_recover_capacity_with_full_sou
         if explicit_flash
         else [ModelId("gemini-3.1-pro-preview")] * 5
     )
-    assert len(writers) == (4 if explicit_flash else 3)
+    assert len(writers) == (2 if explicit_flash else 3)
     assert len(reviews) == 2
     assert reviews[0] == reviews[1]
     assert [
@@ -3318,7 +3311,7 @@ async def test_normal_factory_policy_has_pro_writer_and_independent_review_deadl
     assert timeouts == ["180", "120", "180"]
     assert configurations[1].thinking_config is not None
     assert configurations[1].thinking_config.thinking_level == types.ThinkingLevel.HIGH
-    assert [config.max_output_tokens for config in configurations] == [16_384, 32_768, 16_384]
+    assert [config.max_output_tokens for config in configurations] == [32_768, 32_768, 32_768]
 
 
 def test_model_policy_cannot_allow_a_negative_factual_review_reserve(
@@ -3509,7 +3502,7 @@ async def test_real_sdk_retries429_within_same_model_request_deadline(
         finally:
             await client.aio.aclose()
     assert len(requests) == (2 if recover else 3)
-    assert len({str(request.url) for request in requests}) == 1
+    assert len({str(request.url) for request in requests}) == (2 if recover else 1)
 
 
 @pytest.mark.parametrize("operation", ["writer", "review"])
@@ -3553,16 +3546,18 @@ async def test_real_sdk_backoff_is_cancelled_by_the_unchanged_per_call_timeout(
                     await call
         finally:
             await client.aio.aclose()
-    assert len(requests) == (2 if operation == "writer" else 3)
+    assert len(requests) == 3
 
 
 @pytest.mark.parametrize("phase", [TransformPhase.UNSLOP, TransformPhase.FORMAT])
 @pytest.mark.parametrize("payload", ["malformed", "empty"])
+@pytest.mark.parametrize("finish", ["STOP", "MAX_TOKENS"])
 async def test_sdk_invalid_writer_logs_only_bounded_metadata_and_preserves_parse_failure(
     sdk_client_factory: Callable[[httpx.AsyncClient], genai.Client],
     deadline_document: _DeadlineDocument,
     phase: TransformPhase,
     payload: Literal["malformed", "empty"],
+    finish: Literal["STOP", "MAX_TOKENS"],
 ) -> None:
     captured: list[str] = []
     requests: list[httpx.Request] = []
@@ -3570,7 +3565,7 @@ async def test_sdk_invalid_writer_logs_only_bounded_metadata_and_preserves_parse
     def respond(request: httpx.Request) -> httpx.Response:
         requests.append(request)
         config = _VendorRequest.model_validate_json(request.content).generation_config
-        assert config.max_output_tokens == 16_384
+        assert config.max_output_tokens == 32_768
         assert request.headers.get("X-Server-Timeout") == "90"
         candidate_text = '{"patches":["PRIVATE' if payload == "malformed" else ""
         return httpx.Response(
@@ -3582,7 +3577,7 @@ async def test_sdk_invalid_writer_logs_only_bounded_metadata_and_preserves_parse
                             "role": "model",
                             "parts": [{"text": candidate_text}],
                         },
-                        "finishReason": "MAX_TOKENS",
+                        "finishReason": finish,
                         "finishMessage": "PRIVATE FINISH MESSAGE",
                     }
                 ],
@@ -3607,8 +3602,10 @@ async def test_sdk_invalid_writer_logs_only_bounded_metadata_and_preserves_parse
     cause = failure.value.__cause__
     if isinstance(cause, BaseExceptionGroup):
         cause = cause.exceptions[0].__cause__
-    assert isinstance(cause, ValueError)
-    if payload == "empty":
+    if finish == "MAX_TOKENS":
+        assert failure.value.code == "model_output_truncated"
+        assert not failure.value.retryable
+    elif payload == "empty":
         assert isinstance(cause, ModelEmptyResponseError)
         assert str(cause) == "Gemini returned no patch proposal"
     else:
@@ -3620,7 +3617,7 @@ async def test_sdk_invalid_writer_logs_only_bounded_metadata_and_preserves_parse
         for record in records
         if record["message"].startswith("document model response payload invalid")
     ]
-    assert len(metadata) == len(requests) == (3 if phase is TransformPhase.UNSLOP else 2)
+    assert len(metadata) == len(requests) == (1 if finish == "MAX_TOKENS" else 3)
     assert all(
         set(item)
         == {
@@ -3635,7 +3632,7 @@ async def test_sdk_invalid_writer_logs_only_bounded_metadata_and_preserves_parse
         for item in metadata
     )
     assert all(item["model_operation"] == phase.value for item in metadata)
-    assert all(item["model_finish_reason"] == "MAX_TOKENS" for item in metadata)
+    assert all(item["model_finish_reason"] == finish for item in metadata)
     assert all(item["model_prompt_token_count"] == 123 for item in metadata)
     assert all(item["model_candidate_token_count"] == 456 for item in metadata)
     assert all(item["model_thought_token_count"] == 789 for item in metadata)
@@ -3643,9 +3640,11 @@ async def test_sdk_invalid_writer_logs_only_bounded_metadata_and_preserves_parse
     assert "PRIVATE" not in "".join(captured)
 
 
+@pytest.mark.parametrize("finish", ["STOP", "MAX_TOKENS"])
 async def test_sdk_invalid_review_logs_bounded_response_metadata_without_accepting_payload(
     sdk_client_factory: Callable[[httpx.AsyncClient], genai.Client],
     deadline_document: _DeadlineDocument,
+    finish: Literal["STOP", "MAX_TOKENS"],
 ) -> None:
     captured: list[str] = []
     requests: list[httpx.Request] = []
@@ -3662,7 +3661,7 @@ async def test_sdk_invalid_review_logs_bounded_response_metadata_without_accepti
                 "candidates": [
                     {
                         "content": {"role": "model", "parts": [{"text": '{"reviews":["PRIVATE'}]},
-                        "finishReason": "MAX_TOKENS",
+                        "finishReason": finish,
                         "finishMessage": "PRIVATE REASON",
                     }
                 ],
@@ -3695,17 +3694,18 @@ async def test_sdk_invalid_review_logs_bounded_response_metadata_without_accepti
         for record in records
         if record["message"].startswith("document model attempt failed")
     ]
-    assert len(requests) == len(metadata) == len(failures) == 3
-    assert all(item["model_finish_reason"] == "MAX_TOKENS" for item in metadata)
+    assert len(requests) == len(metadata) == len(failures) == (1 if finish == "MAX_TOKENS" else 3)
+    assert all(item["model_finish_reason"] == finish for item in metadata)
     assert all(item["model_prompt_token_count"] == 123 for item in metadata)
     assert all(item["model_candidate_token_count"] == 456 for item in metadata)
     assert all(item["model_thought_token_count"] == 789 for item in metadata)
     assert all(item["model_total_token_count"] == 1368 for item in metadata)
-    assert all(item["model_payload_category"] == "schema" for item in failures)
-    assert all(
-        item["model_validation_issues"] == [{"error_type": "json_invalid", "location": []}]
-        for item in failures
-    )
+    if finish == "STOP":
+        assert all(item["model_payload_category"] == "schema" for item in failures)
+        assert all(
+            item["model_validation_issues"] == [{"error_type": "json_invalid", "location": []}]
+            for item in failures
+        )
     assert "PRIVATE" not in "".join(captured)
     assert deadline_document.document.blocks[0].sha256 == deadline_document.patch.expected_sha256
 
@@ -3848,8 +3848,8 @@ async def test_real_sdk_review_effort_preserves_writer_repair_and_custom_roles(
         == case.levels
     )
     assert [config.max_output_tokens for _model, _review, config in received] == [
-        16_384,
-        16_384,
         32_768,
-        16_384,
+        32_768,
+        32_768,
+        32_768,
     ]

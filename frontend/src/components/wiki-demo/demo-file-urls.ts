@@ -23,6 +23,7 @@ const PUBLIC_FILE_ALIASES: ReadonlyMap<string, string> = new Map([
   ["1JEdWZnuH9oIZ3JYv95k6a516hE2w5fzv9fiGhEtGjWY", "latency-slides"],
   ["1EJbR3gurhRRvIB1RFhVoKxiBtyLHHqu4WcATUSa3M74", "latency-guide"],
   ["1ABWhf8XI2pxgC_uvAjkhSTapxAwD10iRgtpEJHSic0w", "latency-slides"],
+  ["1OABiTptZ9hM6NOoa5FCLR8OoTEVg7VU6EdE0JTZIt4I", "ai-draft"],
 ]);
 
 export function demoPreviewUrl(file: DemoFile): null | string {

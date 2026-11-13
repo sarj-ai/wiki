@@ -18,7 +18,7 @@ class _SentinelError(Exception):
 
 
 async def _probe_worker_budget_then_fail(seen: list[float | None]) -> None:
-    with provider_retry_budget(timedelta(minutes=4)):
+    with provider_retry_budget(timedelta(minutes=4), independent_execution=True):
         seen.append(await asyncio.to_thread(provider_retry_remaining_seconds))
         raise _SentinelError
 

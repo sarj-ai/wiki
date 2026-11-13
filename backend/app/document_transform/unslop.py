@@ -5,6 +5,7 @@ import hashlib
 import json
 import re
 
+from app.document_transform.inline_code import INLINE_CODE_POLICY_VERSION, mask_inline_code
 from app.document_transform.ir import BlockKind, DocumentIR, TextBlock
 from app.document_transform.limits import MIN_MODEL_PROSE_WORDS
 from app.document_transform.quotations import SINGLE_QUOTED_SPAN_PATTERN, quoted_block_ids
@@ -12,7 +13,7 @@ from app.document_transform.quotations import SINGLE_QUOTED_SPAN_PATTERN, quoted
 
 UNSLOP_UPSTREAM_COMMIT = "d81f5196167ded24f46fced04958c0c12d681798"
 UNSLOP_UPSTREAM_VERSION = "2.3.0"
-UNSLOP_POLICY_VERSION = "sarj-concise-v35"
+UNSLOP_POLICY_VERSION = "sarj-concise-v39"
 MAX_EDITORIAL_PASSES = 100
 MIN_CONCISION_PROSE_WORDS = 40
 CONCISION_WORD_NUMERATOR = 2
@@ -26,6 +27,12 @@ UNSLOP_PRESENTATION_PADDING_INSTRUCTION = (
     "data size, and network rate belong with each estimate. Distinguish latency from "
     "throughput.' is dispensable editorial advice, not a mandatory closing paragraph. "
     "Do not replace such padding with another maxim, imperative, takeaway or summary. "
+    "A generic maxim such as 'Every detail matters' is not an operational requirement. "
+    "Delete unmeasured claims that this overview provides a useful foundation or that a "
+    "table offers a useful overview. A preview saying that a table details observed "
+    "conditions does not itself report an observation: delete the preview, keeping actual "
+    "observations and their qualifications. Do not carry its stylistic qualifiers into "
+    "a shorter slogan. Source-specific instructions and substantive goals still survive. "
     'An entire ordinary paragraph containing only this material may have replacement ""; '
     "do not keep a token sentence just to keep the paragraph alive. For whole-paragraph "
     "deletion, generic each/every/all/per and stylistic qualifiers need not survive. "
@@ -42,8 +49,11 @@ UNSLOP_PRESENTATION_PADDING_INSTRUCTION = (
     "Use descriptive headings instead of generic commands: 'Keep context with each "
     "estimate' becomes 'Estimate context'. Its each is editorial framing, not a new "
     "substantive requirement. Preserve scope in factual or procedural headings. "
-    "A sentence-initial 'It should be noted that' is removable editorial framing. "
-    "Its should directs attention to the following fact; preserve that complete fact "
+    "An attention-only 'It should be noted that' may go at sentence start or after "
+    "table-reading prefaces such as 'To interpret the table,' and 'For the purposes "
+    "of interpreting the table,'. Those frames may omit 'that' before a declarative "
+    "fact. In that frame, 'should' directs attention to the following fact; preserve "
+    "that complete fact "
     "and all of its substantive obligations and uncertainty. This exception excludes "
     "quoted or reported instructions and requirements to record or retain a note. "
     "Unmeasured praise of this text's presentation and imagined reader encouragement "
@@ -67,6 +77,10 @@ UNSLOP_QUALIFIER_ATTACHMENT_INSTRUCTION = (
     "a reporting date. Keep a qualifier local when merging sentences, or retain separate "
     "sentences. A fronted qualifier governs coordinated predicates; check each one against "
     "the source independently. Preserving its words and numbers does not preserve its scope. "
+    "Recurring conditions stay local too. 'The team reviews the checklist before each "
+    "deployment. The team checks the quota' must not become 'Before each deployment, "
+    "the team reviews the checklist and checks the quota': that invents a quota-check "
+    "schedule. Keep unrelated actions in separate sentences when fronting a condition. "
     "Preserve negated transformation relationships: 'Modern presentation does not turn "
     "the figures into modern benchmarks' must not become the stronger categorical claim "
     "'The figures are not modern benchmarks.' Keep the condition and its effect explicit. "
@@ -76,6 +90,23 @@ UNSLOP_QUALIFIER_ATTACHMENT_INSTRUCTION = (
     "cells or ms cells preserve a millisecond column's identity; unnamed blank columns "
     "do not. When conversions include entries whose source cells are blank, preserve "
     "entries as the inclusion object. Do not claim the conversions include blank columns. "
+    "Keep a measurement's dimension explicit: 'at a depth of 0.5 m' must not become "
+    "'at 0.5 m', which no longer identifies depth. Preserve the dimension and its "
+    "attachment as well as the number and unit. Keep protected plural quantities in "
+    "grammatical prose: use 'retention defaults to 30 days', not '30 days default retention'. "
+    "Do not turn a protected plural quantity into an ungrammatical adjective: retain "
+    "'a queue depth of 640 jobs', not 'a 640 jobs queue depth'. Rephrase around the literal "
+    "rather than singularizing or hyphenating it. "
+    "A stated purpose qualifies only its original action. 'To ensure successful recovery, "
+    "the operator must retain the snapshot. The operator may retry only if the lease "
+    "expired' must not merge into 'To ensure successful recovery, the operator must retain "
+    "the snapshot and may retry only if the lease expired': that expands the purpose onto "
+    "the retry. Keep separate sentences when needed to preserve purpose attachment. "
+    "Keep attribution explicit when shortening a reported measurement. 'According to the "
+    "field log, the calibration uncertainty was ±0.2 °C' may become 'The field log reports "
+    "a calibration uncertainty of ±0.2 °C'. Do not write 'Field log calibration uncertainty': "
+    "that turns the reporting source into an ambiguous modifier of the quantity. Preserve "
+    "the original source, quantity, uncertainty and reporting relationship. "
 )
 UNSLOP_REWRITE_INSTRUCTION = (
     UNSLOP_PRESENTATION_PADDING_INSTRUCTION + UNSLOP_QUALIFIER_ATTACHMENT_INSTRUCTION
@@ -83,8 +114,11 @@ UNSLOP_REWRITE_INSTRUCTION = (
     "Edit ruthlessly. Rewrite every supplied block into its shortest faithful, grammatical "
     "form. Lead with the concrete subject and a strong active verb. Convert passive voice "
     "to active voice whenever the source identifies the actor; never invent an actor. "
-    "Replace nominalizations and verb scaffolding with direct verbs: 'conduct an analysis "
-    "of' becomes 'analyze'; 'is responsible for managing' becomes 'manages'. Cut throat "
+    "Replace nominalizations and verb scaffolding with direct verbs when the source "
+    "establishes the action: 'conduct an analysis of' becomes 'analyze'. Preserve "
+    "assignments of responsibility: 'is responsible for checking the quota' does not "
+    "establish that the check happens. Keep that duty, for example 'is responsible for "
+    "quota checks'. Cut throat "
     "clearing, document-purpose preambles, redundant modifiers, empty transitions, "
     "restatements and conclusions that merely repeat the paragraph. Prefer familiar, "
     "specific words over inflated vocabulary. Keep necessary technical terms. A shorter "
@@ -117,6 +151,10 @@ UNSLOP_REWRITE_INSTRUCTION = (
     "intention into an achieved capability or discard a goal as writing-style commentary. "
     "Preserve what an action is for, when it applies, and any distinct reason or "
     "restriction. Keep attribution, provenance, observations, uncertainty, comparisons and "
+    "explicit contrast and sequence markers. Retain 'while', 'whereas', 'first', 'next' "
+    "and 'finally' when they express those relationships; do not drop them as empty "
+    "transitions or replace contrast with 'and'. The formatting pass can represent an "
+    "explicit source sequence as native numbering. Preserve comparisons and "
     "their baselines, units, geographic and temporal scope, classification criteria and "
     "nested categories. Do not infer a referent, statistic, necessity, cause or population "
     "claim. The original rewrite_constraints are authoritative. Preserve protected_tokens "
@@ -179,6 +217,9 @@ UNSLOP_REVIEW_INSTRUCTION = (
     "list and list member, name, quantity, date, citation and exact quotation survives with the same "
     "meaning, scope, negation and modal force. "
     "An opportunity or potential to act is not evidence that the action has been achieved. "
+    "An assignment of responsibility is not evidence that the assigned action occurs. "
+    "Preserve that duty and its actor; 'is responsible for checking' cannot become "
+    "a claim that the actor checks. "
     "Self-referential document-purpose scaffolding may become direct active prose: a "
     "document's announcement that it brings together facts may disappear when every "
     "attributed fact survives elsewhere in the proposed block. A retained writing action "
@@ -252,9 +293,17 @@ RFCISH_EMAIL_PATTERN = (
 CUSTOM_URI_PATTERN = r"[A-Za-z][A-Za-z0-9+.-]*:(?://)?[^\s)>]+"
 HTML_ENTITY_PATTERN = r"&(?:#[0-9]+|#[xX][0-9A-Fa-f]+|[A-Za-z][A-Za-z0-9]+);"
 
+_TABLE_ATTENTION_CONTEXT = (
+    r"(?:[Tt]o interpret|[Ff]or the purposes of interpreting) (?:the|this) table,[ \t]+"
+)
+_DEFINITE_FACT_CLAUSE = (
+    r"[Tt]he[ \t]+(?:[A-Za-z][A-Za-z-]*[ \t]+){1,6}"
+    r"(?:is|are|was|were|has|have|must|shall|should|can|could|may|might|will|would)\b"
+)
 _EDITORIAL_FRAMING_PATTERN = re.compile(
     r"(?:^|(?<=[.!?\n]))[ \t]*(?:"
-    r"[Ii]t should be noted that[ \t]+|"
+    rf"(?:{_TABLE_ATTENTION_CONTEXT})?[Ii]t should be noted that[ \t]+|"
+    rf"{_TABLE_ATTENTION_CONTEXT}[Ii]t should be noted[ \t]+(?={_DEFINITE_FACT_CLAUSE})|"
     r"[Ii]n today['’]s (?:increasingly )?fast[-\u2011 ]moving and ever[-\u2011 ]evolving "
     r"world of (?=[^,;:.!?\n]+,[ \t]*)|"
     r"(?:[Tt]o put it|[Pp]ut(?: it)?) another way[,:][ \t]*"
@@ -449,6 +498,7 @@ UNSLOP_CATALOG_SHA256 = hashlib.sha256(
     json.dumps(
         {
             "editorial_policy": UNSLOP_POLICY_VERSION,
+            "inline_code_policy": INLINE_CODE_POLICY_VERSION,
             "rewrite_instruction": UNSLOP_REWRITE_INSTRUCTION,
             "review_instruction": UNSLOP_REVIEW_INSTRUCTION,
             "concision_target": {
@@ -734,6 +784,59 @@ def model_editable_blocks(document: DocumentIR) -> tuple[TextBlock, ...]:
     )
 
 
+_GENERIC_SECTION_HEADINGS = frozenset(
+    {
+        "introduction",
+        "overview",
+        "reading guide",
+        "summary",
+        "recap",
+        "conclusion",
+        "closing thoughts",
+        "final thoughts",
+        "takeaways",
+    }
+)
+
+
+def emptied_section_headings(original: DocumentIR, transformed: DocumentIR) -> tuple[str, ...]:
+    current = {block.id: block for block in transformed.blocks}
+    removed: set[str] = set()
+    for index in range(len(original.blocks) - 1, -1, -1):
+        heading = original.blocks[index]
+        if not _generic_section_heading(heading) or not _generic_section_heading(
+            current[heading.id]
+        ):
+            continue
+        following = _section_body(original, index)
+        if any(current[block.id].text.strip() and block.id not in removed for block in following):
+            continue
+        removed.add(heading.id)
+    return tuple(block.id for block in original.blocks if block.id in removed)
+
+
+def _section_body(document: DocumentIR, heading_index: int) -> tuple[TextBlock, ...]:
+    level = document.blocks[heading_index].level or 1
+    following = []
+    for block in document.blocks[heading_index + 1 :]:
+        if block.kind is BlockKind.HEADING and (block.level or 1) <= level:
+            break
+        following.append(block)
+    return tuple(following)
+
+
+def _generic_section_heading(block: TextBlock) -> bool:
+    return (
+        block.kind is BlockKind.HEADING
+        and block.editable
+        and block.level is not None
+        and block.level > 1
+        and not block.native_content
+        and block.protected_suffix is None
+        and " ".join(block.text.casefold().split()) in _GENERIC_SECTION_HEADINGS
+    )
+
+
 def _is_model_editable(block: TextBlock) -> bool:
     return (
         block.editable
@@ -930,5 +1033,5 @@ def _remove_contained_candidates(
 def _mask_ignored_spans(value: str) -> str:
     return _IGNORED_SPAN.sub(
         lambda match: re.sub(r"[^\n]", " ", match.group(0)),
-        value,
+        mask_inline_code(value),
     )

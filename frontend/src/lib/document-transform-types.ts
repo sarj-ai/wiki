@@ -68,6 +68,12 @@ export interface DocumentTransformValidation {
 
 export type DocumentTransformTask = (
   | {
+      id: string;
+      status: "needs_review";
+      errorCode: "external_effect_uncertain";
+      errorDetail: string;
+    }
+  | {
       errorCode: string;
       errorDetail?: string;
       id: string;
@@ -81,7 +87,13 @@ export type DocumentTransformTask = (
     }
   | {
       id: string;
-      status: "cancelled" | "pending" | "running";
+      status: "cancelled" | "pending";
+    }
+  | {
+      id: string;
+      status: "running";
+      attemptCount: number;
+      executionState: "running" | "retrying";
     }
 ) & { replayed?: boolean };
 

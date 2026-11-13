@@ -109,6 +109,7 @@ describe("public sample document links", () => {
       "1ABWhf8XI2pxgC_uvAjkhSTapxAwD10iRgtpEJHSic0w",
       "/demo?file=latency-slides",
     ],
+    ["1OABiTptZ9hM6NOoa5FCLR8OoTEVg7VU6EdE0JTZIt4I", "/demo?file=ai-draft"],
   ])("preserves the published public link /d/%s", (id, expected) => {
     expect(demoHrefForDocumentPath(`/d/${id}`)).toBe(expected);
   });
@@ -150,10 +151,10 @@ describe("public sample download URL boundary", () => {
       "https://docs.google.com/document/d/1kdnYpl3uHMASWYA0Pd92RhXpOoTFrJdYEspn6TTmQ74/export?format=docx&tab=t.0",
     );
     expect(demoPreviewUrl(draft)).toBe(
-      "https://docs.google.com/document/d/1OABiTptZ9hM6NOoa5FCLR8OoTEVg7VU6EdE0JTZIt4I/preview",
+      "https://docs.google.com/document/d/1ld4ojYAI6fZwS0NTqkz6DVNx12Mdypsv8kWhA6zVco8/preview",
     );
     expect(demoDownloadUrl(draft)).toBe(
-      "https://docs.google.com/document/d/1OABiTptZ9hM6NOoa5FCLR8OoTEVg7VU6EdE0JTZIt4I/export?format=docx&tab=t.0",
+      "https://docs.google.com/document/d/1ld4ojYAI6fZwS0NTqkz6DVNx12Mdypsv8kWhA6zVco8/export?format=docx&tab=t.0",
     );
     expect(demoPreviewUrl(workbook)).toBe(
       "https://docs.google.com/spreadsheets/d/1YdtEf6kXaO5t9-hg9BD4o7QExJsikqfmhoiTSDP0oP0/preview#gid=696566412",

@@ -214,6 +214,7 @@ jobs:
       - name: Exercise concurrent source reservations and durable replay keys
         run: >-
           uv run --locked pytest tests/test_task_source_dedupe_postgres.py
+          tests/test_live_transform_coordination.py
           tests/test_header_provenance_postgres.py
           tests/test_route_performance_postgres.py
           tests/test_provider_performance_postgres.py

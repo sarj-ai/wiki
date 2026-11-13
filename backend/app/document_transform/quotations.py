@@ -1,7 +1,11 @@
 from bisect import bisect_left, bisect_right
+from dataclasses import dataclass
+from enum import StrEnum
 import re
 from types import MappingProxyType
+from typing import ClassVar, Literal, assert_never
 
+from app.document_transform.inline_code import mask_inline_code
 from app.document_transform.ir import BlockKind, DocumentIR
 from app.identifiers import DocsSegmentId, DocsTabId
 
@@ -14,9 +18,55 @@ SINGLE_QUOTED_SPAN_PATTERN = (
 )
 QUOTED_SPAN_PATTERN = rf'"[^"]+"|“[^”]+”|{SINGLE_QUOTED_SPAN_PATTERN}'
 _QUOTE_TOKEN = re.compile(r"""["“”‘’']""")
-_CODE_TOKEN = re.compile(r"`+|\n")
-_CLOSING_QUOTE = MappingProxyType({'"': '"', "'": "'", "“": "”", "‘": "’"})
+
+
+class QuoteDelimiter(StrEnum):
+    STRAIGHT_DOUBLE = '"'
+    STRAIGHT_SINGLE = "'"
+    CURLY_DOUBLE = "“"
+    CURLY_SINGLE = "‘"
+
+
+_CLOSING_QUOTE = MappingProxyType(
+    {
+        QuoteDelimiter.STRAIGHT_DOUBLE: '"',
+        QuoteDelimiter.STRAIGHT_SINGLE: "'",
+        QuoteDelimiter.CURLY_DOUBLE: "”",
+        QuoteDelimiter.CURLY_SINGLE: "’",
+    }
+)
 _OPENING_QUOTE = MappingProxyType({closing: opening for opening, closing in _CLOSING_QUOTE.items()})
+
+
+@dataclass(frozen=True, slots=True)
+class EmptyQuotation:
+    kind: ClassVar[Literal["empty"]] = "empty"
+    start: int
+
+
+@dataclass(frozen=True, slots=True)
+class ContinuingQuotation:
+    kind: ClassVar[Literal["continuing"]] = "continuing"
+    start: int
+    last_paragraph: int
+
+
+type OpenQuotation = EmptyQuotation | ContinuingQuotation
+
+
+@dataclass(frozen=True, slots=True)
+class _ParagraphPositions:
+    starts: list[int]
+    ends: list[int]
+    openings: set[int]
+    last_text: list[int]
+
+
+@dataclass(frozen=True, slots=True)
+class _QuotationState:
+    quotes: dict[QuoteDelimiter, OpenQuotation]
+    covered_until: dict[QuoteDelimiter, int]
+    protected: set[int]
 
 
 def quoted_block_ids(document: DocumentIR) -> frozenset[str]:
@@ -42,17 +92,9 @@ def quoted_block_ids(document: DocumentIR) -> frozenset[str]:
 def _multiblock_quotation_indices(texts: tuple[str, ...]) -> frozenset[int]:
     source = "\n".join(texts)
     # Code delimiters and string literals must not open or close prose quotes.
-    masked = _mask_inline_code(source)
-    starts = []
-    ends = []
-    cursor = 0
-    for text in texts:
-        starts.append(cursor)
-        ends.append(cursor + len(text))
-        cursor += len(text) + 1
-    protected: set[int] = set()
-    openings: dict[str, int] = {}
-    covered_until: dict[str, int] = {}
+    masked = mask_inline_code(source)
+    positions = _paragraph_positions(texts)
+    state = _QuotationState(quotes={}, covered_until={}, protected=set())
     # Scan once: repeated unmatched opening marks in a large document must not
     # cause a regular expression to rescan the remainder at every position.
     for token in _QUOTE_TOKEN.finditer(masked):
@@ -62,49 +104,82 @@ def _multiblock_quotation_indices(texts: tuple[str, ...]) -> frozenset[int]:
         if mark in {"'", "’"} and previous_word and next_word:
             continue
         opener = _OPENING_QUOTE.get(mark)
-        if opener is not None and opener in openings and not (mark == "'" and next_word):
-            first = bisect_right(ends, openings[opener])
-            stop = bisect_left(starts, token.end())
-            if stop - first > 1:
-                protected.update(range(max(first, covered_until.get(opener, first)), stop))
-                covered_until[opener] = stop
-            # A plural possessive can also look like a closing mark. Protect
-            # that possible span, but retain its opener for a later close.
-            if not _possible_plural_possessive(masked, mark, position):
-                openings.pop(opener)
+        if opener is not None and opener in state.quotes and not (mark == "'" and next_word):
+            _close_quotation(state, positions, masked, token)
         elif mark in _CLOSING_QUOTE and not (mark == "'" and previous_word):
-            openings[mark] = position
-    return frozenset(protected)
+            _open_quotation(state, positions, token)
+    return frozenset(state.protected)
+
+
+def _paragraph_positions(texts: tuple[str, ...]) -> _ParagraphPositions:
+    starts = []
+    ends = []
+    openings: set[int] = set()
+    last_text = []
+    cursor = 0
+    for text in texts:
+        starts.append(cursor)
+        ends.append(cursor + len(text))
+        openings.add(cursor + len(text) - len(text.lstrip()))
+        last_text.append(cursor + len(text.rstrip()) - 1)
+        cursor += len(text) + 1
+    return _ParagraphPositions(starts, ends, openings, last_text)
+
+
+def _close_quotation(
+    state: _QuotationState, positions: _ParagraphPositions, source: str, token: re.Match[str]
+) -> None:
+    opener = _OPENING_QUOTE[token.group()]
+    first = bisect_right(positions.ends, state.quotes[opener].start)
+    stop = bisect_left(positions.starts, token.end())
+    if stop - first > 1:
+        state.protected.update(range(max(first, state.covered_until.get(opener, first)), stop))
+        state.covered_until[opener] = stop
+    # A plural possessive can also look like a closing mark. Retain both its
+    # opener and continuation state until a definite closing mark arrives.
+    if not _possible_plural_possessive(source, token.group(), token.start()):
+        state.quotes.pop(opener)
+
+
+def _open_quotation(
+    state: _QuotationState, positions: _ParagraphPositions, token: re.Match[str]
+) -> None:
+    delimiter = QuoteDelimiter(token.group())
+    state.quotes[delimiter] = opening_quotation(state.quotes.get(delimiter), positions, token)
+
+
+def opening_quotation(
+    current: OpenQuotation | None, positions: _ParagraphPositions, token: re.Match[str]
+) -> OpenQuotation:
+    position = token.start()
+    paragraph = bisect_right(positions.starts, position) - 1
+    match current:
+        case ContinuingQuotation(start, previous) if (
+            position in positions.openings
+            and previous == _previous_text_block(positions, paragraph)
+        ):
+            return ContinuingQuotation(start, paragraph)
+        case EmptyQuotation() | ContinuingQuotation() | None:
+            # A later unrelated opener starts a new quotation. Empty unmatched
+            # openers cannot establish continuation across paragraph boundaries.
+            return (
+                ContinuingQuotation(position, paragraph)
+                if position < positions.last_text[paragraph]
+                else EmptyQuotation(position)
+            )
+        case _:
+            assert_never(current)
+
+
+def _previous_text_block(positions: _ParagraphPositions, paragraph: int) -> int:
+    paragraph -= 1
+    while paragraph >= 0 and positions.last_text[paragraph] < positions.starts[paragraph]:
+        paragraph -= 1
+    return paragraph
 
 
 def _possible_plural_possessive(source: str, mark: str, position: int) -> bool:
     return mark in {"'", "’"} and position > 0 and source[position - 1] in {"s", "S"}
-
-
-def _mask_inline_code(source: str) -> str:
-    tokens = list(_CODE_TOKEN.finditer(source))
-    next_delimiter: dict[int, int] = {}
-    partners: dict[int, int] = {}
-    for index in range(len(tokens) - 1, -1, -1):
-        delimiter = tokens[index].group()
-        if delimiter == "\n":
-            next_delimiter.clear()
-        else:
-            length = len(delimiter)
-            if length in next_delimiter:
-                partners[index] = next_delimiter[length]
-            next_delimiter[length] = index
-    parts: list[str] = []
-    cursor = index = 0
-    while index < len(tokens):
-        partner = partners.get(index)
-        if partner is None:
-            index += 1
-            continue
-        start, end = tokens[index].start(), tokens[partner].end()
-        parts.extend((source[cursor:start], " " * (end - start)))
-        cursor, index = end, partner + 1
-    return "".join((*parts, source[cursor:]))
 
 
 def _word_character(value: str) -> bool:

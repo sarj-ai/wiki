@@ -10,14 +10,11 @@ import { captureBrowserSession } from "@/lib/browser-session";
 import { wikiReadHttp } from "@/lib/clients/wiki-read-http";
 import {
   zBlankSource,
-  zCancelledTaskRead,
-  zFailedTaskRead,
   zFileResponse,
-  zPendingTaskRead,
   zProposalDestination,
-  zRunningTaskRead,
   zSmartCreateResult,
   zSmartCreateSucceededTaskRead,
+  zSmartCreateTaskRead,
   zSmartCreateWarning,
   zSmartProposalRead,
   zTemplateCatalogRead,
@@ -53,19 +50,24 @@ const ProposalSchema = zSmartProposalRead
 const TemplateCatalogSchema = zTemplateCatalogRead
   .extend({ templates: z.array(zTemplateRead.strict()) })
   .strict();
+const SucceededTaskSchema = zSmartCreateSucceededTaskRead
+  .extend({ result: CreateResultSchema })
+  .strict();
+
+function strictTaskOption(
+  option: (typeof zSmartCreateTaskRead.options)[number],
+) {
+  return option.shape.status.value === "succeeded"
+    ? SucceededTaskSchema
+    : option.strict();
+}
+
+const [firstTaskOption, ...remainingTaskOptions] = zSmartCreateTaskRead.options;
 const TaskSchema = z
   .discriminatedUnion("status", [
-    zPendingTaskRead.strict(),
-    zRunningTaskRead.strict(),
-    zSmartCreateSucceededTaskRead
-      .extend({ result: CreateResultSchema })
-      .strict(),
-    zFailedTaskRead.strict(),
-    zCancelledTaskRead.strict(),
+    strictTaskOption(firstTaskOption),
+    ...remainingTaskOptions.map(strictTaskOption),
   ])
-  .refine((task) => task.kind === "file.smart_create", {
-    message: "Expected a smart-create task",
-  })
   .refine(
     (task) => task.status !== "succeeded" || task.result["task_id"] === task.id,
     { message: "Task result belongs to a different task" },
@@ -189,6 +191,8 @@ async function waitForTask(
         throw new Error(
           current.errorDetail ?? `File creation failed (${current.errorCode})`,
         );
+      case "needs_review":
+        throw new Error(current.errorDetail);
       case "succeeded":
         return current.result;
       case "pending":
@@ -203,6 +207,13 @@ async function waitForTask(
 
 function parseTask(task: z.infer<typeof TaskSchema>): SmartCreateTask {
   switch (task.status) {
+    case "needs_review":
+      return {
+        id: task.id,
+        status: "needs_review",
+        errorCode: "external_effect_uncertain",
+        errorDetail: task["error_detail"],
+      };
     case "cancelled":
       return { id: task.id, status: "cancelled" };
     case "failed":

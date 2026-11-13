@@ -3,6 +3,14 @@ from __future__ import annotations
 from app.files.errors import FilesError
 
 
+class SmartCreateUncertainError(FilesError):
+    http_status = 409
+    code = "external_effect_uncertain"
+
+    def __init__(self) -> None:
+        super().__init__("Drive may have created the file; inspect it before trying again")
+
+
 class ReorganizationUnavailableError(FilesError):
     http_status = 503
     code = "reorganization_unavailable"

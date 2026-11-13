@@ -1,3 +1,7 @@
+import math
+from typing import override
+
+
 class DocumentTransformError(Exception):
     code = "document_transform_failed"
     public_detail = "The document could not be transformed safely"
@@ -35,6 +39,11 @@ class OutputConflictError(DocumentTransformError):
     public_detail = "The existing output belongs to a different source revision"
 
 
+class ExternalEffectUncertainError(DocumentTransformError):
+    code = "external_effect_uncertain"
+    public_detail = "The provider may have created an output; inspect it before trying again"
+
+
 class OutputVerificationError(DocumentTransformError):
     code = "output_verification_failed"
     public_detail = "The transformed output did not pass lossless verification"
@@ -48,6 +57,90 @@ class IncompatiblePendingOutputError(DocumentTransformError):
 class ModelUnavailableError(DocumentTransformError):
     code = "model_unavailable"
     public_detail = "The document transformation model is temporarily unavailable"
+
+    def __init__(self, *, retry_after: float | None = None) -> None:
+        if retry_after is not None and (not math.isfinite(retry_after) or retry_after < 0):
+            msg = "Model retry delay must be finite and nonnegative"
+            raise ValueError(msg)
+        super().__init__(self.public_detail)
+        self._retry_after = retry_after
+
+    @property
+    def retryable(self) -> bool:
+        return True
+
+    @property
+    def retry_after(self) -> float | None:
+        return self._retry_after
+
+    @property
+    def retry_within_operation(self) -> bool:
+        return self.retryable
+
+
+class ExhaustedModelError(ModelUnavailableError):
+    @property
+    @override
+    def retryable(self) -> bool:
+        # The bounded operation consumed its attempts; redelivery must not reset them.
+        return False
+
+
+class NoQueueRetryModelError(ModelUnavailableError):
+    def __init__(self) -> None:
+        super().__init__()
+
+    @property
+    @override
+    def retryable(self) -> bool:
+        return False
+
+
+class ModelConfigurationError(NoQueueRetryModelError):
+    code = "model_configuration_invalid"
+    public_detail = (
+        "The configured model or endpoint is unavailable. Contact support with this task ID."
+    )
+
+
+class ModelAuthenticationError(NoQueueRetryModelError):
+    code = "model_authentication_failed"
+    public_detail = "Model provider authorization failed. Contact support with this task ID."
+
+
+class ModelPermissionError(ModelAuthenticationError):
+    code = "model_permission_denied"
+
+
+class ModelOutputError(NoQueueRetryModelError):
+    code = "model_output_invalid"
+    public_detail = "The model returned invalid output. No unverified rewrite was applied."
+
+    @property
+    @override
+    def retry_within_operation(self) -> bool:
+        # A fresh bounded model response can repair malformed JSON or binding.
+        # Exhausted output failures never restart the queue delivery.
+        return True
+
+
+class ModelDeadlineError(NoQueueRetryModelError):
+    code = "model_deadline_exhausted"
+    public_detail = (
+        "The model could not finish within the execution budget. Review this task before retrying."
+    )
+
+
+class ModelOutputTruncatedError(ModelOutputError):
+    code = "model_output_truncated"
+    public_detail = (
+        "The model reached its response limit. Review this task before retrying a smaller document."
+    )
+
+    @property
+    @override
+    def retry_within_operation(self) -> bool:
+        return False
 
 
 class ConcisionTargetUnmetError(DocumentTransformError):

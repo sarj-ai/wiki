@@ -1,5 +1,5 @@
 from copy import deepcopy
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
 from loguru import logger
 from pydantic import JsonValue
@@ -22,11 +22,19 @@ from app.document_transform.readability_tables import (
 )
 from app.document_transform.readability_types import (
     CURRENT_READABILITY_VERSION,
+    READABILITY_PARAGRAPH_WORD_LIMIT,
+    DeadlineReadabilityRefinement,
+    FinishedReadabilityRefinement,
+    IneligibleReadabilityRefinement,
+    InvalidReadabilityRefinement,
     PlannedReadabilityCheckpoint,
     ReadabilityCheckpoint,
     ReadabilityParagraph,
+    ReadabilityPart,
     ReadabilityProposal,
     ReadabilityTable,
+    RecordedReadabilityRefinement,
+    UnavailableReadabilityRefinement,
 )
 from app.identifiers import DocsRevisionId
 from app.performance import provider_retry_remaining_seconds
@@ -41,6 +49,9 @@ _MAX_LAYOUT_CHARACTERS = 60000
 # A useful group of 2-6 facts should improve on one short paragraph. Tiny
 # fragments still incur a separate penalty in the layout score.
 _LIST_ITEM_BURDEN = 8
+# A short introduction or qualification belongs to its adjacent list group.
+# Charging a full paragraph would reject useful lists for retaining that context.
+_LIST_CONTEXT_BURDEN = 4
 _KNOWN_PROJECTION_FAILURES = frozenset(
     {
         "Paragraph identity changed",
@@ -59,7 +70,19 @@ _KNOWN_PROJECTION_FAILURES = frozenset(
 class _LayoutDraft:
     proposals: list[ReadabilityProposal]
     paragraphs: tuple[ReadabilityParagraph, ...]
-    passes: int
+    refinement: RecordedReadabilityRefinement
+
+    @property
+    def passes(self) -> int:
+        return self.refinement.passes
+
+    @property
+    def planning_failure_code(self) -> str | None:
+        return self.refinement.planning_failure_code
+
+    @property
+    def accepted_improvements(self) -> int:
+        return self.refinement.accepted_improvements
 
 
 @dataclass(frozen=True, slots=True)
@@ -81,7 +104,7 @@ async def plan_readability(
         raise ValueError(msg)
     draft = await _refine_layout(document, title=title, generator=generator, max_passes=max_passes)
     mutations = _bounded_readability_mutations(document, draft.paragraphs)
-    if not mutations.requests:
+    if not mutations.requests and not draft.passes and draft.planning_failure_code is None:
         return None
     checkpoint = PlannedReadabilityCheckpoint(
         version=CURRENT_READABILITY_VERSION,
@@ -94,15 +117,26 @@ async def plan_readability(
             str(tab_id): deepcopy(obj(tab.get("lists", {}))) for tab_id, tab in bodies(document)
         },
         requests=mutations.requests,
-        model_invoked=bool(draft.passes),
-        passes=draft.passes,
+        refinement=draft.refinement,
     )
     checkpoint = checkpoint.model_copy(
         update={
             "invariant_sha256": readability_invariant_sha256(document, checkpoint, applied=False)
         }
     )
-    return None if verify_readability(document, checkpoint) else checkpoint
+    if not verify_readability(document, checkpoint):
+        return checkpoint
+    if not draft.passes and draft.planning_failure_code is None:
+        return None
+    # Retain the attempted model outcome even when no native edits are needed.
+    # A pending zero-request plan is durably saved and strictly read back by the
+    # ordinary provider path, which performs no write for an already exact match.
+    unchanged = checkpoint.model_copy(update={"paragraphs": (), "tables": (), "requests": []})
+    return unchanged.model_copy(
+        update={
+            "invariant_sha256": readability_invariant_sha256(document, unchanged, applied=False)
+        }
+    )
 
 
 def _bounded_readability_mutations(
@@ -134,7 +168,7 @@ async def _refine_layout(
     document: dict[str, JsonValue], *, title: str, generator: PatchGenerator, max_passes: int
 ) -> _LayoutDraft:
     ir = readability_document(document, title=title)
-    best = _LayoutDraft([], (), 0)
+    best = _LayoutDraft([], (), IneligibleReadabilityRefinement())
     if (
         not generator.supports_readability_planning
         or not any(block.editable for block in ir.blocks)
@@ -146,27 +180,81 @@ async def _refine_layout(
     for number in range(1, max_passes + 1):
         remaining = provider_retry_remaining_seconds()
         if remaining is not None and remaining < _MIN_LAYOUT_SECONDS:
+            best = replace(
+                best,
+                refinement=DeadlineReadabilityRefinement(
+                    passes=best.passes, accepted_improvements=best.accepted_improvements
+                ),
+            )
             break
         # Failed provider calls still count as attempts in table-only receipts.
-        best = _LayoutDraft(best.proposals, best.paragraphs, number)
+        best = replace(
+            best,
+            refinement=FinishedReadabilityRefinement(
+                stop_reason="pass_limit",
+                passes=number,
+                accepted_improvements=best.accepted_improvements,
+            ),
+        )
         try:
             proposals = await generator.plan_readability(
                 ir, previous=best.proposals, feedback=feedback
             )
             paragraphs = validated_readability_paragraphs(document, ir, proposals)
-        except ModelUnavailableError:
+        except ModelUnavailableError as error:
+            best = _provider_stopped_draft(best, error)
             break
         except ValueError as error:
             if feedback:
+                best = replace(
+                    best,
+                    refinement=InvalidReadabilityRefinement(
+                        passes=best.passes, accepted_improvements=best.accepted_improvements
+                    ),
+                )
                 break
             feedback = str(error)
             continue
         candidate_score = _layout_burden(proposals, document, title=title)
         if candidate_score >= score:
+            best = replace(
+                best,
+                refinement=FinishedReadabilityRefinement(
+                    stop_reason="converged" if proposals == best.proposals else "no_improvement",
+                    passes=best.passes,
+                    accepted_improvements=best.accepted_improvements,
+                ),
+            )
             break
-        best, score = _LayoutDraft(proposals, paragraphs, number), candidate_score
+        best, score = (
+            replace(
+                best,
+                proposals=proposals,
+                paragraphs=paragraphs,
+                refinement=FinishedReadabilityRefinement(
+                    stop_reason="pass_limit",
+                    passes=best.passes,
+                    accepted_improvements=best.accepted_improvements + 1,
+                ),
+            ),
+            candidate_score,
+        )
         feedback = "Further improve the previous layout only if it makes the whole document easier to read. Keep text exact."
     return best
+
+
+def _provider_stopped_draft(best: _LayoutDraft, error: ModelUnavailableError) -> _LayoutDraft:
+    if error.code == "model_deadline_exhausted":
+        refinement: RecordedReadabilityRefinement = DeadlineReadabilityRefinement(
+            passes=best.passes, accepted_improvements=best.accepted_improvements
+        )
+    else:
+        refinement = UnavailableReadabilityRefinement(
+            passes=best.passes,
+            accepted_improvements=best.accepted_improvements,
+            planning_failure_code=error.code,
+        )
+    return replace(best, refinement=refinement)
 
 
 def _layout_burden(
@@ -179,19 +267,36 @@ def _layout_burden(
             continue
         proposal = by_id.get(block.id)
         if proposal is None:
-            score += max(0, len(block.text.split()) - 45) ** 2 + 60
+            score += max(0, len(block.text.split()) - READABILITY_PARAGRAPH_WORD_LIMIT) ** 2 + 60
             continue
-        for part in proposal.parts:
-            words = len(part.text.split())
-            score += max(0, words - 45) ** 2 + (
-                60
-                if part.role == "paragraph"
-                else _LIST_ITEM_BURDEN
-                if part.role in {"bullet", "numbered"}
-                else 25
-            )
-            score += max(0, 2 - words) * 50 if part.role in {"bullet", "numbered"} else 0
+        score += sum(
+            _part_layout_burden(proposal.parts, index) for index in range(len(proposal.parts))
+        )
     return score
+
+
+def _part_layout_burden(parts: tuple[ReadabilityPart, ...], index: int) -> int:
+    part = parts[index]
+    words = len(part.text.split())
+    fragments = 0
+    if part.role == "paragraph":
+        overhead = 60
+        if words <= READABILITY_PARAGRAPH_WORD_LIMIT and _adjacent_to_list(parts, index):
+            overhead = _LIST_CONTEXT_BURDEN
+    elif part.role in {"bullet", "numbered"}:
+        overhead = _LIST_ITEM_BURDEN
+        fragments = max(0, 2 - words) * 50
+    else:
+        overhead = 25
+    return max(0, words - READABILITY_PARAGRAPH_WORD_LIMIT) ** 2 + overhead + fragments
+
+
+def _adjacent_to_list(parts: tuple[ReadabilityPart, ...], index: int) -> bool:
+    return any(
+        parts[neighbor].role in {"bullet", "numbered"}
+        for neighbor in (index - 1, index + 1)
+        if 0 <= neighbor < len(parts)
+    )
 
 
 def verify_readability(

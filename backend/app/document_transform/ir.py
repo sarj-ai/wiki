@@ -14,7 +14,8 @@ from pydantic import JsonValue
 
 from app.document_transform.code_syntax import is_code_font_family
 from app.document_transform.errors import SourceTooLargeError, UnsupportedSourceError
-from app.document_transform.limits import MAX_MARKDOWN_BYTES, MIN_MODEL_PROSE_WORDS
+from app.document_transform.limits import MAX_MARKDOWN_BYTES
+from app.document_transform.markdown_inline_code import multiline_inline_code_lines
 from app.document_transform.native_code_source import protect_native_code
 from app.document_transform.native_prose import brandable_prose, linked_prose_tail
 from app.identifiers import DocsSegmentId, DocsTabId
@@ -67,7 +68,8 @@ class TextBlock:
     source_range: SourceRange | None = None
     editable: bool = True
     # Formatting permission is independent from permission to replace prose.
-    # These ranges permit only a font-family override, never a text replacement.
+    # These ranges permit font changes, never a text replacement. Ordinary prose
+    # also resets decorative weight while retaining links and other run properties.
     font_style_ranges: tuple[SourceRange, ...] = ()
     native_content: tuple[NativeContent, ...] = ()
     native_named_style: str | None = None
@@ -300,10 +302,15 @@ def parse_markdown(content: str, *, title: str) -> DocumentIR:
         raise UnsupportedSourceError from exc
     if len(encoded) > MAX_MARKDOWN_BYTES:
         raise SourceTooLargeError
-    lines = content.splitlines()
+    # CommonMark line maps count CR/LF boundaries. Other Unicode separators
+    # remain literal characters, including inside inline code.
+    lines = re.split(r"\r\n?|\n", content)
+    if not lines[-1]:
+        lines.pop()
     if any(_looks_like_raw_html(line) for line in lines):
         raise UnsupportedSourceError
     protected_lines = _frontmatter_lines(lines) | _table_lines(lines)
+    inline_code_lines = multiline_inline_code_lines(content)
     blocks: list[TextBlock] = []
     fence_marker: str | None = None
     fence_lines: list[str] = []
@@ -331,6 +338,8 @@ def parse_markdown(content: str, *, title: str) -> DocumentIR:
             fence_lines.append(line)
             continue
         _append_markdown_line(blocks, line, protected=line_index in protected_lines)
+        if line_index in inline_code_lines:
+            blocks[-1] = replace(blocks[-1], editable=False)
     if fence_marker is not None:
         raise UnsupportedSourceError
     return DocumentIR(title=title, blocks=tuple(blocks), source_format="markdown")
@@ -431,11 +440,35 @@ def rewrite_markdown(
         cursor = end
         replacement = transformed_by_id[block.id].text
         if replacement != block.text:
+            if not replacement and block.kind in {BlockKind.PARAGRAPH, BlockKind.HEADING}:
+                deleted = _deleted_markdown_line(source, start=start, end=end, block=block)
+                start, end = deleted.start, deleted.stop
             replacements.append((start, end, replacement))
     output = source
     for start, end, replacement in reversed(replacements):
         output = f"{output[:start]}{replacement}{output[end:]}"
     return output
+
+
+def _deleted_markdown_line(source: str, *, start: int, end: int, block: TextBlock) -> range:
+    line_start = source.rfind("\n", 0, start) + 1
+    line_end = source.find("\n", end)
+    if line_end < 0:
+        line_end = len(source)
+    line = source[line_start:line_end].removesuffix("\r")
+    if block.kind is BlockKind.HEADING:
+        heading = _HEADING.fullmatch(line)
+        if heading is None or heading.group(2) != block.text:
+            raise UnsupportedSourceError
+    elif line != block.text:
+        raise UnsupportedSourceError
+    end = min(line_end + 1, len(source))
+    next_end = source.find("\n", end)
+    if next_end < 0:
+        next_end = len(source)
+    if not source[end:next_end].strip():
+        end = min(next_end + 1, len(source))
+    return range(line_start, end)
 
 
 def _append_block(
@@ -622,8 +655,7 @@ def _with_native_prose_tail(
         return block
     return replace(
         block,
-        editable=block.editable
-        or len(block.text.removesuffix(tail.text).split()) >= MIN_MODEL_PROSE_WORDS,
+        editable=block.editable or bool(block.text.removesuffix(tail.text).strip()),
         protected_suffix=tail.text,
         protected_suffix_links_sha256=tail.links_sha256,
         native_prefix_style_json=tail.prefix_style_json,

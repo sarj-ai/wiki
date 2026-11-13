@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from datetime import timedelta
+from datetime import UTC, datetime, timedelta
 import hashlib
 import time
 from typing import Protocol, override
@@ -26,6 +26,7 @@ from app.document_transform.brand_manifest import CURRENT_BRAND_MANIFEST
 from app.document_transform.errors import (
     DocumentGatewayError,
     DocumentTransformError,
+    ExternalEffectUncertainError,
     InPlaceNeedsReviewError,
     ModelUnavailableError,
     UnsupportedSourceError,
@@ -64,22 +65,23 @@ from app.files.service import GoogleFilesService
 from app.identifiers import FileId, TaskId
 from app.models.user import User
 from app.models.wiki import DocumentHeaderProvenance
+from app.performance import provider_retry_budget
 from app.tasks.errors import TaskExecutionDeferredError, TaskNotClaimableError
 from app.tasks.schemas import (
-    CancelledTaskRead,
-    DocumentTransformSucceededTaskRead,
-    DocumentTransformTaskRecord,
-    FailedTaskRead,
-    SmartCreateSucceededTaskRead,
+    ActiveDocumentTransformTaskRecord,
+    ReviewDocumentTransformTaskRecord,
     TaskClaim,
     TaskRead,
+    TerminalDocumentTransformTaskRecord,
 )
 from app.tasks.service import TaskService
 
 
 _EXECUTION_LEASE = timedelta(minutes=6)
 _MAX_LOGO_BYTES = 2 * 1024 * 1024
-_MAX_TASK_ATTEMPTS = 10
+_MAX_TASK_ATTEMPTS = 3
+_MAX_TASK_AGE = timedelta(minutes=10)
+_MAX_DELIVERY_BUDGET = timedelta(minutes=4)
 
 
 class DocumentTransformTaskExecutor(ABC):
@@ -88,6 +90,8 @@ class DocumentTransformTaskExecutor(ABC):
 
 
 class RetryTaskStore(Protocol):
+    async def require_review(self, task_id: TaskId, *, lease_token: uuid.UUID) -> TaskRead: ...
+
     async def defer(self, task_id: TaskId, *, lease_token: uuid.UUID) -> TaskRead: ...
 
     async def fail(
@@ -159,13 +163,6 @@ class DocumentTransformRuntime:
     short_links: PolishShortLinks | None = None
 
 
-def _required_payload(record: DocumentTransformTaskRecord) -> DocumentTransformRequest:
-    if record.payload is None:
-        msg = "Active document-transform task is missing its payload"
-        raise ValueError(msg)
-    return record.payload
-
-
 class DriveDocumentTransformTaskExecutor(DocumentTransformTaskExecutor):
     def __init__(
         self,
@@ -194,12 +191,8 @@ class DriveDocumentTransformTaskExecutor(DocumentTransformTaskExecutor):
             # A malformed encrypted payload or checkpoint must not prevent the
             # worker from claiming the task and recording a terminal failure.
             record = None
-        if record is not None and isinstance(
-            record.task,
-            SmartCreateSucceededTaskRead
-            | DocumentTransformSucceededTaskRead
-            | FailedTaskRead
-            | CancelledTaskRead,
+        if isinstance(
+            record, TerminalDocumentTransformTaskRecord | ReviewDocumentTransformTaskRecord
         ):
             return record.task
         try:
@@ -208,7 +201,9 @@ class DriveDocumentTransformTaskExecutor(DocumentTransformTaskExecutor):
             raise TaskExecutionDeferredError from exc
         try:
             claimed_record = await self._tasks.load_document_transform(task_id)
-            claimed_payload = _required_payload(claimed_record)
+            if not isinstance(claimed_record, ActiveDocumentTransformTaskRecord):
+                return claimed_record.task
+            claimed_payload = claimed_record.payload
         except ValueError, TypeError, InvalidToken:
             return await self._tasks.fail(
                 task_id,
@@ -217,6 +212,13 @@ class DriveDocumentTransformTaskExecutor(DocumentTransformTaskExecutor):
                 error_detail="The saved document transformation request could not be read",
             )
         try:
+            if datetime.now(UTC) - claim.task.created_at >= _MAX_TASK_AGE:
+                return await self._tasks.fail(
+                    task_id,
+                    lease_token=claim.lease_token,
+                    error_code="execution_deadline_exhausted",
+                    error_detail="The task exceeded its total execution budget. Review any existing output before retrying.",
+                )
             if claim.task.attempt_count > _MAX_TASK_ATTEMPTS:
                 return await self._tasks.fail(
                     task_id,
@@ -287,15 +289,24 @@ class DriveDocumentTransformTaskExecutor(DocumentTransformTaskExecutor):
                 error_detail="The document transformation could not be initialized",
                 cause=exc,
             )
-        return await _execute_claimed(
-            tasks=self._tasks,
-            transform=runtime.transform,
-            task_id=task_id,
-            claim=claim,
-            payload=claimed_payload,
-            checkpoint=claimed_record.checkpoint,
-            short_links=runtime.short_links,
-        )
+        remaining = _MAX_TASK_AGE - (datetime.now(UTC) - claim.task.created_at)
+        if remaining.total_seconds() < 1:
+            return await self._tasks.fail(
+                task_id,
+                lease_token=claim.lease_token,
+                error_code="execution_deadline_exhausted",
+                error_detail="The task exceeded its total execution budget before execution.",
+            )
+        with provider_retry_budget(min(_MAX_DELIVERY_BUDGET, remaining)):
+            return await _execute_claimed(
+                tasks=self._tasks,
+                transform=runtime.transform,
+                task_id=task_id,
+                claim=claim,
+                payload=claimed_payload,
+                checkpoint=claimed_record.checkpoint,
+                short_links=runtime.short_links,
+            )
 
     async def _runtime(
         self,
@@ -362,6 +373,10 @@ class DriveDocumentTransformTaskExecutor(DocumentTransformTaskExecutor):
                         gateway=presentation_gateway,
                         generator=self._generator,
                         logo_uri=logo_uri,
+                        checkpoint_store=self._tasks,
+                        lease_token=lease_token,
+                        checkpoint=checkpoint,
+                        checkpoint_generation=checkpoint_generation,
                     ),
                 )
         document_gateway = GoogleDocumentGateway(
@@ -490,6 +505,8 @@ async def _execute_claimed(
     )
     try:
         result = await transform.execute(operation_id=task_id, request=payload)
+    except ExternalEffectUncertainError:
+        return await tasks.require_review(task_id, lease_token=claim.lease_token)
     except ProviderDeadlineError as exc:
         _log_transform_failure(
             task_id=task_id,
@@ -514,7 +531,7 @@ async def _execute_claimed(
             error_code=exc.code,
             started_at=started_at,
         )
-        if isinstance(exc, DocumentGatewayError) and not exc.retryable:
+        if not exc.retryable:
             return await tasks.fail(
                 task_id,
                 lease_token=claim.lease_token,
@@ -642,7 +659,10 @@ async def defer_or_fail_retryable_task(
     error_detail: str,
     cause: Exception,
 ) -> TaskRead:
-    if claim.task.attempt_count >= _MAX_TASK_ATTEMPTS:
+    if (
+        claim.task.attempt_count >= _MAX_TASK_ATTEMPTS
+        or datetime.now(UTC) - claim.task.created_at >= _MAX_TASK_AGE
+    ):
         return await tasks.fail(
             task_id,
             lease_token=claim.lease_token,

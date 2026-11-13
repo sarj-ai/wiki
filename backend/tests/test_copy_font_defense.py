@@ -74,6 +74,10 @@ def document(*, known: bool = True, formatted: bool = False) -> dict[str, Any]:
                 "weight": 700 if part["textRun"]["textStyle"]["bold"] else 400,
             }
     if formatted:
+        for part in parts(value)[:-1]:
+            part["textRun"]["textStyle"].update(
+                {"bold": False, "weightedFontFamily": {"fontFamily": "Nunito", "weight": 400}}
+            )
         value["tabs"][0]["documentTab"]["body"]["content"][0]["paragraph"]["paragraphStyle"][
             "alignment"
         ] = "JUSTIFIED"
@@ -108,7 +112,7 @@ def mutations(value: dict[str, Any]) -> list[dict[str, Any]]:
     )
 
 
-def test_copy_font_family_updates_explicitly_preserve_bold_weight_and_terminal():
+def test_copy_font_updates_regularize_prose_and_preserve_terminal_and_other_styles():
     value = document()
     before = deepcopy(value)
     requests = [
@@ -116,16 +120,17 @@ def test_copy_font_family_updates_explicitly_preserve_bold_weight_and_terminal()
         for item in mutations(value)
         if "updateTextStyle" in item and not item["updateTextStyle"]["range"].get("segmentId")
     ]
-    assert len(requests) == 3
-    for update, part in zip(requests, parts(value), strict=True):
-        style = part["textRun"]["textStyle"]
+    for part in parts(value):
+        update = next(
+            item
+            for item in reversed(requests)
+            if item["range"]["startIndex"] == part["startIndex"]
+            and item["range"]["endIndex"] == part["endIndex"]
+        )
         assert update["fields"] == "weightedFontFamily,bold"
         assert update["textStyle"] == {
-            "bold": style["bold"],
-            "weightedFontFamily": {
-                "fontFamily": "Nunito",
-                "weight": style["weightedFontFamily"]["weight"],
-            },
+            "bold": False,
+            "weightedFontFamily": {"fontFamily": "Nunito", "weight": 400},
         }
         assert update["range"]["startIndex"] == part["startIndex"]
         assert update["range"]["endIndex"] == part["endIndex"]
@@ -143,9 +148,9 @@ def test_copy_font_semantics_reject_any_non_authorized_change(change: str):
     first = parts(actual)[0]["textRun"]["textStyle"]
     match change:
         case "bold":
-            first["bold"] = False
+            first["bold"] = True
         case "weight":
-            first["weightedFontFamily"]["weight"] = 400
+            first["weightedFontFamily"]["weight"] = 700
         case "italic":
             first["italic"] = True
         case "family":
@@ -172,9 +177,16 @@ def test_unknown_weight_preserves_exact_family_without_unsafe_requests():
     assert not verify_copy_fonts(source, actual, expected, list_identity_equivalent=False)
 
 
-def test_already_target_font_is_exact_noop():
+def test_already_regular_target_font_retains_explicit_normalization():
     source = document(formatted=True)
-    assert [set(item) for item in mutations(source)] == [{"updateDocumentStyle"}]
+    requests = mutations(source)
+    assert all(set(item) <= {"updateDocumentStyle", "updateTextStyle"} for item in requests)
+    assert all(
+        item["updateTextStyle"]["textStyle"]
+        == {"bold": False, "weightedFontFamily": {"fontFamily": "Nunito", "weight": 400}}
+        for item in requests
+        if "updateTextStyle" in item
+    )
     assert verify_copy_fonts(source, source, planned(source), list_identity_equivalent=False)
 
 
@@ -195,7 +207,7 @@ async def test_copy_plan_binds_fonts_findings_manifest_and_completed_replay(*, k
         gateway=gateway, store=store, task_id=operation
     ).execute(operation_id=operation, request=request)
     checkpoint = store.checkpoints[-1]
-    assert checkpoint.request_builder_version.endswith("-copy-font-v1")
+    assert checkpoint.request_builder_version.endswith("-copy-font-v2")
     assert (
         any(finding.code == "native_font_family_preserved" for finding in result.findings)
         is not known
@@ -227,6 +239,7 @@ async def test_copy_plan_binds_fonts_findings_manifest_and_completed_replay(*, k
     for update in (
         {"request_builder_version": "google-docs-requests-v26"},
         {"request_builder_version": "google-docs-requests-v29-copy-font-v1"},
+        {"request_builder_version": checkpoint.request_builder_version.replace("-v2", "-v1")},
         {"manifest_sha256": "wrong"},
         {"findings": []} if not known else {"plan_sha256": "wrong"},
     ):
@@ -279,7 +292,7 @@ async def test_public_copy_gateway_requires_semantic_font_attestation(
 ):
     source, actual = document(), document(formatted=True)
     if tamper:
-        parts(actual)[0]["textRun"]["textStyle"]["weightedFontFamily"]["weight"] = 400
+        parts(actual)[0]["textRun"]["textStyle"]["weightedFontFamily"]["weight"] = 700
     gateway = object.__new__(GoogleDocumentGateway)
     monkeypatch.setattr(gateway, "_get_document_sync", lambda _: deepcopy(actual))
     result = await gateway.verify_output(
@@ -350,7 +363,9 @@ def test_mixed_visual_title_and_rich_body_have_independent_exact_proofs():
     assert not expected.blocks[1].preserved_font_family
     actual = deepcopy(source)
     for item in actual["tabs"][0]["documentTab"]["body"]["content"][1]["paragraph"]["elements"]:
-        item["textRun"]["textStyle"]["weightedFontFamily"]["fontFamily"] = "Nunito"
+        item["textRun"]["textStyle"].update(
+            {"bold": False, "weightedFontFamily": {"fontFamily": "Nunito", "weight": 400}}
+        )
     actual["tabs"][0]["documentTab"]["body"]["content"][1]["paragraph"]["paragraphStyle"][
         "alignment"
     ] = "JUSTIFIED"
@@ -371,7 +386,7 @@ def test_provider_fragmentation_preserves_exact_residual_and_weight_intervals():
     second["textRun"]["content"] = "pha "
     parts(actual).insert(1, second)
     assert verify_copy_fonts(source, actual, planned(source), list_identity_equivalent=False)
-    second["textRun"]["textStyle"]["weightedFontFamily"]["weight"] = 400
+    second["textRun"]["textStyle"]["weightedFontFamily"]["weight"] = 700
     assert not verify_copy_fonts(source, actual, planned(source), list_identity_equivalent=False)
 
 
@@ -453,7 +468,9 @@ async def test_preceding_utf16_edit_updates_rich_family_with_bound_shifted_posit
         item["endIndex"] -= 6 - target_start
     assert not verify_copy_fonts(source, actual, expected, list_identity_equivalent=False)
     for part in actual_body[1]["paragraph"]["elements"]:
-        part["textRun"]["textStyle"]["weightedFontFamily"]["fontFamily"] = "Nunito"
+        part["textRun"]["textStyle"].update(
+            {"bold": False, "weightedFontFamily": {"fontFamily": "Nunito", "weight": 400}}
+        )
     actual_body[1]["paragraph"]["paragraphStyle"]["alignment"] = "JUSTIFIED"
     assert verify_copy_fonts(source, actual, expected, list_identity_equivalent=False)
     if not replacement:
@@ -470,7 +487,7 @@ async def test_preceding_utf16_edit_updates_rich_family_with_bound_shifted_posit
         assert verified.content_preserved
         assert verified.structure_preserved
         assert verified.brand_applied
-    actual_body[1]["paragraph"]["elements"][0]["textRun"]["textStyle"]["bold"] = False
+    actual_body[1]["paragraph"]["elements"][0]["textRun"]["textStyle"]["bold"] = True
     assert not verify_copy_fonts(source, actual, expected, list_identity_equivalent=False)
 
 
@@ -485,13 +502,15 @@ def test_inline_code_keeps_its_font_while_surrounding_prose_gets_the_brand_font(
         for r in mutations(source)
         if r.get("updateTextStyle", {}).get("fields") == "weightedFontFamily,bold"
     ]
-    assert [(s["range"]["startIndex"], s["range"]["endIndex"]) for s in styles] == [
+    assert sorted({(s["range"]["startIndex"], s["range"]["endIndex"]) for s in styles}) == [
         (1, 7),
         (11, 12),
     ]
     actual = deepcopy(source)
     for index in (0, 2):
-        parts(actual)[index]["textRun"]["textStyle"]["weightedFontFamily"]["fontFamily"] = "Nunito"
+        parts(actual)[index]["textRun"]["textStyle"].update(
+            {"bold": False, "weightedFontFamily": {"fontFamily": "Nunito", "weight": 400}}
+        )
     actual["tabs"][0]["documentTab"]["body"]["content"][0]["paragraph"]["paragraphStyle"][
         "alignment"
     ] = "JUSTIFIED"
@@ -515,7 +534,9 @@ def test_verified_list_renaming_does_not_change_unrelated_rich_font_selection():
     assert expected.blocks[1].preserved_font_family
     actual = deepcopy(source)
     for item in parts(actual):
-        item["textRun"]["textStyle"]["weightedFontFamily"]["fontFamily"] = "Nunito"
+        item["textRun"]["textStyle"].update(
+            {"bold": False, "weightedFontFamily": {"fontFamily": "Nunito", "weight": 400}}
+        )
     actual["tabs"][0]["documentTab"]["body"]["content"][0]["paragraph"]["paragraphStyle"][
         "alignment"
     ] = "JUSTIFIED"

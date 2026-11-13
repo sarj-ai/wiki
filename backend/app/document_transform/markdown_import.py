@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Iterable
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 import hashlib
 from typing import Any, NamedTuple, TypedDict
 
@@ -1553,6 +1553,13 @@ def _paragraph_brand_matches(
     if not _paragraph_spacing_matches(paragraph_style, named_paragraph_style, expected):
         return False
     runs = tuple(_text_runs(paragraph))
+    if expected.kind == "table_cell" and not expected.text:
+        runs = _empty_table_cell_runs(paragraph)
+        expected = replace(
+            expected,
+            text="\n",
+            inline_signature=(MarkdownImportInline(text="\n"),),
+        )
     role = _RoleBrand(
         size=_role_size(expected),
         color=_role_color(expected),
@@ -1560,6 +1567,28 @@ def _paragraph_brand_matches(
         italic=expected.kind == "quote",
     )
     return bool(runs) and _runs_match_brand(runs, expected, named_text_style, role)
+
+
+def _empty_table_cell_runs(paragraph: dict[str, JsonValue]) -> tuple[_TextRun, ...]:
+    # Empty cells still have a styled paragraph break. Verify that style without
+    # treating zero, whitespace, a link or a native object as an empty cell.
+    elements = paragraph.get("elements")
+    if not isinstance(elements, list) or len(elements) != 1:
+        return ()
+    element = elements[0]
+    if not isinstance(element, dict) or set(element) - {"startIndex", "endIndex", "textRun"}:
+        return ()
+    text_run = element.get("textRun")
+    if (
+        not isinstance(text_run, dict)
+        or set(text_run) - {"content", "textStyle"}
+        or text_run.get("content") != "\n"
+    ):
+        return ()
+    style = text_run.get("textStyle", {})
+    if not isinstance(style, dict) or style.get("link") is not None:
+        return ()
+    return (_TextRun("\n", style),)
 
 
 def _runs_match_brand(

@@ -153,6 +153,8 @@ async def test_google_docs_readback_verifies_native_lists_heading_and_content_fi
     editor = _LayoutEditor()
     plan = await _plan(editor)
     assert editor.calls == plan.passes == 2
+    assert plan.accepted_improvements == 1
+    assert plan.stop_reason == "converged"
     assert len(plan.paragraphs) == 3
     assert len(plan.tables) == 1
     assert plan.tables[0].numeric == {1}
@@ -373,20 +375,37 @@ async def test_layout_can_run_all_100_improving_passes_and_keeps_every_source_ch
     plan = await plan_readability(document, title="Parallel facts", generator=editor)
     assert plan is not None
     assert plan.passes == editor.calls == 100
+    assert plan.accepted_improvements == 100
+    assert plan.stop_reason == "pass_limit"
     assert len(plan.paragraphs) == 100
     assert all(
         " ".join(part.text for part in item.parts) + "\n" == source for item in plan.paragraphs
     )
 
 
-async def test_repeated_formatting_is_a_zero_write_noop_when_the_layout_already_matches() -> None:
+async def test_repeated_formatting_preserves_layout_and_reports_failed_model_work_without_writes() -> (
+    None
+):
     document = _fixture("after")
-    assert (
-        await plan_readability(
-            document, title="Readability fixture", generator=_LayoutEditor(unavailable=True)
-        )
-        is None
+    plan = await plan_readability(
+        document, title="Readability fixture", generator=_LayoutEditor(unavailable=True)
     )
+    assert plan is not None
+    assert not plan.requests
+    assert plan.model_invoked
+    assert plan.planning_failure_code == "model_unavailable"
+
+    async def read(_document_id: FileId) -> dict[str, JsonValue]:
+        return deepcopy(document)
+
+    async def write(_document_id: FileId, _checkpoint: ReadabilityCheckpoint) -> None:
+        pytest.fail("An unchanged native layout must not be written")
+
+    completed = await ReadabilityProvider(read, write).apply(
+        document_id=FileId("readability-fixture"), checkpoint=plan
+    )
+    assert completed.complete
+    assert completed.revision_id == document["revisionId"]
 
 
 async def test_inherited_typography_and_paragraph_layout_are_eligible_and_verify() -> None:

@@ -62,9 +62,10 @@ def test_body_tables_receive_cell_formatting_without_inventing_a_header(
             obj(cells[0]["tableCellStyle"])["backgroundColor"]
             != obj(cells[1]["tableCellStyle"])["backgroundColor"]
         )
-    assert not any(
-        "updateTextStyle" in request and "bold" in str(obj(request["updateTextStyle"])["fields"])
+    assert all(
+        obj(obj(request["updateTextStyle"])["textStyle"])["bold"] is False
         for request in requests
+        if "updateTextStyle" in request
     )
     assert not any("pinTableHeaderRows" in request for request in requests)
     assert document == original

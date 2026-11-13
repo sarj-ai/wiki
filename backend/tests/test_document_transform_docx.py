@@ -248,7 +248,8 @@ def test_plain_runs_inherit_bold_and_italic_from_paragraph_styles() -> None:
     assert quote.style is not None
     assert quote.style.font.italic is True
     assert quote.runs[0].italic is None
-    assert next(run for run in body.runs if run.text == "bold").bold is None
+    assert body.text == "Plain bold and italic."
+    assert all(run.bold is None for run in body.runs)
     assert next(run for run in body.runs if run.text == "italic").italic is True
 
     with ZipFile(BytesIO(rendered)) as archive:

@@ -213,64 +213,122 @@ def capture_native_font_proof(
     )
     for block in original.blocks:
         selected_visual = block.id in visual_authority_block_ids
-        if (
-            (block.editable and not selected_visual)
-            or (not block.font_style_ranges and not selected_visual)
-            or block.source_range is None
+        if not _needs_font_proof(
+            block,
+            selected_visual=selected_visual,
+            transformed=transformed,
+            target_font_family=target_font_family,
         ):
             continue
-        source = block.source_range
-        matches = [
-            (ordinal, element)
-            for ordinal, element in enumerate(bodies[source.tab_id])
-            if element.get("startIndex") == source.start_index
-            and element.get("endIndex") == source.end_index + 1
-        ]
-        if len(matches) != 1:
-            raise ValueError
-        ordinal, element = matches[0]
-        digest = native_paragraph_font_sha256(element)
-        semantics = None
-        if target_font_family is not None:
-            semantics = capture_font_semantics(
-                document,
-                source.tab_id,
-                element,
-                target_font_family=target_font_family,
-                preserve_family=block.id in preserved_family_block_ids,
-                position_delta=position_deltas.get(block.id, 0),
-            )
-            digest = semantic_font_digest(
-                document, source.tab_id, element, semantics, require_target_family=False
-            )
-            interval_count += len(semantics.intervals)
+        proof = _capture_block_font_proof(
+            document,
+            bodies,
+            block,
+            target_font_family=target_font_family,
+            preserve_family=block.id in preserved_family_block_ids,
+            position_delta=position_deltas.get(block.id, 0),
+            selected_visual=selected_visual,
+        )
+        if proof.semantics is not None:
+            interval_count += len(proof.semantics.intervals)
             if interval_count > MAX_NATIVE_FONT_INTERVALS:
                 raise ValueError
         captured_ids.add(block.id)
-        result.append(
-            NativeFontProof(
-                version=2 if semantics is not None else 1,
-                block_id=NativeFontBlockId(block.id) if semantics is not None else None,
-                semantics=semantics,
-                visual_authority=selected_visual,
-                tab_id=source.tab_id,
-                body_ordinal=ordinal,
-                sha256=digest,
-                named_styles_sha256=_named_styles_digest(document, source.tab_id),
-                components=_optional_components(element),
-            )
-        )
+        result.append(proof)
+    _require_font_proof_coverage(
+        captured_ids,
+        NativeFontVerificationPolicy(preserved_family_block_ids=preserved_family_block_ids),
+        NativeVisualAuthoritySelection(visual_authority_block_ids),
+        target_font_family,
+    )
+    return tuple(result)
+
+
+def _require_font_proof_coverage(
+    captured_ids: set[str],
+    font_policy: NativeFontVerificationPolicy,
+    visual_authority: NativeVisualAuthoritySelection,
+    target_font_family: str | None,
+) -> None:
     if (
-        len(preserved_family_block_ids) != len(set(preserved_family_block_ids))
-        or not set(preserved_family_block_ids) <= captured_ids
-        or (preserved_family_block_ids and target_font_family is None)
+        len(font_policy.preserved_family_block_ids)
+        != len(set(font_policy.preserved_family_block_ids))
+        or not set(font_policy.preserved_family_block_ids) <= captured_ids
+        or (font_policy.preserved_family_block_ids and target_font_family is None)
     ):
         raise ValueError
-    if len(visual_authority_block_ids) != len(set(visual_authority_block_ids)) or not set(
-        visual_authority_block_ids
-    ) <= set(preserved_family_block_ids):
+    if len(visual_authority.block_ids) != len(set(visual_authority.block_ids)) or not set(
+        visual_authority.block_ids
+    ) <= set(font_policy.preserved_family_block_ids):
         raise ValueError
-    return tuple(result)
+
+
+def _capture_block_font_proof(
+    document: dict[str, JsonValue],
+    bodies: dict[str, list[dict[str, JsonValue]]],
+    block: TextBlock,
+    *,
+    target_font_family: str | None,
+    preserve_family: bool,
+    position_delta: int,
+    selected_visual: bool,
+) -> NativeFontProof:
+    source = block.source_range
+    if source is None:
+        raise ValueError
+    matches = [
+        (ordinal, element)
+        for ordinal, element in enumerate(bodies[source.tab_id])
+        if element.get("startIndex") == source.start_index
+        and element.get("endIndex") == source.end_index + 1
+    ]
+    if len(matches) != 1:
+        raise ValueError
+    ordinal, element = matches[0]
+    digest = native_paragraph_font_sha256(element)
+    semantics = None
+    if target_font_family is not None:
+        semantics = capture_font_semantics(
+            document,
+            source.tab_id,
+            element,
+            target_font_family=target_font_family,
+            preserve_family=preserve_family,
+            position_delta=position_delta,
+        )
+        digest = semantic_font_digest(
+            document, source.tab_id, element, semantics, require_target_family=False
+        )
+    return NativeFontProof(
+        version=2 if semantics is not None else 1,
+        block_id=NativeFontBlockId(block.id) if semantics is not None else None,
+        semantics=semantics,
+        visual_authority=selected_visual,
+        tab_id=source.tab_id,
+        body_ordinal=ordinal,
+        sha256=digest,
+        named_styles_sha256=_named_styles_digest(document, source.tab_id),
+        components=_optional_components(element),
+    )
+
+
+def _needs_font_proof(
+    block: TextBlock,
+    *,
+    selected_visual: bool,
+    transformed: DocumentIR | None,
+    target_font_family: str | None,
+) -> bool:
+    if block.source_range is None:
+        return False
+    if selected_visual or (not block.editable and block.font_style_ranges):
+        return True
+    if block.protected_suffix is None or transformed is None or target_font_family is None:
+        return False
+    # Linked prose receives only a font-family change. When its wording is
+    # unchanged, bind all citation styling, link targets and paragraph metadata
+    # with the same strict native proof used by other font-only paragraphs.
+    return any(after.id == block.id and after.text == block.text for after in transformed.blocks)
 
 
 def _position_deltas(original: DocumentIR, transformed: DocumentIR | None) -> dict[str, int]:

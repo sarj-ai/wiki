@@ -35,10 +35,19 @@ from app.models.user import User
 from app.smart_create.schemas import BlankSource, SmartCreateResult, SmartFileCreate
 from app.tasks.errors import (
     TaskIdempotencyConflictError,
+    TaskLeaseLostError,
     TaskNotClaimableError,
     TaskTargetBusyError,
 )
-from app.tasks.schemas import DocumentTransformSucceededTaskRead, TaskKind, TaskRead, TaskStatus
+from app.tasks.schemas import (
+    DocumentTransformSucceededTaskRead,
+    NeedsReviewTaskRead,
+    RunningTaskRead,
+    SmartCreateDispatch,
+    TaskKind,
+    TaskRead,
+    TaskStatus,
+)
 from app.tasks.service import PostgresTaskService
 
 
@@ -59,6 +68,46 @@ def _qa_engine() -> AsyncEngine:
     ):
         pytest.fail("Only a loopback PostgreSQL database named wiki_polish29_qa* is allowed")
     return create_async_engine(dsn, pool_size=12, max_overflow=0)
+
+
+async def test_real_postgres_polling_distinguishes_active_attempt_from_retry_wait() -> None:
+    engine = _qa_engine()
+    sessions = async_sessionmaker(engine, expire_on_commit=False)
+    owner = UserId(uuid.uuid7())
+    try:
+        async with sessions() as session:
+            session.add(
+                User(id=owner, email=f"qa-{owner}@sarj.ai", google_id=GoogleUserId(str(owner)))
+            )
+            await session.commit()
+            service = PostgresTaskService(db=session)
+            reservation = await service.create_or_replay(
+                kind=TaskKind.FILE_DOCUMENT_TRANSFORM,
+                owner_user_id=owner,
+                idempotency_key=IdempotencyKey(uuid.uuid7()),
+                payload=_markdown_payload(),
+            )
+            task_id = reservation.task.id
+            first = await service.claim(task_id, lease_duration=timedelta(minutes=1))
+            active = await service.get_for_owner(task_id, owner)
+            assert isinstance(active, RunningTaskRead)
+            assert active.execution_state == "running"
+            assert active.attempt_count == 1
+            await service.defer(task_id, lease_token=first.lease_token)
+            waiting = await service.get_for_owner(task_id, owner)
+            assert isinstance(waiting, RunningTaskRead)
+            assert waiting.execution_state == "retrying"
+            assert waiting.attempt_count == 1
+            await service.claim(task_id, lease_duration=timedelta(minutes=1))
+            resumed = await service.get_for_owner(task_id, owner)
+            assert isinstance(resumed, RunningTaskRead)
+            assert resumed.execution_state == "running"
+            assert resumed.attempt_count == 2
+    finally:
+        async with sessions() as session:
+            await session.execute(delete(User).where(User.id == owner))
+            await session.commit()
+        await engine.dispose()
 
 
 @pytest.mark.parametrize(
@@ -877,6 +926,13 @@ async def test_real_postgres_expired_source_recovery_respects_execution_lease(
                 payload=payload,
             )
             assert alias.task.id == first.task.id
+            original_evidence = (
+                await session.execute(
+                    select(Task.payload, Task.checkpoint, Task.checkpoint_generation).where(
+                        Task.id == first.task.id
+                    )
+                )
+            ).one()
             await session.execute(
                 update(Task)
                 .where(Task.id == first.task.id)
@@ -945,6 +1001,38 @@ async def test_real_postgres_expired_source_recovery_respects_execution_lease(
                 admit=admit,
             )
             assert admissions == [True]
+            if state in {"boundary", "stale"}:
+                assert not replacement.created
+                assert replacement.task.id == first.task.id
+                assert replacement.task.status is TaskStatus.NEEDS_REVIEW
+                retained_evidence = (
+                    await session.execute(
+                        select(Task.payload, Task.checkpoint, Task.checkpoint_generation).where(
+                            Task.id == first.task.id
+                        )
+                    )
+                ).one()
+                assert retained_evidence == original_evidence
+                for retry_key in keys.values():
+                    replay = await service.create_or_replay(
+                        kind=TaskKind.FILE_DOCUMENT_TRANSFORM,
+                        owner_user_id=owner,
+                        idempotency_key=retry_key,
+                        payload=payload,
+                        admit=admit,
+                    )
+                    assert not replay.created
+                    assert replay.task.id == first.task.id
+                    assert replay.task.status is TaskStatus.NEEDS_REVIEW
+                assert (
+                    await session.scalar(
+                        select(func.count()).select_from(Task).where(Task.owner_user_id == owner)
+                    )
+                    == 1
+                )
+                with pytest.raises(TaskNotClaimableError):
+                    await service.claim(first.task.id, lease_duration=timedelta(minutes=1))
+                return
             assert replacement.created
             assert replacement.task.id != first.task.id
             assert (
@@ -1173,3 +1261,117 @@ async def _store_catalog_terminal(
         )
     )
     await session.commit()
+
+
+async def test_smart_create_dispatch_is_durable_and_claim_owned_under_concurrency() -> None:
+    engine = _qa_engine()
+    sessions = async_sessionmaker(engine, expire_on_commit=False)
+    owner = UserId(uuid.uuid7())
+    try:
+        async with sessions() as session:
+            session.add(
+                User(id=owner, email=f"qa-{owner}@sarj.ai", google_id=GoogleUserId(str(owner)))
+            )
+            await session.commit()
+            service = PostgresTaskService(db=session)
+            reservation = await service.create_or_replay(
+                kind=TaskKind.FILE_SMART_CREATE,
+                owner_user_id=owner,
+                idempotency_key=IdempotencyKey(uuid.uuid7()),
+                payload=SmartFileCreate(
+                    source=BlankSource(kind="blank", file_type="document"),
+                    parent_folder_id=FileId("qa-folder"),
+                    name="Creation fixture",
+                    emoji="📄",
+                    alias="qa-creation",
+                ),
+            )
+            task_id = reservation.task.id
+            claim = await service.claim(task_id, lease_duration=timedelta(minutes=1))
+
+        async def begin() -> SmartCreateDispatch:
+            async with sessions() as session:
+                return await PostgresTaskService(db=session).begin_smart_create(
+                    task_id, lease_token=claim.lease_token
+                )
+
+        outcomes = await asyncio.gather(*(begin() for _ in range(8)))
+        assert outcomes.count(SmartCreateDispatch.STARTED) == 1
+        assert outcomes.count(SmartCreateDispatch.ALREADY_ATTEMPTED) == 7
+        async with sessions() as session:
+            service = PostgresTaskService(db=session)
+            with pytest.raises(TaskLeaseLostError):
+                await service.begin_smart_create(task_id, lease_token=uuid.uuid7())
+            assert (
+                await service.begin_smart_create(task_id, lease_token=claim.lease_token)
+                is SmartCreateDispatch.ALREADY_ATTEMPTED
+            )
+            retained = await session.get(Task, task_id)
+            assert retained is not None
+            assert retained.checkpoint_generation == 1
+            assert retained.checkpoint == {
+                "version": 1,
+                "kind": "smart_create",
+                "stage": "creating",
+            }
+            evidence = dict(retained.payload)
+            reviewed = await service.fail(
+                task_id,
+                lease_token=claim.lease_token,
+                error_code="provider_unavailable",
+                error_detail="An acknowledgement was lost",
+            )
+            assert isinstance(reviewed, NeedsReviewTaskRead)
+            await session.refresh(retained)
+            assert retained.payload == evidence
+            assert retained.checkpoint_generation == 1
+    finally:
+        async with sessions() as session:
+            await session.execute(delete(User).where(User.id == owner))
+            await session.commit()
+        await engine.dispose()
+
+
+async def test_review_with_unreadable_payload_retains_request_identity() -> None:
+    engine = _qa_engine()
+    sessions = async_sessionmaker(engine, expire_on_commit=False)
+    owner = UserId(uuid.uuid7())
+    payload = _markdown_payload()
+    evidence = {"unreadable_saved_evidence": "retain verbatim"}
+    try:
+        async with sessions() as session:
+            session.add(
+                User(id=owner, email=f"qa-{owner}@sarj.ai", google_id=GoogleUserId(str(owner)))
+            )
+            await session.commit()
+            service = PostgresTaskService(db=session)
+            original = await service.create_or_replay(
+                kind=TaskKind.FILE_DOCUMENT_TRANSFORM,
+                owner_user_id=owner,
+                idempotency_key=IdempotencyKey(uuid.uuid7()),
+                payload=payload,
+            )
+            claim = await service.claim(original.task.id, lease_duration=timedelta(minutes=1))
+            await session.execute(
+                update(Task).where(Task.id == original.task.id).values(payload=evidence)
+            )
+            await session.commit()
+            await service.require_review(original.task.id, lease_token=claim.lease_token)
+            replay = await service.create_or_replay(
+                kind=TaskKind.FILE_DOCUMENT_TRANSFORM,
+                owner_user_id=owner,
+                idempotency_key=IdempotencyKey(uuid.uuid7()),
+                payload=payload,
+            )
+            assert not replay.created
+            assert replay.task.id == original.task.id
+            assert replay.task.status is TaskStatus.NEEDS_REVIEW
+            assert (
+                await session.scalar(select(Task.payload).where(Task.id == original.task.id))
+                == evidence
+            )
+    finally:
+        async with sessions() as session:
+            await session.execute(delete(User).where(User.id == owner))
+            await session.commit()
+        await engine.dispose()

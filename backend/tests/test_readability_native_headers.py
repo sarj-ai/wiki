@@ -44,7 +44,7 @@ def test_native_header_rows_control_typography_shading_and_numeric_alignment(
     fonts = [
         obj(request["updateTextStyle"]) for request in requests if "updateTextStyle" in request
     ]
-    assert ["bold" in obj(font["textStyle"]) for font in fonts] == [True] * (3 * headers) + [
+    assert [obj(font["textStyle"])["bold"] for font in fonts] == [True] * (3 * headers) + [
         False
     ] * 6
     assert all(obj(font["textStyle"])["bold"] is True for font in fonts[: 3 * headers])
@@ -128,9 +128,11 @@ async def test_native_header_checkpoint_recovers_an_uncertain_write_without_repl
         == completed
     )
     assert writes == [True]
-    assert (
-        await plan_readability(document, title="Native headers", generator=_LayoutEditor()) is None
-    )
+    repeated = await plan_readability(document, title="Native headers", generator=_LayoutEditor())
+    assert repeated is not None
+    assert not repeated.requests
+    assert repeated.model_invoked
+    assert verify_readability(document, repeated)
     document["revisionId"] = "concurrent-revision"
     with pytest.raises(OutputConflictError):
         await provider.apply(document_id=FileId("native-header-qa"), checkpoint=completed)

@@ -10,8 +10,8 @@ from app.document_transform.quantity_notation import UNIT_POWER, UNIT_PRODUCT, U
 
 _MISSING = frozenset({"", "-", "–", "—", "n/a", "na", "null", "…"})
 _CHARACTER_WIDTH_TWIPS = 110  # Conservative 5.5 pt at the shared 10 pt table font size.
-_INTEGER = r"(?:\d{1,3}(?:[,'’\u00a0\u2009\u202f ]\d{3})+|\d{1,2}(?:,\d{2})+,\d{3}|\d+)"
-_COMMA_INTEGER = r"(?:\d{1,3}(?:[.\u00a0\u2009\u202f ]\d{3})+|\d+)"
+_INTEGER = r"(?:\d{1,3}(?:[,\u00a0\u2009\u202f '’]\d{3})+|\d{1,2}(?:,\d{2})+,\d{3}|\d+)"
+_COMMA_INTEGER = r"(?:\d{1,3}(?:[.\u00a0\u2009\u202f '’]\d{3})+|\d+)"
 _DOT_GROUPED_INTEGER = r"\d{1,3}(?:\.\d{3})+"
 _ARABIC_NUMBER = r"(?:(?:\d{1,3}(?:٬\d{3})+|\d+)(?:٫\d+)?|٫\d+)"
 _DECIMAL = (
@@ -30,8 +30,8 @@ _UNIT = rf"{UNIT_SYMBOL}(?:{_POWER})?(?:{UNIT_PRODUCT}{UNIT_SYMBOL}(?:{_POWER})?
 _QUANTITY_TERM = rf"{_NUMBER}(?:\s*(?:%|‰|×|x|{_CURRENCY_CODE}|{_UNIT}))?"
 _QUANTITY = re.compile(
     rf"(?:(?:approximately|about|roughly|approx\.)\s+)?"
-    rf"(?:[<>]=?\s*|[≤≥~≈]\s*)?{_QUANTITY_TERM}(?:\s*:\s*{_QUANTITY_TERM})?"
-    rf"(?:\s*(?:±|–|−|-|\bto\b)\s*{_QUANTITY_TERM})?",
+    rf"(?:[<>]=?\s*|[≤≥~≈±]\s*)?{_QUANTITY_TERM}(?:\s*:\s*{_QUANTITY_TERM})?"
+    rf"(?:\s*(?:±|\+/-|–|−|-|\bto\b)\s*{_QUANTITY_TERM})?",
     re.IGNORECASE,
 )
 

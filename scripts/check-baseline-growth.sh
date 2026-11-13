@@ -24,44 +24,19 @@ git show "$base_sha:.sarj-standards.toml" >"$temp_dir/base-standards.toml"
   done
 } >"$temp_dir/base-eslint-configs.txt"
 
-initializing_diagnostic_baselines=false
-if [[ -f diagnostic-baseline.json ]] &&
-  ! git cat-file -e "$base_sha:diagnostic-baseline.json" 2>/dev/null; then
-  initializing_diagnostic_baselines=true
-fi
-
 for baseline in python-standards-baseline.json frontend/oxlint-suppressions.json; do
   base_file="$temp_dir/$(basename "$baseline")"
   prefix=""
   if [[ "$baseline" == frontend/* ]]; then
     prefix="frontend/"
   fi
-  base_baseline="$baseline"
-  if [[ "$baseline" == frontend/oxlint-suppressions.json ]] &&
-    ! git cat-file -e "$base_sha:$baseline" 2>/dev/null; then
-    base_baseline="frontend/eslint-suppressions.json"
-  fi
-  if [[ "$initializing_diagnostic_baselines" == true ]]; then
-    uv run --project backend --locked python scripts/standards_checks/check_baseline_growth.py \
-      --initial "$baseline" "$temp_dir/changed-files" "$prefix"
-  elif git show "$base_sha:$base_baseline" >"$base_file" 2>/dev/null; then
+  if git show "$base_sha:$baseline" >"$base_file" 2>/dev/null; then
+    comparison=(--standards-base "$temp_dir/base-standards.toml" --standards-current .sarj-standards.toml)
     if [[ "$baseline" == frontend/* ]]; then
-      uv run --project backend --locked python scripts/standards_checks/check_baseline_growth.py \
-        --standards-base "$temp_dir/base-standards.toml" \
-        --standards-current .sarj-standards.toml \
-        --base-config "$temp_dir/base-eslint-configs.txt" \
-        --bootstrap standards-baseline-bootstrap.json \
-        --merge-base "$base_sha" \
-        --allowance-path "$baseline" \
-        --changed-files "$temp_dir/changed-files" \
-        --changed-prefix "$prefix" \
-        "$base_file" "$baseline"
-    else
-      uv run --project backend --locked python scripts/standards_checks/check_baseline_growth.py \
-        --standards-base "$temp_dir/base-standards.toml" \
-        --standards-current .sarj-standards.toml \
-        "$base_file" "$baseline"
+      comparison+=(--base-config "$temp_dir/base-eslint-configs.txt")
     fi
+    uv run --project backend --locked python scripts/standards_checks/check_baseline_growth.py \
+      "${comparison[@]}" "$base_file" "$baseline"
   else
     uv run --project backend --locked python scripts/standards_checks/check_baseline_growth.py \
       --initial "$baseline" "$temp_dir/changed-files" "$prefix"

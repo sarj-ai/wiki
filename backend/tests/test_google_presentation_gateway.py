@@ -16,6 +16,7 @@ import pytest
 
 from app.document_transform.errors import (
     DocumentGatewayError,
+    DocumentTransformError,
     IncompatiblePendingOutputError,
     OutputVerificationError,
     SourceChangedError,
@@ -30,6 +31,10 @@ from app.document_transform.presentation_gateway import (
     PresentationDraft,
     PresentationFingerprints,
     PresentationRevisionId,
+)
+from app.document_transform.presentation_state import (
+    AppliedPresentationMutation,
+    RecordedPresentationMutation,
 )
 from app.document_transform.schemas import DriveFileSource
 from app.drive.retry import ProviderDeadlineError
@@ -922,7 +927,8 @@ async def test_revision_fenced_batch_recovers_exact_ambiguous_postcondition() ->
     applied = await _apply_standard_mutation(gateway, draft)
 
     assert applied.revision_id == "revision-after"
-    assert applied.applied_mutation_sha256 == "mutation-hash"
+    assert isinstance(applied.mutation, AppliedPresentationMutation)
+    assert applied.mutation.plan.mutation_sha256 == "mutation-hash"
     assert len(state.batch_calls) == 1
     body = state.batch_calls[0]["body"]
     assert isinstance(body, dict)
@@ -963,7 +969,8 @@ async def test_pending_commit_is_reconciled_after_mutation_property_update_is_lo
     assert recovered is not None
     reconciled = await gateway.reconcile_pending(recovered)
 
-    assert reconciled.applied_mutation_sha256 == "mutation-hash"
+    assert isinstance(reconciled.mutation, AppliedPresentationMutation)
+    assert reconciled.mutation.plan.mutation_sha256 == "mutation-hash"
     assert reconciled.revision_id == "revision-after"
     assert len(state.batch_calls) == 1
 
@@ -1112,7 +1119,7 @@ async def test_applied_mutation_replay_does_not_send_another_batch() -> None:
         parent_folder_id=draft.parent_folder_id,
         revision_id=draft.revision_id,
         source_sha256=draft.source_sha256,
-        applied_mutation_sha256="mutation-hash",
+        mutation=RecordedPresentationMutation(mutation_sha256="mutation-hash"),
     )
 
     replayed = await _apply_standard_mutation(
@@ -1212,3 +1219,57 @@ def test_presentation_draft_is_immutable() -> None:
 
     with pytest.raises(AttributeError):
         _set_attribute(draft, "name", "Changed")
+
+
+@pytest.mark.parametrize(
+    "invalid",
+    [
+        "missing-base",
+        "missing-semantic",
+        "missing-structure",
+        "missing-brand",
+        "conflicting-receipt",
+        "completed-without-receipt",
+        "unknown-phase",
+        "invalid-digest-type",
+    ],
+)
+async def test_provider_mutation_metadata_rejects_illegal_states_before_replay(
+    invalid: str,
+) -> None:
+    state = _GoogleState()
+    gateway = _gateway(state)
+    operation_id = uuid.uuid7()
+    source = await gateway.load_source(_source_request())
+    await gateway.create_copy(
+        operation_id=operation_id, source=source, source_sha256="source-hash", output_name="Review"
+    )
+    properties = state.metadata["output"]["appProperties"]
+    properties.update(
+        {
+            "sarjTransformPendingMutation": "mutation-hash",
+            "sarjTransformMutationBaseHash": "base-hash",
+            "sarjTransformExpectedSemanticHash": "semantic-hash",
+            "sarjTransformExpectedProtectedHash": "protected-hash",
+            "sarjTransformExpectedBrandHash": "none",
+        }
+    )
+    missing = {
+        "missing-base": "sarjTransformMutationBaseHash",
+        "missing-semantic": "sarjTransformExpectedSemanticHash",
+        "missing-structure": "sarjTransformExpectedProtectedHash",
+        "missing-brand": "sarjTransformExpectedBrandHash",
+    }
+    if invalid in missing:
+        properties.pop(missing[invalid])
+    elif invalid == "conflicting-receipt":
+        properties["sarjTransformMutation"] = "another-mutation"
+    elif invalid == "completed-without-receipt":
+        properties["sarjTransformState"] = "complete"
+    elif invalid == "unknown-phase":
+        properties["sarjTransformState"] = "maybe_complete"
+    else:
+        properties["sarjTransformPendingMutation"] = 7
+    with pytest.raises(DocumentTransformError):
+        await gateway.recover_output(operation_id, expected_parent_folder_id=FileId("folder"))
+    assert state.batch_calls == []

@@ -2,20 +2,85 @@ from dataclasses import asdict
 import json
 from typing import Literal
 
+from google.auth import exceptions as auth_errors
 from google.genai import errors, types
+import httpx
 from loguru import logger
 from pydantic import ValidationError
 import pytest
 
+from app.document_transform.errors import ModelDeadlineError, ModelUnavailableError
 from app.document_transform.model_diagnostics import (
     ModelBindingError,
     ModelCoverageError,
     ModelEmptyResponseError,
     log_model_failure,
     log_model_response_failure,
+    model_exception_chain,
     model_failure_details,
 )
+from app.document_transform.model_failures import exhausted_model_failure
 from app.document_transform.schemas import PatchEnvelope, TransformPhase
+
+
+@pytest.mark.parametrize("wrapped", [False, True])
+def test_budget_deadline_is_not_reported_as_malformed_model_output(*, wrapped: bool) -> None:
+    error = ModelDeadlineError()
+    if wrapped:
+        error.__cause__ = TimeoutError("PRIVATE PROVIDER RESPONSE")
+    captured: list[str] = []
+    sink = logger.add(captured.append, serialize=True)
+    try:
+        log_model_failure(
+            operation=TransformPhase.UNSLOP,
+            attempt=2,
+            model="gemini-3.1-pro-preview",
+            error=error,
+        )
+    finally:
+        logger.remove(sink)
+    failure = model_failure_details(error)
+    assert failure.kind == "timeout"
+    assert failure.reason == "DEADLINE_EXCEEDED"
+    assert failure.payload_category == "none"
+    record = json.loads(captured[-1])["record"]["extra"]
+    assert record["model_error_kind"] == "timeout"
+    assert record["model_error_reason"] == "DEADLINE_EXCEEDED"
+    assert record["model_payload_category"] == "none"
+    assert not record["model_attempt_retryable"]
+    assert "PRIVATE" not in "".join(captured)
+
+
+def test_provider_deadline_retains_safe_exception_chain_and_canonical_status() -> None:
+    provider = errors.ServerError(
+        504, {"error": {"status": "DEADLINE_EXCEEDED", "message": "PRIVATE RESPONSE"}}
+    )
+    wrapped = ModelUnavailableError()
+    wrapped.__cause__ = provider
+    captured: list[str] = []
+    sink = logger.add(captured.append, serialize=True)
+    try:
+        log_model_failure(
+            operation="review", attempt=1, model="gemini-3.1-pro-preview", error=wrapped
+        )
+    finally:
+        logger.remove(sink)
+    record = json.loads(captured[-1])["record"]["extra"]
+    assert record["model_exception_chain"] == ["ModelUnavailableError", "ServerError"]
+    assert record["model_http_status"] == 504
+    assert record["model_error_reason"] == "DEADLINE_EXCEEDED"
+    assert "PRIVATE" not in "".join(captured)
+
+
+def test_exception_chain_is_bounded_cycle_safe_and_excludes_untrusted_class_names() -> None:
+    private = type("PRIVATE_CREDENTIAL", (ValueError,), {})("PRIVATE CONTENT")
+    private.__cause__ = private
+    assert model_exception_chain(private) == ("Exception",)
+    group = ExceptionGroup("PRIVATE GROUP", [ValueError("PRIVATE VALUE") for _ in range(100)])
+    chain = model_exception_chain(group)
+    assert len(chain) == 8
+    assert chain[0] == "ExceptionGroup"
+    assert "PRIVATE" not in json.dumps(chain)
 
 
 @pytest.mark.parametrize("reason", ["SERVICE_DISABLED", "PRIVATE RESPONSE"])
@@ -53,6 +118,24 @@ def test_transport_and_schema_failure_details_are_private(error: TimeoutError | 
     failure = model_failure_details(error)
     assert failure.http_status == 0
     assert failure.reason == "unknown"
+    assert "PRIVATE" not in json.dumps(asdict(failure))
+
+
+@pytest.mark.parametrize(
+    ("error", "kind"),
+    [
+        (httpx.ConnectError("PRIVATE TRANSPORT RESPONSE"), "transport"),
+        (auth_errors.RefreshError("PRIVATE CREDENTIALS"), "credentials"),
+    ],
+)
+def test_wrapped_transport_and_credentials_keep_their_category_without_private_values(
+    error: Exception, kind: str
+) -> None:
+    wrapped = exhausted_model_failure(error)
+    wrapped.__cause__ = error
+    failure = model_failure_details(wrapped)
+    assert failure.kind == kind
+    assert failure.http_status == 0
     assert "PRIVATE" not in json.dumps(asdict(failure))
 
 

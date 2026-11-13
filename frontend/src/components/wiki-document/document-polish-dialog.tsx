@@ -46,6 +46,7 @@ import {
   type DocumentTransformOutputStrategy,
   type DocumentTransformResult,
   type DocumentTransformSource,
+  type DocumentTransformTask,
   DocumentTransformTerminalError,
 } from "@/lib/document-transform-types";
 import {
@@ -60,6 +61,7 @@ import {
 } from "@/lib/markdown-transform-recovery";
 import { preservedInPlaceOutcome } from "@/lib/preserved-in-place-outcome";
 import type { SmartDestination } from "@/lib/smart-create-types";
+import { transformProgressMessage } from "@/lib/transform-progress-message";
 import { cn } from "@/lib/utils";
 import { injectNewFileIntoCaches } from "@/lib/wiki-cache";
 import { wikiKeys } from "@/lib/wiki-keys";
@@ -168,6 +170,8 @@ export function DocumentPolishDialog({
   );
   const [destinationOpen, setDestinationOpen] = useState(false);
   const [polish, sendPolish] = useReducer(transitionPolish, { kind: "idle" });
+  const [taskProgress, setTaskProgress] =
+    useState<DocumentTransformTask | null>(null);
   const submitting = isPolishRunning(polish);
   const stage = polish.kind;
   const completedResult = polish.kind === "completed" ? polish.result : null;
@@ -503,6 +507,7 @@ export function DocumentPolishDialog({
       return;
     if (!transformSource) return;
     submitLatch.current = true;
+    setTaskProgress(null);
     sendPolish({ type: "start" });
     const controller = new AbortController();
     const generation = lifecycleGeneration.current;
@@ -644,6 +649,11 @@ export function DocumentPolishDialog({
       const result = await DOCUMENT_TRANSFORM_API.waitForCompletion(
         currentTask,
         controller.signal,
+        undefined,
+        undefined,
+        (polledTask) => {
+          if (isCurrent()) setTaskProgress(polledTask);
+        },
       );
       if (!isCurrent()) return;
       await clearRecovery();
@@ -722,7 +732,8 @@ export function DocumentPolishDialog({
             output: error.unverifiedOutputId
               ? {
                   kind:
-                    error.code === "in_place_verification_failed"
+                    operation.outputStrategy === "in_place" &&
+                    operation.source?.fileId === error.unverifiedOutputId
                       ? "original"
                       : "copy",
                   fileId: error.unverifiedOutputId,
@@ -1351,15 +1362,18 @@ export function DocumentPolishDialog({
               >
                 <Loader2 className="text-primary size-4 shrink-0 animate-spin" />
                 <span>
-                  {stage === "starting"
-                    ? source.kind === "markdown"
-                      ? "Starting Markdown import…"
-                      : `Starting ${artifactNoun} polish…`
-                    : source.kind === "markdown"
-                      ? "Importing and checking the new document…"
-                      : effectiveOutputStrategy === "in_place"
-                        ? `Updating and checking the original ${artifactNoun}…`
-                        : `Creating and checking the new ${artifactNoun}…`}
+                  {(stage !== "starting" && taskProgress
+                    ? transformProgressMessage(taskProgress)
+                    : null) ??
+                    (stage === "starting"
+                      ? source.kind === "markdown"
+                        ? "Starting Markdown import…"
+                        : `Starting ${artifactNoun} polish…`
+                      : source.kind === "markdown"
+                        ? "Importing and checking the new document…"
+                        : effectiveOutputStrategy === "in_place"
+                          ? `Updating and checking the original ${artifactNoun}…`
+                          : `Creating and checking the new ${artifactNoun}…`)}
                   {unresolved?.taskId
                     ? ` Checking its status automatically. Leaving this page does not cancel it. Task: ${unresolved.taskId}`
                     : " Checking the submission automatically. Leaving this page does not cancel a submitted operation."}

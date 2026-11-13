@@ -100,6 +100,7 @@ from app.document_transform.markdown_import import (
     verify_markdown_import,
 )
 from app.document_transform.naming import suggested_document_title
+from app.document_transform.native_chip_flow import NativeChipCheckpoint, NativeChipProvider
 from app.document_transform.native_code import (
     plan_native_code_styles,
     project_native_code_styles,
@@ -167,6 +168,7 @@ from app.document_transform.native_visual_authority import (
     visual_authority_block_ids,
 )
 from app.document_transform.provider_diagnostics import native_provider_diagnostics
+from app.document_transform.readability_json import array as json_array, obj as json_object
 from app.document_transform.readability_provider import ReadabilityProvider
 from app.document_transform.readability_types import ReadabilityCheckpoint
 from app.document_transform.schemas import (
@@ -434,6 +436,9 @@ class GoogleDocumentGateway(DocumentGateway):
         self.readability_provider = ReadabilityProvider(
             self._read_readability_document, self._write_readability
         )
+        self.native_chip_provider = NativeChipProvider(
+            self._read_readability_document, self._write_native_chips
+        )
         self.structure_provider = StructureProvider(
             self._get_document_sync, self._write_copy_structure_sync, self._comments_absent_sync
         )
@@ -446,6 +451,17 @@ class GoogleDocumentGateway(DocumentGateway):
         self.capture_header_identity = self._capture_header_identity
         self._drive_clients: dict[int, DriveResource] = {}
         self._docs_clients: dict[int, _DocumentsProvider] = {}
+
+    async def _write_native_chips(
+        self, document_id: FileId, checkpoint: NativeChipCheckpoint
+    ) -> None:
+        await self.apply_in_place_stage(
+            document_id=document_id,
+            required_revision_id=checkpoint.source_revision_id,
+            marker_name=checkpoint.marker_name,
+            marker_range=checkpoint.marker_range,
+            requests=checkpoint.requests,
+        )
 
     def _comments_absent_sync(self, source_id: FileId) -> bool:
         token: str | None = None
@@ -1284,7 +1300,7 @@ class GoogleDocumentGateway(DocumentGateway):
     ) -> InPlaceStageResult:
         if not requests or not marker_name:
             raise DocumentGatewayError
-        expected_marker_range = _post_mutation_marker_range(marker_range, requests)
+        expected_marker_range = post_mutation_marker_range(marker_range, requests)
         atomic_requests = [
             {"createNamedRange": {"name": marker_name, "range": marker_range}},
             *requests,
@@ -1629,7 +1645,7 @@ class GoogleDocumentGateway(DocumentGateway):
             marker_range = _terminal_body_marker_range(document)
             if marker_range is None:
                 raise DocumentGatewayError(retryable=False)
-            expected_marker_range = _post_mutation_marker_range(marker_range, requests)
+            expected_marker_range = post_mutation_marker_range(marker_range, requests)
             self._update_properties_sync(
                 draft.document_id,
                 {
@@ -2245,7 +2261,7 @@ def _classify_in_place_headers(
             if isinstance(document_tab.get("headers"), dict)
             else ()
         )
-        if _header_has_custom_title_prefix(document_tab, header_id, header_title)
+        if _header_has_custom_title_prefix(document, document_tab, header_id, header_title)
     )
     present_title_pairs = frozenset(
         (target.tab_id, target.header_id) for target in present_title_targets
@@ -2403,8 +2419,10 @@ def _classify_in_place_footer(
     )
 
 
-def _header_has_custom_title_prefix(tab: dict[str, Any], header_id: str, title: str) -> bool:
-    projected = _strip_custom_header_title(tab, header_id, title)
+def _header_has_custom_title_prefix(
+    document: dict[str, JsonValue], tab: dict[str, JsonValue], header_id: str, title: str
+) -> bool:
+    projected = _strip_custom_header_title(document, tab, header_id, title)
     return projected is not None
 
 
@@ -2474,13 +2492,19 @@ def _custom_header_element_extent(
 
 
 def _strip_custom_header_title(
-    tab: dict[str, Any], header_id: str, title: str
-) -> dict[str, Any] | None:
+    document: dict[str, JsonValue], tab: dict[str, JsonValue], header_id: str, title: str
+) -> dict[str, JsonValue] | None:
     if not _header_can_accept_custom_title(tab, header_id):
         return None
     projected = deepcopy(tab)
-    headers = projected["headers"]
-    elements = headers[header_id]["content"][0]["paragraph"]["elements"]
+    headers = json_object(projected["headers"])
+    first = json_object(json_array(json_object(headers[header_id])["content"])[0])
+    paragraph = json_object(first["paragraph"])
+    elements = json_array(paragraph["elements"])
+    style_context = {**tab, "namedStyles": tab.get("namedStyles", document.get("namedStyles"))}
+    effective_elements = _effective_paragraph(paragraph, style_context).get("elements")
+    if not isinstance(effective_elements, list) or len(effective_elements) != len(elements):
+        return None
     header_tokens = CURRENT_BRAND_MANIFEST.document.header
     if header_tokens is None:  # pragma: no cover - pinned manifest invariant
         return None
@@ -2488,19 +2512,19 @@ def _strip_custom_header_title(
         HEADER_TITLE_SEPARATOR
     )
     remaining = prefix
-    stripped: list[Any] = []
-    for element in elements:
+    stripped: list[JsonValue] = []
+    for element, effective_element in zip(elements, effective_elements, strict=True):
         if not remaining:
             stripped.append(element)
             continue
         if not isinstance(element, dict) or not isinstance(element.get("textRun"), dict):
             return None
-        run = element["textRun"]
+        run = json_object(element["textRun"])
         content = run.get("content")
         if not isinstance(content, str) or not remaining.startswith(content[: len(remaining)]):
             return None
         consumed = content[: len(remaining)]
-        if not remaining.startswith(consumed) or not _header_text_run_has_brand(run):
+        if not remaining.startswith(consumed) or not _branded_header_prefix_run(effective_element):
             return None
         remaining = remaining[len(consumed) :]
         leftover = content[len(consumed) :]
@@ -2508,8 +2532,15 @@ def _strip_custom_header_title(
             stripped.append({**element, "textRun": {**run, "content": leftover}})
     if remaining:
         return None
-    headers[header_id]["content"][0]["paragraph"]["elements"] = stripped
+    paragraph["elements"] = stripped
     return projected
+
+
+def _branded_header_prefix_run(element: JsonValue) -> bool:
+    if not isinstance(element, dict):
+        return False
+    run = element.get("textRun")
+    return isinstance(run, dict) and _header_text_run_has_brand(run)
 
 
 def _project_custom_header_titles(
@@ -2523,7 +2554,7 @@ def _project_custom_header_titles(
         tab = tabs.get(str(target.tab_id))
         if not isinstance(tab, dict):
             return document
-        stripped = _strip_custom_header_title(tab, str(target.header_id), title)
+        stripped = _strip_custom_header_title(document, tab, str(target.header_id), title)
         if stripped is None:
             return document
         tab.clear()
@@ -2546,7 +2577,7 @@ def _custom_header_titles_match(
     tabs = dict(_document_tabs(document))
     return all(
         isinstance((tab := tabs.get(str(target.tab_id))), dict)
-        and _header_has_custom_title_prefix(tab, str(target.header_id), title)
+        and _header_has_custom_title_prefix(document, tab, str(target.header_id), title)
         for target in targets
     )
 
@@ -2698,10 +2729,8 @@ def _canonicalize_custom_header(
         return None
     normalized: list[Any] = []
     effective_styles: list[dict[str, Any] | None] = []
-    for index, (element, effective_element) in enumerate(
-        zip(elements, effective_elements, strict=True)
-    ):
-        result = _canonical_header_run(element, effective_element, index, len(elements))
+    for element, effective_element in zip(elements, effective_elements, strict=True):
+        result = _canonical_header_run(element, effective_element)
         if result is None:
             return None
         merged = (
@@ -2729,7 +2758,7 @@ class _CanonicalHeaderRun:
 
 
 def _canonical_header_run(
-    element: object, effective_element: object, index: int, count: int
+    element: JsonValue, effective_element: JsonValue
 ) -> _CanonicalHeaderRun | None:
     if not _is_string_dict(element) or not _is_string_dict(effective_element):
         return _CanonicalHeaderRun(effective_style=None, element=element)
@@ -2741,9 +2770,11 @@ def _canonical_header_run(
     effective_style = effective_run.get("textStyle")
     if not isinstance(content, str) or not _is_string_dict(effective_style):
         return None
-    canonical_element = element
-    if index == count - 1 and content == "\n":
-        canonical_element = {**element, "textRun": {**run, "textStyle": dict(effective_style)}}
+    # Google can merge an inserted prefix into an identically styled suffix,
+    # omitting redundant local properties inherited from the same named style.
+    # Compare exact effective styling, retaining every unknown run/style field.
+    # The complete parent styles remain separately bound in the furniture hash.
+    canonical_element = {**element, "textRun": {**run, "textStyle": dict(effective_style)}}
     return _CanonicalHeaderRun(
         effective_style=dict(effective_style),
         element=canonical_element,
@@ -2879,7 +2910,7 @@ def _terminal_body_marker_range(document: dict[str, Any]) -> dict[str, Any] | No
     return candidate
 
 
-def _post_mutation_marker_range(
+def post_mutation_marker_range(
     marker_range: dict[str, Any],
     requests: list[dict[str, Any]],
 ) -> dict[str, Any]:
@@ -2903,6 +2934,11 @@ def _post_mutation_marker_range(
         if delta is not None:
             start += delta
             end += delta
+        # Native Docs readback confirms insertDate occupies one UTF-16 unit.
+        delta = _marker_insertion_delta(request.get("insertDate"), tab_id, start, native_width=1)
+        if delta is not None:
+            start += delta
+            end += delta
     expected["startIndex"] = start
     expected["endIndex"] = end
     return expected
@@ -2921,11 +2957,13 @@ def _marker_deletion_delta(span: dict[str, JsonValue], tab_id: str, start: int) 
     return None
 
 
-def _marker_insertion_delta(insertion: object, tab_id: str, start: int) -> int | None:
+def _marker_insertion_delta(
+    insertion: object, tab_id: str, start: int, *, native_width: int | None = None
+) -> int | None:
     if not isinstance(insertion, dict):
         return None
     location, text = insertion.get("location"), insertion.get("text")
-    if not isinstance(location, dict) or not isinstance(text, str):
+    if not isinstance(location, dict) or (not isinstance(text, str) and native_width is None):
         return None
     index = location.get("index")
     if (
@@ -2934,7 +2972,7 @@ def _marker_insertion_delta(insertion: object, tab_id: str, start: int) -> int |
         and isinstance(index, int)
         and index <= start
     ):
-        return len(text.encode("utf-16-le")) // 2
+        return native_width if native_width is not None else utf16_length(str(text))
     return None
 
 
@@ -4237,15 +4275,6 @@ def _paragraph_brand_diagnostics(
         return {"named_style": False, "layout": False, "text_style": False}
     expected_named_style = paragraph_named_style(block)
     spacing = paragraph_spacing(block, SarjBrandProfile())
-    text_runs = [
-        item["textRun"]
-        for item in elements
-        if isinstance(item, dict)
-        and isinstance(item.get("textRun"), dict)
-        and isinstance(item["textRun"].get("content"), str)
-        and item["textRun"]["content"].strip()
-    ]
-    expected_color = paragraph_color(block, SarjBrandProfile())
     return {
         "named_style": (allow_preserved_visual_authority and block.preserved_visual_authority)
         or _preserved_layout_matches(paragraph, block)
@@ -4273,13 +4302,7 @@ def _paragraph_brand_diagnostics(
         ),
         "text_style": preserve_text_style
         or (allow_preserved_visual_authority and block.preserved_visual_authority)
-        or (
-            bool(text_runs)
-            and all(
-                _text_run_has_brand(run, _brand_font_size(block), expected_color, block)
-                for run in text_runs
-            )
-        ),
+        or _paragraph_text_styles_have_brand(elements, block),
     }
 
 
@@ -4718,15 +4741,29 @@ def _paragraph_has_brand(
         return False
     if preserve_text_style:
         return True
+    return _paragraph_text_styles_have_brand(elements, block)
+
+
+def _paragraph_text_styles_have_brand(elements: list[JsonValue], block: TextBlock) -> bool:
+    if block.protected_suffix is not None:
+        source = block.source_range
+        return source is not None and _font_range_has_brand(
+            elements, source.start_index, source.end_index
+        )
     expected_size = _brand_font_size(block)
     expected_color = paragraph_color(block, SarjBrandProfile())
-    return all(
-        _text_run_has_brand(part["textRun"], expected_size, expected_color, block)
-        for part in elements
-        if isinstance(part, dict)
-        and isinstance(part.get("textRun"), dict)
-        and isinstance(part["textRun"].get("content"), str)
-        and part["textRun"]["content"].strip()
+    runs: list[dict[str, JsonValue]] = []
+    for part in elements:
+        if not isinstance(part, dict):
+            continue
+        run = part.get("textRun")
+        if not isinstance(run, dict):
+            continue
+        content = run.get("content")
+        if isinstance(content, str) and content.strip():
+            runs.append(run)
+    return bool(runs) and all(
+        _text_run_has_brand(run, expected_size, expected_color, block) for run in runs
     )
 
 

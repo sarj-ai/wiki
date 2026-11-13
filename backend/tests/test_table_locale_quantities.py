@@ -23,6 +23,9 @@ from tests.test_table_layout import _native_table
         "1’234’567.00 CHF",
         "١٬٢٣٤٫٥٠ ms",
         "۱۲٬۳۴۵٫۶۷ ms",
+        "1’234’567,00 CHF",
+        "±١٬٢٣٤٫٥٠ ms",
+        "1.234.567 ms +/- ١٫٠ ms",
     ],
 )
 def test_locale_quantities_keep_their_exact_text_and_numeric_alignment(quantity: str) -> None:

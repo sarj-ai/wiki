@@ -3,10 +3,13 @@ from __future__ import annotations
 from dataclasses import asdict, dataclass
 from typing import Literal
 
+from google.auth import exceptions as auth_errors
 from google.genai import errors as genai_errors, types as genai_types
 from loguru import logger
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
+from app.document_transform.errors import ModelDeadlineError, ModelUnavailableError
+from app.document_transform.model_failures import classify_model_failure
 from app.document_transform.schemas import TransformPhase
 
 
@@ -29,6 +32,50 @@ _HTTP_STATUS_MAX = 599
 _MAX_VALIDATION_ISSUES = 5
 _MAX_VALIDATION_LOCATION_PARTS = 4
 _MAX_MODEL_TOKEN_COUNT = 1_000_000
+_MAX_EXCEPTION_CHAIN = 8
+_SAFE_EXCEPTION_NAMES = frozenset(
+    {
+        "ModelUnavailableError",
+        "ModelDeadlineError",
+        "ModelProviderRetryExhaustedError",
+        "ModelOutputTruncatedError",
+        "ModelEmptyResponseError",
+        "ModelCoverageError",
+        "ModelBindingError",
+        "TimeoutError",
+        "CancelledError",
+        "ServerError",
+        "ClientError",
+        "APIError",
+        "RefreshError",
+        "DefaultCredentialsError",
+        "TransportError",
+        "ReadTimeout",
+        "ConnectTimeout",
+        "ConnectError",
+        "NetworkError",
+        "RemoteProtocolError",
+        "HTTPStatusError",
+        "PoolTimeout",
+        "ValidationError",
+        "ValueError",
+        "Exception",
+        "ExceptionGroup",
+        "BaseExceptionGroup",
+    }
+)
+_SAFE_PROVIDER_STATUSES = frozenset(
+    {
+        "DEADLINE_EXCEEDED",
+        "UNAVAILABLE",
+        "RESOURCE_EXHAUSTED",
+        "NOT_FOUND",
+        "UNAUTHENTICATED",
+        "INVALID_ARGUMENT",
+        "INTERNAL",
+        "PERMISSION_DENIED",
+    }
+)
 _SAFE_FINISH_REASONS = frozenset(
     {
         "FINISH_REASON_UNSPECIFIED",
@@ -114,6 +161,7 @@ class _ProviderDetail(BaseModel):
 class _ProviderError(BaseModel):
     model_config = ConfigDict(extra="ignore", strict=True)
     details: list[_ProviderDetail] = Field(default_factory=list, max_length=20)
+    status: str | None = Field(default=None, max_length=40)
 
 
 class _ProviderResponse(BaseModel):
@@ -123,7 +171,7 @@ class _ProviderResponse(BaseModel):
 
 @dataclass(frozen=True, slots=True)
 class ModelFailureDetails:
-    kind: Literal["api_error", "timeout", "invalid_payload"]
+    kind: Literal["api_error", "timeout", "invalid_payload", "credentials", "transport"]
     http_status: int
     reason: str
     payload_category: Literal["none", "unknown", "empty", "coverage", "binding", "schema"] = "none"
@@ -131,8 +179,16 @@ class ModelFailureDetails:
 
 
 def model_failure_details(
-    error: TimeoutError | ValueError | genai_errors.APIError,
+    error: Exception,
 ) -> ModelFailureDetails:
+    if isinstance(error, ModelDeadlineError):
+        return ModelFailureDetails("timeout", 0, "DEADLINE_EXCEEDED")
+    if isinstance(error, ModelUnavailableError) and isinstance(error.__cause__, Exception):
+        return model_failure_details(error.__cause__)
+    if isinstance(error, auth_errors.TransportError):
+        return ModelFailureDetails("transport", 0, "unknown")
+    if isinstance(error, auth_errors.GoogleAuthError):
+        return ModelFailureDetails("credentials", 0, "unknown")
     if isinstance(error, genai_errors.APIError):
         status = error.code if _HTTP_STATUS_MIN <= error.code <= _HTTP_STATUS_MAX else 0
         return ModelFailureDetails("api_error", status, _provider_reason(error))
@@ -148,6 +204,9 @@ def model_failure_details(
         return ModelFailureDetails(
             "invalid_payload", 0, "unknown", "schema", _safe_validation_issues(error)
         )
+    failure = classify_model_failure(error)
+    if failure is not None and failure.code == "model_unavailable":
+        return ModelFailureDetails("transport", 0, "unknown")
     return ModelFailureDetails("invalid_payload", 0, "unknown", "unknown")
 
 
@@ -188,8 +247,29 @@ def _provider_reason(error: genai_errors.APIError) -> str:
             and detail.reason is not None
             and detail.reason in _KNOWN_REASONS
         ),
-        "unknown",
+        response.error.status if response.error.status in _SAFE_PROVIDER_STATUSES else "unknown",
     )
+
+
+def model_exception_chain(error: BaseException) -> tuple[str, ...]:
+    result: list[str] = []
+    pending = [error]
+    seen: set[int] = set()
+    while pending and len(result) < _MAX_EXCEPTION_CHAIN:
+        current = pending.pop()
+        if id(current) in seen:
+            continue
+        seen.add(id(current))
+        name = type(current).__name__
+        result.append(name if name in _SAFE_EXCEPTION_NAMES else "Exception")
+        if isinstance(current, BaseExceptionGroup):
+            pending.extend(reversed(current.exceptions[:_MAX_EXCEPTION_CHAIN]))
+        cause = current.__cause__
+        if cause is None and not current.__suppress_context__:
+            cause = current.__context__
+        if cause is not None:
+            pending.append(cause)
+    return tuple(result)
 
 
 def log_model_failure(
@@ -197,7 +277,7 @@ def log_model_failure(
     operation: TransformPhase | Literal["review", "readability"],
     attempt: int,
     model: str,
-    error: TimeoutError | ValueError | genai_errors.APIError,
+    error: Exception,
 ) -> None:
     failure = model_failure_details(error)
     logger.warning(
@@ -207,10 +287,18 @@ def log_model_failure(
         model_id=model,
         model_payload_category=failure.payload_category,
         model_validation_issues=[asdict(issue) for issue in failure.validation_issues],
+        model_exception_chain=model_exception_chain(error),
         model_attempt=attempt,
         model_error_kind=failure.kind,
         model_http_status=failure.http_status,
         model_error_reason=failure.reason,
+        model_error_code=error.code
+        if isinstance(error, ModelUnavailableError)
+        else "provider_attempt",
+        model_retryable=error.retryable if isinstance(error, ModelUnavailableError) else None,
+        model_attempt_retryable=error.retry_within_operation
+        if isinstance(error, ModelUnavailableError)
+        else None,
     )
 
 
@@ -218,7 +306,7 @@ def log_model_response_failure(
     *,
     model: str,
     response: genai_types.GenerateContentResponse,
-    operation: TransformPhase | Literal["review"] = "review",
+    operation: TransformPhase | Literal["review", "readability"] = "review",
 ) -> None:
     finish_reason = response.candidates[0].finish_reason if response.candidates else None
     metadata: dict[str, str | int] = {

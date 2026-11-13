@@ -2,14 +2,14 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 from types import SimpleNamespace
-from typing import Any
+from typing import Any, Literal
 import uuid
 
 import pytest
 
 from app.config import document_transform_in_place_enabled
 from app.document_transform.application import TransformSubmission
-from app.identifiers import UserId
+from app.identifiers import TaskId, UserId
 from app.mcp.context import McpAuthorizationError, ValidatedMcpPrincipal
 from app.mcp.mutation import polish_document
 from app.mcp.schemas import MarkdownImportInput, McpCapability, PolishInput
@@ -29,11 +29,15 @@ def request() -> PolishInput:
 
 
 class Tasks:
-    def __init__(self, task: PendingTaskRead | None = None) -> None:
+    def __init__(
+        self, task: PendingTaskRead[Literal[TaskKind.FILE_DOCUMENT_TRANSFORM]] | None = None
+    ) -> None:
         self.task = task
-        self.owners: list[object] = []
+        self.owners: list[tuple[TaskId, UserId]] = []
 
-    async def get_for_owner(self, task_id: object, owner: object) -> PendingTaskRead:
+    async def get_for_owner(
+        self, task_id: TaskId, owner: UserId
+    ) -> PendingTaskRead[Literal[TaskKind.FILE_DOCUMENT_TRANSFORM]]:
         self.owners.append((task_id, owner))
         assert self.task is not None
         return self.task
@@ -85,7 +89,7 @@ async def test_polish_preserves_shared_admission_and_authenticated_identity(
         )
     )
     enqueuer: Any = object()
-    task = PendingTaskRead.model_validate(
+    task = PendingTaskRead[Literal[TaskKind.FILE_DOCUMENT_TRANSFORM]].model_validate(
         {
             "id": str(uuid.uuid7()),
             "kind": TaskKind.FILE_DOCUMENT_TRANSFORM,

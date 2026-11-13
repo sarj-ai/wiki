@@ -28,21 +28,22 @@ const TaskStatusSchema = z.enum([
   "succeeded",
   "failed",
   "cancelled",
+  "needs_review",
 ]);
 const UuidSchema = z.uuid();
 const AdmissionSchema = z.strictObject({
-  task_id: UuidSchema,
+  "task_id": UuidSchema,
   status: TaskStatusSchema,
 });
 const CapabilitiesSchema = z.object({
   copy: z.literal(true),
-  in_place: z.boolean(),
-  presentation_copy: z.literal(true).default(true),
-  presentation_in_place: z.literal(false).default(false),
+  "in_place": z.boolean(),
+  "presentation_copy": z.literal(true).default(true),
+  "presentation_in_place": z.literal(false).default(false),
 });
 const MessageSchema = z
   .object({
-    block_id: z.string().nullable(),
+    "block_id": z.string().nullable(),
     code: z.string(),
     detail: z.string(),
     severity: FindingSeveritySchema.default("review"),
@@ -50,60 +51,72 @@ const MessageSchema = z
   .loose();
 const ResultSchema = z
   .object({
-    access_scope: AccessScopeSchema.default("inherited"),
-    applied_patch_count: z.int().nonnegative(),
-    artifact_kind: ArtifactKindSchema.default("document"),
-    brand_profile_id: z.string().default("sarj-legacy-v1"),
-    brand_profile_sha256: z.string().default("legacy-unrecorded"),
-    deterministic_patch_count: z.int().nonnegative().default(0),
+    "access_scope": AccessScopeSchema.default("inherited"),
+    "applied_patch_count": z.int().nonnegative(),
+    "artifact_kind": ArtifactKindSchema.default("document"),
+    "brand_profile_id": z.string().default("sarj-legacy-v1"),
+    "brand_profile_sha256": z.string().default("legacy-unrecorded"),
+    "deterministic_patch_count": z.int().nonnegative().default(0),
     findings: z.array(MessageSchema),
     mode: TransformModeSchema,
-    llm_invoked: z.boolean().default(true),
-    model_patch_count: z.int().nonnegative().default(0),
-    promoted_heading_count: z.int().min(0).max(750).default(0),
-    model_ids: z.array(z.string()),
-    needs_review: z.boolean(),
-    operation_id: UuidSchema,
-    output_strategy: OutputStrategySchema.default("copy"),
+    "llm_invoked": z.boolean().default(true),
+    "model_patch_count": z.int().nonnegative().default(0),
+    "promoted_heading_count": z.int().min(0).max(750).default(0),
+    "model_ids": z.array(z.string()),
+    "needs_review": z.boolean(),
+    "operation_id": UuidSchema,
+    "output_strategy": OutputStrategySchema.default("copy"),
     output: z.object({
-      file_id: z.string(),
+      "file_id": z.string(),
       name: z.string(),
-      parent_folder_id: z.string(),
-      web_url: z.string().nullable(),
-      media_type: z.string().default("application/vnd.google-apps.document"),
+      "parent_folder_id": z.string(),
+      "web_url": z.string().nullable(),
+      "media_type": z.string().default("application/vnd.google-apps.document"),
     }),
-    pipeline_version: z.string(),
+    "pipeline_version": z.string(),
     changed: z.boolean().default(true),
-    output_revision_id: z.string().nullable().default(null),
-    source_sha256: z.string(),
-    short_link_alias: z.string().nullable().default(null),
-    short_link_status: ShortLinkStatusSchema.nullable().default(null),
-    source_revision_id: z.string().nullable().default(null),
-    tool_versions: z.record(z.string(), z.string()),
+    "output_revision_id": z.string().nullable().default(null),
+    "source_sha256": z.string(),
+    "short_link_alias": z.string().nullable().default(null),
+    "short_link_status": ShortLinkStatusSchema.nullable().default(null),
+    "source_revision_id": z.string().nullable().default(null),
+    "tool_versions": z.record(z.string(), z.string()),
     validation: z.object({
-      protected_content_preserved: z.boolean(),
-      source_unchanged: z.boolean(),
-      structure_preserved: z.boolean(),
-      unsafe_patch_count: z.int().nonnegative(),
+      "protected_content_preserved": z.boolean(),
+      "source_unchanged": z.boolean(),
+      "structure_preserved": z.boolean(),
+      "unsafe_patch_count": z.int().nonnegative(),
     }),
   })
   .transform((result) => ({
     ...result,
-    needs_review:
-      result.needs_review ||
+    "needs_review":
+      result["needs_review"] ||
       result.findings.some((finding) => finding.severity === "review"),
   }));
 const TaskSchema = z.discriminatedUnion("status", [
   z.object({
     id: UuidSchema,
-    status: TaskStatusSchema.exclude(["failed", "succeeded"]),
+    status: z.literal("needs_review"),
+    "error_code": z.literal("external_effect_uncertain"),
+    "error_detail": z.string().min(1),
   }),
   z.object({
-    error_code: z.string(),
-    error_detail: z.string().nullable(),
+    id: UuidSchema,
+    status: z.enum(["pending", "cancelled"]),
+  }),
+  z.object({
+    id: UuidSchema,
+    status: z.literal("running"),
+    "attempt_count": z.int().positive(),
+    "execution_state": z.enum(["running", "retrying"]),
+  }),
+  z.object({
+    "error_code": z.string(),
+    "error_detail": z.string().nullable(),
     id: UuidSchema,
     status: z.literal("failed"),
-    unverified_output: z.object({ file_id: z.string().min(1) }).nullish(),
+    "unverified_output": z.object({ "file_id": z.string().min(1) }).nullish(),
   }),
   z.object({
     id: UuidSchema,
@@ -113,11 +126,11 @@ const TaskSchema = z.discriminatedUnion("status", [
 ]);
 const CurrentPolishSchema = z.object({ result: ResultSchema.nullable() });
 const UploadSchema = z.strictObject({
-  upload_id: UuidSchema,
+  "upload_id": UuidSchema,
   url: z.url().startsWith("https://storage.googleapis.com/"),
   method: z.literal("PUT"),
   headers: z.record(z.string(), z.string()),
-  expires_in_seconds: z.int().positive(),
+  "expires_in_seconds": z.int().positive(),
 });
 
 const DEFAULT_TASK_POLL_MS = 1_000;
@@ -125,21 +138,35 @@ const DEFAULT_MAX_TASK_POLLS = 900;
 const MAX_TRANSIENT_POLL_FAILURES = 5;
 const REDACTED_TASK_FAILURE_DETAIL = "Task could not be completed";
 const TASK_FAILURE_FALLBACKS: Readonly<Record<string, string>> = {
-  google_auth_required:
+  "model_configuration_invalid":
+    "The configured model or endpoint is unavailable. Contact support with this task ID.",
+  "model_authentication_failed":
+    "Model provider authorization failed. Contact support with this task ID.",
+  "model_permission_denied":
+    "The model provider denied access. Contact support with this task ID.",
+  "model_output_invalid":
+    "The model returned invalid output. No unverified rewrite was applied.",
+  "model_output_truncated":
+    "The model reached its response limit. Review this task before retrying a smaller document.",
+  "model_deadline_exhausted":
+    "The model could not finish within the execution budget. Review this task before retrying.",
+  "execution_deadline_exhausted":
+    "The task reached its total execution budget. Review any existing output before retrying.",
+  "google_auth_required":
     "Reconnect Google Drive, then start the document polish again.",
-  header_conflict:
+  "header_conflict":
     "Review the document header before applying Sarj branding again.",
-  incompatible_pending_output:
+  "incompatible_pending_output":
     "An incomplete result from an earlier polish needs review before you try again.",
-  in_place_not_allowed:
+  "in_place_not_allowed":
     "This document is no longer eligible for safe in-place polishing. Reload it or create a review copy.",
-  in_place_verification_failed:
+  "in_place_verification_failed":
     "Google Docs accepted changes, but safety verification failed. The original document may have changed; inspect it and its Drive version history before trying again.",
-  needs_review:
+  "needs_review":
     "Sarj stopped at a safety check. Review the document and its Drive version history before trying again.",
-  output_verification_failed:
+  "output_verification_failed":
     "The polished result did not pass safety verification. Review the document before trying again.",
-  source_changed:
+  "source_changed":
     "The document changed after polishing started. Reload and review the latest version before trying again.",
 };
 
@@ -160,7 +187,7 @@ export const DOCUMENT_TRANSFORM_API = {
       throw new Error(
         "Markdown upload failed. Choose the file again to retry.",
       );
-    return upload.upload_id;
+    return upload["upload_id"];
   },
   admission: async (key: string, signal?: AbortSignal) => {
     const id = UuidSchema.parse(key);
@@ -190,9 +217,9 @@ export const DOCUMENT_TRANSFORM_API = {
     const capabilities = CapabilitiesSchema.parse(JSON.parse(responseBody));
     return {
       copy: capabilities.copy,
-      inPlace: capabilities.in_place,
-      presentationCopy: capabilities.presentation_copy,
-      presentationInPlace: capabilities.presentation_in_place,
+      inPlace: capabilities["in_place"],
+      presentationCopy: capabilities["presentation_copy"],
+      presentationInPlace: capabilities["presentation_in_place"],
     } as const;
   },
 
@@ -224,8 +251,8 @@ export const DOCUMENT_TRANSFORM_API = {
   ): Promise<DocumentTransformTask> => {
     const body = JSON.stringify({
       mode,
-      output_name: outputName,
-      output_strategy: outputStrategy,
+      "output_name": outputName,
+      "output_strategy": outputStrategy,
       source: serializeSource(source),
     });
     const response = await runActionResult(
@@ -263,8 +290,15 @@ export const DOCUMENT_TRANSFORM_API = {
     signal?: AbortSignal,
     pollIntervalMs = DEFAULT_TASK_POLL_MS,
     maxPolls = DEFAULT_MAX_TASK_POLLS,
+    onProgress?: (task: DocumentTransformTask) => void,
   ): Promise<DocumentTransformResult> =>
-    await waitForTask(initialTask, signal, pollIntervalMs, maxPolls),
+    await waitForTask(
+      initialTask,
+      signal,
+      pollIntervalMs,
+      maxPolls,
+      onProgress,
+    ),
 } as const;
 
 async function waitForTask(
@@ -272,6 +306,7 @@ async function waitForTask(
   signal: AbortSignal | undefined,
   pollIntervalMs: number,
   maxPolls: number,
+  onProgress?: (task: DocumentTransformTask) => void,
 ): Promise<DocumentTransformResult> {
   const owner = captureBrowserSession();
   const pollSignal =
@@ -280,7 +315,10 @@ async function waitForTask(
   let transientFailures = 0;
   for (let poll = 0; ; poll += 1) {
     pollSignal.throwIfAborted();
+    onProgress?.(current);
     switch (current.status) {
+      case "needs_review":
+        throw new DocumentTransformNeedsReviewError(current.errorDetail);
       case "cancelled":
         throw new DocumentTransformTerminalError(
           "Document polish was cancelled",
@@ -369,20 +407,36 @@ function taskFailureDetail(
 
 function parseTask(task: z.infer<typeof TaskSchema>): DocumentTransformTask {
   switch (task.status) {
+    case "needs_review":
+      return {
+        id: task.id,
+        status: "needs_review",
+        errorCode: task["error_code"],
+        errorDetail: task["error_detail"],
+      };
     case "cancelled":
     case "pending":
+      return {
+        id: task.id,
+        status: task.status,
+      };
     case "running":
-      return { id: task.id, status: task.status };
+      return {
+        id: task.id,
+        status: task.status,
+        attemptCount: task["attempt_count"],
+        executionState: task["execution_state"],
+      };
     case "failed":
       return {
-        errorCode: task.error_code,
-        ...(!(task.error_detail === null) && {
-          errorDetail: task.error_detail,
+        errorCode: task["error_code"],
+        ...(!(task["error_detail"] === null) && {
+          errorDetail: task["error_detail"],
         }),
         id: task.id,
         status: "failed",
-        ...(!!task.unverified_output && {
-          unverifiedOutputId: task.unverified_output.file_id,
+        ...(!!task["unverified_output"] && {
+          unverifiedOutputId: task["unverified_output"]["file_id"],
         }),
       };
     case "succeeded":
@@ -398,49 +452,50 @@ function parseResult(
   result: z.infer<typeof ResultSchema>,
 ): DocumentTransformResult {
   return {
-    accessScope: result.access_scope,
-    appliedPatchCount: result.applied_patch_count,
-    artifactKind: result.artifact_kind,
-    brandProfileId: result.brand_profile_id,
-    brandProfileSha256: result.brand_profile_sha256,
-    deterministicPatchCount: result.deterministic_patch_count,
+    accessScope: result["access_scope"],
+    appliedPatchCount: result["applied_patch_count"],
+    artifactKind: result["artifact_kind"],
+    brandProfileId: result["brand_profile_id"],
+    brandProfileSha256: result["brand_profile_sha256"],
+    deterministicPatchCount: result["deterministic_patch_count"],
     findings: result.findings.map((finding) => ({
-      blockId: finding.block_id,
+      blockId: finding["block_id"],
       code: finding.code,
       detail: finding.detail,
       severity: finding.severity,
     })),
     mode: result.mode,
-    llmInvoked: result.llm_invoked,
-    modelPatchCount: result.model_patch_count,
-    promotedHeadingCount: result.promoted_heading_count,
-    modelIds: result.model_ids,
-    needsReview: result.needs_review,
-    operationId: result.operation_id,
-    outputStrategy: result.output_strategy,
+    llmInvoked: result["llm_invoked"],
+    modelPatchCount: result["model_patch_count"],
+    promotedHeadingCount: result["promoted_heading_count"],
+    modelIds: result["model_ids"],
+    needsReview: result["needs_review"],
+    operationId: result["operation_id"],
+    outputStrategy: result["output_strategy"],
     outputFile: {
       canEdit: true,
       driveId: undefined,
-      id: result.output.file_id,
-      mimeType: result.output.media_type,
+      id: result.output["file_id"],
+      mimeType: result.output["media_type"],
       modifiedTime: undefined,
       name: result.output.name,
-      parentFolderId: result.output.parent_folder_id,
+      parentFolderId: result.output["parent_folder_id"],
     },
-    outputWebUrl: result.output.web_url,
-    pipelineVersion: result.pipeline_version,
+    outputWebUrl: result.output["web_url"],
+    pipelineVersion: result["pipeline_version"],
     changed: result.changed,
-    outputRevisionId: result.output_revision_id,
-    sourceSha256: result.source_sha256,
-    shortLinkAlias: result.short_link_alias,
-    shortLinkStatus: result.short_link_status,
-    sourceRevisionId: result.source_revision_id,
-    toolVersions: result.tool_versions,
+    outputRevisionId: result["output_revision_id"],
+    sourceSha256: result["source_sha256"],
+    shortLinkAlias: result["short_link_alias"],
+    shortLinkStatus: result["short_link_status"],
+    sourceRevisionId: result["source_revision_id"],
+    toolVersions: result["tool_versions"],
     validation: {
-      protectedContentPreserved: result.validation.protected_content_preserved,
-      sourceUnchanged: result.validation.source_unchanged,
-      structurePreserved: result.validation.structure_preserved,
-      unsafePatchCount: result.validation.unsafe_patch_count,
+      protectedContentPreserved:
+        result.validation["protected_content_preserved"],
+      sourceUnchanged: result.validation["source_unchanged"],
+      structurePreserved: result.validation["structure_preserved"],
+      unsafePatchCount: result.validation["unsafe_patch_count"],
     },
   };
 }
@@ -450,20 +505,20 @@ function serializeSource(
 ): Record<string, string> {
   return source.kind === "uploaded_markdown"
     ? {
-        destination_folder_id: source.destinationFolderId,
+        "destination_folder_id": source.destinationFolderId,
         kind: source.kind,
         name: source.name,
-        upload_id: source.uploadId,
+        "upload_id": source.uploadId,
       }
     : source.kind === "drive_file"
       ? {
-          expected_modified_time: source.expectedModifiedTime,
-          file_id: source.fileId,
+          "expected_modified_time": source.expectedModifiedTime,
+          "file_id": source.fileId,
           kind: source.kind,
         }
       : {
           content: source.content,
-          destination_folder_id: source.destinationFolderId,
+          "destination_folder_id": source.destinationFolderId,
           kind: source.kind,
           name: source.name,
         };

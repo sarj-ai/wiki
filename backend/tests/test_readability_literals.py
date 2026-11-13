@@ -21,6 +21,7 @@ from app.document_transform.readability_tables import (
     readable_table_requests,
 )
 from app.document_transform.readability_types import (
+    LegacyReadabilityRefinement,
     PlannedReadabilityCheckpoint,
     ReadabilityCheckpoint,
     ReadabilityParagraph,
@@ -76,6 +77,10 @@ from tests.test_readability_lists import _prose_document
         "Measurements remain approximately 12.3 ms ±|0.4 ms under load.",
         "Measurements remain approximately 1.2|x 10^3 s under load.",
         "Measurements remain approximately 1.2 x|10^3 s under load.",
+        "Measurements remain approximately 1'234.50|ms under load.",
+        "Measurements remain approximately 1’234,50|ms under load.",
+        "Measurements remain approximately 12.3|+/- 0.4 ms under load.",
+        "Measurements remain approximately 12.3 +/-|0.4 ms under load.",
     ],
 )
 def test_layout_rejects_paragraph_breaks_inside_source_literals(marked: str) -> None:
@@ -291,6 +296,7 @@ async def test_saved_literal_split_is_rejected_before_any_provider_write(
         }
     )
     checkpoint = PlannedReadabilityCheckpoint(
+        refinement=LegacyReadabilityRefinement(passes=0, model_invoked=False),
         source_revision_id=DocsRevisionId(str(document["revisionId"])),
         source_sha256=document_digest(document),
         invariant_sha256=document_digest(document),

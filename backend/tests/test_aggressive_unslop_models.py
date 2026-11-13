@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 from dataclasses import dataclass, replace
+from datetime import timedelta
 import hashlib
 from http import HTTPStatus
 import json
@@ -42,6 +43,7 @@ from app.document_transform.unslop import (
     without_editorial_framing,
 )
 from app.identifiers import FileId
+from app.performance import provider_retry_budget
 from tests.support import dependency
 
 
@@ -160,6 +162,23 @@ class _RejectedInputs(RootModel[list[_RejectedInput]]):
 class _WriterRequest(BaseModel):
     model_config = ConfigDict(extra="ignore")
     generation_config: types.GenerateContentConfig = Field(alias="generationConfig")
+
+
+class _WriterInvocation(_WriterRequest):
+    contents: list[types.Content]
+
+
+def _supplied_writer_blocks(request: httpx.Request) -> list[_RewriteInput]:
+    invocation = _WriterInvocation.model_validate_json(request.content)
+    prompt = "\n".join(
+        part.text
+        for content in invocation.contents
+        for part in content.parts or []
+        if part.text is not None
+    )
+    return _RewriteInputs.model_validate_json(
+        next(line for line in prompt.splitlines() if line.startswith("["))
+    ).root
 
 
 class _ModelResponse:
@@ -340,12 +359,78 @@ async def test_normal_model_settings_reach_the_real_sdk_without_overriding_expli
 
     assert models == [expected_model]
     (config,) = configurations
-    assert config.max_output_tokens == 16_384
+    assert config.max_output_tokens == 32_768
     if thinking_level is None:
         assert config.thinking_config is None
     else:
         assert config.thinking_config is not None
         assert config.thinking_config.thinking_level == thinking_level
+
+
+@pytest.mark.parametrize(("paragraph_count", "repetitions"), [(77, 1), (12, 7)])
+async def test_high_pro_writer_bounds_wire_workload_without_losing_any_source_block(
+    paragraph_count: int, repetitions: int
+) -> None:
+    document = parse_markdown(
+        "\n\n".join(SOURCE * repetitions for _ in range(paragraph_count)), title="Private workload"
+    )
+    requests: list[httpx.Request] = []
+
+    async def respond(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        patches = [
+            TextPatch(block_id=b.block_id, expected_sha256=b.sha256, replacement=b.text)
+            for b in _supplied_writer_blocks(request)
+        ]
+        return httpx.Response(
+            200,
+            json={
+                "candidates": [
+                    {
+                        "content": {
+                            "role": "model",
+                            "parts": [{"text": PatchEnvelope(patches=patches).model_dump_json()}],
+                        },
+                        "finishReason": "STOP",
+                    }
+                ]
+            },
+        )
+
+    async def sleep(_: float) -> None:
+        await asyncio.sleep(0)
+
+    policy = document_model_policy(project="offline-workload", document=DocumentSettings())
+    async with httpx.AsyncClient(transport=httpx.MockTransport(respond)) as http:
+        client = genai.Client(
+            vertexai=True,
+            project=policy.project,
+            location=policy.location,
+            credentials=Credentials(token="offline-workload-not-a-real-token"),
+            http_options=types.HttpOptions(base_url="http://127.0.0.1:9", httpx_async_client=http),
+        )
+        try:
+            generator = VertexGeminiPatchGenerator(policy=policy, client=client, writer_sleep=sleep)
+            with provider_retry_budget(timedelta(seconds=240)):
+                patches = await generator.generate(document, phase=TransformPhase.UNSLOP)
+        finally:
+            await client.aio.aclose()
+
+    assert len(requests) >= 2
+    assert [(p.block_id, p.expected_sha256, p.replacement) for p in patches] == [
+        (block.id, block.sha256, block.text) for block in model_editable_blocks(document)
+    ]
+    for request in requests:
+        blocks = _supplied_writer_blocks(request)
+        assert len(blocks) <= 40
+        assert sum(len(block.text) for block in blocks) <= 6_000
+        assert request.url.path.endswith("/models/gemini-3.1-pro-preview:generateContent")
+        invocation = _WriterInvocation.model_validate_json(request.content)
+        thinking = invocation.generation_config.thinking_config
+        assert thinking is not None
+        assert thinking.thinking_level is types.ThinkingLevel.HIGH
+        assert invocation.generation_config.max_output_tokens == 32_768
+        assert 0 < float(request.headers["X-Server-Timeout"]) <= 150
 
 
 async def test_aggressive_generation_uses_structured_output_and_supported_thinking() -> None:
@@ -362,7 +447,7 @@ async def test_aggressive_generation_uses_structured_output_and_supported_thinki
     config = harness.call.configurations[0]
     assert config.response_schema is None
     assert config.response_json_schema is not None
-    assert config.max_output_tokens == 16_384
+    assert config.max_output_tokens == 32_768
     assert config.response_json_schema["additionalProperties"] is False
     assert "patches" in config.response_json_schema["properties"]
     assert config.thinking_config is not None
@@ -464,7 +549,7 @@ async def test_semantic_verdict_with_the_wrong_output_hash_fails_closed() -> Non
     assert harness.call.models == ["gemini-3.1-pro-preview"] * 3
 
 
-async def test_missing_rewrite_proposals_retry_instead_of_silently_returning_no_edits() -> None:
+async def test_missing_rewrite_proposals_fail_instead_of_silently_returning_no_edits() -> None:
     document = parse_markdown(SOURCE, title="Bird")
     harness = _generator(types.GenerateContentResponse(parsed=PatchEnvelope(patches=[])))
     with pytest.raises(ModelUnavailableError):
@@ -630,6 +715,13 @@ async def test_review_failover_uses_the_configured_fallback_within_its_attempt_b
     harness.call.timeout_failures = status is None
     if status is not None:
         harness.call.failure_status = status
+    if status == HTTPStatus.FORBIDDEN:
+        with pytest.raises(ModelUnavailableError) as caught:
+            await harness.generator.verify(document, [patch])
+        assert caught.value.code == "model_permission_denied"
+        assert not caught.value.retryable
+        assert harness.call.models == ["gemini-3.1-pro-preview"]
+        return
     if failures == 3:
         with pytest.raises(ModelUnavailableError):
             await harness.generator.verify(document, [patch])
@@ -714,7 +806,7 @@ async def test_transient_review_fallback_rejects_forged_bindings(
         HTTPStatus.UNPROCESSABLE_CONTENT,
     ],
 )
-async def test_permanent_provider_errors_keep_the_configured_reviewer(status: HTTPStatus) -> None:
+async def test_permanent_provider_errors_stop_the_configured_reviewer(status: HTTPStatus) -> None:
     document = parse_markdown(SOURCE, title="Bird")
     block = document.blocks[0]
     patch = TextPatch(block_id=block.id, expected_sha256=block.sha256, replacement=REPLACEMENT)
@@ -723,8 +815,10 @@ async def test_permanent_provider_errors_keep_the_configured_reviewer(status: HT
     harness.call.failures = 1
     harness.call.failure_status = status
 
-    assert (await harness.generator.review(document, [patch])).approved == {block.id}
-    assert harness.call.models == ["gemini-3.1-pro-preview"] * 2
+    with pytest.raises(ModelUnavailableError) as caught:
+        await harness.generator.review(document, [patch])
+    assert not caught.value.retryable
+    assert harness.call.models == ["gemini-3.1-pro-preview"]
 
 
 async def test_sparse_proposals_share_a_review_batch_without_unchanged_prose() -> None:
@@ -753,7 +847,7 @@ async def test_sparse_proposals_share_a_review_batch_without_unchanged_prose() -
 
 
 async def test_review_batches_bound_paired_text_without_losing_or_duplicating_verdicts() -> None:
-    document = parse_markdown("\n\n".join(SOURCE for _ in range(13)), title="Article")
+    document = parse_markdown("\n\n".join(SOURCE for _ in range(33)), title="Article")
     patches = [
         TextPatch(block_id=block.id, expected_sha256=block.sha256, replacement=REPLACEMENT)
         for block in document.blocks
@@ -766,8 +860,8 @@ async def test_review_batches_bound_paired_text_without_losing_or_duplicating_ve
     }
     submitted = [_ReviewInput.model_validate_json(prompt) for prompt in harness.call.prompts]
     assert len(submitted) > 1
-    assert all(len(batch.sentence_audits) <= 12 for batch in submitted)
-    assert all(len(prompt) <= 12_000 for prompt in harness.call.prompts)
+    assert all(len(batch.sentence_audits) <= 32 for batch in submitted)
+    assert all(len(prompt) <= 32_000 for prompt in harness.call.prompts)
     assert [pair.block_id for batch in submitted for pair in batch.sentence_audits] == [
         patch.block_id for patch in patches
     ]
@@ -809,8 +903,8 @@ async def test_sre_review_batching_reduces_requests_with_identical_complete_audi
     assert len(wide) < len(narrow)
     assert bindings(wide_prompts) == bindings(narrow_prompts)
     assert len(bindings(wide_prompts)) == len(set(bindings(wide_prompts)))
-    assert all(len(prompt) <= 12_000 for prompt in wide_prompts)
-    assert all(len(batch) <= 12 for batch in wide)
+    assert all(len(prompt) <= 32_000 for prompt in wide_prompts)
+    assert all(len(batch) <= 32 for batch in wide)
 
     harness = _generator(types.GenerateContentResponse())
     harness.call.review_input = True
@@ -897,8 +991,8 @@ async def test_sentence_checks_share_paragraph_context_without_losing_full_cover
     payloads = [_ReviewInput.model_validate_json(prompt) for prompt in harness.call.prompts]
     assert sum(len(payload.sentence_audits) for payload in payloads) == 60
     assert len(payloads) <= 6
-    assert all(0 < len(payload.sentence_audits) <= 12 for payload in payloads)
-    assert all(len(prompt) <= 12_000 for prompt in harness.call.prompts)
+    assert all(0 < len(payload.sentence_audits) <= 32 for payload in payloads)
+    assert all(len(prompt) <= 32_000 for prompt in harness.call.prompts)
     for payload in payloads:
         contexts = {context.context_id: context for context in payload.document_contexts}
         assert len(contexts) == len(payload.document_contexts)
@@ -938,7 +1032,7 @@ def test_conventional_framing_can_go_without_relaxing_the_following_obligation(p
     )
     assert decision.accepted == {block.id: proposed}
     assert not decision.findings
-    assert UNSLOP_POLICY_VERSION == "sarj-concise-v35"
+    assert UNSLOP_POLICY_VERSION == "sarj-concise-v39"
 
 
 @pytest.mark.parametrize(
@@ -1423,17 +1517,15 @@ async def test_smaller_editor_requests_preserve_all_blocks_hashes_and_order(
         _RewriteInputs.model_validate_json(_rewrite_payload_lines(prompt)[0]).root
         for prompt in harness.call.prompts
     ]
-    assert all(0 < len(batch) <= 6 for batch in submitted)
-    assert all(sum(len(block.text) for block in batch) <= 4_000 for batch in submitted)
+    assert all(submitted)
     assert [block.block_id for batch in submitted for block in batch] == [
         block.id for block in blocks
     ]
     assert [(patch.block_id, patch.expected_sha256, patch.replacement) for patch in patches] == [
         (block.id, block.sha256, block.text) for block in blocks
     ]
-    assert [len(batch) for batch in submitted] == (
-        [6, 6, 1] if repetitions == 1 else [1] * len(blocks)
-    )
+    if repetitions == 1:
+        assert len(submitted) == 1
 
 
 async def test_single_oversized_block_and_audit_are_preserved_whole() -> None:

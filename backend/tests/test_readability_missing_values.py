@@ -19,7 +19,7 @@ def test_missing_first_measurement_does_not_turn_a_body_row_into_a_header(missin
     assert not target.header
     assert target.numeric == {1}
     assert all(
-        "bold" not in obj(obj(request["updateTextStyle"])["textStyle"])
+        obj(obj(request["updateTextStyle"])["textStyle"])["bold"] is False
         for request in requests
         if "updateTextStyle" in request
     )
@@ -48,7 +48,7 @@ def test_label_like_body_values_do_not_authorize_new_header_emphasis() -> None:
 
     assert not target.header
     assert all(
-        "bold" not in obj(obj(request["updateTextStyle"])["textStyle"])
+        obj(obj(request["updateTextStyle"])["textStyle"])["bold"] is False
         for request in requests
         if "updateTextStyle" in request
     )

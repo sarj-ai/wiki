@@ -1,7 +1,14 @@
 from typing import Any
 
 from app.document_transform.ir import DocumentIR, TextBlock
+from app.document_transform.safety import REPAIRABLE_REWRITE_CODES
 from app.document_transform.schemas import FindingSeverity, TransformFinding, TransformMode
+
+
+_EDITORIAL_REVIEW_CODES = REPAIRABLE_REWRITE_CODES | {
+    "contextual_unslop_review_required",
+    "unslop_block_too_large",
+}
 
 
 def preserved_native_findings(
@@ -15,8 +22,7 @@ def preserved_native_findings(
     if not findings:
         return ()
     if (
-        mode not in {TransformMode.FORMAT, TransformMode.BOTH}
-        or original.source_format != "google_doc"
+        original.source_format != "google_doc"
         or native_document is None
         or len(original.blocks) != len(transformed.blocks)
     ):
@@ -27,7 +33,15 @@ def preserved_native_findings(
         if before == after and not before.editable
     }
     result: list[TransformFinding] = []
+    source_ids = {block.id for block in original.blocks}
     for finding in findings:
+        if finding.code in _EDITORIAL_REVIEW_CODES and finding.block_id in source_ids:
+            # Rejected proposals and unmet editorial targets remain review
+            # findings. They do not invalidate separately validated/reviewed
+            # edits; native revision, content and structure checks still gate
+            # every mutation. Unknown findings remain fail-closed below.
+            result.append(finding)
+            continue
         block = unchanged.get(finding.block_id or "")
         if (
             finding.code != "google_doc_text_target_unsupported"
@@ -35,19 +49,25 @@ def preserved_native_findings(
             or not _preservation_is_verified(block, native_document)
         ):
             return None
-        result.append(
-            TransformFinding(
-                code="native_rich_text_preserved",
-                block_id=block.id,
-                detail=(
-                    "Rich text wording and native structure were preserved; supported font formatting was checked."
-                    if block.font_style_ranges and not block.preserved_font_family
-                    else "Text and protected native elements in this paragraph were preserved without modification"
-                ),
-                severity=FindingSeverity.INFORMATIONAL,
-            )
-        )
+        result.append(_preserved_finding(block, finding=finding, mode=mode))
     return tuple(result)
+
+
+def _preserved_finding(
+    block: TextBlock, *, finding: TransformFinding, mode: TransformMode
+) -> TransformFinding:
+    if mode is TransformMode.UNSLOP:
+        return finding
+    return TransformFinding(
+        code="native_rich_text_preserved",
+        block_id=block.id,
+        detail=(
+            "Rich text wording and native structure were preserved; supported font formatting was checked."
+            if block.font_style_ranges and not block.preserved_font_family
+            else "Text and protected native elements in this paragraph were preserved without modification"
+        ),
+        severity=FindingSeverity.INFORMATIONAL,
+    )
 
 
 def _preservation_is_verified(block: TextBlock, document: dict[str, Any]) -> bool:

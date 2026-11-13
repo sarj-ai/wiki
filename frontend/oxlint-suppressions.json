@@ -483,9 +483,6 @@
   "src/lib/document-transform-api.test.ts": {
     "@sarj/no-test-comments": {
       "count": 1
-    },
-    "@sarj/require-camelcase-properties": {
-      "count": 117
     }
   },
   "src/lib/document-transform-api.ts": {
@@ -494,9 +491,6 @@
     },
     "@sarj/no-frontend-comments": {
       "count": 3
-    },
-    "@sarj/require-camelcase-properties": {
-      "count": 95
     }
   },
   "src/lib/last-doc.test.ts": {

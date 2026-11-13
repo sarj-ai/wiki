@@ -30,6 +30,7 @@ from app.document_transform.header_provenance import (
 )
 from app.document_transform.ir import MAX_DOC_TABS, MAX_DOCUMENT_BLOCKS
 from app.document_transform.limits import MAX_MARKDOWN_BYTES
+from app.document_transform.native_chip_flow import NativeChipCheckpoint
 from app.document_transform.native_date_flow import NativeDateCheckpoint
 from app.document_transform.native_font_proof import NativeFontBlockId, NativeFontProof
 from app.document_transform.native_footer_flow import NativeFooterCheckpoint
@@ -312,6 +313,8 @@ class InPlacePlan(StrictTransformModel):
 
     readability: ReadabilityCheckpoint | None = None
     readability_result: DocumentTransformResult | None = None
+    native_chips: NativeChipCheckpoint | None = None
+    native_chip_result: DocumentTransformResult | None = None
     visual_authority_block_ids: tuple[
         Annotated[NativeFontBlockId, StringConstraints(pattern=r"^b[0-9]+$", max_length=12)], ...
     ] = Field(default=(), max_length=MAX_DOCUMENT_BLOCKS)
@@ -391,11 +394,14 @@ class InPlacePlan(StrictTransformModel):
         if not targets <= titles:
             msg = "custom header title targets must belong to the verified title set"
             raise ValueError(msg)
+        if not titles <= furniture_headers:
+            msg = "custom header title proofs must belong to preserved custom headers"
+            raise ValueError(msg)
         if self.custom_header_titles_required and titles != furniture_headers:
             msg = "every preserved custom header must have a verified native title"
             raise ValueError(msg)
-        if not self.custom_header_titles_required and (titles or targets):
-            msg = "unbranded transforms cannot manage custom header titles"
+        if not self.custom_header_titles_required and targets:
+            msg = "unbranded transforms cannot create custom header titles"
             raise ValueError(msg)
         return self
 
@@ -511,6 +517,8 @@ class CopyPlan(StrictTransformModel):
     compact_markdown: StrictBool = False
     readability: ReadabilityCheckpoint | None = None
     readability_result: DocumentTransformResult | None = None
+    native_chips: NativeChipCheckpoint | None = None
+    native_chip_result: DocumentTransformResult | None = None
     pagination: tuple[NativePaginationRule, ...] = Field(
         default=(), max_length=MAX_PAGINATION_RULES
     )
@@ -683,4 +691,65 @@ class WordCheckpointPayload(RootModel[WordCopyCheckpoint]):
     pass
 
 
-DocumentTransformCheckpoint = InPlaceCheckpoint | CopyCheckpoint | WordCopyCheckpoint
+class PresentationCopyPlan(StrictTransformModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    version: Literal[1] = 1
+    kind: Literal["presentation_copy"] = "presentation_copy"
+    request_sha256: str = Field(pattern=r"^[a-f0-9]{64}$")
+    source_sha256: str = Field(pattern=r"^[a-f0-9]{64}$")
+    output_name: OutputName
+
+
+class PlannedPresentationCheckpoint(PresentationCopyPlan):
+    stage: Literal[CopyCheckpointStage.PLANNED] = CopyCheckpointStage.PLANNED
+    output: None = None
+    result: None = None
+
+
+class CreatingPresentationCheckpoint(PresentationCopyPlan):
+    stage: Literal[CopyCheckpointStage.CREATING] = CopyCheckpointStage.CREATING
+    output: None = None
+    result: None = None
+
+
+class CreatedPresentationCheckpoint(PresentationCopyPlan):
+    stage: Literal[CopyCheckpointStage.CREATED] = CopyCheckpointStage.CREATED
+    output: DocumentOutput
+    result: None = None
+
+
+class VerifiedPresentationCheckpoint(PresentationCopyPlan):
+    stage: Literal[CopyCheckpointStage.VERIFIED] = CopyCheckpointStage.VERIFIED
+    output: DocumentOutput
+    result: DocumentTransformResult
+
+    @model_validator(mode="after")
+    def matching_result(self) -> Self:
+        if self.result.output != self.output or self.result.source_sha256 != self.source_sha256:
+            message = "Presentation result does not match its checkpoint"
+            raise ValueError(message)
+        return self
+
+
+PresentationCopyCheckpoint = Annotated[
+    PlannedPresentationCheckpoint
+    | CreatingPresentationCheckpoint
+    | CreatedPresentationCheckpoint
+    | VerifiedPresentationCheckpoint,
+    Field(discriminator="stage"),
+]
+
+
+class PresentationCheckpointPayload(RootModel[PresentationCopyCheckpoint]):
+    pass
+
+
+type TextDocumentCheckpoint = InPlaceCheckpoint | CopyCheckpoint | WordCopyCheckpoint
+
+
+class TextDocumentCheckpointPayload(RootModel[TextDocumentCheckpoint]):
+    pass
+
+
+DocumentTransformCheckpoint = TextDocumentCheckpoint | PresentationCopyCheckpoint

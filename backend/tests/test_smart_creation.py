@@ -29,7 +29,7 @@ from app.files.service import FilesService
 from app.identifiers import DriveId, FileId, IdempotencyKey, TaskId
 from app.sidebar.cache import CachedDriveTree, SidebarCacheService
 from app.smart_create.creation import DriveSmartFileCreationService
-from app.smart_create.errors import TemplateChangedError
+from app.smart_create.errors import SmartCreateUncertainError, TemplateChangedError
 from app.smart_create.router import invalidate_smart_create_result
 from app.smart_create.schemas import (
     BlankSource,
@@ -38,6 +38,7 @@ from app.smart_create.schemas import (
     TemplateSource,
 )
 from app.tasks.schemas import (
+    SmartCreateDispatch,
     SmartCreateTaskRecord,
     TaskClaim,
     TaskKind,
@@ -210,6 +211,15 @@ class _Tasks(TaskService):
     resource: FileId | None = None
     result_file: FileId | None = None
     result: BaseModel | None = None
+    dispatch = SmartCreateDispatch.STARTED
+
+    @override
+    async def begin_smart_create(
+        self, task_id: TaskId, *, lease_token: uuid.UUID
+    ) -> SmartCreateDispatch:
+        dispatch = self.dispatch
+        self.dispatch = SmartCreateDispatch.ALREADY_ATTEMPTED
+        return dispatch
 
     @override
     async def create_or_replay(
@@ -510,3 +520,43 @@ async def test_successful_smart_creation_invalidates_sidebar_drive() -> None:
     await invalidate_smart_create_result(_Database(), cache, result)
 
     assert cache.invalidated == DriveId("drive")
+
+
+async def test_lost_acknowledgement_retains_intent_and_refuses_a_second_creation() -> None:
+    tasks = _Tasks()
+
+    class LostAcknowledgementFiles(_Files):
+        @override
+        async def create_tracked(
+            self, parent_folder_id: FileId, name: str, mime_type: str, task_id: TaskId
+        ) -> FileResponse:
+            assert tasks.dispatch is SmartCreateDispatch.ALREADY_ATTEMPTED
+            self.created += 1
+            raise DriveUpstreamError(502)
+
+    files = LostAcknowledgementFiles()
+    service, _, _ = _service(files, tasks)
+    payload = SmartFileCreate(
+        source=BlankSource(kind="blank", file_type="document"),
+        parent_folder_id=FileId("folder"),
+        name="PRD",
+        emoji="📝",
+        alias="product-requirements",
+    )
+    task_id = TaskId(uuid.uuid7())
+    for _ in range(2):
+        with pytest.raises(SmartCreateUncertainError):
+            await service.execute(
+                task_id=task_id, lease_token=uuid.uuid7(), payload=payload, existing_resource=None
+            )
+        assert files.created == 1
+        assert tasks.resource is None
+        assert tasks.result is None
+
+    files.recovered = _file("already-created")
+    with pytest.raises(_SucceededError):
+        await service.execute(
+            task_id=task_id, lease_token=uuid.uuid7(), payload=payload, existing_resource=None
+        )
+    assert files.created == 1
+    assert tasks.result_file == FileId("already-created")

@@ -3,7 +3,7 @@ from __future__ import annotations
 from collections.abc import AsyncIterator
 from datetime import UTC, datetime, timedelta
 import json
-from typing import Never, override
+from typing import Literal, Never, TypedDict, Unpack, override
 import uuid
 
 from cryptography.fernet import InvalidToken
@@ -17,6 +17,7 @@ from app.document_transform.errors import (
     ConcisionTargetUnmetError,
     DocumentGatewayError,
     DocumentTransformError,
+    ExternalEffectUncertainError,
     ModelUnavailableError,
     OutputVerificationError,
     UnsupportedSourceError,
@@ -24,6 +25,7 @@ from app.document_transform.errors import (
 from app.document_transform.executor import PIPELINE_VERSION
 from app.document_transform.schemas import (
     DocumentOutput,
+    DocumentTransformCheckpoint,
     DocumentTransformRequest,
     DocumentTransformResult,
     DriveFileSource,
@@ -49,9 +51,11 @@ from app.tasks import service as task_service_module
 from app.tasks.errors import TaskExecutionDeferredError
 from app.tasks.internal_router import execute_document_transform_task
 from app.tasks.schemas import (
+    ActiveDocumentTransformTaskRecord,
     DocumentTransformSucceededTaskRead,
     DocumentTransformTaskRecord,
     FailedTaskRead,
+    NeedsReviewTaskRead,
     RunningTaskRead,
     TaskClaim,
     TaskDispatchRequest,
@@ -61,24 +65,49 @@ from app.tasks.schemas import (
 )
 
 
+class _RuntimeArguments(TypedDict):
+    task_id: TaskId
+    lease_token: uuid.UUID
+    checkpoint: DocumentTransformCheckpoint | None
+    checkpoint_generation: int
+
+
 class _RetryTasks:
     def __init__(
         self,
         *,
         attempt_count: int = 1,
         payload: DocumentTransformRequest | None = None,
+        created_at: datetime | None = None,
     ) -> None:
         self.deferred = 0
         self.deferred_task_ids: list[TaskId] = []
         self.failed = 0
+        self.reviewed = 0
+        self.reviewed_leases: list[uuid.UUID] = []
         self.attempt_count = attempt_count
         self.payload = payload or _payload()
+        self.created_at = created_at
         self.last_error_code: str | None = None
 
     async def defer(self, task_id: TaskId, *, lease_token: uuid.UUID) -> TaskRead:
         self.deferred += 1
         self.deferred_task_ids.append(task_id)
         return _claim(task_id, attempt_count=1).task
+
+    async def require_review(self, task_id: TaskId, *, lease_token: uuid.UUID) -> TaskRead:
+        self.reviewed_leases.append(lease_token)
+        self.reviewed += 1
+        task = _claim(task_id, attempt_count=self.attempt_count).task
+        return NeedsReviewTaskRead[Literal[TaskKind.FILE_DOCUMENT_TRANSFORM]].model_validate(
+            {
+                **task.model_dump(),
+                "status": TaskStatus.NEEDS_REVIEW,
+                "finished_at": datetime.now(UTC),
+                "error_code": "external_effect_uncertain",
+                "error_detail": "The external action could not be confirmed; review it before retrying",
+            }
+        )
 
     async def fail(
         self,
@@ -129,15 +158,22 @@ class _RetryTasks:
         self,
         task_id: TaskId,
     ) -> DocumentTransformTaskRecord:
-        return DocumentTransformTaskRecord(
-            owner_user_id=uuid.uuid7(),
-            task=_claim(task_id, attempt_count=self.attempt_count).task,
-            payload=self.payload,
+        return ActiveDocumentTransformTaskRecord.model_validate(
+            {
+                "owner_user_id": uuid.uuid7(),
+                "task": _claim(task_id, attempt_count=self.attempt_count).task,
+                "payload": self.payload,
+            }
         )
 
     async def claim(self, task_id: TaskId, *, lease_duration: timedelta) -> TaskClaim:
         del lease_duration
-        return _claim(task_id, attempt_count=self.attempt_count)
+        claim = _claim(task_id, attempt_count=self.attempt_count)
+        if self.created_at is not None:
+            claim = claim.model_copy(
+                update={"task": claim.task.model_copy(update={"created_at": self.created_at})}
+            )
+        return claim
 
 
 class _UnreadableTask(_RetryTasks):
@@ -150,10 +186,12 @@ class _UnreadableTask(_RetryTasks):
     async def load_document_transform(self, task_id: TaskId) -> DocumentTransformTaskRecord:
         if self.failure is not None:
             raise self.failure
-        return DocumentTransformTaskRecord(
-            owner_user_id=uuid.uuid7(),
-            task=_claim(task_id, attempt_count=1).task,
-            payload=None,
+        return ActiveDocumentTransformTaskRecord.model_validate(
+            {
+                "owner_user_id": uuid.uuid7(),
+                "task": _claim(task_id, attempt_count=1).task,
+                "payload": None,
+            }
         )
 
     @override
@@ -528,7 +566,7 @@ async def test_retryable_failure_defers_before_attempt_limit() -> None:
         await defer_or_fail_retryable_task(
             task_id,
             tasks=tasks,
-            claim=_claim(task_id, attempt_count=9),
+            claim=_claim(task_id, attempt_count=2),
             error_code="model_unavailable",
             error_detail="Retry later",
             cause=RuntimeError("provider timeout"),
@@ -538,7 +576,7 @@ async def test_retryable_failure_defers_before_attempt_limit() -> None:
     assert tasks.failed == 0
 
 
-@pytest.mark.parametrize("attempt_count", [1, 9], ids=["first-attempt", "last-retry"])
+@pytest.mark.parametrize("attempt_count", [1, 2], ids=["first-attempt", "last-retry"])
 async def test_model_unavailability_defers_the_same_task_without_recording_output(
     attempt_count: int,
 ) -> None:
@@ -735,8 +773,12 @@ async def test_unreadable_saved_request_fails_after_claim_without_provider_call(
     executor = object.__new__(DriveDocumentTransformTaskExecutor)
     monkeypatch.setattr(executor, "_tasks", tasks, raising=False)
 
-    async def forbidden_runtime(*args: object, **kwargs: object) -> Never:
-        del args, kwargs
+    async def forbidden_runtime(
+        _executor: DriveDocumentTransformTaskExecutor,
+        _owner_user_id: uuid.UUID,
+        _payload: DocumentTransformRequest,
+        **_kwargs: Unpack[_RuntimeArguments],
+    ) -> Never:
         pytest.fail("unreadable request must not initialize the provider")
 
     monkeypatch.setattr(DriveDocumentTransformTaskExecutor, "_runtime", forbidden_runtime)
@@ -771,28 +813,42 @@ async def test_internal_document_transform_gets_worker_provider_budget() -> None
 
 
 @pytest.mark.parametrize("in_place", [False, True])
+@pytest.mark.parametrize("exhausted_budget", ["attempts", "age"])
 async def test_crashed_worker_retry_cap_precedes_runtime(
     monkeypatch: pytest.MonkeyPatch,
+    exhausted_budget: str,
     *,
     in_place: bool,
 ) -> None:
     tasks = _RetryTasks(
-        attempt_count=11,
+        attempt_count=4 if exhausted_budget == "attempts" else 1,
         payload=_in_place_payload() if in_place else _drive_payload(),
+        created_at=datetime.now(UTC) - timedelta(minutes=11) if exhausted_budget == "age" else None,
     )
     executor = object.__new__(DriveDocumentTransformTaskExecutor)
     monkeypatch.setattr(executor, "_tasks", tasks, raising=False)
 
-    async def forbidden_runtime(*args: object, **kwargs: object) -> Never:
-        del args, kwargs
+    async def forbidden_runtime(
+        _executor: DriveDocumentTransformTaskExecutor,
+        _owner_user_id: uuid.UUID,
+        _payload: DocumentTransformRequest,
+        **_kwargs: Unpack[_RuntimeArguments],
+    ) -> Never:
         pytest.fail("exhausted claims must not initialize provider or model runtime")
 
     monkeypatch.setattr(DriveDocumentTransformTaskExecutor, "_runtime", forbidden_runtime)
     result = await executor.execute(TaskId(uuid.uuid7()))
 
     assert isinstance(result, FailedTaskRead)
-    assert tasks.last_error_code == ("needs_review" if in_place else "execution_attempts_exhausted")
+    assert tasks.last_error_code == (
+        "execution_deadline_exhausted"
+        if exhausted_budget == "age"
+        else "needs_review"
+        if in_place
+        else "execution_attempts_exhausted"
+    )
     assert tasks.failed == 1
+    assert tasks.deferred == 0
 
 
 async def test_worker_kill_switch_blocks_claimed_in_place_task_before_runtime(
@@ -817,8 +873,12 @@ async def test_worker_fails_unsupported_drive_source_without_retry(
     executor = object.__new__(DriveDocumentTransformTaskExecutor)
     monkeypatch.setattr(executor, "_tasks", tasks, raising=False)
 
-    async def unsupported_runtime(*args: object, **kwargs: object) -> Never:
-        del args, kwargs
+    async def unsupported_runtime(
+        _executor: DriveDocumentTransformTaskExecutor,
+        _owner_user_id: uuid.UUID,
+        _payload: DocumentTransformRequest,
+        **_kwargs: Unpack[_RuntimeArguments],
+    ) -> Never:
         raise UnsupportedSourceError
 
     monkeypatch.setattr(DriveDocumentTransformTaskExecutor, "_runtime", unsupported_runtime)
@@ -837,8 +897,12 @@ async def test_worker_defers_transient_runtime_drive_failure(
     executor = object.__new__(DriveDocumentTransformTaskExecutor)
     monkeypatch.setattr(executor, "_tasks", tasks, raising=False)
 
-    async def unavailable_runtime(*args: object, **kwargs: object) -> Never:
-        del args, kwargs
+    async def unavailable_runtime(
+        _executor: DriveDocumentTransformTaskExecutor,
+        _owner_user_id: uuid.UUID,
+        _payload: DocumentTransformRequest,
+        **_kwargs: Unpack[_RuntimeArguments],
+    ) -> Never:
         raise DocumentGatewayError
 
     monkeypatch.setattr(DriveDocumentTransformTaskExecutor, "_runtime", unavailable_runtime)
@@ -903,3 +967,25 @@ def _drive_payload() -> DocumentTransformRequest:
         ),
         mode=TransformMode.FORMAT,
     )
+
+
+async def test_external_effect_uncertainty_requires_review_instead_of_failure_or_retry() -> None:
+    class UncertainTransform:
+        async def execute(
+            self, *, operation_id: uuid.UUID, request: DocumentTransformRequest
+        ) -> Never:
+            raise ExternalEffectUncertainError
+
+    tasks = _RetryTasks()
+    task_id = TaskId(uuid.uuid7())
+    result = await task_executor_module._execute_claimed(
+        task_id,
+        tasks=tasks,
+        transform=UncertainTransform(),
+        claim=_claim(task_id, attempt_count=1),
+        payload=tasks.payload,
+    )
+    assert isinstance(result, NeedsReviewTaskRead)
+    assert result.error_code == "external_effect_uncertain"
+    assert tasks.reviewed == 1
+    assert tasks.failed == tasks.deferred == 0
