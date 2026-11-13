@@ -13,11 +13,16 @@ from app.document_transform.measurement_actor import reassigned_measurement_acti
 from app.document_transform.quantity_notation import (
     HORIZONTAL_SPACE,
     TEMPERATURE_UNIT,
+    UNIT_ANNOTATION_PATTERN,
     UNIT_GROUP,
     UNIT_POWER,
     UNIT_SYMBOL,
 )
-from app.document_transform.quotations import QUOTED_SPAN_PATTERN, quoted_block_ids
+from app.document_transform.quotations import (
+    QUOTED_SPAN_PATTERN,
+    quotation_scan_sources,
+    quoted_block_ids,
+)
 from app.document_transform.recurring_scope import fronted_recurring_scope_expanded
 from app.document_transform.revision_arguments import revision_arguments
 from app.document_transform.schemas import TextPatch, TransformFinding, TransformPhase
@@ -47,7 +52,7 @@ _NUMERIC_MAGNITUDE = (
 _SIGNED_NUMBER = rf"[+−-]?(?:[$€£¥₹₩₽₺]\s*)?[+−-]?{_NUMERIC_MAGNITUDE}"
 _NUMERIC_UNIT_SYMBOL = rf"(?:{TEMPERATURE_UNIT}|[A-Za-zµμ°ΩÅ]{{1,5}})"
 _NUMERIC_UNIT = (
-    rf"(?:%|٪|‰|(?!(?i:and|or|but|nor|yet)\b|[xX]{HORIZONTAL_SPACE}*\d)"
+    rf"(?:%|٪|‰|[\"'′″]|(?!(?i:and|or|but|nor|yet)\b|[xX]{HORIZONTAL_SPACE}*\d)"
     rf"{_NUMERIC_UNIT_SYMBOL}{_NUMERIC_POWER}|{UNIT_GROUP})"
     rf"(?:{HORIZONTAL_SPACE}*[/*·]{HORIZONTAL_SPACE}*"
     rf"(?:{_NUMERIC_UNIT_SYMBOL}{_NUMERIC_POWER}|{UNIT_GROUP})"
@@ -61,7 +66,7 @@ _QUANTITY_LITERAL = (
 )
 _PROTECTED_CODE = re.compile(r"```[\s\S]*?```|`[^`\n]+`")
 _PROTECTED_TOKEN = re.compile(
-    rf"{RFCISH_EMAIL_PATTERN}|{CUSTOM_URI_PATTERN}|"
+    rf"{RFCISH_EMAIL_PATTERN}|{CUSTOM_URI_PATTERN}|(?i:{UNIT_ANNOTATION_PATTERN})|"
     # Keep the full notation: signs, exponents, uncertainty, powers, and accounting
     # parentheses can change a value even when every decimal digit survives.
     # Keep grouped integers, mixed fractions, and parenthetical uncertainty
@@ -589,7 +594,12 @@ def _unslop_locality_code(block: TextBlock, replacement: str) -> str | None:
 
 
 def _quoted_spans(value: str) -> tuple[str, ...]:
-    return tuple(match.group(0) for match in _QUOTED_SPAN.finditer(value))
+    spans = {
+        match.span()
+        for source in quotation_scan_sources(value)
+        for match in _QUOTED_SPAN.finditer(source)
+    }
+    return tuple(value[start:end] for start, end in sorted(spans))
 
 
 def _proper_nouns_outside_candidates(

@@ -8,12 +8,20 @@ import re
 from app.document_transform.inline_code import INLINE_CODE_POLICY_VERSION, mask_inline_code
 from app.document_transform.ir import BlockKind, DocumentIR, TextBlock
 from app.document_transform.limits import MIN_MODEL_PROSE_WORDS
-from app.document_transform.quotations import SINGLE_QUOTED_SPAN_PATTERN, quoted_block_ids
+from app.document_transform.quantity_notation import (
+    UNIT_ANNOTATION_POLICY_VERSION,
+    mask_unit_annotation_marks,
+)
+from app.document_transform.quotations import (
+    SINGLE_QUOTED_SPAN_PATTERN,
+    quotation_scan_sources,
+    quoted_block_ids,
+)
 
 
 UNSLOP_UPSTREAM_COMMIT = "d81f5196167ded24f46fced04958c0c12d681798"
 UNSLOP_UPSTREAM_VERSION = "2.3.0"
-UNSLOP_POLICY_VERSION = "sarj-concise-v41"
+UNSLOP_POLICY_VERSION = "sarj-concise-v42"
 MAX_EDITORIAL_PASSES = 100
 MIN_CONCISION_PROSE_WORDS = 40
 CONCISION_WORD_NUMERATOR = 2
@@ -506,6 +514,7 @@ UNSLOP_CATALOG_SHA256 = hashlib.sha256(
         {
             "editorial_policy": UNSLOP_POLICY_VERSION,
             "inline_code_policy": INLINE_CODE_POLICY_VERSION,
+            "unit_annotation_policy": UNIT_ANNOTATION_POLICY_VERSION,
             "rewrite_instruction": UNSLOP_REWRITE_INSTRUCTION,
             "review_instruction": UNSLOP_REVIEW_INSTRUCTION,
             "concision_target": {
@@ -1038,7 +1047,9 @@ def _remove_contained_candidates(
 
 
 def _mask_ignored_spans(value: str) -> str:
-    return _IGNORED_SPAN.sub(
-        lambda match: re.sub(r"[^\n]", " ", match.group(0)),
-        mask_inline_code(value),
-    )
+    code_masked = mask_inline_code(value)
+    characters = list(mask_unit_annotation_marks(code_masked))
+    for source in quotation_scan_sources(code_masked):
+        for match in _IGNORED_SPAN.finditer(source):
+            characters[match.start() : match.end()] = re.sub(r"[^\n]", " ", match.group(0))
+    return "".join(characters)
