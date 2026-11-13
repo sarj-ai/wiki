@@ -89,14 +89,14 @@ def test_document_models_load_from_existing_environment_names(
 ) -> None:
     configured = _settings(
         monkeypatch,
-        DOCUMENT_TRANSFORM_UNSLOP_MODEL="gemini-3.1-flash-lite",
-        DOCUMENT_TRANSFORM_FALLBACK_MODEL="gemini-3.5-flash-lite",
-        DOCUMENT_TRANSFORM_RESTYLE_MODEL="gemini-3.8-flash",
+        DOCUMENT_TRANSFORM_UNSLOP_MODEL="gemini-4-argon",
+        DOCUMENT_TRANSFORM_FALLBACK_MODEL="gemini-3.1-pro-preview",
+        DOCUMENT_TRANSFORM_RESTYLE_MODEL="gemini-4-argon",
         DOCUMENT_TRANSFORM_IN_PLACE_ENABLED="true",
     )
-    assert configured.DOCUMENT.TRANSFORM_UNSLOP_MODEL == "gemini-3.1-flash-lite"
-    assert configured.DOCUMENT.TRANSFORM_FALLBACK_MODEL == "gemini-3.5-flash-lite"
-    assert configured.DOCUMENT.TRANSFORM_RESTYLE_MODEL == "gemini-3.8-flash"
+    assert configured.DOCUMENT.TRANSFORM_UNSLOP_MODEL == "gemini-4-argon"
+    assert configured.DOCUMENT.TRANSFORM_FALLBACK_MODEL == "gemini-3.1-pro-preview"
+    assert configured.DOCUMENT.TRANSFORM_RESTYLE_MODEL == "gemini-4-argon"
     assert configured.DOCUMENT.TRANSFORM_IN_PLACE_ENABLED
 
 
@@ -128,23 +128,23 @@ def test_document_settings_preserve_parent_source_precedence(
     _settings(monkeypatch, DOCUMENT_TRANSFORM_UNSLOP_MODEL=None)
     secret_dir = tmp_path / "secrets"
     secret_dir.mkdir()
-    (secret_dir / "DOCUMENT_TRANSFORM_UNSLOP_MODEL").write_text("secret-model")
+    (secret_dir / "DOCUMENT_TRANSFORM_UNSLOP_MODEL").write_text("gemini-4-argon")
     dotenv = tmp_path / ".env"
-    dotenv.write_text("DOCUMENT_TRANSFORM_UNSLOP_MODEL=dotenv-model\n")
+    dotenv.write_text("DOCUMENT_TRANSFORM_UNSLOP_MODEL=gemini-3.1-pro-preview\n")
     from_secrets = _source_settings(Settings, env_file=None, secrets_dir=secret_dir)
-    assert from_secrets.DOCUMENT.TRANSFORM_UNSLOP_MODEL == "secret-model"
+    assert from_secrets.DOCUMENT.TRANSFORM_UNSLOP_MODEL == "gemini-4-argon"
     from_dotenv = _source_settings(Settings, env_file=dotenv, secrets_dir=secret_dir)
-    assert from_dotenv.DOCUMENT.TRANSFORM_UNSLOP_MODEL == "dotenv-model"
-    monkeypatch.setenv("DOCUMENT_TRANSFORM_UNSLOP_MODEL", "environment-model")
+    assert from_dotenv.DOCUMENT.TRANSFORM_UNSLOP_MODEL == "gemini-3.1-pro-preview"
+    monkeypatch.setenv("DOCUMENT_TRANSFORM_UNSLOP_MODEL", "gemini-4-argon")
     from_environment = _source_settings(Settings, env_file=dotenv, secrets_dir=secret_dir)
-    assert from_environment.DOCUMENT.TRANSFORM_UNSLOP_MODEL == "environment-model"
+    assert from_environment.DOCUMENT.TRANSFORM_UNSLOP_MODEL == "gemini-4-argon"
     explicit = _source_settings(
         Settings,
         env_file=dotenv,
         secrets_dir=secret_dir,
-        document=document_settings_factory("explicit-model"),
+        document=document_settings_factory("gemini-3.1-pro-preview"),
     )
-    assert explicit.DOCUMENT.TRANSFORM_UNSLOP_MODEL == "explicit-model"
+    assert explicit.DOCUMENT.TRANSFORM_UNSLOP_MODEL == "gemini-3.1-pro-preview"
     assert document_settings_factory(None).TRANSFORM_UNSLOP_MODEL == "gemini-3.1-pro-preview"
 
 
@@ -152,9 +152,9 @@ def test_document_settings_honor_disabled_dotenv_loading(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     _settings(monkeypatch, DOCUMENT_TRANSFORM_UNSLOP_MODEL=None)
-    (tmp_path / ".env").write_text("DOCUMENT_TRANSFORM_UNSLOP_MODEL=dotenv-model\n")
+    (tmp_path / ".env").write_text("DOCUMENT_TRANSFORM_UNSLOP_MODEL=gemini-4-argon\n")
     monkeypatch.chdir(tmp_path)
-    assert load_environment_settings(Settings).DOCUMENT.TRANSFORM_UNSLOP_MODEL == "dotenv-model"
+    assert load_environment_settings(Settings).DOCUMENT.TRANSFORM_UNSLOP_MODEL == "gemini-4-argon"
     disabled = load_environment_settings(Settings, load_dotenv=False)
     assert disabled.DOCUMENT.TRANSFORM_UNSLOP_MODEL == "gemini-3.1-pro-preview"
 
