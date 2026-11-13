@@ -41,7 +41,7 @@ while IFS= read -r -d '' status && IFS= read -r -d '' path; do
   fi
   # Contract: exactly the literal and trailing /** paths in release-main.yml.
   case "$path" in
-    backend/.dockerignore | backend/Dockerfile | backend/alembic.ini | backend/alembic/* | backend/app/* | \
+    backend/.dockerignore | backend/Dockerfile | backend/alembic.ini | backend/alembic/* | backend/app/* | backend/tests/* | \
       backend/pyproject.toml | backend/uv.lock | backend/uv.toml | \
       frontend/* | .github/workflows/ci-frontend.yml | .github/workflows/deploy-backend.yml | \
       .github/workflows/deploy-frontend.yml | scripts/github/release_gate.py | scripts/github/verify-release-gate.sh | \
