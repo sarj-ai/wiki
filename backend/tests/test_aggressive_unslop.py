@@ -919,6 +919,26 @@ async def test_global_overage_repairs_already_reviewed_blocks_only_once() -> Non
     assert not result.findings
 
 
+async def test_global_quality_repair_keeps_each_blocks_best_reviewed_result() -> None:
+    fixture = _two_concision_blocks()
+    document, faithful = fixture.document, fixture.replacements
+    first_id, second_id = faithful
+    padding = " The account restates this description in extended and repetitive wording."
+    initial = {**faithful, second_id: faithful[second_id] + padding * 2}
+    repaired = {**faithful, first_id: faithful[first_id] + padding}
+    editor = _DocumentBudgetEditor(initial, repaired)
+
+    result = await TextTransformPlanner(
+        max_editorial_passes=1, generator=editor, allow_unslop_model=True
+    ).transform(document, _request())
+
+    assert editor.repair_calls == 1
+    assert {patch.block_id for patch in editor.reviewed} == faithful.keys()
+    assert [patch.block_id for patch in editor.reviewed].count(first_id) == 2
+    assert result.document == document.replace_blocks(faithful)
+    assert not result.findings
+
+
 @pytest.mark.parametrize("retained", ["unchanged", "semantic", "missing"])
 async def test_original_retained_prose_cannot_disappear_from_the_global_total(
     retained: str,
