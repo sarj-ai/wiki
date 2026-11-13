@@ -28,6 +28,7 @@ from app.document_transform.unslop import (
     UnslopCandidate,
     concision_target,
     deterministic_unslop_replacement,
+    editorial_quality,
     emptied_section_headings,
     model_editable_blocks,
     prose_word_count,
@@ -54,6 +55,24 @@ class TransformOutcome:
 class _ReviewedRepair:
     decision: PatchDecision
     validated_ids: frozenset[str]
+
+
+def _best_reviewed_repairs(
+    document: DocumentIR, approved: PatchDecision, repaired: PatchDecision
+) -> PatchDecision:
+    # Repairs are validated against the source; compare them with the
+    # already reviewed draft as well before replacing any accepted passage.
+    by_id = {block.id: block for block in document.blocks}
+    return replace(
+        repaired,
+        accepted={
+            block_id: text
+            for block_id, text in repaired.accepted.items()
+            if block_id not in approved.accepted
+            or editorial_quality(by_id[block_id], text)
+            < editorial_quality(by_id[block_id], approved.accepted[block_id])
+        },
+    )
 
 
 def _retained_approved_ids(
@@ -286,7 +305,7 @@ class TextTransformPlanner:
         repair = await self._attempt_repair(
             document, patches, feedback, restricted=restricted, fidelity_source=fidelity_source
         )
-        repaired = repair.decision
+        repaired = _best_reviewed_repairs(document, decision, repair.decision)
         retained_ids = _retained_approved_ids(
             document, decision, repaired, framing_source=fidelity_source
         )
