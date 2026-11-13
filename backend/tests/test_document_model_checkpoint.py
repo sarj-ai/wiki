@@ -226,6 +226,18 @@ async def test_proposals_are_encrypted_and_unrecognized_checkpoint_fields_are_re
         )
 
 
+async def test_valid_model_only_checkpoint_does_not_claim_an_external_mutation() -> None:
+    checkpoint = await _saved_plan()
+    envelope = task_service_module._serialize_checkpoint(checkpoint)
+    assert not task_service_module._checkpoint_requires_review(
+        task_service_module._TaskJsonObject.model_validate(envelope)
+    )
+    corrupted = {**envelope, "checkpoint_ciphertext": "invalid-encrypted-plan"}
+    assert task_service_module._checkpoint_requires_review(
+        task_service_module._TaskJsonObject.model_validate(corrupted)
+    )
+
+
 async def test_staged_writer_and_reviewer_receive_separate_bounded_sdk_deadlines() -> None:
     requests: list[httpx.Request] = []
     saved: list[ModelPlanningCheckpoint] = []

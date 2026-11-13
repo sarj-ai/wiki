@@ -1673,7 +1673,13 @@ def _failure_checkpoint_phase() -> ColumnElement[str]:
         (
             and_(
                 Task.kind == TaskKind.FILE_DOCUMENT_TRANSFORM,
-                Task.checkpoint["kind"].astext.in_(("copy", "word_copy", "presentation_copy")),
+                Task.checkpoint["kind"].astext.in_(
+                    ("copy", "word_copy", "presentation_copy", "model_planning")
+                ),
+                or_(
+                    Task.checkpoint["kind"].astext != "model_planning",
+                    Task.resource_id.is_(None),
+                ),
                 func.jsonb_typeof(encrypted) == "string",
                 func.octet_length(encrypted.astext) <= 2 * _MAX_CHECKPOINT_PLAN_BYTES,
             ),
@@ -1689,7 +1695,11 @@ def _checkpoint_requires_review(raw: _TaskJsonObject) -> bool:
     except InvalidToken, TypeError, ValueError:
         return True
     return not isinstance(
-        checkpoint, PlannedCopyCheckpoint | PlannedWordCheckpoint | PlannedPresentationCheckpoint
+        checkpoint,
+        PlannedCopyCheckpoint
+        | PlannedWordCheckpoint
+        | PlannedPresentationCheckpoint
+        | ModelPlanningCheckpoint,
     )
 
 

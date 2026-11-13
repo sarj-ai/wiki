@@ -15,6 +15,7 @@ from google.genai import types
 from google.oauth2.credentials import Credentials
 from googleapiclient.http import HttpMock, HttpRequest
 import httpx
+from jsonschema import Draft202012Validator
 from loguru import logger
 from pydantic import BaseModel, ConfigDict, Field, RootModel, ValidationError
 import pytest
@@ -1291,20 +1292,21 @@ async def test_real_sdk_serializes_structured_rewrite_and_review_without_samplin
     block = document.blocks[0]
     replacement = "The hidden bird can sing unseen from scrub beside the path."
     patch = TextPatch(block_id=block.id, expected_sha256=block.sha256, replacement=replacement)
+    review = PatchReviewEnvelope(
+        reviews=[
+            TextPatchReview(
+                block_id=block.id,
+                expected_sha256=block.sha256,
+                replacement_sha256=hashlib.sha256(replacement.encode()).hexdigest(),
+                equivalent=True,
+                reason="The bird's hidden singing location and ability are preserved.",
+            )
+        ]
+    )
     responses = iter(
         (
             PatchEnvelope(patches=[patch]).model_dump_json(),
-            PatchReviewEnvelope(
-                reviews=[
-                    TextPatchReview(
-                        block_id=block.id,
-                        expected_sha256=block.sha256,
-                        replacement_sha256=hashlib.sha256(replacement.encode()).hexdigest(),
-                        equivalent=True,
-                        reason="The bird's hidden singing location and ability are preserved.",
-                    )
-                ]
-            ).model_dump_json(),
+            review.model_dump_json(),
         )
     )
     requests: list[_VendorRequest] = []
@@ -1347,13 +1349,22 @@ async def test_real_sdk_serializes_structured_rewrite_and_review_without_samplin
         assert "temperature" not in request.generation_config.model_fields_set
         assert request.generation_config.response_mime_type == "application/json"
         assert request.generation_config.response_schema is None
-    for request, envelope, field in zip(
-        requests, (PatchEnvelope, PatchReviewEnvelope), ("patches", "reviews"), strict=True
-    ):
-        schema = request.generation_config.response_json_schema
-        expected = envelope.model_json_schema()
-        expected["properties"][field].pop("maxItems")
-        assert schema == expected
+    writer_schema = PatchEnvelope.model_json_schema()
+    writer_schema["properties"]["patches"].pop("maxItems")
+    assert requests[0].generation_config.response_json_schema == writer_schema
+    review_schema = requests[1].generation_config.response_json_schema
+    assert review_schema is not None
+    validator = Draft202012Validator(review_schema)
+    assert validator.is_valid(review.model_dump(mode="json"))
+    wrong_binding = review.model_copy(
+        update={"reviews": [review.reviews[0].model_copy(update={"expected_sha256": "f" * 64})]}
+    )
+    assert not validator.is_valid(wrong_binding.model_dump(mode="json"))
+    factual_rejection = review.model_copy(
+        update={"reviews": [review.reviews[0].model_copy(update={"equivalent": False})]}
+    )
+    assert validator.is_valid(factual_rejection.model_dump(mode="json"))
+    for request in requests:
         assert '"additional_properties"' not in json.dumps(
             request.generation_config.response_json_schema
         )

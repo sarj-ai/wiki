@@ -1,6 +1,7 @@
 import asyncio
 from collections.abc import AsyncIterator
 from dataclasses import dataclass
+from datetime import timedelta
 from typing import override
 import uuid
 
@@ -8,7 +9,7 @@ import pytest
 from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from app.document_transform.errors import ModelUnavailableError
+from app.document_transform.errors import ModelDeadlineError, ModelUnavailableError
 from app.document_transform.model_failures import exhausted_model_failure
 from app.document_transform.schemas import (
     DocumentTransformCheckpoint,
@@ -19,12 +20,13 @@ from app.document_transform.task_executor import (
     DocumentTransformRuntime,
     DriveDocumentTransformTaskExecutor,
 )
-from app.identifiers import GoogleUserId, IdempotencyKey, TaskId, UserId
+from app.identifiers import FileId, GoogleUserId, IdempotencyKey, TaskId, UserId
 from app.models.task import Task
 from app.models.user import User
 from app.tasks.errors import TaskExecutionDeferredError, TaskIdempotencyConflictError
 from app.tasks.schemas import TaskKind, TaskRead, TaskStatus
 from app.tasks.service import PostgresTaskService, TaskService
+from tests import test_document_model_checkpoint as model_checkpoint_tests
 from tests.test_task_source_dedupe_postgres import _completed_result, _markdown_payload, _qa_engine
 
 
@@ -210,3 +212,40 @@ async def test_exhausted_provider_budget_is_terminal_across_duplicate_queue_deli
     assert first.error_code == "model_unavailable"
     assert first.attempt_count == 1
     assert mutation_probe.calls == 1
+
+
+@pytest.mark.parametrize("has_resource", [False, True])
+async def test_model_checkpoint_failure_reports_only_evidenced_external_effects(
+    coordination_case: _CoordinationCase, *, has_resource: bool
+) -> None:
+    case = coordination_case
+    async with case.sessions() as session:
+        service = PostgresTaskService(db=session)
+        reservation = await service.create_or_replay(
+            kind=TaskKind.FILE_DOCUMENT_TRANSFORM,
+            owner_user_id=case.owner,
+            idempotency_key=IdempotencyKey(uuid.uuid7()),
+            payload=model_checkpoint_tests._request(),
+        )
+        task_id = reservation.task.id
+        claim = await service.claim(task_id, lease_duration=timedelta(minutes=1))
+        await service.save_document_transform_checkpoint(
+            task_id,
+            lease_token=claim.lease_token,
+            expected_generation=0,
+            checkpoint=await model_checkpoint_tests._saved_plan(),
+        )
+        if has_resource:
+            await service.record_resource(
+                task_id, lease_token=claim.lease_token, resource_id=FileId("qa-unexpected-output")
+            )
+        result = await service.fail(
+            task_id,
+            lease_token=claim.lease_token,
+            error_code=ModelDeadlineError.code,
+            error_detail=ModelDeadlineError.public_detail,
+        )
+        assert result.status is (TaskStatus.NEEDS_REVIEW if has_resource else TaskStatus.FAILED)
+        assert result.error_code == (
+            "external_effect_uncertain" if has_resource else ModelDeadlineError.code
+        )
