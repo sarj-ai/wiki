@@ -12,6 +12,7 @@ from app.document_transform.ir import BlockKind, DocumentIR, TextBlock
 from app.document_transform.measurement_actor import reassigned_measurement_action
 from app.document_transform.quantity_notation import (
     HORIZONTAL_SPACE,
+    TEMPERATURE_UNIT,
     UNIT_GROUP,
     UNIT_POWER,
     UNIT_SYMBOL,
@@ -44,11 +45,12 @@ _NUMERIC_MAGNITUDE = (
     rf"(?:\(\d+\))?(?:[eE][+−-]?\d+)?{_NUMERIC_POWER}"
 )
 _SIGNED_NUMBER = rf"[+−-]?(?:[$€£¥₹₩₽₺]\s*)?[+−-]?{_NUMERIC_MAGNITUDE}"
+_NUMERIC_UNIT_SYMBOL = rf"(?:{TEMPERATURE_UNIT}|[A-Za-zµμ°ΩÅ]{{1,5}})"
 _NUMERIC_UNIT = (
     rf"(?:%|٪|‰|(?!(?i:and|or|but|nor|yet)\b|[xX]{HORIZONTAL_SPACE}*\d)"
-    rf"[A-Za-zµμ°ΩÅ]{{1,5}}{_NUMERIC_POWER}|{UNIT_GROUP})"
+    rf"{_NUMERIC_UNIT_SYMBOL}{_NUMERIC_POWER}|{UNIT_GROUP})"
     rf"(?:{HORIZONTAL_SPACE}*[/*·]{HORIZONTAL_SPACE}*"
-    rf"(?:[A-Za-zµμ°ΩÅ]{{1,5}}{_NUMERIC_POWER}|{UNIT_GROUP})"
+    rf"(?:{_NUMERIC_UNIT_SYMBOL}{_NUMERIC_POWER}|{UNIT_GROUP})"
     # Unmarked multiplication needs known unit symbols, not arbitrary prose words.
     rf"|{HORIZONTAL_SPACE}+(?:{UNIT_SYMBOL}{_NUMERIC_POWER}(?![A-Za-zµμ°ΩÅ])|{UNIT_GROUP}))*"
 )
