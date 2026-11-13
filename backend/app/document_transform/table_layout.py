@@ -5,7 +5,13 @@ import math
 import re
 import unicodedata
 
-from app.document_transform.quantity_notation import UNIT_EXPRESSION, UNIT_POWER
+from app.document_transform.quantity_notation import (
+    CURRENCY_CODE,
+    CURRENCY_PREFIX,
+    CURRENCY_SYMBOL,
+    UNIT_EXPRESSION,
+    UNIT_POWER,
+)
 
 
 _MISSING = frozenset({"", "-", "–", "—", "n/a", "na", "null", "…"})
@@ -23,32 +29,13 @@ _SCIENTIFIC = rf"(?:{_DECIMAL}(?:\(\d+\))?(?:[eE][+−-]?\d+|\s*[×x·]\s*10{_PO
 _VULGAR_FRACTION = r"[¼½¾⅐⅑⅒⅓⅔⅕⅖⅗⅘⅙⅚⅛⅜⅝⅞]"
 _FRACTION = rf"{_SCIENTIFIC}\s*[/⁄]\s*[+−-]?{_SCIENTIFIC}"
 _MAGNITUDE = rf"(?:\d+\s+{_FRACTION}|(?:\d+\s*)?{_VULGAR_FRACTION}|{_FRACTION}|{_SCIENTIFIC})"
-# ISO 4217 List One, published by SIX on 2026-09-17:
-# https://www.six-group.com/dam/download/financial-information/data-center/iso-currrency/lists/list-one.xml
-# Codes classify table presentation only; never convert, round or rewrite amounts.
-# Keep newly supported codes uppercase: ordinary prose such as "all 1" or
-# "try 2" must not become an Albanian-lek or Turkish-lira quantity. Retain the
-# existing case-insensitive behavior for the five previously supported codes.
-_ISO_CURRENCY_CODES = (
-    "AED AFN ALL AMD AOA ARS AUD AWG AZN BAM BBD BDT BHD BIF BMD BND BOB BOV BRL BSD "
-    "BTN BWP BYN BZD CAD CDF CHE CHF CHW CLF CLP CNY COP COU CRC CUP CVE CZK DJF DKK "
-    "DOP DZD EGP ERN ETB EUR FJD FKP GBP GEL GHS GIP GMD GNF GTQ GYD HKD HNL HTG HUF "
-    "IDR ILS INR IQD IRR ISK JMD JOD JPY KES KGS KHR KMF KPW KRW KWD KYD KZT LAK LBP "
-    "LKR LRD LSL LYD MAD MDL MGA MKD MMK MNT MOP MRU MUR MVR MWK MXN MXV MYR MZN NAD "
-    "NGN NIO NOK NPR NZD OMR PAB PEN PGK PHP PKR PLN PYG QAR RON RSD RUB RWF SAR SBD "
-    "SCR SDG SEK SGD SHP SLE SOS SRD SSP STN SVC SYP SZL THB TJS TMT TND TOP TRY TTD "
-    "TWD TZS UAH UGX USD USN UYI UYU UYW UZS VED VES VND VUV WST XAD XAF XAG XAU XBA "
-    "XBB XBC XBD XCD XCG XDR XOF XPD XPF XPT XSU XTS XUA XXX YER ZAR ZMW ZWG"
-)
-_CURRENCY_CODE = rf"(?:(?i:USD|EUR|GBP|SAR|CHF)|(?-i:{'|'.join(_ISO_CURRENCY_CODES.split())}))"
-_CURRENCY = rf"(?:[$€£¥₹₩₽₺]|{_CURRENCY_CODE}(?=\s))"
-_NUMBER = rf"(?:[+−-]?\s*(?:{_CURRENCY}\s*)?|{_CURRENCY}\s*[+−-]?)\s*{_MAGNITUDE}"
+_NUMBER = rf"(?:[+−-]?\s*(?:{CURRENCY_PREFIX}\s*)?|{CURRENCY_PREFIX}\s*[+−-]?)\s*{_MAGNITUDE}"
 _UNIT = UNIT_EXPRESSION
-_QUANTITY_TERM = rf"{_NUMBER}(?:\s*(?:%|٪|‰|×|x|{_CURRENCY_CODE}|{_UNIT}))?"
+_QUANTITY_TERM = rf"{_NUMBER}(?:\s*(?:%|٪|‰|×|x|{CURRENCY_CODE}|{CURRENCY_SYMBOL}|{_UNIT}))?"
 _QUANTITY = re.compile(
     rf"(?:(?:approximately|about|roughly|approx\.)\s+)?"
     rf"(?:[<>]=?\s*|[≤≥~≈±]\s*)?{_QUANTITY_TERM}(?:\s*:\s*{_QUANTITY_TERM})?"
-    rf"(?:\s*(?:±|\+/[−-]|–|−|-|\bto\b)\s*{_QUANTITY_TERM})?",
+    rf"(?:\s*(?:±|\+/[−-]|–|—|−|-|\bto\b)\s*{_QUANTITY_TERM})?",
     re.IGNORECASE,
 )
 

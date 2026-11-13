@@ -11,6 +11,9 @@ from app.document_transform.inline_code import inline_code_spans, mask_inline_co
 from app.document_transform.ir import BlockKind, DocumentIR, TextBlock
 from app.document_transform.measurement_actor import reassigned_measurement_action
 from app.document_transform.quantity_notation import (
+    CURRENCY_CODE,
+    CURRENCY_PREFIX,
+    CURRENCY_SYMBOL,
     HORIZONTAL_SPACE,
     TEMPERATURE_UNIT,
     UNIT_ANNOTATION_PATTERN,
@@ -49,10 +52,10 @@ _NUMERIC_MAGNITUDE = (
     r"\d+(?:[.,٫٬:/⁄-]\d+|[ \u00a0\u2009\u202f'’]\d{3})*|[.,٫]\d+)"
     rf"(?:\(\d+\))?(?:[eE][+−-]?\d+)?{_NUMERIC_POWER}"
 )
-_SIGNED_NUMBER = rf"[+−-]?(?:[$€£¥₹₩₽₺]\s*)?[+−-]?{_NUMERIC_MAGNITUDE}"
+_SIGNED_NUMBER = rf"[+−-]?(?:{CURRENCY_PREFIX}{HORIZONTAL_SPACE}*)?[+−-]?{_NUMERIC_MAGNITUDE}"
 _NUMERIC_UNIT_SYMBOL = rf"(?:{TEMPERATURE_UNIT}|[A-Za-zµμ°ΩÅ]{{1,5}})"
 _NUMERIC_UNIT = (
-    rf"(?:%|٪|‰|[\"'′″]|(?!(?i:and|or|but|nor|yet)\b|[xX]{HORIZONTAL_SPACE}*\d)"
+    rf"(?:%|٪|‰|{CURRENCY_CODE}|{CURRENCY_SYMBOL}|[\"'′″]|(?!(?i:and|or|but|nor|yet)\b|[xX]{HORIZONTAL_SPACE}*\d)"
     rf"{_NUMERIC_UNIT_SYMBOL}{_NUMERIC_POWER}|{UNIT_GROUP})"
     rf"(?:{HORIZONTAL_SPACE}*[/*·]{HORIZONTAL_SPACE}*"
     rf"(?:{_NUMERIC_UNIT_SYMBOL}{_NUMERIC_POWER}|{UNIT_GROUP})"
@@ -62,7 +65,7 @@ _NUMERIC_UNIT = (
 _QUANTITY_TERM = rf"{_SIGNED_NUMBER}(?:{HORIZONTAL_SPACE}*{_NUMERIC_UNIT})?"
 _QUANTITY_LITERAL = (
     rf"(?:(?:[<>]=?|[≤≥~≈≃])\s*)?{_QUANTITY_TERM}"
-    rf"(?:{HORIZONTAL_SPACE}*(?:\+/-|[±∓×xX·÷+−–*/⁄:^\-]){HORIZONTAL_SPACE}*{_QUANTITY_TERM})*"
+    rf"(?:{HORIZONTAL_SPACE}*(?:\+/-|[±∓×xX·÷+−–—*/⁄:^\-]){HORIZONTAL_SPACE}*{_QUANTITY_TERM})*"
 )
 _PROTECTED_CODE = re.compile(r"```[\s\S]*?```|`[^`\n]+`")
 _PROTECTED_TOKEN = re.compile(

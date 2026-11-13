@@ -21,7 +21,7 @@ from app.document_transform.quotations import (
 
 UNSLOP_UPSTREAM_COMMIT = "d81f5196167ded24f46fced04958c0c12d681798"
 UNSLOP_UPSTREAM_VERSION = "2.3.0"
-UNSLOP_POLICY_VERSION = "sarj-concise-v44"
+UNSLOP_POLICY_VERSION = "sarj-concise-v45"
 MAX_EDITORIAL_PASSES = 100
 MIN_CONCISION_PROSE_WORDS = 40
 CONCISION_WORD_NUMERATOR = 2
@@ -34,6 +34,14 @@ UNSLOP_PRESENTATION_PADDING_INSTRUCTION = (
     "retain substantive interpretation and constraints. Advice that selects a count, "
     "defines a procedure or comparison, or specifies what stays flexible is a concrete "
     "instruction. Preserve it even when surrounded by generic reader encouragement. "
+    "Delete a sentence merely saying "
+    "'This paragraph describes the operational requirements stated above'; its above "
+    "locates an editorial recap, not an operational condition. Preserve above and similar "
+    "qualifiers in substantive requirements, reported statements and quotations. "
+    "A prior draft may restate that same recap as 'These operational requirements were "
+    "stated above' or 'As stated above,' before a retained fact. Remove those restatements "
+    "only when the immutable original proves the editorial recap; preserve an independent "
+    "original cross-reference. "
     "Do not replace such padding with another maxim, imperative, takeaway or summary. "
     "A generic maxim such as 'Every detail matters' is not an operational requirement. "
     "Delete unmeasured claims that this overview provides a useful foundation or that a "
@@ -315,10 +323,28 @@ _DEFINITE_FACT_CLAUSE = (
     r"[Tt]he[ \t]+(?:[A-Za-z][A-Za-z-]*[ \t]+){1,6}"
     r"(?:is|are|was|were|has|have|must|shall|should|can|could|may|might|will|would)\b"
 )
+_PARAGRAPH_RECAP_PATTERN = (
+    r"(?:[Ii]n order to make the situation clear,[ \t]+)?[Tt]his paragraph "
+    r"(?:describes|repeats|restates|summarizes) the "
+    r"(?:operational requirements|requirements|points?|information|discussion) "
+    r"(?:that (?:have already been |has already been |were (?:already )?))?"
+    r"(?:stated|described|discussed) (?:above|below|earlier)[.!?](?=\s|$)"
+)
+_SOURCE_PARAGRAPH_RECAP = re.compile(r"(?:^|(?<=[.!?\n]))[ \t]*" + _PARAGRAPH_RECAP_PATTERN)
+_CONTINUED_PARAGRAPH_RECAP = re.compile(
+    r"(?:^|(?<=[.!?\n]))[ \t]*[Tt]h(?:ese|e) operational requirements "
+    r"(?:were |are |have been )?(?:stated|described|discussed) (?:above|below|earlier)"
+    r"[.!?](?=\s|$)"
+)
+_CONTINUED_RECAP_PREFACE = re.compile(
+    r"(?:^|(?<=[.!?\n]))[ \t]*[Aa]s (?:stated|described|discussed) "
+    r"(?:above|below|earlier),[ \t]+"
+)
 _EDITORIAL_FRAMING_PATTERN = re.compile(
     r"(?:^|(?<=[.!?\n]))[ \t]*(?:"
     rf"(?:{_TABLE_ATTENTION_CONTEXT})?[Ii]t should be noted that[ \t]+|"
     rf"{_TABLE_ATTENTION_CONTEXT}[Ii]t should be noted[ \t]+(?={_DEFINITE_FACT_CLAUSE})|"
+    rf"{_PARAGRAPH_RECAP_PATTERN}|"
     r"[Ii]n today['’]s (?:increasingly )?fast[-\u2011 ]moving and ever[-\u2011 ]evolving "
     r"world of (?=[^,;:.!?\n]+,[ \t]*)|"
     r"(?:[Tt]o put it|[Pp]ut(?: it)?) another way[,:][ \t]*"
@@ -507,6 +533,8 @@ UNSLOP_CATALOG_SHA256 = hashlib.sha256(
             "editorial_policy": UNSLOP_POLICY_VERSION,
             "inline_code_policy": INLINE_CODE_POLICY_VERSION,
             "unit_annotation_policy": UNIT_ANNOTATION_POLICY_VERSION,
+            "continued_paragraph_recap": _CONTINUED_PARAGRAPH_RECAP.pattern,
+            "continued_recap_preface": _CONTINUED_RECAP_PREFACE.pattern,
             "rewrite_instruction": UNSLOP_REWRITE_INSTRUCTION,
             "review_instruction": UNSLOP_REVIEW_INSTRUCTION,
             "concision_target": {
@@ -767,6 +795,25 @@ def without_editorial_framing(text: str, *, framing_source: str | None = None) -
     reference_end = _reference_sentence_end(text) if masked != _masked_framing_text(text) else None
     for match in _EDITORIAL_FRAMING_PATTERN.finditer(masked):
         characters[match.start() : match.end()] = " " * (match.end() - match.start())
+    if framing_source is not None:
+        original = _masked_framing_text(framing_source)
+        terminal = tuple(_CONTINUED_PARAGRAPH_RECAP.finditer(masked))
+        prefaces = tuple(_CONTINUED_RECAP_PREFACE.finditer(masked))
+        continued = terminal + prefaces
+        original_cross_reference = any(
+            pattern.search(original)
+            for pattern in (_CONTINUED_PARAGRAPH_RECAP, _CONTINUED_RECAP_PREFACE)
+        )
+        # A prior reviewed pass may shorten one terminal recap. Require unique
+        # original proof and exclude originals with an independent cross-reference.
+        if (
+            len(tuple(_SOURCE_PARAGRAPH_RECAP.finditer(original))) == 1
+            and not original_cross_reference
+            and len(continued) == 1
+            and (prefaces or not masked[continued[0].end() :].strip())
+        ):
+            match = continued[0]
+            characters[match.start() : match.end()] = " " * (match.end() - match.start())
     for match in _DOCUMENT_GATHERING_FRAME.finditer(masked):
         start, end = match.span("framing")
         characters[start:end] = " " * (end - start)
