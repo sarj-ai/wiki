@@ -77,7 +77,7 @@ def test_intention_reaches_literal_gate_writer_inventory_and_repair_feedback(
     assert not accepted.findings
 
     assert rewrite_constraints(source).force_language == (expression,)
-    prompt = transform_models._prompt(document, phase=TransformPhase.UNSLOP)
+    prompt = transform_models._prompt(document)
     assert json.dumps(source) in prompt
     assert f'"sha256":"{block.sha256}"' in prompt
     assert f'"force_language":{json.dumps([expression])}' in prompt
@@ -1071,7 +1071,7 @@ async def test_originally_short_slides_remain_a_noop_without_a_global_target() -
     assert not result.findings
 
 
-async def test_unmet_word_target_keeps_the_format_phase_available(
+async def test_unmet_word_target_preserves_both_mode_source(
     concision_editor_factory: Callable[[str, str], _ConcisionEditor],
 ) -> None:
     document = parse_markdown(CONCISION_SOURCE, title="Unchanged")
@@ -1081,12 +1081,11 @@ async def test_unmet_word_target_keeps_the_format_phase_available(
         max_editorial_passes=1,
         generator=editor,
         allow_unslop_model=True,
-        allow_format_text_edits=True,
     ).transform(document, _request(TransformMode.BOTH, content=CONCISION_SOURCE))
 
     assert any(finding.code == "concision_target_unmet" for finding in result.findings)
 
-    assert editor.phases == [TransformPhase.UNSLOP, TransformPhase.FORMAT]
+    assert editor.phases == [TransformPhase.UNSLOP]
     assert editor.repair_calls == 1
     assert document.blocks[0].text == CONCISION_SOURCE
 

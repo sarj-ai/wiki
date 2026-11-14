@@ -10,7 +10,16 @@ from http import HTTPStatus
 from io import BytesIO
 import json
 import threading
-from typing import TYPE_CHECKING, Any, NamedTuple, Protocol, TypeIs, override, runtime_checkable
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    NamedTuple,
+    Protocol,
+    TypeIs,
+    assert_never,
+    override,
+    runtime_checkable,
+)
 import uuid
 
 from googleapiclient import discovery
@@ -45,6 +54,7 @@ from app.document_transform.bullet_style_projection import (
     project_branded_bullet_styles,
 )
 from app.document_transform.copy_draft_state import (
+    AppliedDraftMutation,
     PendingDraftMutation,
     UnmodifiedDraft,
     confirmed_draft_mutation,
@@ -138,8 +148,9 @@ from app.document_transform.native_font_proof import (
 )
 from app.document_transform.native_footer import (
     FooterAction,
-    FooterCheckpoint,
-    NativeFooterPlan,
+    FooterCreation,
+    OwnedFooter,
+    WritingFooterPlan,
     plan_native_footer,
 )
 from app.document_transform.native_footer_flow import (
@@ -198,7 +209,11 @@ from app.document_transform.tab_metadata import (
 )
 from app.document_transform.tab_names import plan_tab_names
 from app.document_transform.tab_structure_execution import StructureProvider
+from app.document_transform.verification import BrandVerification, ExistingBrandVerification
 from app.drive.retry import (
+    CompletedDownload,
+    ContinuingDownload,
+    DownloadChunk,
     ProviderDeadlineError,
     execute_download_chunk_with_retry,
     execute_mutation,
@@ -227,12 +242,6 @@ class ParagraphRangeKey:
     tab_id: str
     start_index: int
     end_index: int
-
-
-@dataclass(frozen=True, slots=True)
-class _CopyBrandVerification:
-    brand_applied: bool
-    supported_brand_applied: bool
 
 
 @dataclass(frozen=True, slots=True)
@@ -363,7 +372,11 @@ class GoogleDocumentGateway(DocumentGateway):
     supports_native_footer = True
     supports_native_dates = True
     _header_identity_proof: HeaderIdentityProof | None = None
-    _header_identity: HeaderIdentityEvidence | None = None
+
+    @property
+    def _header_identity(self) -> HeaderIdentityEvidence | None:
+        proof = self._header_identity_proof
+        return proof.evidence if proof is not None else None
 
     async def _read_readability_document(self, document_id: FileId) -> dict[str, JsonValue]:
         return await asyncio.to_thread(self._get_document_sync, document_id)
@@ -460,7 +473,6 @@ class GoogleDocumentGateway(DocumentGateway):
         self._logo_uri = logo_uri
         self._refresh_handler = refresh_handler
         self._header_identity_proof = header_identity
-        self._header_identity = header_identity.evidence if header_identity is not None else None
         self.capture_header_identity = self._capture_header_identity
         self._drive_clients: dict[int, DriveResource] = {}
         self._docs_clients: dict[int, _DocumentsProvider] = {}
@@ -719,7 +731,6 @@ class GoogleDocumentGateway(DocumentGateway):
                     topology=topology,
                     pending=tuple(eligible[1:]),
                     skipped=tuple(skipped),
-                    active=bool(eligible),
                 ),
             }
         ).root
@@ -735,6 +746,10 @@ class GoogleDocumentGateway(DocumentGateway):
                 native_safety_error("footer_coverage", "topology")
             if checkpoint.stage is NativeFooterStage.COMPLETE:
                 return _advance_footer_coverage(document, checkpoint, coverage)
+        if not isinstance(
+            checkpoint, (CreatingNativeFooterCheckpoint, PopulatingNativeFooterCheckpoint)
+        ):
+            native_safety_error("footer_populate", "action")
         creating = checkpoint.stage is NativeFooterStage.CREATE
         if creating:
             log_footer_snapshot(document, checkpoint.tab_id, "create_input")
@@ -752,10 +767,6 @@ class GoogleDocumentGateway(DocumentGateway):
         if creating:
             log_footer_snapshot(document, checkpoint.tab_id, "projection_empty")
         _, footer_id = verified_footer_projection(document, checkpoint, populated=not creating)
-        if not isinstance(
-            checkpoint, (CreatingNativeFooterCheckpoint, PopulatingNativeFooterCheckpoint)
-        ):
-            native_safety_error("footer_populate", "action")
         return advance_footer(
             checkpoint, footer_id, DocsRevisionId(_required_string(document, "revisionId"))
         )
@@ -853,7 +864,6 @@ class GoogleDocumentGateway(DocumentGateway):
         table_font_plan: TableFontPlan | None = None,
     ) -> OutputVerification:
         parsed = parse_google_document(document, title=title)
-        preserved_native_list_text_style_ids = _native_list_block_ids(expected)
         content_preserved = _typography_content_preserved(
             parsed, expected, verify_brand=verify_brand
         )
@@ -884,60 +894,28 @@ class GoogleDocumentGateway(DocumentGateway):
                 custom_header_titles=custom_header_titles,
             )
         )
-        preserved_layout = any(
-            block.preserved_paragraph_style_sha256
-            or block.preserved_font_family
-            or block.preserved_visual_authority
-            or block.id in preserved_native_list_text_style_ids
-            for block in expected.blocks
-        )
-        brand_applied = not verify_brand or (
-            not preserved_layout
-            and verify_brand_application(
-                document,
-                _typography_verification_ir(parsed, expected),
-                expected_header_title=_trusted_header_identity_title(
-                    document, self._header_identity
-                ),
-                header_separator=_owned_header_separator(self._header_identity),
-                preserved_native_list_text_style_ids=preserved_native_list_text_style_ids,
-            )
-        )
-        supported_brand_applied = (
-            (bool(custom_furniture) or preserved_layout)
-            and structure_preserved
-            and _custom_header_titles_match(document, title, custom_header_titles, custom_furniture)
-            and (
-                not verify_brand
-                or verify_brand_application(
-                    document,
-                    _typography_verification_ir(parsed, expected),
-                    expected_header_title=_trusted_header_identity_title(
-                        document, self._header_identity
-                    ),
-                    header_separator=_owned_header_separator(self._header_identity),
-                    preserved_furniture_tabs=frozenset(
-                        binding.tab_id for binding in custom_furniture
-                    ),
-                    preserved_header_tabs=frozenset(
-                        binding.tab_id for binding in custom_furniture if binding.header_ids
-                    ),
-                    preserved_native_list_text_style_ids=preserved_native_list_text_style_ids,
-                    allow_preserved_visual_authority=True,
-                )
-            )
+        brand = _verify_in_place_brand(
+            document,
+            parsed,
+            expected,
+            title=title,
+            header_identity=self._header_identity,
+            verify_brand=verify_brand,
+            structure_preserved=structure_preserved,
+            custom_furniture=custom_furniture,
+            custom_header_titles=custom_header_titles,
         )
         if not (
-            content_preserved and structure_preserved and (brand_applied or supported_brand_applied)
+            content_preserved and structure_preserved and brand.acceptable(required=verify_brand)
         ):
             logger.warning(
                 "in-place verification failed content_preserved={content_preserved} "
-                "structure_preserved={structure_preserved} brand_applied={brand_applied}",
+                "structure_preserved={structure_preserved} brand={brand}",
                 content_preserved=content_preserved,
                 structure_preserved=structure_preserved,
-                brand_applied=brand_applied,
+                brand=brand.value,
                 diagnostics={
-                    "supported_brand_applied": supported_brand_applied,
+                    "supported_brand_applied": brand is BrandVerification.SUPPORTED,
                     "structural_inventory_preserved": _inventory_sha256(
                         _structural_inventory(document)
                     )
@@ -951,7 +929,7 @@ class GoogleDocumentGateway(DocumentGateway):
                     **bullet_style_diagnostics(parsed, expected),
                 },
             )
-        elif supported_brand_applied and not brand_applied:
+        elif brand is BrandVerification.SUPPORTED:
             logger.info(
                 "in-place verification accepted supported brand",
                 diagnostics={
@@ -961,10 +939,9 @@ class GoogleDocumentGateway(DocumentGateway):
                 },
             )
         return OutputVerification(
-            supported_brand_applied=supported_brand_applied,
             content_preserved=content_preserved,
             structure_preserved=structure_preserved,
-            brand_applied=brand_applied,
+            brand=brand,
             revision_id=DocsRevisionId(_required_string(document, "revisionId")),
         )
 
@@ -1231,70 +1208,41 @@ class GoogleDocumentGateway(DocumentGateway):
                 "in_place_marker_available": _terminal_body_marker_range(document) is not None,
             },
         )
-        return InPlaceInspection(
-            custom_furniture=header_state.custom_furniture,
-            custom_header_title_targets=header_state.custom_header_title_targets,
-            custom_header_titles_present=header_state.custom_header_titles_present,
-            supported_brand_applied=bool(
-                header_state.custom_furniture
-                or any(
-                    block.preserved_paragraph_style_sha256
-                    or block.preserved_font_family
-                    or block.preserved_visual_authority
-                    or block.native_bullet_json is not None
-                    for block in existing_layout.blocks
-                )
-            )
-            and not (header_state.missing or header_state.unknown or header_state.headers)
-            and not header_state.custom_header_title_targets
-            and verify_brand_application(
-                document,
-                existing_layout,
-                expected_header_title=header_title,
-                header_separator=_owned_header_separator(self._header_identity),
-                preserved_furniture_tabs=frozenset(
-                    binding.tab_id for binding in header_state.custom_furniture
-                ),
-                preserved_header_tabs=frozenset(
-                    binding.tab_id
-                    for binding in header_state.custom_furniture
-                    if binding.header_ids
-                ),
-                preserved_native_list_text_style_ids=_native_list_block_ids(existing_layout),
-            ),
-            output=DocumentOutput(
-                file_id=FileId(_required_string(document, "documentId")),
-                name=snapshot.title,
-                parent_folder_id=snapshot.parent_folder_id,
-                web_url=snapshot.web_url,
-            ),
-            headers=header_state.headers,
-            preserved_headers=header_state.preserved_headers,
+        brand = _inspect_in_place_brand(
+            document,
+            existing_layout,
+            header_state,
+            header_title=header_title,
             header_identity=self._header_identity,
-            fully_branded=not any(
-                block.preserved_paragraph_style_sha256
-                or block.preserved_font_family
-                or block.preserved_visual_authority
-                or block.native_bullet_json is not None
-                for block in existing_layout.blocks
-            )
-            and not (header_state.missing or header_state.unknown or header_state.headers)
-            and verify_brand_application(
-                document,
-                existing_layout,
-                expected_header_title=header_title,
-                header_separator=_owned_header_separator(self._header_identity),
+        )
+        return InPlaceInspection(
+            custom_furniture=(header_state.custom_furniture),
+            custom_header_title_targets=(header_state.custom_header_title_targets),
+            custom_header_titles_present=(header_state.custom_header_titles_present),
+            output=(
+                DocumentOutput(
+                    file_id=FileId(_required_string(document, "documentId")),
+                    name=snapshot.title,
+                    parent_folder_id=snapshot.parent_folder_id,
+                    web_url=snapshot.web_url,
+                )
             ),
-            missing_header_tab_ids=header_state.missing,
-            unknown_header_tab_ids=header_state.unknown,
-            marker_range=_terminal_body_marker_range(document),
-            logo_uri=self._logo_uri,
-            structural_sha256=_inventory_sha256(_structural_inventory(document)),
-            protected_structure_sha256=_inventory_sha256(
-                _protected_structure_inventory(document, include_native_list_text_styles=True)
+            headers=(header_state.headers),
+            preserved_headers=(header_state.preserved_headers),
+            header_identity=(self._header_identity),
+            missing_header_tab_ids=(header_state.missing),
+            unknown_header_tab_ids=(header_state.unknown),
+            marker_range=(_terminal_body_marker_range(document)),
+            logo_uri=(self._logo_uri),
+            structural_sha256=(_inventory_sha256(_structural_inventory(document))),
+            protected_structure_sha256=(
+                _inventory_sha256(
+                    _protected_structure_inventory(document, include_native_list_text_styles=True)
+                )
             ),
-            body_sha256=_body_sha256(document),
-            header_safe_sha256=_header_safe_sha256(document),
+            body_sha256=(_body_sha256(document)),
+            header_safe_sha256=(_header_safe_sha256(document)),
+            brand=(brand),
         )
 
     def _apply_in_place_stage_sync(
@@ -1602,6 +1550,10 @@ class GoogleDocumentGateway(DocumentGateway):
         requests: list[dict[str, Any]],
         required_revision_id: DocsRevisionId,
     ) -> OutputDraft:
+        if isinstance(draft.mutation, AppliedDraftMutation):
+            if draft.mutation.sha256 != mutation_sha256:
+                raise IncompatiblePendingOutputError
+            return draft
         if (
             isinstance(draft.mutation, PendingDraftMutation)
             and draft.mutation.sha256 != mutation_sha256
@@ -1753,7 +1705,7 @@ class GoogleDocumentGateway(DocumentGateway):
             return OutputVerification(
                 content_preserved=verification.content_preserved,
                 structure_preserved=verification.structure_preserved,
-                brand_applied=verification.brand_applied,
+                brand=verification.brand,
                 revision_id=DocsRevisionId(_required_string(output_document, "revisionId")),
             )
         source_document = source.google_document
@@ -1816,14 +1768,13 @@ class GoogleDocumentGateway(DocumentGateway):
             )
         elif copy_list_identity_equivalent:
             logger.info("document copy verified with exact list identity equivalence")
+        brand = brand_verification
+        if brand is BrandVerification.SUPPORTED and not (content_preserved and structure_preserved):
+            brand = BrandVerification.MISMATCH
         return OutputVerification(
             content_preserved=content_preserved,
             structure_preserved=structure_preserved,
-            brand_applied=brand_verification.brand_applied,
-            supported_brand_applied=verify_brand
-            and content_preserved
-            and structure_preserved
-            and brand_verification.supported_brand_applied,
+            brand=brand,
             revision_id=DocsRevisionId(_required_string(output_document, "revisionId")),
         )
 
@@ -1980,25 +1931,136 @@ class GoogleDocumentGateway(DocumentGateway):
             request,
             chunksize=_MARKDOWN_DOWNLOAD_CHUNK_BYTES,
         )
-        done = False
-        while not done:
-            try:
-                status, done = execute_download_chunk_with_retry(download)
-            except ProviderDeadlineError:
-                raise
-            except HttpError as exc:
-                raise _gateway_error(exc) from exc
-            except (TimeoutError, ConnectionError, httplib2.ServerNotFoundError) as exc:
-                raise DocumentGatewayError(retryable=True) from exc
-            except ValueError as exc:
-                # Invalid Content-Length or Content-Range from the provider.
-                raise DocumentGatewayError(retryable=False) from exc
-            total_size = status.total_size if status is not None else None
-            if isinstance(total_size, int) and total_size > max_bytes:
+        while True:
+            previous_size = destination.tell()
+            chunk = _read_download_chunk(download)
+            if chunk.total_size is not None and chunk.total_size > max_bytes:
                 raise SourceTooLargeError
             if destination.tell() > max_bytes:
                 raise SourceTooLargeError
-        return destination.getvalue()
+            match chunk:
+                case CompletedDownload():
+                    if chunk.total_size is not None and destination.tell() != chunk.total_size:
+                        raise DocumentGatewayError(retryable=False)
+                    return destination.getvalue()
+                case ContinuingDownload():
+                    if destination.tell() <= previous_size:
+                        raise DocumentGatewayError(retryable=False)
+                case _:
+                    assert_never(chunk)
+
+
+def _read_download_chunk(download: MediaIoBaseDownload) -> DownloadChunk:
+    try:
+        return execute_download_chunk_with_retry(download)
+    except ProviderDeadlineError:
+        raise
+    except HttpError as exc:
+        raise _gateway_error(exc) from exc
+    except (TimeoutError, ConnectionError, httplib2.ServerNotFoundError) as exc:
+        raise DocumentGatewayError(retryable=True) from exc
+    except ValueError as exc:
+        raise DocumentGatewayError(retryable=False) from exc
+
+
+def _verify_in_place_brand(
+    document: dict[str, JsonValue],
+    parsed: DocumentIR,
+    expected: DocumentIR,
+    *,
+    title: str,
+    header_identity: HeaderIdentityEvidence | None,
+    verify_brand: bool,
+    structure_preserved: bool,
+    custom_furniture: tuple[CustomFurnitureBinding, ...],
+    custom_header_titles: tuple[CustomHeaderTitleTarget, ...],
+) -> BrandVerification:
+    preserved_native_list_text_style_ids = _native_list_block_ids(expected)
+    preserved_layout = any(
+        block.preserved_paragraph_style_sha256
+        or block.preserved_font_family
+        or block.preserved_visual_authority
+        or block.id in preserved_native_list_text_style_ids
+        for block in expected.blocks
+    )
+    brand_applied = not verify_brand or (
+        not preserved_layout
+        and verify_brand_application(
+            document,
+            _typography_verification_ir(parsed, expected),
+            expected_header_title=_trusted_header_identity_title(document, header_identity),
+            header_separator=_owned_header_separator(header_identity),
+            preserved_native_list_text_style_ids=preserved_native_list_text_style_ids,
+        )
+    )
+    supported_brand_applied = (
+        (bool(custom_furniture) or preserved_layout)
+        and structure_preserved
+        and _custom_header_titles_match(document, title, custom_header_titles, custom_furniture)
+        and (
+            not verify_brand
+            or verify_brand_application(
+                document,
+                _typography_verification_ir(parsed, expected),
+                expected_header_title=_trusted_header_identity_title(document, header_identity),
+                header_separator=_owned_header_separator(header_identity),
+                preserved_furniture_tabs=frozenset(binding.tab_id for binding in custom_furniture),
+                preserved_header_tabs=frozenset(
+                    binding.tab_id for binding in custom_furniture if binding.header_ids
+                ),
+                preserved_native_list_text_style_ids=preserved_native_list_text_style_ids,
+                allow_preserved_visual_authority=True,
+            )
+        )
+    )
+    if not verify_brand:
+        return BrandVerification.NOT_REQUIRED
+    if brand_applied:
+        return BrandVerification.FULL
+    if supported_brand_applied:
+        return BrandVerification.SUPPORTED
+    return BrandVerification.MISMATCH
+
+
+def _inspect_in_place_brand(
+    document: dict[str, JsonValue],
+    layout: DocumentIR,
+    headers: _InPlaceHeaderState,
+    *,
+    header_title: str,
+    header_identity: HeaderIdentityEvidence | None,
+) -> ExistingBrandVerification:
+    if headers.missing or headers.unknown or headers.headers:
+        return BrandVerification.MISMATCH
+    preserved_layout = any(
+        block.preserved_paragraph_style_sha256
+        or block.preserved_font_family
+        or block.preserved_visual_authority
+        or block.native_bullet_json is not None
+        for block in layout.blocks
+    )
+    if not preserved_layout and verify_brand_application(
+        document,
+        layout,
+        expected_header_title=header_title,
+        header_separator=_owned_header_separator(header_identity),
+    ):
+        return BrandVerification.FULL
+    if not (headers.custom_furniture or preserved_layout) or headers.custom_header_title_targets:
+        return BrandVerification.MISMATCH
+    if verify_brand_application(
+        document,
+        layout,
+        expected_header_title=header_title,
+        header_separator=_owned_header_separator(header_identity),
+        preserved_furniture_tabs=frozenset(binding.tab_id for binding in headers.custom_furniture),
+        preserved_header_tabs=frozenset(
+            binding.tab_id for binding in headers.custom_furniture if binding.header_ids
+        ),
+        preserved_native_list_text_style_ids=_native_list_block_ids(layout),
+    ):
+        return BrandVerification.SUPPORTED
+    return BrandVerification.MISMATCH
 
 
 def _verify_footer_revision(
@@ -2013,9 +2075,10 @@ def _verify_footer_revision(
 
 
 def _plan_copy_footer_write(
-    document: dict[str, JsonValue], checkpoint: NativeFooterCheckpoint
-) -> NativeFooterPlan:
-    creating = checkpoint.stage is NativeFooterStage.CREATE
+    document: dict[str, JsonValue],
+    checkpoint: CreatingNativeFooterCheckpoint | PopulatingNativeFooterCheckpoint,
+) -> WritingFooterPlan:
+    creating = isinstance(checkpoint, CreatingNativeFooterCheckpoint)
     stage: SafetyStage = "footer_create" if creating else "footer_populate"
     _verify_footer_revision(document, checkpoint, stage)
     if creating:
@@ -2032,10 +2095,14 @@ def _plan_copy_footer_write(
         revision_id=checkpoint.revision_id,
         short_link=checkpoint.url,
         display_text=checkpoint.display_text,
-        checkpoint=FooterCheckpoint(not creating, checkpoint.footer_id),
+        checkpoint=(
+            FooterCreation.NOT_STARTED
+            if isinstance(checkpoint, CreatingNativeFooterCheckpoint)
+            else OwnedFooter(checkpoint.footer_id)
+        ),
     )
     expected_action = FooterAction.CREATE if creating else FooterAction.POPULATE
-    if plan.action is not expected_action:
+    if not isinstance(plan, WritingFooterPlan) or plan.action is not expected_action:
         native_safety_error(stage, "action")
     return plan
 
@@ -3364,9 +3431,9 @@ def _copy_brand_verification(
     brand_warnings: tuple[str, ...],
     verify_brand: bool,
     structure_preserved: bool,
-) -> _CopyBrandVerification:
+) -> BrandVerification:
     if not verify_brand:
-        return _CopyBrandVerification(brand_applied=True, supported_brand_applied=False)
+        return BrandVerification.NOT_REQUIRED
     expected_header_title = _expected_copy_header_title(
         original,
         source_title=source_title,
@@ -3374,9 +3441,8 @@ def _copy_brand_verification(
         header_title=header_title,
     )
     if brand_warnings and all(warning.startswith("header_conflict:") for warning in brand_warnings):
-        return _CopyBrandVerification(
-            brand_applied=False,
-            supported_brand_applied=structure_preserved
+        supported = (
+            structure_preserved
             and original is not None
             and _copy_supported_brand_applied(
                 original,
@@ -3384,17 +3450,18 @@ def _copy_brand_verification(
                 parsed,
                 expected_header_title=expected_header_title,
                 brand_warnings=brand_warnings,
-            ),
+            )
         )
+        return BrandVerification.SUPPORTED if supported else BrandVerification.MISMATCH
     brand_applied = verify_brand_application(
         actual,
         parsed,
         expected_header_title=expected_header_title,
     )
-    return _CopyBrandVerification(
-        brand_applied=brand_applied,
-        supported_brand_applied=not brand_applied
-        and structure_preserved
+    if brand_applied:
+        return BrandVerification.FULL
+    supported = (
+        structure_preserved
         and not brand_warnings
         and any(block.preserved_visual_authority for block in parsed.blocks)
         and verify_brand_application(
@@ -3402,8 +3469,9 @@ def _copy_brand_verification(
             parsed,
             expected_header_title=expected_header_title,
             allow_preserved_visual_authority=True,
-        ),
+        )
     )
+    return BrandVerification.SUPPORTED if supported else BrandVerification.MISMATCH
 
 
 def _copy_supported_brand_applied(

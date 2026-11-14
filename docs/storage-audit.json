@@ -8,92 +8,254 @@
       "table": "alembic_version",
       "decision": "retain",
       "reason": "Migration bookkeeping, excluded from application table totals.",
-      "lifecycleEvidence": "Migration bookkeeping, excluded from application table totals."
+      "lifecycleEvidence": "Migration bookkeeping, excluded from application table totals.",
+      "readers": [
+        "Alembic version/head resolution during startup migrations and recovery"
+      ],
+      "writers": [
+        "Alembic upgrade/downgrade transaction only"
+      ],
+      "constraints": [
+        "Single current revision key"
+      ],
+      "lifecycle": "Retain migration history and reject lossy downgrade; application code does not repurpose the table."
     },
     {
       "table": "cache_entries",
       "decision": "retain",
       "runtime": "backend/app/cache/service.py",
       "reason": "Protected short-lived Drive/template reads and the bounded registration admission window share this namespaced store. Database constraints bound the internal history; the stable advisory lock still serializes all replicas. Disposable provider caches are cleared once, retiring legacy-key cleanup and its index.",
-      "lifecycleEvidence": "backend/app/cache/service.py"
+      "lifecycleEvidence": "backend/app/cache/service.py",
+      "readers": [
+        "CachePSqlService.get/get_many via _cache_get_statement/_cache_bulk_get_statement",
+        "native_admission._admit reads bounded registration history under the stable advisory lock"
+      ],
+      "writers": [
+        "CachePSqlService.put/put_many/delete/_purge and native_admission._admit"
+      ],
+      "constraints": [
+        "Composite namespace/key primary key",
+        "Non-null JSON value and expiry; expiry index",
+        "Registration history CHECK: global key, bounded string array"
+      ],
+      "lifecycle": "Provider cache values are encrypted/versioned and validated; expiry/malformed entries are purged. Registration history has a separate bounded namespace and one cross-replica admission lock; a cache miss never supplies authorization."
     },
     {
       "table": "doc_icons",
       "decision": "retain",
       "runtime": "backend/app/extras/service.py",
       "reason": "Shared file icons remain active; unused cover URLs and write-only attribution fields are removed.",
-      "lifecycleEvidence": "backend/app/extras/service.py"
+      "lifecycleEvidence": "backend/app/extras/service.py",
+      "readers": [
+        "PostgresExtrasService.list_doc_icons/load_sidebar"
+      ],
+      "writers": [
+        "PostgresExtrasService.upsert_doc_icon after scoped file authorization"
+      ],
+      "constraints": [
+        "One drive_id primary key; nullable icon represents explicit clearing"
+      ],
+      "lifecycle": "Shared document decoration is distinct from principal-specific folder/sort preferences; retain one current icon per scoped file."
     },
     {
       "table": "document_aliases",
       "decision": "retain",
       "runtime": "backend/app/aliases/service.py",
       "reason": "Active and retired names preserve public links and prevent reassignment. Drop created_by, created_at and retired_by: no runtime reader consumes attribution. retired_at continues to enforce permanent name reservations. Alias service no longer needs a separate user parameter; authenticated Drive access still gates every operation.",
-      "lifecycleEvidence": "backend/app/aliases/service.py"
+      "lifecycleEvidence": "backend/app/aliases/service.py",
+      "readers": [
+        "PostgresAliasService._active_for_file, resolve and recent alias projection"
+      ],
+      "writers": [
+        "PostgresAliasService.save/_ensure_for_validated_file/retire under transaction/uniqueness coordination"
+      ],
+      "constraints": [
+        "Alias primary key permanently reserves names",
+        "Alias format CHECK",
+        "Unique active file index where retired_at IS NULL"
+      ],
+      "lifecycle": "Retired aliases remain reserved and cannot be recycled. Fresh Drive authorization precedes product writes/reads; renames and simultaneous requests preserve unique active ownership."
     },
     {
       "table": "document_header_provenance",
       "decision": "retain",
       "runtime": "backend/app/tasks/service.py",
       "reason": "Verified header ownership survives task expiry and authorizes later in-place edits.",
-      "lifecycleEvidence": "backend/app/tasks/service.py"
+      "lifecycleEvidence": "backend/app/tasks/service.py",
+      "readers": [
+        "DriveDocumentTransformTaskExecutor._authorized_drive_source validates durable header evidence for later in-place edits"
+      ],
+      "writers": [
+        "PostgresTaskService._persist_header_identity as part of a successful owned task transaction"
+      ],
+      "constraints": [
+        "Owner/file composite primary key",
+        "Owner FK cascades; deliberately no task-retention FK",
+        "Required operation ID, evidence and result/revision digests"
+      ],
+      "lifecycle": "Verified ownership outlives task TTL. Retain immutable evidence rather than infer header ownership from marker names, cached snapshots or an expired task."
     },
     {
       "table": "document_transform_qa_corpus_campaigns",
       "decision": "delete",
       "reason": "Retired optional cloud QA service has no product frontend callers. Issuer, workload endpoints, launchers, owner-only QA execution branches and infrastructure retire together; generated Drive documents remain untouched.",
-      "lifecycleEvidence": "Retired optional cloud QA service has no product frontend callers. Issuer, workload endpoints, launchers, owner-only QA execution branches and infrastructure retire together; generated Drive documents remain untouched."
+      "lifecycleEvidence": "Retired optional cloud QA service has no product frontend callers. Issuer, workload endpoints, launchers, owner-only QA execution branches and infrastructure retire together; generated Drive documents remain untouched.",
+      "readers": [
+        "No current runtime reader after the recorded retirement/consolidation."
+      ],
+      "writers": [
+        "No current runtime writer; historical Alembic migration/restore paths only."
+      ],
+      "constraints": [
+        "Historical constraints and data migrations remain in the complete Alembic chain; the retired physical table is absent from current production."
+      ],
+      "lifecycle": "Retired optional cloud QA service has no product frontend callers. Issuer, workload endpoints, launchers, owner-only QA execution branches and infrastructure retire together; generated Drive documents remain untouched."
     },
     {
       "table": "document_transform_qa_corpus_members",
       "decision": "delete",
       "reason": "Retired optional cloud QA service has no product frontend callers. Issuer, workload endpoints, launchers, owner-only QA execution branches and infrastructure retire together; generated Drive documents remain untouched.",
-      "lifecycleEvidence": "Retired optional cloud QA service has no product frontend callers. Issuer, workload endpoints, launchers, owner-only QA execution branches and infrastructure retire together; generated Drive documents remain untouched."
+      "lifecycleEvidence": "Retired optional cloud QA service has no product frontend callers. Issuer, workload endpoints, launchers, owner-only QA execution branches and infrastructure retire together; generated Drive documents remain untouched.",
+      "readers": [
+        "No current runtime reader after the recorded retirement/consolidation."
+      ],
+      "writers": [
+        "No current runtime writer; historical Alembic migration/restore paths only."
+      ],
+      "constraints": [
+        "Historical constraints and data migrations remain in the complete Alembic chain; the retired physical table is absent from current production."
+      ],
+      "lifecycle": "Retired optional cloud QA service has no product frontend callers. Issuer, workload endpoints, launchers, owner-only QA execution branches and infrastructure retire together; generated Drive documents remain untouched."
     },
     {
       "table": "document_transform_qa_corpus_submissions",
       "decision": "delete",
       "reason": "Retired optional cloud QA service has no product frontend callers. Issuer, workload endpoints, launchers, owner-only QA execution branches and infrastructure retire together; generated Drive documents remain untouched.",
-      "lifecycleEvidence": "Retired optional cloud QA service has no product frontend callers. Issuer, workload endpoints, launchers, owner-only QA execution branches and infrastructure retire together; generated Drive documents remain untouched."
+      "lifecycleEvidence": "Retired optional cloud QA service has no product frontend callers. Issuer, workload endpoints, launchers, owner-only QA execution branches and infrastructure retire together; generated Drive documents remain untouched.",
+      "readers": [
+        "No current runtime reader after the recorded retirement/consolidation."
+      ],
+      "writers": [
+        "No current runtime writer; historical Alembic migration/restore paths only."
+      ],
+      "constraints": [
+        "Historical constraints and data migrations remain in the complete Alembic chain; the retired physical table is absent from current production."
+      ],
+      "lifecycle": "Retired optional cloud QA service has no product frontend callers. Issuer, workload endpoints, launchers, owner-only QA execution branches and infrastructure retire together; generated Drive documents remain untouched."
     },
     {
       "table": "document_transform_qa_grants",
       "decision": "delete",
       "reason": "Retired optional cloud QA service has no product frontend callers. Issuer, workload endpoints, launchers, owner-only QA execution branches and infrastructure retire together; generated Drive documents remain untouched.",
-      "lifecycleEvidence": "Retired optional cloud QA service has no product frontend callers. Issuer, workload endpoints, launchers, owner-only QA execution branches and infrastructure retire together; generated Drive documents remain untouched."
+      "lifecycleEvidence": "Retired optional cloud QA service has no product frontend callers. Issuer, workload endpoints, launchers, owner-only QA execution branches and infrastructure retire together; generated Drive documents remain untouched.",
+      "readers": [
+        "No current runtime reader after the recorded retirement/consolidation."
+      ],
+      "writers": [
+        "No current runtime writer; historical Alembic migration/restore paths only."
+      ],
+      "constraints": [
+        "Historical constraints and data migrations remain in the complete Alembic chain; the retired physical table is absent from current production."
+      ],
+      "lifecycle": "Retired optional cloud QA service has no product frontend callers. Issuer, workload endpoints, launchers, owner-only QA execution branches and infrastructure retire together; generated Drive documents remain untouched."
     },
     {
       "table": "document_transform_qa_runs",
       "decision": "delete",
       "reason": "Retired optional cloud QA service has no product frontend callers. Issuer, workload endpoints, launchers, owner-only QA execution branches and infrastructure retire together; generated Drive documents remain untouched.",
-      "lifecycleEvidence": "Retired optional cloud QA service has no product frontend callers. Issuer, workload endpoints, launchers, owner-only QA execution branches and infrastructure retire together; generated Drive documents remain untouched."
+      "lifecycleEvidence": "Retired optional cloud QA service has no product frontend callers. Issuer, workload endpoints, launchers, owner-only QA execution branches and infrastructure retire together; generated Drive documents remain untouched.",
+      "readers": [
+        "No current runtime reader after the recorded retirement/consolidation."
+      ],
+      "writers": [
+        "No current runtime writer; historical Alembic migration/restore paths only."
+      ],
+      "constraints": [
+        "Historical constraints and data migrations remain in the complete Alembic chain; the retired physical table is absent from current production."
+      ],
+      "lifecycle": "Retired optional cloud QA service has no product frontend callers. Issuer, workload endpoints, launchers, owner-only QA execution branches and infrastructure retire together; generated Drive documents remain untouched."
     },
     {
       "table": "drive_tree_cache",
       "decision": "delete",
       "reason": "Unmodeled global cache left by old migrations. Runtime uses only user_drive_tree_cache; no active reader or writer remains.",
-      "lifecycleEvidence": "Unmodeled global cache left by old migrations. Runtime uses only user_drive_tree_cache; no active reader or writer remains."
+      "lifecycleEvidence": "Unmodeled global cache left by old migrations. Runtime uses only user_drive_tree_cache; no active reader or writer remains.",
+      "readers": [
+        "No current runtime reader after the recorded retirement/consolidation."
+      ],
+      "writers": [
+        "No current runtime writer; historical Alembic migration/restore paths only."
+      ],
+      "constraints": [
+        "Historical constraints and data migrations remain in the complete Alembic chain; the retired physical table is absent from current production."
+      ],
+      "lifecycle": "Unmodeled global cache left by old migrations. Runtime uses only user_drive_tree_cache; no active reader or writer remains."
     },
     {
       "table": "mcp_grants",
       "decision": "retain",
       "runtime": "backend/app/mcp/grants.py",
       "reason": "User/client grants support expiry, revocation and permission checks across credentials.",
-      "lifecycleEvidence": "backend/app/mcp/grants.py"
+      "lifecycleEvidence": "backend/app/mcp/grants.py",
+      "readers": [
+        "NativeMcpCore.current_user/list_connections and grants.validate_live_grant",
+        "NativeOAuthProvider access/refresh authorization rechecks the live grant and user session revision"
+      ],
+      "writers": [
+        "grants.enroll_approved_client/revoke_client/_revoke_client",
+        "NativeMcpCore.decide/disconnect and NativeOAuthProvider._revoke_family/revoke_token"
+      ],
+      "constraints": [
+        "Grant primary key and owner FK",
+        "Unique active owner/client partial index",
+        "Required expiry/session revision and capability bit"
+      ],
+      "lifecycle": "Approval creates a grant once; revocation/expiry and session revision are checked before access. Revoked grants remain audit and replay evidence; transform permission is an independent capability, not an alternate lifecycle flag."
     },
     {
       "table": "mcp_native_state",
       "decision": "consolidate",
       "target": "mcp_oauth_entries",
       "reason": "Identical encrypted state shape. Native collections retain their namespace, digest, ciphertext and expiry; quotas and one-time consumption remain enforced.",
-      "lifecycleEvidence": "Identical encrypted state shape. Native collections retain their namespace, digest, ciphertext and expiry; quotas and one-time consumption remain enforced."
+      "lifecycleEvidence": "Identical encrypted state shape. Native collections retain their namespace, digest, ciphertext and expiry; quotas and one-time consumption remain enforced.",
+      "readers": [
+        "No current runtime reader after the recorded retirement/consolidation."
+      ],
+      "writers": [
+        "No current runtime writer; historical Alembic migration/restore paths only."
+      ],
+      "constraints": [
+        "Historical constraints and data migrations remain in the complete Alembic chain; the retired physical table is absent from current production."
+      ],
+      "lifecycle": "Identical encrypted state shape. Native collections retain their namespace, digest, ciphertext and expiry; quotas and one-time consumption remain enforced."
     },
     {
       "table": "mcp_oauth_entries",
-      "decision": "retain",
+      "decision": "simplify",
       "runtime": "backend/app/mcp/native_state.py",
-      "reason": "The active native issuer stores encrypted clients, intents, codes, access and refresh credentials here. The old OAuth proxy has no application callers: retire its collections, SDK key/value adapter, bulk methods, direct dependency, and write-only updated_at column. Keep the transaction lock as PostgresOAuthOperations.",
-      "lifecycleEvidence": "backend/app/mcp/native_state.py"
+      "reason": "Retain the sole encrypted native issuer store for clients, consent intents, authorization codes, access and refresh credentials. Eliminate the obsolete permanent/nullable expiry contract and constrain purpose and HMAC identity at SQL boundaries. Keep spent refresh receipts until canonical expiry; never infer a missing effect or grant.",
+      "lifecycleEvidence": "backend/app/mcp/native_state.py",
+      "readers": [
+        "NativeStateStore.get with collection-specific strict decoding and database-clock expiry",
+        "NativeStateStore.promote_client only addresses the bound live client"
+      ],
+      "writers": [
+        "NativeStateStore.put and promote_client under native quota/advisory transactions"
+      ],
+      "lifecycle": "Encrypted per-purpose state preserves one-use code and refresh-family replay evidence through canonical expiry. Migration 0030 rejects incompatible rows atomically and rewrites no ciphertext.",
+      "constraints": [
+        "Collection/digest composite primary key",
+        "Non-null ciphertext and expiry",
+        "Closed client/intent/code/access/refresh namespace CHECK",
+        "Lowercase 64-character HMAC CHECK"
+      ],
+      "migration": "0030_native_oauth_invariants",
+      "sources": [
+        "backend/app/mcp/native_state.py",
+        "backend/app/mcp/native_schemas.py",
+        "backend/app/models/mcp_oauth.py",
+        "backend/alembic/versions/0030_native_oauth_invariants.py"
+      ]
     },
     {
       "table": "mcp_registration_admission",
@@ -101,14 +263,35 @@
       "runtime": "backend/app/mcp/native_admission.py",
       "reason": "One bounded expiring registration history needs no separate singleton table. Copy timestamps under the original advisory lock and table locks; preserve the two rolling windows, database bounds, failure redaction, and nonrefundable committed admission.",
       "target": "cache_entries",
-      "lifecycleEvidence": "backend/app/mcp/native_admission.py"
+      "lifecycleEvidence": "backend/app/mcp/native_admission.py",
+      "readers": [
+        "No current runtime reader after the recorded retirement/consolidation."
+      ],
+      "writers": [
+        "No current runtime writer; historical Alembic migration/restore paths only."
+      ],
+      "constraints": [
+        "Historical constraints and data migrations remain in the complete Alembic chain; the retired physical table is absent from current production."
+      ],
+      "lifecycle": "One bounded expiring registration history needs no separate singleton table. Copy timestamps under the original advisory lock and table locks; preserve the two rolling windows, database bounds, failure redaction, and nonrefundable committed admission."
     },
     {
       "table": "task_replay_keys",
       "decision": "retain",
       "runtime": "backend/app/tasks/service.py",
       "reason": "Multiple client keys can refer to one task; separate uniqueness prevents duplicate work.",
-      "lifecycleEvidence": "backend/app/tasks/service.py"
+      "lifecycleEvidence": "backend/app/tasks/service.py",
+      "readers": [
+        "PostgresTaskService._task_ids_for_key, _maybe_existing, get_admission and retained-terminal lookup"
+      ],
+      "writers": [
+        "PostgresTaskService._bind_replay_key inside owner/kind/idempotency reservation transactions"
+      ],
+      "constraints": [
+        "Owner/kind/idempotency composite primary key",
+        "Owner FK and indexed task FK cascade with their actual owners"
+      ],
+      "lifecycle": "Several client keys can name one durable task without duplicating execution. Direct and replay-key queries preserve owner, kind, retained visibility and unique target ownership; task expiry does not prove an earlier effect never happened."
     },
     {
       "table": "tasks",
@@ -116,42 +299,110 @@
       "runtime": "backend/app/tasks/service.py",
       "reason": "Durable execution, leases, checkpoints, dispatch and results for active document operations.",
       "lifecycleEvidence": "backend/app/tasks/service.py",
-      "currentChange": "0028 remains production verified with PR652. Candidate 0029 adds explicit needs_review, preserves ambiguous expired execution and all replay/target ownership, validates task state/evidence, and refuses lossy downgrade. Slides and Smart Create reuse the existing checkpoint and generation fields."
+      "currentChange": "Production 0029 preserves five needs_review tasks, all input/checkpoint/resource/generation evidence and unique target ownership. This follow-up does not clear or replay held work. Task admission recovery for transforms and Smart Create shares one owner/kind/key-scoped projection without payload decryption, writes or new tables.",
+      "readers": [
+        "PostgresTaskService get_for_owner/get_for_owner_bounded_result, kind-specific loaders, current-result and dispatch/recovery scans",
+        "get_admission projects only id/status through owner/kind/key and retained visibility"
+      ],
+      "writers": [
+        "create_or_replay, claim, begin_smart_create, record_resource, save_document_transform_checkpoint, _owned_lease_update, cancel/discard_pending, _retain_expired_executions"
+      ],
+      "constraints": [
+        "Kind/status/evidence/checkpoint/attempt and lease CHECKs from migrations 0028/0029",
+        "Unique owner/kind/idempotency key",
+        "Live or needs_review in-place target exclusion",
+        "Lease-token/version/expiry CAS and transactional checkpoint generation"
+      ],
+      "lifecycle": "Checkpoint before dispatch; ambiguous expired execution becomes needs_review and reserves its target. Duplicate events, worker races and cancellation cannot clear unknown side effects. All five known production review records and their original raw evidence are retained."
     },
     {
       "table": "user_drive_tree_cache",
       "decision": "retain",
       "runtime": "backend/app/sidebar/cache.py",
       "reason": "Principal-scoped encrypted tree snapshots need independent version and invalidation queries.",
-      "lifecycleEvidence": "backend/app/sidebar/cache.py"
+      "lifecycleEvidence": "backend/app/sidebar/cache.py",
+      "readers": [
+        "PostgresSidebarCacheService _load_row/_load_conditional_row/_load_refreshed_at and principal-scoped tree projections"
+      ],
+      "writers": [
+        "PostgresSidebarCacheService._save_tree/invalidate_drive/_walk_and_save"
+      ],
+      "constraints": [
+        "Owner/drive composite primary key and owner FK",
+        "Drive and refreshed_at indexes",
+        "Non-null encrypted snapshot and refresh timestamp; SQL MVCC/tuple version CAS"
+      ],
+      "lifecycle": "Per-principal encrypted materialized view with bounded process-local LRU, decoder identity, ETag and singleflight. Corrupt/expired snapshots refetch through scoped provider access; stale refreshes cannot overwrite newer data."
     },
     {
       "table": "user_folder_icons",
       "decision": "consolidate",
       "target": "users",
       "reason": "One owner row stores scalar preferences and JSON maps. SQL merges preserve simultaneous edits; the three tables and UNION/bulk-insert machinery retire.",
-      "lifecycleEvidence": "One owner row stores scalar preferences and JSON maps. SQL merges preserve simultaneous edits; the three tables and UNION/bulk-insert machinery retire."
+      "lifecycleEvidence": "One owner row stores scalar preferences and JSON maps. SQL merges preserve simultaneous edits; the three tables and UNION/bulk-insert machinery retire.",
+      "readers": [
+        "No current runtime reader after the recorded retirement/consolidation."
+      ],
+      "writers": [
+        "No current runtime writer; historical Alembic migration/restore paths only."
+      ],
+      "constraints": [
+        "Historical constraints and data migrations remain in the complete Alembic chain; the retired physical table is absent from current production."
+      ],
+      "lifecycle": "One owner row stores scalar preferences and JSON maps. SQL merges preserve simultaneous edits; the three tables and UNION/bulk-insert machinery retire."
     },
     {
       "table": "user_preferences",
       "decision": "consolidate",
       "target": "users",
       "reason": "One owner row stores scalar preferences and JSON maps. SQL merges preserve simultaneous edits; the three tables and UNION/bulk-insert machinery retire.",
-      "lifecycleEvidence": "One owner row stores scalar preferences and JSON maps. SQL merges preserve simultaneous edits; the three tables and UNION/bulk-insert machinery retire."
+      "lifecycleEvidence": "One owner row stores scalar preferences and JSON maps. SQL merges preserve simultaneous edits; the three tables and UNION/bulk-insert machinery retire.",
+      "readers": [
+        "No current runtime reader after the recorded retirement/consolidation."
+      ],
+      "writers": [
+        "No current runtime writer; historical Alembic migration/restore paths only."
+      ],
+      "constraints": [
+        "Historical constraints and data migrations remain in the complete Alembic chain; the retired physical table is absent from current production."
+      ],
+      "lifecycle": "One owner row stores scalar preferences and JSON maps. SQL merges preserve simultaneous edits; the three tables and UNION/bulk-insert machinery retire."
     },
     {
       "table": "user_sessions",
       "decision": "retain",
       "runtime": "backend/app/auth/service.py",
       "reason": "Refresh token families and revocation outlive individual bearer tokens.",
-      "lifecycleEvidence": "backend/app/auth/service.py"
+      "lifecycleEvidence": "backend/app/auth/service.py",
+      "readers": [
+        "GoogleAuthService._load_access_identity/_load_session and refresh_session"
+      ],
+      "writers": [
+        "GoogleAuthService._issue_new_session/refresh_session/_revoke_user_session/_revoke_session_family"
+      ],
+      "constraints": [
+        "Session primary key and owner FK",
+        "Required family, current refresh JTI and expiry",
+        "Family/owner indexes"
+      ],
+      "lifecycle": "Refresh rotates the exact owned JTI under database coordination; replay revokes the family. Expired/revoked state is derived from immutable timestamps and current DB facts; logout does not erase replay evidence."
     },
     {
       "table": "user_sort_order",
       "decision": "consolidate",
       "target": "users",
       "reason": "One owner row stores scalar preferences and JSON maps. SQL merges preserve simultaneous edits; the three tables and UNION/bulk-insert machinery retire.",
-      "lifecycleEvidence": "One owner row stores scalar preferences and JSON maps. SQL merges preserve simultaneous edits; the three tables and UNION/bulk-insert machinery retire."
+      "lifecycleEvidence": "One owner row stores scalar preferences and JSON maps. SQL merges preserve simultaneous edits; the three tables and UNION/bulk-insert machinery retire.",
+      "readers": [
+        "No current runtime reader after the recorded retirement/consolidation."
+      ],
+      "writers": [
+        "No current runtime writer; historical Alembic migration/restore paths only."
+      ],
+      "constraints": [
+        "Historical constraints and data migrations remain in the complete Alembic chain; the retired physical table is absent from current production."
+      ],
+      "lifecycle": "One owner row stores scalar preferences and JSON maps. SQL merges preserve simultaneous edits; the three tables and UNION/bulk-insert machinery retire."
     },
     {
       "table": "users",
@@ -159,7 +410,24 @@
       "runtime": "backend/app/auth/service.py",
       "reason": "Current identity, encrypted Google credentials, refresh fencing, and per-user settings.",
       "lifecycleEvidence": "backend/app/auth/service.py",
-      "currentChange": "Migration 0027 clears access ciphertext without expiry (16 unusable values in production preflight), retaining refresh credentials and versions. Enforce access/expiry pairing, lease pairing, lease-refresh dependency and nonnegative fencing generations in PostgreSQL."
+      "currentChange": "Migration 0027 clears access ciphertext without expiry (16 unusable values in production preflight), retaining refresh credentials and versions. Enforce access/expiry pairing, lease pairing, lease-refresh dependency and nonnegative fencing generations in PostgreSQL.",
+      "readers": [
+        "GoogleAuthService._load_user/_find_identity_users/_resolve_identity_user/resolve_current_user",
+        "Google token manager and MCP principal/grant validation",
+        "PostgresExtrasService preferences/folder-icons/sort-order readers"
+      ],
+      "writers": [
+        "GoogleAuthService._upsert_user and sign-out/session revision changes",
+        "Google token manager _acquire_lease/_persist_refresh_response/_clear_lease",
+        "PostgresExtrasService atomic JSON/scalar preference merges"
+      ],
+      "constraints": [
+        "User primary key and unique Google/email identity",
+        "Access-token/expiry pair CHECK",
+        "Refresh lease owner/deadline pair CHECK",
+        "Nonnegative token generation and required token version"
+      ],
+      "lifecycle": "Keep one identity and token-ownership row. Session revision revokes credentials; refresh leases use owner/deadline CAS. Consolidated principal preferences merge atomically so concurrent edits do not overwrite independent values."
     }
   ],
   "retainedInputContracts": {
@@ -203,14 +471,14 @@
     "reason": "Old encrypted normal copy checkpoints contain null QA metadata. Discard only those null legacy keys when decoding; keep strict rejection of non-null retired QA payloads and every other unknown field. New checkpoints omit the retired keys."
   },
   "migrationIsolation": "Acquire the unchanged global registration advisory lock, then pause the old admission table and cache writes for the copy/drop transaction. Native OAuth state is preserved byte-for-byte; only replaced proxy collections and disposable provider caches are removed.",
-  "previousMigration": "0025_simplify_storage",
-  "reviewedBase": "8173764",
+  "previousMigration": "0029_task_review",
+  "reviewedBase": "3ea07ecea8c886ba9fea7c033f082ea1dad5d9ed",
   "retiredCode": [
     "Unused generic OAuth SDK key/value and bulk API; active native state remains encrypted and permission checked.",
     "Unused alias attribution columns, foreign keys, indexes and service injection.",
     "Legacy disposable provider-cache cleanup branch and index."
   ],
-  "currentMigration": "0028_task_result_invariants",
+  "currentMigration": "0030_native_oauth_invariants",
   "currentApplicationTableCount": 11,
   "productionPreflight": {
     "credentialInvariants": {
@@ -1155,47 +1423,33 @@
     ]
   },
   "currentProductionVerification": {
-    "date": "2026-11-12",
-    "source": "dcb6e9a4a774d5a20b51595bb2f7cad42da0d1ab",
-    "transaction": "read-only",
-    "execution": "sarj-wiki-schema-audit-20261112-094127-plhdb",
-    "migration": [
-      "0028_task_result_invariants"
+    "at": "2026-11-13T14:16:40.043072+00:00",
+    "merge": "473f6fb1a2261d72dd94483f204ffa4eea15b3b6",
+    "releaseRun": 43437676983,
+    "releaseConclusion": "success",
+    "backendDeployJob": 131928969550,
+    "frontendDeployJob": 131931096072,
+    "backendCompletedBeforeFrontendStarted": true,
+    "readOnlyExecution": "wiki-code-metadata-20261111-r2-w7xmb",
+    "readOnlyObservedAt": "2026-11-13T14:13:43.810180+00:00",
+    "alembic": [
+      "0029_task_review"
     ],
-    "tables": [
-      "alembic_version",
-      "cache_entries",
-      "doc_icons",
-      "document_aliases",
-      "document_header_provenance",
-      "mcp_grants",
-      "mcp_oauth_entries",
-      "task_replay_keys",
-      "tasks",
-      "user_drive_tree_cache",
-      "user_sessions",
-      "users"
-    ],
-    "counts": {
-      "alembic_version": 1,
-      "cache_entries": 6,
-      "doc_icons": 64,
-      "document_aliases": 123,
-      "document_header_provenance": 36,
-      "mcp_grants": 3,
-      "mcp_oauth_entries": 14,
-      "task_replay_keys": 1,
-      "tasks": 62,
-      "user_drive_tree_cache": 47,
-      "user_sessions": 183,
-      "users": 54
+    "applicationTables": 11,
+    "physicalTables": 12,
+    "constraintsValidated": 30,
+    "liveTaskLeases": 0,
+    "taskStates": {
+      "failed": 50,
+      "needs_review": 5,
+      "succeeded": 70
     },
-    "schemaReceiptSha256": "044fecc0ce6edaae059b473c23f5abe05f1a0a76a6e82d03c2e8603492491504",
-    "taskResultConstraints": [
-      "ck_tasks_kind",
-      "ck_tasks_result_kind"
-    ],
-    "temporaryAuditJob": "deleted after successful readback; retained private execution and schema receipts"
+    "uncertainRecords": 5,
+    "priorUncertainRecords": 4,
+    "originalEvidenceHashesPreserved": true,
+    "allUncertainStates": "needs_review",
+    "noUncertainTaskReplayed": true,
+    "status": "PR696 production receipt; not evidence that candidate migration 0030 is deployed."
   },
   "taskResultInvariantChange": {
     "migration": "0028_task_result_invariants",
@@ -1308,5 +1562,114 @@
       "receiptSHA256": "da6a50262b08691ad58c73a23a975e05a662400b434ee7cb5c3e357ad10fe717",
       "status": "Read-only snapshot before cutover; not proof that migration 0029 is applied."
     }
+  },
+  "nativeOAuthInvariantMigration": {
+    "revision": "0030_native_oauth_invariants",
+    "applicationTablesBefore": 11,
+    "applicationTablesAfter": 11,
+    "physicalTablesAfter": 12,
+    "changes": [
+      "mcp_oauth_entries.expires_at becomes NOT NULL",
+      "native collection CHECK restricts purpose to client/intent/code/access/refresh",
+      "key digest CHECK requires lowercase 64-character SHA256 HMAC"
+    ],
+    "dataPolicy": "No rows are deleted and no ciphertext is rewritten by the schema migration. Incompatible legacy rows abort the migration transaction and remain intact; no expiry, purpose or digest is synthesized.",
+    "runtimePayloads": "Collection-specific strict codecs decode valid old records into immutable tagged variants and persist canonical variants on guarded writes.",
+    "productionPreflight": {
+      "observedAt": "2026-11-13T17:49:27Z",
+      "records": 14,
+      "live": 0,
+      "invalid": 0,
+      "allLookupBindingsVerified": true,
+      "readOnly": true,
+      "phases": {
+        "client_registration": 3,
+        "legacy_access": 1,
+        "legacy_refresh_active": 3,
+        "legacy_refresh_spent": 7
+      }
+    },
+    "verification": "Current pinned-runtime PostgreSQL qualification covers migration 0030, rollback/re-upgrade, incompatible-row preservation, refresh replay and browser runtimes. The full matrix qualifies 304 unique cases, with two additional fresh authentication migration cases. All 14 archived encrypted OAuth records restore byte-for-byte under 0030. Full native release gates and production 0030 application remain pending.",
+    "productionCensus": {
+      "readOnly": true,
+      "rows": 14,
+      "liveRows": 0,
+      "invalidRows": 0,
+      "productionWrites": false
+    },
+    "backupRestore": {
+      "rows": 14,
+      "sha256": "56e3fe7fb7b8f012a8d028db5af43b07fed380f325b955a2f98b531a6ca6d294",
+      "restoredUnderCurrentConstraints": true,
+      "productionWrites": false
+    }
+  },
+  "previousProductionVerification": {
+    "date": "2026-11-12",
+    "source": "dcb6e9a4a774d5a20b51595bb2f7cad42da0d1ab",
+    "transaction": "read-only",
+    "execution": "sarj-wiki-schema-audit-20261112-094127-plhdb",
+    "migration": [
+      "0028_task_result_invariants"
+    ],
+    "tables": [
+      "alembic_version",
+      "cache_entries",
+      "doc_icons",
+      "document_aliases",
+      "document_header_provenance",
+      "mcp_grants",
+      "mcp_oauth_entries",
+      "task_replay_keys",
+      "tasks",
+      "user_drive_tree_cache",
+      "user_sessions",
+      "users"
+    ],
+    "counts": {
+      "alembic_version": 1,
+      "cache_entries": 6,
+      "doc_icons": 64,
+      "document_aliases": 123,
+      "document_header_provenance": 36,
+      "mcp_grants": 3,
+      "mcp_oauth_entries": 14,
+      "task_replay_keys": 1,
+      "tasks": 62,
+      "user_drive_tree_cache": 47,
+      "user_sessions": 183,
+      "users": 54
+    },
+    "schemaReceiptSha256": "044fecc0ce6edaae059b473c23f5abe05f1a0a76a6e82d03c2e8603492491504",
+    "taskResultConstraints": [
+      "ck_tasks_kind",
+      "ck_tasks_result_kind"
+    ],
+    "temporaryAuditJob": "deleted after successful readback; retained private execution and schema receipts"
+  },
+  "auditAccounting": {
+    "tableIdentities": 23,
+    "currentApplicationTables": 11,
+    "currentPhysicalTables": 12,
+    "allTableReadersWritersConstraintsAndLifecyclesRecorded": true,
+    "migration0030ProductionPending": true
+  },
+  "candidateProductionPreflight": {
+    "at": "2026-11-13T23:07:04Z",
+    "migration": "0029_task_review",
+    "applicationTables": 11,
+    "physicalTables": 12,
+    "validatedTaskConstraints": 30,
+    "liveTaskLeases": 0,
+    "uncertainRecords": 6,
+    "allUncertainStates": "needs_review",
+    "allErrorCodes": "external_effect_uncertain",
+    "priorFiveEvidenceHashesPreserved": true,
+    "newHeldRecordRetained": true,
+    "oauthRecords": 14,
+    "expiredOauthRecords": 14,
+    "invalidNativeOauthPurposeDigestOrExpiry": 0,
+    "productionWrites": false,
+    "status": "Read-only preflight; candidate migration 0030 and deployment remain pending. All six uncertainty records must remain unchanged."
   }
 }

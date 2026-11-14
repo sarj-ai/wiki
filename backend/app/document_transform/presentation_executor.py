@@ -16,6 +16,7 @@ from app.document_transform.errors import (
     ExternalEffectUncertainError,
     InPlaceNotAllowedError,
     OutputConflictError,
+    OutputVerificationError,
     SourceChangedError,
     SourceTooLargeError,
     UnsupportedSourceError,
@@ -61,6 +62,7 @@ from app.document_transform.unslop import (
     UNSLOP_UPSTREAM_COMMIT,
     UNSLOP_UPSTREAM_VERSION,
 )
+from app.document_transform.verification import BrandVerification
 from app.document_transform.versions import PRESENTATION_PIPELINE_VERSION
 from app.drive.schemas import MIME_SLIDE
 from app.identifiers import DocsRevisionId, ModelId, TaskId
@@ -400,6 +402,11 @@ class PresentationTransformExecutor(DocumentTransformRunner):
             expected_brand_sha256=mutation.expected_brand_sha256,
         )
         result_findings = [*findings]
+        if (
+            request.mode is not TransformMode.UNSLOP
+            and verification.brand is BrandVerification.NOT_REQUIRED
+        ):
+            raise OutputVerificationError
         if not verification.content_preserved:
             result_findings.append(
                 TransformFinding(
@@ -414,7 +421,7 @@ class PresentationTransformExecutor(DocumentTransformRunner):
                     detail="Output slide topology or protected content changed unexpectedly",
                 )
             )
-        if not verification.brand_applied:
+        if not verification.brand.acceptable(required=request.mode is not TransformMode.UNSLOP):
             result_findings.append(
                 TransformFinding(
                     code="post_write_brand_mismatch",
@@ -459,7 +466,7 @@ class PresentationTransformExecutor(DocumentTransformRunner):
         if (
             verification.content_preserved
             and verification.structure_preserved
-            and verification.brand_applied
+            and verification.brand.acceptable(required=request.mode is not TransformMode.UNSLOP)
         ):
             await self._gateway.complete(draft=applied)
         return result

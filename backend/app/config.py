@@ -5,6 +5,7 @@ from cryptography.fernet import Fernet
 from pydantic import (
     Field,
     HttpUrl,
+    PrivateAttr,
     SecretStr,
     StringConstraints,
     field_validator,
@@ -17,9 +18,21 @@ from pydantic_settings import (
     SettingsConfigDict,
 )
 
-from app.database_config import DatabaseSettings, NonEmptyStr
+from app.database_config import DatabaseSettings
 from app.document_settings import DocumentSettings
+from app.identifiers import NonEmptyStr
 from app.mcp.redirect_policy import McpRedirectPolicy
+from app.runtime_config import (
+    MAX_FERNET_ROTATION_KEYS,
+    CloudTasksConfiguration,
+    ConfiguredCloudTasks,
+    DisabledCloudTasks,
+    DisabledNativeMcp,
+    EnabledNativeMcp,
+    NativeMcpConfiguration,
+    is_https_origin,
+    require_cloud_tasks,
+)
 
 
 DomainStr = Annotated[
@@ -28,7 +41,6 @@ DomainStr = Annotated[
 ]
 LogLevel = Literal["TRACE", "DEBUG", "INFO", "SUCCESS", "WARNING", "ERROR", "CRITICAL"]
 ReleaseSha = Annotated[str, StringConstraints(pattern=r"^(?:dev|[0-9a-f]{40})$")]
-_MAX_FERNET_ROTATION_KEYS = 3
 
 
 def parse_fernet_keys(raw: str) -> list[str]:
@@ -48,6 +60,7 @@ class Settings(DatabaseSettings):
         env_file=".env",
         env_file_encoding="utf-8",
         extra="ignore",
+        frozen=True,
         env_nested_delimiter="_",
         env_nested_max_split=1,
     )
@@ -82,6 +95,16 @@ class Settings(DatabaseSettings):
     CLOUD_TASKS_LOCATION: NonEmptyStr | None = None
     CLOUD_TASKS_TARGET_URL: NonEmptyStr | None = None
     CLOUD_TASKS_INVOKER_SERVICE_ACCOUNT: NonEmptyStr | None = None
+    _cloud_tasks: CloudTasksConfiguration = PrivateAttr()
+    _native_mcp: NativeMcpConfiguration = PrivateAttr()
+
+    @property
+    def cloud_tasks(self) -> CloudTasksConfiguration:
+        return self._cloud_tasks
+
+    @property
+    def native_mcp(self) -> NativeMcpConfiguration:
+        return self._native_mcp
 
     @classmethod
     @override
@@ -127,6 +150,24 @@ class Settings(DatabaseSettings):
         ):
             msg = "Document Transform requires the shared Cloud Tasks settings"
             raise ValueError(msg)
+        if self.CLOUD_TASKS_QUEUE is None:
+            self._cloud_tasks = DisabledCloudTasks()
+        elif (
+            self.GOOGLE_CLOUD_PROJECT is not None
+            and self.CLOUD_TASKS_LOCATION is not None
+            and self.CLOUD_TASKS_TARGET_URL is not None
+            and self.CLOUD_TASKS_INVOKER_SERVICE_ACCOUNT is not None
+        ):
+            self._cloud_tasks = ConfiguredCloudTasks(
+                project=self.GOOGLE_CLOUD_PROJECT,
+                location=self.CLOUD_TASKS_LOCATION,
+                queue=self.CLOUD_TASKS_QUEUE,
+                target_url=self.CLOUD_TASKS_TARGET_URL,
+                invoker_service_account=self.CLOUD_TASKS_INVOKER_SERVICE_ACCOUNT,
+            )
+        else:
+            msg = "Configured Cloud Tasks require GOOGLE_CLOUD_PROJECT"
+            raise ValueError(msg)
         return self
 
     @model_validator(mode="after")
@@ -161,15 +202,18 @@ class Settings(DatabaseSettings):
         if len(keys) != len(set(keys)):
             msg = "must contain unique Fernet keys"
             raise ValueError(msg)
-        if len(keys) > _MAX_FERNET_ROTATION_KEYS:
+        if len(keys) > MAX_FERNET_ROTATION_KEYS:
             msg = "must contain at most three Fernet keys"
             raise ValueError(msg)
         return v
 
     @model_validator(mode="after")
     def native_mcp_configuration_is_explicit(self) -> Self:
-        McpRedirectPolicy(self.MCP_NATIVE_LOOPBACK_PATHS, self.MCP_NATIVE_HTTPS_CALLBACKS)
+        redirects = McpRedirectPolicy(
+            self.MCP_NATIVE_LOOPBACK_PATHS, self.MCP_NATIVE_HTTPS_CALLBACKS
+        )
         if not self.MCP_NATIVE_ENABLED:
+            self._native_mcp = DisabledNativeMcp()
             return self
         issuer = self.MCP_NATIVE_ISSUER
         if (
@@ -182,8 +226,7 @@ class Settings(DatabaseSettings):
         frontend = self.FRONTEND_URL
         callback = self.GOOGLE_REDIRECT_URI
         if (
-            not _is_https_origin(issuer)
-            or not _is_https_origin(frontend)
+            not is_https_origin(frontend)
             or callback.scheme != "https"
             or issuer.host != callback.host
             or issuer.port != callback.port
@@ -201,32 +244,23 @@ class Settings(DatabaseSettings):
         if self.CACHE_FERNET_KEY is not None:
             existing.extend(parse_fernet_keys(self.CACHE_FERNET_KEY.get_secret_value()))
         existing.append(self.SECRET_KEY.get_secret_value())
-        if (
-            len(lock_keys) != 1
-            or not set(keys).isdisjoint(lock_keys)
-            or not set(keys + lock_keys).isdisjoint(existing)
-        ):
+        if len(lock_keys) != 1 or not set(keys + lock_keys).isdisjoint(existing):
             msg = "Native MCP encryption and stable lock keys must be distinct from all Wiki keys"
             raise ValueError(msg)
-        if not (self.MCP_NATIVE_LOOPBACK_PATHS or self.MCP_NATIVE_HTTPS_CALLBACKS):
-            msg = "Native MCP requires explicitly verified client callback paths"
-            raise ValueError(msg)
-        if not all(
-            (self.GOOGLE_CLOUD_PROJECT, self.CLOUD_TASKS_QUEUE, self.DOCUMENT.TRANSFORM_QUEUE)
-        ):
+        document_queue = self.DOCUMENT.queue
+        if document_queue.kind == "disabled" or self.cloud_tasks.kind == "disabled":
             msg = "Native MCP requires the existing Cloud Tasks and document transformation queues"
             raise ValueError(msg)
-        return self
-
-
-def _is_https_origin(url: HttpUrl) -> bool:
-    return (
-        url.scheme == "https"
-        and url.path == "/"
-        and not any(
-            value is not None for value in (url.query, url.fragment, url.username, url.password)
+        (lock_key,) = lock_keys
+        self._native_mcp = EnabledNativeMcp(
+            issuer=issuer,
+            fernet_keys=tuple(SecretStr(key) for key in keys),
+            lock_key=SecretStr(lock_key),
+            redirects=redirects,
+            tasks=require_cloud_tasks(self.cloud_tasks),
+            document_tasks=document_queue,
         )
-    )
+        return self
 
 
 def load_environment_settings[SettingsModel: BaseSettings](
@@ -236,6 +270,10 @@ def load_environment_settings[SettingsModel: BaseSettings](
 
 
 settings = load_environment_settings(Settings)
+
+
+def settings_dep() -> Settings:
+    return settings
 
 
 def document_settings_dep() -> DocumentSettings:

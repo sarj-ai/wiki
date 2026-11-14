@@ -17,6 +17,7 @@ from app.document_transform.google_gateway import GoogleDocumentGateway
 from app.document_transform.ir import parse_markdown
 from app.document_transform.markdown_import import verify_markdown_import
 from app.document_transform.schemas import DocumentOutput
+from app.document_transform.verification import BrandVerification
 from app.identifiers import DocsRevisionId, DocsTabId, FileId
 
 
@@ -182,7 +183,7 @@ Break
 
     assert verification.content_preserved is True
     assert verification.structure_preserved is True
-    assert verification.brand_applied is True
+    assert verification.brand is BrandVerification.NOT_REQUIRED
 
 
 @pytest.mark.parametrize(
@@ -392,9 +393,9 @@ def test_branded_manifest_requires_margins_logo_footer_and_nunito() -> None:
     manifest = markdown_import_manifest("Body", title="Import", branded=True)
     document = _branded_document()
 
-    assert verify_markdown_import(document, manifest).brand_applied is True
+    assert (verify_markdown_import(document, manifest).brand is BrandVerification.FULL) is True
     document["tabs"][0]["documentTab"]["headers"] = {}
-    assert verify_markdown_import(document, manifest).brand_applied is False
+    assert (verify_markdown_import(document, manifest).brand is BrandVerification.FULL) is False
 
 
 def test_exact_inline_signatures_reject_extra_style_and_allow_run_fragmentation() -> None:
@@ -695,7 +696,7 @@ def test_brand_readback_rejects_logo_segment_and_role_corruption() -> None:
     mutations.append(wrong_title)
 
     for document in mutations:
-        assert verify_markdown_import(document, manifest).brand_applied is False
+        assert (verify_markdown_import(document, manifest).brand is BrandVerification.FULL) is False
 
 
 def test_brand_readback_does_not_treat_explicit_zero_or_invalid_font_as_inherited() -> None:
@@ -718,7 +719,9 @@ def test_brand_readback_does_not_treat_explicit_zero_or_invalid_font_as_inherite
     explicit_zero["tabs"][0]["documentTab"]["body"]["content"][1]["paragraph"]["paragraphStyle"][
         "spaceBelow"
     ]["magnitude"] = 0
-    assert verify_markdown_import(explicit_zero, manifest).brand_applied is False
+    assert (
+        verify_markdown_import(explicit_zero, manifest).brand is BrandVerification.FULL
+    ) is False
 
     invalid_font = _branded_document()
     invalid_font["tabs"][0]["documentTab"]["namedStyles"] = explicit_zero["tabs"][0]["documentTab"][
@@ -727,7 +730,7 @@ def test_brand_readback_does_not_treat_explicit_zero_or_invalid_font_as_inherite
     invalid_font["tabs"][0]["documentTab"]["body"]["content"][1]["paragraph"]["elements"][0][
         "textRun"
     ]["textStyle"]["weightedFontFamily"] = {}
-    assert verify_markdown_import(invalid_font, manifest).brand_applied is False
+    assert (verify_markdown_import(invalid_font, manifest).brand is BrandVerification.FULL) is False
 
 
 def test_code_font_is_allowed_only_at_the_exact_expected_offsets() -> None:
@@ -748,10 +751,10 @@ def test_code_font_is_allowed_only_at_the_exact_expected_offsets() -> None:
         {"textRun": {"content": " ", "textStyle": plain_style}},
         {"textRun": {"content": "x\n", "textStyle": plain_style}},
     ]
-    assert verify_markdown_import(document, manifest).brand_applied is True
+    assert (verify_markdown_import(document, manifest).brand is BrandVerification.FULL) is True
 
     body_runs[-1]["textRun"]["textStyle"] = code_style
-    assert verify_markdown_import(document, manifest).brand_applied is False
+    assert (verify_markdown_import(document, manifest).brand is BrandVerification.FULL) is False
 
 
 def _branded_code_document():
@@ -779,7 +782,7 @@ def test_code_brand_verifies_exact_syntax_colors_with_fragmented_unicode_runs() 
     verification = verify_markdown_import(_branded_code_document(), manifest)
     assert verification.content_preserved
     assert verification.structure_preserved
-    assert verification.brand_applied
+    assert verification.brand is BrandVerification.FULL
 
 
 @pytest.mark.parametrize("corruption", ["wrong-color", "uniform-ink", "cross-token-run"])
@@ -809,7 +812,7 @@ def test_code_brand_rejects_wrong_or_misplaced_colors(corruption: str) -> None:
     verification = verify_markdown_import(document, manifest)
     assert verification.content_preserved
     assert verification.structure_preserved
-    assert not verification.brand_applied
+    assert verification.brand not in {BrandVerification.FULL, BrandVerification.NOT_REQUIRED}
 
 
 def test_explicit_plain_fence_requires_plain_color_and_retains_structure_guards() -> None:
@@ -818,13 +821,16 @@ def test_explicit_plain_fence_requires_plain_color_and_retains_structure_guards(
     )
     document = _branded_code_document()
     elements = document["tabs"][0]["documentTab"]["body"]["content"][1]["paragraph"]["elements"]
-    assert not verify_markdown_import(document, manifest).brand_applied
+    assert verify_markdown_import(document, manifest).brand not in {
+        BrandVerification.FULL,
+        BrandVerification.NOT_REQUIRED,
+    }
     for element in elements:
         element["textRun"]["textStyle"]["foregroundColor"] = _rgb(CURRENT_BRAND_MANIFEST.colors.ink)
     verification = verify_markdown_import(document, manifest)
     assert verification.content_preserved
     assert verification.structure_preserved
-    assert verification.brand_applied
+    assert verification.brand is BrandVerification.FULL
     elements[0]["textRun"]["textStyle"]["bold"] = True
     assert not verify_markdown_import(document, manifest).structure_preserved
 
@@ -849,19 +855,19 @@ def test_brand_readback_allows_named_style_inheritance_and_complex_script_fallba
     ]["textRun"]["textStyle"]
     body_style.pop("weightedFontFamily")
     manifest = markdown_import_manifest("Body", title="Import", branded=True)
-    assert verify_markdown_import(document, manifest).brand_applied is True
+    assert (verify_markdown_import(document, manifest).brand is BrandVerification.FULL) is True
 
     body_style["bold"] = True
-    assert verify_markdown_import(document, manifest).brand_applied is False
+    assert (verify_markdown_import(document, manifest).brand is BrandVerification.FULL) is False
     body_style.pop("bold")
-    assert verify_markdown_import(document, manifest).brand_applied is True
+    assert (verify_markdown_import(document, manifest).brand is BrandVerification.FULL) is True
 
     body_style["weightedFontFamily"] = {"fontFamily": tokens.complex_script_font_family}
     document["tabs"][0]["documentTab"]["body"]["content"][1]["paragraph"]["elements"][0]["textRun"][
         "content"
     ] = "العربية\n"
     manifest = markdown_import_manifest("العربية", title="Import", branded=True)
-    assert verify_markdown_import(document, manifest).brand_applied is True
+    assert (verify_markdown_import(document, manifest).brand is BrandVerification.FULL) is True
 
 
 def test_google_gateway_uses_markdown_manifest_for_post_import_readback(

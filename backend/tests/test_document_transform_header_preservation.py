@@ -7,6 +7,7 @@ from app.document_transform.gateway import NativeDocumentSnapshot, OutputDraft
 from app.document_transform.google_gateway import GoogleDocumentGateway
 from app.document_transform.ir import parse_google_document
 from app.document_transform.schemas import DocumentOutput
+from app.document_transform.verification import BrandVerification
 from app.identifiers import DocsRevisionId, DocsTabId, FileId
 from tests.test_document_transform import _branded_google_document
 
@@ -181,5 +182,5 @@ async def test_copy_attests_supported_brand_only_after_exact_custom_header_prese
         verify_brand=True,
         header_title="Decision",
     )
-    assert not result.brand_applied
-    assert result.supported_brand_applied is supported
+    assert result.brand not in {BrandVerification.FULL, BrandVerification.NOT_REQUIRED}
+    assert (result.brand is BrandVerification.SUPPORTED) is supported

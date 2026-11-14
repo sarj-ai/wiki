@@ -7,6 +7,7 @@ import pytest
 
 from app.document_transform.docx_renderer import markdown_import_manifest
 from app.document_transform.markdown_import import verify_markdown_import
+from app.document_transform.verification import BrandVerification
 
 
 MARKDOWN = (
@@ -39,7 +40,7 @@ def test_captured_google_readback_accepts_only_adjacent_runs_with_identical_plan
     result = verify_markdown_import(_document(), _manifest())
     assert result.content_preserved
     assert result.structure_preserved
-    assert result.brand_applied
+    assert result.brand is BrandVerification.FULL
 
 
 @pytest.mark.parametrize("corruption", ["text", "link", "italic", "extra-bold"])
@@ -63,4 +64,8 @@ def test_planned_run_coalescing_does_not_hide_meaningful_native_changes(
         case "extra-bold":
             runs[0]["textStyle"]["bold"] = True
     result = verify_markdown_import(document, _manifest())
-    assert not (result.content_preserved and result.structure_preserved and result.brand_applied)
+    assert not (
+        result.content_preserved
+        and result.structure_preserved
+        and (result.brand in {BrandVerification.FULL, BrandVerification.NOT_REQUIRED})
+    )

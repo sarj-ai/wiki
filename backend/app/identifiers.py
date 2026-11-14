@@ -1,5 +1,10 @@
-from typing import NewType
+from typing import Annotated, NewType
 import uuid
+
+from pydantic import StringConstraints
+
+
+NonEmptyStr = Annotated[str, StringConstraints(min_length=1)]
 
 
 # NewType prevents cross-resource swaps without changing runtime values; opaque Google IDs remain validated at boundaries.
@@ -17,3 +22,4 @@ DocsTabId = NewType("DocsTabId", str)
 DocsSegmentId = NewType("DocsSegmentId", str)
 BrandProfileId = NewType("BrandProfileId", str)
 ModelId = NewType("ModelId", str)
+ModelReviewInputHash = NewType("ModelReviewInputHash", str)

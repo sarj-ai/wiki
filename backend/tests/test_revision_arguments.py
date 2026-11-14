@@ -120,7 +120,7 @@ def test_revision_role_inventory_reaches_writer_and_repair_feedback() -> None:
     patch = TextPatch(block_id=block.id, expected_sha256=block.sha256, replacement=REGRESSION)
 
     assert rewrite_constraints(SOURCE).revision_arguments == ("required revision",)
-    assert "revision_arguments" in models._prompt(document, phase=TransformPhase.UNSLOP)
+    assert "revision_arguments" in models._prompt(document)
     assert any(
         "revision_arguments" in item and '"required revision":1' in item
         for item in models._constraint_repair_feedback(block, patch)

@@ -4,11 +4,11 @@ from abc import ABC, abstractmethod
 import asyncio
 from collections import OrderedDict
 from contextlib import ExitStack
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from functools import cache, lru_cache
 from types import TracebackType
-from typing import NamedTuple, override
+from typing import Literal, NamedTuple, assert_never, overload, override
 
 from cryptography.fernet import InvalidToken, MultiFernet
 from loguru import logger
@@ -72,13 +72,44 @@ class _TreeVersion(NamedTuple):
     tuple_location: str
 
 
-class _TreeSnapshot(NamedTuple):
+class _EncodedTreeSnapshot(NamedTuple):
     drive_id: DriveId
     version: _TreeVersion
-    tree: str | None
+    tree: str
 
 
-type _DecodedTreeKey = tuple[UserId, DriveId, _TreeVersion, object]
+class _DecodedTreeSnapshot(NamedTuple):
+    drive_id: DriveId
+    version: _TreeVersion
+    tree: DriveTree
+
+
+type _TreeSnapshot = _EncodedTreeSnapshot | _DecodedTreeSnapshot
+
+
+type _DecodedTreeKey = tuple[UserId, DriveId, _TreeVersion, MultiFernet]
+
+
+def _validated_tree_snapshot(
+    drive_id: DriveId,
+    version: _TreeVersion,
+    payload: object,
+    decoded: tuple[_TreeVersion, DriveTree] | None,
+) -> _TreeSnapshot:
+    if isinstance(payload, str):
+        return _EncodedTreeSnapshot(drive_id, version, payload)
+    if payload is None and decoded is not None and decoded[0] == version:
+        return _DecodedTreeSnapshot(drive_id, version, decoded[1])
+    msg = "Sidebar ciphertext omitted without its decoded version"
+    raise RuntimeError(msg)
+
+
+@dataclass(frozen=True, slots=True)
+class _DecodedTree:
+    version: _TreeVersion
+    decoder: MultiFernet
+    tree: DriveTree
+    payload_bytes: int
 
 
 class _DecodedTreeCache:
@@ -86,23 +117,23 @@ class _DecodedTreeCache:
         self._max_entries = max_entries
         self._max_nodes = max_nodes
         self._max_payload_bytes = max_payload_bytes
-        self._values: OrderedDict[_DecodedTreeKey, DriveTree] = OrderedDict()
-        self._latest: dict[tuple[UserId, DriveId], _DecodedTreeKey] = {}
-        self._payload_sizes: dict[_DecodedTreeKey, int] = {}
+        self._values: OrderedDict[tuple[UserId, DriveId], _DecodedTree] = OrderedDict()
 
     def get(self, key: _DecodedTreeKey) -> DriveTree | None:
-        tree = self._values.get(key)
-        if tree is not None:
-            self._values.move_to_end(key)
-        return tree
+        resource = (key[0], key[1])
+        entry = self._values.get(resource)
+        if entry is None or entry.version != key[2] or entry.decoder is not key[3]:
+            return None
+        self._values.move_to_end(resource)
+        return entry.tree
 
     def latest(
-        self, user_id: UserId, drive_id: DriveId, decoder: object
+        self, user_id: UserId, drive_id: DriveId, decoder: MultiFernet
     ) -> tuple[_TreeVersion, DriveTree] | None:
-        key = self._latest.get((user_id, drive_id))
-        if key is None or key[3] is not decoder:
+        entry = self._values.get((user_id, drive_id))
+        if entry is None or entry.decoder is not decoder:
             return None
-        return key[2], self._values[key]
+        return entry.version, entry.tree
 
     def put(self, key: _DecodedTreeKey, tree: DriveTree, *, payload_bytes: int) -> None:
         if (
@@ -111,28 +142,21 @@ class _DecodedTreeCache:
         ):
             return
         resource = (key[0], key[1])
-        if (previous := self._latest.get(resource)) is not None:
-            self._values.pop(previous)
-            self._payload_sizes.pop(previous)
-        self._latest[resource] = key
-        self._values[key] = tree
-        self._payload_sizes[key] = payload_bytes
-        self._values.move_to_end(key)
+        self._values[resource] = _DecodedTree(key[2], key[3], tree, payload_bytes)
+        self._values.move_to_end(resource)
         while (
             len(self._values) > self._max_entries
-            or sum(len(value.folders) + len(value.files) for value in self._values.values())
+            or sum(
+                len(value.tree.folders) + len(value.tree.files) for value in self._values.values()
+            )
             > self._max_nodes
-            or sum(self._payload_sizes.values()) > self._max_payload_bytes
+            or sum(value.payload_bytes for value in self._values.values()) > self._max_payload_bytes
         ):
-            evicted, _ = self._values.popitem(last=False)
-            self._latest.pop((evicted[0], evicted[1]))
-            self._payload_sizes.pop(evicted)
+            self._values.popitem(last=False)
 
     def invalidate_drive(self, drive_id: DriveId) -> None:
         for key in [key for key in self._values if key[1] == drive_id]:
             self._values.pop(key)
-            self._latest.pop((key[0], key[1]))
-            self._payload_sizes.pop(key)
 
 
 _decoded_trees = _DecodedTreeCache(
@@ -171,15 +195,33 @@ class CachedDriveTree:
 
 
 @dataclass(frozen=True, slots=True)
-class ConditionalDriveTree:
-    cached: CachedDriveTree | None
-    refreshed_at: datetime | None
+class LoadedDriveTree:
+    cached: CachedDriveTree
+    kind: Literal["loaded"] = field(default="loaded", init=False)
 
 
 @dataclass(frozen=True, slots=True)
-class _ConditionalTreeSnapshot:
+class NotModifiedDriveTree:
     refreshed_at: datetime
-    snapshot: _TreeSnapshot | None
+    kind: Literal["not_modified"] = field(default="not_modified", init=False)
+
+
+type ConditionalDriveTree = LoadedDriveTree | NotModifiedDriveTree
+
+
+class _MatchedTreeTime(NamedTuple):
+    refreshed_at: datetime
+
+
+type _ConditionalTreeSnapshot = _TreeSnapshot | _MatchedTreeTime
+
+
+@overload
+def tree_etag(drive_id: DriveId, refreshed_at: datetime) -> str: ...
+
+
+@overload
+def tree_etag(drive_id: DriveId, refreshed_at: None) -> None: ...
 
 
 def tree_etag(drive_id: DriveId, refreshed_at: datetime | None) -> str | None:
@@ -224,10 +266,10 @@ class SidebarCacheService(ABC):
         self, db: AsyncSession, drive_id: DriveId, *, request_etag: str
     ) -> ConditionalDriveTree:
         refreshed_at = await self.get_drive_tree_refreshed_at(db, drive_id)
-        if (etag := tree_etag(drive_id, refreshed_at)) is not None and request_etag == etag:
-            return ConditionalDriveTree(None, refreshed_at)
+        if refreshed_at is not None and request_etag == tree_etag(drive_id, refreshed_at):
+            return NotModifiedDriveTree(refreshed_at)
         cached = await self.get_drive_tree(db, drive_id)
-        return ConditionalDriveTree(cached, cached.refreshed_at)
+        return LoadedDriveTree(cached)
 
     @abstractmethod
     async def get_folder_children(self, folder_id: FileId) -> list[DriveNode]: ...
@@ -272,13 +314,13 @@ class PostgresSidebarCacheService(SidebarCacheService):
     async def peek_drive_tree(self, db: AsyncSession, drive_id: DriveId) -> CachedDriveTree | None:
         decoder = self._cache_decoder()
         decoded = _decoded_trees.latest(UserId(self._user.id), drive_id, decoder)
-        row = await self._load_row(db, drive_id, decoded[0] if decoded is not None else None)
+        row = await self._load_row(db, drive_id, decoded)
         # The request session uses expire_on_commit=False. Release its read
         # transaction before decoding or provider work needs another session.
         await db.commit()
         if row is None:
             return None
-        if (tree := await self._reuse_or_decode_tree(db, row, decoded, decoder)) is None:
+        if (tree := await self._reuse_or_decode_tree(db, row, decoder)) is None:
             return None
         if datetime.now(UTC) - row.version.refreshed_at > settings.SIDEBAR_CACHE_TTL:
             self._schedule_refresh(drive_id)
@@ -306,25 +348,25 @@ class PostgresSidebarCacheService(SidebarCacheService):
         decoder = self._cache_decoder()
         decoded = _decoded_trees.latest(UserId(self._user.id), drive_id, decoder)
         requested = _requested_tree_time(drive_id, request_etag)
-        row = await self._load_conditional_row(
-            db, drive_id, decoded[0] if decoded is not None else None, requested
-        )
+        row = await self._load_conditional_row(db, drive_id, decoded, requested)
         await db.commit()
         if row is None:
             cached = await self.get_drive_tree(db, drive_id)
-            return ConditionalDriveTree(cached, cached.refreshed_at)
-        refreshed_at, snapshot = row.refreshed_at, row.snapshot
+            return LoadedDriveTree(cached)
+        refreshed_at = (
+            row.refreshed_at if isinstance(row, _MatchedTreeTime) else row.version.refreshed_at
+        )
         if datetime.now(UTC) - refreshed_at > settings.SIDEBAR_CACHE_TTL:
             self._schedule_refresh(drive_id)
         if request_etag == tree_etag(drive_id, refreshed_at):
-            return ConditionalDriveTree(None, refreshed_at)
-        if snapshot is None:
+            return NotModifiedDriveTree(refreshed_at)
+        if isinstance(row, _MatchedTreeTime):
             cached = await self.get_drive_tree(db, drive_id)
-            return ConditionalDriveTree(cached, cached.refreshed_at)
-        if (tree := await self._reuse_or_decode_tree(db, snapshot, decoded, decoder)) is None:
+            return LoadedDriveTree(cached)
+        if (tree := await self._reuse_or_decode_tree(db, row, decoder)) is None:
             cached = await self.get_drive_tree(db, drive_id)
-            return ConditionalDriveTree(cached, cached.refreshed_at)
-        return ConditionalDriveTree(CachedDriveTree(tree, refreshed_at), refreshed_at)
+            return LoadedDriveTree(cached)
+        return LoadedDriveTree(CachedDriveTree(tree, refreshed_at))
 
     @override
     async def get_folder_children(self, folder_id: FileId) -> list[DriveNode]:
@@ -394,19 +436,19 @@ class PostgresSidebarCacheService(SidebarCacheService):
         self,
         db: AsyncSession,
         row: _TreeSnapshot,
-        decoded: tuple[_TreeVersion, DriveTree] | None,
         decoder: MultiFernet,
     ) -> DriveTree | None:
-        if row.tree is not None:
-            return await self._decode_row(db, row, decoder)
-        if decoded is None or decoded[0] != row.version:
-            msg = "Sidebar ciphertext omitted without its decoded version"
-            raise RuntimeError(msg)
-        _decoded_trees.get((UserId(self._user.id), row.drive_id, row.version, decoder))
-        return decoded[1]
+        match row:
+            case _EncodedTreeSnapshot():
+                return await self._decode_row(db, row, decoder)
+            case _DecodedTreeSnapshot():
+                _decoded_trees.get((UserId(self._user.id), row.drive_id, row.version, decoder))
+                return row.tree
+            case _:
+                assert_never(row)
 
     async def _decode_row(
-        self, db: AsyncSession, row: _TreeSnapshot, decoder: MultiFernet
+        self, db: AsyncSession, row: _EncodedTreeSnapshot, decoder: MultiFernet
     ) -> DriveTree | None:
         key = (UserId(self._user.id), row.drive_id, row.version, decoder)
         cached = _decoded_trees.get(key)
@@ -414,9 +456,6 @@ class PostgresSidebarCacheService(SidebarCacheService):
             return cached
 
         blob = row.tree
-        if blob is None:
-            msg = "Sidebar decode requires ciphertext"
-            raise ValueError(msg)
         try:
             tree = await _DECODE_FLIGHTS.do(
                 str((*key[:3], id(decoder))), lambda: self._decode_tree(blob, decoder)
@@ -477,12 +516,16 @@ class PostgresSidebarCacheService(SidebarCacheService):
         await db.commit()
 
     async def _load_row(
-        self, db: AsyncSession, drive_id: DriveId, decoded_version: _TreeVersion | None
+        self,
+        db: AsyncSession,
+        drive_id: DriveId,
+        decoded: tuple[_TreeVersion, DriveTree] | None,
     ) -> _TreeSnapshot | None:
         parameters: dict[str, object] = {
             "tree_user_id": self._user.id,
             "tree_drive_id": drive_id,
         }
+        decoded_version = decoded[0] if decoded is not None else None
         if decoded_version is not None:
             parameters.update(
                 tree_refreshed_at=decoded_version.refreshed_at,
@@ -498,7 +541,7 @@ class PostgresSidebarCacheService(SidebarCacheService):
         ).one_or_none()
         if row is None:
             return None
-        return _TreeSnapshot(
+        return _validated_tree_snapshot(
             drive_id,
             _TreeVersion(
                 row.refreshed_at,
@@ -507,13 +550,14 @@ class PostgresSidebarCacheService(SidebarCacheService):
                 row.tuple_location,
             ),
             row.tree,
+            decoded,
         )
 
     async def _load_conditional_row(
         self,
         db: AsyncSession,
         drive_id: DriveId,
-        decoded_version: _TreeVersion | None,
+        decoded: tuple[_TreeVersion, DriveTree] | None,
         requested: datetime | None,
     ) -> _ConditionalTreeSnapshot | None:
         parameters: dict[str, object] = {
@@ -521,6 +565,7 @@ class PostgresSidebarCacheService(SidebarCacheService):
             "tree_drive_id": drive_id,
             "requested_tree_time": requested,
         }
+        decoded_version = decoded[0] if decoded is not None else None
         if decoded_version is not None:
             parameters.update(
                 tree_refreshed_at=decoded_version.refreshed_at,
@@ -539,16 +584,14 @@ class PostgresSidebarCacheService(SidebarCacheService):
         if row is None:
             return None
         if row.transaction_epoch is None:
-            return _ConditionalTreeSnapshot(row.refreshed_at, None)
-        return _ConditionalTreeSnapshot(
-            row.refreshed_at,
-            _TreeSnapshot(
-                drive_id,
-                _TreeVersion(
-                    row.refreshed_at, row.transaction_epoch, row.transaction_id, row.tuple_location
-                ),
-                row.tree,
+            return _MatchedTreeTime(row.refreshed_at)
+        return _validated_tree_snapshot(
+            drive_id,
+            _TreeVersion(
+                row.refreshed_at, row.transaction_epoch, row.transaction_id, row.tuple_location
             ),
+            row.tree,
+            decoded,
         )
 
     async def _load_refreshed_at(self, db: AsyncSession, drive_id: DriveId) -> datetime | None:

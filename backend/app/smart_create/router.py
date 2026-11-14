@@ -23,11 +23,31 @@ from app.smart_create.schemas import (
 from app.smart_create.service import ReorganizationService, SmartProposalService
 from app.tasks.dependencies import task_enqueuer_dep, task_service_dep
 from app.tasks.queue import TaskEnqueuer
-from app.tasks.schemas import PendingTaskRead, RunningTaskRead, TaskKind, TaskRead
+from app.tasks.schemas import PendingTaskRead, RunningTaskRead, TaskAdmission, TaskKind, TaskRead
 from app.tasks.service import TaskService
 
 
 router = APIRouter(prefix="/files", tags=["files"], responses=authentication_responses())
+
+
+@router.get(
+    "/smart/admissions/{idempotency_key}",
+    status_code=status.HTTP_200_OK,
+    response_model=TaskAdmission,
+    operation_id="get_smart_create_admission",
+    summary="Recover file creation without resubmitting it",
+    responses={404: {"description": "No retained admission for this owner and key"}},
+)
+async def get_smart_create_admission(
+    idempotency_key: Annotated[uuid.UUID, Path()],
+    response: Response,
+    user: Annotated[User, Depends(get_current_user)],
+    tasks: Annotated[TaskService, Depends(task_service_dep)],
+) -> TaskAdmission:
+    response.headers["Cache-Control"] = "no-store"
+    return await tasks.get_admission(
+        UserId(user.id), TaskKind.FILE_SMART_CREATE, IdempotencyKey(idempotency_key)
+    )
 
 
 @router.post(
@@ -76,6 +96,7 @@ async def create_smart_proposal(
 
 @router.post(
     "/smart",
+    response_model=TaskRead,
     status_code=status.HTTP_202_ACCEPTED,
     operation_id="create_smart_file",
     responses={

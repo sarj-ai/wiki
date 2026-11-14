@@ -15,6 +15,7 @@ const READ_PATHS = [
   /^extras\/(?:preferences|folder-icons|doc-icons|sort-order)$/u,
   /^drive-search(?:\/snippet)?$/u,
   /^tasks\/[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/iu,
+  /^files\/smart\/admissions\/[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/iu,
   /^templates$/u,
 ] as const;
 

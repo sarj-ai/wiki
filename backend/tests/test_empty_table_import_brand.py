@@ -9,6 +9,7 @@ from app.document_transform.brand_manifest import CURRENT_BRAND_MANIFEST
 from app.document_transform.docx_renderer import markdown_import_manifest, render_markdown_docx
 from app.document_transform.import_manifest import MarkdownImportManifest
 from app.document_transform.markdown_import import verify_markdown_import
+from app.document_transform.verification import BrandVerification
 from tests.test_markdown_import import _brand_run_style, _branded_document, _paragraph
 
 
@@ -113,7 +114,7 @@ def test_styled_empty_cells_preserve_content_structure_and_brand(
 
     assert result.content_preserved
     assert result.structure_preserved
-    assert result.brand_applied
+    assert result.brand is BrandVerification.FULL
 
 
 @pytest.mark.parametrize("corruption", ["font", "zero-size", "bold", "spacing", "link"])
@@ -135,7 +136,7 @@ def test_empty_cell_still_requires_the_actual_paragraph_break_style(corruption: 
     result = verify_markdown_import(fixture.document, _manifest())
 
     assert result.content_preserved
-    assert not result.brand_applied
+    assert result.brand not in {BrandVerification.FULL, BrandVerification.NOT_REQUIRED}
 
 
 @pytest.mark.parametrize("unexpected", ["zero", "image"])
@@ -149,5 +150,5 @@ def test_empty_cell_does_not_accept_a_zero_or_an_unplanned_native_object(unexpec
 
     result = verify_markdown_import(fixture.document, _manifest())
 
-    assert not result.brand_applied
+    assert result.brand not in {BrandVerification.FULL, BrandVerification.NOT_REQUIRED}
     assert not result.content_preserved or not result.structure_preserved

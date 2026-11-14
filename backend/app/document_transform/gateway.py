@@ -27,6 +27,7 @@ from app.document_transform.schemas import (
 )
 from app.document_transform.source_access import NativeSourceAccess
 from app.document_transform.tab_structure_execution import StructureProvider
+from app.document_transform.verification import BrandVerification, ExistingBrandVerification
 from app.identifiers import DocsRevisionId, DocsSegmentId, DocsTabId, FileId
 
 
@@ -89,9 +90,8 @@ class OutputDraft:
 class OutputVerification:
     content_preserved: bool
     structure_preserved: bool
-    brand_applied: bool = True
-    revision_id: DocsRevisionId | None = None
-    supported_brand_applied: bool = False
+    brand: BrandVerification
+    revision_id: DocsRevisionId
 
 
 @dataclass(frozen=True, slots=True)
@@ -106,13 +106,12 @@ class InPlaceInspection:
     protected_structure_sha256: str
     body_sha256: str
     header_safe_sha256: str
+    brand: ExistingBrandVerification
     preserved_headers: tuple[TabHeader, ...] = ()
-    fully_branded: bool = False
     header_identity: HeaderIdentityEvidence | None = None
     custom_furniture: tuple[CustomFurnitureBinding, ...] = ()
     custom_header_title_targets: tuple[CustomHeaderTitleTarget, ...] = ()
     custom_header_titles_present: tuple[CustomHeaderTitleTarget, ...] = ()
-    supported_brand_applied: bool = False
 
 
 @dataclass(frozen=True, slots=True)

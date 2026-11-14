@@ -3,11 +3,17 @@ import pytest
 
 from app.document_transform.native_date_flow import NativeDateParagraph
 from app.document_transform.schemas import (
+    AppliedTabNaming,
+    DeclinedTabNaming,
     InPlaceCheckpointPayload,
     InPlaceCheckpointStage,
+    MetadataInPlaceCheckpoint,
+    PlannedTabNaming,
+    TabNamingCheckpoint,
     WordCheckpointPayload,
     transition_in_place,
 )
+from app.document_transform.tab_names import TabNamingPlan
 from tests.advanced_round6_support import in_place_checkpoint, word_checkpoint
 
 
@@ -64,3 +70,115 @@ def test_native_checkpoint_rejects_coerced_indices_at_the_persistence_boundary()
                 "paragraph": {"startIndex": "1", "endIndex": 2, "paragraph": {"elements": []}},
             }
         )
+
+
+def test_content_cannot_claim_completion_before_durable_metadata_transition() -> None:
+    header = in_place_checkpoint()
+    content = InPlaceCheckpointPayload.model_validate(
+        {**header.model_dump(), "stage": "content"}
+    ).root
+    with pytest.raises(ValueError, match="Invalid in-place checkpoint transition"):
+        transition_in_place(
+            content,
+            stage=InPlaceCheckpointStage.COMPLETE,
+            current_revision_id=content.current_revision_id,
+            requests=[],
+            marker_name=None,
+            marker_range=None,
+            mutation_sha256=None,
+        )
+
+
+def test_legacy_decline_decodes_verified_content_without_write_authority() -> None:
+    header = in_place_checkpoint()
+    payload = {
+        **header.model_dump(),
+        "stage": "content",
+        "tab_naming": None,
+        "tab_naming_declined_reason": "unsupported_metadata",
+    }
+    checkpoint = InPlaceCheckpointPayload.model_validate(payload).root
+    assert isinstance(checkpoint, MetadataInPlaceCheckpoint)
+    assert isinstance(checkpoint.tab_naming, DeclinedTabNaming)
+    assert checkpoint.current_revision_id == header.current_revision_id
+    assert not checkpoint.requests
+    assert checkpoint.marker_name is None
+    assert "tab_naming_declined_reason" not in checkpoint.model_dump()
+
+
+def test_legacy_contradictory_naming_receipts_are_rejected() -> None:
+    header = in_place_checkpoint()
+    naming = TabNamingCheckpoint(
+        plan=TabNamingPlan((), ()),
+        revision_id=header.current_revision_id,
+        marker_name="tabs",
+        marker_range={"startIndex": 1, "endIndex": 2, "tabId": "tab"},
+        invariant_sha256="proof",
+    )
+    payload = {
+        **header.model_dump(),
+        "stage": "content",
+        "tab_naming": naming.model_dump(),
+        "tab_naming_declined_reason": "unsupported_metadata",
+    }
+    with pytest.raises(ValidationError):
+        InPlaceCheckpointPayload.model_validate(payload)
+
+
+@pytest.mark.parametrize("stage", ["headers", "content"])
+def test_unverified_content_cannot_carry_new_naming_commands(stage: str) -> None:
+    header = in_place_checkpoint()
+    naming = TabNamingCheckpoint(
+        plan=TabNamingPlan((), ()),
+        revision_id=header.current_revision_id,
+        marker_name="tabs",
+        marker_range={"startIndex": 1, "endIndex": 2, "tabId": "tab"},
+        invariant_sha256="proof",
+    )
+    payload = {
+        **header.model_dump(),
+        "stage": stage,
+        "tab_naming": PlannedTabNaming(checkpoint=naming).model_dump(),
+    }
+    with pytest.raises(ValidationError):
+        InPlaceCheckpointPayload.model_validate(payload)
+
+
+def test_completion_cannot_contain_an_uncertain_new_naming_command() -> None:
+    header = in_place_checkpoint()
+    naming = TabNamingCheckpoint(
+        plan=TabNamingPlan((), ()),
+        revision_id=header.current_revision_id,
+        marker_name="tabs",
+        marker_range={"startIndex": 1, "endIndex": 2, "tabId": "tab"},
+        invariant_sha256="proof",
+    )
+    payload = {
+        **header.model_dump(),
+        "stage": "complete",
+        "requests": [],
+        "tab_naming": PlannedTabNaming(checkpoint=naming).model_dump(),
+    }
+    with pytest.raises(ValidationError):
+        InPlaceCheckpointPayload.model_validate(payload)
+
+
+def test_old_completed_naming_keeps_its_observed_revision_receipt() -> None:
+    header = in_place_checkpoint()
+    naming = TabNamingCheckpoint(
+        plan=TabNamingPlan((), ()),
+        revision_id=header.current_revision_id,
+        marker_name="tabs",
+        marker_range={"startIndex": 1, "endIndex": 2, "tabId": "tab"},
+        invariant_sha256="proof",
+    )
+    payload = {
+        **header.model_dump(),
+        "stage": "complete",
+        "requests": [],
+        "tab_naming": naming.model_dump(),
+    }
+    checkpoint = InPlaceCheckpointPayload.model_validate(payload).root
+    assert isinstance(checkpoint.tab_naming, AppliedTabNaming)
+    assert checkpoint.tab_naming.revision_id == header.current_revision_id
+    assert checkpoint.tab_naming.checkpoint == naming

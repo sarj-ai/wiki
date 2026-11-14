@@ -155,7 +155,6 @@ class TextTransformPlanner:
         self,
         *,
         generator: PatchGenerator,
-        allow_format_text_edits: bool = False,
         allow_unslop_model: bool = False,
         max_editorial_passes: int = MAX_EDITORIAL_PASSES,
     ) -> None:
@@ -163,7 +162,6 @@ class TextTransformPlanner:
             msg = "Editorial passes must be between 1 and 100"
             raise ValueError(msg)
         self._generator = generator
-        self._allow_format_text_edits = allow_format_text_edits
         self._allow_unslop_model = allow_unslop_model
         self._max_editorial_passes = max_editorial_passes
 
@@ -221,10 +219,6 @@ class TextTransformPlanner:
                         )
                     ),
                 )
-        if request.mode is not TransformMode.UNSLOP and self._allow_format_text_edits:
-            outcome = _merge_outcomes(
-                outcome, await self._model_phase(outcome.document, phase=TransformPhase.FORMAT)
-            )
         return outcome
 
     async def _refine_unslop(

@@ -1,9 +1,14 @@
 from typing import Self, override
 
-from pydantic import HttpUrl, field_validator, model_validator
+from pydantic import HttpUrl, PrivateAttr, field_validator, model_validator
 from pydantic_settings import BaseSettings, PydanticBaseSettingsSource, SettingsConfigDict
 
-from app.database_config import NonEmptyStr
+from app.identifiers import NonEmptyStr
+from app.runtime_config import (
+    ConfiguredDocumentQueue,
+    DisabledDocumentQueue,
+    DocumentQueueConfiguration,
+)
 
 
 # Admit model IDs only after checking Google's Pro-class capability and support
@@ -14,7 +19,7 @@ _HIGH_THINKING_DOCUMENT_MODELS = frozenset({"gemini-3.1-pro-preview", "gemini-4-
 class DocumentSettings(BaseSettings):
     """Document transformation settings resolved through the parent sources."""
 
-    model_config = SettingsConfigDict(extra="ignore")
+    model_config = SettingsConfigDict(extra="ignore", frozen=True)
 
     TRANSFORM_UNSLOP_MODEL: NonEmptyStr = "gemini-3.1-pro-preview"
     TRANSFORM_FALLBACK_MODEL: NonEmptyStr = "gemini-3.1-pro-preview"
@@ -25,6 +30,11 @@ class DocumentSettings(BaseSettings):
     TRANSFORM_TARGET_URL: NonEmptyStr | None = None
     TRANSFORM_UPLOAD_BUCKET: NonEmptyStr | None = None
     TRANSFORM_UPLOAD_SIGNER: NonEmptyStr | None = None
+    _queue: DocumentQueueConfiguration = PrivateAttr()
+
+    @property
+    def queue(self) -> DocumentQueueConfiguration:
+        return self._queue
 
     @classmethod
     @override
@@ -48,6 +58,12 @@ class DocumentSettings(BaseSettings):
         if (self.TRANSFORM_QUEUE is None) != (self.TRANSFORM_TARGET_URL is None):
             msg = "Document Transform queue settings must be configured together"
             raise ValueError(msg)
+        if self.TRANSFORM_QUEUE is not None and self.TRANSFORM_TARGET_URL is not None:
+            self._queue = ConfiguredDocumentQueue(
+                queue=self.TRANSFORM_QUEUE, target_url=self.TRANSFORM_TARGET_URL
+            )
+        else:
+            self._queue = DisabledDocumentQueue()
         return self
 
     @field_validator(

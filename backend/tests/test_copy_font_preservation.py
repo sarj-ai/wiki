@@ -12,6 +12,7 @@ from app.document_transform.gateway import OutputDraft, OutputVerification
 from app.document_transform.google_gateway import GoogleDocumentGateway
 from app.document_transform.ir import parse_google_document
 from app.document_transform.native_date_flow import plan_copy_dates
+from app.document_transform.verification import BrandVerification
 from app.identifiers import FileId
 from tests.test_document_transform import _branded_google_document, _output_draft
 from tests.test_document_transform_footer_flow import _plan
@@ -83,7 +84,7 @@ async def test_public_copy_verification_rejects_non_font_style_loss(
     ][style] = False
     result = await _verify(monkeypatch, source, actual)
     assert result.content_preserved
-    assert result.brand_applied
+    assert result.brand is BrandVerification.FULL
     assert not result.structure_preserved
 
 
@@ -101,7 +102,7 @@ async def test_public_copy_verification_allows_exact_font_override_fragmentation
     result = await _verify(monkeypatch, source, actual)
     assert result.content_preserved
     assert result.structure_preserved
-    assert result.brand_applied
+    assert result.brand is BrandVerification.FULL
     assert await _verify(monkeypatch, source, actual) == result
 
 
@@ -210,4 +211,4 @@ async def test_copy_font_proof_runs_after_exact_native_footer_projection(
     result = await _verify(monkeypatch, source, actual, draft)
     assert result.content_preserved
     assert result.structure_preserved
-    assert result.brand_applied
+    assert result.brand is BrandVerification.FULL

@@ -38,6 +38,7 @@ from app.document_transform.tab_structure_execution import (
     prepare_tab_creation,
     verify_structure_content,
 )
+from app.document_transform.verification import BrandVerification
 from app.identifiers import DocsRevisionId, DocsTabId, FileId, TaskId
 from tests.test_authored_labels import _document as _label_document
 from tests.test_copy_font_preservation import _verify
@@ -415,6 +416,6 @@ async def test_copy_supported_brand_requires_real_visual_and_structure_proof(
         header_title="Decision",
     )
     assert result.content_preserved
-    assert not result.brand_applied
-    assert result.supported_brand_applied is (change == "none")
+    assert result.brand not in {BrandVerification.FULL, BrandVerification.NOT_REQUIRED}
+    assert (result.brand is BrandVerification.SUPPORTED) is (change == "none")
     assert result.structure_preserved is (change in {"none", "nonexempt"})

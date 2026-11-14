@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, StrictBool
 
 from app.identifiers import DriveId, FileId
 
@@ -19,8 +19,8 @@ class GoogleShortcutDetails(_GoogleModel):
 class GoogleFileCapabilities(_GoogleModel):
     model_config = ConfigDict(frozen=True)
 
-    can_edit: bool = Field(default=False, alias="canEdit")
-    can_add_children: bool = Field(default=False, alias="canAddChildren")
+    can_edit: StrictBool = Field(default=False, alias="canEdit")
+    can_add_children: StrictBool = Field(default=False, alias="canAddChildren")
 
 
 _EMPTY_CAPABILITIES = GoogleFileCapabilities()
@@ -35,7 +35,7 @@ class GoogleFile(_GoogleModel):
     modified_time: str | None = Field(default=None, alias="modifiedTime")
     version: str | None = None
     description: str | None = None
-    trashed: bool = False
+    trashed: StrictBool = False
     shortcut_details: GoogleShortcutDetails | None = Field(default=None, alias="shortcutDetails")
     capabilities: GoogleFileCapabilities = Field(default=_EMPTY_CAPABILITIES)
 
@@ -43,13 +43,13 @@ class GoogleFile(_GoogleModel):
 class GoogleDrive(_GoogleModel):
     id: DriveId
     name: str
-    hidden: bool = False
+    hidden: StrictBool = False
 
 
 class GooglePermissionDetail(_GoogleModel):
     permission_type: Literal["file", "member"] = Field(alias="permissionType")
     role: Literal["owner", "organizer", "fileOrganizer", "writer", "commenter", "reader"]
-    inherited: bool
+    inherited: StrictBool
 
 
 class GooglePermission(_GoogleModel):
@@ -59,10 +59,10 @@ class GooglePermission(_GoogleModel):
     display_name: str | None = Field(default=None, alias="displayName")
     email_address: str | None = Field(default=None, alias="emailAddress")
     domain: str | None = None
-    allow_file_discovery: bool | None = Field(default=None, alias="allowFileDiscovery")
+    allow_file_discovery: StrictBool | None = Field(default=None, alias="allowFileDiscovery")
     expiration_time: str | None = Field(default=None, alias="expirationTime")
-    deleted: bool = False
-    pending_owner: bool = Field(default=False, alias="pendingOwner")
+    deleted: StrictBool = False
+    pending_owner: StrictBool = Field(default=False, alias="pendingOwner")
     permission_details: list[GooglePermissionDetail] = Field(
         default_factory=list,
         alias="permissionDetails",
@@ -79,15 +79,15 @@ class GoogleFilePermissionMetadata(_GoogleModel):
     drive_id: DriveId | None = Field(default=None, alias="driveId")
     parents: list[FileId] = Field(default_factory=list)
     version: str
-    owned_by_me: bool = Field(alias="ownedByMe")
-    shared: bool
+    owned_by_me: StrictBool = Field(alias="ownedByMe")
+    shared: StrictBool
     capabilities: GoogleFileCapabilities
     owners: list[GoogleOwner] = Field(default_factory=list)
     app_properties: dict[str, str] = Field(default_factory=dict, alias="appProperties")
 
 
 class GoogleFileProbe(_GoogleModel):
-    trashed: bool = False
+    trashed: StrictBool = False
     drive_id: DriveId | None = Field(default=None, alias="driveId")
 
 
@@ -103,4 +103,4 @@ class GoogleFileLocation(_GoogleModel):
 
 
 class GoogleFileAccessLocation(GoogleFileLocation):
-    trashed: bool = False
+    trashed: StrictBool = False

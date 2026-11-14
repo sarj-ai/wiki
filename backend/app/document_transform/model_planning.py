@@ -1,8 +1,9 @@
 import asyncio
 from collections.abc import Awaitable, Callable
+from dataclasses import dataclass
 import hashlib
 import json
-from typing import override
+from typing import ClassVar, Literal, assert_never, override
 
 from app.document_transform.errors import (
     ModelDeadlineError,
@@ -26,7 +27,7 @@ from app.document_transform.schemas import (
 )
 from app.document_transform.unslop import UNSLOP_CATALOG_SHA256
 from app.document_transform.versions import DOCUMENT_PIPELINE_VERSION
-from app.identifiers import ModelId
+from app.identifiers import ModelId, ModelReviewInputHash
 from app.performance import provider_retry_remaining_seconds
 
 
@@ -40,6 +41,55 @@ def _request_sha256(request: DocumentTransformRequest) -> str:
     ).hexdigest()
 
 
+@dataclass(frozen=True, slots=True)
+class _FreshPlan:
+    kind: ClassVar[Literal["fresh"]] = "fresh"
+
+
+@dataclass(frozen=True, slots=True)
+class _PreparingPlan:
+    kind: ClassVar[Literal["preparing"]] = "preparing"
+
+
+@dataclass(frozen=True, slots=True)
+class _SavedPlan:
+    kind: ClassVar[Literal["saved"]] = "saved"
+    checkpoint: ModelPlanningCheckpoint
+
+
+@dataclass(frozen=True, slots=True)
+class _AwaitingReview:
+    kind: ClassVar[Literal["awaiting_review"]] = "awaiting_review"
+    checkpoint: ModelPlanningCheckpoint
+
+
+@dataclass(frozen=True, slots=True)
+class _Reviewing:
+    kind: ClassVar[Literal["reviewing"]] = "reviewing"
+    checkpoint: ModelPlanningCheckpoint
+
+
+@dataclass(frozen=True, slots=True)
+class _LaterPass:
+    kind: ClassVar[Literal["later_pass"]] = "later_pass"
+
+
+@dataclass(frozen=True, slots=True)
+class _InterruptedPlan:
+    kind: ClassVar[Literal["interrupted"]] = "interrupted"
+
+
+type _PlanningState = (
+    _FreshPlan
+    | _PreparingPlan
+    | _SavedPlan
+    | _AwaitingReview
+    | _Reviewing
+    | _LaterPass
+    | _InterruptedPlan
+)
+
+
 class CheckpointingPatchGenerator(PatchGenerator):
     def __init__(
         self,
@@ -51,10 +101,8 @@ class CheckpointingPatchGenerator(PatchGenerator):
     ) -> None:
         self._generator = generator
         self._request_sha256 = _request_sha256(request)
-        self._checkpoint = checkpoint
+        self._state: _PlanningState = _FreshPlan() if checkpoint is None else _SavedPlan(checkpoint)
         self._save = save
-        self._used_initial = False
-        self._initial_review = True
         self._review_save_lock = asyncio.Lock()
         self.supports_semantic_rewrite = generator.supports_semantic_rewrite
         self.supports_readability_planning = generator.supports_readability_planning
@@ -73,61 +121,87 @@ class CheckpointingPatchGenerator(PatchGenerator):
 
     @override
     async def generate(self, document: DocumentIR, *, phase: TransformPhase) -> list[TextPatch]:
-        if phase is not TransformPhase.UNSLOP or self._used_initial:
-            self._initial_review = False
-            return await self._generator.generate(document, phase=phase)
-        self._used_initial = True
-        if self._checkpoint is not None:
-            if document.text_sha256 != self._checkpoint.document_sha256:
-                raise SourceChangedError
-            return [patch.model_copy(deep=True) for patch in self._checkpoint.proposals]
-        with checkpointed_writer_scope():
-            proposals = await self._generator.generate(document, phase=phase)
-        checkpoint = ModelPlanningCheckpoint(
-            request_sha256=self._request_sha256,
-            document_sha256=document.text_sha256,
-            pipeline_version=DOCUMENT_PIPELINE_VERSION,
-            catalog_sha256=UNSLOP_CATALOG_SHA256,
-            model_ids=tuple(ModelId(value) for value in self.model_ids),
-            proposals=tuple(proposals),
-        )
-        await self._save(checkpoint)
-        self._checkpoint = checkpoint
-        raise ModelReviewPendingError
+        if phase is not TransformPhase.UNSLOP:
+            raise OutputConflictError
+        match self._state:
+            case _SavedPlan(checkpoint=checkpoint):
+                if document.text_sha256 != checkpoint.document_sha256:
+                    raise SourceChangedError
+                self._state = _AwaitingReview(checkpoint)
+                return [patch.model_copy(deep=True) for patch in checkpoint.proposals]
+            case _LaterPass():
+                return await self._generator.generate(document, phase=phase)
+            case _FreshPlan():
+                self._state = _PreparingPlan()
+                try:
+                    with checkpointed_writer_scope():
+                        proposals = await self._generator.generate(document, phase=phase)
+                    checkpoint = ModelPlanningCheckpoint(
+                        request_sha256=self._request_sha256,
+                        document_sha256=document.text_sha256,
+                        pipeline_version=DOCUMENT_PIPELINE_VERSION,
+                        catalog_sha256=UNSLOP_CATALOG_SHA256,
+                        model_ids=tuple(ModelId(value) for value in self.model_ids),
+                        proposals=tuple(proposals),
+                    )
+                    await self._save(checkpoint)
+                except BaseException:
+                    self._state = _InterruptedPlan()
+                    raise
+                self._state = _SavedPlan(checkpoint)
+                raise ModelReviewPendingError
+            case _PreparingPlan() | _AwaitingReview() | _Reviewing() | _InterruptedPlan():
+                raise OutputConflictError
+            case unreachable:
+                assert_never(unreachable)
 
     @override
     async def review(self, document: DocumentIR, patches: list[TextPatch]) -> RewriteReview:
-        if self._checkpoint is None or not self._initial_review:
-            return await self._generator.review(document, patches)
-        self._initial_review = False
-        store = ReviewCheckpointStore(get=self._review_batch, save=self._save_review_batch)
-        try:
-            with checkpointed_review_scope(store):
+        match self._state:
+            case _LaterPass():
                 return await self._generator.review(document, patches)
-        except ModelDeadlineError as error:
-            # A continuation retains completed reviews, provider attempt counts,
-            # and backoff. The task's existing delivery/age bounds still apply.
-            if self._checkpoint.review_batches:
-                raise ModelReviewPendingError from error
-            raise
+            case _SavedPlan(checkpoint=checkpoint) | _AwaitingReview(checkpoint=checkpoint):
+                # Review binds immutable original prose, which can differ from
+                # the deterministically cleaned document used to plan patches.
+                self._state = _Reviewing(checkpoint)
+                store = ReviewCheckpointStore(get=self._review_batch, save=self._save_review_batch)
+                try:
+                    with checkpointed_review_scope(store):
+                        decision = await self._generator.review(document, patches)
+                except ModelDeadlineError as error:
+                    batches = self._require_review_checkpoint().review_batches
+                    self._state = _InterruptedPlan()
+                    if batches:
+                        raise ModelReviewPendingError from error
+                    raise
+                except BaseException:
+                    self._state = _InterruptedPlan()
+                    raise
+                else:
+                    self._state = _LaterPass()
+                    return decision
+            case _FreshPlan() | _PreparingPlan() | _Reviewing() | _InterruptedPlan():
+                raise OutputConflictError
+            case unreachable:
+                assert_never(unreachable)
 
-    def _review_batch(self, input_sha256: str) -> ModelReviewBatchCheckpoint | None:
-        if self._checkpoint is None:
-            return None
+    def _require_review_checkpoint(self) -> ModelPlanningCheckpoint:
+        if not isinstance(self._state, _Reviewing):
+            raise OutputConflictError
+        return self._state.checkpoint
+
+    def _review_batch(
+        self, input_sha256: ModelReviewInputHash
+    ) -> ModelReviewBatchCheckpoint | None:
+        checkpoint = self._require_review_checkpoint()
         return next(
-            (
-                batch
-                for batch in self._checkpoint.review_batches
-                if batch.input_sha256 == input_sha256
-            ),
+            (batch for batch in checkpoint.review_batches if batch.input_sha256 == input_sha256),
             None,
         )
 
     async def _save_review_batch(self, batch: ModelReviewBatchCheckpoint) -> None:
         async with self._review_save_lock:
-            checkpoint = self._checkpoint
-            if checkpoint is None:
-                raise OutputConflictError
+            checkpoint = self._require_review_checkpoint()
             batches = {item.input_sha256: item for item in checkpoint.review_batches}
             batches[batch.input_sha256] = batch
             updated = ModelPlanningCheckpoint.model_validate(
@@ -146,8 +220,10 @@ class CheckpointingPatchGenerator(PatchGenerator):
         remaining = provider_retry_remaining_seconds()
         timeout = 30.0 if remaining is None else min(30.0, max(remaining, 0))
         async with asyncio.timeout(timeout):
+            self._require_review_checkpoint()
             await self._save(checkpoint)
-        self._checkpoint = checkpoint
+        self._require_review_checkpoint()
+        self._state = _Reviewing(checkpoint)
 
     @override
     async def repair(
@@ -157,8 +233,14 @@ class CheckpointingPatchGenerator(PatchGenerator):
         findings: tuple[TransformFinding, ...],
         /,
     ) -> list[TextPatch]:
-        self._initial_review = False
-        return await self._generator.repair(document, patches, findings)
+        match self._state:
+            case _AwaitingReview() | _LaterPass():
+                self._state = _LaterPass()
+                return await self._generator.repair(document, patches, findings)
+            case _FreshPlan() | _PreparingPlan() | _SavedPlan() | _Reviewing() | _InterruptedPlan():
+                raise OutputConflictError
+            case unreachable:
+                assert_never(unreachable)
 
     @override
     async def plan_readability(

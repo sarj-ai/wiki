@@ -1,3 +1,4 @@
+import asyncio
 from datetime import timedelta
 import json
 from typing import Never, override
@@ -90,6 +91,13 @@ class _Writer(PatchGenerator):
         return RewriteReview(frozenset(patch.block_id for patch in patches), {})
 
 
+class _EmptyWriter(_Writer):
+    @override
+    async def generate(self, document: DocumentIR, *, phase: TransformPhase) -> list[TextPatch]:
+        self.writes += 1
+        return []
+
+
 async def _saved_plan() -> ModelPlanningCheckpoint:
     saved: list[ModelPlanningCheckpoint] = []
 
@@ -146,6 +154,37 @@ async def test_restart_reuses_durable_proposals_and_requires_review_before_googl
     assert gateway.applies == 1
 
 
+async def test_empty_initial_proposal_resumes_both_mode_without_a_second_model_call() -> None:
+    request = DocumentTransformRequest.model_validate({**_request().model_dump(), "mode": "both"})
+    saved: list[ModelPlanningCheckpoint] = []
+
+    async def save(plan: ModelPlanningCheckpoint) -> None:
+        saved.append(plan)
+
+    writer, gateway = _EmptyWriter(), _Gateway()
+    staged = CheckpointingPatchGenerator(
+        generator=writer, request=request, checkpoint=None, save=save
+    )
+    operation_id = uuid.UUID(int=27)
+    with pytest.raises(ModelReviewPendingError):
+        await DocumentTransformExecutor(gateway=gateway, generator=staged).execute(
+            operation_id=operation_id, request=request
+        )
+    assert gateway.draft is None
+    assert len(saved) == 1
+    assert not saved[0].proposals
+    resumed = CheckpointingPatchGenerator(
+        generator=writer, request=request, checkpoint=saved[0], save=save
+    )
+    result = await DocumentTransformExecutor(gateway=gateway, generator=resumed).execute(
+        operation_id=operation_id, request=request
+    )
+    assert result.validation.structure_preserved
+    assert result.validation.protected_content_preserved
+    assert writer.writes == 1
+    assert writer.reviews == 0
+
+
 async def test_ambiguous_checkpoint_commit_recovers_without_regenerating_proposals() -> None:
     saved: list[ModelPlanningCheckpoint] = []
     writer = _Writer()
@@ -160,10 +199,90 @@ async def test_ambiguous_checkpoint_commit_recovers_without_regenerating_proposa
     document = parse_markdown(SOURCE, title="Private staged fixture")
     with pytest.raises(TimeoutError):
         await generator.generate(document, phase=TransformPhase.UNSLOP)
+    with pytest.raises(OutputConflictError):
+        await generator.generate(document, phase=TransformPhase.UNSLOP)
+    with pytest.raises(OutputConflictError):
+        await generator.review(document, list(saved[0].proposals))
     resumed = CheckpointingPatchGenerator(
         generator=writer, request=_request(), checkpoint=saved[0], save=committed_then_lost
     )
     assert await resumed.generate(document, phase=TransformPhase.UNSLOP) == list(saved[0].proposals)
+    assert writer.writes == 1
+
+
+async def test_inflight_plan_save_rejects_reentry_and_cancellation_requires_durable_resume() -> (
+    None
+):
+    entered = asyncio.Event()
+    writer = _Writer()
+
+    async def save(_: ModelPlanningCheckpoint) -> None:
+        entered.set()
+        await asyncio.Event().wait()
+
+    generator = CheckpointingPatchGenerator(
+        generator=writer, request=_request(), checkpoint=None, save=save
+    )
+    document = parse_markdown(SOURCE, title="Private staged fixture")
+    running = asyncio.create_task(generator.generate(document, phase=TransformPhase.UNSLOP))
+    await asyncio.wait_for(entered.wait(), timeout=2)
+    try:
+        with pytest.raises(OutputConflictError):
+            await generator.generate(document, phase=TransformPhase.UNSLOP)
+        with pytest.raises(OutputConflictError):
+            await generator.review(document, [])
+    finally:
+        running.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await running
+    with pytest.raises(OutputConflictError):
+        await generator.generate(document, phase=TransformPhase.UNSLOP)
+    assert writer.writes == 1
+    assert writer.reviews == 0
+
+
+async def test_review_requires_a_saved_plan_before_calling_the_provider() -> None:
+    writer = _Writer()
+
+    async def save(_: ModelPlanningCheckpoint) -> None:
+        pytest.fail("Review cannot create the initial plan")
+
+    generator = CheckpointingPatchGenerator(
+        generator=writer, request=_request(), checkpoint=None, save=save
+    )
+    with pytest.raises(OutputConflictError):
+        await generator.review(parse_markdown(SOURCE, title="Private staged fixture"), [])
+    assert writer.reviews == 0
+
+
+async def test_review_binds_original_source_after_deterministic_planning_cleanup() -> None:
+    original = parse_markdown(SOURCE, title="Private staged fixture")
+    cleaned = original.replace_blocks({original.blocks[0].id: DRAFT})
+    saved: list[ModelPlanningCheckpoint] = []
+
+    async def save(plan: ModelPlanningCheckpoint) -> None:
+        saved.append(plan)
+
+    writer = _Writer()
+    staged = CheckpointingPatchGenerator(
+        generator=writer, request=_request(), checkpoint=None, save=save
+    )
+    with pytest.raises(ModelReviewPendingError):
+        await staged.generate(cleaned, phase=TransformPhase.UNSLOP)
+    assert saved[0].document_sha256 == cleaned.text_sha256 != original.text_sha256
+    resumed = CheckpointingPatchGenerator(
+        generator=writer, request=_request(), checkpoint=saved[0], save=save
+    )
+    await resumed.generate(cleaned, phase=TransformPhase.UNSLOP)
+    proposals = [
+        TextPatch(
+            block_id=original.blocks[0].id,
+            expected_sha256=original.blocks[0].sha256,
+            replacement=DRAFT,
+        )
+    ]
+    decision = await resumed.review(original, proposals)
+    assert decision.approved == {original.blocks[0].id}
     assert writer.writes == 1
 
 

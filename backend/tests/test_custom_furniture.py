@@ -37,6 +37,7 @@ from app.document_transform.schemas import (
     OutputStrategy,
     TransformMode,
 )
+from app.document_transform.verification import BrandVerification
 from app.identifiers import DocsRevisionId, DocsSegmentId, DocsTabId, FileId, TaskId
 from tests.test_document_transform import (
     _branded_google_document,
@@ -307,14 +308,14 @@ async def test_preserved_footer_never_exempts_producer_header_brand_proof() -> N
     gateway = _native_gateway()
     inspection = gateway._inspect_in_place_sync(_inspection_snapshot(document), "Decision")
     assert inspection.custom_furniture[0].header_ids == ()
-    assert inspection.supported_brand_applied
+    assert inspection.brand is BrandVerification.SUPPORTED
     expected_document = deepcopy(document)
     document["tabs"][0]["documentTab"]["headers"]["header-a"]["content"][0]["paragraph"][
         "elements"
     ][0]["textRun"]["textStyle"]["fontSize"]["magnitude"] = 48
     verification = await _verify_preserved(document, inspection, expected_document)
-    assert not verification.brand_applied
-    assert not verification.supported_brand_applied
+    assert verification.brand not in {BrandVerification.FULL, BrandVerification.NOT_REQUIRED}
+    assert verification.brand is not BrandVerification.SUPPORTED
 
 
 @pytest.mark.parametrize(
@@ -345,15 +346,15 @@ async def test_custom_furniture_is_preserved_not_owned_or_full_brand(
     assert not inspection.headers
     assert not inspection.preserved_headers
     assert not inspection.unknown_header_tab_ids
-    assert not inspection.fully_branded
-    assert not inspection.supported_brand_applied
+    assert inspection.brand is not BrandVerification.FULL
+    assert inspection.brand is not BrandVerification.SUPPORTED
     assert len(inspection.custom_header_title_targets) == (3 if first_even else 1)
     assert len(inspection.custom_furniture) == 1
     verification = await _verify_preserved(document, inspection, before)
     assert verification.content_preserved
     assert verification.structure_preserved
-    assert not verification.brand_applied
-    assert not verification.supported_brand_applied
+    assert verification.brand not in {BrandVerification.FULL, BrandVerification.NOT_REQUIRED}
+    assert verification.brand is not BrandVerification.SUPPORTED
     assert document == before
 
 
@@ -387,7 +388,7 @@ async def test_custom_header_title_prefix_is_native_idempotent_and_preserves_suf
     assert not after.custom_header_title_targets
     assert after.custom_header_titles_present == inspection.custom_header_title_targets
     assert after.custom_furniture == inspection.custom_furniture
-    assert after.supported_brand_applied
+    assert after.brand is BrandVerification.SUPPORTED
     verification = await _verify_custom_brand(
         document,
         inspection,
@@ -395,7 +396,7 @@ async def test_custom_header_title_prefix_is_native_idempotent_and_preserves_suf
         custom_header_titles=inspection.custom_header_title_targets,
     )
     assert verification.structure_preserved
-    assert verification.supported_brand_applied
+    assert verification.brand is BrandVerification.SUPPORTED
 
 
 @pytest.mark.asyncio
@@ -469,7 +470,7 @@ async def test_custom_header_title_restores_empty_header_terminal_newline_style(
         custom_header_titles=inspection.custom_header_title_targets,
     )
     assert verification.structure_preserved
-    assert verification.supported_brand_applied
+    assert verification.brand is BrandVerification.SUPPORTED
 
 
 @pytest.mark.asyncio
@@ -489,7 +490,7 @@ async def test_custom_header_projection_accepts_only_effective_provider_normaliz
         custom_header_titles=inspection.custom_header_title_targets,
     )
     assert verification.structure_preserved
-    assert verification.supported_brand_applied
+    assert verification.brand is BrandVerification.SUPPORTED
 
 
 @pytest.mark.asyncio
@@ -526,7 +527,7 @@ async def test_custom_header_projection_rejects_authored_furniture_changes(tampe
     )
 
     assert not verification.structure_preserved
-    assert not verification.supported_brand_applied
+    assert verification.brand is not BrandVerification.SUPPORTED
 
 
 @pytest.mark.asyncio
@@ -565,7 +566,7 @@ async def test_custom_header_title_proof_rejects_tampering(tamper: str) -> None:
         parse_google_document(before, title="Decision"),
         custom_header_titles=inspection.custom_header_title_targets,
     )
-    assert not verification.supported_brand_applied
+    assert verification.brand is not BrandVerification.SUPPORTED
 
 
 @pytest.mark.parametrize("tamper", ["text", "index", "style"])
@@ -620,8 +621,8 @@ async def test_custom_furniture_accepts_preserved_visual_authority() -> None:
 
     assert verification.content_preserved
     assert verification.structure_preserved
-    assert not verification.brand_applied
-    assert not verification.supported_brand_applied
+    assert verification.brand not in {BrandVerification.FULL, BrandVerification.NOT_REQUIRED}
+    assert verification.brand is not BrandVerification.SUPPORTED
 
 
 async def test_custom_furniture_does_not_exempt_unpreserved_authored_body_style() -> None:
@@ -633,7 +634,7 @@ async def test_custom_furniture_does_not_exempt_unpreserved_authored_body_style(
 
     verification = await _verify_preserved(document, inspection, document)
 
-    assert not verification.supported_brand_applied
+    assert verification.brand is not BrandVerification.SUPPORTED
 
 
 @pytest.mark.parametrize(
@@ -668,7 +669,7 @@ async def test_custom_furniture_verification_rejects_payload_or_context_changes(
             tab["headers"]["unknown"] = deepcopy(tab["headers"]["header-a"])
     verification = await _verify_preserved(document, inspection, expected_document)
     assert not verification.structure_preserved
-    assert not verification.supported_brand_applied
+    assert verification.brand is not BrandVerification.SUPPORTED
 
 
 @pytest.mark.parametrize(
@@ -884,7 +885,7 @@ async def test_full_brand_with_existing_footer_remains_clean_noop(
     }
     native = _native_gateway()
     inspection = native._inspect_in_place_sync(_inspection_snapshot(document), "Decision")
-    assert inspection.fully_branded
+    assert inspection.brand is BrandVerification.FULL
     assert inspection.custom_furniture
     gateway = _Gateway(_inspection_snapshot(document))
     monkeypatch.setattr(gateway, "inspect_in_place", native.inspect_in_place)

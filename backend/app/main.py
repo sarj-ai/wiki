@@ -2,6 +2,7 @@ import asyncio
 from collections.abc import AsyncGenerator
 from contextlib import AsyncExitStack, asynccontextmanager
 from importlib.metadata import version
+from typing import assert_never
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -34,13 +35,13 @@ from app.mcp.native_composition import (
 )
 from app.mcp.native_consent_router import NativeConsentSettings, create_native_consent_router
 from app.mcp.native_core import NativeOAuthCore
-from app.mcp.redirect_policy import McpRedirectPolicy
 from app.request_body import (
     MAX_MCP_REQUEST_BODY_BYTES,
     MAX_REQUEST_BODY_BYTES,
     RequestBodyLimitMiddleware,
 )
 from app.request_id import RequestIDMiddleware
+from app.runtime_config import DisabledNativeMcp, EnabledNativeMcp
 from app.security_headers import SecurityHeadersMiddleware
 from app.sidebar.router import router as sidebar_router
 from app.smart_create.router import router as smart_create_router
@@ -110,6 +111,7 @@ def create_app(
     app_settings: Settings, *, native_factory: NativeCompositionFactory = native_composition
 ) -> FastAPI:
     native_slot = NativeCompositionSlot()
+    native_configuration = app_settings.native_mcp
 
     @asynccontextmanager
     async def lifespan(instance: FastAPI) -> AsyncGenerator[None]:
@@ -118,14 +120,19 @@ def create_app(
             async with AsyncExitStack() as stack:
                 http_client = await stack.enter_async_context(httpx.AsyncClient(timeout=10.0))
                 instance.state.http_client = http_client
-                if app_settings.MCP_NATIVE_ENABLED:
-                    composition = await stack.enter_async_context(
-                        native_factory(app_settings, http_client, async_session)
-                    )
-                    await stack.enter_async_context(
-                        composition.runtime.http_app.lifespan(composition.runtime.http_app)
-                    )
-                    native_slot.value = composition
+                match native_configuration:
+                    case EnabledNativeMcp():
+                        composition = await stack.enter_async_context(
+                            native_factory(app_settings, http_client, async_session)
+                        )
+                        await stack.enter_async_context(
+                            composition.runtime.http_app.lifespan(composition.runtime.http_app)
+                        )
+                        native_slot.value = composition
+                    case DisabledNativeMcp():
+                        pass
+                    case _:
+                        assert_never(native_configuration)
                 try:
                     yield
                 finally:
@@ -200,29 +207,33 @@ def create_app(
     application.include_router(tasks_router)
     application.include_router(internal_tasks_router)
 
-    if app_settings.MCP_NATIVE_ENABLED:
+    match native_configuration:
+        case EnabledNativeMcp():
 
-        async def native_core_dependency() -> NativeOAuthCore:
-            if native_slot.value is None:
-                raise HTTPException(status_code=503)
-            return native_slot.value.core
+            async def native_core_dependency() -> NativeOAuthCore:
+                if native_slot.value is None:
+                    raise HTTPException(status_code=503)
+                return native_slot.value.core
 
-        application.include_router(
-            create_native_consent_router(
-                settings=NativeConsentSettings(
-                    frontend_origin=app_settings.frontend_origin,
-                    issuer=str(app_settings.MCP_NATIVE_ISSUER),
-                    redirect_policy=McpRedirectPolicy(
-                        app_settings.MCP_NATIVE_LOOPBACK_PATHS,
-                        app_settings.MCP_NATIVE_HTTPS_CALLBACKS,
+            application.include_router(
+                create_native_consent_router(
+                    settings=NativeConsentSettings(
+                        frontend_origin=app_settings.frontend_origin,
+                        issuer=str(native_configuration.issuer),
+                        redirect_policy=native_configuration.redirects,
                     ),
-                ),
-                core_dependency=native_core_dependency,
+                    core_dependency=native_core_dependency,
+                )
             )
-        )
-        application.add_middleware(
-            NativeDispatchMiddleware, slot=native_slot, maintenance=app_settings.MAINTENANCE_MODE
-        )
+            application.add_middleware(
+                NativeDispatchMiddleware,
+                slot=native_slot,
+                maintenance=app_settings.MAINTENANCE_MODE,
+            )
+        case DisabledNativeMcp():
+            pass
+        case _:
+            assert_never(native_configuration)
 
     if app_settings is settings:
         application.get("/health", include_in_schema=False)(health_check)

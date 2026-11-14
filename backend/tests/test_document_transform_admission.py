@@ -75,6 +75,7 @@ def admission_store() -> Iterator[_AdmissionStore]:
     engine.dispose()
 
 
+@pytest.mark.parametrize("kind", list(TaskKind))
 @pytest.mark.parametrize(
     "case",
     [
@@ -94,18 +95,17 @@ def admission_store() -> Iterator[_AdmissionStore]:
     ],
 )
 async def test_lookup_is_owner_kind_key_retention_scoped_and_read_only(
-    admission_store: _AdmissionStore, case: str
+    admission_store: _AdmissionStore, case: str, kind: TaskKind
 ) -> None:
     service, database, tasks, replay = admission_store
     owner, key, task_id = uuid.uuid7(), IdempotencyKey(uuid.uuid7()), uuid.uuid7()
     alias = case.startswith("alias")
+    other_kind = next(item for item in TaskKind if item != kind)
     database.connection.execute(
         tasks.insert().values(
             id=task_id,
             owner_user_id=uuid.uuid7() if case in {"owner", "alias_task_owner"} else owner,
-            kind=TaskKind.FILE_SMART_CREATE
-            if case in {"kind", "alias_task_kind"}
-            else TaskKind.FILE_DOCUMENT_TRANSFORM,
+            kind=other_kind if case in {"kind", "alias_task_kind"} else kind,
             status="pending",
             idempotency_key=uuid.uuid7() if alias or case == "absent" else key,
             expires_at=datetime.now(UTC)
@@ -117,9 +117,7 @@ async def test_lookup_is_owner_kind_key_retention_scoped_and_read_only(
         database.connection.execute(
             replay.insert().values(
                 owner_user_id=uuid.uuid7() if case == "alias_owner" else owner,
-                kind=TaskKind.FILE_SMART_CREATE
-                if case == "alias_kind"
-                else TaskKind.FILE_DOCUMENT_TRANSFORM,
+                kind=other_kind if case == "alias_kind" else kind,
                 idempotency_key=key,
                 task_id=task_id,
             )
@@ -127,19 +125,20 @@ async def test_lookup_is_owner_kind_key_retention_scoped_and_read_only(
     if case in {"deleted", "alias_deleted"}:
         database.connection.execute(delete(tasks).where(tasks.c.id == task_id))
     if case in {"direct", "alias"}:
-        result = await service.get_document_transform_admission(UserId(owner), key)
+        result = await service.get_admission(UserId(owner), kind, key)
         assert result.model_dump(mode="json") == {"task_id": str(task_id), "status": "pending"}
     else:
         with pytest.raises(TaskNotFoundError):
-            await service.get_document_transform_admission(UserId(owner), key)
+            await service.get_admission(UserId(owner), kind, key)
     assert len(database.statements) == 1
     assert list(database.statements[0].selected_columns.keys()) == ["id", "status"]
     assert database.statements[0].is_select
 
 
+@pytest.mark.parametrize("kind", list(TaskKind))
 @pytest.mark.parametrize("case", ["found", "missing", "invalid", "unauthorized"])
 async def test_admission_http_contract_has_no_private_data(
-    admission_store: _AdmissionStore, case: str
+    admission_store: _AdmissionStore, case: str, kind: TaskKind
 ) -> None:
     service, database, tasks, _replay = admission_store
     user = _user()
@@ -148,7 +147,7 @@ async def test_admission_http_contract_has_no_private_data(
         tasks.insert().values(
             id=task_id,
             owner_user_id=user.id,
-            kind=TaskKind.FILE_DOCUMENT_TRANSFORM,
+            kind=kind,
             status="failed",
             idempotency_key=key,
             expires_at=datetime.now(UTC) + timedelta(days=1),
@@ -166,7 +165,12 @@ async def test_admission_http_contract_has_no_private_data(
     value = "invalid" if case == "invalid" else str(uuid.uuid7() if case == "missing" else key)
     try:
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
-            response = await client.get(f"/document-transforms/admissions/{value}")
+            prefix = (
+                "/document-transforms"
+                if kind is TaskKind.FILE_DOCUMENT_TRANSFORM
+                else "/files/smart"
+            )
+            response = await client.get(f"{prefix}/admissions/{value}")
     finally:
         app.dependency_overrides.clear()
     assert (

@@ -29,6 +29,15 @@ import {
   type ReorganizationProposal,
 } from "@/lib/reorganize-client";
 
+type ActionableProposal = ReorganizationProposal & {
+  suggestedDestination: ReorganizationDestination;
+};
+
+type ReorganizationState =
+  | { kind: "idle" }
+  | { kind: "checking"; owner: object }
+  | { kind: "proposed"; proposal: ActionableProposal };
+
 export function ReorganizeDocument({ ...props }: ReorganizeDocumentProps) {
   return <ReorganizeDocumentForFile key={props.fileId} {...props} />;
 }
@@ -39,47 +48,54 @@ function ReorganizeDocumentForFile({
   fileName,
   parentFolderId,
 }: ReorganizeDocumentProps) {
-  const [checking, setChecking] = useState(false);
-  const [proposalState, setProposalState] = useState<{
-    fileId: string;
-    proposal: ReorganizationProposal;
-  } | null>(null);
+  const [state, setState] = useState<ReorganizationState>({ kind: "idle" });
+  const phase = useRef<ReorganizationState>(state);
   const mounted = useRef(true);
-  const proposeLatch = useRef<null | object>(null);
-  const proposal =
-    proposalState?.fileId === fileId ? proposalState.proposal : null;
+  const checking = state.kind === "checking";
+  const proposal = state.kind === "proposed" ? state.proposal : null;
+  const publish = (next: ReorganizationState) => {
+    phase.current = next;
+    setState(next);
+  };
 
   useEffect(() => {
     mounted.current = true;
     return () => {
       mounted.current = false;
-      proposeLatch.current = null;
+      phase.current = { kind: "idle" };
     };
   }, []);
 
   const propose = async () => {
-    if (proposeLatch.current) return;
-    const latch = {};
-    proposeLatch.current = latch;
-    const requestedFileId = fileId;
-    setChecking(true);
+    if (phase.current.kind !== "idle") return;
+    const owner = {};
+    publish({ kind: "checking", owner });
+    const current = () =>
+      mounted.current &&
+      phase.current.kind === "checking" &&
+      phase.current.owner === owner;
     try {
-      const result = await proposeFileReorganization(requestedFileId);
-      if (!mounted.current) return;
+      const result = await proposeFileReorganization(fileId);
+      if (!current()) return;
       if (result.suggestedDestination === undefined) {
         toast.success("This document is already in the best location");
         return;
       }
-      setProposalState({ fileId: requestedFileId, proposal: result });
+      publish({
+        kind: "proposed",
+        proposal: {
+          ...result,
+          suggestedDestination: result.suggestedDestination,
+        },
+      });
     } catch (error: unknown) {
-      if (mounted.current && !isAbortError(error)) {
+      if (current() && !isAbortError(error)) {
         toast.error(
           toErrorMessage(error, "Couldn’t check this document’s location"),
         );
       }
     } finally {
-      if (mounted.current) setChecking(false);
-      releaseLatch(proposeLatch, latch);
+      if (current()) publish({ kind: "idle" });
     }
   };
 
@@ -111,7 +127,7 @@ function ReorganizeDocumentForFile({
           driveId={driveId}
           fileId={fileId}
           fileName={fileName}
-          onClose={() => setProposalState(null)}
+          onClose={() => publish({ kind: "idle" })}
           parentFolderId={parentFolderId}
           proposal={proposal}
         />
@@ -142,7 +158,6 @@ function ReorganizationConfirmation({
   const move = async () => {
     if (moveLatch.current) return;
     const destination = proposal.suggestedDestination;
-    if (destination === undefined) return;
     const latch = {};
     moveLatch.current = latch;
     try {
@@ -183,19 +198,14 @@ function ReorganizationConfirmation({
             teammates find it in Google Drive.
           </AlertDialogDescription>
         </AlertDialogHeader>
-        {proposal.suggestedDestination === undefined ? null : (
-          <div className="bg-muted/50 grid grid-cols-1 gap-2 rounded-lg border p-3 sm:grid-cols-[1fr_auto_1fr] sm:items-center sm:gap-3">
-            <Location
-              destination={proposal.currentDestination}
-              label="Current"
-            />
-            <ArrowRight className="text-muted-foreground mx-auto size-4 rotate-90 sm:rotate-0" />
-            <Location
-              destination={proposal.suggestedDestination}
-              label="Recommended"
-            />
-          </div>
-        )}
+        <div className="bg-muted/50 grid grid-cols-1 gap-2 rounded-lg border p-3 sm:grid-cols-[1fr_auto_1fr] sm:items-center sm:gap-3">
+          <Location destination={proposal.currentDestination} label="Current" />
+          <ArrowRight className="text-muted-foreground mx-auto size-4 rotate-90 sm:rotate-0" />
+          <Location
+            destination={proposal.suggestedDestination}
+            label="Recommended"
+          />
+        </div>
         {proposal.reason === undefined ? null : (
           <p className="text-muted-foreground text-sm">{proposal.reason}</p>
         )}
@@ -234,7 +244,7 @@ interface ReorganizeDocumentProps {
 
 interface ReorganizationConfirmationProps extends ReorganizeDocumentProps {
   onClose: () => void;
-  proposal: ReorganizationProposal;
+  proposal: ActionableProposal;
 }
 
 function Location({

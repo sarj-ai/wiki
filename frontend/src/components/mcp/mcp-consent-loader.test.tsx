@@ -99,10 +99,11 @@ describe("McpConsentLoader", () => {
       (button) => button.textContent.trim() === "Allow read access",
     );
     approve?.click();
-    expect(decide).toHaveBeenCalledExactlyOnceWith(nextIntent, nextView.csrf, {
-      approve: true,
-      transformApproved: false,
-    });
+    expect(decide).toHaveBeenCalledExactlyOnceWith(
+      nextIntent,
+      nextView.csrf,
+      "approve_read",
+    );
   });
 
   it("aborts pending decision-status recovery on unmount without resubmitting a decision", async () => {

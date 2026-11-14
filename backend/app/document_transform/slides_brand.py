@@ -8,7 +8,7 @@ import json
 import math
 from operator import itemgetter
 import re
-from typing import Any, NamedTuple
+from typing import Any, NamedTuple, assert_never
 
 from pydantic import AliasPath, BaseModel, Field, JsonValue, ValidationError
 
@@ -144,25 +144,10 @@ class _StyleScan(NamedTuple):
     findings: list[TransformFinding]
 
 
-class _StyleDecision(NamedTuple):
-    target: _StyleTarget | None
-    finding: TransformFinding | None
-
-
 class _StyleEligibility(NamedTuple):
     placeholder_type: str
     desired_style: dict[str, Any]
     background: str
-
-
-class _StyleEligibilityDecision(NamedTuple):
-    eligibility: _StyleEligibility | None
-    finding: TransformFinding | None
-
-
-class _StyleRunDecision(NamedTuple):
-    run: _StyleRun | None
-    finding: TransformFinding | None
 
 
 class _LogoPlan(NamedTuple):
@@ -171,15 +156,10 @@ class _LogoPlan(NamedTuple):
     findings: list[TransformFinding]
 
 
-class _LogoDecision(NamedTuple):
-    request: dict[str, Any] | None
-    placement: _Rect | None
-    finding: TransformFinding | None
-
-
-class _LogoRemovalDecision(NamedTuple):
-    request: dict[str, Any] | None
-    finding: TransformFinding | None
+@dataclass(frozen=True, slots=True)
+class _LogoInsertion:
+    request: dict[str, JsonValue]
+    placement: _Rect
 
 
 class _PageSize(NamedTuple):
@@ -524,17 +504,22 @@ def _style_targets(
             overlaps = _underlays_overlap(element, underlays)
             background = None if overlaps else page_background
             background_reason = _background_failure_reason(page_background, overlaps=overlaps)
-            target, finding = _style_target(
+            decision = _style_target(
                 element,
                 page_background=background,
                 theme_colors=theme_colors,
                 object_ids=object_ids,
                 background_reason=background_reason,
             )
-            if target is not None:
-                targets.append(target)
-            if finding is not None:
-                findings.append(finding)
+            match decision:
+                case _StyleTarget():
+                    targets.append(decision)
+                case TransformFinding():
+                    findings.append(decision)
+                case None:
+                    pass
+                case _:
+                    assert_never(decision)
             small_text_finding = _small_narrative_text_finding(
                 element,
                 page_background=background,
@@ -561,27 +546,26 @@ def _style_target(
     theme_colors: dict[str, str] | None,
     object_ids: dict[str, tuple[dict[str, Any], ...]],
     background_reason: str | None = None,
-) -> _StyleDecision:
+) -> _StyleTarget | TransformFinding | None:
     object_id = SlideObjectId(_required_string(element, "objectId"))
     shape = element.get("shape")
     if not isinstance(shape, dict):
-        finding = _unsupported_text_finding(object_id) if _has_visible_text(element) else None
-        return _StyleDecision(None, finding)
+        return _unsupported_text_finding(object_id) if _has_visible_text(element) else None
     text = shape.get("text")
     if text is None:
-        return _StyleDecision(None, None)
+        return None
     if not isinstance(text, dict) or not isinstance(text.get("textElements"), list):
-        return _StyleDecision(None, _unsupported_text_finding(object_id))
+        return _unsupported_text_finding(object_id)
     plain_text = parse_plain_slide_text(text["textElements"])
     if plain_text is None:
-        return _StyleDecision(None, _unsupported_text_finding(object_id))
+        return _unsupported_text_finding(object_id)
     ancestors = _placeholder_ancestors(shape, object_ids=object_ids)
     if ancestors is None:
-        return _StyleDecision(None, _inherited_style_finding(object_id))
+        return _inherited_style_finding(object_id)
     inherited_styles = _inherited_text_styles(ancestors)
     if inherited_styles is None:
-        return _StyleDecision(None, _inherited_style_finding(object_id))
-    eligibility, finding = _style_eligibility(
+        return _inherited_style_finding(object_id)
+    eligibility = _style_eligibility(
         element,
         shape=shape,
         object_id=object_id,
@@ -590,9 +574,14 @@ def _style_target(
         ancestors=ancestors,
         background_reason=background_reason,
     )
-    if eligibility is None:
-        return _StyleDecision(None, finding)
-    run, finding = _target_style_run(
+    match eligibility:
+        case TransformFinding():
+            return eligibility
+        case _StyleEligibility():
+            pass
+        case _:
+            assert_never(eligibility)
+    run = _target_style_run(
         plain_text,
         object_id=object_id,
         desired_style=eligibility.desired_style,
@@ -600,20 +589,22 @@ def _style_target(
         theme_colors=theme_colors,
         inherited_styles=inherited_styles,
     )
-    if run is None:
-        return _StyleDecision(None, finding)
-    return _StyleDecision(
-        _StyleTarget(
-            object_id=object_id,
+    match run:
+        case None | TransformFinding():
+            return run
+        case _StyleRun():
+            pass
+        case _:
+            assert_never(run)
+    return _StyleTarget(
+        object_id=object_id,
+        placeholder_type=eligibility.placeholder_type,
+        runs=(run,),
+        metric_size_pt=_numeric_metric_size(
+            plain_text,
             placeholder_type=eligibility.placeholder_type,
-            runs=(run,),
-            metric_size_pt=_numeric_metric_size(
-                plain_text,
-                placeholder_type=eligibility.placeholder_type,
-                inherited_styles=inherited_styles,
-            ),
+            inherited_styles=inherited_styles,
         ),
-        None,
     )
 
 
@@ -649,13 +640,13 @@ def _style_eligibility(
     theme_colors: dict[str, str] | None,
     ancestors: tuple[dict[str, Any], ...],
     background_reason: str | None = None,
-) -> _StyleEligibilityDecision:
+) -> _StyleEligibility | TransformFinding:
     placeholder_type = _placeholder_type(shape)
     if placeholder_type not in _SUPPORTED_PLACEHOLDER_TYPES:
-        return _StyleEligibilityDecision(None, _role_unresolved_finding(object_id))
+        return _role_unresolved_finding(object_id)
     autofit = _inherited_shape_property(element, ancestors=ancestors, key="autofit")
     if not isinstance(autofit, dict) or autofit.get("autofitType") != "NONE":
-        return _StyleEligibilityDecision(None, _fit_unresolved_finding(object_id))
+        return _fit_unresolved_finding(object_id)
     desired_style, _ = _desired_style(
         placeholder_type=placeholder_type,
     )
@@ -672,18 +663,13 @@ def _style_eligibility(
             if page_background is None
             else "the text box background is unresolved"
         )
-        return _StyleEligibilityDecision(
-            None, _contrast_unresolved_finding(object_id, reason=reason)
-        )
+        return _contrast_unresolved_finding(object_id, reason=reason)
     if (
         not isinstance(desired_color, str)
         or _contrast_ratio(desired_color, background) < _MIN_TEXT_CONTRAST
     ):
-        return _StyleEligibilityDecision(None, _contrast_unresolved_finding(object_id))
-    return _StyleEligibilityDecision(
-        _StyleEligibility(placeholder_type, desired_style, background),
-        None,
-    )
+        return _contrast_unresolved_finding(object_id)
+    return _StyleEligibility(placeholder_type, desired_style, background)
 
 
 def _small_narrative_text_finding(
@@ -759,18 +745,18 @@ def _target_style_run(
     background: str,
     theme_colors: dict[str, str] | None,
     inherited_styles: tuple[dict[str, Any], ...],
-) -> _StyleRunDecision:
+) -> _StyleRun | TransformFinding | None:
     if not isinstance(plain_text.style, dict):
-        return _StyleRunDecision(None, _unresolved_style_finding(object_id))
+        return _unresolved_style_finding(object_id)
     explicit_style = {str(key): value for key, value in plain_text.style.items()}
     style = _effective_text_style(explicit_style, inherited_styles=inherited_styles)
     if style.get("link") is not None:
-        return _StyleRunDecision(None, _unsupported_text_finding(object_id))
+        return _unsupported_text_finding(object_id)
     if not plain_text.text.strip():
-        return _StyleRunDecision(None, None)
+        return None
     observed_brand = _canonical_style(style, theme_colors=theme_colors)
     if any(observed_brand[key] is None for key in ("fontFamily", "fontSizePt", "color")):
-        return _StyleRunDecision(None, _inherited_style_finding(object_id))
+        return _inherited_style_finding(object_id)
     desired_brand = _canonical_style(desired_style)
     desired_family = desired_brand["fontFamily"]
     observed_family = observed_brand["fontFamily"]
@@ -779,7 +765,7 @@ def _target_style_run(
         or not isinstance(observed_family, str)
         or desired_family.casefold() != observed_family.casefold()
     ):
-        return _StyleRunDecision(None, _fit_unresolved_finding(object_id))
+        return _fit_unresolved_finding(object_id)
     desired_size = desired_brand["fontSizePt"]
     observed_size = observed_brand["fontSizePt"]
     if (
@@ -787,7 +773,7 @@ def _target_style_run(
         or not isinstance(observed_size, int | float)
         or desired_size > observed_size
     ):
-        return _StyleRunDecision(None, _fit_unresolved_finding(object_id))
+        return _fit_unresolved_finding(object_id)
     text_background = _text_background(
         style,
         fallback=background,
@@ -799,22 +785,19 @@ def _target_style_run(
         or not isinstance(desired_color, str)
         or _contrast_ratio(desired_color, text_background) < _MIN_TEXT_CONTRAST
     ):
-        return _StyleRunDecision(None, _contrast_unresolved_finding(object_id))
+        return _contrast_unresolved_finding(object_id)
     weight = observed_brand["fontWeight"]
     if not isinstance(weight, int):
-        return _StyleRunDecision(None, _inherited_style_finding(object_id))
-    return _StyleRunDecision(
-        _StyleRun(
-            ordinal=0,
-            start_index=plain_text.start_index,
-            end_index=plain_text.end_index,
-            preserved_style_json=_canonical_json(
-                {key: style[key] for key in _PRESERVED_TEXT_STYLE_FIELDS if key in style}
-            ),
-            brand_style_json=_canonical_json(observed_brand),
-            font_weight=weight,
+        return _inherited_style_finding(object_id)
+    return _StyleRun(
+        ordinal=0,
+        start_index=plain_text.start_index,
+        end_index=plain_text.end_index,
+        preserved_style_json=_canonical_json(
+            {key: style[key] for key in _PRESERVED_TEXT_STYLE_FIELDS if key in style}
         ),
-        None,
+        brand_style_json=_canonical_json(observed_brand),
+        font_weight=weight,
     )
 
 
@@ -1542,19 +1525,23 @@ def _append_slide_logo_plan(
     except UnsupportedSourceError:
         findings.append(_unsafe_geometry_finding(SlideId(_required_string(slide, "objectId"))))
         return
-    request, placement, finding = _logo_request_for_slide(
+    decision = _logo_request_for_slide(
         slide,
         logo_uri=logo_uri,
         layout=layout,
         object_ids=object_ids,
         inherited_elements=inherited_elements,
     )
-    if finding is not None:
-        findings.append(finding)
-    if placement is not None:
-        placements[SlideId(_required_string(slide, "objectId"))] = placement
-    if request is not None:
-        requests.append(request)
+    match decision:
+        case TransformFinding():
+            findings.append(decision)
+        case _Rect():
+            placements[SlideId(_required_string(slide, "objectId"))] = decision
+        case _LogoInsertion(request=request, placement=placement):
+            placements[SlideId(_required_string(slide, "objectId"))] = placement
+            requests.append(request)
+        case _:
+            assert_never(decision)
 
 
 def _unsafe_contrast_logo_plan(
@@ -1564,15 +1551,20 @@ def _unsafe_contrast_logo_plan(
     layout: _LogoLayout,
     object_ids: dict[str, tuple[dict[str, JsonValue], ...]],
 ) -> _LogoPlan:
-    removal, finding = _unsafe_contrast_logo_removal(
+    decision = _unsafe_contrast_logo_removal(
         slide, logo_uri=logo_uri, layout=layout, object_ids=object_ids
     )
     requests: list[dict[str, JsonValue]] = []
     findings: list[TransformFinding] = []
-    if removal is not None:
-        requests.append(removal)
-    if finding is not None:
-        findings.append(finding)
+    match decision:
+        case dict():
+            requests.append(decision)
+        case TransformFinding():
+            findings.append(decision)
+        case None:
+            pass
+        case _:
+            assert_never(decision)
     findings.append(_logo_contrast_finding(SlideId(_required_string(slide, "objectId"))))
     return _LogoPlan(requests, {}, findings)
 
@@ -1583,7 +1575,7 @@ def _unsafe_contrast_logo_removal(
     logo_uri: str,
     layout: _LogoLayout,
     object_ids: dict[str, tuple[dict[str, Any], ...]],
-) -> _LogoRemovalDecision:
+) -> dict[str, JsonValue] | TransformFinding | None:
     slide_id = SlideId(_required_string(slide, "objectId"))
     logo_id = sarj_logo_object_id(slide_id)
     existing = [
@@ -1591,14 +1583,14 @@ def _unsafe_contrast_logo_removal(
     ]
     occurrences = object_ids.get(logo_id, ())
     if not occurrences:
-        return _LogoRemovalDecision(None, None)
+        return None
     if len(occurrences) != 1 or len(existing) != 1:
-        return _LogoRemovalDecision(None, _logo_id_collision_finding(slide_id))
+        return _logo_id_collision_finding(slide_id)
     if not _element_geometry_is_safe(existing[0], layout=layout):
-        return _LogoRemovalDecision(None, _unsafe_geometry_finding(slide_id))
+        return _unsafe_geometry_finding(slide_id)
     if _owned_logo_bounds(existing[0], logo_uri=logo_uri, layout=layout) is None:
-        return _LogoRemovalDecision(None, _logo_id_collision_finding(slide_id))
-    return _LogoRemovalDecision({"deleteObject": {"objectId": logo_id}}, None)
+        return _logo_id_collision_finding(slide_id)
+    return {"deleteObject": {"objectId": logo_id}}
 
 
 def _logo_layout(presentation: dict[str, Any]) -> _LogoLayout:
@@ -1642,23 +1634,23 @@ def _logo_request_for_slide(
     layout: _LogoLayout,
     object_ids: dict[str, tuple[dict[str, Any], ...]],
     inherited_elements: tuple[dict[str, Any], ...],
-) -> _LogoDecision:
+) -> _LogoInsertion | _Rect | TransformFinding:
     slide_id = SlideId(_required_string(slide, "objectId"))
     logo_id = sarj_logo_object_id(slide_id)
     top_level = _top_level_elements(slide)
     existing = [element for element in top_level if element.get("objectId") == logo_id]
     occurrences = object_ids.get(logo_id, ())
     if occurrences and (len(occurrences) != 1 or len(existing) != 1):
-        return _LogoDecision(None, None, _logo_id_collision_finding(slide_id))
+        return _logo_id_collision_finding(slide_id)
     if existing and not _element_geometry_is_safe(existing[0], layout=layout):
-        return _LogoDecision(None, None, _unsafe_geometry_finding(slide_id))
+        return _unsafe_geometry_finding(slide_id)
     occupied = _occupied_bounds(
         [*top_level, *inherited_elements],
         logo_id=logo_id,
         layout=layout,
     )
     if occupied is None:
-        return _LogoDecision(None, None, _unsafe_geometry_finding(slide_id))
+        return _unsafe_geometry_finding(slide_id)
     placement = next(
         (
             candidate
@@ -1668,21 +1660,21 @@ def _logo_request_for_slide(
         None,
     )
     if placement is None:
-        return _LogoDecision(None, None, _logo_collision_finding(slide_id))
+        return _logo_collision_finding(slide_id)
     if not _rect_is_safe(
         placement,
         page_width=layout.page_width,
         page_height=layout.page_height,
     ):
-        return _LogoDecision(None, None, _unsafe_geometry_finding(slide_id))
+        return _unsafe_geometry_finding(slide_id)
     if existing:
         existing_bounds = _owned_logo_bounds(
             existing[0], logo_uri=logo_uri, layout=layout, occupied=occupied
         )
         if existing_bounds is None:
-            return _LogoDecision(None, None, _logo_id_collision_finding(slide_id))
-        return _LogoDecision(None, existing_bounds, None)
-    return _LogoDecision(
+            return _logo_id_collision_finding(slide_id)
+        return existing_bounds
+    return _LogoInsertion(
         _create_logo_request(
             logo_id=logo_id,
             slide_id=slide_id,
@@ -1691,7 +1683,6 @@ def _logo_request_for_slide(
             placement=placement,
         ),
         placement,
-        None,
     )
 
 

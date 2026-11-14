@@ -19,6 +19,7 @@ from app.files.service import GoogleFilesService
 from app.identifiers import DriveId, FileId, IdempotencyKey, TaskId
 from app.models.task import Task
 from app.models.user import User
+from app.runtime_config import ConfiguredCloudTasks, DisabledDocumentQueue
 from app.smart_create.schemas import AIMode, BlankSource, SmartFileCreate
 from app.smart_create.service import (
     ReorganizationEvidence,
@@ -298,11 +299,14 @@ async def test_rejected_manual_dispatch_keeps_uuid_validation_and_independent_pr
 ):
     client = RecordingTaskClient()
     queue = CloudTasksEnqueuer(
-        project="round7",
-        location="local",
-        queue="fixture",
-        target_url="https://example.com/internal/tasks/smart-create",
-        invoker_service_account="fixture@example.com",
+        configuration=ConfiguredCloudTasks(
+            project="round7",
+            location="local",
+            queue="fixture",
+            target_url="https://example.com/internal/tasks/smart-create",
+            invoker_service_account="fixture@example.com",
+        ),
+        document_transform=DisabledDocumentQueue(),
         client=client,
     )
     malformed = UntrustedTaskId()

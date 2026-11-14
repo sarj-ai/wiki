@@ -19,10 +19,12 @@ from app.mcp.native_consent_router import NativeConsentSettings, create_native_c
 from app.mcp.native_core import NativeOAuthCore
 from app.mcp.native_schemas import (
     ConnectionView,
+    ConsentCommand,
     ConsentStatus,
     ConsentView,
     NativeOAuthError,
     WikiConsentIdentity,
+    consent_status_view,
 )
 from app.mcp.redirect_policy import McpRedirectPolicy
 from app.mcp.schemas import McpCapability
@@ -109,9 +111,8 @@ class Core(NativeOAuthCore):
         self, key: str, *, identity: WikiConsentIdentity, browser: str
     ) -> ConsentStatus:
         self.check(identity, browser)
-        return ConsentStatus(
+        return consent_status_view(
             status="denied" if self.denied else "approved" if self.decisions else "pending",
-            restart_required=bool(self.decisions),
         )
 
     @override
@@ -122,17 +123,16 @@ class Core(NativeOAuthCore):
         identity: WikiConsentIdentity,
         browser: str,
         csrf: str,
-        approve: bool,
-        transform_approved: bool = False,
+        command: ConsentCommand,
     ) -> str:
         self.check(identity, browser)
         if self.decisions or csrf != CSRF:
             raise NativeOAuthError
         self.decisions += 1
-        self.denied = not approve
+        self.denied = command is ConsentCommand.DENY
         if self.bad_redirect:
             return self.bad_redirect
-        return f"{CALLBACK}?{urlencode({'code': CODE, 'iss': ISSUER} if approve else {'error': 'access_denied', 'iss': ISSUER})}"
+        return f"{CALLBACK}?{urlencode({'code': CODE, 'iss': ISSUER} if command is not ConsentCommand.DENY else {'error': 'access_denied', 'iss': ISSUER})}"
 
     @override
     async def list_connections(self, identity: WikiConsentIdentity) -> list[ConnectionView]:
@@ -214,7 +214,9 @@ async def test_hostile_origin_rejected_before_auth(origin: str | None) -> None:
         if origin is not None:
             http.headers["Origin"] = origin
         assert (await http.get(PATH)).status_code == 403
-        assert (await http.post(PATH, json={"csrf": CSRF, "approve": True})).status_code == 403
+        assert (
+            await http.post(PATH, json={"csrf": CSRF, "command": "approve_read"})
+        ).status_code == 403
     assert auth.resolved == []
     assert core.decisions == 0
 
@@ -233,7 +235,9 @@ async def test_cross_browser_cannot_view_or_decide() -> None:
     _auth, core, http = harness(nonce="b" * 43)
     async with http:
         assert (await http.get(PATH)).status_code == 400
-        assert (await http.post(PATH, json={"csrf": CSRF, "approve": True})).status_code == 400
+        assert (
+            await http.post(PATH, json={"csrf": CSRF, "command": "approve_read"})
+        ).status_code == 400
     assert core.decisions == 0
 
 
@@ -242,7 +246,9 @@ async def test_changed_account_or_session_revision_cannot_decide() -> None:
     async with http:
         assert (await http.get(PATH)).status_code == 200
         auth.user.token_version = 1
-        assert (await http.post(PATH, json={"csrf": CSRF, "approve": True})).status_code == 400
+        assert (
+            await http.post(PATH, json={"csrf": CSRF, "command": "approve_read"})
+        ).status_code == 400
         auth.user.token_version = 0
         auth.user.id = UserId(uuid.uuid7())
         assert (await http.get(PATH)).status_code == 400
@@ -262,10 +268,16 @@ async def test_one_decision_and_terminal_status_has_no_code(approve: bool) -> No
     _auth, core, http = harness()
     async with http:
         await http.get(PATH)
-        response = await http.post(PATH, json={"csrf": CSRF, "approve": approve})
+        response = await http.post(
+            PATH, json={"csrf": CSRF, "command": "approve_read" if approve else "deny"}
+        )
         assert response.status_code == 200
         assert response.json()["redirect_uri"].startswith(CALLBACK)
-        assert (await http.post(PATH, json={"csrf": CSRF, "approve": approve})).status_code == 400
+        assert (
+            await http.post(
+                PATH, json={"csrf": CSRF, "command": "approve_read" if approve else "deny"}
+            )
+        ).status_code == 400
         status = await http.get(f"{PATH}/status")
         assert status.json() == {
             "status": "approved" if approve else "denied",
@@ -278,10 +290,12 @@ async def test_one_decision_and_terminal_status_has_no_code(approve: bool) -> No
 @pytest.mark.parametrize(
     "body",
     [
-        '{"csrf":"' + CSRF + '","approve":true,"approve":false}',
-        '{"csrf":"' + CSRF + '","approve":"true"}',
-        '{"csrf":"wrong","approve":true}',
-        '{"csrf":"' + CSRF + '","approve":true,"owner":"other-user"}',
+        '{"csrf":"' + CSRF + '","command":"approve_read","command":"deny"}',
+        '{"csrf":"' + CSRF + '","command":true}',
+        '{"csrf":"' + CSRF + '","command":"unknown"}',
+        '{"csrf":"' + CSRF + '","approve":true,"transform_approved":false}',
+        '{"csrf":"wrong","command":"approve_read"}',
+        '{"csrf":"' + CSRF + '","command":"approve_read","owner":"other-user"}',
         '{"x":' + "[" * 1500 + "0" + "]" * 1500 + "}",
     ],
 )
@@ -329,7 +343,7 @@ async def test_outbound_redirect_rejected_without_code_disclosure(redirect: str)
     _auth, core, http = harness()
     core.bad_redirect = redirect
     async with http:
-        response = await http.post(PATH, json={"csrf": CSRF, "approve": True})
+        response = await http.post(PATH, json={"csrf": CSRF, "command": "approve_read"})
     assert response.status_code == 400
     assert CODE not in response.text
 

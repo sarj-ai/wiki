@@ -15,6 +15,7 @@ from app.document_transform.native_footer_flow import (
     NativeFooterInvariant,
     NativeFooterPayload,
     NativeFooterStage,
+    SkippedNativeFooterCheckpoint,
     footer_coverage_complete,
     footer_invariant_sha256,
     verified_footer_coverage_projection,
@@ -281,7 +282,7 @@ async def test_native_footer_planning_preserves_existing_segments(
     result = await gateway.plan_copy_footer(draft=_draft(), operation_id=uuid.uuid7())
     assert result is not None
     assert result.coverage is not None
-    assert result.coverage.active is False
+    assert isinstance(result, SkippedNativeFooterCheckpoint)
     assert result.coverage.skipped[0].reason == (
         "pageless" if existing == "pageless" else "custom_footer"
     )
@@ -562,3 +563,48 @@ async def test_image_invariant_version_survives_footer_tab_advancement(
     assert footer_coverage_complete(checkpoint)
     verified_footer_coverage_projection(document, checkpoint)
     assert len(provider.calls) == 4
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("skipped", [False, True])
+async def test_legacy_coverage_flag_is_validated_and_removed(
+    monkeypatch: pytest.MonkeyPatch, skipped: bool
+) -> None:
+    document = _document()
+    if skipped:
+        document["tabs"][0]["documentTab"]["documentStyle"]["documentFormat"]["documentMode"] = (
+            "PAGELESS"
+        )
+    _, checkpoint, _ = await _plan(monkeypatch, document)
+    payload = checkpoint.model_dump(mode="json")
+    payload["coverage"]["active"] = not skipped
+    recovered = NativeFooterPayload.model_validate(payload).root
+    assert recovered == checkpoint
+    assert "active" not in recovered.model_dump(mode="json")["coverage"]
+    payload["coverage"]["active"] = skipped
+    with pytest.raises(ValidationError, match="contradicts"):
+        NativeFooterPayload.model_validate(payload)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("invalid_active", [0, 1, "true", None])
+async def test_legacy_coverage_never_coerces_a_nonboolean_flag(
+    monkeypatch: pytest.MonkeyPatch, invalid_active: JsonValue
+) -> None:
+    _, checkpoint, _ = await _plan(monkeypatch, _document())
+    payload = checkpoint.model_dump(mode="json")
+    payload["coverage"]["active"] = invalid_active
+    with pytest.raises(ValidationError, match="contradicts"):
+        NativeFooterPayload.model_validate(payload)
+
+
+@pytest.mark.asyncio
+async def test_legacy_coverage_requires_its_explicit_durable_stage(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _, checkpoint, _ = await _plan(monkeypatch, _document())
+    payload = checkpoint.model_dump(mode="json")
+    payload.pop("stage")
+    payload["coverage"]["active"] = True
+    with pytest.raises(ValidationError, match="persisted stage"):
+        NativeFooterPayload.model_validate(payload)

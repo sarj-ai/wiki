@@ -131,7 +131,8 @@
       "guards": [
         "closed literal combinations",
         "revision CAS",
-        "marker and invariant projection"
+        "marker and invariant projection",
+        "Completion discriminators reject numeric/string boolean coercion at persisted-state decoding."
       ],
       "recovery": "Decline persists before continuation; replay can only reattempt rejected CAS with exact unchanged preimage. Complete and declined cannot coexist.",
       "decision": "convert",
@@ -309,7 +310,7 @@
     {
       "id": "native-mcp-oauth",
       "oldRepresentation": "intent/code/access/refresh collections and grants",
-      "authoritativeReplacement": "native issuer typed request/response models, encrypted collection purpose and PostgresOAuthOperations",
+      "authoritativeReplacement": "Explicit consent intent, consent command, authorization-code, refresh-family and access-claims machines listed below, coordinated by the existing PostgresOAuthOperations and encrypted collection namespaces.",
       "events": [
         "register",
         "authorize",
@@ -327,8 +328,11 @@
         "grant checks"
       ],
       "recovery": "Code/refresh replay fails; revocation binds grants across tokens. OAuth proxy, its adapter, tables and compatibility paths were already retired by migration 0026.",
-      "decision": "retain-explicit",
+      "decision": "convert",
       "sources": [
+        "backend/app/mcp/native_schemas.py",
+        "backend/app/mcp/native_core.py",
+        "backend/app/mcp/native_provider.py",
         "backend/app/mcp/native_state.py",
         "backend/app/mcp/grants.py"
       ]
@@ -652,16 +656,17 @@
         "duplicate deterministic task name"
       ],
       "guards": [
-        "Reject partial queue/URL configuration before client construction",
+        "Frozen ConfiguredCloudTasks and ConfiguredDocumentQueue validate complete inputs and exact target URLs before constructing a provider client.",
         "Exact HTTPS internal path and OIDC audience",
         "Exhaustive dispatch by the configured queue variant"
       ],
       "recovery": "Disabled queues refuse document-transform dispatch. Configured calls deserialize a private protobuf for every operation; concurrent Smart Create and document-transform requests cannot overwrite each other. AlreadyExists is idempotent acknowledgement.",
       "decision": "convert",
       "sources": [
-        "backend/app/tasks/queue.py"
+        "backend/app/tasks/queue.py",
+        "backend/app/runtime_config.py"
       ],
-      "verification": "Four new queue cases plus the original queue suite; native qualification pending."
+      "verification": "Existing deterministic-name, ID-only-body, disabled-queue and concurrent protobuf ownership cases remain; candidate native qualification pending."
     },
     {
       "id": "model-failure-retry-policy",
@@ -987,7 +992,7 @@
     {
       "id": "document-copy-provider-mutation",
       "oldRepresentation": "Optional applied/pending/base hashes with independently populated combinations.",
-      "authoritativeReplacement": "UnmodifiedDraft | RecordedDraftMutation | PendingDraftMutation; prepare_draft_mutation and record_draft_mutation",
+      "authoritativeReplacement": "UnmodifiedDraft | RecordedDraftMutation | PendingDraftMutation | AppliedDraftMutation; prepare_draft_mutation and record_draft_mutation",
       "events": [
         "prepare",
         "persist pending intent",
@@ -1000,13 +1005,22 @@
         "prior applied receipt remains distinct and may coexist",
         "foreign pending digest or base is rejected",
         "strict SHA-256 property decoding",
-        "provider revision and exact atomic marker remain required"
+        "provider revision and exact atomic marker remain required",
+        "A pending receipt cannot acknowledge its own current digest.",
+        "Matching applied/pending Drive properties decode into the applied state without rewriting external evidence.",
+        "An acknowledged intent is idempotent and cannot authorize a different write."
       ],
       "recovery": "A crash never implies nonexecution. An unchanged base permits the original dispatch; an exact marker proves that batch committed; any other changed revision remains held. Existing Drive property names are decoded without rewriting audit evidence.",
       "decision": "convert",
       "sources": [
         "backend/app/document_transform/copy_draft_state.py",
         "backend/app/document_transform/google_gateway.py"
+      ],
+      "states": [
+        "unmodified",
+        "recorded(receipt digest)",
+        "pending(digest, frozen base revision, optional different prior receipt)",
+        "applied(digest, frozen base revision retained for recovery)"
       ]
     },
     {
@@ -1147,13 +1161,1300 @@
         "backend/tests/test_native_font_proof.py",
         "backend/tests/test_native_font_proof_v2.py"
       ]
+    },
+    {
+      "id": "drive-list-pagination",
+      "oldRepresentation": "Nullable cursor, loop termination and independent page/seen-token counters.",
+      "authoritativeReplacement": "FirstPage | NextPage(nonempty PageToken, immutable seen history) | PagesComplete; advance_page is the only continuation transition. Page number derives from unique history.",
+      "states": [
+        "first",
+        "next(token, seen)",
+        "complete"
+      ],
+      "events": [
+        "request current page",
+        "receive validated continuation",
+        "receive terminal page",
+        "reject malformed or repeated cursor"
+      ],
+      "guards": [
+        "Only active states accept requests or continuation events.",
+        "NextPage requires its token in nonempty history.",
+        "Duplicate and cyclic tokens cannot replay an earlier page."
+      ],
+      "recovery": "A failed provider request or invalid continuation returns the observed partial list and logs its cause; it never widens access. A new caller starts a fresh read; no provider write is involved.",
+      "decision": "convert",
+      "sources": [
+        "backend/app/drive/pagination.py",
+        "backend/app/drive/service.py"
+      ],
+      "verification": "New transition/cycle/invalid-input fixtures and existing consumer bounds/recovery tests; native qualification pending.",
+      "producer": "GoogleDriveService._list_drives_sync"
+    },
+    {
+      "id": "drive-folder-pagination",
+      "oldRepresentation": "Nullable cursor, loop termination and independent page/seen-token counters.",
+      "authoritativeReplacement": "FirstPage | NextPage(nonempty PageToken, immutable seen history) | PagesComplete; advance_page is the only continuation transition. Page number derives from unique history.",
+      "states": [
+        "first",
+        "next(token, seen)",
+        "complete"
+      ],
+      "events": [
+        "request current page",
+        "receive validated continuation",
+        "receive terminal page",
+        "reject malformed or repeated cursor"
+      ],
+      "guards": [
+        "Only active states accept requests or continuation events.",
+        "NextPage requires its token in nonempty history.",
+        "Duplicate and cyclic tokens cannot replay an earlier page."
+      ],
+      "recovery": "Retryable HTTP failures propagate; nonretryable HTTP partial-return behavior remains. Invalid continuation raises incomplete traversal rather than persisting a falsely completed walk. A new caller starts a fresh read; no provider write is involved.",
+      "decision": "convert",
+      "sources": [
+        "backend/app/drive/pagination.py",
+        "backend/app/drive/service.py"
+      ],
+      "verification": "New transition/cycle/invalid-input fixtures and existing consumer bounds/recovery tests; native qualification pending.",
+      "producer": "GoogleDriveService._walk_folders_sync"
+    },
+    {
+      "id": "drive-member-pagination",
+      "oldRepresentation": "Nullable cursor, loop termination and independent page/seen-token counters.",
+      "authoritativeReplacement": "FirstPage | NextPage(nonempty PageToken, immutable seen history) | PagesComplete; advance_page is the only continuation transition. Page number derives from unique history.",
+      "states": [
+        "first",
+        "next(token, seen)",
+        "complete"
+      ],
+      "events": [
+        "request current page",
+        "receive validated continuation",
+        "receive terminal page",
+        "reject malformed or repeated cursor"
+      ],
+      "guards": [
+        "Only active states accept requests or continuation events.",
+        "NextPage requires its token in nonempty history.",
+        "Duplicate and cyclic tokens cannot replay an earlier page."
+      ],
+      "recovery": "Configured page/child limits, fail-closed provider errors and raw child counting remain. Invalid or repeated cursors raise incomplete traversal. A new caller starts a fresh read; no provider write is involved.",
+      "decision": "convert",
+      "sources": [
+        "backend/app/drive/pagination.py",
+        "backend/app/drive/service.py"
+      ],
+      "verification": "New transition/cycle/invalid-input fixtures and existing consumer bounds/recovery tests; native qualification pending.",
+      "producer": "GoogleDriveService._list_members_sync"
+    },
+    {
+      "id": "drive-preload-pagination",
+      "oldRepresentation": "Nullable cursor, loop termination and independent page/seen-token counters.",
+      "authoritativeReplacement": "FirstPage | NextPage(nonempty PageToken, immutable seen history) | PagesComplete; advance_page is the only continuation transition. Page number derives from unique history.",
+      "states": [
+        "first",
+        "next(token, seen)",
+        "complete"
+      ],
+      "events": [
+        "request current page",
+        "receive validated continuation",
+        "receive terminal page",
+        "reject malformed or repeated cursor"
+      ],
+      "guards": [
+        "Only active states accept requests or continuation events.",
+        "NextPage requires its token in nonempty history.",
+        "Duplicate and cyclic tokens cannot replay an earlier page."
+      ],
+      "recovery": "The existing three-page cap and provider-failure partial result remain; invalid or repeated cursors mark files incomplete. A new caller starts a fresh read; no provider write is involved.",
+      "decision": "convert",
+      "sources": [
+        "backend/app/drive/pagination.py",
+        "backend/app/drive/service.py"
+      ],
+      "verification": "New transition/cycle/invalid-input fixtures and existing consumer bounds/recovery tests; native qualification pending.",
+      "producer": "GoogleDriveService._list_drive_files_sync"
+    },
+    {
+      "id": "drive-permission-pagination",
+      "oldRepresentation": "Nullable cursor, loop termination and independent page/seen-token counters.",
+      "authoritativeReplacement": "FirstPage | NextPage(nonempty PageToken, immutable seen history) | PagesComplete; advance_page is the only continuation transition. Page number derives from unique history.",
+      "states": [
+        "first",
+        "next(token, seen)",
+        "complete"
+      ],
+      "events": [
+        "request current page",
+        "receive validated continuation",
+        "receive terminal page",
+        "reject malformed or repeated cursor"
+      ],
+      "guards": [
+        "Only active states accept requests or continuation events.",
+        "NextPage requires its token in nonempty history.",
+        "Duplicate and cyclic tokens cannot replay an earlier page."
+      ],
+      "recovery": "Live metadata before/after equality, permission ID uniqueness and maximum pages/permissions remain. Any invalid continuation refuses the snapshot. A new caller starts a fresh read; no provider write is involved.",
+      "decision": "convert",
+      "sources": [
+        "backend/app/drive/pagination.py",
+        "backend/app/drive/service.py"
+      ],
+      "verification": "New transition/cycle/invalid-input fixtures and existing consumer bounds/recovery tests; native qualification pending.",
+      "producer": "GoogleDriveService._read_file_permissions_bounded_sync"
+    },
+    {
+      "id": "shared-cloud-tasks-configuration",
+      "oldRepresentation": "Four nullable infrastructure fields plus project presence rechecked in dependency and MCP factories.",
+      "authoritativeReplacement": "DisabledCloudTasks | ConfiguredCloudTasks(project, location, queue, exact target URL, invoker service account).",
+      "events": [
+        "validate boundary input",
+        "choose immutable configuration or proof",
+        "admit the requested operation",
+        "reject missing or contradictory evidence"
+      ],
+      "guards": [
+        "Complete configuration and project required at settings boundary.",
+        "Exact HTTPS internal Smart Create endpoint, literal audience and caller equality remain.",
+        "Raw environment fields are frozen; domain consumers use the validated choice."
+      ],
+      "recovery": "Unconfigured infrastructure fails explicitly before a provider client is created; no default project, URL or service account is invented.",
+      "decision": "convert",
+      "sources": [
+        "backend/app/runtime_config.py",
+        "backend/app/config.py",
+        "backend/app/tasks/dependencies.py",
+        "backend/app/tasks/internal_auth.py"
+      ],
+      "verification": "Candidate implementation; native transition, invalid-input, recovery and deployment qualification pending."
+    },
+    {
+      "id": "document-queue-configuration",
+      "oldRepresentation": "Two nullable queue/target inputs and repeated pair checks in the enqueuer.",
+      "authoritativeReplacement": "DisabledDocumentQueue | ConfiguredDocumentQueue(queue, exact target URL).",
+      "events": [
+        "validate boundary input",
+        "choose immutable configuration or proof",
+        "admit the requested operation",
+        "reject missing or contradictory evidence"
+      ],
+      "guards": [
+        "Complete pair and exact HTTPS document-transform endpoint.",
+        "Frozen settings and immutable selected configuration."
+      ],
+      "recovery": "Disabled document queues refuse dispatch; configured queues retain deterministic task IDs and independently owned protobufs.",
+      "decision": "convert",
+      "sources": [
+        "backend/app/runtime_config.py",
+        "backend/app/document_settings.py",
+        "backend/app/tasks/queue.py"
+      ],
+      "verification": "Candidate implementation; native transition, invalid-input, recovery and deployment qualification pending."
+    },
+    {
+      "id": "native-mcp-configuration",
+      "oldRepresentation": "Enabled flag and nullable issuer/key material plus callback and queue conditions scattered across composition/startup.",
+      "authoritativeReplacement": "DisabledNativeMcp | EnabledNativeMcp(required issuer, independent encryption/lock secrets, verified redirect policy, configured task infrastructure and document queue).",
+      "events": [
+        "validate boundary input",
+        "choose immutable configuration or proof",
+        "admit the requested operation",
+        "reject missing or contradictory evidence"
+      ],
+      "guards": [
+        "HTTPS same-site issuer/frontend/callback and cookie domain checks remain.",
+        "Key validity/rotation bounds and cross-purpose independence remain.",
+        "Explicit verified callbacks and both required queues remain.",
+        "Startup and composition exhaustively handle the selected choice."
+      ],
+      "recovery": "Startup installs the native runtime only after required configuration and lifespan succeed. The slot serves503 before readiness and after teardown; failures never expose a partially configured issuer.",
+      "decision": "convert",
+      "sources": [
+        "backend/app/runtime_config.py",
+        "backend/app/config.py",
+        "backend/app/main.py",
+        "backend/app/mcp/native_composition.py"
+      ],
+      "verification": "Candidate implementation; native transition, invalid-input, recovery and deployment qualification pending."
+    },
+    {
+      "id": "provider-verification-outcome",
+      "oldRepresentation": "Mutually dependent brand/supported booleans, unrequested branding reported as true, and an optional observed revision falling back to an older draft.",
+      "authoritativeReplacement": "BrandVerification.NOT_REQUIRED | FULL | SUPPORTED | MISMATCH; provider OutputVerification always requires its freshly observed revision. Existing-layout and nonpartial-provider aliases restrict accepted variants.",
+      "events": [
+        "validate boundary input",
+        "choose immutable configuration or proof",
+        "admit the requested operation",
+        "reject missing or contradictory evidence"
+      ],
+      "guards": [
+        "Not-required evidence cannot satisfy a branding-required operation.",
+        "Supported formatting remains distinct from complete branding and from mismatch.",
+        "Completion compares the observed provider revision with its checkpoint; no draft revision substitutes for absent evidence.",
+        "The policy and finding decisions exhaustively handle all outcomes."
+      ],
+      "recovery": "Verification refusal does not imply that a preceding external mutation failed. Copy/in-place checkpoints, atomic markers and review handling remain authoritative; no effect is replayed from missing proof.",
+      "decision": "convert",
+      "sources": [
+        "backend/app/document_transform/verification.py",
+        "backend/app/document_transform/gateway.py",
+        "backend/app/document_transform/google_gateway.py",
+        "backend/app/document_transform/markdown_import.py",
+        "backend/app/document_transform/google_presentation_gateway.py",
+        "backend/app/document_transform/executor.py",
+        "backend/app/document_transform/presentation_executor.py"
+      ],
+      "verification": "Candidate implementation; native transition, invalid-input, recovery and deployment qualification pending."
+    },
+    {
+      "id": "sidebar-conditional-response",
+      "oldRepresentation": "Optional cached tree and separately optional timestamp; missing payload could coexist with missing or contradictory metadata.",
+      "authoritativeReplacement": "LoadedDriveTree(required CachedDriveTree) | NotModifiedDriveTree(required timestamp).",
+      "events": [
+        "read requested ETag",
+        "match exact canonical current ETag",
+        "return changed payload"
+      ],
+      "guards": [
+        "304 requires the explicit not-modified variant and a timestamp.",
+        "Loaded results derive their timestamp from the same cached record.",
+        "HTTP routing exhaustively handles both variants."
+      ],
+      "recovery": "Missing, corrupt or changed SQL evidence loads a full tree; it cannot fabricate a304. The existing canonical timestamp spelling and private no-store policy remain.",
+      "decision": "convert",
+      "sources": [
+        "backend/app/sidebar/cache.py",
+        "backend/app/sidebar/router.py",
+        "backend/tests/test_round7_reads.py"
+      ],
+      "verification": "Native qualification pending."
+    },
+    {
+      "id": "sidebar-sql-payload-projection",
+      "oldRepresentation": "Nullable ciphertext and optional conditional snapshot plus repeated version checks at later consumers.",
+      "authoritativeReplacement": "_EncodedTreeSnapshot(required ciphertext) | _DecodedTreeSnapshot(required validated cached tree); conditional metadata uses _MatchedTreeTime(required timestamp).",
+      "events": [
+        "read SQL row",
+        "validate omitted ciphertext against held decoded version",
+        "decrypt encoded payload",
+        "refuse inconsistent projection"
+      ],
+      "guards": [
+        "Omitted ciphertext requires a held decoded object and exact version equality at the SQL boundary.",
+        "Only the encoded variant can enter decryption.",
+        "Ciphertext deletion still fences timestamp, xid epoch, xid and tuple location.",
+        "The SQL projection and transaction-release optimization remain."
+      ],
+      "recovery": "A retained decoded reference survives LRU eviction during the read. Invalid or missing projection evidence fails explicitly; a corrupt encoded snapshot cannot delete a concurrent replacement.",
+      "decision": "convert",
+      "sources": [
+        "backend/app/sidebar/cache.py",
+        "backend/tests/test_storage_read_projection_postgres.py"
+      ],
+      "verification": "Existing PostgreSQL transaction/TOAST/version/concurrency checks retained and updated; native qualification pending."
+    },
+    {
+      "id": "drive-bounded-download",
+      "oldRepresentation": "SDK status Any plus independent done boolean, truthy completion coercion and loop counter state",
+      "authoritativeReplacement": "ContinuingDownload(total_size) | CompletedDownload(total_size), strict provider decoding and exhaustive bounded byte consumer",
+      "states": [
+        "continuing",
+        "completed"
+      ],
+      "events": [
+        "receive chunk",
+        "receive end",
+        "reject malformed progress",
+        "reject stalled progress",
+        "reject oversize or truncated content"
+      ],
+      "commands": [
+        "download bounded bytes"
+      ],
+      "guards": [
+        "strict boolean completion",
+        "nonnegative integer or unknown total",
+        "actual byte cap",
+        "continuing chunk must advance",
+        "completed known total equals observed bytes",
+        "provider retry/deadline guards retained"
+      ],
+      "terminalStates": [
+        "completed"
+      ],
+      "sideEffects": [
+        "download bounded bytes"
+      ],
+      "invalidTransition": "Reject malformed external/persisted data at the boundary; domain selectors use exhaustive class or enum matching. No fallback invents ownership, completion or missing proof.",
+      "recovery": "Read-only GET chunks retain existing bounded transport retry. Unknown size remains an independent observation; lack of progress cannot spin forever.",
+      "decision": "convert",
+      "sources": [
+        "backend/app/drive/retry.py",
+        "backend/app/document_transform/google_gateway.py",
+        "backend/tests/test_bounded_download.py"
+      ],
+      "verification": "Implementation and focused regression fixtures added; native and full qualification pending."
+    },
+    {
+      "id": "footer-creation-ownership",
+      "oldRepresentation": "creation_attempted boolean plus nullable owned_footer_id",
+      "authoritativeReplacement": "FooterCreation.NOT_STARTED | FooterCreation.UNCERTAIN | OwnedFooter(required provider ID)",
+      "states": [
+        "not_started",
+        "uncertain",
+        "owned",
+        "needs_review"
+      ],
+      "events": [
+        "plan create",
+        "observe ambiguous create",
+        "bind provider footer ID",
+        "recover exact footer"
+      ],
+      "commands": [
+        "plan revision-fenced footer creation or population"
+      ],
+      "guards": [
+        "uncertain creation never authorizes another create",
+        "owned ID must match provider segment",
+        "nonempty owned identifier"
+      ],
+      "terminalStates": [
+        "needs_review"
+      ],
+      "sideEffects": [
+        "plan revision-fenced footer creation or population"
+      ],
+      "invalidTransition": "Reject malformed external/persisted data at the boundary; domain selectors use exhaustive class or enum matching. No fallback invents ownership, completion or missing proof.",
+      "recovery": "Creation uncertainty remains distinct from proof of no effect; only positive ownership permits population.",
+      "decision": "convert",
+      "sources": [
+        "backend/app/document_transform/native_footer.py",
+        "backend/app/document_transform/google_gateway.py",
+        "backend/tests/test_document_transform_native_footer.py"
+      ],
+      "verification": "Implementation and focused regression fixtures added; native and full qualification pending."
+    },
+    {
+      "id": "footer-writing-decision",
+      "oldRepresentation": "action enum with requests defaulting to empty even for writing actions",
+      "authoritativeReplacement": "WritingFooterPlan(required nonempty requests, CREATE|POPULATE) | NonWritingFooterPlan(UNCHANGED|PRESERVE|NEEDS_REVIEW)",
+      "states": [
+        "create",
+        "populate",
+        "unchanged",
+        "preserve",
+        "needs_review"
+      ],
+      "events": [
+        "inspect provider footer",
+        "plan batch",
+        "decline unsafe/custom layout"
+      ],
+      "commands": [
+        "construct revision-fenced batch"
+      ],
+      "guards": [
+        "only writing plan exposes batch_body",
+        "copy bridge accepts only creating/populating checkpoint",
+        "required provider revision retained"
+      ],
+      "terminalStates": [
+        "unchanged",
+        "preserve",
+        "needs_review"
+      ],
+      "sideEffects": [
+        "construct revision-fenced batch"
+      ],
+      "invalidTransition": "Reject malformed external/persisted data at the boundary; domain selectors use exhaustive class or enum matching. No fallback invents ownership, completion or missing proof.",
+      "recovery": "Completed checkpoints are rejected before planning provider writes; unknown/custom content is preserved.",
+      "decision": "convert",
+      "sources": [
+        "backend/app/document_transform/native_footer.py",
+        "backend/app/document_transform/google_gateway.py"
+      ],
+      "verification": "Implementation and focused regression fixtures added; native and full qualification pending."
+    },
+    {
+      "id": "footer-coverage-authority",
+      "oldRepresentation": "coverage.active boolean redundantly combined with outer stage and footer ID",
+      "authoritativeReplacement": "SkippedNativeFooterCheckpoint versus creating/populating/completed variants; coverage flag deleted",
+      "states": [
+        "creating",
+        "populating",
+        "completed",
+        "skipped"
+      ],
+      "events": [
+        "classify topology",
+        "advance owned tab",
+        "complete coverage",
+        "decode legacy checkpoint"
+      ],
+      "commands": [
+        "persist next checkpoint under existing lease/CAS"
+      ],
+      "guards": [
+        "strict ordered topology partition",
+        "bounded pending/completed lists",
+        "unique markers",
+        "legacy active flag must exactly agree with outer stage and footer identity"
+      ],
+      "terminalStates": [
+        "completed"
+      ],
+      "sideEffects": [
+        "persist next checkpoint under existing lease/CAS"
+      ],
+      "invalidTransition": "Reject malformed external/persisted data at the boundary; domain selectors use exhaustive class or enum matching. No fallback invents ownership, completion or missing proof.",
+      "recovery": "Valid legacy active flags are checked and removed by the runtime decoder; contradictory or incomplete old shapes require review. Provider content hashes and uncertain checkpoint evidence are retained.",
+      "decision": "convert",
+      "sources": [
+        "backend/app/document_transform/native_footer_flow.py",
+        "backend/app/document_transform/google_gateway.py",
+        "backend/tests/test_document_transform_footer_flow.py"
+      ],
+      "verification": "Implementation and focused regression fixtures added; native and full qualification pending."
+    },
+    {
+      "id": "slides-style-target-decision",
+      "oldRepresentation": "optional target plus optional finding",
+      "authoritativeReplacement": "_StyleTarget | TransformFinding | None",
+      "states": [
+        "target",
+        "finding",
+        "no_change"
+      ],
+      "events": [
+        "inspect resolved provider facts",
+        "produce one decision",
+        "exhaustively consume decision"
+      ],
+      "commands": [
+        "append only an admitted style/logo command"
+      ],
+      "guards": [
+        "existing style/contrast/geometry/role/inheritance checks retained",
+        "owned object identity required before deletion",
+        "a finding cannot carry a write request"
+      ],
+      "terminalStates": [
+        "finding",
+        "no_change"
+      ],
+      "sideEffects": [
+        "append only an admitted style/logo command"
+      ],
+      "invalidTransition": "Reject malformed external/persisted data at the boundary; domain selectors use exhaustive class or enum matching. No fallback invents ownership, completion or missing proof.",
+      "recovery": "These are pure planning decisions. Provider mutation remains guarded by the durable presentation intent, base revision and exact postcondition proof.",
+      "decision": "convert",
+      "sources": [
+        "backend/app/document_transform/slides_brand.py",
+        "backend/tests/test_document_transform_slides_brand.py"
+      ],
+      "verification": "Implementation and focused regression fixtures added; native and full qualification pending."
+    },
+    {
+      "id": "slides-style-eligibility-decision",
+      "oldRepresentation": "optional eligibility plus optional finding",
+      "authoritativeReplacement": "_StyleEligibility | TransformFinding",
+      "states": [
+        "eligible",
+        "finding"
+      ],
+      "events": [
+        "inspect resolved provider facts",
+        "produce one decision",
+        "exhaustively consume decision"
+      ],
+      "commands": [
+        "append only an admitted style/logo command"
+      ],
+      "guards": [
+        "existing style/contrast/geometry/role/inheritance checks retained",
+        "owned object identity required before deletion",
+        "a finding cannot carry a write request"
+      ],
+      "terminalStates": [
+        "finding"
+      ],
+      "sideEffects": [
+        "append only an admitted style/logo command"
+      ],
+      "invalidTransition": "Reject malformed external/persisted data at the boundary; domain selectors use exhaustive class or enum matching. No fallback invents ownership, completion or missing proof.",
+      "recovery": "These are pure planning decisions. Provider mutation remains guarded by the durable presentation intent, base revision and exact postcondition proof.",
+      "decision": "convert",
+      "sources": [
+        "backend/app/document_transform/slides_brand.py",
+        "backend/tests/test_document_transform_slides_brand.py"
+      ],
+      "verification": "Implementation and focused regression fixtures added; native and full qualification pending."
+    },
+    {
+      "id": "slides-style-run-decision",
+      "oldRepresentation": "optional run plus optional finding",
+      "authoritativeReplacement": "_StyleRun | TransformFinding | None",
+      "states": [
+        "run",
+        "finding",
+        "no_change"
+      ],
+      "events": [
+        "inspect resolved provider facts",
+        "produce one decision",
+        "exhaustively consume decision"
+      ],
+      "commands": [
+        "append only an admitted style/logo command"
+      ],
+      "guards": [
+        "existing style/contrast/geometry/role/inheritance checks retained",
+        "owned object identity required before deletion",
+        "a finding cannot carry a write request"
+      ],
+      "terminalStates": [
+        "finding",
+        "no_change"
+      ],
+      "sideEffects": [
+        "append only an admitted style/logo command"
+      ],
+      "invalidTransition": "Reject malformed external/persisted data at the boundary; domain selectors use exhaustive class or enum matching. No fallback invents ownership, completion or missing proof.",
+      "recovery": "These are pure planning decisions. Provider mutation remains guarded by the durable presentation intent, base revision and exact postcondition proof.",
+      "decision": "convert",
+      "sources": [
+        "backend/app/document_transform/slides_brand.py",
+        "backend/tests/test_document_transform_slides_brand.py"
+      ],
+      "verification": "Implementation and focused regression fixtures added; native and full qualification pending."
+    },
+    {
+      "id": "slides-logo-placement-decision",
+      "oldRepresentation": "optional request, placement and finding",
+      "authoritativeReplacement": "_LogoInsertion(required request and placement) | existing _Rect | TransformFinding",
+      "states": [
+        "insert",
+        "existing",
+        "finding"
+      ],
+      "events": [
+        "inspect resolved provider facts",
+        "produce one decision",
+        "exhaustively consume decision"
+      ],
+      "commands": [
+        "append only an admitted style/logo command"
+      ],
+      "guards": [
+        "existing style/contrast/geometry/role/inheritance checks retained",
+        "owned object identity required before deletion",
+        "a finding cannot carry a write request"
+      ],
+      "terminalStates": [
+        "finding"
+      ],
+      "sideEffects": [
+        "append only an admitted style/logo command"
+      ],
+      "invalidTransition": "Reject malformed external/persisted data at the boundary; domain selectors use exhaustive class or enum matching. No fallback invents ownership, completion or missing proof.",
+      "recovery": "These are pure planning decisions. Provider mutation remains guarded by the durable presentation intent, base revision and exact postcondition proof.",
+      "decision": "convert",
+      "sources": [
+        "backend/app/document_transform/slides_brand.py",
+        "backend/tests/test_document_transform_slides_brand.py"
+      ],
+      "verification": "Implementation and focused regression fixtures added; native and full qualification pending."
+    },
+    {
+      "id": "slides-logo-removal-decision",
+      "oldRepresentation": "optional deletion request plus optional finding",
+      "authoritativeReplacement": "validated deletion command | TransformFinding | None",
+      "states": [
+        "remove",
+        "finding",
+        "no_change"
+      ],
+      "events": [
+        "inspect resolved provider facts",
+        "produce one decision",
+        "exhaustively consume decision"
+      ],
+      "commands": [
+        "append only an admitted style/logo command"
+      ],
+      "guards": [
+        "existing style/contrast/geometry/role/inheritance checks retained",
+        "owned object identity required before deletion",
+        "a finding cannot carry a write request"
+      ],
+      "terminalStates": [
+        "finding",
+        "no_change"
+      ],
+      "sideEffects": [
+        "append only an admitted style/logo command"
+      ],
+      "invalidTransition": "Reject malformed external/persisted data at the boundary; domain selectors use exhaustive class or enum matching. No fallback invents ownership, completion or missing proof.",
+      "recovery": "These are pure planning decisions. Provider mutation remains guarded by the durable presentation intent, base revision and exact postcondition proof.",
+      "decision": "convert",
+      "sources": [
+        "backend/app/document_transform/slides_brand.py",
+        "backend/tests/test_document_transform_slides_brand.py"
+      ],
+      "verification": "Implementation and focused regression fixtures added; native and full qualification pending."
+    },
+    {
+      "id": "native-oauth-consent-intent",
+      "oldRepresentation": "nullable user/session/CSRF triple plus decided boolean and nullable decision",
+      "authoritativeReplacement": "UnboundIntent | BoundIntent | ApprovedIntent | DeniedIntent; bind_intent and settle_intent",
+      "states": [
+        "unbound",
+        "bound",
+        "approved",
+        "denied"
+      ],
+      "events": [
+        "authorize",
+        "bind current browser session",
+        "approve read",
+        "approve transform",
+        "deny",
+        "expire"
+      ],
+      "commands": [
+        "persist bound/terminal intent",
+        "enroll approved grant",
+        "issue authorization code"
+      ],
+      "guards": [
+        "browser/issuer/resource/registered callback",
+        "identity and CSRF required only after binding",
+        "current user/session revision",
+        "transaction/advisory lock",
+        "one decision only",
+        "grant quota",
+        "Native state writer validates the exact collection and requires row expiry to equal payload expiry."
+      ],
+      "terminalStates": [
+        "approved",
+        "denied"
+      ],
+      "sideEffects": [
+        "persist bound/terminal intent",
+        "enroll approved grant",
+        "issue authorization code"
+      ],
+      "invalidTransition": "Reject malformed external/persisted data at the boundary; domain selectors use exhaustive class or enum matching. No fallback invents ownership, completion or missing proof.",
+      "recovery": "Only exact valid old field combinations decode. Contradictory legacy identity or decision flags are rejected. Guarded writes emit canonical tagged payloads without extending expiry.",
+      "decision": "convert",
+      "sources": [
+        "backend/app/mcp/native_schemas.py",
+        "backend/app/mcp/native_core.py",
+        "backend/app/mcp/native_provider.py",
+        "backend/tests/test_native_oauth_states.py"
+      ],
+      "verification": "Implementation and focused regression fixtures added; native and full qualification pending."
+    },
+    {
+      "id": "native-oauth-authorization-code",
+      "oldRepresentation": "shared credential with nullable PKCE/callback and consumed boolean",
+      "authoritativeReplacement": "ReadyCode(required PKCE and callback) | SpentCode(retained exact binding); spend_code",
+      "states": [
+        "ready_code",
+        "spent_code"
+      ],
+      "events": [
+        "load exact code",
+        "validate live grant",
+        "consume once",
+        "issue both tokens",
+        "rollback failed issuance"
+      ],
+      "commands": [
+        "persist spent code",
+        "issue access and refresh atomically"
+      ],
+      "guards": [
+        "collection-specific CodePayload decoder",
+        "exact SDK code projection comparison",
+        "grant advisory lock",
+        "consume and both token writes in one transaction",
+        "Native state writer validates the exact collection and requires row expiry to equal payload expiry."
+      ],
+      "terminalStates": [
+        "spent_code"
+      ],
+      "sideEffects": [
+        "persist spent code",
+        "issue access and refresh atomically"
+      ],
+      "invalidTransition": "Reject malformed external/persisted data at the boundary; domain selectors use exhaustive class or enum matching. No fallback invents ownership, completion or missing proof.",
+      "recovery": "A failed issuance rolls back code consumption and both tokens. Spent codes remain explicit replay evidence until expiry; no missing binding is synthesized.",
+      "decision": "convert",
+      "sources": [
+        "backend/app/mcp/native_schemas.py",
+        "backend/app/mcp/native_core.py",
+        "backend/app/mcp/native_provider.py",
+        "backend/tests/test_native_mcp_core.py"
+      ],
+      "verification": "Implementation and focused regression fixtures added; native and full qualification pending."
+    },
+    {
+      "id": "native-oauth-refresh-family",
+      "oldRepresentation": "consumed boolean on shared credential containing irrelevant optional code fields",
+      "authoritativeReplacement": "ActiveRefresh | SpentRefresh; spend_refresh; collection-specific RefreshPayload",
+      "states": [
+        "refresh",
+        "spent_refresh"
+      ],
+      "events": [
+        "validate live grant",
+        "rotate once",
+        "detect replay",
+        "revoke family",
+        "expire"
+      ],
+      "commands": [
+        "persist spent refresh",
+        "issue replacement token pair",
+        "revoke replayed family"
+      ],
+      "guards": [
+        "grant advisory lock",
+        "unique subset scopes including read",
+        "spent state retained",
+        "replay revocation commits before public error",
+        "Native state writer validates the exact collection and requires row expiry to equal payload expiry."
+      ],
+      "terminalStates": [
+        "spent_refresh"
+      ],
+      "sideEffects": [
+        "persist spent refresh",
+        "issue replacement token pair",
+        "revoke replayed family"
+      ],
+      "invalidTransition": "Reject malformed external/persisted data at the boundary; domain selectors use exhaustive class or enum matching. No fallback invents ownership, completion or missing proof.",
+      "recovery": "A crash within the transaction rolls back consumption and issuance. A committed spent refresh revokes its grant family on replay. Legacy token purpose comes from its encrypted collection, never guessed from identical payloads.",
+      "decision": "convert",
+      "sources": [
+        "backend/app/mcp/native_schemas.py",
+        "backend/app/mcp/native_core.py",
+        "backend/app/mcp/native_provider.py",
+        "backend/tests/test_native_mcp_core.py"
+      ],
+      "verification": "Implementation and focused regression fixtures added; native and full qualification pending."
+    },
+    {
+      "id": "native-oauth-access-claims",
+      "oldRepresentation": "shared credential permits consumed flag and nullable authorization-code fields",
+      "authoritativeReplacement": "ActiveAccess with complete immutable grant claims and AccessPayload decoder",
+      "states": [
+        "access",
+        "expired_or_revoked"
+      ],
+      "events": [
+        "load bearer",
+        "validate live grant/current user",
+        "expire or revoke"
+      ],
+      "commands": [
+        "admit authenticated read/transform under live grant"
+      ],
+      "guards": [
+        "exact encrypted collection",
+        "issuer/resource/expiry/grant/user binding",
+        "code-only fields forbidden",
+        "state write expiry equals payload expiry",
+        "Native state writer validates the exact collection and requires row expiry to equal payload expiry."
+      ],
+      "terminalStates": [],
+      "sideEffects": [
+        "admit authenticated read/transform under live grant"
+      ],
+      "invalidTransition": "Reject malformed external/persisted data at the boundary; domain selectors use exhaustive class or enum matching. No fallback invents ownership, completion or missing proof.",
+      "recovery": "Access records have no consumption transition. Legacy access consumed=true and wrong-collection tagged payloads are rejected.",
+      "decision": "convert",
+      "sources": [
+        "backend/app/mcp/native_schemas.py",
+        "backend/app/mcp/native_state.py",
+        "backend/app/mcp/native_provider.py"
+      ],
+      "verification": "Implementation and focused regression fixtures added; native and full qualification pending."
+    },
+    {
+      "id": "native-oauth-consent-command",
+      "oldRepresentation": "approve and transform_approved booleans in API, core and frontend callbacks",
+      "authoritativeReplacement": "ConsentCommand.DENY | APPROVE_READ | APPROVE_TRANSFORM; matching validated frontend string union",
+      "states": [
+        "deny",
+        "approve_read",
+        "approve_transform"
+      ],
+      "events": [
+        "deny click",
+        "approve current selected capability",
+        "validate command"
+      ],
+      "commands": [
+        "submit one explicit consent event"
+      ],
+      "guards": [
+        "strict closed API enum and frontend Zod parser",
+        "legacy flag payloads rejected",
+        "transform must be requested",
+        "existing CSRF/origin/session/browser/redirect guards",
+        "Native state writer validates the exact collection and requires row expiry to equal payload expiry."
+      ],
+      "terminalStates": [],
+      "sideEffects": [
+        "submit one explicit consent event"
+      ],
+      "invalidTransition": "Reject malformed external/persisted data at the boundary; domain selectors use exhaustive class or enum matching. No fallback invents ownership, completion or missing proof.",
+      "recovery": "The browser producer and API change together; pending approval is never retried automatically after uncertain acknowledgement.",
+      "decision": "convert",
+      "sources": [
+        "backend/app/mcp/native_consent_router.py",
+        "backend/app/mcp/native_core.py",
+        "frontend/src/lib/mcp-consent-client.ts",
+        "frontend/src/components/mcp/mcp-consent.tsx"
+      ],
+      "verification": "Implementation and focused regression fixtures added; native and full qualification pending."
+    },
+    {
+      "id": "native-oauth-consent-status-projection",
+      "oldRepresentation": "status string plus independently supplied restart_required boolean",
+      "authoritativeReplacement": "PendingConsentStatus(status=pending,restart_required=Literal[False]) | TerminalConsentStatus(status=approved|denied|expired,restart_required=Literal[True]); matching frontend discriminated runtime union.",
+      "states": [
+        "pending",
+        "approved",
+        "denied",
+        "expired"
+      ],
+      "events": [
+        "observe current durable decision",
+        "expire request",
+        "recover ambiguous acknowledgement"
+      ],
+      "commands": [
+        "return bounded status without secrets"
+      ],
+      "guards": [
+        "restart false only for pending",
+        "all terminal observations require restart",
+        "no authorization code returned by recovery",
+        "Native state writer validates the exact collection and requires row expiry to equal payload expiry."
+      ],
+      "terminalStates": [
+        "approved",
+        "denied"
+      ],
+      "sideEffects": [
+        "return bounded status without secrets"
+      ],
+      "invalidTransition": "Reject malformed external/persisted data at the boundary; domain selectors use exhaustive class or enum matching. No fallback invents ownership, completion or missing proof.",
+      "recovery": "Recovery reports existing durable state without issuing another code; approved recovery requires a fresh handoff.",
+      "decision": "convert",
+      "sources": [
+        "backend/app/mcp/native_schemas.py",
+        "backend/app/mcp/native_core.py",
+        "frontend/src/lib/mcp-consent-client.ts"
+      ],
+      "verification": "Implementation and focused regression fixtures added; native and full qualification pending."
+    },
+    {
+      "id": "in-place-initial-mutation-plan",
+      "oldRepresentation": "_InPlaceMutationPlan carries a broad InPlaceCheckpointStage and a mutable request list; producer returns only HEADERS or CONTENT but types also permit COMPLETE and empty header requests.",
+      "authoritativeReplacement": "Closed immutable _InitialHeaders(first request, remaining requests) | _InitialContent(first request, remaining requests) | _InitialNoop. Only the rendering boundary chooses HEADERS or CONTENT for the strict durable checkpoint parser; COMPLETE cannot be constructed as an initial command.",
+      "decision": "convert",
+      "producers": [
+        "DocumentTransformExecutor._initial_in_place_requests",
+        "_plan_initial_in_place"
+      ],
+      "consumers": [
+        "_initial_in_place_checkpoint -> InPlaceCheckpointPayload before persistence"
+      ],
+      "sources": [
+        "backend/app/document_transform/executor.py",
+        "backend/app/document_transform/schemas.py"
+      ],
+      "recovery": "Preserve existing provider revision/named-range/semantic guards. Held production evidence must remain unchanged.",
+      "verification": "Focused v20 passed full changed Python rules, strict typing, mypy and 1501 backend cases. PostgreSQL v3 passed all 13 phases, including checkpoint/recovery/concurrency, migrations and auth history; full canonical and production gates remain required."
+    },
+    {
+      "id": "optional-tab-naming-decision",
+      "oldRepresentation": "Two nullable fields tab_naming and tab_naming_declined_reason on both copy and in-place checkpoints; validators exclude both, but model_copy update dictionaries can bypass that invariant.",
+      "authoritativeReplacement": "UnplannedTabNaming | PlannedTabNaming(required command) | AppliedTabNaming(required command and observed revision) | UnchangedTabNaming(required observed revision) | DeclinedTabNaming(required closed reason). One persisted field, validated transition helper and strict exact-shape legacy decoding.",
+      "decision": "convert",
+      "producers": [
+        "gateway.plan_tab_naming",
+        "executor._tab_naming_decline_update",
+        "executor optional naming methods"
+      ],
+      "consumers": [
+        "executor optional naming methods",
+        "gateway.apply_tab_naming",
+        "tab_metadata invariants"
+      ],
+      "sources": [
+        "backend/app/document_transform/executor.py",
+        "backend/app/document_transform/schemas.py"
+      ],
+      "recovery": "Content verification is persisted as MetadataInPlaceCheckpoint before any naming plan or dispatch. A planned command remains uncertain until named-range/revision/invariant readback. Retrying metadata never sends content again. Exact old CONTENT plus a valid old naming/decline receipt decodes to metadata; contradictory or premature new naming states fail closed. Held production evidence is not rewritten.",
+      "verification": "Focused v20 passed full changed Python rules, strict typing, mypy and 1501 backend cases. PostgreSQL v3 passed all 13 phases, including checkpoint/recovery/concurrency, migrations and auth history; full canonical and production gates remain required."
+    },
+    {
+      "id": "in-place-post-content-coordination",
+      "oldRepresentation": "Presence of either nullable tab naming field caused _finish_in_place_content to skip external content execution, implicitly asserting prior content verification.",
+      "authoritativeReplacement": "MetadataInPlaceCheckpoint is a durable nonmutating stage entered only after content verification (or validated no-op). HEADERS -> CONTENT -> METADATA -> COMPLETE; HEADERS/CONTENT cannot carry naming state other than Unplanned.",
+      "decision": "convert",
+      "events": [
+        "verify content or validated no-op",
+        "persist metadata checkpoint",
+        "plan and apply optional naming",
+        "persist completion"
+      ],
+      "guards": [
+        "No content commands survive into metadata.",
+        "Content cannot transition directly to COMPLETE.",
+        "Metadata recovery rechecks applied content/font/layout proofs before optional naming."
+      ],
+      "recovery": "Crash after verified-content receipt cannot replay body commands. Ambiguous naming uses its existing immutable command, required revision and provider readback. Legacy content+naming is decoded only from its documented prior execution ordering.",
+      "sources": [
+        "backend/app/document_transform/schemas.py",
+        "backend/app/document_transform/executor.py"
+      ],
+      "verification": "Focused v20 passed full changed Python rules, strict typing, mypy and 1501 backend cases. PostgreSQL v3 passed all 13 phases, including checkpoint/recovery/concurrency, migrations and auth history; full canonical and production gates remain required."
+    },
+    {
+      "id": "markdown-header-parser-sequence",
+      "oldRepresentation": "_HeaderSequence(before_logo: str, seen_logo: bool) and unconstrained string token names.",
+      "authoritativeReplacement": "_BeforeHeaderLogo(required accumulated prefix) | _AfterHeaderLogo; _HeaderElement uses a closed inlineObjectElement/textRun discriminator; exhaustive small transition function returns no transition for invalid grammar.",
+      "decision": "convert",
+      "events": [
+        "validated native text token",
+        "validated inline-logo token",
+        "end of bounded sequence"
+      ],
+      "guards": [
+        "Exactly one logo after the exact expected title and separator.",
+        "After logo, only an optional final newline is accepted.",
+        "UTF-16 ranges, native style, logo metadata/dimensions and ordered content checks remain mandatory."
+      ],
+      "recovery": "Pure in-memory verification grammar; no side effects or persistent recovery. An invalid transition fails branding verification without asserting that any earlier write did not happen.",
+      "sources": [
+        "backend/app/document_transform/markdown_import.py"
+      ],
+      "verification": "Focused v20 passed full changed Python rules, strict typing, mypy and 1501 backend cases. PostgreSQL v3 passed all 13 phases, including checkpoint/recovery/concurrency, migrations and auth history; full canonical and production gates remain required."
+    },
+    {
+      "id": "quick-links-load",
+      "oldRepresentation": "aliases/error/loading/validatedUserId",
+      "authoritativeReplacement": "waiting-for-user | loading(owner) | ready(owner, aliases) | failed(owner)",
+      "decision": "convert",
+      "events": [
+        "resolve owner",
+        "start owned read",
+        "receive aliases",
+        "fail read",
+        "replace owner"
+      ],
+      "sources": [
+        "frontend/src/components/quick-links/quick-links-loader.tsx"
+      ],
+      "recovery": "Reject stale-owner rendering and callbacks; denied visit pruning rechecks current owner and visit timestamp.",
+      "verification": "Focused v25 passed native frontend lint with zero errors, full frontend typing, 218 frontend transition/recovery cases, 175 Node helper cases, 55 backend admission cases and shrink-only baseline guard. Full canonical, native hooks and production verification remain required."
+    },
+    {
+      "id": "native-mcp-connections-ui",
+      "oldRepresentation": "connections/message/signin/busy plus locked and reads refs",
+      "authoritativeReplacement": "loading | ready(data, receipt) | refreshing(previous settled state) | disconnecting(data, grant) | disconnected | disconnect-uncertain | read-uncertain | sign-in | unavailable",
+      "decision": "convert",
+      "events": [
+        "load",
+        "refresh",
+        "disconnect known grant",
+        "observe disconnect outcome",
+        "require fresh read"
+      ],
+      "sources": [
+        "frontend/src/components/mcp/mcp-connections.tsx"
+      ],
+      "recovery": "A lost disconnect response hides mutation controls until fresh state and CSRF material are read; aborting a read never asserts that a mutation failed.",
+      "verification": "Focused v25 passed native frontend lint with zero errors, full frontend typing, 218 frontend transition/recovery cases, 175 Node helper cases, 55 backend admission cases and shrink-only baseline guard. Full canonical, native hooks and production verification remain required."
+    },
+    {
+      "id": "native-mcp-consent-ui",
+      "oldRepresentation": "DisplayStatus with separate decisionLocked/recoveryLocked refs and transform-approved form value",
+      "authoritativeReplacement": "closed DisplayStatus union and ConsentCommand DENY | APPROVE_READ | APPROVE_TRANSFORM",
+      "decision": "convert",
+      "events": [
+        "decide from pending",
+        "recover from unknown",
+        "receive terminal decision"
+      ],
+      "sources": [
+        "frontend/src/components/mcp/mcp-consent.tsx"
+      ],
+      "recovery": "One synchronous phase owner rejects reentry; a lost response becomes unknown, not denied. Recovery keeps browser/intent/session binding.",
+      "verification": "Focused v25 passed native frontend lint with zero errors, full frontend typing, 218 frontend transition/recovery cases, 175 Node helper cases, 55 backend admission cases and shrink-only baseline guard. Full canonical, native hooks and production verification remain required."
+    },
+    {
+      "id": "document-reorganization-ui",
+      "oldRepresentation": "checking boolean, nullable proposal state and propose/move latch ownership",
+      "authoritativeReplacement": "idle | checking(request owner) | proposed(actionable destination)",
+      "decision": "convert",
+      "events": [
+        "propose",
+        "receive actionable proposal",
+        "dismiss",
+        "move"
+      ],
+      "sources": [
+        "frontend/src/components/wiki-document/reorganize-document.tsx"
+      ],
+      "recovery": "The exact request object and mounted component own completion; stale file navigation cannot present an old proposal. Existing session-aware move mutation remains authoritative.",
+      "verification": "Focused v25 passed native frontend lint with zero errors, full frontend typing, 218 frontend transition/recovery cases, 175 Node helper cases, 55 backend admission cases and shrink-only baseline guard. Full canonical, native hooks and production verification remain required."
+    },
+    {
+      "id": "sidebar-item-menu-mount",
+      "oldRepresentation": "mounted/open boolean pair",
+      "authoritativeReplacement": "unmounted | closed | open",
+      "decision": "convert",
+      "events": [
+        "open menu",
+        "close menu",
+        "defer teardown"
+      ],
+      "sources": [
+        "frontend/src/components/wiki-sidebar/item-menu.tsx"
+      ],
+      "recovery": "Focus return and observer cleanup follow the mounted outlet; unmounted/open is not representable.",
+      "verification": "Focused v25 passed native frontend lint with zero errors, full frontend typing, 218 frontend transition/recovery cases, 175 Node helper cases, 55 backend admission cases and shrink-only baseline guard. Full canonical, native hooks and production verification remain required."
+    },
+    {
+      "id": "sidebar-item-action-dialog",
+      "oldRepresentation": "confirmingDelete/renaming/duplicating and independent move outlet",
+      "authoritativeReplacement": "none | rename | duplicate | delete",
+      "decision": "convert",
+      "events": [
+        "choose dialog",
+        "close exact selected dialog"
+      ],
+      "sources": [
+        "frontend/src/components/wiki-sidebar/item-menu-actions.tsx"
+      ],
+      "recovery": "A late close only clears its own active dialog. Independent deferred move outlet retains its established lifetime.",
+      "verification": "Focused v25 passed native frontend lint with zero errors, full frontend typing, 218 frontend transition/recovery cases, 175 Node helper cases, 55 backend admission cases and shrink-only baseline guard. Full canonical, native hooks and production verification remain required."
+    },
+    {
+      "id": "smart-create-submit-ui",
+      "oldRepresentation": "submitting, creationStage and submitLatch beside existing SmartCreateState",
+      "authoritativeReplacement": "restoring | idle | proposing | enqueuing(unconfirmed receipt, controller) | waiting(admitted receipt, controller) | checking(receipt, controller) | uncertain(receipt, message) | terminal(failed or cancelled task) | blocked(message) | unmounted",
+      "decision": "convert",
+      "events": [
+        "restore original receipt",
+        "propose",
+        "persist receipt before enqueue",
+        "observe task admission",
+        "poll terminal status",
+        "read admission after lost response",
+        "preserve needs-review hold"
+      ],
+      "sources": [
+        "frontend/src/components/wiki-sidebar/smart-create-dialog.tsx"
+      ],
+      "recovery": "Owner/drive/folder keyed lifetime, strict UUID receipt boundary, identity-matched controllers and no new POST from uncertainty. Missing admission does not prove no file was created. Browser storage is read after mount to preserve server rendering.",
+      "verification": "Focused v25 passed native frontend lint with zero errors, full frontend typing, 218 frontend transition/recovery cases, 175 Node helper cases, 55 backend admission cases and shrink-only baseline guard. Full canonical, native hooks and production verification remain required."
+    },
+    {
+      "id": "document-polish-recovery-ui",
+      "oldRepresentation": "busy/running/message with import and legacy form fields",
+      "authoritativeReplacement": "idle | running(action, controller) | notice(message) | unavailable",
+      "decision": "convert",
+      "events": [
+        "check admission",
+        "reload saved draft",
+        "import/export exact draft",
+        "restore original source"
+      ],
+      "sources": [
+        "frontend/src/components/wiki-document/document-polish-recovery.tsx"
+      ],
+      "recovery": "The exact operation and controller own completion; cleanup aborts reads and stale responses cannot restore another owner or operation. No recovery read creates a file.",
+      "verification": "Focused v25 passed native frontend lint with zero errors, full frontend typing, 218 frontend transition/recovery cases, 175 Node helper cases, 55 backend admission cases and shrink-only baseline guard. Full canonical, native hooks and production verification remain required."
+    },
+    {
+      "id": "document-viewer-loading-overlay",
+      "oldRepresentation": "phaseState/phaseRef, slow, visibleSince and generation refs",
+      "authoritativeReplacement": "masked | visible(shownAt, normal or slow) | exiting | masked-exiting | hidden",
+      "decision": "convert",
+      "events": [
+        "activate",
+        "load starts",
+        "delay expires",
+        "slow deadline",
+        "load settles",
+        "minimum visible time",
+        "animation frame pair",
+        "exit deadline",
+        "deactivate"
+      ],
+      "sources": [
+        "frontend/src/components/wiki-document/doc-viewer-host.tsx"
+      ],
+      "recovery": "Timestamp and pace exist only while visible. All timers/frames are generation-fenced and cancelled; reduced motion and minimum visibility are preserved.",
+      "verification": "Focused v25 passed native frontend lint with zero errors, full frontend typing, 218 frontend transition/recovery cases, 175 Node helper cases, 55 backend admission cases and shrink-only baseline guard. Full canonical, native hooks and production verification remain required."
+    },
+    {
+      "id": "short-link-edit-ui",
+      "oldRepresentation": "confirmingRemove/draft/saveError beside independent save and retire mutation states",
+      "authoritativeReplacement": "idle | confirming-remove | saving(required alias) | removing | failed(message) | unmounted",
+      "decision": "convert",
+      "events": [
+        "edit",
+        "save once",
+        "confirm removal",
+        "retire once",
+        "receive owned result",
+        "navigate/unmount"
+      ],
+      "sources": [
+        "frontend/src/components/wiki-document/short-link-editor.tsx"
+      ],
+      "recovery": "Synchronous phase guards prevent overlapping saves and removal; a file-keyed component and exact operation identity reject late UI writes. Session-aware mutation hooks retain per-file cache ownership.",
+      "verification": "Focused v25 passed native frontend lint with zero errors, full frontend typing, 218 frontend transition/recovery cases, 175 Node helper cases, 55 backend admission cases and shrink-only baseline guard. Full canonical, native hooks and production verification remain required."
+    },
+    {
+      "id": "shared-browser-transform-reservation",
+      "oldRepresentation": "SharedRecoverySchema(operation, completedAt: number|null) and Web Locks plus candidate-createdAt ordering.",
+      "authoritativeReplacement": "pending(operation) | completed(operation, completion timestamp)",
+      "decision": "convert",
+      "events": [
+        "claim under Web Lock",
+        "bind matching task",
+        "complete exact operation",
+        "begin deliberate later operation"
+      ],
+      "sources": [
+        "frontend/src/lib/document-transform-recovery.ts"
+      ],
+      "recovery": "Exact legacy shape is decoded; contradictory new states fail closed. Web Locks, request-key ownership, contradictory task-ID rejection and original candidate timestamp ordering remain mandatory.",
+      "verification": "Focused v25 passed native frontend lint with zero errors, full frontend typing, 218 frontend transition/recovery cases, 175 Node helper cases, 55 backend admission cases and shrink-only baseline guard. Full canonical, native hooks and production verification remain required."
+    },
+    {
+      "id": "browser-transform-admission-receipt",
+      "oldRepresentation": "TransformRecovery has a nullable admitted task UUID alongside immutable reservation fields and independently nullable original native-source snapshot.",
+      "authoritativeReplacement": "Retained independent observed UUID | unknown receipt, inside explicit reservation/recovery machines",
+      "decision": "retain-independent-observation",
+      "events": [
+        "observe validated admission UUID",
+        "read task",
+        "recover original key"
+      ],
+      "sources": [
+        "frontend/src/lib/document-transform-recovery.ts"
+      ],
+      "recovery": "Concrete exception: taskId null is the complete unknown-identity alternative, not an undispatched phase or permission to create another operation. Every reservation field remains valid in both alternatives; adding a second persisted kind would duplicate this one fact. recordTransformTask requires a non-null UUID intersection and rejects contradictory IDs. Replay uses the same key, the six-day safety bound and exact original source/draft binding; held uncertainty is never cleared by absence.",
+      "verification": "Focused v25 passed native frontend lint with zero errors, full frontend typing, 218 frontend transition/recovery cases, 175 Node helper cases, 55 backend admission cases and shrink-only baseline guard. Full canonical, native hooks and production verification remain required."
+    },
+    {
+      "id": "smart-create-template-catalog",
+      "oldRepresentation": "Separate templates array, status, request sequence and nullable abort-controller ref.",
+      "authoritativeReplacement": "closed | loading(required controller) | ready(required scoped templates) | error(required message)",
+      "events": [
+        "open",
+        "refresh",
+        "receive exact owned catalog",
+        "fail exact owned catalog",
+        "close"
+      ],
+      "decision": "convert",
+      "sources": [
+        "frontend/src/components/wiki-sidebar/smart-create-dialog.tsx"
+      ],
+      "recovery": "One phase owns both data and request identity. Superseded requests abort; stale replies cannot alter catalog or authoring selection. Only an idle creation form is reconciled.",
+      "verification": "Focused v25 passed native frontend lint with zero errors, full frontend typing, 218 frontend transition/recovery cases, 175 Node helper cases, 55 backend admission cases and shrink-only baseline guard. Full canonical, native hooks and production verification remain required."
+    },
+    {
+      "id": "model-planning-review-ownership",
+      "oldRepresentation": "_used_initial and _initial_review booleans plus nullable _checkpoint, with implicit call-order and interrupted-save reuse",
+      "authoritativeReplacement": "_FreshPlan | _PreparingPlan | _SavedPlan | _AwaitingReview | _Reviewing | _LaterPass | _InterruptedPlan; CheckpointingPatchGenerator",
+      "events": [
+        "generate first unslop proposal",
+        "persist plan before continuation",
+        "reload exact saved plan",
+        "yield saved proposals",
+        "review exact original source",
+        "save review progress",
+        "repair or later editorial pass",
+        "cancel or fail"
+      ],
+      "guards": [
+        "request/model/catalog/pipeline identity",
+        "planning document digest before yielding saved proposals",
+        "exclusive preparing/reviewing ownership",
+        "serialized bounded checkpoint CAS commits",
+        "invalid command raises OutputConflictError",
+        "exhaustive handling of all seven states",
+        "Only semantic rewriting enters the checkpointed model writer; native formatting does not issue a text-model request."
+      ],
+      "recovery": "Initial proposals are saved before pending is reported. Saved proposals resume without another writer request. Review prompt hashes bind the original source and exact replacement independently from deterministic planning cleanup. Cancellation waits for an owned review commit; ambiguous saves poison the in-memory instance and require a fresh durable reload. Model-only progress cannot overwrite a Google mutation checkpoint. Provider calls may have occurred on a crash; persisted attempt counts are consumed conservatively.",
+      "decision": "convert",
+      "sources": [
+        "backend/app/document_transform/model_planning.py",
+        "backend/app/document_transform/task_executor.py",
+        "backend/app/document_transform/executor.py",
+        "backend/app/tasks/service.py"
+      ]
+    },
+    {
+      "id": "model-review-batch-continuation",
+      "oldRepresentation": "attempt_count plus optional retry_not_before and default-empty reviews, with all field combinations admitted",
+      "authoritativeReplacement": "ModelReviewAttemptCheckpoint | ModelReviewBackoffCheckpoint | ModelReviewCompletedCheckpoint; ReviewBatchProgress",
+      "events": [
+        "begin next bounded attempt",
+        "record retry deadline",
+        "complete exact verdict set",
+        "repeat same completion",
+        "duplicate backoff",
+        "resume persisted batch"
+      ],
+      "guards": [
+        "nominal ModelReviewInputHash ownership",
+        "strict attempt count 1..3",
+        "aware required backoff deadline",
+        "required nonempty completed reviews",
+        "no backoff data in completed state",
+        "state/attempt matching for outcomes",
+        "conflicting/late outcomes fail closed",
+        "durable save before local state changes"
+      ],
+      "recovery": "Version-1 encrypted payloads decode at the boundary to version-2 discriminated batches without resetting counts or rewriting held records. A completed legacy verdict wins over its obsolete retry deadline. Current payloads require a discriminator and reject contradictory fields. Completed verdicts are revalidated for exact identity and full coverage; unchanged duplicate completion/backoff is idempotent. A crash after attempt intent consumes that attempt even when provider outcome is unknown. Existing task lease and checkpoint generation CAS own inter-worker concurrency; the planner lock serializes concurrent batch commits.",
+      "decision": "convert",
+      "sources": [
+        "backend/app/document_transform/schemas.py",
+        "backend/app/document_transform/review_checkpoint.py",
+        "backend/app/document_transform/models.py",
+        "backend/app/identifiers.py"
+      ]
     }
   ],
   "exceptions": [
     "SQL relational task/session/MCP/alias columns are retained where transactional predicates, uniqueness and audit queries require them. Runtime APIs expose validated state-specific models; no new generic workflow engine or duplicate state column is introduced.",
     "Historical encrypted v1/v2 checkpoints preserve their version and content. Every valid old shape decodes into a state variant. Invalid or contradictory state fails closed and remains evidence rather than being silently deleted.",
     "Independent UI selections, form values, immutable policy/capability flags, caches and timeout resource handles are not all-or-nothing workflow payloads. React, AbortController and provider schedulers own their lifecycle; application ownership/generation fences remain explicit.",
-    "The files-service batch callback retains Any only at the pinned external SDK boundary: the stub declares HttpRequest, but the implementation delivers request.postproc JSON. GoogleFile/GoogleFileAccessLocation model_validate immediately validates it; owned worker results use the explicit chunk union."
+    "The files-service batch callback retains Any only at the pinned external SDK boundary: the stub declares HttpRequest, but the implementation delivers request.postproc JSON. GoogleFile/GoogleFileAccessLocation model_validate immediately validates it; owned worker results use the explicit chunk union.",
+    "Legacy environment names remain boundary input fields only. Frozen Settings/DocumentSettings validate them once into the explicit runtime choices; production consumers no longer interpret nullable MCP/queue fields or an enabled flag.",
+    "DatabaseSettings remains independently loadable for Alembic and recovery without application auth secrets. Its shared validated connection model is reused by application settings; the database engine consumes the minimal database snapshot.",
+    "Native OAuth expiry is one required immutable timestamp compared with the authoritative database clock. Live/expired is derived at each read; a stored expired boolean would create a competing source of truth. Migration 0030 rejects nullable expiry and closed-namespace/digest violations without altering ciphertext or deleting replay receipts.",
+    "Native terminal/pagination and readability terminal plans are pure, bounded content proofs within the existing explicit provider checkpoint machines. needs_write is derived from exact observed style. Pagination found/matches aggregates two independent pieces of readback evidence; all four combinations are meaningful, and partial recognition fails closed. They do not encode worker ownership, retry, approval or completion. Immutable builder/version digests retain old mutation reconstruction semantics.",
+    "ModelReviewPendingError is a typed resource-unwinding signal for the existing PatchGenerator/TaskGroup/task-deferral contract. It carries no state or permission: the explicit model-planning checkpoint must already be durable before it is raised. It prevents execution from continuing to Google mutation while model review remains pending."
   ],
   "retiredMachines": [
     {
@@ -1172,6 +2473,17 @@
         "backend/app/document_transform/tab_structure.py",
         "backend/tests/test_document_transform_tab_structure.py"
       ]
+    },
+    {
+      "id": "optional-model-format-pass",
+      "oldRepresentation": "allow_format_text_edits constructor flag, disconnected executor copy, and format-specific model/prompt/budget branches",
+      "decision": "delete",
+      "reason": "All production constructors left the flag false. Its five enabling readers were test fixtures, and the format prompt required an empty patch list. Native formatting owns styling and structure while preserving source prose. Remove the dormant RPC, flags and private phase branches; keep direct FORMAT patch rejection as an explicit provider-input guard.",
+      "sources": [
+        "backend/app/document_transform/planner.py",
+        "backend/app/document_transform/executor.py",
+        "backend/app/document_transform/models.py"
+      ]
     }
   ],
   "dataConsolidations": [
@@ -1185,24 +2497,79 @@
         "backend/app/document_transform/brand.py",
         "backend/app/document_transform/google_gateway.py"
       ]
+    },
+    {
+      "id": "decoded-sidebar-tree-cache",
+      "oldRepresentation": "Three synchronized value/latest/payload-size maps, although every put already replaced the previous entry for a user/drive.",
+      "replacement": "One OrderedDict keyed by user/drive with an immutable entry containing the existing version, decoder identity, decoded tree and ciphertext byte cost.",
+      "persistence": "Process-local materialized view only. Both SQL cache tables are retained for their distinct registration/admission and encrypted per-principal snapshot contracts. No table or encrypted checkpoint migration is needed.",
+      "sources": [
+        "backend/app/sidebar/cache.py",
+        "backend/tests/test_sidebar_cache.py"
+      ]
+    },
+    {
+      "id": "repository-inspection-child-ownership",
+      "change": "Wiki CLI and pull-request size CI both pin source-qualified repo-standards 7.0.1, consuming the shared child/pipe ownership repair while preserving the immutable Standards bundle and every guard.",
+      "verification": "PyPI wheel, sdist and GitHub assets have matching immutable digests; all 59 packaged files match the qualified c7ea4fb source tree. Native Wiki consumer qualification remains required."
     }
   ],
   "auditStatus": {
-    "semanticReviewComplete": false,
+    "semanticReviewComplete": true,
     "remaining": [
-      "Drive provider pagination: five nullable-token loops need a shared explicit transition model and duplicate-token recovery tests.",
-      "Finish the concrete remaining provider-boundary review; do not interpret a filename or an Any annotation alone as a justified exception."
+      "Complete all canonical repository gates, native staged/commit/push hooks and exact published-head CI qualification.",
+      "Admin merge the fully qualified head, then verify production deployment/migration 0030 and preservation of every held uncertainty record.",
+      "If expired OAuth records are cleaned, require the fresh exact expired snapshot and verified backup restore; preserve grants, spent-replay evidence until expiry, and all new/live rows."
     ],
     "completedThisChange": [
-      "database-connection-choice",
-      "metadata-batch-ownership",
       "document-copy-provider-mutation",
-      "document-copy-completion",
-      "document-source-format",
-      "native-source-drive-location",
-      "presentation-source-format",
-      "presentation-creation-command",
-      "native-font-proof-version"
-    ]
+      "drive-list-pagination",
+      "drive-folder-pagination",
+      "drive-member-pagination",
+      "drive-preload-pagination",
+      "drive-permission-pagination",
+      "shared-cloud-tasks-configuration",
+      "document-queue-configuration",
+      "native-mcp-configuration",
+      "provider-verification-outcome",
+      "decoded-sidebar-tree-cache",
+      "sidebar-conditional-response",
+      "sidebar-sql-payload-projection",
+      "drive-bounded-download",
+      "footer-creation-ownership",
+      "footer-writing-decision",
+      "footer-coverage-authority",
+      "slides-style-target-decision",
+      "slides-style-eligibility-decision",
+      "slides-style-run-decision",
+      "slides-logo-placement-decision",
+      "slides-logo-removal-decision",
+      "native-oauth-consent-intent",
+      "native-oauth-authorization-code",
+      "native-oauth-refresh-family",
+      "native-oauth-access-claims",
+      "native-oauth-consent-command",
+      "native-oauth-consent-status-projection",
+      "quick-links-load",
+      "native-mcp-connections-ui",
+      "native-mcp-consent-ui",
+      "document-reorganization-ui",
+      "sidebar-item-menu-mount",
+      "sidebar-item-action-dialog",
+      "smart-create-submit-ui",
+      "document-polish-recovery-ui",
+      "document-viewer-loading-overlay",
+      "short-link-edit-ui",
+      "shared-browser-transform-reservation",
+      "browser-transform-admission-receipt",
+      "smart-create-template-catalog",
+      "in-place-initial-mutation-plan",
+      "optional-tab-naming-decision",
+      "in-place-post-content-coordination",
+      "markdown-header-parser-sequence",
+      "model-planning-review-ownership",
+      "model-review-batch-continuation"
+    ],
+    "reviewEvidence": "Prior concrete 44-file provider-content and 13 UI/reservation reviews are retained. Current reconciliation reviews 26 source/config/workflow paths plus the seven application paths changed by upstream PR708/709; it converts the model-planning ownership and review-batch continuation machines. Native final gates and deployment remain pending."
   }
 }

@@ -1,6 +1,7 @@
 from collections.abc import AsyncGenerator, Callable
 from contextlib import AbstractAsyncContextManager, asynccontextmanager
 from dataclasses import dataclass
+from typing import assert_never
 
 from google.cloud import tasks_v2
 import httpx
@@ -8,7 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from starlette.responses import JSONResponse
 from starlette.types import ASGIApp, Receive, Scope, Send
 
-from app.config import Settings, parse_fernet_keys
+from app.config import Settings
 from app.maintenance import MaintenanceModeMiddleware
 from app.mcp.native_admission import PostgresRegistrationAdmission
 from app.mcp.native_core import NativeOAuthCore
@@ -17,9 +18,9 @@ from app.mcp.native_request_context import require_native_oauth_request
 from app.mcp.native_runtime import NativeMcpRuntime, create_native_runtime
 from app.mcp.native_state import NativeStateStore
 from app.mcp.protection import OAuthStateProtector
-from app.mcp.redirect_policy import McpRedirectPolicy
 from app.mcp.storage import PostgresOAuthOperations
 from app.request_id import RequestIDMiddleware
+from app.runtime_config import DisabledNativeMcp, EnabledNativeMcp
 from app.security_headers import SecurityHeadersMiddleware
 from app.tasks.queue import CloudTasksEnqueuer
 
@@ -61,15 +62,18 @@ async def native_composition(
     http: httpx.AsyncClient,
     sessions: async_sessionmaker[AsyncSession],
 ) -> AsyncGenerator[NativeComposition]:
-    issuer = app_settings.MCP_NATIVE_ISSUER
-    ring = app_settings.MCP_NATIVE_FERNET_KEYS
-    lock_key = app_settings.MCP_NATIVE_LOCK_KEY
-    if not app_settings.MCP_NATIVE_ENABLED or issuer is None or ring is None or lock_key is None:
-        msg = "Native MCP is not configured"
-        raise ValueError(msg)
+    configuration = app_settings.native_mcp
+    match configuration:
+        case DisabledNativeMcp():
+            msg = "Native MCP is not configured"
+            raise ValueError(msg)
+        case EnabledNativeMcp():
+            issuer = configuration.issuer
+        case _:
+            assert_never(configuration)
     protector = OAuthStateProtector(
-        tuple(parse_fernet_keys(ring.get_secret_value())),
-        lock_key=parse_fernet_keys(lock_key.get_secret_value())[0],
+        tuple(key.get_secret_value() for key in configuration.fernet_keys),
+        lock_key=configuration.lock_key.get_secret_value(),
     )
     core = NativeOAuthCore(
         PostgresOAuthOperations(sessions, protector),
@@ -81,22 +85,15 @@ async def native_composition(
         core=core,
         base_url=str(issuer),
         consent_url=f"{app_settings.frontend_origin}/mcp/consent",
-        redirects=McpRedirectPolicy(
-            app_settings.MCP_NATIVE_LOOPBACK_PATHS, app_settings.MCP_NATIVE_HTTPS_CALLBACKS
-        ),
+        redirects=configuration.redirects,
         request_guard=require_native_oauth_request,
         registration_admission=PostgresRegistrationAdmission(sessions).admit,
         issuer_responses_enabled=True,
     )
     async with tasks_v2.CloudTasksAsyncClient() as client:
         enqueuer = CloudTasksEnqueuer(
-            project=_required(app_settings.GOOGLE_CLOUD_PROJECT),
-            location=_required(app_settings.CLOUD_TASKS_LOCATION),
-            queue=_required(app_settings.CLOUD_TASKS_QUEUE),
-            target_url=_required(app_settings.CLOUD_TASKS_TARGET_URL),
-            invoker_service_account=_required(app_settings.CLOUD_TASKS_INVOKER_SERVICE_ACCOUNT),
-            document_transform_queue=app_settings.DOCUMENT.TRANSFORM_QUEUE,
-            document_transform_target_url=app_settings.DOCUMENT.TRANSFORM_TARGET_URL,
+            configuration=configuration.tasks,
+            document_transform=configuration.document_tasks,
             client=client,
         )
         yield NativeComposition(
@@ -109,13 +106,6 @@ async def native_composition(
                 frontend_origin=app_settings.frontend_origin,
             ),
         )
-
-
-def _required(value: str | None) -> str:
-    if value is None:
-        msg = "Native MCP requires configured task infrastructure"
-        raise ValueError(msg)
-    return value
 
 
 class NativeDispatchMiddleware:

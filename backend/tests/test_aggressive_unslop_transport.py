@@ -2118,7 +2118,7 @@ async def test_sdk_initial_fallback_and_flash_repair_keep_independent_review_hig
     [ModelId("gemini-3.1-pro-preview"), ModelId("gemini-4-argon")],
     ids=["legacy-pro", "ga-argon"],
 )
-async def test_sdk_pro_primary_reserves_output_and_format_keeps_high_thinking(
+async def test_sdk_pro_primary_reserves_output_and_format_does_not_dispatch(
     sdk_client_factory: Callable[[httpx.AsyncClient], genai.Client],
     model: ModelId,
 ) -> None:
@@ -2163,12 +2163,11 @@ async def test_sdk_pro_primary_reserves_output_and_format_keeps_high_thinking(
             assert await generator.generate(document, phase=TransformPhase.FORMAT) == []
         finally:
             await client.aio.aclose()
-    assert len(received) == 2
+    assert len(received) == 1
     assert all(config.thinking_config is not None for config in received)
     assert [
         config.thinking_config.thinking_level for config in received if config.thinking_config
     ] == [
-        types.ThinkingLevel.HIGH,
         types.ThinkingLevel.HIGH,
     ]
 
@@ -2784,8 +2783,8 @@ async def test_no_operation_deadline_keeps_native_timeout_and_format_protocol(
         result = await generator.review(deadline_document.document, [deadline_document.patch])
     assert result.approved == {deadline_document.patch.block_id}
     assert not result.rejected
-    assert timeouts == ["90", "90", "90"]
-    assert token_limits == [32_768, 32_768, 32_768]
+    assert timeouts == ["90", "90"]
+    assert token_limits == [32_768, 32_768]
 
 
 async def test_shared_provider_clock_follows_nested_budgets_and_threads(
@@ -3081,7 +3080,7 @@ async def test_cancelled_writer_wait_releases_admission_lock_and_rpc_capacity(
         ),
     ],
 )
-async def test_sdk_repair_uses_the_configured_editor_while_format_and_review_use_restyle(
+async def test_sdk_repair_uses_the_configured_editor_and_review_uses_restyle(
     sdk_client_factory: Callable[[httpx.AsyncClient], genai.Client],
     primary: ModelId,
     initial_level: types.ThinkingLevel,
@@ -3139,14 +3138,12 @@ async def test_sdk_repair_uses_the_configured_editor_while_format_and_review_use
         primary,
         primary,
         "gemini-3.1-pro-preview",
-        "gemini-3.1-pro-preview",
     ]
     assert [
         config.thinking_config.thinking_level if config.thinking_config else None
         for _model, config in received
-    ] == [initial_level, repair_level, types.ThinkingLevel.HIGH, types.ThinkingLevel.HIGH]
+    ] == [initial_level, repair_level, types.ThinkingLevel.HIGH]
     assert [config.max_output_tokens for _model, config in received] == [
-        32_768,
         32_768,
         32_768,
         32_768,
@@ -3307,7 +3304,7 @@ async def test_normal_factory_policy_has_pro_writer_and_independent_review_deadl
     def respond(request: httpx.Request) -> httpx.Response:
         timeouts.append(request.headers.get("X-Server-Timeout"))
         configurations.append(_VendorRequest.model_validate_json(request.content).generation_config)
-        seconds = (180, 120, 180)[len(timeouts) - 1]
+        seconds = (180, 120)[len(timeouts) - 1]
         assert request.extensions["timeout"] == dict.fromkeys(
             ("connect", "read", "write", "pool"), seconds
         )
@@ -3330,17 +3327,17 @@ async def test_normal_factory_policy_has_pro_writer_and_independent_review_deadl
             )
         finally:
             await client.aio.aclose()
-    assert timeouts == ["180", "120", "180"]
+    assert timeouts == ["180", "120"]
     assert configurations[1].thinking_config is not None
     assert configurations[1].thinking_config.thinking_level == types.ThinkingLevel.HIGH
-    assert [config.max_output_tokens for config in configurations] == [32_768, 32_768, 32_768]
+    assert [config.max_output_tokens for config in configurations] == [32_768, 32_768]
     requests = [json.loads(message)["record"] for message in model_log_messages]
     starts = [
         row["extra"] for row in requests if row["message"] == "document model request started"
     ]
-    assert [row["model_thinking_level"] for row in starts] == ["HIGH", "HIGH", "HIGH"]
-    assert [row["model_id"] for row in starts] == ["gemini-3.1-pro-preview"] * 3
-    assert [row["model_operation"] for row in starts] == ["unslop", "review", "format"]
+    assert [row["model_thinking_level"] for row in starts] == ["HIGH", "HIGH"]
+    assert [row["model_id"] for row in starts] == ["gemini-3.1-pro-preview"] * 2
+    assert [row["model_operation"] for row in starts] == ["unslop", "review"]
 
 
 def test_model_policy_cannot_allow_a_negative_factual_review_reserve(
@@ -3578,13 +3575,11 @@ async def test_real_sdk_backoff_is_cancelled_by_the_unchanged_per_call_timeout(
     assert len(requests) == 3
 
 
-@pytest.mark.parametrize("phase", [TransformPhase.UNSLOP, TransformPhase.FORMAT])
 @pytest.mark.parametrize("payload", ["malformed", "empty"])
 @pytest.mark.parametrize("finish", ["STOP", "MAX_TOKENS"])
 async def test_sdk_invalid_writer_logs_only_bounded_metadata_and_preserves_parse_failure(
     sdk_client_factory: Callable[[httpx.AsyncClient], genai.Client],
     deadline_document: _DeadlineDocument,
-    phase: TransformPhase,
     payload: Literal["malformed", "empty"],
     finish: Literal["STOP", "MAX_TOKENS"],
 ) -> None:
@@ -3625,7 +3620,7 @@ async def test_sdk_invalid_writer_logs_only_bounded_metadata_and_preserves_parse
     try:
         async with _deadline_generator(sdk_client_factory, respond) as generator:
             with pytest.raises(ModelUnavailableError) as failure:
-                await generator.generate(deadline_document.document, phase=phase)
+                await generator.generate(deadline_document.document, phase=TransformPhase.UNSLOP)
     finally:
         logger.remove(sink)
     cause = failure.value.__cause__
@@ -3660,7 +3655,7 @@ async def test_sdk_invalid_writer_logs_only_bounded_metadata_and_preserves_parse
         }
         for item in metadata
     )
-    assert all(item["model_operation"] == phase.value for item in metadata)
+    assert all(item["model_operation"] == TransformPhase.UNSLOP.value for item in metadata)
     assert all(item["model_finish_reason"] == finish for item in metadata)
     assert all(item["model_prompt_token_count"] == 123 for item in metadata)
     assert all(item["model_candidate_token_count"] == 456 for item in metadata)
@@ -3744,7 +3739,9 @@ class _ReviewThinkingRoleCase:
     primary: ModelId
     fallback: ModelId
     reviewer: ModelId
-    levels: tuple[types.ThinkingLevel | None, ...]
+    levels: tuple[
+        types.ThinkingLevel | None, types.ThinkingLevel | None, types.ThinkingLevel | None
+    ]
 
 
 @pytest.mark.parametrize(
@@ -3759,7 +3756,6 @@ class _ReviewThinkingRoleCase:
                     types.ThinkingLevel.LOW,
                     types.ThinkingLevel.HIGH,
                     types.ThinkingLevel.MEDIUM,
-                    types.ThinkingLevel.MEDIUM,
                 ),
             ),
             id="explicit-flash-review",
@@ -3769,7 +3765,7 @@ class _ReviewThinkingRoleCase:
                 ModelId("gemini-3.8-flash"),
                 ModelId("gemini-3.8-flash"),
                 ModelId("gemini-3.8-flash"),
-                (types.ThinkingLevel.LOW, types.ThinkingLevel.HIGH, None, None),
+                (types.ThinkingLevel.LOW, types.ThinkingLevel.HIGH, None),
             ),
             id="custom-flash-fallback-none",
         ),
@@ -3778,7 +3774,7 @@ class _ReviewThinkingRoleCase:
                 ModelId("gemini-3.8-flash"),
                 ModelId("gemini-3.1-flash-lite"),
                 ModelId("gemini-3.1-flash-lite"),
-                (types.ThinkingLevel.LOW, types.ThinkingLevel.HIGH, None, None),
+                (types.ThinkingLevel.LOW, types.ThinkingLevel.HIGH, None),
             ),
             id="custom-lite-fallback-none",
         ),
@@ -3788,7 +3784,11 @@ class _ReviewThinkingRoleCase:
                     model,
                     model,
                     model,
-                    (types.ThinkingLevel.HIGH,) * 4,
+                    (
+                        types.ThinkingLevel.HIGH,
+                        types.ThinkingLevel.HIGH,
+                        types.ThinkingLevel.HIGH,
+                    ),
                 ),
                 id=label,
             )
@@ -3866,9 +3866,8 @@ async def test_real_sdk_review_effort_preserves_writer_repair_and_custom_roles(
         case.primary,
         case.primary,
         case.reviewer,
-        case.reviewer,
     ]
-    assert [review for _model, review, _config in received] == [False, False, True, False]
+    assert [review for _model, review, _config in received] == [False, False, True]
     assert (
         tuple(
             config.thinking_config.thinking_level if config.thinking_config else None
@@ -3877,7 +3876,6 @@ async def test_real_sdk_review_effort_preserves_writer_repair_and_custom_roles(
         == case.levels
     )
     assert [config.max_output_tokens for _model, _review, config in received] == [
-        32_768,
         32_768,
         32_768,
         32_768,

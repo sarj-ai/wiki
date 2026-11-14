@@ -18,7 +18,7 @@ from app.auth.service import (
     AuthService,
     AuthSession,
 )
-from app.config import settings
+from app.config import Settings, settings, settings_dep
 from app.models.user import User
 from app.openapi import authentication_responses
 
@@ -42,11 +42,13 @@ _refresh_cookie = APIKeyCookie(
 
 
 @router.get("/login", include_in_schema=False)
-async def login(_request: Request) -> RedirectResponse:
+async def login(
+    _request: Request, configuration: Annotated[Settings, Depends(settings_dep)]
+) -> RedirectResponse:
     state = secrets.token_urlsafe(32)
     oauth_params: dict[str, str] = {
-        "client_id": settings.GOOGLE_CLIENT_ID,
-        "redirect_uri": str(settings.GOOGLE_REDIRECT_URI),
+        "client_id": configuration.GOOGLE_CLIENT_ID,
+        "redirect_uri": str(configuration.GOOGLE_REDIRECT_URI),
         "response_type": "code",
         "scope": " ".join(OAUTH_SCOPES),
         "access_type": "offline",
@@ -60,7 +62,7 @@ async def login(_request: Request) -> RedirectResponse:
         value=state,
         httponly=True,
         samesite="lax",
-        secure=_is_secure,
+        secure=configuration.FRONTEND_URL.scheme == "https",
         max_age=_OAUTH_STATE_MAX_AGE,
         path=_OAUTH_STATE_COOKIE_PATH,
     )
@@ -83,7 +85,7 @@ async def callback(
         redirect.delete_cookie(key="oauth_state", path=_OAUTH_STATE_COOKIE_PATH)
         return redirect
     redirect = RedirectResponse(url=settings.frontend_origin, status_code=status.HTTP_302_FOUND)
-    set_auth_cookies(redirect, session)
+    set_auth_cookies(redirect, session, domain=settings.COOKIE_DOMAIN)
     redirect.delete_cookie(key="oauth_state", path=_OAUTH_STATE_COOKIE_PATH)
     redirect.headers["Cache-Control"] = "no-store"
     return redirect
@@ -116,7 +118,7 @@ async def logout(
     token = request.cookies.get("refresh_token") or optional_access_token(request)
     await auth.revoke_session(token)
     response = JSONResponse(content={"message": "logged out"})
-    clear_auth_cookies(response)
+    clear_auth_cookies(response, domain=settings.COOKIE_DOMAIN)
     response.headers["Cache-Control"] = "no-store"
     return response
 
@@ -145,7 +147,7 @@ async def refresh(
             detail=str(e) or "Token has been revoked",
         ) from e
     response = JSONResponse(content={"message": "refreshed"})
-    set_auth_cookies(response, session)
+    set_auth_cookies(response, session, domain=settings.COOKIE_DOMAIN)
     response.headers["Cache-Control"] = "no-store"
     return response
 
@@ -160,8 +162,7 @@ async def me(current_user: Annotated[User, Depends(get_current_user)]) -> UserPr
     return UserProfile.from_user(current_user)
 
 
-def set_auth_cookies(response: Response, session: AuthSession) -> None:
-    domain = settings.COOKIE_DOMAIN
+def set_auth_cookies(response: Response, session: AuthSession, *, domain: str | None) -> None:
     if domain is not None:
         response.delete_cookie(
             key="access_token", httponly=True, samesite=_SAMESITE, secure=_is_secure, path="/"
@@ -204,11 +205,11 @@ def set_auth_cookies(response: Response, session: AuthSession) -> None:
     )
 
 
-def clear_auth_cookies(response: Response) -> None:
+def clear_auth_cookies(response: Response, *, domain: str | None) -> None:
     domains: list[str | None] = [None]
-    if settings.COOKIE_DOMAIN is not None:
-        domains.append(settings.COOKIE_DOMAIN)
-    for domain in domains:
+    if domain is not None:
+        domains.append(domain)
+    for cookie_domain in domains:
         for key in ("access_token", "refresh_token"):
             response.delete_cookie(
                 key=key,
@@ -216,7 +217,7 @@ def clear_auth_cookies(response: Response) -> None:
                 samesite=_SAMESITE,
                 secure=_is_secure,
                 path="/",
-                domain=domain,
+                domain=cookie_domain,
             )
         response.delete_cookie(
             key="session_exp",
@@ -224,7 +225,7 @@ def clear_auth_cookies(response: Response) -> None:
             samesite=_SAMESITE,
             secure=_is_secure,
             path="/",
-            domain=domain,
+            domain=cookie_domain,
         )
 
 

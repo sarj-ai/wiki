@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -35,83 +35,97 @@ type RecoveryAction =
   | "reload"
   | "restore";
 
-export function DocumentPolishRecovery({
-  owner,
-  operation,
-  source,
-  onRestore,
-}: Props) {
+type RecoveryState =
+  | { kind: "idle" }
+  | { kind: "running"; action: RecoveryAction; controller: AbortController }
+  | { kind: "notice"; message: string }
+  | { kind: "unavailable" };
+
+export function DocumentPolishRecovery(props: Props) {
+  return (
+    <RecoveryForOperation
+      key={JSON.stringify([props.owner, props.operation.key])}
+      {...props}
+    />
+  );
+}
+
+function RecoveryForOperation({ owner, operation, source, onRestore }: Props) {
   const [transfer, setTransfer] = useState("");
-  const [message, setMessage] = useState("");
-  const [busy, setBusy] = useState(false);
+  const [state, setState] = useState<RecoveryState>({ kind: "idle" });
+  const phase = useRef<RecoveryState>(state);
+  const busy = state.kind === "running";
+  const message = recoveryMessage(state);
+  const publish = (next: RecoveryState) => {
+    phase.current = next;
+    setState(next);
+  };
+  useEffect(
+    () => () => {
+      if (phase.current.kind === "running") phase.current.controller.abort();
+      phase.current = { kind: "idle" };
+    },
+    [],
+  );
   const [legacyContent, setLegacyContent] = useState("");
   const [legacyName, setLegacyName] = useState("");
   const [legacyDestination, setLegacyDestination] = useState("");
-  const running = useRef(false);
-  const finishRecovery = () => {
-    running.current = false;
-    setBusy(false);
-  };
   const run = async (action: RecoveryAction) => {
-    if (running.current) return;
-    running.current = true;
-    setBusy(true);
-    setMessage("");
+    if (phase.current.kind === "running") return;
+    const running: Extract<RecoveryState, { kind: "running" }> = {
+      kind: "running",
+      action,
+      controller: new AbortController(),
+    };
+    publish(running);
+    const current = () =>
+      phase.current === running && !running.controller.signal.aborted;
     try {
-      await performRecovery(action);
+      const result = await performRecovery(action, current);
+      if (current())
+        publish(
+          result ? { kind: "notice", message: result } : { kind: "idle" },
+        );
     } catch {
-      setMessage(
-        "Recovery could not complete. Keep the original operation reserved and preserve your draft.",
-      );
-    } finally {
-      finishRecovery();
+      if (current()) publish({ kind: "unavailable" });
     }
   };
-  const resolve = async (bundle?: MarkdownRecoveryBundle) => {
-    const admission = await DOCUMENT_TRANSFORM_API.admission(operation.key);
-    if (admission) {
-      onRestore({ ...operation, taskId: admission.task_id }, null);
-      setMessage("Original task found. Resume checking its status.");
-    } else if (bundle) {
-      onRestore(operation, bundle.source);
-      setMessage(
-        "Exact recovery draft restored. Resume checking reuses the original submission key; it does not start a separate operation.",
-      );
-    } else {
-      setMessage(
-        "No task was found yet. This does not prove the earlier submission was rejected. Restore the exact original draft before resuming.",
-      );
-    }
-  };
-  const performRecovery = async (action: RecoveryAction) => {
+  const performRecovery = async (
+    action: RecoveryAction,
+    current: () => boolean,
+  ): Promise<string> => {
     switch (action) {
       case "check":
-        await resolve();
-        break;
+        return await resolve(current);
       case "reload": {
         const bundle = makeMarkdownRecovery(owner, operation, source);
         saveMarkdownRecovery(bundle);
         window.location.reload();
-        break;
+        return "";
       }
       case "export":
         setTransfer(
           JSON.stringify(makeMarkdownRecovery(owner, operation, source)),
         );
-        break;
+        return "";
       case "restore": {
         const raw = window.sessionStorage.getItem(
           markdownRecoveryStorageKey(owner),
         );
         if (!raw) throw new Error("No saved recovery draft");
-        await resolve(validateMarkdownRecovery(raw, owner, operation));
-        break;
+        return await resolve(
+          current,
+          validateMarkdownRecovery(raw, owner, operation),
+        );
       }
       case "import":
-        await resolve(validateMarkdownRecovery(transfer, owner, operation));
-        break;
+        return await resolve(
+          current,
+          validateMarkdownRecovery(transfer, owner, operation),
+        );
       case "legacy":
-        await resolve(
+        return await resolve(
+          current,
           makeMarkdownRecovery(owner, operation, {
             kind: "markdown",
             content: legacyContent,
@@ -119,8 +133,25 @@ export function DocumentPolishRecovery({
             destinationFolderId: legacyDestination,
           }),
         );
-        break;
+      default:
+        return unreachable(action);
     }
+  };
+  const resolve = async (
+    current: () => boolean,
+    bundle?: MarkdownRecoveryBundle,
+  ): Promise<string> => {
+    const admission = await DOCUMENT_TRANSFORM_API.admission(operation.key);
+    if (!current()) return "";
+    if (admission) {
+      onRestore({ ...operation, taskId: admission["task_id"] }, null);
+      return "Original task found. Resume checking its status.";
+    }
+    if (bundle) {
+      onRestore(operation, bundle.source);
+      return "Exact recovery draft restored. Resume checking reuses the original submission key; it does not start a separate operation.";
+    }
+    return "No task was found yet. This does not prove the earlier submission was rejected. Restore the exact original draft before resuming.";
   };
   return (
     <div className="space-y-3 rounded-lg border p-3 text-sm">
@@ -249,4 +280,22 @@ export function DocumentPolishRecovery({
       {message ? <p role="status">{message}</p> : null}
     </div>
   );
+}
+
+function recoveryMessage(state: RecoveryState): string {
+  switch (state.kind) {
+    case "idle":
+    case "running":
+      return "";
+    case "notice":
+      return state.message;
+    case "unavailable":
+      return "Recovery could not complete. Keep the original operation reserved and preserve your draft.";
+    default:
+      return unreachable(state);
+  }
+}
+
+function unreachable(value: never): never {
+  throw new Error(`Unsupported recovery state: ${String(value)}`);
 }

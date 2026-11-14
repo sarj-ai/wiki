@@ -49,7 +49,7 @@ class Services:
 
     async def fetch_document_text(self, file_id: FileId) -> str:
         self.exports += 1
-        return "x" * 15000
+        return "x" * 15_000
 
     @asynccontextmanager
     async def search_bounded(
@@ -80,7 +80,8 @@ class Services:
         self.owners.append(owner)
         raise TaskNotFoundError
 
-    async def get_document_transform_admission(self, owner: uuid.UUID, key: IdempotencyKey) -> Any:
+    async def get_admission(self, owner: uuid.UUID, kind: TaskKind, key: IdempotencyKey) -> Any:
+        assert kind is TaskKind.FILE_DOCUMENT_TRANSFORM
         self.owners.append(owner)
         raise TaskNotFoundError
 
@@ -102,7 +103,7 @@ async def test_two_user_document_scope_precedes_excerpt() -> None:
     request = DocumentInput(file_id=FileId("private-file"), include_excerpt=True)
     result = await McpReadService(make_context(allowed)).get_document(request)
     assert result.excerpt is not None
-    assert len(result.excerpt.text) == 12000
+    assert len(result.excerpt.text) == 12_000
     assert result.excerpt.complete is False
     with pytest.raises(FileNotInScopeError):
         await McpReadService(make_context(denied)).get_document(request)

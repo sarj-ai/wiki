@@ -11,6 +11,7 @@ from app.document_transform.google_gateway import GoogleDocumentGateway, verify_
 from app.document_transform.header_provenance import HeaderIdentityProof
 from app.document_transform.ir import parse_google_document
 from app.document_transform.markdown_import import verify_markdown_import
+from app.document_transform.verification import BrandVerification
 from app.files.service import GoogleFilesService
 from app.models.user import User
 from tests.test_document_transform import _branded_google_document
@@ -41,7 +42,7 @@ def test_new_import_header_rejects_missing_or_substituted_gutter(separator: str)
         "Body", title="Import", branded=True, header_title="Chosen Title"
     )
     result = verify_markdown_import(document, manifest)
-    assert not result.brand_applied
+    assert result.brand not in {BrandVerification.FULL, BrandVerification.NOT_REQUIRED}
     assert result.content_preserved
 
 
@@ -93,7 +94,7 @@ async def test_owned_header_separator_version_preserves_repeat_and_rejects_edit(
             await gateway.inspect_in_place(snapshot=snapshot, title=snapshot.title)
     else:
         inspection = await gateway.inspect_in_place(snapshot=snapshot, title=snapshot.title)
-        assert inspection.fully_branded
+        assert inspection.brand is BrandVerification.FULL
         assert inspection.headers == ()
         assert len(inspection.preserved_headers) == 1
         verification = await gateway.verify_in_place(
@@ -104,7 +105,7 @@ async def test_owned_header_separator_version_preserves_repeat_and_rejects_edit(
             protected_structure_sha256=inspection.protected_structure_sha256,
             verify_brand=True,
         )
-        assert verification.brand_applied
+        assert verification.brand is BrandVerification.FULL
         assert verification.content_preserved
         assert verification.structure_preserved
     assert document == before

@@ -8,7 +8,7 @@ from datetime import UTC, datetime, timedelta
 from typing import Any, NamedTuple, override
 import uuid
 
-from cryptography.fernet import MultiFernet
+from cryptography.fernet import Fernet, MultiFernet
 from googleapiclient.errors import HttpError
 from httplib2 import Response
 import pytest
@@ -365,7 +365,7 @@ def test_decoded_cache_bounds_total_nodes_and_skips_oversized_trees() -> None:
     )
     user = _user()
     version = sidebar_cache._TreeVersion(datetime.now(UTC), 0, "1", "(0,1)")
-    decoder = object()
+    decoder = MultiFernet([Fernet(Fernet.generate_key())])
     keys = [(UserId(user.id), DriveId(f"budget-{index}"), version, decoder) for index in range(3)]
     node = _tree().folders[0]
     tree = DriveTree(
@@ -383,6 +383,55 @@ def test_decoded_cache_bounds_total_nodes_and_skips_oversized_trees() -> None:
     cache.put(keys[2], oversized, payload_bytes=len(encrypt_cache(oversized.model_dump_json())))
     assert cache.get(keys[2]) is None
     assert cache.get(keys[1]) is tree
+
+
+def test_decoded_cache_replacement_requires_current_version_and_decoder() -> None:
+    cache = sidebar_cache._DecodedTreeCache(max_entries=2, max_nodes=10, max_payload_bytes=10)
+    principal = UserId(_user().id)
+    drive = DriveId("drive-1")
+    old_version = sidebar_cache._TreeVersion(datetime.now(UTC), 0, "1", "(0,1)")
+    new_version = old_version._replace(tuple_location="(0,2)")
+    old_decoder = MultiFernet([Fernet(Fernet.generate_key())])
+    new_decoder = MultiFernet([Fernet(Fernet.generate_key())])
+    old_tree, new_tree = _tree(), _tree()
+    old_key = (principal, drive, old_version, old_decoder)
+    new_key = (principal, drive, new_version, new_decoder)
+    cache.put(old_key, old_tree, payload_bytes=4)
+    cache.put(new_key, new_tree, payload_bytes=4)
+
+    assert cache.get(old_key) is None
+    assert cache.get((principal, drive, old_version, new_decoder)) is None
+    assert cache.latest(principal, drive, old_decoder) is None
+    assert cache.latest(principal, drive, new_decoder) == (new_version, new_tree)
+    assert cache.get(new_key) is new_tree
+    cache.put(old_key, old_tree, payload_bytes=11)
+    assert cache.get(new_key) is new_tree
+
+
+def test_decoded_cache_enforces_lru_bytes_and_drive_invalidation_across_principals() -> None:
+    cache = sidebar_cache._DecodedTreeCache(max_entries=2, max_nodes=10, max_payload_bytes=10)
+    principal, other_principal = UserId(_user().id), UserId(_user().id)
+    version = sidebar_cache._TreeVersion(datetime.now(UTC), 0, "1", "(0,1)")
+    decoder = MultiFernet([Fernet(Fernet.generate_key())])
+    tree = _tree()
+    first = (principal, DriveId("first"), version, decoder)
+    second = (principal, DriveId("second"), version, decoder)
+    third = (other_principal, DriveId("first"), version, decoder)
+    cache.put(first, tree, payload_bytes=3)
+    cache.put(second, tree, payload_bytes=3)
+    assert cache.get(first) is tree
+    cache.put(third, tree, payload_bytes=3)
+    assert cache.get(second) is None
+    assert cache.get(first) is tree
+    assert cache.get(third) is tree
+    cache.invalidate_drive(DriveId("first"))
+    assert cache.latest(principal, DriveId("first"), decoder) is None
+    assert cache.latest(other_principal, DriveId("first"), decoder) is None
+
+    cache.put(first, tree, payload_bytes=6)
+    cache.put(second, tree, payload_bytes=6)
+    assert cache.get(first) is None
+    assert cache.get(second) is tree
 
 
 @dataclass(frozen=True)

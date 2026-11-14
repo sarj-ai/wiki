@@ -9,9 +9,10 @@ from fastapi import Depends, Header, HTTPException, status
 from google.auth.exceptions import GoogleAuthError
 from google.auth.transport.requests import Request as GoogleAuthRequest
 from google.oauth2 import id_token
-from pydantic import BaseModel, ConfigDict, EmailStr, ValidationError
+from pydantic import BaseModel, ConfigDict, EmailStr, JsonValue, RootModel, ValidationError
 
-from app.config import settings
+from app.config import Settings, settings_dep
+from app.runtime_config import ConfiguredCloudTasks, require_cloud_tasks
 
 
 class _CloudTaskClaims(BaseModel):
@@ -32,6 +33,13 @@ class _GoogleTokenVerifier(Protocol):
     ) -> Mapping[str, object]: ...
 
 
+class _TokenClaimsPayload(RootModel[dict[str, JsonValue]]):
+    pass
+
+
+type _TaskTokenVerifier = Callable[[str, str], dict[str, JsonValue]]
+
+
 class TaskRequestAuthenticator(ABC):
     @abstractmethod
     async def authenticate(self, authorization: str | None) -> None: ...
@@ -43,11 +51,11 @@ class GoogleOidcTaskRequestAuthenticator(TaskRequestAuthenticator):
         *,
         audience: str,
         service_account_email: str,
-        verifier: Callable[[str, str], object] | None = None,
+        verifier: _TaskTokenVerifier,
     ) -> None:
         self._audience = audience
         self._service_account_email = service_account_email.casefold()
-        self._verifier = verifier or _verify_google_token
+        self._verifier = verifier
 
     @override
     async def authenticate(self, authorization: str | None) -> None:
@@ -72,23 +80,39 @@ class GoogleOidcTaskRequestAuthenticator(TaskRequestAuthenticator):
             )
 
 
-def _task_request_authenticator(audience: str | None) -> TaskRequestAuthenticator:
-    service_account = settings.CLOUD_TASKS_INVOKER_SERVICE_ACCOUNT
-    if audience is None or service_account is None:
-        msg = "Cloud Tasks OIDC settings are required"
-        raise RuntimeError(msg)
+def _task_request_authenticator(
+    audience: str, configuration: ConfiguredCloudTasks, verifier: _TaskTokenVerifier
+) -> TaskRequestAuthenticator:
     return GoogleOidcTaskRequestAuthenticator(
         audience=audience,
-        service_account_email=service_account,
+        service_account_email=configuration.invoker_service_account,
+        verifier=verifier,
     )
 
 
-def smart_create_task_request_authenticator_dep() -> TaskRequestAuthenticator:
-    return _task_request_authenticator(settings.CLOUD_TASKS_TARGET_URL)
+def task_token_verifier_dep() -> _TaskTokenVerifier:
+    return _verify_google_token
 
 
-def document_transform_task_request_authenticator_dep() -> TaskRequestAuthenticator:
-    return _task_request_authenticator(settings.DOCUMENT.TRANSFORM_TARGET_URL)
+def smart_create_task_request_authenticator_dep(
+    app_settings: Annotated[Settings, Depends(settings_dep)],
+    verifier: Annotated[_TaskTokenVerifier, Depends(task_token_verifier_dep)],
+) -> TaskRequestAuthenticator:
+    configuration = require_cloud_tasks(app_settings.cloud_tasks)
+    return _task_request_authenticator(configuration.target_url, configuration, verifier)
+
+
+def document_transform_task_request_authenticator_dep(
+    app_settings: Annotated[Settings, Depends(settings_dep)],
+    verifier: Annotated[_TaskTokenVerifier, Depends(task_token_verifier_dep)],
+) -> TaskRequestAuthenticator:
+    document = app_settings.DOCUMENT.queue
+    if document.kind == "disabled":
+        msg = "Document Transform Cloud Tasks settings are required"
+        raise RuntimeError(msg)
+    return _task_request_authenticator(
+        document.target_url, require_cloud_tasks(app_settings.cloud_tasks), verifier
+    )
 
 
 async def require_smart_create_cloud_task(
@@ -118,6 +142,6 @@ def _unauthorized() -> HTTPException:
     )
 
 
-def _verify_google_token(token: str, audience: str) -> object:
+def _verify_google_token(token: str, audience: str) -> dict[str, JsonValue]:
     verifier: _GoogleTokenVerifier = id_token.verify_oauth2_token
-    return verifier(token, GoogleAuthRequest(), audience)
+    return _TokenClaimsPayload.model_validate(verifier(token, GoogleAuthRequest(), audience)).root

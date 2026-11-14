@@ -3,7 +3,7 @@ from collections.abc import AsyncGenerator
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 import traceback
-from typing import Literal
+from typing import Literal, assert_never
 from urllib.parse import parse_qs, urlsplit
 import uuid
 
@@ -34,8 +34,17 @@ from app.mcp.native_request_context import (
     native_oauth_request,
     require_native_oauth_request,
 )
-from app.mcp.native_schemas import NativeCredential, NativeOAuthError, WikiConsentIdentity
-from app.mcp.native_state import NativeStateStore, native_database_time
+from app.mcp.native_schemas import (
+    ActiveRefresh,
+    ConsentCommand,
+    NativeCredential,
+    NativeOAuthError,
+    ReadyCode,
+    SpentCode,
+    SpentRefresh,
+    WikiConsentIdentity,
+)
+from app.mcp.native_state import NativePurpose, NativeStateStore, native_database_time
 from app.mcp.protection import OAuthStateProtector
 from app.mcp.redirect_policy import McpRedirectPolicy
 from app.mcp.schemas import McpCapability
@@ -95,8 +104,7 @@ class Lab:
             identity=self.user,
             browser=_BROWSER,
             csrf=view.csrf,
-            approve=True,
-            transform_approved=transform,
+            command=ConsentCommand.APPROVE_TRANSFORM if transform else ConsentCommand.APPROVE_READ,
         )
         key = parse_qs(urlsplit(redirect).query)["code"][0]
         code = await provider.load_authorization_code(self.client, key)
@@ -201,10 +209,16 @@ async def test_consent_read_and_cross_user_csrf_cannot_grant(lab: Lab) -> None:
         (lab.user, _BROWSER, "wrong"),
     ):
         with pytest.raises(NativeOAuthError):
-            await core.decide(intent, identity=identity, browser=browser, csrf=csrf, approve=True)
+            await core.decide(
+                intent,
+                identity=identity,
+                browser=browser,
+                csrf=csrf,
+                command=ConsentCommand.APPROVE_READ,
+            )
     assert await core.list_connections(lab.user) == []
     denied = await core.decide(
-        intent, identity=lab.user, browser=_BROWSER, csrf=view.csrf, approve=False
+        intent, identity=lab.user, browser=_BROWSER, csrf=view.csrf, command=ConsentCommand.DENY
     )
     assert parse_qs(urlsplit(denied).query) == {
         "iss": [core.issuer],
@@ -212,7 +226,13 @@ async def test_consent_read_and_cross_user_csrf_cannot_grant(lab: Lab) -> None:
         "state": ["client-state"],
     }
     with pytest.raises(NativeOAuthError):
-        await core.decide(intent, identity=lab.user, browser=_BROWSER, csrf=view.csrf, approve=True)
+        await core.decide(
+            intent,
+            identity=lab.user,
+            browser=_BROWSER,
+            csrf=view.csrf,
+            command=ConsentCommand.APPROVE_READ,
+        )
 
 
 async def test_authorize_accepts_variable_loopback_port_but_not_host_or_path(lab: Lab) -> None:
@@ -356,7 +376,11 @@ async def test_consent_decision_race_and_cross_user_disconnect(lab: Lab) -> None
     results = await asyncio.gather(
         *(
             provider.core.decide(
-                intent, identity=lab.user, browser=_BROWSER, csrf=view.csrf, approve=True
+                intent,
+                identity=lab.user,
+                browser=_BROWSER,
+                csrf=view.csrf,
+                command=ConsentCommand.APPROVE_READ,
             )
             for provider in lab.providers
         ),
@@ -384,7 +408,13 @@ async def test_quotas_fail_closed_without_revoking_existing_connection(
     core = lab.providers[0].core
     view = await core.consent_view(intent, identity=lab.user, browser=_BROWSER)
     with pytest.raises(NativeOAuthError):
-        await core.decide(intent, identity=lab.user, browser=_BROWSER, csrf=view.csrf, approve=True)
+        await core.decide(
+            intent,
+            identity=lab.user,
+            browser=_BROWSER,
+            csrf=view.csrf,
+            command=ConsentCommand.APPROVE_READ,
+        )
     assert await lab.providers[1].load_access_token(token.access_token) is not None
     monkeypatch.setattr("app.mcp.native_state._CLIENT_STATE_LIMIT", 0)
     with pytest.raises(AuthorizeError):
@@ -409,7 +439,7 @@ async def test_full_intent_quota_allows_existing_decision_and_rejects_new_intent
     with pytest.raises(AuthorizeError):
         await lab.intent()
     denied = await core.decide(
-        intent, identity=lab.user, browser=_BROWSER, csrf=view.csrf, approve=False
+        intent, identity=lab.user, browser=_BROWSER, csrf=view.csrf, command=ConsentCommand.DENY
     )
     assert parse_qs(urlsplit(denied).query)["error"] == ["access_denied"]
     assert (
@@ -437,7 +467,13 @@ async def test_ambiguous_decision_status_is_terminal_without_reissuing(
     assert (
         await core.consent_status(intent, identity=lab.user, browser=_BROWSER)
     ).status == "pending"
-    await core.decide(intent, identity=lab.user, browser=_BROWSER, csrf=view.csrf, approve=approve)
+    await core.decide(
+        intent,
+        identity=lab.user,
+        browser=_BROWSER,
+        csrf=view.csrf,
+        command=ConsentCommand.APPROVE_READ if approve else ConsentCommand.DENY,
+    )
     status = await lab.providers[1].core.consent_status(intent, identity=lab.user, browser=_BROWSER)
     assert status.status == ("approved" if approve else "denied")
     assert status.restart_required is True
@@ -447,7 +483,13 @@ async def test_ambiguous_decision_status_is_terminal_without_reissuing(
     with pytest.raises(NativeOAuthError):
         await core.consent_status(intent, identity=lab.other, browser=_BROWSER)
     with pytest.raises(NativeOAuthError):
-        await core.decide(intent, identity=lab.user, browser=_BROWSER, csrf=view.csrf, approve=True)
+        await core.decide(
+            intent,
+            identity=lab.user,
+            browser=_BROWSER,
+            csrf=view.csrf,
+            command=ConsentCommand.APPROVE_READ,
+        )
     async with lab.sessions() as db:
         assert await db.scalar(select(func.count()).select_from(McpGrant)) == int(approve)
 
@@ -630,7 +672,7 @@ async def test_pending_registration_is_short_and_reads_denial_never_extend(lab: 
     await provider.core.consent_status(intent, identity=lab.user, browser=_BROWSER)
     assert await client_expiry(lab) == initial
     await provider.core.decide(
-        intent, identity=lab.user, browser=_BROWSER, csrf=view.csrf, approve=False
+        intent, identity=lab.user, browser=_BROWSER, csrf=view.csrf, command=ConsentCommand.DENY
     )
     assert await client_expiry(lab) == initial
     async with lab.sessions.begin() as db:
@@ -674,7 +716,13 @@ async def test_failed_approval_rolls_back_registration_promotion_and_grant(
 
     monkeypatch.setattr(core.state, "promote_client", fail_after_promotion)
     with pytest.raises(NativeOAuthError):
-        await core.decide(intent, identity=lab.user, browser=_BROWSER, csrf=view.csrf, approve=True)
+        await core.decide(
+            intent,
+            identity=lab.user,
+            browser=_BROWSER,
+            csrf=view.csrf,
+            command=ConsentCommand.APPROVE_READ,
+        )
     assert await client_expiry(lab) == initial
     assert (
         await core.consent_status(intent, identity=lab.user, browser=_BROWSER)
@@ -689,3 +737,58 @@ async def test_failed_approval_rolls_back_registration_promotion_and_grant(
             )
             == 0
         )
+
+
+@pytest.mark.parametrize("purpose", [NativePurpose.CODE, NativePurpose.REFRESH])
+async def test_legacy_encrypted_code_or_refresh_migrates_on_atomic_consumption(
+    lab: Lab, purpose: NativePurpose
+) -> None:
+    provider = lab.providers[0]
+    code = await lab.code()
+    if purpose is NativePurpose.CODE:
+        key = code.code
+    else:
+        issued = await provider.exchange_authorization_code(lab.client, code)
+        assert issued.refresh_token is not None
+        key = issued.refresh_token
+    state = provider.core.state
+    assert isinstance(state, NativeStateStore)
+    namespace = f"native:{purpose}"
+    async with lab.sessions.begin() as db:
+        credential = await provider.core.credential(db, purpose, key)
+        assert isinstance(credential, (ReadyCode, ActiveRefresh))
+        legacy = credential.model_dump(mode="json", exclude={"kind"})
+        legacy["consumed"] = False
+        match credential:
+            case ActiveRefresh():
+                legacy.update(challenge=None, redirect_uri=None, redirect_explicit=False)
+            case ReadyCode():
+                pass
+            case _:
+                assert_never(credential)
+        rows = list(
+            await db.scalars(
+                select(MCPOAuthEntry).where(
+                    MCPOAuthEntry.collection == namespace,
+                    MCPOAuthEntry.key_digest.in_(state._protector.physical_keys(namespace, key)),
+                )
+            )
+        )
+        assert len(rows) == 1
+        rows[0].ciphertext = state._protector.protect(namespace, key, legacy)
+    fresh_provider = lab.providers[1]
+    if purpose is NativePurpose.CODE:
+        recovered = await fresh_provider.load_authorization_code(lab.client, key)
+        assert recovered == code
+        tokens = await fresh_provider.exchange_authorization_code(lab.client, code)
+    else:
+        recovered_refresh = await fresh_provider.load_refresh_token(lab.client, key)
+        assert recovered_refresh is not None
+        tokens = await fresh_provider.exchange_refresh_token(
+            lab.client, recovered_refresh, [McpCapability.READ]
+        )
+    assert await fresh_provider.load_access_token(tokens.access_token) is not None
+    async with lab.sessions() as db:
+        saved = await fresh_provider.core.credential(db, purpose, key)
+    assert isinstance(saved, SpentCode if purpose is NativePurpose.CODE else SpentRefresh)
+    assert "consumed" not in saved.model_dump()

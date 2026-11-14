@@ -1,10 +1,10 @@
 from __future__ import annotations
 
-from dataclasses import asdict, dataclass, replace
+from dataclasses import asdict, dataclass, field as dataclass_field, replace
 import hashlib
 import json
 from types import MappingProxyType
-from typing import Any, NamedTuple, Protocol, assert_never, override
+from typing import Any, Literal, NamedTuple, Protocol, assert_never, overload, override
 import uuid
 
 from loguru import logger
@@ -130,6 +130,7 @@ from app.document_transform.readability import plan_readability
 from app.document_transform.readability_types import ReadabilityCheckpoint
 from app.document_transform.runner import DocumentTransformRunner
 from app.document_transform.schemas import (
+    AppliedTabNaming,
     CompletedInPlaceCheckpoint,
     ContentInPlaceCheckpoint,
     CopyCheckpoint,
@@ -138,6 +139,7 @@ from app.document_transform.schemas import (
     CopyPlan,
     CreatedCopyCheckpoint,
     CreatingCopyCheckpoint,
+    DeclinedTabNaming,
     DocumentOutput,
     DocumentTransformCheckpoint,
     DocumentTransformRequest,
@@ -149,15 +151,20 @@ from app.document_transform.schemas import (
     InPlaceCheckpointPayload,
     InPlaceCheckpointStage,
     InPlaceMutation,
+    InPlacePlan,
+    MetadataInPlaceCheckpoint,
     ModelPlanningCheckpoint,
     NoopContentInPlaceCheckpoint,
     OutputStrategy,
     PlannedCopyCheckpoint,
-    TabNamingDeclinedReason,
+    PlannedTabNaming,
+    TabNamingState,
     TextDocumentCheckpoint,
     TextDocumentCheckpointPayload,
     TransformFinding,
     TransformMode,
+    UnchangedTabNaming,
+    UnplannedTabNaming,
     ValidationSummary,
     VerifiedCopyCheckpoint,
     transition_in_place,
@@ -177,6 +184,7 @@ from app.document_transform.unslop import (
     UNSLOP_UPSTREAM_COMMIT,
     UNSLOP_UPSTREAM_VERSION,
 )
+from app.document_transform.verification import BrandVerification
 from app.document_transform.versions import DOCUMENT_PIPELINE_VERSION
 from app.identifiers import DocsRevisionId, DocsSegmentId, FileId, ModelId, TaskId
 
@@ -284,9 +292,37 @@ class _InPlacePlan(NamedTuple):
     preserved_findings: tuple[TransformFinding, ...] | None
 
 
+@dataclass(frozen=True, slots=True)
+class _InitialHeaders:
+    kind: Literal["headers"] = dataclass_field(default="headers", init=False)
+    first_request: DocsRequest
+    remaining_requests: tuple[DocsRequest, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class _InitialContent:
+    kind: Literal["content"] = dataclass_field(default="content", init=False)
+    first_request: DocsRequest
+    remaining_requests: tuple[DocsRequest, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class _InitialNoop:
+    kind: Literal["noop"] = dataclass_field(default="noop", init=False)
+
+
+type _InitialCommands = _InitialHeaders | _InitialContent | _InitialNoop
+
+
+def _initial_content(requests: list[DocsRequest]) -> _InitialContent | _InitialNoop:
+    if not requests:
+        return _InitialNoop()
+    first, *remaining = requests
+    return _InitialContent(first, tuple(remaining))
+
+
 class _InPlaceMutationPlan(NamedTuple):
-    stage: InPlaceCheckpointStage
-    requests: list[DocsRequest]
+    commands: _InitialCommands
     replacements: dict[str, str]
     table_scope: _TableFontScope
     native_font_proof: tuple[NativeFontProof, ...]
@@ -319,7 +355,6 @@ class DocumentTransformExecutor(DocumentTransformRunner):
         gateway: DocumentGateway,
         generator: PatchGenerator,
         brand: SarjBrandProfile | None = None,
-        allow_format_text_edits: bool = False,
         logo_bytes: bytes | None = None,
         checkpoint_store: DocumentTransformCheckpointStore | None = None,
         task_id: TaskId | None = None,
@@ -331,11 +366,9 @@ class DocumentTransformExecutor(DocumentTransformRunner):
         self._generator = generator
         self._planner = TextTransformPlanner(
             generator=generator,
-            allow_format_text_edits=allow_format_text_edits,
             allow_unslop_model=generator.supports_semantic_rewrite,
         )
         self._brand = brand or SarjBrandProfile()
-        self._allow_format_text_edits = allow_format_text_edits
         self._logo_bytes = logo_bytes
         self._checkpoint_store = checkpoint_store
         self._task_id = task_id
@@ -495,6 +528,7 @@ class DocumentTransformExecutor(DocumentTransformRunner):
                 HeaderInPlaceCheckpoint()
                 | ContentInPlaceCheckpoint()
                 | NoopContentInPlaceCheckpoint()
+                | MetadataInPlaceCheckpoint()
                 | CompletedInPlaceCheckpoint()
             ):
                 if (
@@ -583,6 +617,7 @@ class DocumentTransformExecutor(DocumentTransformRunner):
                 HeaderInPlaceCheckpoint()
                 | ContentInPlaceCheckpoint()
                 | NoopContentInPlaceCheckpoint()
+                | MetadataInPlaceCheckpoint()
                 | CompletedInPlaceCheckpoint()
             ):
                 checkpoint = checkpoint.model_copy(
@@ -605,6 +640,7 @@ class DocumentTransformExecutor(DocumentTransformRunner):
                 HeaderInPlaceCheckpoint()
                 | ContentInPlaceCheckpoint()
                 | NoopContentInPlaceCheckpoint()
+                | MetadataInPlaceCheckpoint()
                 | CompletedInPlaceCheckpoint()
             ):
                 return await self._save_checkpoint(checkpoint)
@@ -1122,7 +1158,7 @@ class DocumentTransformExecutor(DocumentTransformRunner):
         findings.extend(applied_validation.findings)
         findings = _with_tab_naming_decline(
             findings,
-            declined_reason=checkpoint.tab_naming_declined_reason,
+            naming=checkpoint.tab_naming,
         )
         if checkpoint.native_footer is not None and checkpoint.native_footer.coverage is not None:
             findings.extend(
@@ -1203,7 +1239,7 @@ class DocumentTransformExecutor(DocumentTransformRunner):
             # Do not introduce a new pre-brand stage into a partially completed
             # output, even if a later retry finds that its contents qualify.
             if (
-                checkpoint.tab_naming
+                not isinstance(checkpoint.tab_naming, UnplannedTabNaming)
                 or checkpoint.native_footer
                 or checkpoint.native_dates
                 or confirmed_draft_mutation(draft.mutation)
@@ -1308,41 +1344,54 @@ class DocumentTransformExecutor(DocumentTransformRunner):
         draft: OutputDraft,
         source_has_native_title: bool,
     ) -> OutputDraft:
-        if checkpoint.tab_naming_declined_reason is not None:
-            return draft
-        if checkpoint.tab_naming is None:
-            try:
-                tab_naming = await self._gateway.plan_tab_naming(
-                    document_id=draft.document_id,
-                    title=checkpoint.source_title,
-                    operation_id=operation_id,
-                    required_revision_id=draft.revision_id,
-                    prefer_document_title=bool(checkpoint.authored_labels)
-                    and not source_has_native_title,
-                )
-            except UnsupportedTabMetadataError:
-                await self._save_copy_checkpoint(
-                    checkpoint.model_copy(update=_tab_naming_decline_update(checkpoint))
-                )
+        match checkpoint.tab_naming:
+            case DeclinedTabNaming() | UnchangedTabNaming():
                 return draft
-            if tab_naming is None:
-                return draft
-            checkpoint = await self._save_copy_checkpoint(
-                checkpoint.model_copy(update={"tab_naming": tab_naming})
-            )
-        naming = checkpoint.tab_naming
-        if naming is None:
-            raise DocumentGatewayError
+            case AppliedTabNaming(revision_id=revision):
+                return replace(draft, revision_id=revision)
+            case PlannedTabNaming(checkpoint=naming):
+                pass
+            case UnplannedTabNaming():
+                try:
+                    planned_naming = await self._gateway.plan_tab_naming(
+                        document_id=draft.document_id,
+                        title=checkpoint.source_title,
+                        operation_id=operation_id,
+                        required_revision_id=draft.revision_id,
+                        prefer_document_title=bool(checkpoint.authored_labels)
+                        and not source_has_native_title,
+                    )
+                except UnsupportedTabMetadataError:
+                    await self._save_copy_checkpoint(
+                        _record_tab_naming(checkpoint, DeclinedTabNaming())
+                    )
+                    return draft
+                if planned_naming is None:
+                    await self._save_copy_checkpoint(
+                        _record_tab_naming(
+                            checkpoint, UnchangedTabNaming(revision_id=draft.revision_id)
+                        )
+                    )
+                    return draft
+                naming = planned_naming
+                checkpoint = await self._save_copy_checkpoint(
+                    _record_tab_naming(checkpoint, PlannedTabNaming(checkpoint=naming))
+                )
+            case _:
+                assert_never(checkpoint.tab_naming)
         try:
             revision = await self._gateway.apply_tab_naming(
                 document_id=draft.document_id,
                 checkpoint=naming,
             )
         except UnsupportedTabMetadataError:
-            await self._save_copy_checkpoint(
-                checkpoint.model_copy(update=_tab_naming_decline_update(checkpoint))
-            )
+            await self._save_copy_checkpoint(_record_tab_naming(checkpoint, DeclinedTabNaming()))
             return draft
+        await self._save_copy_checkpoint(
+            _record_tab_naming(
+                checkpoint, AppliedTabNaming(checkpoint=naming, revision_id=revision)
+            )
+        )
         return replace(draft, revision_id=revision)
 
     def _copy_checkpoint_or_none(self) -> CopyCheckpoint | None:
@@ -1414,11 +1463,15 @@ class DocumentTransformExecutor(DocumentTransformRunner):
             verify_brand=request.mode is not TransformMode.UNSLOP,
             header_title=checkpoint.output_name,
         )
-        revision_id = verification.revision_id or draft.revision_id
+        revision_id = verification.revision_id
         if (
             not verification.content_preserved
             or not verification.structure_preserved
             or revision_id != checkpoint.output_revision_id
+            or (
+                request.mode is not TransformMode.UNSLOP
+                and verification.brand is BrandVerification.NOT_REQUIRED
+            )
         ):
             raise OutputVerificationError
         serialized_result = result.model_dump(mode="json")
@@ -1451,11 +1504,15 @@ class DocumentTransformExecutor(DocumentTransformRunner):
             verify_brand=request.mode is not TransformMode.UNSLOP,
             header_title=checkpoint.output_name,
         )
-        final_revision = final_verification.revision_id or draft.revision_id
+        final_revision = final_verification.revision_id
         if (
             not final_verification.content_preserved
             or not final_verification.structure_preserved
             or final_revision != checkpoint.output_revision_id
+            or (
+                request.mode is not TransformMode.UNSLOP
+                and final_verification.brand is BrandVerification.NOT_REQUIRED
+            )
         ):
             raise OutputVerificationError
         if result.header_identity is not None:
@@ -1723,31 +1780,50 @@ class DocumentTransformExecutor(DocumentTransformRunner):
         inspection: InPlaceInspection,
         checkpoint: InPlaceCheckpoint,
     ) -> DocumentTransformResult:
-        if checkpoint.stage is not InPlaceCheckpointStage.CONTENT:
+        if not isinstance(
+            checkpoint,
+            (ContentInPlaceCheckpoint, NoopContentInPlaceCheckpoint, MetadataInPlaceCheckpoint),
+        ):
             raise DocumentGatewayError
-        if not checkpoint.requests:
-            checkpoint = await self._name_in_place_tabs(
-                operation_id=operation_id,
-                request=request,
-                checkpoint=checkpoint,
-            )
-            checkpoint = await self._save_checkpoint(
-                transition_in_place(
-                    checkpoint,
-                    stage=InPlaceCheckpointStage.COMPLETE,
-                    current_revision_id=checkpoint.current_revision_id,
-                    requests=[],
-                    marker_name=None,
-                    marker_range=None,
-                    mutation_sha256=None,
+        match checkpoint:
+            case NoopContentInPlaceCheckpoint():
+                checkpoint = await self._save_checkpoint(
+                    transition_in_place(
+                        checkpoint,
+                        stage=InPlaceCheckpointStage.METADATA,
+                        current_revision_id=checkpoint.current_revision_id,
+                        requests=[],
+                        marker_name=None,
+                        marker_range=None,
+                        mutation_sha256=None,
+                    )
                 )
-            )
-            return self._in_place_result(
-                operation_id=operation_id,
-                request=request,
-                checkpoint=checkpoint,
-                output=inspection.output,
-            )
+                checkpoint = await self._name_in_place_tabs(
+                    operation_id=operation_id,
+                    request=request,
+                    checkpoint=checkpoint,
+                )
+                checkpoint = await self._save_checkpoint(
+                    transition_in_place(
+                        checkpoint,
+                        stage=InPlaceCheckpointStage.COMPLETE,
+                        current_revision_id=checkpoint.current_revision_id,
+                        requests=[],
+                        marker_name=None,
+                        marker_range=None,
+                        mutation_sha256=None,
+                    )
+                )
+                return self._in_place_result(
+                    operation_id=operation_id,
+                    request=request,
+                    checkpoint=checkpoint,
+                    output=inspection.output,
+                )
+            case ContentInPlaceCheckpoint() | MetadataInPlaceCheckpoint():
+                pass
+            case _:
+                assert_never(checkpoint)
         before_content = apply_native_font_preservation(
             apply_visual_authority(
                 apply_paragraph_layout(_to_ir(snapshot), checkpoint.paragraph_layout),
@@ -1760,10 +1836,13 @@ class DocumentTransformExecutor(DocumentTransformRunner):
         )
         if expected_content.semantic_sha256 != checkpoint.expected_semantic_sha256:
             raise InPlaceNeedsReviewError
-        if checkpoint.tab_naming is not None or checkpoint.tab_naming_declined_reason is not None:
-            stage_result = InPlaceStageResult(snapshot.revision_id, snapshot.google_document)
-        else:
-            stage_result = await self._apply_checkpoint_stage(checkpoint)
+        match checkpoint:
+            case ContentInPlaceCheckpoint():
+                stage_result = await self._apply_checkpoint_stage(checkpoint)
+            case MetadataInPlaceCheckpoint():
+                stage_result = InPlaceStageResult(snapshot.revision_id, snapshot.google_document)
+            case _:
+                assert_never(checkpoint)
         await self._verify_in_place_content(
             request=request,
             snapshot=snapshot,
@@ -1771,7 +1850,25 @@ class DocumentTransformExecutor(DocumentTransformRunner):
             expected_content=expected_content,
             stage_result=stage_result,
         )
-        checkpoint = checkpoint.model_copy(update={"current_revision_id": stage_result.revision_id})
+        match checkpoint:
+            case ContentInPlaceCheckpoint():
+                checkpoint = await self._save_checkpoint(
+                    transition_in_place(
+                        checkpoint,
+                        stage=InPlaceCheckpointStage.METADATA,
+                        current_revision_id=stage_result.revision_id,
+                        requests=[],
+                        marker_name=None,
+                        marker_range=None,
+                        mutation_sha256=None,
+                    )
+                )
+            case MetadataInPlaceCheckpoint():
+                checkpoint = checkpoint.model_copy(
+                    update={"current_revision_id": stage_result.revision_id}
+                )
+            case _:
+                assert_never(checkpoint)
         checkpoint = await self._name_in_place_tabs(
             operation_id=operation_id,
             request=request,
@@ -1825,7 +1922,7 @@ class DocumentTransformExecutor(DocumentTransformRunner):
         if not (
             verification.content_preserved
             and verification.structure_preserved
-            and (verification.brand_applied or verification.supported_brand_applied)
+            and verification.brand.acceptable(required=request.mode is not TransformMode.UNSLOP)
         ):
             raise InPlacePostMutationVerificationError
         if not verify_paragraph_layout(
@@ -1853,38 +1950,50 @@ class DocumentTransformExecutor(DocumentTransformRunner):
     ) -> InPlaceCheckpoint:
         if request.mode is TransformMode.UNSLOP:
             return checkpoint
-        if checkpoint.tab_naming_declined_reason is not None:
-            return checkpoint
-        if checkpoint.tab_naming is None:
-            try:
-                tab_naming = await self._gateway.plan_tab_naming(
-                    document_id=checkpoint.document_id,
-                    title=checkpoint.source_title,
-                    operation_id=operation_id,
-                    required_revision_id=checkpoint.current_revision_id,
-                )
-            except UnsupportedTabMetadataError:
-                return await self._save_checkpoint(
-                    checkpoint.model_copy(update=_tab_naming_decline_update(checkpoint))
-                )
-            if tab_naming is None:
+        match checkpoint.tab_naming:
+            case DeclinedTabNaming() | UnchangedTabNaming():
                 return checkpoint
-            checkpoint = await self._save_checkpoint(
-                checkpoint.model_copy(update={"tab_naming": tab_naming, "changed": True})
-            )
-        naming = checkpoint.tab_naming
-        if naming is None:
-            raise DocumentGatewayError
+            case AppliedTabNaming(revision_id=revision):
+                return checkpoint.model_copy(update={"current_revision_id": revision})
+            case PlannedTabNaming(checkpoint=naming):
+                pass
+            case UnplannedTabNaming():
+                try:
+                    planned_naming = await self._gateway.plan_tab_naming(
+                        document_id=checkpoint.document_id,
+                        title=checkpoint.source_title,
+                        operation_id=operation_id,
+                        required_revision_id=checkpoint.current_revision_id,
+                    )
+                except UnsupportedTabMetadataError:
+                    return await self._save_checkpoint(
+                        _record_tab_naming(checkpoint, DeclinedTabNaming())
+                    )
+                if planned_naming is None:
+                    return await self._save_checkpoint(
+                        _record_tab_naming(
+                            checkpoint,
+                            UnchangedTabNaming(revision_id=checkpoint.current_revision_id),
+                        )
+                    )
+                naming = planned_naming
+                checkpoint = await self._save_checkpoint(
+                    _record_tab_naming(checkpoint, PlannedTabNaming(checkpoint=naming))
+                )
+            case _:
+                assert_never(checkpoint.tab_naming)
         try:
             revision = await self._gateway.apply_tab_naming(
                 document_id=checkpoint.document_id,
                 checkpoint=naming,
             )
         except UnsupportedTabMetadataError:
-            return await self._save_checkpoint(
-                checkpoint.model_copy(update=_tab_naming_decline_update(checkpoint))
+            return await self._save_checkpoint(_record_tab_naming(checkpoint, DeclinedTabNaming()))
+        return await self._save_checkpoint(
+            _record_tab_naming(
+                checkpoint, AppliedTabNaming(checkpoint=naming, revision_id=revision)
             )
-        return checkpoint.model_copy(update={"current_revision_id": revision})
+        )
 
     async def _plan_initial_in_place(
         self,
@@ -1900,7 +2009,6 @@ class DocumentTransformExecutor(DocumentTransformRunner):
         plan = await self._prepare_in_place_plan(request, snapshot)
         original, outcome = plan.original, plan.outcome
         pagination, visual_ids = plan.pagination, plan.visual_ids
-        preserved_font_ids = plan.preserved_font_ids
         preserved_findings = plan.preserved_findings
         branded = request.mode is not TransformMode.UNSLOP
         _require_in_place_brand(inspection, branded=branded)
@@ -1910,13 +2018,12 @@ class DocumentTransformExecutor(DocumentTransformRunner):
             if block.text != transformed.text
         }
         if pagination and (
-            replacements
-            or (branded and not (inspection.fully_branded or inspection.supported_brand_applied))
+            replacements or (branded and not inspection.brand.acceptable(required=True))
         ):
             # Existing-only recognition is a no-op contract, not authority to
             # reinterpret a partially edited layout or move its spacer ranges.
             raise InPlaceNeedsReviewError
-        stage, requests = self._initial_in_place_requests(
+        commands = self._initial_in_place_requests(
             request=request,
             snapshot=snapshot,
             plan=plan,
@@ -1930,9 +2037,16 @@ class DocumentTransformExecutor(DocumentTransformRunner):
             transformed=outcome.document,
             inspection=inspection,
         )
-        if stage is InPlaceCheckpointStage.CONTENT:
-            requests.extend(table_scope.requests)
-        if requests and inspection.marker_range is None:
+        match commands:
+            case _InitialHeaders():
+                pass
+            case _InitialContent(first_request=first, remaining_requests=remaining):
+                commands = _initial_content([first, *remaining, *table_scope.requests])
+            case _InitialNoop():
+                commands = _initial_content(table_scope.requests)
+            case _:
+                assert_never(commands)
+        if not isinstance(commands, _InitialNoop) and inspection.marker_range is None:
             logger.info(
                 "document in-place preflight checks={checks}",
                 checks={"in_place_missing_marker": True},
@@ -1944,7 +2058,7 @@ class DocumentTransformExecutor(DocumentTransformRunner):
                 original,
                 transformed=outcome.document,
                 target_font_family=self._brand.font_family if branded else None,
-                preserved_family_block_ids=preserved_font_ids,
+                preserved_family_block_ids=plan.preserved_font_ids,
                 visual_authority=NativeVisualAuthoritySelection(visual_ids),
             )
         except (KeyError, IndexError, TypeError, ValueError, AttributeError) as error:
@@ -1958,7 +2072,7 @@ class DocumentTransformExecutor(DocumentTransformRunner):
                 outcome=outcome,
                 pagination=pagination,
                 visual_ids=visual_ids,
-                preserved_font_ids=preserved_font_ids,
+                preserved_font_ids=plan.preserved_font_ids,
                 branded=branded,
             )
         checkpoint = self._initial_in_place_checkpoint(
@@ -1968,7 +2082,7 @@ class DocumentTransformExecutor(DocumentTransformRunner):
             inspection=inspection,
             plan=plan,
             mutations=_InPlaceMutationPlan(
-                stage, requests, replacements, table_scope, native_font_proof, branded
+                commands, replacements, table_scope, native_font_proof, branded
             ),
             preserved_findings=preserved_findings,
         )
@@ -1988,8 +2102,19 @@ class DocumentTransformExecutor(DocumentTransformRunner):
         original, outcome = plan.original, plan.outcome
         pagination, visual_ids = plan.pagination, plan.visual_ids
         preserved_font_ids, paragraph_layout = plan.preserved_font_ids, plan.paragraph_layout
-        stage, requests, replacements, table_scope, native_font_proof, branded = mutations
-        revision_id = snapshot.revision_id
+        commands, replacements, table_scope, native_font_proof, branded = mutations
+        match commands:
+            case _InitialHeaders(first_request=first, remaining_requests=remaining):
+                stage = InPlaceCheckpointStage.HEADERS
+                requests = [first, *remaining]
+            case _InitialContent(first_request=first, remaining_requests=remaining):
+                stage = InPlaceCheckpointStage.CONTENT
+                requests = [first, *remaining]
+            case _InitialNoop():
+                stage = InPlaceCheckpointStage.CONTENT
+                requests = []
+            case _:
+                assert_never(commands)
         return InPlaceCheckpointPayload.model_validate(
             {
                 "visual_authority_block_ids": tuple(NativeFontBlockId(item) for item in visual_ids),
@@ -2032,8 +2157,8 @@ class DocumentTransformExecutor(DocumentTransformRunner):
                 "protected_structure_sha256": table_scope.protected_sha256,
                 "body_sha256": inspection.body_sha256,
                 "header_safe_sha256": inspection.header_safe_sha256,
-                "source_revision_id": revision_id,
-                "current_revision_id": revision_id,
+                "source_revision_id": snapshot.revision_id,
+                "current_revision_id": snapshot.revision_id,
                 "stage": stage,
                 "marker_name": _in_place_marker(operation_id, stage.value, requests)
                 if requests
@@ -2139,17 +2264,12 @@ class DocumentTransformExecutor(DocumentTransformRunner):
         plan: _InPlacePlan,
         inspection: InPlaceInspection,
         replacements: dict[str, str],
-    ) -> tuple[InPlaceCheckpointStage, list[DocsRequest]]:
+    ) -> _InitialCommands:
         original, outcome = plan.original, plan.outcome
         branded = request.mode is not TransformMode.UNSLOP
-        if (
-            branded
-            and (inspection.fully_branded or inspection.supported_brand_applied)
-            and not replacements
-        ):
-            requests = []
-            stage = InPlaceCheckpointStage.CONTENT
-        elif branded and inspection.missing_header_tab_ids:
+        if branded and inspection.brand.acceptable(required=True) and not replacements:
+            return _InitialNoop()
+        if branded and inspection.missing_header_tab_ids:
             requests = [
                 {
                     "createHeader": {
@@ -2159,17 +2279,16 @@ class DocumentTransformExecutor(DocumentTransformRunner):
                 }
                 for tab_id in inspection.missing_header_tab_ids
             ]
-            stage = InPlaceCheckpointStage.HEADERS
-        else:
-            requests = self._content_requests(
-                request=request,
-                snapshot=snapshot,
-                original=original,
-                transformed=outcome.document,
-                inspection=inspection,
-            )
-            stage = InPlaceCheckpointStage.CONTENT
-        return stage, requests
+            first, *remaining = requests
+            return _InitialHeaders(first, tuple(remaining))
+        requests = self._content_requests(
+            request=request,
+            snapshot=snapshot,
+            original=original,
+            transformed=outcome.document,
+            inspection=inspection,
+        )
+        return _initial_content(requests)
 
     async def _complete_complex_structure_safe_noop(
         self,
@@ -2403,7 +2522,7 @@ class DocumentTransformExecutor(DocumentTransformRunner):
     ) -> DocumentTransformResult:
         findings = _with_tab_naming_decline(
             checkpoint.findings,
-            declined_reason=checkpoint.tab_naming_declined_reason,
+            naming=checkpoint.tab_naming,
         )
         return DocumentTransformResult(
             operation_id=operation_id,
@@ -2471,35 +2590,47 @@ class DocumentTransformExecutor(DocumentTransformRunner):
             verify_brand=request.mode is not TransformMode.UNSLOP,
             header_title=header_title,
         )
-        if not verification.content_preserved or not verification.structure_preserved:
+        if (
+            not verification.content_preserved
+            or not verification.structure_preserved
+            or (
+                request.mode is not TransformMode.UNSLOP
+                and verification.brand is BrandVerification.NOT_REQUIRED
+            )
+        ):
             raise OutputVerificationError
         findings: list[TransformFinding] = []
-        if not verification.brand_applied:
-            findings.append(
-                TransformFinding(
-                    code=(
-                        "custom_furniture_preserved"
-                        if verification.supported_brand_applied
-                        else "post_write_brand_mismatch"
-                    ),
-                    detail=(
-                        "Supported formatting was applied while preserved authored visual treatment or custom furniture was retained. Complete Sarj branding was not applied."
-                        if verification.supported_brand_applied
-                        else "Output did not contain the complete pinned Sarj brand treatment"
-                    ),
-                    severity=(
-                        FindingSeverity.INFORMATIONAL
-                        if verification.supported_brand_applied
-                        else FindingSeverity.REVIEW
-                    ),
+        match verification.brand:
+            case BrandVerification.MISMATCH | BrandVerification.SUPPORTED:
+                findings.append(
+                    TransformFinding(
+                        code=(
+                            "custom_furniture_preserved"
+                            if (verification.brand is BrandVerification.SUPPORTED)
+                            else "post_write_brand_mismatch"
+                        ),
+                        detail=(
+                            "Supported formatting was applied while preserved authored visual treatment or custom furniture was retained. Complete Sarj branding was not applied."
+                            if (verification.brand is BrandVerification.SUPPORTED)
+                            else "Output did not contain the complete pinned Sarj brand treatment"
+                        ),
+                        severity=(
+                            FindingSeverity.INFORMATIONAL
+                            if (verification.brand is BrandVerification.SUPPORTED)
+                            else FindingSeverity.REVIEW
+                        ),
+                    )
                 )
-            )
+            case BrandVerification.FULL | BrandVerification.NOT_REQUIRED:
+                pass
+            case _:
+                assert_never(verification.brand)
         return AppliedValidation(
             protected_content_preserved=verification.content_preserved,
             structure_preserved=verification.structure_preserved,
-            supported_brand_applied=verification.supported_brand_applied,
+            supported_brand_applied=(verification.brand is BrandVerification.SUPPORTED),
             findings=tuple(findings),
-            revision_id=verification.revision_id or draft.revision_id,
+            revision_id=verification.revision_id,
         )
 
     async def _load_source(self, request: DocumentTransformRequest) -> SourceSnapshot:
@@ -3202,8 +3333,7 @@ def _is_complex_structure_safe_noop(checkpoint: InPlaceCheckpoint) -> bool:
         and checkpoint.marker_range is None
         and checkpoint.mutation_sha256 is None
         and checkpoint.table_font_plan is None
-        and checkpoint.tab_naming is None
-        and checkpoint.tab_naming_declined_reason is None
+        and isinstance(checkpoint.tab_naming, UnplannedTabNaming)
         and checkpoint.applied_patch_count == 0
         and checkpoint.deterministic_patch_count == 0
         and checkpoint.model_patch_count == 0
@@ -3406,33 +3536,66 @@ def _findings_need_review(findings: list[TransformFinding]) -> bool:
     return any(finding.severity is FindingSeverity.REVIEW for finding in findings)
 
 
-def _tab_naming_decline_update(
-    checkpoint: CopyCheckpoint | InPlaceCheckpoint,
-) -> dict[str, JsonValue]:
-    update: dict[str, JsonValue] = {
-        "tab_naming": None,
-        "tab_naming_declined_reason": "unsupported_metadata",
-    }
-    match checkpoint:
-        case (
-            HeaderInPlaceCheckpoint()
-            | ContentInPlaceCheckpoint()
-            | NoopContentInPlaceCheckpoint()
-            | CompletedInPlaceCheckpoint()
-        ):
-            update["changed"] = checkpoint.current_revision_id != checkpoint.source_revision_id
+@overload
+def _record_tab_naming(checkpoint: CopyCheckpoint, naming: TabNamingState) -> CopyCheckpoint: ...
+
+
+@overload
+def _record_tab_naming(
+    checkpoint: InPlaceCheckpoint, naming: TabNamingState
+) -> InPlaceCheckpoint: ...
+
+
+def _record_tab_naming(
+    checkpoint: CopyCheckpoint | InPlaceCheckpoint, naming: TabNamingState
+) -> CopyCheckpoint | InPlaceCheckpoint:
+    match checkpoint.tab_naming:
+        case UnplannedTabNaming():
+            valid = isinstance(naming, (PlannedTabNaming, UnchangedTabNaming, DeclinedTabNaming))
+        case PlannedTabNaming():
+            valid = isinstance(naming, (AppliedTabNaming, DeclinedTabNaming))
+        case AppliedTabNaming() | UnchangedTabNaming() | DeclinedTabNaming():
+            valid = False
         case _:
-            pass
-    return update
+            assert_never(checkpoint.tab_naming)
+    if not valid:
+        message = "Invalid tab naming transition"
+        raise ValueError(message)
+    payload = {**checkpoint.model_dump(), "tab_naming": naming.model_dump()}
+    match checkpoint:
+        case InPlacePlan():
+            match naming:
+                case AppliedTabNaming(revision_id=revision):
+                    payload["current_revision_id"] = revision
+                    payload["changed"] = True
+                case PlannedTabNaming():
+                    payload["changed"] = True
+                case DeclinedTabNaming():
+                    payload["changed"] = (
+                        checkpoint.current_revision_id != checkpoint.source_revision_id
+                    )
+                case UnchangedTabNaming() | UnplannedTabNaming():
+                    pass
+                case _:
+                    assert_never(naming)
+            return InPlaceCheckpointPayload.model_validate(payload).root
+        case CopyPlan():
+            return CopyCheckpointPayload.model_validate(payload).root
+        case _:
+            assert_never(checkpoint)
 
 
 def _with_tab_naming_decline(
-    findings: list[TransformFinding], *, declined_reason: TabNamingDeclinedReason | None
+    findings: list[TransformFinding], *, naming: TabNamingState
 ) -> list[TransformFinding]:
-    if declined_reason is None or any(
-        finding.code == "tab_naming_preserved" for finding in findings
-    ):
-        return findings
+    match naming:
+        case UnplannedTabNaming() | PlannedTabNaming() | AppliedTabNaming() | UnchangedTabNaming():
+            return findings
+        case DeclinedTabNaming():
+            if any(finding.code == "tab_naming_preserved" for finding in findings):
+                return findings
+        case _:
+            assert_never(naming)
     return [
         *findings,
         TransformFinding(
@@ -3530,7 +3693,8 @@ def _validate_in_place_table_scope(
             project_table_fonts(
                 snapshot.google_document,
                 checkpoint.table_font_plan,
-                applied=checkpoint.stage is InPlaceCheckpointStage.COMPLETE,
+                applied=checkpoint.stage
+                in {InPlaceCheckpointStage.METADATA, InPlaceCheckpointStage.COMPLETE},
             )
         except (KeyError, IndexError, TypeError, ValueError, AttributeError) as error:
             raise InPlaceNeedsReviewError from error
@@ -3554,7 +3718,8 @@ def _validate_in_place_layout(
         checkpoint.paragraph_layout,
         applied=(
             not _is_complex_structure_safe_noop(checkpoint)
-            if checkpoint.stage is InPlaceCheckpointStage.COMPLETE
+            if checkpoint.stage
+            in {InPlaceCheckpointStage.METADATA, InPlaceCheckpointStage.COMPLETE}
             else None
         ),
     ):
@@ -3589,7 +3754,8 @@ def _validate_in_place_fonts(
         diagnostic_stage="resume",
         font_policy=NativeFontVerificationPolicy(
             require_target_family=(
-                checkpoint.stage is InPlaceCheckpointStage.COMPLETE
+                checkpoint.stage
+                in {InPlaceCheckpointStage.METADATA, InPlaceCheckpointStage.COMPLETE}
                 and not _is_complex_structure_safe_noop(checkpoint)
             ),
             preserved_family_block_ids=checkpoint.preserved_font_block_ids,
@@ -3714,7 +3880,9 @@ def _in_place_preservation_findings(
                     severity=FindingSeverity.INFORMATIONAL,
                 )
             ]
-            if branded and inspection.custom_furniture and not inspection.fully_branded
+            if branded
+            and inspection.custom_furniture
+            and inspection.brand is not BrandVerification.FULL
             else []
         )
     )

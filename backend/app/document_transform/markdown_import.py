@@ -1,9 +1,9 @@
 from __future__ import annotations
 
 from collections.abc import Iterable
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field as dataclass_field, replace
 import hashlib
-from typing import Any, NamedTuple, TypedDict
+from typing import Any, Literal, NamedTuple, TypedDict, assert_never
 
 from pydantic import JsonValue
 
@@ -21,6 +21,7 @@ from app.document_transform.import_manifest import (
 )
 from app.document_transform.ir import utf16_length
 from app.document_transform.text_direction import first_strong_is_rtl
+from app.document_transform.verification import BrandVerification, RequestedBrandVerification
 
 
 _ORDERED_GLYPH_TYPES = frozenset(
@@ -60,7 +61,7 @@ _HEADER_RUN_STYLE_FIELDS = frozenset(
 
 @dataclass(frozen=True, slots=True)
 class MarkdownImportVerification:
-    brand_applied: bool
+    brand: RequestedBrandVerification
     content_preserved: bool
     structure_preserved: bool
 
@@ -109,7 +110,13 @@ def verify_markdown_import(
         structure_preserved=(
             _topology_matches(document, expected) and _structure_matches(observed, expected.blocks)
         ),
-        brand_applied=not expected.branded or _brand_matches(document, expected, observed),
+        brand=(
+            BrandVerification.NOT_REQUIRED
+            if not expected.branded
+            else BrandVerification.FULL
+            if _brand_matches(document, expected, observed)
+            else BrandVerification.MISMATCH
+        ),
     )
 
 
@@ -1265,7 +1272,7 @@ def _header_elements_are_exact(
     if not elements or len(elements) > _MAX_HEADER_ELEMENTS:
         return False
     cursor: int | None = outer.get("startIndex") if outer is not None else None
-    sequence = _HeaderSequence(before_logo="", seen_logo=False)
+    sequence: _HeaderSequence = _BeforeHeaderLogo(prefix="")
     for index, element in enumerate(elements):
         parsed = _header_element_value(element)
         if parsed is None:
@@ -1287,41 +1294,68 @@ def _header_elements_are_exact(
             return False
         cursor = position.value
     paragraph_end = outer.get("endIndex") if outer is not None else None
-    return sequence.seen_logo and (
+    return isinstance(sequence, _AfterHeaderLogo) and (
         paragraph_end is None or cursor is None or paragraph_end == cursor
     )
 
 
 @dataclass(frozen=True, slots=True)
-class _HeaderSequence:
-    before_logo: str
-    seen_logo: bool
+class _BeforeHeaderLogo:
+    kind: Literal["before_logo"] = dataclass_field(default="before_logo", init=False)
+    prefix: str
+
+
+@dataclass(frozen=True, slots=True)
+class _AfterHeaderLogo:
+    kind: Literal["after_logo"] = dataclass_field(default="after_logo", init=False)
+
+
+type _HeaderSequence = _BeforeHeaderLogo | _AfterHeaderLogo
+
+
+class _HeaderElement(NamedTuple):
+    kind: Literal["inlineObjectElement", "textRun"]
+    value: str
 
 
 def _advance_header_sequence(
     sequence: _HeaderSequence,
     *,
-    variant: str,
+    variant: Literal["inlineObjectElement", "textRun"],
     value: str,
     is_last: bool,
     header_title: str | None,
 ) -> _HeaderSequence | None:
-    if variant == "inlineObjectElement":
-        expected_prefix = header_title + HEADER_TITLE_SEPARATOR if header_title is not None else ""
-        if sequence.seen_logo or sequence.before_logo != expected_prefix:
-            return None
-        return _HeaderSequence(before_logo=sequence.before_logo, seen_logo=True)
-    if sequence.seen_logo:
-        return sequence if value == "\n" and is_last else None
-    return _HeaderSequence(before_logo=sequence.before_logo + value, seen_logo=False)
+    match sequence:
+        case _BeforeHeaderLogo(prefix=prefix):
+            match variant:
+                case "inlineObjectElement":
+                    expected_prefix = (
+                        header_title + HEADER_TITLE_SEPARATOR if header_title is not None else ""
+                    )
+                    return _AfterHeaderLogo() if prefix == expected_prefix else None
+                case "textRun":
+                    return _BeforeHeaderLogo(prefix=prefix + value)
+                case _:
+                    assert_never(variant)
+        case _AfterHeaderLogo():
+            match variant:
+                case "inlineObjectElement":
+                    return None
+                case "textRun":
+                    return sequence if value == "\n" and is_last else None
+                case _:
+                    assert_never(variant)
+        case _:
+            assert_never(sequence)
 
 
 class _SegmentCursor(NamedTuple):
     value: int | None
 
 
-def _header_element_value(element: object) -> tuple[str, str] | None:
-    variant = (
+def _header_element_value(element: JsonValue) -> _HeaderElement | None:
+    variant: Literal["inlineObjectElement", "textRun"] = (
         "inlineObjectElement"
         if isinstance(element, dict) and "inlineObjectElement" in element
         else "textRun"
@@ -1333,7 +1367,7 @@ def _header_element_value(element: object) -> tuple[str, str] | None:
     if not isinstance(payload, dict) or not _plain_segment_payload_known(payload, field):
         return None
     value = payload.get(field)
-    return (variant, value) if isinstance(value, str) and value else None
+    return _HeaderElement(variant, value) if isinstance(value, str) and value else None
 
 
 def _segment_next_cursor(

@@ -103,8 +103,10 @@ class McpReadService(McpReader):
     @override
     async def get_admission(self, request: AdmissionInput) -> AdmissionResponse:
         self._require_read()
-        admission = await self._context.tasks.get_document_transform_admission(
-            UserId(self._context.principal.user_id), request.idempotency_key
+        admission = await self._context.tasks.get_admission(
+            UserId(self._context.principal.user_id),
+            TaskKind.FILE_DOCUMENT_TRANSFORM,
+            request.idempotency_key,
         )
         return AdmissionResponse(admission=admission)
 

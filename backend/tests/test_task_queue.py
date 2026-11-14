@@ -9,7 +9,9 @@ from google.api_core.exceptions import AlreadyExists
 from google.cloud import tasks_v2
 import pytest
 
+from app.document_settings import DocumentSettings
 from app.identifiers import TaskId
+from app.runtime_config import ConfiguredCloudTasks, ConfiguredDocumentQueue, DisabledDocumentQueue
 from app.tasks import dependencies
 from app.tasks.queue import CloudTasksEnqueuer, TaskEnqueuer
 from tests.support import dependency
@@ -31,16 +33,24 @@ class _Client:
         return task
 
 
-def _enqueuer(client: _Client) -> CloudTasksEnqueuer:
-    return CloudTasksEnqueuer(
+def _configuration(
+    target_url: str = "https://wiki-api.sarj.ai/internal/tasks/smart-create",
+) -> ConfiguredCloudTasks:
+    return ConfiguredCloudTasks(
         project="sarj-docs",
         location="us-central1",
         queue="smart-create",
-        target_url="https://wiki-api.sarj.ai/internal/tasks/smart-create",
+        target_url=target_url,
         invoker_service_account="wiki-task-invoker@sarj-docs.iam.gserviceaccount.com",
-        document_transform_queue="document-transform",
-        document_transform_target_url=(
-            "https://wiki-api.sarj.ai/internal/tasks/document-transform"
+    )
+
+
+def _enqueuer(client: _Client) -> CloudTasksEnqueuer:
+    return CloudTasksEnqueuer(
+        configuration=_configuration(),
+        document_transform=ConfiguredDocumentQueue(
+            queue="document-transform",
+            target_url="https://wiki-api.sarj.ai/internal/tasks/document-transform",
         ),
         client=dependency(client),
     )
@@ -90,11 +100,8 @@ async def test_document_transform_uses_separate_queue_and_exact_internal_target(
 def test_rejects_unsafe_or_unexpected_task_targets(target_url: str) -> None:
     with pytest.raises(ValueError, match="HTTPS internal Smart Create endpoint"):
         CloudTasksEnqueuer(
-            project="sarj-docs",
-            location="us-central1",
-            queue="smart-create",
-            target_url=target_url,
-            invoker_service_account="wiki-task-invoker@sarj-docs.iam.gserviceaccount.com",
+            configuration=_configuration(target_url),
+            document_transform=DisabledDocumentQueue(),
             client=dependency(_Client()),
         )
 
@@ -124,38 +131,23 @@ async def test_dependency_constructs_async_client_on_request_event_loop(
         (None, "https://wiki-api.sarj.ai/internal/tasks/document-transform"),
     ],
 )
-def test_partial_transform_configuration_fails_before_client_use(
+def test_partial_transform_configuration_is_rejected_at_settings_boundary(
     document_queue: str | None,
     document_target: str | None,
 ) -> None:
-    class UnusedClient(_Client):
-        @override
-        def queue_path(self, project: str, location: str, queue: str) -> str:
-            msg = "Invalid configuration must not use the provider client"
-            raise AssertionError(msg)
-
     with pytest.raises(ValueError, match="configured together"):
-        CloudTasksEnqueuer(
-            project="sarj-docs",
-            location="us-central1",
-            queue="smart-create",
-            target_url="https://wiki-api.sarj.ai/internal/tasks/smart-create",
-            invoker_service_account="wiki-task-invoker@sarj-docs.iam.gserviceaccount.com",
-            document_transform_queue=document_queue,
-            document_transform_target_url=document_target,
-            client=dependency(UnusedClient()),
+        DocumentSettings(
+            TRANSFORM_QUEUE=document_queue,
+            TRANSFORM_TARGET_URL=document_target,
         )
 
 
 async def test_disabled_transform_queue_refuses_dispatch_without_affecting_smart_create() -> None:
     client = _Client()
     enqueuer = CloudTasksEnqueuer(
-        project="sarj-docs",
-        location="us-central1",
-        queue="smart-create",
-        target_url="https://wiki-api.sarj.ai/internal/tasks/smart-create",
-        invoker_service_account="wiki-task-invoker@sarj-docs.iam.gserviceaccount.com",
+        configuration=_configuration(),
         client=dependency(client),
+        document_transform=DisabledDocumentQueue(),
     )
     task_id = TaskId(uuid.uuid7())
     with pytest.raises(RuntimeError, match="not configured"):

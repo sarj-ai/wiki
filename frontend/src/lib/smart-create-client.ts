@@ -6,6 +6,7 @@ import {
 } from "@/app/actions/smart-create-actions";
 import { abortableDelay } from "@/lib/abortable-delay";
 import { runAction } from "@/lib/action-client";
+import { ApiError } from "@/lib/api-error";
 import { captureBrowserSession } from "@/lib/browser-session";
 import { wikiReadHttp } from "@/lib/clients/wiki-read-http";
 import {
@@ -20,6 +21,7 @@ import {
   zTemplateCatalogRead,
   zTemplateRead,
   zTemplateSource,
+  zTaskAdmission,
 } from "@/lib/generated/zod.gen";
 import type {
   CreationSource,
@@ -28,6 +30,7 @@ import type {
   SmartCreateTask,
   SmartCreationPlan,
   SmartFileType,
+  TerminalSmartCreateTask,
 } from "@/lib/smart-create-types";
 import { toFileResponse } from "@/lib/wiki-schemas";
 
@@ -74,6 +77,7 @@ const TaskSchema = z
   );
 
 const DEFAULT_TASK_POLL_MS = 1_000;
+const AdmissionSchema = zTaskAdmission.strict();
 
 export interface SmartProposalInput {
   description: string;
@@ -83,6 +87,23 @@ export interface SmartProposalInput {
 }
 
 const SmartCreateApi = {
+  getAdmission: async (
+    key: string,
+    signal?: AbortSignal,
+  ): Promise<string | null> => {
+    try {
+      const admission = await wikiReadHttp(
+        `/files/smart/admissions/${encodeURIComponent(key)}`,
+        AdmissionSchema,
+        {},
+        signal,
+      );
+      return admission["task_id"];
+    } catch (error: unknown) {
+      if (error instanceof ApiError && error.status === 404) return null;
+      throw error;
+    }
+  },
   create: async (
     plan: SmartCreationPlan,
     idempotencyKey: string,
@@ -110,6 +131,8 @@ const SmartCreateApi = {
       {},
       signal,
     );
+    if (task.id !== taskId)
+      throw new Error("Task response belongs to a different request");
     return parseTask(task);
   },
 
@@ -167,7 +190,7 @@ const SmartCreateApi = {
     initialTask: SmartCreateTask,
     signal?: AbortSignal,
     pollIntervalMs = DEFAULT_TASK_POLL_MS,
-  ): Promise<SmartCreateResult> =>
+  ): Promise<TerminalSmartCreateTask> =>
     await waitForTask(initialTask, signal, pollIntervalMs),
 } as const;
 
@@ -177,7 +200,7 @@ async function waitForTask(
   task: SmartCreateTask,
   signal: AbortSignal | undefined,
   pollIntervalMs: number,
-): Promise<SmartCreateResult> {
+): Promise<TerminalSmartCreateTask> {
   const owner = captureBrowserSession();
   const pollSignal =
     signal === undefined ? owner : AbortSignal.any([owner, signal]);
@@ -186,15 +209,10 @@ async function waitForTask(
     pollSignal.throwIfAborted();
     switch (current.status) {
       case "cancelled":
-        throw new Error("File creation was cancelled");
       case "failed":
-        throw new Error(
-          current.errorDetail ?? `File creation failed (${current.errorCode})`,
-        );
       case "needs_review":
-        throw new Error(current.errorDetail);
       case "succeeded":
-        return current.result;
+        return current;
       case "pending":
       case "running":
         // eslint-disable-next-line no-await-in-loop -- Wait before issuing the next status request.

@@ -2,21 +2,29 @@ from datetime import datetime, timedelta
 from enum import StrEnum
 import re
 import secrets
-from typing import override
+from typing import assert_never, override
 
-from pydantic import BaseModel
+from pydantic import BaseModel, JsonValue
 from sqlalchemy import delete, func, select, text, update
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.mcp.native_schemas import NativeOAuthError
+from app.mcp.native_schemas import (
+    AccessPayload,
+    CodePayload,
+    NativeCredential,
+    NativeIntent,
+    NativeIntentPayload,
+    NativeOAuthError,
+    RefreshPayload,
+)
 from app.mcp.native_state_port import NativeStatePort
 from app.mcp.protection import OAuthStateProtector
 from app.models.mcp_oauth import MCPOAuthEntry
 
 
 _CLIENT_STATE_LIMIT = 1000
-_TOKEN_STATE_LIMIT = 10000
+_TOKEN_STATE_LIMIT = 10_000
 
 
 class NativePurpose(StrEnum):
@@ -25,6 +33,29 @@ class NativePurpose(StrEnum):
     CODE = "code"
     ACCESS = "access"
     REFRESH = "refresh"
+
+
+def native_state_payload(
+    purpose: NativePurpose, value: BaseModel, expires_at: datetime
+) -> dict[str, JsonValue]:
+    payload = value.model_dump(mode="json")
+    state: NativeIntent | NativeCredential
+    match purpose:
+        case NativePurpose.CLIENT:
+            return payload
+        case NativePurpose.INTENT:
+            state = NativeIntentPayload.model_validate(payload).root
+        case NativePurpose.CODE:
+            state = CodePayload.model_validate(payload).root
+        case NativePurpose.ACCESS:
+            state = AccessPayload.model_validate(payload).root
+        case NativePurpose.REFRESH:
+            state = RefreshPayload.model_validate(payload).root
+        case _:
+            assert_never(purpose)
+    if state.expires_at != expires_at:
+        raise NativeOAuthError
+    return state.model_dump(mode="json")
 
 
 def new_native_secret(purpose: NativePurpose) -> str:
@@ -104,6 +135,7 @@ class NativeStateStore(NativeStatePort):
     ) -> None:
         purpose = NativePurpose(purpose)
         namespace = f"native:{purpose}"
+        payload = native_state_payload(purpose, value, expires_at)
         now = await native_database_time(db)
         if not now < expires_at <= now + timedelta(days=31):
             raise NativeOAuthError
@@ -156,7 +188,7 @@ class NativeStateStore(NativeStatePort):
             collection=namespace,
             key_digest=digests[0],
             expires_at=expires_at,
-            ciphertext=self._protector.protect(namespace, key, value.model_dump(mode="json")),
+            ciphertext=self._protector.protect(namespace, key, payload),
         )
         await db.execute(
             statement.on_conflict_do_update(

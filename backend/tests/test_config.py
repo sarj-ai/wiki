@@ -17,6 +17,7 @@ from app.database_config import (
     DirectDatabaseConnection,
 )
 from app.document_settings import DocumentSettings
+from app.runtime_config import DisabledCloudTasks, DisabledDocumentQueue, DisabledNativeMcp
 
 
 _BASELINE = {
@@ -353,6 +354,7 @@ def test_cloud_tasks_settings_are_all_or_none(monkeypatch: pytest.MonkeyPatch) -
 
     settings = _settings(
         monkeypatch,
+        GOOGLE_CLOUD_PROJECT="sarj-docs",
         CLOUD_TASKS_QUEUE="smart-create",
         CLOUD_TASKS_LOCATION="us-central1",
         CLOUD_TASKS_TARGET_URL="https://wiki-api.sarj.ai/internal/tasks/smart-create",
@@ -360,3 +362,30 @@ def test_cloud_tasks_settings_are_all_or_none(monkeypatch: pytest.MonkeyPatch) -
     )
 
     assert settings.CLOUD_TASKS_QUEUE == "smart-create"
+
+
+def test_unconfigured_infrastructure_is_explicit_and_input_settings_are_frozen(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    configured = _settings(monkeypatch)
+    assert isinstance(configured.cloud_tasks, DisabledCloudTasks)
+    assert isinstance(configured.native_mcp, DisabledNativeMcp)
+    assert isinstance(configured.DOCUMENT.queue, DisabledDocumentQueue)
+    with pytest.raises(ValidationError, match="frozen"):
+        configured.CLOUD_TASKS_QUEUE = "orphan"
+    with pytest.raises(ValidationError, match="frozen"):
+        configured.DOCUMENT.TRANSFORM_QUEUE = "orphan"
+
+
+def test_configured_tasks_require_a_project_before_any_provider_client_is_created(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    with pytest.raises(ValidationError, match="GOOGLE_CLOUD_PROJECT"):
+        _settings(
+            monkeypatch,
+            GOOGLE_CLOUD_PROJECT=None,
+            CLOUD_TASKS_QUEUE="smart-create",
+            CLOUD_TASKS_LOCATION="us-central1",
+            CLOUD_TASKS_TARGET_URL="https://wiki-api.sarj.ai/internal/tasks/smart-create",
+            CLOUD_TASKS_INVOKER_SERVICE_ACCOUNT="tasks@example.org",
+        )

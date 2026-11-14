@@ -115,10 +115,7 @@ describe("MCP consent transport", () => {
 
     await expect(getMcpConsent(INTENT)).resolves.toEqual(view);
     await expect(
-      decideMcpConsent(INTENT, CSRF, {
-        approve: true,
-        transformApproved: true,
-      }),
+      decideMcpConsent(INTENT, CSRF, "approve_transform"),
     ).resolves.toBe(redirect);
     expect(fetchMock).toHaveBeenCalledTimes(2);
   });
@@ -216,10 +213,7 @@ describe("MCP consent transport", () => {
       .mockReturnValueOnce(decision.promise);
     vi.stubGlobal("fetch", fetchMock);
     await getMcpConsent(INTENT, controller.signal);
-    const pending = decideMcpConsent(INTENT, CSRF, {
-      approve: true,
-      transformApproved: false,
-    });
+    const pending = decideMcpConsent(INTENT, CSRF, "approve_read");
 
     controller.abort();
 
@@ -297,10 +291,7 @@ describe("MCP consent transport", () => {
           operation === "read"
             ? getMcpConsent(INTENT)
             : operation === "decision"
-              ? decideMcpConsent(INTENT, CSRF, {
-                  approve: true,
-                  transformApproved: false,
-                })
+              ? decideMcpConsent(INTENT, CSRF, "approve_read")
               : disconnectMcpConnection(
                   "00000000-0000-4000-8000-000000000001",
                   "a".repeat(64),
@@ -386,10 +377,7 @@ describe("MCP consent transport", () => {
     vi.stubGlobal("fetch", fetchMock);
     await expect(getMcpConsent("../../auth")).rejects.toThrow();
     await expect(
-      decideMcpConsent(INTENT, "bad", {
-        approve: true,
-        transformApproved: false,
-      }),
+      decideMcpConsent(INTENT, "bad", "approve_read"),
     ).rejects.toThrow();
     expect(fetchMock).not.toHaveBeenCalled();
   });
@@ -402,10 +390,7 @@ describe("MCP consent transport", () => {
         .mockResolvedValue(new Response("private error", { status }));
       vi.stubGlobal("fetch", fetchMock);
       await expect(
-        decideMcpConsent(INTENT, CSRF, {
-          approve: true,
-          transformApproved: false,
-        }),
+        decideMcpConsent(INTENT, CSRF, "approve_read"),
       ).rejects.toThrow(McpConsentRequestError);
       expect(fetchMock).toHaveBeenCalledOnce();
     },
@@ -415,10 +400,7 @@ describe("MCP consent transport", () => {
     const fetchMock = vi.fn().mockRejectedValue(new TypeError("network"));
     vi.stubGlobal("fetch", fetchMock);
     await expect(
-      decideMcpConsent(INTENT, CSRF, {
-        approve: true,
-        transformApproved: false,
-      }),
+      decideMcpConsent(INTENT, CSRF, "approve_read"),
     ).rejects.toThrow();
     expect(fetchMock).toHaveBeenCalledOnce();
   });
@@ -430,20 +412,16 @@ describe("MCP consent transport", () => {
       .fn()
       .mockResolvedValue(Response.json({ redirect_uri: redirect }));
     vi.stubGlobal("fetch", fetchMock);
-    await expect(
-      decideMcpConsent(INTENT, CSRF, {
-        approve: false,
-        transformApproved: true,
-      }),
-    ).resolves.toBe(redirect);
+    await expect(decideMcpConsent(INTENT, CSRF, "deny")).resolves.toBe(
+      redirect,
+    );
     expect(fetchMock).toHaveBeenCalledExactlyOnceWith(
       expect.any(String),
       expect.objectContaining({
         method: "POST",
         body: JSON.stringify({
-          approve: false,
+          command: "deny",
           csrf: CSRF,
-          transform_approved: false,
         }),
       }),
     );
@@ -461,10 +439,7 @@ describe("MCP consent transport", () => {
       vi.fn().mockResolvedValue(Response.json({ redirect_uri: redirect })),
     );
     await expect(
-      decideMcpConsent(INTENT, CSRF, {
-        approve: true,
-        transformApproved: false,
-      }),
+      decideMcpConsent(INTENT, CSRF, "approve_read"),
     ).rejects.toThrow();
   });
 

@@ -5,6 +5,7 @@ from typing import Final
 
 from pydantic import BaseModel, Field
 
+from app.drive.pagination import PageToken
 from app.identifiers import DriveId, FileId
 
 
@@ -80,7 +81,7 @@ class DrivePermissionsPage(BaseModel):
     drive_id: DriveId
     access_model: str
     permissions: list[DrivePermission]
-    next_page_token: str | None = None
+    next_page_token: PageToken | None = None
 
 
 class FilePermissionSnapshot(BaseModel):

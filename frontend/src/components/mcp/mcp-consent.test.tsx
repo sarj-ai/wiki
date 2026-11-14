@@ -1,6 +1,8 @@
 import { flushSync } from "react-dom";
 import { createRoot, type Root } from "react-dom/client";
 
+import type { McpConsentCommand } from "@/lib/mcp-consent-client";
+
 import { McpConsent } from "./mcp-consent";
 
 function maybeRole(
@@ -38,12 +40,7 @@ describe("McpConsent", () => {
   let container: HTMLDivElement;
   let root: Root;
   const onDecision =
-    vi.fn<
-      (decision: {
-        approve: boolean;
-        transformApproved: boolean;
-      }) => Promise<"approved" | "denied">
-    >();
+    vi.fn<(decision: McpConsentCommand) => Promise<"approved" | "denied">>();
   const onRecover =
     vi.fn<() => Promise<"approved" | "denied" | "expired" | "pending">>();
 
@@ -85,10 +82,7 @@ describe("McpConsent", () => {
     expect(container).toHaveTextContent('<img src=x onerror="alert(1)">');
     click("Allow read access");
     await vi.waitFor(() =>
-      expect(onDecision).toHaveBeenCalledExactlyOnceWith({
-        approve: true,
-        transformApproved: false,
-      }),
+      expect(onDecision).toHaveBeenCalledExactlyOnceWith("approve_read"),
     );
     await vi.waitFor(() =>
       expect(findRole(container, "status")).toHaveTextContent(
@@ -102,10 +96,7 @@ describe("McpConsent", () => {
     flushSync(() => findRole(container, "checkbox").click());
     click("Allow read and edit access");
     await vi.waitFor(() =>
-      expect(onDecision).toHaveBeenCalledExactlyOnceWith({
-        approve: true,
-        transformApproved: true,
-      }),
+      expect(onDecision).toHaveBeenCalledExactlyOnceWith("approve_transform"),
     );
   });
 
@@ -134,10 +125,7 @@ describe("McpConsent", () => {
     flushSync(() => findRole(container, "checkbox").click());
     click("Deny");
     await vi.waitFor(() =>
-      expect(onDecision).toHaveBeenCalledExactlyOnceWith({
-        approve: false,
-        transformApproved: false,
-      }),
+      expect(onDecision).toHaveBeenCalledExactlyOnceWith("deny"),
     );
     await vi.waitFor(() =>
       expect(findRole(container, "status")).toHaveTextContent("Access denied"),

@@ -2,7 +2,6 @@ from typing import override
 
 import pytest
 
-from app.document_transform import models as models_module
 from app.document_transform.ir import DocumentIR, parse_markdown
 from app.document_transform.models import PatchGenerator
 from app.document_transform.planner import TextTransformPlanner
@@ -97,7 +96,7 @@ class _UnsafeFormatGenerator(PatchGenerator):
 
 
 @pytest.mark.parametrize("mode", [TransformMode.FORMAT, TransformMode.BOTH])
-async def test_enabled_format_generator_cannot_change_text_or_undo_safe_unslop(
+async def test_formatting_preserves_source_without_invoking_a_text_rewriter(
     mode: TransformMode,
 ) -> None:
     source = (
@@ -107,9 +106,7 @@ async def test_enabled_format_generator_cannot_change_text_or_undo_safe_unslop(
     )
     original = parse_markdown(source, title="Test")
     generator = _UnsafeFormatGenerator()
-    result = await TextTransformPlanner(
-        generator=generator, allow_format_text_edits=True
-    ).transform(
+    result = await TextTransformPlanner(generator=generator).transform(
         original,
         DocumentTransformRequest(
             source=MarkdownSource(
@@ -121,15 +118,7 @@ async def test_enabled_format_generator_cannot_change_text_or_undo_safe_unslop(
     assert result.document.blocks[0].text == "The service stores backups."
     assert result.applied_count == result.deterministic_count == int(mode is TransformMode.BOTH)
     assert result.model_count == 0
-    assert generator.calls == [TransformPhase.FORMAT]
-    assert [finding.code for finding in result.findings] == ["format_text_changed"]
+    assert generator.calls == []
+    assert not result.llm_invoked
+    assert not result.findings
     assert original.blocks[0].text == source
-
-
-def test_format_prompt_requires_no_text_replacements() -> None:
-    prompt = models_module._prompt(
-        parse_markdown("Source", title="Test"), phase=TransformPhase.FORMAT
-    )
-    assert "Do not propose text replacements" in prompt
-    assert 'Return {"patches":[]}' in prompt
-    assert "Improve clarity" not in prompt

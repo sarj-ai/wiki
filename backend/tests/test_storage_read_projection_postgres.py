@@ -140,9 +140,9 @@ async def test_warm_sidebar_reads_fresh_tuple_version_even_with_unchanged_timest
     decoded = sidebar_cache._decoded_trees.latest(database.user.id, database.drive_id, decoder)
     assert decoded is not None
     async with database.sessions() as db:
-        snapshot = await service._load_row(db, database.drive_id, decoded[0])
-        assert snapshot is not None
-        assert snapshot.tree is None
+        snapshot = await service._load_row(db, database.drive_id, decoded)
+        assert isinstance(snapshot, sidebar_cache._DecodedTreeSnapshot)
+        assert snapshot.tree is decoded[1]
         assert await db.scalar(select(func.pg_current_xact_id_if_assigned())) is None
     replacement = _tree(database, "Replacement")
     async with database.sessions() as db:
@@ -163,13 +163,10 @@ async def test_warm_sidebar_reads_fresh_tuple_version_even_with_unchanged_timest
     current = await _peek(database, service)
     assert current == replacement
     assert current is not first
-    retained = [
-        key
-        for key in sidebar_cache._decoded_trees._values
-        if key[:2] == (database.user.id, database.drive_id)
-    ]
-    assert len(retained) == 1
-    assert retained[0][2] != decoded[0]
+    retained = sidebar_cache._decoded_trees.latest(database.user.id, database.drive_id, decoder)
+    assert retained is not None
+    assert retained[0] != decoded[0]
+    assert retained[1] is current
 
 
 class _EpochSidebar(PostgresSidebarCacheService):

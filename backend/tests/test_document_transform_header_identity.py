@@ -17,6 +17,7 @@ from app.document_transform.google_gateway import GoogleDocumentGateway, verify_
 from app.document_transform.ir import DocumentIR, parse_google_document
 from app.document_transform.schemas import DocumentTransformRequest, DriveFileSource, TransformMode
 from app.document_transform.source_access import NativeSourceAccess, PersonalDrive
+from app.document_transform.verification import BrandVerification
 from app.identifiers import DocsRevisionId, DocsSegmentId, DocsTabId, FileId, TaskId
 from tests.test_document_transform import (
     _branded_google_document,
@@ -118,7 +119,7 @@ async def test_custom_header_preflight_preserves_privacy() -> None:
     assert inspection.custom_furniture
     assert not inspection.headers
     assert not inspection.preserved_headers
-    assert not inspection.fully_branded
+    assert inspection.brand is not BrandVerification.FULL
     logged = "\n".join(messages)
     assert "document in-place preflight" in logged
     assert "'unknown_header_count': 0" in logged

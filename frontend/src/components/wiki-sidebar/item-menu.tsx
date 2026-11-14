@@ -22,7 +22,9 @@ const ItemMenuActions = dynamic(
 );
 
 export function ItemMenu(props: ItemMenuProps) {
-  const [menu, setMenu] = useState({ mounted: false, open: false });
+  const [menu, setMenu] = useState<"closed" | "open" | "unmounted">(
+    "unmounted",
+  );
   const triggerRef = useRef<HTMLButtonElement | null>(null);
   const moveOutlet = useMoveDialogOutlet();
   useLayoutEffect(() => {
@@ -33,10 +35,14 @@ export function ItemMenu(props: ItemMenuProps) {
       <DropdownMenu
         onOpenChange={(open) => {
           setMenu((previous) =>
-            previous.open === open ? previous : { mounted: true, open },
+            (previous === "open") === open
+              ? previous
+              : open
+                ? "open"
+                : "closed",
           );
         }}
-        open={menu.open}
+        open={menu === "open"}
       >
         <DropdownMenuTrigger asChild>
           <Button
@@ -52,7 +58,7 @@ export function ItemMenu(props: ItemMenuProps) {
             <MoreHorizontal className="size-3" />
           </Button>
         </DropdownMenuTrigger>
-        {menu.mounted ? (
+        {menu !== "unmounted" ? (
           <ItemMenuActions
             {...props}
             {...(moveOutlet
@@ -61,13 +67,11 @@ export function ItemMenu(props: ItemMenuProps) {
                   onMove: () => moveOutlet.openItem(props, triggerRef),
                 }
               : {})}
-            menuOpen={menu.open}
+            menuOpen={menu === "open"}
             moveInOutlet={moveOutlet?.isOpenFor(props) ?? false}
             onIdle={() => {
               setMenu((previous) =>
-                previous.open || !previous.mounted
-                  ? previous
-                  : { mounted: false, open: false },
+                previous === "open" ? previous : "unmounted",
               );
             }}
           />

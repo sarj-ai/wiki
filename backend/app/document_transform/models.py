@@ -569,7 +569,7 @@ class VertexGeminiPatchGenerator(PatchGenerator):
     async def generate(self, document: DocumentIR, *, phase: TransformPhase) -> list[TextPatch]:
         if phase is TransformPhase.UNSLOP:
             return await self._generate_batches(document, feedback={})
-        return await self._generate_batch(document, phase=phase)
+        return []
 
     async def _generate_batches(
         self, document: DocumentIR, *, feedback: dict[str, _RepairProposal]
@@ -603,9 +603,7 @@ class VertexGeminiPatchGenerator(PatchGenerator):
         async with _model_batch_slot(self._model_semaphore):
             failure.require_available()
             try:
-                return await self._generate_batch(
-                    document, phase=TransformPhase.UNSLOP, feedback=feedback
-                )
+                return await self._generate_batch(document, feedback=feedback)
             except ModelUnavailableError as error:
                 if failure.error is None:
                     failure.error = error
@@ -615,19 +613,14 @@ class VertexGeminiPatchGenerator(PatchGenerator):
         self,
         document: DocumentIR,
         *,
-        phase: TransformPhase,
         feedback: tuple[_RepairProposal, ...] = (),
     ) -> list[TextPatch]:
-        prompt = _prompt(document, phase=phase, feedback=feedback)
-        primary_model = (
-            self._policy.unslop_model
-            if phase is TransformPhase.UNSLOP
-            else self._policy.restyle_model
-        )
+        prompt = _prompt(document, feedback=feedback)
+        primary_model = self._policy.unslop_model
         logger.info(
             "document model batch planned",
             model_id=primary_model,
-            model_operation=str(phase),
+            model_operation=str(TransformPhase.UNSLOP),
             model_batch_blocks=len(document.blocks),
             model_batch_source_characters=sum(len(block.text) for block in document.blocks),
             model_batch_prompt_characters=len(prompt),
@@ -643,23 +636,22 @@ class VertexGeminiPatchGenerator(PatchGenerator):
         last_error: Exception | None = None
         for attempt, model in enumerate(attempts, start=1):
             try:
-                if phase is TransformPhase.UNSLOP and not feedback:
+                if not feedback:
                     await self._admit_initial_writer(attempt=attempt, last_error=last_error)
                 patches = await self._generate_once(
                     model=model,
                     prompt=prompt,
-                    phase=phase,
                     thinking_config=self._generation_thinking_config(
                         model=model,
                         primary_model=primary_model,
-                        phase=phase,
                         repair=bool(feedback),
                     ),
                 )
-                if phase is TransformPhase.UNSLOP:
-                    _validate_rewrite_coverage(document, patches)
+                _validate_rewrite_coverage(document, patches)
             except (TimeoutError, ValueError, genai_errors.APIError, ModelUnavailableError) as exc:
-                log_model_failure(operation=phase, attempt=attempt, model=model, error=exc)
+                log_model_failure(
+                    operation=TransformPhase.UNSLOP, attempt=attempt, model=model, error=exc
+                )
                 failure = _retryable_model_failure(exc)
                 last_error = failure
             else:
@@ -731,16 +723,11 @@ class VertexGeminiPatchGenerator(PatchGenerator):
         *,
         model: str,
         primary_model: str,
-        phase: TransformPhase,
         repair: bool,
     ) -> genai_types.ThinkingConfig | None:
         if model in _THINKING_FALLBACK_MODELS:
             return genai_types.ThinkingConfig(thinking_level=genai_types.ThinkingLevel.HIGH)
-        if (
-            phase is TransformPhase.UNSLOP
-            and model == primary_model
-            and model == "gemini-3.8-flash"
-        ):
+        if model == primary_model and model == "gemini-3.8-flash":
             return genai_types.ThinkingConfig(
                 thinking_level=genai_types.ThinkingLevel.HIGH
                 if repair
@@ -759,28 +746,23 @@ class VertexGeminiPatchGenerator(PatchGenerator):
         *,
         model: str,
         prompt: str,
-        phase: TransformPhase,
         thinking_config: genai_types.ThinkingConfig | None,
     ) -> list[TextPatch]:
-        review_reserve = None
-        if phase is TransformPhase.UNSLOP:
-            review_reserve = self._policy.writer_review_reserve
-            if model != self._policy.unslop_model:
-                review_reserve = max(review_reserve, _UNSLOP_REVIEW_RESERVE)
-            if _checkpointed_writer_var.get():
-                review_reserve = timedelta(0)
+        review_reserve = self._policy.writer_review_reserve
+        if model != self._policy.unslop_model:
+            review_reserve = max(review_reserve, _UNSLOP_REVIEW_RESERVE)
+        if _checkpointed_writer_var.get():
+            review_reserve = timedelta(0)
         timeout_seconds = _model_request_timeout_seconds(
             self._policy.timeout, reserve=review_reserve
         )
         async with asyncio.timeout(timeout_seconds):
             response = await self._call_model(
-                operation=phase,
+                operation=TransformPhase.UNSLOP,
                 model=model,
                 contents=prompt,
                 config=genai_types.GenerateContentConfig(
-                    system_instruction=UNSLOP_REWRITE_INSTRUCTION
-                    if phase is TransformPhase.UNSLOP
-                    else "Formatting must preserve the author's text exactly.",
+                    system_instruction=UNSLOP_REWRITE_INSTRUCTION,
                     response_mime_type="application/json",
                     response_json_schema=_response_json_schema(PatchEnvelope),
                     max_output_tokens=_STRUCTURED_RESPONSE_TOKEN_LIMIT,
@@ -796,7 +778,9 @@ class VertexGeminiPatchGenerator(PatchGenerator):
             msg = "Gemini returned no patch proposal"
             raise ModelEmptyResponseError(msg)
         except ValueError:
-            log_model_response_failure(model=model, response=response, operation=phase)
+            log_model_response_failure(
+                model=model, response=response, operation=TransformPhase.UNSLOP
+            )
             raise
 
     @override
@@ -916,13 +900,13 @@ class VertexGeminiPatchGenerator(PatchGenerator):
                 model = _review_retry_model(model=model, fallback_model=fallback_model, error=exc)
                 if attempt < _MAX_REVIEW_ATTEMPTS:
                     delay = max(2**attempt, failure.retry_after or 0)
-                    await progress.defer(delay)
+                    await progress.defer(attempt, delay)
                     await _model_retry_delay(
                         delay,
                         sleep=self._writer_sleep,
                     )
             else:
-                await progress.complete(reviews)
+                await progress.complete(attempt, reviews)
                 return decision
         raise exhausted_model_failure(last_error) from _model_failure_cause(last_error)
 
@@ -1436,13 +1420,10 @@ def _validated_reviews(pairs: list[_ReviewPair], reviews: PatchReviewEnvelope) -
 def _prompt(
     document: DocumentIR,
     *,
-    phase: TransformPhase,
     feedback: tuple[_RepairProposal, ...] = (),
 ) -> str:
     current_pass = _editorial_pass_var.get()
-    selected = (
-        model_editable_blocks(document) if phase is TransformPhase.UNSLOP else document.blocks
-    )
+    selected = model_editable_blocks(document)
     editable = [
         {
             "block_id": block.id,
@@ -1454,9 +1435,7 @@ def _prompt(
             "rewrite_constraints": asdict(
                 rewrite_constraints(block.text, framing_source=_original_block(block).text)
             ),
-            "concision_target": (
-                _concision_metadata(block) if phase is TransformPhase.UNSLOP else None
-            ),
+            "concision_target": _concision_metadata(block),
         }
         for block in selected
         if block.editable
@@ -1482,10 +1461,6 @@ def _prompt(
         "editorial advice or framing under the trusted policy; do not manufacture a punchy "
         "substitute. Whole-paragraph deletion may omit generic each/every/all/per and "
         "stylistic qualifiers, but never concrete obligations or protected content."
-        if phase is TransformPhase.UNSLOP
-        else "Formatting preserves every character of the author's text, including whitespace "
-        'and punctuation. Do not propose text replacements. Return {"patches":[]}; '
-        "native formatting and structural changes are handled separately."
     )
     return "\n".join(
         (
@@ -1494,7 +1469,7 @@ def _prompt(
             if current_pass is not None
             else "Initial editorial pass.",
             instruction,
-            _batch_concision_instruction(selected, phase=phase),
+            _batch_concision_instruction(selected),
             (
                 "Return only JSON patches. Do not alter names, facts, numbers, dates, citations, "
                 "URLs, quotes, code, negation, modal words, or force-bearing language."
@@ -1510,8 +1485,6 @@ def _prompt(
                 "Return one proposal for every supplied block, including the original text for "
                 "a block that is already as concise as its facts allow. Do not abandon a padded "
                 "block to avoid its constraints. expected_sha256 must exactly echo the supplied sha256."
-                if phase is TransformPhase.UNSLOP
-                else "Return an empty patches array."
             ),
             json.dumps(editable, ensure_ascii=False, separators=(",", ":")),
             (
@@ -1536,9 +1509,7 @@ def _prompt(
     )
 
 
-def _batch_concision_instruction(selected: tuple[TextBlock, ...], *, phase: TransformPhase) -> str:
-    if phase is not TransformPhase.UNSLOP:
-        return ""
+def _batch_concision_instruction(selected: tuple[TextBlock, ...]) -> str:
     targets = tuple(
         target
         for block in selected

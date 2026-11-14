@@ -48,6 +48,7 @@ from app.document_transform.tab_structure_execution import (
     prepare_content_move,
     prepare_tab_creation,
 )
+from app.document_transform.verification import BrandVerification
 from app.identifiers import DocsRevisionId, DocsTabId, FileId, TaskId
 from tests import (
     test_copy_font_preservation as legacy,
@@ -315,7 +316,7 @@ async def test_public_copy_gateway_requires_semantic_font_attestation(
         header_title="Decision",
     )
     assert result.content_preserved
-    assert result.brand_applied
+    assert result.brand is BrandVerification.FULL
     assert result.structure_preserved is not tamper
 
 
@@ -498,7 +499,7 @@ async def test_preceding_utf16_edit_updates_rich_family_with_bound_shifted_posit
         )
         assert verified.content_preserved
         assert verified.structure_preserved
-        assert verified.brand_applied
+        assert verified.brand is BrandVerification.FULL
     actual_body[1]["paragraph"]["elements"][0]["textRun"]["textStyle"]["bold"] = True
     assert not verify_copy_fonts(source, actual, expected, list_identity_equivalent=False)
 

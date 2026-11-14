@@ -22,6 +22,7 @@ from app.mcp.grants import (
     validate_live_grant,
 )
 from app.mcp.identity import McpClientId
+from app.mcp.native_schemas import CodePayload, ReadyCode
 from app.mcp.native_state import NativePurpose, NativeStateStore, native_database_time
 from app.mcp.protection import OAuthStateProtector
 from app.mcp.schemas import McpCapability
@@ -104,15 +105,30 @@ async def test_real_postgres_grant_and_oauth_state_share_one_transaction(
 
     async def read(key: str) -> _State | None:
         async with sessions() as db:
-            return await state.get(db, NativePurpose.CODE, key, _State)
+            saved = await state.get(db, NativePurpose.CODE, key, CodePayload)
+            return _State(value=saved.root.challenge) if saved is not None else None
 
     async def write(db: AsyncSession, key: str, value: str) -> None:
+        expires_at = await native_database_time(db) + timedelta(minutes=1)
         await state.put(
             db,
             NativePurpose.CODE,
             key,
-            _State(value=value),
-            await native_database_time(db) + timedelta(minutes=1),
+            ReadyCode(
+                issuer="https://wiki.example",
+                grant_id=previous.id,
+                client_id=previous.client_id,
+                user_id=user.id,
+                google_subject=user.google_id,
+                issued_at=int(previous.created_at.timestamp()),
+                expires_at=expires_at,
+                resource="https://wiki.example/mcp",
+                scopes=(McpCapability.READ,),
+                challenge=value,
+                redirect_uri="http://127.0.0.1:4567/callback",
+                redirect_explicit=True,
+            ),
+            expires_at,
         )
 
     async with sessions.begin() as db:

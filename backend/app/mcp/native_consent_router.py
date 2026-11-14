@@ -23,6 +23,7 @@ from app.mcp.native_core import NativeOAuthCore
 from app.mcp.native_metadata import canonical_issuer
 from app.mcp.native_schemas import (
     ConnectionView,
+    ConsentCommand,
     ConsentStatus,
     ConsentView,
     NativeOAuthError,
@@ -80,8 +81,7 @@ class _BrowserIdentity:
 
 class _DecisionBody(McpModel):
     csrf: str = Field(min_length=1, max_length=128, strict=True)
-    approve: bool = Field(strict=True)
-    transform_approved: bool = Field(default=False, strict=True)
+    command: ConsentCommand
 
 
 class ConsentBrowserView(ConsentView):
@@ -227,10 +227,9 @@ def create_native_consent_router(
             identity=actor.identity,
             browser=actor.browser_binding,
             csrf=body.csrf,
-            approve=body.approve,
-            transform_approved=body.transform_approved,
+            command=body.command,
         )
-        _redirect(redirect, settings, approved=body.approve)
+        _redirect(redirect, settings, approved=body.command is not ConsentCommand.DENY)
         return ConsentRedirect(redirect_uri=redirect)
 
     @router.get(

@@ -457,25 +457,6 @@
         "title": "DocumentOutput",
         "type": "object"
       },
-      "DocumentTransformAdmission": {
-        "additionalProperties": false,
-        "properties": {
-          "status": {
-            "$ref": "#/components/schemas/TaskStatus"
-          },
-          "task_id": {
-            "format": "uuid",
-            "title": "Task Id",
-            "type": "string"
-          }
-        },
-        "required": [
-          "task_id",
-          "status"
-        ],
-        "title": "DocumentTransformAdmission",
-        "type": "object"
-      },
       "DocumentTransformCapabilities": {
         "additionalProperties": false,
         "properties": {
@@ -3099,6 +3080,25 @@
         "title": "SortOrderWrite",
         "type": "object"
       },
+      "TaskAdmission": {
+        "additionalProperties": false,
+        "properties": {
+          "status": {
+            "$ref": "#/components/schemas/TaskStatus"
+          },
+          "task_id": {
+            "format": "uuid",
+            "title": "Task Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "task_id",
+          "status"
+        ],
+        "title": "TaskAdmission",
+        "type": "object"
+      },
       "TaskStatus": {
         "enum": [
           "pending",
@@ -4094,7 +4094,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/DocumentTransformAdmission"
+                  "$ref": "#/components/schemas/TaskAdmission"
                 }
               }
             },
@@ -5164,6 +5164,70 @@
           }
         ],
         "summary": "Create Smart Proposal",
+        "tags": [
+          "files"
+        ]
+      }
+    },
+    "/files/smart/admissions/{idempotency_key}": {
+      "get": {
+        "operationId": "get_smart_create_admission",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "idempotency_key",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Idempotency Key",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TaskAdmission"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Authentication is required or the session is invalid."
+          },
+          "404": {
+            "description": "No retained admission for this owner and key"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyCookie": []
+          },
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Recover file creation without resubmitting it",
         "tags": [
           "files"
         ]

@@ -296,6 +296,14 @@ type LoadingOverlayPhase =
   | "masked"
   | "visible";
 
+type LoadingOverlayState =
+  | { readonly kind: Exclude<LoadingOverlayPhase, "visible"> }
+  | {
+      readonly kind: "visible";
+      readonly shownAt: number;
+      readonly pace: "normal" | "slow";
+    };
+
 function DocumentFrame({
   active,
   children,
@@ -340,11 +348,9 @@ function useDocumentLoading(
   loading: boolean,
   reducedMotion: boolean,
 ): { phase: LoadingOverlayPhase; slow: boolean } {
-  const [phaseState, setPhaseState] = useState<LoadingOverlayPhase>("masked");
-  const [slow, setSlow] = useState(false);
+  const [state, setState] = useState<LoadingOverlayState>({ kind: "masked" });
   const generationRef = useRef(0);
-  const phaseRef = useRef<LoadingOverlayPhase>("masked");
-  const visibleSinceRef = useRef(0);
+  const phaseRef = useRef<LoadingOverlayState>(state);
 
   useEffect(() => {
     const generation = generationRef.current + 1;
@@ -352,9 +358,9 @@ function useDocumentLoading(
     const animationFrames: number[] = [];
     const timers: number[] = [];
     const isCurrent = () => generationRef.current === generation;
-    const setPhase = (phase: LoadingOverlayPhase) => {
-      phaseRef.current = phase;
-      setPhaseState(phase);
+    const publish = (next: LoadingOverlayState) => {
+      phaseRef.current = next;
+      setState(next);
     };
     const cleanup = () => {
       if (generationRef.current === generation) generationRef.current += 1;
@@ -363,45 +369,45 @@ function useDocumentLoading(
     };
 
     if (!active) {
-      // eslint-disable-next-line react/set-state-in-effect -- Reset the timer state machine immediately when its document becomes inactive.
-      setSlow(false);
-      setPhase(loading ? "masked" : "hidden");
+      publish({ kind: loading ? "masked" : "hidden" });
       return cleanup;
     }
 
     if (loading) {
-      setSlow(false);
+      if (phaseRef.current.kind === "visible")
+        publish({ ...phaseRef.current, pace: "normal" });
       if (
-        phaseRef.current === "exiting" ||
-        phaseRef.current === "hidden" ||
-        phaseRef.current === "masked-exiting"
+        phaseRef.current.kind === "exiting" ||
+        phaseRef.current.kind === "hidden" ||
+        phaseRef.current.kind === "masked-exiting"
       ) {
-        setPhase("masked");
+        publish({ kind: "masked" });
       }
-      if (phaseRef.current !== "visible") {
+      if (phaseRef.current.kind !== "visible") {
         timers.push(
           window.setTimeout(() => {
             if (!isCurrent()) return;
-            visibleSinceRef.current = Date.now();
-            setPhase("visible");
+            publish({ kind: "visible", shownAt: Date.now(), pace: "normal" });
           }, DOCUMENT_LOADING_DELAY_MS),
         );
       }
       timers.push(
         window.setTimeout(() => {
-          if (isCurrent()) setSlow(true);
+          if (isCurrent() && phaseRef.current.kind === "visible")
+            publish({ ...phaseRef.current, pace: "slow" });
         }, DOCUMENT_LOADING_SLOW_MS),
       );
       return cleanup;
     }
 
-    setSlow(false);
-    if (phaseRef.current === "hidden") return cleanup;
+    if (phaseRef.current.kind === "visible")
+      publish({ ...phaseRef.current, pace: "normal" });
+    if (phaseRef.current.kind === "hidden") return cleanup;
     const minimumRemaining =
-      phaseRef.current === "visible"
+      phaseRef.current.kind === "visible"
         ? Math.max(
             0,
-            visibleSinceRef.current + DOCUMENT_LOADING_MIN_MS - Date.now(),
+            phaseRef.current.shownAt + DOCUMENT_LOADING_MIN_MS - Date.now(),
           )
         : 0;
     timers.push(
@@ -414,15 +420,18 @@ function useDocumentLoading(
               window.requestAnimationFrame(() => {
                 if (!isCurrent()) return;
                 if (reducedMotion) {
-                  setPhase("hidden");
+                  publish({ kind: "hidden" });
                   return;
                 }
-                setPhase(
-                  phaseRef.current === "visible" ? "exiting" : "masked-exiting",
-                );
+                publish({
+                  kind:
+                    phaseRef.current.kind === "visible"
+                      ? "exiting"
+                      : "masked-exiting",
+                });
                 timers.push(
                   window.setTimeout(() => {
-                    if (isCurrent()) setPhase("hidden");
+                    if (isCurrent()) publish({ kind: "hidden" });
                   }, DOCUMENT_LOADING_EXIT_MS),
                 );
               }),
@@ -434,5 +443,8 @@ function useDocumentLoading(
     return cleanup;
   }, [active, loading, reducedMotion]);
 
-  return { phase: phaseState, slow };
+  return {
+    phase: state.kind,
+    slow: state.kind === "visible" && state.pace === "slow",
+  };
 }

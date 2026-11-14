@@ -170,7 +170,9 @@ async def test_admission_replay_conflict_and_lookup_keep_one_task(
                         ),
                     )
             case "29-lost-response":
-                recovered = await service.get_document_transform_admission(case.owner, case.key)
+                recovered = await service.get_admission(
+                    case.owner, TaskKind.FILE_DOCUMENT_TRANSFORM, case.key
+                )
                 assert recovered.task_id == case.task_id
             case _:
                 replayed = await service.create_or_replay(

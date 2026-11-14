@@ -2,13 +2,12 @@ from __future__ import annotations
 
 from fastapi import Response
 from httpx import ASGITransport, AsyncClient
-import pytest
 
 from app.auth.dependencies import auth_service_dep
 from app.auth.errors import AuthFailedError
 from app.auth.router import clear_auth_cookies, set_auth_cookies
 from app.auth.service import AuthSession
-from app.config import settings
+from app.config import Settings, settings, settings_dep
 
 
 def _session() -> AuthSession:
@@ -25,7 +24,7 @@ def _deletions(headers: list[str]) -> list[str]:
 
 def test_default_no_domain_attribute() -> None:
     response = Response()
-    set_auth_cookies(response, _session())
+    set_auth_cookies(response, _session(), domain=None)
     headers = _set_cookie_headers(response)
     assert len(headers) == 3
     assert all("Domain=" not in h for h in headers)
@@ -33,7 +32,7 @@ def test_default_no_domain_attribute() -> None:
 
 def test_session_exp_cookie_is_js_readable_and_numeric() -> None:
     response = Response()
-    set_auth_cookies(response, _session())
+    set_auth_cookies(response, _session(), domain=None)
     exp = [h for h in _set_cookie_headers(response) if h.startswith("session_exp=")]
     assert len(exp) == 1
     assert "HttpOnly" not in exp[0]
@@ -41,12 +40,9 @@ def test_session_exp_cookie_is_js_readable_and_numeric() -> None:
     assert value > 0
 
 
-def test_domain_set_emits_domain_pair_and_legacy_deletions(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    monkeypatch.setattr(settings, "COOKIE_DOMAIN", "sarj.ai")
+def test_domain_set_emits_domain_pair_and_legacy_deletions() -> None:
     response = Response()
-    set_auth_cookies(response, _session())
+    set_auth_cookies(response, _session(), domain="sarj.ai")
     headers = _set_cookie_headers(response)
     assert len(headers) == 6
     deletions = _deletions(headers)
@@ -59,38 +55,47 @@ def test_domain_set_emits_domain_pair_and_legacy_deletions(
 
 def test_clear_default_deletes_host_only_pair() -> None:
     response = Response()
-    clear_auth_cookies(response)
+    clear_auth_cookies(response, domain=None)
     headers = _set_cookie_headers(response)
     assert len(headers) == 3
     assert all("Domain=" not in h for h in headers)
 
 
-def test_clear_with_domain_deletes_both_variants(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(settings, "COOKIE_DOMAIN", "sarj.ai")
+def test_clear_with_domain_deletes_both_variants() -> None:
     response = Response()
-    clear_auth_cookies(response)
+    clear_auth_cookies(response, domain="sarj.ai")
     headers = _set_cookie_headers(response)
     assert len(headers) == 6
     assert sum("Domain=sarj.ai" in h for h in headers) == 3
 
 
-def test_settings_read_at_call_time_not_module_import(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_each_cookie_response_uses_its_explicit_domain() -> None:
     response_before = Response()
-    set_auth_cookies(response_before, _session())
-    monkeypatch.setattr(settings, "COOKIE_DOMAIN", "example.com")
+    set_auth_cookies(response_before, _session(), domain=None)
     response_after = Response()
-    set_auth_cookies(response_after, _session())
+    set_auth_cookies(response_after, _session(), domain="example.com")
     assert all("Domain=" not in h for h in _set_cookie_headers(response_before))
     assert any("Domain=example.com" in h for h in _set_cookie_headers(response_after))
 
 
-async def test_oauth_state_cookie_never_carries_domain(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(settings, "COOKIE_DOMAIN", "sarj.ai")
+async def test_oauth_state_cookie_never_carries_domain() -> None:
+    configured = Settings.model_validate(
+        {
+            **settings.model_dump(),
+            "COOKIE_DOMAIN": "sarj.ai",
+            "FRONTEND_URL": "https://wiki.sarj.ai/",
+            "GOOGLE_REDIRECT_URI": "https://api-wiki.sarj.ai/auth/callback",
+        }
+    )
     from app.main import app
 
     transport = ASGITransport(app=app)
-    async with AsyncClient(transport=transport, base_url="http://test") as client:
-        response = await client.get("/auth/login", follow_redirects=False)
+    app.dependency_overrides[settings_dep] = lambda: configured
+    try:
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            response = await client.get("/auth/login", follow_redirects=False)
+    finally:
+        app.dependency_overrides.pop(settings_dep, None)
     state_cookies = [
         v for k, v in response.headers.multi_items() if k == "set-cookie" and "oauth_state=" in v
     ]

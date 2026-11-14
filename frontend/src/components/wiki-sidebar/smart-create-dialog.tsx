@@ -10,7 +10,14 @@ import {
   RefreshCw,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { useEffect, useRef, useState } from "react";
+import {
+  type Dispatch,
+  type RefObject,
+  type SetStateAction,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
 import { toast } from "sonner";
 
 import { Badge } from "@/components/ui/badge";
@@ -28,9 +35,16 @@ import { Label } from "@/components/ui/label";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
+import { useCurrentUser } from "@/hooks/use-current-user";
 import { ApiError } from "@/lib/api-error";
 import { documentAliasError } from "@/lib/document-alias-error";
 import { smartCreateApi } from "@/lib/smart-create-client";
+import {
+  clearSmartCreateReceipt,
+  readSmartCreateReceipt,
+  saveSmartCreateReceipt,
+  type SmartCreateReceipt,
+} from "@/lib/smart-create-recovery";
 import {
   defaultAlias,
   defaultEmoji,
@@ -38,6 +52,7 @@ import {
   initialSmartCreateState,
   type SmartCreateState,
   type SmartCreationPlan,
+  type SmartCreateTask,
   sourceForTemplate,
   switchAuthoringMode,
 } from "@/lib/smart-create-types";
@@ -48,136 +63,191 @@ import { MIME_DOC } from "@/types/wiki";
 import { FolderPickerDialog } from "./folder-picker-dialog";
 
 type TemplateCatalogStatus =
-  | { kind: "error"; message: string }
-  | { kind: "loading" }
-  | { kind: "ready" };
+  | { readonly kind: "error"; readonly message: string }
+  | { readonly kind: "closed" }
+  | { readonly kind: "loading"; readonly controller: AbortController }
+  | { readonly kind: "ready"; readonly templates: DriveTemplate[] };
 
-export function SmartCreateDialog({
+type CreationState =
+  | { readonly kind: "idle" | "proposing" | "restoring" | "unmounted" }
+  | {
+      readonly kind: "enqueuing";
+      readonly receipt: Extract<SmartCreateReceipt, { kind: "unconfirmed" }>;
+      readonly controller: AbortController;
+    }
+  | {
+      readonly kind: "waiting";
+      readonly receipt: Extract<SmartCreateReceipt, { kind: "admitted" }>;
+      readonly controller: AbortController;
+    }
+  | {
+      readonly kind: "checking";
+      readonly receipt: SmartCreateReceipt;
+      readonly controller: AbortController;
+    }
+  | { readonly kind: "blocked"; readonly message: string }
+  | {
+      readonly kind: "uncertain";
+      readonly receipt: SmartCreateReceipt;
+      readonly message: string;
+    }
+  | {
+      readonly kind: "terminal";
+      readonly task: Extract<
+        SmartCreateTask,
+        { status: "failed" | "cancelled" }
+      >;
+    };
+
+export function SmartCreateDialog(props: SmartCreateDialogProps) {
+  const user = useCurrentUser();
+  const owner = user.data?.id;
+  return owner === undefined ? null : (
+    <DialogForOwner
+      key={JSON.stringify([
+        owner,
+        props.invokingDriveId,
+        props.invokingFolderId,
+      ])}
+      {...props}
+      owner={owner}
+    />
+  );
+}
+
+function DialogForOwner({
+  owner,
   invokingDriveId,
   invokingFolderId,
   onOpenChange,
   open,
-}: SmartCreateDialogProps) {
+}: SmartCreateDialogProps & { owner: string }) {
   const router = useRouter();
   const queryClient = useQueryClient();
   const [state, setState] = useState<SmartCreateState>(initialSmartCreateState);
-  const [templates, setTemplates] = useState<
-    Awaited<ReturnType<typeof smartCreateApi.listTemplates>>
-  >([]);
   const [catalogStatus, setCatalogStatus] = useState<TemplateCatalogStatus>({
-    kind: "loading",
+    kind: "closed",
   });
-  const [submitting, setSubmitting] = useState(false);
-  const [creationStage, setCreationStage] = useState<
-    "enqueuing" | "idle" | "waiting"
-  >("idle");
+  const catalogPhase = useRef<TemplateCatalogStatus>(catalogStatus);
+  const templates = catalogTemplates(catalogStatus);
+  const scope = JSON.stringify([invokingDriveId, invokingFolderId]);
+  const [creation, setCreation] = useState<CreationState>({
+    kind: "restoring",
+  });
+  const phase = useRef<CreationState>(creation);
+  const publish = (next: CreationState) => {
+    publishCreation(phase, setCreation, next);
+  };
+  const activity = creationActivity(creation);
+  const submitting = activity === "busy";
+  const locked = activity !== "editable";
+  const creationStage =
+    creation.kind === "enqueuing"
+      ? "enqueuing"
+      : creation.kind === "waiting"
+        ? "waiting"
+        : "idle";
+  useEffect(() => {
+    publishCreation(phase, setCreation, initialCreation(owner, scope));
+    return () => {
+      const current = phase.current;
+      if (
+        current.kind === "enqueuing" ||
+        current.kind === "waiting" ||
+        current.kind === "checking"
+      )
+        current.controller.abort();
+      phase.current = { kind: "unmounted" };
+    };
+  }, [owner, scope]);
   const [destinationOpen, setDestinationOpen] = useState(false);
-  const catalogSequence = useRef(0);
-  const catalogAbort = useRef<AbortController | null>(null);
-  const proposalSequence = useRef(0);
-  const submitLatch = useRef(false);
-  const createAbort = useRef<AbortController | null>(null);
-  const idempotencyKey = useRef<null | string>(null);
 
   useEffect(() => {
     if (!open) return;
-    const sequence = ++catalogSequence.current;
-    catalogAbort.current?.abort();
-    const controller = new AbortController();
-    catalogAbort.current = controller;
-    // eslint-disable-next-line react/set-state-in-effect -- Opening the dialog intentionally starts a fresh catalog load.
-    setCatalogStatus({ kind: "loading" });
+    const loading: Extract<TemplateCatalogStatus, { kind: "loading" }> = {
+      kind: "loading",
+      controller: new AbortController(),
+    };
+    publishCatalog(catalogPhase, setCatalogStatus, loading);
     void (async () => {
       const result = await smartCreateApi.listTemplates(
         false,
-        controller.signal,
+        loading.controller.signal,
       );
-      if (sequence !== catalogSequence.current) return;
-      const scopedTemplates = templatesInDrive(result, invokingDriveId);
-      setTemplates(scopedTemplates);
-      setState((current) =>
-        reconcileTemplateSelection(current, scopedTemplates),
-      );
-      setCatalogStatus({ kind: "ready" });
+      if (catalogPhase.current !== loading) return;
+      const selected = templatesInDrive(result, invokingDriveId);
+      publishCatalog(catalogPhase, setCatalogStatus, {
+        kind: "ready",
+        templates: selected,
+      });
+      if (phase.current.kind === "idle")
+        setState((current) => reconcileTemplateSelection(current, selected));
     })().catch((error: unknown) => {
-      if (sequence !== catalogSequence.current) return;
-      setCatalogStatus({
+      if (catalogPhase.current !== loading) return;
+      publishCatalog(catalogPhase, setCatalogStatus, {
         kind: "error",
         message: errorMessage(error, "Templates couldn’t be loaded."),
       });
     });
     return () => {
-      catalogSequence.current += 1;
-      catalogAbort.current?.abort();
-      catalogAbort.current = null;
+      if (catalogPhase.current.kind === "loading")
+        catalogPhase.current.controller.abort();
+      catalogPhase.current = { kind: "closed" };
     };
   }, [invokingDriveId, open]);
 
   const close = () => {
-    catalogSequence.current += 1;
-    catalogAbort.current?.abort();
-    catalogAbort.current = null;
-    proposalSequence.current += 1;
-    createAbort.current?.abort();
-    createAbort.current = null;
-    submitLatch.current = false;
-    idempotencyKey.current = null;
-    setSubmitting(false);
-    setCreationStage("idle");
+    if (catalogPhase.current.kind === "loading")
+      catalogPhase.current.controller.abort();
+    publishCatalog(catalogPhase, setCatalogStatus, { kind: "closed" });
+    if (phase.current.kind === "idle" || phase.current.kind === "terminal")
+      publish({ kind: "idle" });
     setState(initialSmartCreateState());
     onOpenChange(false);
   };
 
+  const editable = () => phase.current.kind === "idle";
   const refreshTemplates = async () => {
-    const sequence = ++catalogSequence.current;
-    catalogAbort.current?.abort();
-    const controller = new AbortController();
-    catalogAbort.current = controller;
-    setCatalogStatus({ kind: "loading" });
+    if (catalogPhase.current.kind === "closed" || phase.current.kind !== "idle")
+      return;
+    if (catalogPhase.current.kind === "loading")
+      catalogPhase.current.controller.abort();
+    const loading: Extract<TemplateCatalogStatus, { kind: "loading" }> = {
+      kind: "loading",
+      controller: new AbortController(),
+    };
+    publishCatalog(catalogPhase, setCatalogStatus, loading);
     try {
       const result = await smartCreateApi.listTemplates(
         true,
-        controller.signal,
+        loading.controller.signal,
       );
-      if (sequence !== catalogSequence.current) return;
-      const scopedTemplates = templatesInDrive(result, invokingDriveId);
-      setTemplates(scopedTemplates);
-      setState((current) =>
-        reconcileTemplateSelection(current, scopedTemplates),
-      );
-      setCatalogStatus({ kind: "ready" });
+      if (catalogPhase.current !== loading) return;
+      const selected = templatesInDrive(result, invokingDriveId);
+      publishCatalog(catalogPhase, setCatalogStatus, {
+        kind: "ready",
+        templates: selected,
+      });
+      if (editable())
+        setState((current) => reconcileTemplateSelection(current, selected));
     } catch (error: unknown) {
-      if (sequence !== catalogSequence.current) return;
+      if (catalogPhase.current !== loading) return;
       const message = errorMessage(error, "Templates couldn’t be loaded.");
-      setCatalogStatus({ kind: "error", message });
+      publishCatalog(catalogPhase, setCatalogStatus, {
+        kind: "error",
+        message,
+      });
       toast.error(message);
     }
   };
 
   const updateMode = (next: SmartCreateState["mode"]) => {
-    proposalSequence.current += 1;
-    submitLatch.current = false;
-    setSubmitting(false);
-    idempotencyKey.current = null;
+    if (phase.current.kind !== "idle") return;
     setState({ mode: next, phase: "compose" });
   };
 
-  const finishProposal = (sequence: number) => {
-    if (sequence !== proposalSequence.current) return;
-    submitLatch.current = false;
-    setSubmitting(false);
-  };
-
-  const finishCreation = (controller: AbortController) => {
-    if (createAbort.current !== controller) return;
-    createAbort.current = null;
-    submitLatch.current = false;
-    setSubmitting(false);
-    setCreationStage("idle");
-  };
-
   const continueFromCompose = async () => {
-    if (state.phase !== "compose" || submitLatch.current) return;
+    if (state.phase !== "compose" || phase.current.kind !== "idle") return;
     if (state.mode.kind === "template") {
       if (state.mode.selection.kind !== "selected") return;
       const template = state.mode.selection.template;
@@ -206,9 +276,8 @@ export function SmartCreateDialog({
 
     const description = state.mode.description.trim();
     if (!description) return;
-    const sequence = ++proposalSequence.current;
-    submitLatch.current = true;
-    setSubmitting(true);
+    const proposing: CreationState = { kind: "proposing" };
+    publish(proposing);
     try {
       const plan = await smartCreateApi.propose({
         description,
@@ -216,21 +285,20 @@ export function SmartCreateDialog({
         invokingDriveId,
         invokingFolderId,
       });
-      if (sequence !== proposalSequence.current) return;
+      if (phase.current !== proposing) return;
       setState({ mode: state.mode, phase: "review", plan });
     } catch (error: unknown) {
-      if (sequence !== proposalSequence.current) return;
+      if (phase.current !== proposing) return;
       toast.error(errorMessage(error, "Couldn’t suggest file details"));
     } finally {
-      // react-doctor-disable-next-line no-loading-flag-reset-outside-finally -- This helper performs the owner-checked reset from the finally block.
-      finishProposal(sequence);
+      if (phase.current === proposing) publish({ kind: "idle" });
     }
   };
 
   const updatePlan = (
     update: (plan: SmartCreationPlan) => SmartCreationPlan,
   ) => {
-    idempotencyKey.current = null;
+    if (phase.current.kind !== "idle") return;
     setState((current) =>
       current.phase === "review"
         ? { ...current, plan: update(current.plan) }
@@ -238,41 +306,129 @@ export function SmartCreateDialog({
     );
   };
 
+  const active = (controller: AbortController) => {
+    const current = phase.current;
+    return (current.kind === "enqueuing" ||
+      current.kind === "waiting" ||
+      current.kind === "checking") &&
+      current.controller === controller &&
+      !controller.signal.aborted
+      ? current
+      : null;
+  };
+  const failRead = (controller: AbortController, error: unknown) => {
+    const current = active(controller);
+    if (current)
+      publish({
+        kind: "uncertain",
+        receipt: current.receipt,
+        message: errorMessage(
+          error,
+          "File creation may still be running. Check the original request before starting another.",
+        ),
+      });
+  };
+  const observe = async (
+    task: SmartCreateTask,
+    key: string,
+    controller: AbortController,
+  ) => {
+    if (!active(controller)) return;
+    const receipt: SmartCreateReceipt = {
+      kind: "admitted",
+      key,
+      taskId: task.id,
+    };
+    saveSmartCreateReceipt(owner, scope, receipt);
+    publish({ kind: "waiting", receipt, controller });
+    const terminal = await smartCreateApi.waitForCompletion(
+      task,
+      controller.signal,
+    );
+    if (!active(controller)) return;
+    switch (terminal.status) {
+      case "needs_review":
+        publish({ kind: "uncertain", receipt, message: terminal.errorDetail });
+        return;
+      case "failed":
+      case "cancelled":
+        clearSmartCreateReceipt(owner, scope, key);
+        publish({ kind: "terminal", task: terminal });
+        return;
+      case "succeeded": {
+        clearSmartCreateReceipt(owner, scope, key);
+        publish({ kind: "idle" });
+        const result = terminal.result;
+        injectNewFileIntoCaches(queryClient, result.file);
+        for (const warning of result.warnings) toast.warning(warning.detail);
+        toast.success(`Created “${result.file.name}”`);
+        close();
+        router.push(`/d/${encodeURIComponent(result.file.id)}`);
+      }
+    }
+  };
   const create = async () => {
     if (
       state.phase !== "review" ||
-      submitLatch.current ||
+      phase.current.kind !== "idle" ||
       !isValidPlan(state.plan)
     )
       return;
-    submitLatch.current = true;
-    setSubmitting(true);
-    setCreationStage("enqueuing");
-    idempotencyKey.current ??= crypto.randomUUID();
+    const receipt: SmartCreateReceipt = {
+      kind: "unconfirmed",
+      key: crypto.randomUUID(),
+    };
     const controller = new AbortController();
-    createAbort.current?.abort();
-    createAbort.current = controller;
     try {
-      const task = await smartCreateApi.create(
-        state.plan,
-        idempotencyKey.current,
-      );
-      controller.signal.throwIfAborted();
-      setCreationStage("waiting");
-      const result = await smartCreateApi.waitForCompletion(
-        task,
-        controller.signal,
-      );
-      injectNewFileIntoCaches(queryClient, result.file);
-      for (const warning of result.warnings) toast.warning(warning.detail);
-      toast.success(`Created “${result.file.name}”`);
-      close();
-      router.push(`/d/${encodeURIComponent(result.file.id)}`);
+      // Persist the request identity before enqueueing; a lost response never authorizes a new POST.
+      saveSmartCreateReceipt(owner, scope, receipt);
     } catch (error: unknown) {
-      toast.error(errorMessage(error, "Couldn’t create file"));
-    } finally {
-      // react-doctor-disable-next-line no-loading-flag-reset-outside-finally -- This helper performs the owner-checked reset from the finally block.
-      finishCreation(controller);
+      toast.error(
+        errorMessage(
+          error,
+          "Save the recovery request before creating a file.",
+        ),
+      );
+      return;
+    }
+    publish({ kind: "enqueuing", receipt, controller });
+    try {
+      await observe(
+        await smartCreateApi.create(state.plan, receipt.key),
+        receipt.key,
+        controller,
+      );
+    } catch (error: unknown) {
+      failRead(controller, error);
+    }
+  };
+  const recover = async () => {
+    if (phase.current.kind !== "uncertain") return;
+    const receipt = phase.current.receipt;
+    const controller = new AbortController();
+    publish({ kind: "checking", receipt, controller });
+    try {
+      const taskId =
+        receipt.kind === "admitted"
+          ? receipt.taskId
+          : await smartCreateApi.getAdmission(receipt.key, controller.signal);
+      if (!active(controller)) return;
+      if (taskId === null) {
+        publish({
+          kind: "uncertain",
+          receipt,
+          message:
+            "No retained admission was found. This does not prove creation never started. Keep this request key for recovery.",
+        });
+        return;
+      }
+      await observe(
+        await smartCreateApi.getTask(taskId, controller.signal),
+        receipt.key,
+        controller,
+      );
+    } catch (error: unknown) {
+      failRead(controller, error);
     }
   };
 
@@ -299,52 +455,74 @@ export function SmartCreateDialog({
           </div>
 
           <div className="overflow-y-auto p-4 sm:px-6 sm:py-5">
-            {state.phase === "compose" ? (
-              <ComposeStep
-                catalogStatus={catalogStatus}
-                disabled={submitting}
-                mode={state.mode}
-                onModeChange={updateMode}
-                onRefresh={() => void refreshTemplates()}
-                onSwitch={(kind) => {
-                  updateMode(switchAuthoringMode(state, kind).mode);
-                }}
-                templates={templates}
-              />
-            ) : (
-              <div className="space-y-4">
-                {creationStage !== "idle" ? (
-                  <div
-                    aria-live="polite"
-                    className="bg-primary/5 border-primary/20 flex items-center gap-3 rounded-lg border px-3 py-2.5 text-sm"
-                  >
-                    <Loader2 className="text-primary size-4 shrink-0 animate-spin" />
-                    <span>
-                      {creationStage === "enqueuing"
-                        ? "Starting file creation…"
-                        : "Creating in Drive… You can keep this window open."}
-                    </span>
-                  </div>
-                ) : null}
-                <ReviewStep
-                  onChange={updatePlan}
-                  onChooseDestination={() => {
-                    setDestinationOpen(true);
+            {creation.kind === "uncertain" ? (
+              <div role="alert" className="mb-4 space-y-2 text-sm">
+                <p>{creation.message}</p>
+                <p>Request: {creation.receipt.key}</p>
+                <Button type="button" onClick={() => void recover()}>
+                  Check original request
+                </Button>
+              </div>
+            ) : null}
+            {creation.kind === "blocked" ? (
+              <p role="alert">{creation.message}</p>
+            ) : null}
+            {creation.kind === "terminal" ? (
+              <p role="alert">
+                {creation.task.status === "cancelled"
+                  ? "File creation was cancelled."
+                  : (creation.task.errorDetail ??
+                    `File creation failed (${creation.task.errorCode})`)}
+              </p>
+            ) : null}
+            <fieldset disabled={locked} className="min-w-0 space-y-4">
+              {state.phase === "compose" ? (
+                <ComposeStep
+                  catalogStatus={catalogStatus}
+                  disabled={locked}
+                  mode={state.mode}
+                  onModeChange={updateMode}
+                  onRefresh={() => void refreshTemplates()}
+                  onSwitch={(kind) => {
+                    updateMode(switchAuthoringMode(state, kind).mode);
                   }}
-                  plan={state.plan}
                   templates={templates}
                 />
-              </div>
-            )}
+              ) : (
+                <div className="space-y-4">
+                  {creationStage !== "idle" ? (
+                    <div
+                      aria-live="polite"
+                      className="bg-primary/5 border-primary/20 flex items-center gap-3 rounded-lg border px-3 py-2.5 text-sm"
+                    >
+                      <Loader2 className="text-primary size-4 shrink-0 animate-spin" />
+                      <span>
+                        {creationStage === "enqueuing"
+                          ? "Starting file creation…"
+                          : "Creating in Drive… You can keep this window open."}
+                      </span>
+                    </div>
+                  ) : null}
+                  <ReviewStep
+                    onChange={updatePlan}
+                    onChooseDestination={() => {
+                      setDestinationOpen(true);
+                    }}
+                    plan={state.plan}
+                    templates={templates}
+                  />
+                </div>
+              )}
+            </fieldset>
           </div>
 
           <DialogFooter className="bg-background grid grid-cols-2 border-t px-4 py-3 sm:flex sm:justify-between sm:px-6 sm:py-4">
             <Button
               className="w-full sm:w-auto"
-              disabled={submitting}
+              disabled={submitting || creation.kind === "uncertain"}
               onClick={() => {
                 if (state.phase === "review") {
-                  idempotencyKey.current = null;
+                  publish({ kind: "idle" });
                   setState({ mode: state.mode, phase: "compose" });
                 } else {
                   close();
@@ -361,7 +539,8 @@ export function SmartCreateDialog({
             <Button
               className="w-full sm:w-auto"
               disabled={
-                submitting ||
+                locked ||
+                creation.kind === "terminal" ||
                 (state.phase === "compose"
                   ? !canContinue(state)
                   : !isValidPlan(state.plan))
@@ -836,4 +1015,84 @@ function templatesInDrive(
   driveId: string,
 ): DriveTemplate[] {
   return templates.filter((template) => template.driveId === driveId);
+}
+
+function initialCreation(owner: string, scope: string): CreationState {
+  try {
+    const receipt = readSmartCreateReceipt(owner, scope);
+    return receipt === null
+      ? { kind: "idle" }
+      : {
+          kind: "uncertain",
+          receipt,
+          message:
+            "An earlier file creation needs recovery. Check the original request before starting another.",
+        };
+  } catch {
+    // Corrupt evidence must not be discarded or replaced with a new request.
+    return {
+      kind: "blocked",
+      message:
+        "The saved creation request is unreadable. Preserve it for recovery before creating another file.",
+    };
+  }
+}
+
+function publishCatalog(
+  phase: RefObject<TemplateCatalogStatus>,
+  setStatus: Dispatch<SetStateAction<TemplateCatalogStatus>>,
+  next: TemplateCatalogStatus,
+): void {
+  phase.current = next;
+  setStatus(next);
+}
+
+function creationActivity(
+  state: CreationState,
+): "editable" | "busy" | "recovery" | "terminal" | "unmounted" {
+  switch (state.kind) {
+    case "idle":
+      return "editable";
+    case "restoring":
+    case "proposing":
+    case "enqueuing":
+    case "waiting":
+    case "checking":
+      return "busy";
+    case "uncertain":
+    case "blocked":
+      return "recovery";
+    case "terminal":
+      return "terminal";
+    case "unmounted":
+      return "unmounted";
+    default:
+      return unreachableCreation(state);
+  }
+}
+
+function unreachableCreation(state: never): never {
+  throw new Error(`Unhandled creation state: ${JSON.stringify(state)}`);
+}
+
+function publishCreation(
+  phase: RefObject<CreationState>,
+  setCreation: Dispatch<SetStateAction<CreationState>>,
+  next: CreationState,
+): void {
+  phase.current = next;
+  setCreation(next);
+}
+
+function catalogTemplates(state: TemplateCatalogStatus): DriveTemplate[] {
+  switch (state.kind) {
+    case "ready":
+      return state.templates;
+    case "closed":
+    case "loading":
+    case "error":
+      return [];
+    default:
+      return unreachableCreation(state);
+  }
 }

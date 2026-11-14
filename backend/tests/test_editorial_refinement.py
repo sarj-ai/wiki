@@ -41,7 +41,7 @@ class _RefiningEditor(PatchGenerator):
         self.calls += 1
         if self.outage_after is not None and self.calls > self.outage_after:
             raise ModelUnavailableError
-        self.prompts.append(transform_models._prompt(document, phase=phase))
+        self.prompts.append(transform_models._prompt(document))
         block = document.blocks[0]
         return [
             TextPatch(

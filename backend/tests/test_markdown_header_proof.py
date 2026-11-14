@@ -11,6 +11,7 @@ from app.document_transform.markdown_import import (
     markdown_import_brand_diagnostics,
     verify_markdown_import,
 )
+from app.document_transform.verification import BrandVerification
 from tests.test_markdown_import import _branded_document
 
 
@@ -42,7 +43,7 @@ def test_exact_header_accepts_legal_native_metadata(*, newline: bool, indices: s
         markdown_import_manifest("Body", title="Import", branded=True), header_title=None
     )
     result = verify_markdown_import(document, manifest)
-    assert result.brand_applied
+    assert result.brand is BrandVerification.FULL
     assert result.content_preserved
     assert result.structure_preserved
     checks = markdown_import_brand_diagnostics(document, manifest)
@@ -119,7 +120,10 @@ def test_header_proof_never_accepts_extra_or_changed_logo_content(change: str) -
     manifest = replace(
         markdown_import_manifest("Body", title="Import", branded=True), header_title=None
     )
-    assert not verify_markdown_import(document, manifest).brand_applied
+    assert verify_markdown_import(document, manifest).brand not in {
+        BrandVerification.FULL,
+        BrandVerification.NOT_REQUIRED,
+    }
     checks = markdown_import_brand_diagnostics(document, manifest)
     assert all(type(value) is bool for value in checks.values())
     assert "SECRET" not in json.dumps(checks)
@@ -161,7 +165,7 @@ def test_diagnostics_preserve_logo_metadata_short_circuit(magnitude: object) -> 
     )
     before = verify_markdown_import(document, manifest)
     checks = markdown_import_brand_diagnostics(document, manifest)
-    assert not before.brand_applied
+    assert before.brand not in {BrandVerification.FULL, BrandVerification.NOT_REQUIRED}
     assert before.content_preserved
     assert before.structure_preserved
     assert checks["import_logo_metadata"] is False
@@ -198,7 +202,7 @@ def test_logo_metadata_components_are_static_and_do_not_relax_proof(change: str)
     checks = markdown_import_brand_diagnostics(document, manifest)
     expected = change in {"absent", "null", "exact"}
     assert checks["import_logo_metadata"] is expected
-    assert verify_markdown_import(document, manifest).brand_applied is expected
+    assert (verify_markdown_import(document, manifest).brand is BrandVerification.FULL) is expected
     assert checks["import_logo_title_exact"] is (change != "title")
     assert checks["import_logo_description_exact"] is (change != "description")
     assert checks["import_logo_image_properties_valid"] is (change != "malformed")

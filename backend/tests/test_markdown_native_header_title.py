@@ -18,6 +18,7 @@ from app.document_transform.markdown_import import (
     verify_markdown_import,
 )
 from app.document_transform.schemas import DocumentTransformRequest, MarkdownSource, TransformMode
+from app.document_transform.verification import BrandVerification
 from app.identifiers import FileId, TaskId
 from tests.test_document_transform import _CopyCheckpointStore, _Gateway, _Generator
 from tests.test_document_transform_docx import LOGO_BYTES, WP, W
@@ -67,7 +68,7 @@ def test_native_header_exact_title_preserves_body(*, title: str, newline: bool) 
     before = deepcopy(document)
     manifest = markdown_import_manifest("Body", title="Import", branded=True, header_title=title)
     result = verify_markdown_import(document, manifest)
-    assert result.brand_applied
+    assert result.brand is BrandVerification.FULL
     assert result.content_preserved
     assert result.structure_preserved
     assert document == before
@@ -125,7 +126,7 @@ def test_native_header_rejects_changed_or_unproven_title(change: str) -> None:
             runs.insert(1, deepcopy(runs[1]))
     manifest = markdown_import_manifest("Body", title="Import", branded=True, header_title=title)
     result = verify_markdown_import(document, manifest)
-    assert not result.brand_applied
+    assert result.brand not in {BrandVerification.FULL, BrandVerification.NOT_REQUIRED}
     assert result.content_preserved
     assert result.structure_preserved is (change != "extra_logo")
 
@@ -269,7 +270,7 @@ def test_header_title_typography_requires_explicit_or_unique_parent_proof(change
         "Body", title="Import", branded=True, header_title="Chosen Title"
     )
     result = verify_markdown_import(document, manifest)
-    assert result.brand_applied is (change in {"none", "inherited"})
+    assert (result.brand is BrandVerification.FULL) is (change in {"none", "inherited"})
     assert result.content_preserved
     assert result.structure_preserved
     checks = markdown_import_brand_diagnostics(document, manifest)
@@ -358,7 +359,7 @@ def test_header_title_rejects_noncanonical_effects_and_malformed_values(
     manifest = markdown_import_manifest(
         "Body", title="Import", branded=True, header_title="Chosen Title"
     )
-    assert verify_markdown_import(document, manifest).brand_applied is valid
+    assert (verify_markdown_import(document, manifest).brand is BrandVerification.FULL) is valid
     assert (
         markdown_import_brand_diagnostics(document, manifest)["import_header_title_style"] is valid
     )
@@ -381,7 +382,10 @@ def test_ambiguous_parent_never_erases_inherited_effects(provided: str) -> None:
     manifest = markdown_import_manifest(
         "Body", title="Import", branded=True, header_title="Chosen Title"
     )
-    assert not verify_markdown_import(document, manifest).brand_applied
+    assert verify_markdown_import(document, manifest).brand not in {
+        BrandVerification.FULL,
+        BrandVerification.NOT_REQUIRED,
+    }
     assert (
         markdown_import_brand_diagnostics(document, manifest)["import_header_title_style"] is False
     )

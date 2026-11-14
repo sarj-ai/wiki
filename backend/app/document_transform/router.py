@@ -52,7 +52,8 @@ from app.openapi import authentication_responses
 from app.tasks.dependencies import task_enqueuer_dep, task_service_dep
 from app.tasks.queue import TaskEnqueuer
 from app.tasks.schemas import (
-    DocumentTransformAdmission,
+    TaskAdmission,
+    TaskKind,
     TaskRead,
 )
 from app.tasks.service import TaskService
@@ -139,10 +140,10 @@ async def get_document_transform_admission(
     response: Response,
     user: Annotated[User, Depends(get_current_user)],
     tasks: Annotated[TaskService, Depends(task_service_dep)],
-) -> DocumentTransformAdmission:
+) -> TaskAdmission:
     response.headers["Cache-Control"] = "no-store"
-    return await tasks.get_document_transform_admission(
-        UserId(user.id), IdempotencyKey(idempotency_key)
+    return await tasks.get_admission(
+        UserId(user.id), TaskKind.FILE_DOCUMENT_TRANSFORM, IdempotencyKey(idempotency_key)
     )
 
 
