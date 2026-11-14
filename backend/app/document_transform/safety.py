@@ -20,6 +20,7 @@ from app.document_transform.quantity_notation import (
     UNIT_GROUP,
     UNIT_POWER,
     UNMARKED_UNIT_SYMBOL,
+    grouped_uncertainty_pattern,
 )
 from app.document_transform.quotations import (
     QUOTED_SPAN_PATTERN,
@@ -67,6 +68,14 @@ _QUANTITY_LITERAL = (
     rf"(?:(?:[<>]=?|[≤≥~≈≃])\s*)?{_QUANTITY_TERM}"
     rf"(?:{HORIZONTAL_SPACE}*(?:\+/-|[±∓×xX·÷+−–—*/⁄:^\-]){HORIZONTAL_SPACE}*{_QUANTITY_TERM})*"
 )
+_GROUPED_MEASUREMENT = (
+    rf"{grouped_uncertainty_pattern(_SIGNED_NUMBER)}"
+    rf"(?:{HORIZONTAL_SPACE}*(?:%|٪|‰|{CURRENCY_SYMBOL}|{CURRENCY_CODE}|"
+    rf"{UNIT_GROUP}|{UNMARKED_UNIT_SYMBOL}{_NUMERIC_POWER})"
+    rf"(?:{HORIZONTAL_SPACE}*[/*·]{HORIZONTAL_SPACE}*"
+    rf"(?:{_NUMERIC_UNIT_SYMBOL}{_NUMERIC_POWER}|{UNIT_GROUP})"
+    rf"|{HORIZONTAL_SPACE}+(?:{UNMARKED_UNIT_SYMBOL}{_NUMERIC_POWER}|{UNIT_GROUP}))*)?"
+)
 _PROTECTED_CODE = re.compile(r"```[\s\S]*?```|`[^`\n]+`")
 _PROTECTED_TOKEN = re.compile(
     rf"{RFCISH_EMAIL_PATTERN}|{CUSTOM_URI_PATTERN}|(?i:{UNIT_ANNOTATION_PATTERN})|"
@@ -75,7 +84,7 @@ _PROTECTED_TOKEN = re.compile(
     # Keep grouped integers, mixed fractions, and parenthetical uncertainty
     # together so layout breaks cannot detach part of a quantity or its unit.
     # Compound units and powers may contain authored horizontal spacing.
-    rf"(?<![\w.])(?:\({_QUANTITY_LITERAL}\)|{_QUANTITY_LITERAL})(?![\w])"
+    rf"(?<![\w.])(?:{_GROUPED_MEASUREMENT}|\({_QUANTITY_LITERAL}\)|{_QUANTITY_LITERAL})(?![\w])"
     r"|\b(?=\w*\d)\w+(?:[.:-]\w+)*\b"
     r"|[±∓×÷≤≥≠≈≃]"
     rf"|{HTML_ENTITY_PATTERN}"
