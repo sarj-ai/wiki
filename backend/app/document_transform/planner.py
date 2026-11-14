@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from contextlib import suppress
 from dataclasses import dataclass, replace
+from enum import StrEnum
+from typing import Literal, assert_never
 
 from loguru import logger
 
@@ -59,20 +61,121 @@ class _ReviewedRepair:
     validated_ids: frozenset[str]
 
 
-def _record_editorial_refinement(
-    original: DocumentIR,
-    outcome: TransformOutcome,
-    *,
-    attempted: int,
-    accepted: int,
-    stop_reason: str,
-) -> None:
+@dataclass(frozen=True, slots=True)
+class _EditorialReady:
+    outcome: TransformOutcome
+    completed_passes: int = 0
+
+    def __post_init__(self) -> None:
+        if (
+            type(self.completed_passes) is not int
+            or not 0 <= self.completed_passes <= MAX_EDITORIAL_PASSES
+        ):
+            msg = "Editorial completed passes require a bounded integer"
+            raise ValueError(msg)
+
+
+@dataclass(frozen=True, slots=True)
+class _EditorialAttempt:
+    previous: _EditorialReady
+
+    def __post_init__(self) -> None:
+        if self.previous.completed_passes >= MAX_EDITORIAL_PASSES:
+            msg = "Editorial attempts cannot exceed the pass limit"
+            raise ValueError(msg)
+
+
+class _EditorialStop(StrEnum):
+    LIMIT_REACHED = "pass_limit"
+    DEADLINE = "deadline_reserve"
+    NO_IMPROVEMENT = "no_verified_improvement"
+    CONVERGED = "converged"
+    INELIGIBLE = "not_eligible"
+
+
+@dataclass(frozen=True, slots=True)
+class _EditorialFinished:
+    progress: _EditorialReady
+    reason: Literal[
+        _EditorialStop.LIMIT_REACHED, _EditorialStop.DEADLINE, _EditorialStop.INELIGIBLE
+    ]
+
+    def __post_init__(self) -> None:
+        if self.progress.completed_passes == 0:
+            msg = "Editorial completion requires an accepted pass"
+            raise ValueError(msg)
+
+
+@dataclass(frozen=True, slots=True)
+class _EditorialUnchanged:
+    attempt: _EditorialAttempt
+    reason: Literal[_EditorialStop.NO_IMPROVEMENT, _EditorialStop.CONVERGED]
+
+
+@dataclass(frozen=True, slots=True)
+class _EditorialFailed:
+    attempt: _EditorialAttempt
+    error: ModelUnavailableError
+
+
+type _EditorialTerminal = _EditorialFinished | _EditorialUnchanged | _EditorialFailed
+type _EditorialState = _EditorialReady | _EditorialAttempt | _EditorialTerminal
+
+
+def _admit_editorial_pass(
+    state: _EditorialReady, *, limit: int, remaining: float | None
+) -> _EditorialAttempt | _EditorialFinished:
+    if state.completed_passes >= limit:
+        return _EditorialFinished(state, _EditorialStop.LIMIT_REACHED)
+    if state.completed_passes and remaining is not None and remaining < _MIN_REFINEMENT_SECONDS:
+        return _EditorialFinished(state, _EditorialStop.DEADLINE)
+    return _EditorialAttempt(state)
+
+
+def _complete_editorial_pass(
+    state: _EditorialAttempt, following: TransformOutcome
+) -> _EditorialReady | _EditorialFinished | _EditorialUnchanged:
+    previous = state.previous
+    if following.document.text_sha256 == previous.outcome.document.text_sha256:
+        outcome = (
+            _merge_outcomes(previous.outcome, following)
+            if previous.completed_passes == 0
+            else previous.outcome
+        )
+        return _EditorialUnchanged(
+            _EditorialAttempt(_EditorialReady(outcome, previous.completed_passes)),
+            _EditorialStop.NO_IMPROVEMENT if following.findings else _EditorialStop.CONVERGED,
+        )
+    progress = _EditorialReady(
+        _merge_refinement(previous.outcome, following), previous.completed_passes + 1
+    )
+    if not model_editable_blocks(progress.outcome.document):
+        return _EditorialFinished(progress, _EditorialStop.INELIGIBLE)
+    return progress
+
+
+def _record_editorial_refinement(original: DocumentIR, state: _EditorialTerminal) -> None:
+    match state:
+        case _EditorialFinished():
+            progress = state.progress
+            attempted = progress.completed_passes
+            stop_reason = str(state.reason)
+        case _EditorialUnchanged():
+            progress = state.attempt.previous
+            attempted = progress.completed_passes + 1
+            stop_reason = str(state.reason)
+        case _EditorialFailed():
+            progress = state.attempt.previous
+            attempted = progress.completed_passes + 1
+            stop_reason = state.error.code
+        case unreachable:
+            assert_never(unreachable)
     logger.info(
         "document editorial refinement finished",
         source_sha256=original.text_sha256,
-        result_sha256=outcome.document.text_sha256,
+        result_sha256=progress.outcome.document.text_sha256,
         editorial_attempted=attempted,
-        editorial_accepted=accepted,
+        editorial_accepted=progress.completed_passes,
         editorial_stop_reason=stop_reason,
     )
 
@@ -158,7 +261,10 @@ class TextTransformPlanner:
         allow_unslop_model: bool = False,
         max_editorial_passes: int = MAX_EDITORIAL_PASSES,
     ) -> None:
-        if not 1 <= max_editorial_passes <= MAX_EDITORIAL_PASSES:
+        if (
+            type(max_editorial_passes) is not int
+            or not 1 <= max_editorial_passes <= MAX_EDITORIAL_PASSES
+        ):
             msg = "Editorial passes must be between 1 and 100"
             raise ValueError(msg)
         self._generator = generator
@@ -228,49 +334,42 @@ class TextTransformPlanner:
         original: DocumentIR,
         concision_source: DocumentIR,
     ) -> TransformOutcome:
-        attempted = accepted = 0
-        stop_reason = "pass_limit"
-        for number in range(1, self._max_editorial_passes + 1):
-            remaining = provider_retry_remaining_seconds()
-            if number > 1 and remaining is not None and remaining < _MIN_REFINEMENT_SECONDS:
-                stop_reason = "deadline_reserve"
-                break
-            attempted += 1
-            try:
-                with editorial_pass_scope(original, number=number):
-                    following = await self._model_phase(
-                        outcome.document,
-                        phase=TransformPhase.UNSLOP,
-                        concision_source=concision_source,
-                        fidelity_source=original,
+        state: _EditorialState = _EditorialReady(outcome)
+        while True:
+            match state:
+                case _EditorialReady():
+                    state = _admit_editorial_pass(
+                        state,
+                        limit=self._max_editorial_passes,
+                        remaining=provider_retry_remaining_seconds(),
                     )
-            except ModelUnavailableError as error:
-                stop_reason = error.code
-                if number == 1:
-                    _record_editorial_refinement(
-                        original,
-                        outcome,
-                        attempted=attempted,
-                        accepted=accepted,
-                        stop_reason=stop_reason,
-                    )
-                    raise
-                break
-            if following.document.text_sha256 == outcome.document.text_sha256:
-                stop_reason = "no_verified_improvement" if following.findings else "converged"
-                # A rejected optional attempt must not invalidate a reviewed draft.
-                if number == 1:
-                    outcome = _merge_outcomes(outcome, following)
-                break
-            outcome = _merge_refinement(outcome, following)
-            accepted += 1
-            if not model_editable_blocks(outcome.document):
-                stop_reason = "not_eligible"
-                break
-        _record_editorial_refinement(
-            original, outcome, attempted=attempted, accepted=accepted, stop_reason=stop_reason
-        )
-        return outcome
+                case _EditorialAttempt():
+                    previous = state.previous
+                    try:
+                        with editorial_pass_scope(original, number=previous.completed_passes + 1):
+                            following = await self._model_phase(
+                                previous.outcome.document,
+                                phase=TransformPhase.UNSLOP,
+                                concision_source=concision_source,
+                                fidelity_source=original,
+                            )
+                    except ModelUnavailableError as error:
+                        state = _EditorialFailed(state, error)
+                    else:
+                        state = _complete_editorial_pass(state, following)
+                case _EditorialFinished():
+                    _record_editorial_refinement(original, state)
+                    return state.progress.outcome
+                case _EditorialUnchanged():
+                    _record_editorial_refinement(original, state)
+                    return state.attempt.previous.outcome
+                case _EditorialFailed():
+                    _record_editorial_refinement(original, state)
+                    if state.attempt.previous.completed_passes == 0:
+                        raise state.error
+                    return state.attempt.previous.outcome
+                case unreachable:
+                    assert_never(unreachable)
 
     @model_phase_review_scope()
     async def _model_phase(

@@ -2443,6 +2443,38 @@
         "backend/app/document_transform/models.py",
         "backend/app/identifiers.py"
       ]
+    },
+    {
+      "id": "editorial-refinement-loop",
+      "oldRepresentation": "Bounded loop with independently mutated attempt/accept counts, outcome and free-form stop reason; exception ordering distinguishes mandatory first pass from optional later passes.",
+      "authoritativeReplacement": "_EditorialReady | _EditorialAttempt | _EditorialFinished | _EditorialUnchanged | _EditorialFailed; _EditorialStop; _admit_editorial_pass and _complete_editorial_pass.",
+      "states": [
+        "ready",
+        "in-flight",
+        "finished-after-improvement",
+        "finished-unchanged",
+        "failed"
+      ],
+      "events": [
+        "admit next pass",
+        "receive reviewed candidate",
+        "receive provider failure",
+        "cancel task"
+      ],
+      "guards": [
+        "Only ready states admit calls and only in-flight states consume results.",
+        "One strict bounded completed-pass count is authoritative. Attempted/accepted log counts derive from the terminal variant; no contradictory independent counters exist.",
+        "Pass limit and deadline reserve terminate before another provider call; first pass remains mandatory.",
+        "Equal text stops with exact original first-pass finding merge; optional failures and rejected edits preserve the reviewed draft.",
+        "Five closed success reasons and required failure data remain disjoint; every state is exhaustively handled."
+      ],
+      "recovery": "This local planning loop performs no document write. The existing durable model proposal/review checkpoint and task generation remain the authority after a crash. A cancelled provider request propagates without creating a finished state. Later model calls may have consumed external quota; no exactly-once call claim is made. Model log fields preserve upstream values and first failure rethrows the original error.",
+      "decision": "convert",
+      "sources": [
+        "backend/app/document_transform/planner.py",
+        "backend/tests/test_editorial_refinement.py",
+        "backend/tests/test_refinement_observability.py"
+      ]
     }
   ],
   "exceptions": [
@@ -2568,7 +2600,8 @@
       "in-place-post-content-coordination",
       "markdown-header-parser-sequence",
       "model-planning-review-ownership",
-      "model-review-batch-continuation"
+      "model-review-batch-continuation",
+      "editorial-refinement-loop"
     ],
     "reviewEvidence": "Prior concrete 44-file provider-content and 13 UI/reservation reviews are retained. Current reconciliation reviews 26 source/config/workflow paths plus the seven application paths changed by upstream PR708/709; it converts the model-planning ownership and review-batch continuation machines. Native final gates and deployment remain pending."
   }

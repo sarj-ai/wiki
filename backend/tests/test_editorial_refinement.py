@@ -263,3 +263,9 @@ def test_cited_reference_allows_direct_note_prose_while_service_intention_stays_
     assert bool(decision.accepted) is retain_intention
     if not retain_intention:
         assert decision.findings[0].code == "force_language_changed"
+
+
+@pytest.mark.parametrize("limit", [-1, 0, 101, True])
+def test_editorial_pass_limit_rejects_invalid_counts(limit: int) -> None:
+    with pytest.raises(ValueError, match="Editorial passes must be between 1 and 100"):
+        TextTransformPlanner(generator=_RefiningEditor(()), max_editorial_passes=limit)

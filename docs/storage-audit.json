@@ -472,7 +472,7 @@
   },
   "migrationIsolation": "Acquire the unchanged global registration advisory lock, then pause the old admission table and cache writes for the copy/drop transaction. Native OAuth state is preserved byte-for-byte; only replaced proxy collections and disposable provider caches are removed.",
   "previousMigration": "0029_task_review",
-  "reviewedBase": "3ea07ecea8c886ba9fea7c033f082ea1dad5d9ed",
+  "reviewedBase": "b4ec17bed22ba4c1d8036aefb5c478704f772ce6",
   "retiredCode": [
     "Unused generic OAuth SDK key/value and bulk API; active native state remains encrypted and permission checked.",
     "Unused alias attribution columns, foreign keys, indexes and service injection.",
