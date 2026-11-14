@@ -105,11 +105,17 @@ def _converted() -> dict[str, Any]:
     return document
 
 
-def test_date_stage_exact_projection_and_repeat_noop() -> None:
+@pytest.mark.parametrize("explicit_utc", [False, True])
+def test_date_stage_exact_projection_and_repeat_noop(*, explicit_utc: bool) -> None:
     checkpoint = plan_copy_dates(_document(), operation_id=uuid.uuid7())
     assert checkpoint is not None
     assert len(checkpoint.requests) == 2
     actual = _converted()
+    if not explicit_utc:
+        body = actual["tabs"][0]["documentTab"]["body"]["content"]
+        body[1]["paragraph"]["elements"][0]["dateElement"]["dateElementProperties"].pop(
+            "timeZoneId"
+        )
     projected = verified_date_projection(actual, checkpoint)
     projected["revisionId"] = "r1"
     assert projected == _document()

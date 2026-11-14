@@ -68,7 +68,8 @@ class NativeElementProposal:
                     "location": location,
                     "dateElementProperties": {
                         "timestamp": f"{self.normalized_value}T00:00:00Z",
-                        "timeZoneId": "Etc/UTC",
+                        # Date-only chips use the provider's UTC default. Docs
+                        # rejects an explicit zone unless a time with a zone is shown.
                         "locale": "en",
                         "dateFormat": "DATE_FORMAT_ISO8601",
                         "timeFormat": "TIME_FORMAT_DISABLED",
