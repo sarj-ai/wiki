@@ -21,7 +21,7 @@ from app.document_transform.quotations import (
 
 UNSLOP_UPSTREAM_COMMIT = "d81f5196167ded24f46fced04958c0c12d681798"
 UNSLOP_UPSTREAM_VERSION = "2.3.0"
-UNSLOP_POLICY_VERSION = "sarj-concise-v46"
+UNSLOP_POLICY_VERSION = "sarj-concise-v47"
 MAX_EDITORIAL_PASSES = 100
 MIN_CONCISION_PROSE_WORDS = 40
 CONCISION_WORD_NUMERATOR = 2
@@ -321,10 +321,11 @@ CUSTOM_URI_PATTERN = r"[A-Za-z][A-Za-z0-9+.-]*:(?://)?[^\s)>]+"
 HTML_ENTITY_PATTERN = r"&(?:#[0-9]+|#[xX][0-9A-Fa-f]+|[A-Za-z][A-Za-z0-9]+);"
 
 _TABLE_ATTENTION_CONTEXT = (
-    r"(?:[Tt]o interpret|[Ff]or the purposes of interpreting) (?:the|this) table,[ \t]+"
+    r"(?:[Tt]o (?:interpret|read)|[Ff]or the purposes of (?:interpreting|reading)) "
+    r"(?:the|this) table,[ \t]+"
 )
 _DEFINITE_FACT_CLAUSE = (
-    r"[Tt]he[ \t]+(?:[A-Za-z][A-Za-z-]*[ \t]+){1,6}"
+    r"(?:[Tt]he|[Ee]ach)[ \t]+(?:[A-Za-z][A-Za-z-]*[ \t]+){1,6}"
     r"(?:is|are|was|were|has|have|must|shall|should|can|could|may|might|will|would)\b"
 )
 _PARAGRAPH_RECAP_PATTERN = (
@@ -347,7 +348,7 @@ _CONTINUED_RECAP_PREFACE = re.compile(
 _EDITORIAL_FRAMING_PATTERN = re.compile(
     r"(?:^|(?<=[.!?\n]))[ \t]*(?:"
     rf"(?:{_TABLE_ATTENTION_CONTEXT})?[Ii]t should be noted that[ \t]+|"
-    rf"{_TABLE_ATTENTION_CONTEXT}[Ii]t should be noted[ \t]+(?={_DEFINITE_FACT_CLAUSE})|"
+    rf"(?:{_TABLE_ATTENTION_CONTEXT})?[Ii]t should be noted[ \t]+(?={_DEFINITE_FACT_CLAUSE})|"
     rf"{_PARAGRAPH_RECAP_PATTERN}|"
     r"[Ii]n today['’]s (?:increasingly )?fast[-\u2011 ]moving and ever[-\u2011 ]evolving "
     r"world of (?=[^,;:.!?\n]+,[ \t]*)|"
@@ -479,7 +480,7 @@ _REFERENCE_IDENTITY_TOKEN = re.compile(
 # A document's announcement of its own writing is editorial framing.
 # Keep substantive intentions ("the plan aims to reduce outages") constrained.
 _DOCUMENT_SUBJECT_PATTERN = (
-    r"\b(?:this|the|our|a)\s+(?:working\s+)?"
+    r"\b(?:this|the|our|a)\s+(?:(?:working|short|brief)\s+)?"
     r"(?:document|note|guide|report|article|section|page|overview)\s+"
 )
 _QUALIFIED_REFERENCE_PREFIX = re.compile(

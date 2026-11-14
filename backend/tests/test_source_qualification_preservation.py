@@ -131,3 +131,107 @@ async def test_rejected_instruction_deletion_does_not_block_other_faithful_edits
     actual = {block.id: block.text for block in result.document.blocks}
     assert actual[instruction_block.id] == instruction
     assert actual[framing_block.id] == replacement
+
+
+@pytest.fixture
+def qualified_prose_editor_factory() -> type[_ApprovingEditor]:
+    return _ApprovingEditor
+
+
+@pytest.mark.parametrize("mode", [TransformMode.UNSLOP, TransformMode.BOTH])
+@pytest.mark.parametrize("modifier", ["short", "brief", "working"])
+async def test_qualified_guide_can_remove_its_writing_preamble(
+    modifier: str, mode: TransformMode, qualified_prose_editor_factory: type[_ApprovingEditor]
+) -> None:
+    source = (
+        f"In a broad and general sense, this {modifier} guide is intended to bring together "
+        "five ideas for a weekend in New York City so the same information can be read in "
+        "one place. The suggestions include comedy, miniature trains, gallery programmes, "
+        "a museum evening, and ice skating. There is a range of options in this selection."
+    )
+    replacement = (
+        "Five New York City weekend ideas: comedy, miniature trains, gallery programmes, "
+        "a museum evening, and ice skating."
+    )
+    document = parse_markdown(source, title="Weekend guide")
+    result = await TextTransformPlanner(
+        generator=qualified_prose_editor_factory({document.blocks[0].id: replacement}),
+        allow_unslop_model=True,
+    ).transform(document, _request(source, mode))
+    assert result.document.blocks[0].text == replacement
+
+
+@pytest.mark.parametrize("mode", [TransformMode.UNSLOP, TransformMode.BOTH])
+@pytest.mark.parametrize("modifier", ["short", "brief", "working"])
+async def test_qualified_guide_keeps_substantive_intentions(
+    modifier: str, mode: TransformMode, qualified_prose_editor_factory: type[_ApprovingEditor]
+) -> None:
+    source = f"This {modifier} guide is intended to reduce queueing before admission."
+    replacement = f"This {modifier} guide reduces queueing before admission."
+    document = parse_markdown(source, title="Weekend guide")
+    result = await TextTransformPlanner(
+        generator=qualified_prose_editor_factory({document.blocks[0].id: replacement}),
+        allow_unslop_model=True,
+    ).transform(document, _request(source, mode))
+    assert result.document.blocks[0].text == source
+    assert any(finding.code == "force_language_changed" for finding in result.findings)
+
+
+@pytest.mark.parametrize("mode", [TransformMode.UNSLOP, TransformMode.BOTH])
+@pytest.mark.parametrize(
+    "prefix",
+    [
+        "",
+        "To interpret the table, ",
+        "To read the table, ",
+        "For the purposes of reading the table, ",
+    ],
+)
+@pytest.mark.parametrize("complement", ["that ", ""])
+async def test_attention_preamble_can_go_without_dropping_the_estimates_context(
+    prefix: str,
+    complement: str,
+    mode: TransformMode,
+    qualified_prose_editor_factory: type[_ApprovingEditor],
+) -> None:
+    source = (
+        f"{prefix}It should be noted {complement}each estimate is tied to its operation, "
+        "data size, access pattern, link rate, and round-trip scope."
+    )
+    replacement = (
+        "Each estimate is tied to its operation, data size, access pattern, link rate, "
+        "and round-trip scope."
+    )
+    document = parse_markdown(source, title="Historical estimates")
+    result = await TextTransformPlanner(
+        generator=qualified_prose_editor_factory({document.blocks[0].id: replacement}),
+        allow_unslop_model=True,
+    ).transform(document, _request(source, mode))
+    assert result.document.blocks[0].text == replacement
+
+
+@pytest.mark.parametrize("mode", [TransformMode.UNSLOP, TransformMode.BOTH])
+@pytest.mark.parametrize(
+    ("source", "replacement"),
+    [
+        ("It should be noted in the audit log.", "It is noted in the audit log."),
+        ("It should be noted before publication.", "It is noted before publication."),
+        (
+            "To read the table, it should be noted only after approval.",
+            "To read the table, it is noted only after approval.",
+        ),
+    ],
+)
+async def test_real_noting_instructions_keep_their_modality(
+    source: str,
+    replacement: str,
+    mode: TransformMode,
+    qualified_prose_editor_factory: type[_ApprovingEditor],
+) -> None:
+    document = parse_markdown(source, title="Recording requirements")
+    result = await TextTransformPlanner(
+        generator=qualified_prose_editor_factory({document.blocks[0].id: replacement}),
+        allow_unslop_model=True,
+    ).transform(document, _request(source, mode))
+    assert result.document.blocks[0].text == source
+    assert any(finding.code == "force_language_changed" for finding in result.findings)

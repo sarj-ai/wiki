@@ -3,6 +3,8 @@ from __future__ import annotations
 from contextlib import suppress
 from dataclasses import dataclass, replace
 
+from loguru import logger
+
 from app.document_transform.errors import ModelUnavailableError
 from app.document_transform.ir import BlockKind, DocumentIR
 from app.document_transform.models import (
@@ -55,6 +57,24 @@ class TransformOutcome:
 class _ReviewedRepair:
     decision: PatchDecision
     validated_ids: frozenset[str]
+
+
+def _record_editorial_refinement(
+    original: DocumentIR,
+    outcome: TransformOutcome,
+    *,
+    attempted: int,
+    accepted: int,
+    stop_reason: str,
+) -> None:
+    logger.info(
+        "document editorial refinement finished",
+        source_sha256=original.text_sha256,
+        result_sha256=outcome.document.text_sha256,
+        editorial_attempted=attempted,
+        editorial_accepted=accepted,
+        editorial_stop_reason=stop_reason,
+    )
 
 
 def _best_reviewed_repairs(
@@ -214,10 +234,14 @@ class TextTransformPlanner:
         original: DocumentIR,
         concision_source: DocumentIR,
     ) -> TransformOutcome:
+        attempted = accepted = 0
+        stop_reason = "pass_limit"
         for number in range(1, self._max_editorial_passes + 1):
             remaining = provider_retry_remaining_seconds()
             if number > 1 and remaining is not None and remaining < _MIN_REFINEMENT_SECONDS:
+                stop_reason = "deadline_reserve"
                 break
+            attempted += 1
             try:
                 with editorial_pass_scope(original, number=number):
                     following = await self._model_phase(
@@ -226,18 +250,32 @@ class TextTransformPlanner:
                         concision_source=concision_source,
                         fidelity_source=original,
                     )
-            except ModelUnavailableError:
+            except ModelUnavailableError as error:
+                stop_reason = error.code
                 if number == 1:
+                    _record_editorial_refinement(
+                        original,
+                        outcome,
+                        attempted=attempted,
+                        accepted=accepted,
+                        stop_reason=stop_reason,
+                    )
                     raise
                 break
             if following.document.text_sha256 == outcome.document.text_sha256:
+                stop_reason = "no_verified_improvement" if following.findings else "converged"
                 # A rejected optional attempt must not invalidate a reviewed draft.
                 if number == 1:
                     outcome = _merge_outcomes(outcome, following)
                 break
             outcome = _merge_refinement(outcome, following)
+            accepted += 1
             if not model_editable_blocks(outcome.document):
+                stop_reason = "not_eligible"
                 break
+        _record_editorial_refinement(
+            original, outcome, attempted=attempted, accepted=accepted, stop_reason=stop_reason
+        )
         return outcome
 
     @model_phase_review_scope()
