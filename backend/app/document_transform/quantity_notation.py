@@ -23,6 +23,12 @@ CURRENCY_SYMBOL = r"[$€£¥₹₩₽₺₱₫₦₪฿₴₡₲₵₭₮₸﷼
 CURRENCY_PREFIX = rf"(?:{CURRENCY_SYMBOL}|{CURRENCY_CODE}(?={HORIZONTAL_SPACE}))"
 
 TEMPERATURE_UNIT = rf"(?:°{HORIZONTAL_SPACE}*[CFcf]|[℃℉KK])"
+# BIPM SI prefixes and unit symbols are case-sensitive, even when the caller
+# matches surrounding prose without case. Keep both authored micro characters.
+# https://www.bipm.org/en/measurement-units/si-prefixes/
+_SI_PREFIX = r"(?:da|[QRYZEPTGMkhdcmnpfazyrqµμ])"
+_SI_UNIT = r"(?:mol|kat|rad|sr|Hz|Pa|Wb|lm|lx|Bq|Gy|Sv|cd|[mgsAKNJWCVFΩSTH])"
+_PREFIXED_SI_UNIT = rf"(?-i:{_SI_PREFIX}?{_SI_UNIT}|{_SI_PREFIX}?[Ll])"
 UNIT_SYMBOL = (
     r"(?:[\"'′″]|ns|[µμu]s|ms|s|min|h|d|bit|[kKMGTPE]i?bit|B|[KMGTPE]i?B|"
     r"[kKMGT]bps|Hz|[kMGT]Hz|"
@@ -31,7 +37,10 @@ UNIT_SYMBOL = (
 )
 UNIT_POWER = rf"(?:{HORIZONTAL_SPACE}*(?:\^|\*\*){HORIZONTAL_SPACE}*[+−-]?\d+|[⁺⁻]?[⁰¹²³⁴⁵⁶⁷⁸⁹]+)"
 UNIT_PRODUCT = rf"(?:{HORIZONTAL_SPACE}*[/*·]{HORIZONTAL_SPACE}*|{HORIZONTAL_SPACE}+)"
-UNIT_ATOM = rf"{UNIT_SYMBOL}(?:{UNIT_POWER})?"
+# Full expressions can resolve symbols such as 'as' (attosecond) exactly.
+# Keep the conservative UNIT_SYMBOL inventory for unmarked products in prose,
+# where the same letters can instead introduce a clause ('3 m as measured').
+UNIT_ATOM = rf"(?:{_PREFIXED_SI_UNIT}|{UNIT_SYMBOL})(?:{UNIT_POWER})?"
 # Parentheses bind the complete denominator, not just the first unit.
 UNIT_GROUP = (
     rf"\({HORIZONTAL_SPACE}*{UNIT_ATOM}(?:{UNIT_PRODUCT}{UNIT_ATOM})*"
