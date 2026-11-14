@@ -32,7 +32,7 @@ from app.identifiers import DocsTabId
 
 
 _TOKENS = CURRENT_BRAND_MANIFEST.document
-_MIN_COLUMNS = 2
+_MIN_COLUMNS = 1
 _MAX_COLUMNS = 10
 _DIMENSION_TOLERANCE = 0.05
 _PARAGRAPH_FIELDS = ("alignment", "lineSpacing", "spaceAbove", "spaceBelow")
