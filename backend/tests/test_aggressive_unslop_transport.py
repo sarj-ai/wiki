@@ -53,7 +53,7 @@ from tests.support import dependency
 
 
 if TYPE_CHECKING:
-    from collections.abc import AsyncGenerator, Awaitable, Callable, Coroutine
+    from collections.abc import AsyncGenerator, Awaitable, Callable, Coroutine, Iterator
     from pathlib import Path
 
     from httplib2 import Response
@@ -3285,10 +3285,21 @@ async def test_pro_defaults_and_explicit_override_recover_capacity_with_full_sou
     assert not result.findings
 
 
+@pytest.fixture
+def model_log_messages() -> Iterator[list[str]]:
+    messages: list[str] = []
+    sink = logger.add(messages.append, serialize=True)
+    try:
+        yield messages
+    finally:
+        logger.remove(sink)
+
+
 async def test_normal_factory_policy_has_pro_writer_and_independent_review_deadlines(
     sdk_client_factory: Callable[[httpx.AsyncClient], genai.Client],
     deadline_document: _DeadlineDocument,
     normal_model_policy: GeminiModelPolicy,
+    model_log_messages: list[str],
 ) -> None:
     timeouts: list[str | None] = []
     configurations: list[types.GenerateContentConfig] = []
@@ -3323,6 +3334,13 @@ async def test_normal_factory_policy_has_pro_writer_and_independent_review_deadl
     assert configurations[1].thinking_config is not None
     assert configurations[1].thinking_config.thinking_level == types.ThinkingLevel.HIGH
     assert [config.max_output_tokens for config in configurations] == [32_768, 32_768, 32_768]
+    requests = [json.loads(message)["record"] for message in model_log_messages]
+    starts = [
+        row["extra"] for row in requests if row["message"] == "document model request started"
+    ]
+    assert [row["model_thinking_level"] for row in starts] == ["HIGH", "HIGH", "HIGH"]
+    assert [row["model_id"] for row in starts] == ["gemini-3.1-pro-preview"] * 3
+    assert [row["model_operation"] for row in starts] == ["unslop", "review", "format"]
 
 
 def test_model_policy_cannot_allow_a_negative_factual_review_reserve(

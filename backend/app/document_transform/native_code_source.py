@@ -17,7 +17,7 @@ if TYPE_CHECKING:
 
 
 type NativeCodeRecord = dict[str, JsonValue]
-_FENCE = re.compile(r"^ {0,3}(?P<marker>`{3,}|~{3,})[ \t]*(?P<hint>[A-Za-z0-9_+.-]*)[ \t]*\n$")
+_FENCE = re.compile(r"^ {0,3}(?P<marker>`{3,}+|~{3,}+)[ \t]*+(?P<hint>[^\r\n]*+)\n$")
 _PARAGRAPH_FIELDS = frozenset({"elements", "paragraphStyle"})
 _PARAGRAPH_STYLE_FIELDS = frozenset(
     {
@@ -135,13 +135,13 @@ def _body_groups(paragraphs: tuple[NativeCodeSourceParagraph, ...]) -> list[Nati
     cursor = 0
     while cursor < len(paragraphs):
         item = paragraphs[cursor]
-        if fence := _FENCE.fullmatch(item.text or ""):
+        if fence := _fence(item.text):
             closing = _closing_fence(paragraphs, cursor, fence.group("marker"))
             stop = closing if closing is not None else len(paragraphs)
             groups.append(
                 NativeCodeSourceGroup(
                     paragraphs=paragraphs[cursor:stop],
-                    language=fence.group("hint") or None,
+                    language=fence.group("hint").strip(" \t") or None,
                     fenced=True,
                     complete=closing is not None,
                 )
@@ -160,7 +160,7 @@ def _mono_stop(items: tuple[NativeCodeSourceParagraph, ...], start: int) -> int:
     stop = start + 1
     while (
         stop < len(items)
-        and not _FENCE.fullmatch(items[stop].text or "")
+        and not _fence(items[stop].text)
         and (_mono(items[stop]) or items[stop].text == "\n")
     ):
         stop += 1
@@ -179,13 +179,22 @@ def _closing_fence(
 
 
 def _is_closing(item: NativeCodeSourceParagraph, marker: str) -> bool:
-    found = _FENCE.fullmatch(item.text or "")
+    found = _fence(item.text)
     return bool(
         found
-        and not found.group("hint")
+        and not found.group("hint").strip(" \t")
         and found.group("marker")[0] == marker[0]
         and len(found.group("marker")) >= len(marker)
     )
+
+
+def _fence(text: str | None) -> re.Match[str] | None:
+    found = _FENCE.fullmatch(text or "")
+    # CommonMark permits arbitrary info strings, including attributes and paths.
+    # Backticks in a backtick info string instead indicate inline code.
+    if found and found.group("marker").startswith("`") and "`" in found.group("hint"):
+        return None
+    return found
 
 
 def _mono(item: NativeCodeSourceParagraph) -> bool:

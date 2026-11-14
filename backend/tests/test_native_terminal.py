@@ -1,5 +1,5 @@
 from copy import deepcopy
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 import json
 from pathlib import Path
 from typing import override
@@ -126,6 +126,86 @@ def test_native_list_before_final_prose_keeps_the_actual_utf16_displacement() ->
     plan = plan_terminal_blank(native, changed)
     assert plan is not None
     assert plan.target_start == integer(obj(content[-1])["startIndex"]) + utf16_length(" 🧭")
+
+
+@pytest.fixture
+def terminal_edits_native() -> dict[str, JsonValue]:
+    native = _document()
+    content = _content(native)
+    prefix = deepcopy(obj(content[-2]))
+    run = obj(array(obj(prefix["paragraph"])["elements"])[0])
+    obj(run["textRun"])["content"] = "This QA paragraph contains removable framing 🧭.\n"
+    content.insert(1, prefix)
+    start = 1
+    for value in content[1:]:
+        element = obj(value)
+        part = obj(array(obj(element["paragraph"])["elements"])[0])
+        end = start + utf16_length(str(obj(part["textRun"])["content"]))
+        element["startIndex"], element["endIndex"] = start, end
+        part["startIndex"], part["endIndex"] = start, end
+        start = end
+    return native
+
+
+@pytest.mark.parametrize("style", ["NORMAL_TEXT", "HEADING_2"])
+def test_deleted_prose_rebases_terminal_request_after_all_utf16_edits(
+    terminal_edits_native: dict[str, JsonValue], style: str
+) -> None:
+    native = terminal_edits_native
+    obj(obj(obj(_content(native)[1])["paragraph"])["paragraphStyle"])["namedStyleType"] = style
+    original = parse_google_document(native, title="QA")
+    planned = apply_native_pagination(original, plan_native_pagination(native, original))
+    deleted, retained = original.blocks[:2]
+    changed = planned.replace_blocks({deleted.id: "", retained.id: retained.text + " 🧪"})
+
+    assert not changed.blocks[0].editable
+    plan = plan_terminal_blank(native, changed)
+    assert plan is not None
+    expected_start = (
+        integer(obj(_content(native)[-1])["startIndex"])
+        - utf16_length(deleted.text)
+        + utf16_length(" 🧪")
+    )
+    assert plan.target_start == expected_start
+    requests = build_copy_mutations(
+        original,
+        changed,
+        profile=SarjBrandProfile(),
+        headers=(),
+        logo_uri="",
+        source_document=native,
+    )
+    assert plan.requests == [
+        {
+            "updateTextStyle": {
+                "range": {
+                    "tabId": "t.0",
+                    "startIndex": expected_start,
+                    "endIndex": expected_start + 1,
+                },
+                "textStyle": {"fontSize": {"magnitude": 1, "unit": "PT"}},
+                "fields": "fontSize",
+            }
+        }
+    ]
+    assert requests[-1] == plan.requests[0]
+
+
+def test_terminal_deletion_displacement_requires_the_original_source_proof(
+    terminal_edits_native: dict[str, JsonValue],
+) -> None:
+    native = terminal_edits_native
+    original = parse_google_document(native, title="QA")
+    changed = original.replace_blocks({original.blocks[0].id: ""})
+    invalid = replace(
+        changed,
+        blocks=(
+            replace(changed.blocks[0], source_style_text_sha256="f" * 64),
+            *changed.blocks[1:],
+        ),
+    )
+
+    assert plan_terminal_blank(native, invalid) is None
 
 
 @pytest.mark.parametrize(

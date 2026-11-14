@@ -187,6 +187,11 @@ async def _refine_layout(
         or not any(block.editable for block in ir.blocks)
         or sum(len(block.text) for block in ir.blocks) > _MAX_LAYOUT_CHARACTERS
     ):
+        logger.info(
+            "document layout refinement finished",
+            source_sha256=document_digest(document),
+            layout_refinement=best.refinement.model_dump(mode="json"),
+        )
         return best
     score = _layout_burden([], document, title=title)
     feedback = ""
@@ -253,6 +258,11 @@ async def _refine_layout(
             candidate_score,
         )
         feedback = "Further improve the previous layout only if it makes the whole document easier to read. Keep text exact."
+    logger.info(
+        "document layout refinement finished",
+        source_sha256=document_digest(document),
+        layout_refinement=best.refinement.model_dump(mode="json"),
+    )
     return best
 
 

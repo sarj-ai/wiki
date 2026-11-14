@@ -39,7 +39,6 @@ def test_date_request_preserves_iso_display_without_inventing_time() -> None:
     }
     assert insertion["insertDate"]["dateElementProperties"] == {
         "timestamp": "2026-09-04T00:00:00Z",
-        "timeZoneId": "Etc/UTC",
         "locale": "en",
         "dateFormat": "DATE_FORMAT_ISO8601",
         "timeFormat": "TIME_FORMAT_DISABLED",

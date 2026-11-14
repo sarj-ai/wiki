@@ -21,7 +21,7 @@ from app.document_transform.quotations import (
 
 UNSLOP_UPSTREAM_COMMIT = "d81f5196167ded24f46fced04958c0c12d681798"
 UNSLOP_UPSTREAM_VERSION = "2.3.0"
-UNSLOP_POLICY_VERSION = "sarj-concise-v46"
+UNSLOP_POLICY_VERSION = "sarj-concise-v47"
 MAX_EDITORIAL_PASSES = 100
 MIN_CONCISION_PROSE_WORDS = 40
 CONCISION_WORD_NUMERATOR = 2
@@ -97,6 +97,9 @@ UNSLOP_QUALIFIER_ATTACHMENT_INSTRUCTION = (
     "deployment. The team checks the quota' must not become 'Before each deployment, "
     "the team reviews the checklist and checks the quota': that invents a quota-check "
     "schedule. Keep unrelated actions in separate sentences when fronting a condition. "
+    "The same rule applies to a named event: 'The team reviews the document before "
+    "publication. The team is responsible for recording results' must not front "
+    "'Before publication' over both the review and the duty to record results. "
     "Preserve negated transformation relationships: 'Modern presentation does not turn "
     "the figures into modern benchmarks' must not become the stronger categorical claim "
     "'The figures are not modern benchmarks.' Keep the condition and its effect explicit. "
@@ -134,7 +137,8 @@ UNSLOP_REWRITE_INSTRUCTION = (
     "establishes the action: 'conduct an analysis of' becomes 'analyze'. Preserve "
     "assignments of responsibility: 'is responsible for checking the quota' does not "
     "establish that the check happens. Keep that duty, for example 'is responsible for "
-    "quota checks'. Cut throat "
+    "quota checks'. Likewise, 'has the responsibility for recording results' may "
+    "become 'is responsible for recording results', never simply 'records results'. Cut throat "
     "clearing, document-purpose preambles, redundant modifiers, empty transitions, "
     "restatements and conclusions that merely repeat the paragraph. Prefer familiar, "
     "specific words over inflated vocabulary. Keep necessary technical terms. A shorter "
@@ -317,10 +321,11 @@ CUSTOM_URI_PATTERN = r"[A-Za-z][A-Za-z0-9+.-]*:(?://)?[^\s)>]+"
 HTML_ENTITY_PATTERN = r"&(?:#[0-9]+|#[xX][0-9A-Fa-f]+|[A-Za-z][A-Za-z0-9]+);"
 
 _TABLE_ATTENTION_CONTEXT = (
-    r"(?:[Tt]o interpret|[Ff]or the purposes of interpreting) (?:the|this) table,[ \t]+"
+    r"(?:[Tt]o (?:interpret|read)|[Ff]or the purposes of (?:interpreting|reading)) "
+    r"(?:the|this) table,[ \t]+"
 )
 _DEFINITE_FACT_CLAUSE = (
-    r"[Tt]he[ \t]+(?:[A-Za-z][A-Za-z-]*[ \t]+){1,6}"
+    r"(?:[Tt]he|[Ee]ach)[ \t]+(?:[A-Za-z][A-Za-z-]*[ \t]+){1,6}"
     r"(?:is|are|was|were|has|have|must|shall|should|can|could|may|might|will|would)\b"
 )
 _PARAGRAPH_RECAP_PATTERN = (
@@ -343,7 +348,7 @@ _CONTINUED_RECAP_PREFACE = re.compile(
 _EDITORIAL_FRAMING_PATTERN = re.compile(
     r"(?:^|(?<=[.!?\n]))[ \t]*(?:"
     rf"(?:{_TABLE_ATTENTION_CONTEXT})?[Ii]t should be noted that[ \t]+|"
-    rf"{_TABLE_ATTENTION_CONTEXT}[Ii]t should be noted[ \t]+(?={_DEFINITE_FACT_CLAUSE})|"
+    rf"(?:{_TABLE_ATTENTION_CONTEXT})?[Ii]t should be noted[ \t]+(?={_DEFINITE_FACT_CLAUSE})|"
     rf"{_PARAGRAPH_RECAP_PATTERN}|"
     r"[Ii]n today['’]s (?:increasingly )?fast[-\u2011 ]moving and ever[-\u2011 ]evolving "
     r"world of (?=[^,;:.!?\n]+,[ \t]*)|"

@@ -525,6 +525,10 @@ class VertexGeminiPatchGenerator(PatchGenerator):
             "document model request started",
             model_id=model,
             model_operation=str(operation),
+            model_thinking_level=config.thinking_config.thinking_level.value
+            if config.thinking_config is not None
+            and config.thinking_config.thinking_level is not None
+            else None,
             model_timeout_ms=config.http_options.timeout
             if config.http_options is not None
             else None,

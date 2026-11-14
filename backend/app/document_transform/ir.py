@@ -287,7 +287,7 @@ def _is_exact_date_conversion(before: TextBlock, after: TextBlock) -> bool:
         and isinstance(properties.get("timestamp"), str)
         and re.fullmatch(re.escape(before.text) + r"T00:00:00(?:\.0+)?Z", properties["timestamp"])
         is not None
-        and properties.get("timeZoneId") in {"Etc/UTC", "UTC"}
+        and properties.get("timeZoneId", "Etc/UTC") in {"Etc/UTC", "UTC"}
         and properties.get("locale", "en") == "en"
         and properties.get("dateFormat") == "DATE_FORMAT_ISO8601"
         and properties.get("timeFormat", "TIME_FORMAT_DISABLED") == "TIME_FORMAT_DISABLED"

@@ -84,7 +84,8 @@ _PROTECTED_TOKEN = re.compile(
 )
 _FORCE_WORD = re.compile(
     r"\b(?:[^\W\d_]+n['\u2018\u2019\u02bc\uff07]t|"
-    r"intended\s+to|aims\s+to|opportunit(?:y|ies)\s+to|responsible\s+for|"
+    r"intended\s+to|aims\s+to|opportunit(?:y|ies)\s+to|"
+    r"responsib(?:le|ility)\s+for|"
     r"must|shall|should|may|might|could|would|cannot|can|will|not|never|no|"
     r"each|every|all|only|both|neither|either|per)\b",
     re.IGNORECASE,
@@ -574,6 +575,11 @@ def _force_words(value: str) -> list[str]:
             }:
                 result.append(modal)
             result.append("not")
+        elif word == "responsibility for":
+            # Both forms assign a duty without establishing that it happens.
+            # Permit the faithful nominalization edit while rejecting a rewrite
+            # that drops the assignment and asserts the action instead.
+            result.append("responsible for")
         else:
             result.append(word)
     return result
