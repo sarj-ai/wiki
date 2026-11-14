@@ -21,7 +21,7 @@ from app.document_transform.quotations import (
 
 UNSLOP_UPSTREAM_COMMIT = "d81f5196167ded24f46fced04958c0c12d681798"
 UNSLOP_UPSTREAM_VERSION = "2.3.0"
-UNSLOP_POLICY_VERSION = "sarj-concise-v48"
+UNSLOP_POLICY_VERSION = "sarj-concise-v49"
 MAX_EDITORIAL_PASSES = 100
 MIN_CONCISION_PROSE_WORDS = 40
 CONCISION_WORD_NUMERATOR = 2
@@ -130,6 +130,11 @@ UNSLOP_QUALIFIER_ATTACHMENT_INSTRUCTION = (
 UNSLOP_REWRITE_INSTRUCTION = (
     UNSLOP_PRESENTATION_PADDING_INSTRUCTION + UNSLOP_QUALIFIER_ATTACHMENT_INSTRUCTION
 ) + (
+    "Keep the dimension of every count definition explicit and attached to its term. "
+    "'Concurrency is the number of operations in flight' may become 'Concurrency counts "
+    "operations in flight', never 'Concurrency is operations in flight'. The operations "
+    "are entities; their number is a quantity. Preserve the same distinction for other "
+    "source-defined counts. "
     "Edit ruthlessly. Rewrite every supplied block into its shortest faithful, grammatical "
     "form. Lead with the concrete subject and a strong active verb. Convert passive voice "
     "to active voice whenever the source identifies the actor; never invent an actor. "
@@ -214,6 +219,10 @@ UNSLOP_REWRITE_INSTRUCTION = (
 UNSLOP_REVIEW_INSTRUCTION = (
     UNSLOP_PRESENTATION_PADDING_INSTRUCTION + UNSLOP_QUALIFIER_ATTACHMENT_INSTRUCTION
 ) + (
+    "Reject a count definition that loses its quantitative dimension: 'Concurrency is "
+    "the number of operations in flight' may become 'Concurrency counts operations in "
+    "flight', never 'Concurrency is operations in flight'. Preserve this distinction "
+    "for every source-defined count, with its original term and counted entities. "
     "Perform factual audits, not edits or sentence replacements. For each sentence_audits entry, "
     "follow context_id to its document_contexts entry. source_sentence is the source unit being "
     "audited. source_kind distinguishes an original sentence, an additional clause audit and "

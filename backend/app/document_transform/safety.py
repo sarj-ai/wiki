@@ -7,6 +7,7 @@ import re
 from types import MappingProxyType
 from typing import Final, Literal
 
+from app.document_transform.count_definitions import count_definition_changed
 from app.document_transform.inline_code import inline_code_spans, mask_inline_code
 from app.document_transform.ir import BlockKind, DocumentIR, TextBlock
 from app.document_transform.measurement_actor import reassigned_measurement_action
@@ -192,6 +193,7 @@ REPAIRABLE_REWRITE_CODES = frozenset(
         "unit_column_identity_changed",
         "source_entry_relationship_changed",
         "revision_argument_changed",
+        "count_definition_changed",
     }
 )
 
@@ -359,6 +361,8 @@ def _empty_replacement_code(
         or re.search(r"[\r\n\v\f\u2028\u2029]", block.text)
     ):
         return "empty_replacement"
+    if count_definition_changed(block.text, patch.replacement):
+        return "count_definition_changed"
     if _PROCEDURAL_IMPERATIVE.search(
         without_editorial_framing(block.text, framing_source=framing_source)
     ):
@@ -381,7 +385,12 @@ def _empty_replacement_code(
 def _literal_change_code(
     *, before: str, after: str, allow_reordering: bool, framing_source: str | None = None
 ) -> (
-    Literal["protected_content_changed", "force_language_changed", "revision_argument_changed"]
+    Literal[
+        "protected_content_changed",
+        "force_language_changed",
+        "revision_argument_changed",
+        "count_definition_changed",
+    ]
     | None
 ):
     if not _same_retained_values(
@@ -402,6 +411,8 @@ def _literal_change_code(
         allow_reordering=allow_reordering,
     ):
         return "revision_argument_changed"
+    if allow_reordering and count_definition_changed(before, after):
+        return "count_definition_changed"
     return None
 
 
