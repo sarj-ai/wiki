@@ -292,7 +292,7 @@ def test_full_qualification_keeps_one_repository_audit_and_required_gates() -> N
 
     assert commands[1] == ratchet
     assert commands.count(ratchet) == 1
-    assert wiki.REPOSITORY_STANDARDS_VERSION == "6.22.3"
+    assert wiki.REPOSITORY_STANDARDS_VERSION == "7.0.1"
     distribution = f"repo-standards=={wiki.REPOSITORY_STANDARDS_VERSION}"
     assert sum(distribution in command.arguments for command in commands) == 1
     assert any("--verify-python-baseline" in command.arguments for command in commands)
