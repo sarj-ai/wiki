@@ -2,6 +2,9 @@ import re
 
 
 HORIZONTAL_SPACE = r"[^\S\r\n\v\f\u0085\u2028\u2029]"
+UNCERTAINTY_SEPARATOR = r"(?:±|\+/[−-])"
+
+
 # ISO 4217 List One, published by SIX on 2026-09-17:
 # https://www.six-group.com/dam/download/financial-information/data-center/iso-currrency/lists/list-one.xml
 # Shared by literal preservation and table presentation; never convert amounts.
@@ -73,3 +76,12 @@ def mask_unit_annotation_marks(source: str) -> str:
         mark = "inch_mark" if match["inch_mark"] is not None else "foot_mark"
         characters[match.start(mark)] = " "
     return "".join(characters)
+
+
+def grouped_uncertainty_pattern(number: str) -> str:
+    # The unit after a grouped estimate and uncertainty belongs to both values.
+    # Keep the group non-recursive and its separator spacing horizontal.
+    return (
+        rf"\({HORIZONTAL_SPACE}*{number}{HORIZONTAL_SPACE}*{UNCERTAINTY_SEPARATOR}"
+        rf"{HORIZONTAL_SPACE}*{number}{HORIZONTAL_SPACE}*\)"
+    )
