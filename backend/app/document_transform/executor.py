@@ -2756,7 +2756,9 @@ def _copy_visual_ids(document: DocumentIR) -> tuple[str, ...]:
     return tuple(block.id for block in document.blocks if block.preserved_visual_authority)
 
 
-def _copy_builder_version(document: DocumentIR, *, compact_terminal: bool = False) -> str:
+def _copy_builder_version(
+    document: DocumentIR, *, compact_terminal: bool = False, native_fields: bool = False
+) -> str:
     version = REQUEST_BUILDER_VERSION
     if document.source_format == "google_doc" and any(
         block.kind is BlockKind.CODE for block in document.blocks
@@ -2766,6 +2768,8 @@ def _copy_builder_version(document: DocumentIR, *, compact_terminal: bool = Fals
         version = f"{version}-copy-font-v2"
     elif _copy_visual_ids(document):
         version = f"{version}-visual-v1"
+    if native_fields:
+        version = f"{version}-native-fields-v1"
     return f"{version}-terminal-v1" if compact_terminal else version
 
 
@@ -2831,6 +2835,8 @@ def _new_copy_checkpoint(
         request_builder_version=_copy_builder_version(
             original,
             compact_terminal=_copy_terminal_enabled(snapshot, outcome.document, pagination),
+            native_fields=isinstance(snapshot, NativeDocumentSnapshot)
+            and request.mode is not TransformMode.UNSLOP,
         ),
         unslop_catalog_sha256=UNSLOP_CATALOG_SHA256,
         original_semantic_sha256=original.semantic_sha256,
@@ -2889,7 +2895,9 @@ def _validate_copy_checkpoint(
         CURRENT_BRAND_MANIFEST.sha256,
         PIPELINE_VERSION,
         _copy_builder_version(
-            original, compact_terminal=checkpoint.request_builder_version.endswith("-terminal-v1")
+            original,
+            compact_terminal=checkpoint.request_builder_version.endswith("-terminal-v1"),
+            native_fields="-native-fields-v1" in checkpoint.request_builder_version,
         ),
         UNSLOP_CATALOG_SHA256,
         original.semantic_sha256,
@@ -2977,7 +2985,8 @@ def _copy_checkpoint_document(
     original: DocumentIR,
 ) -> DocumentIR:
     compact_terminal = checkpoint.request_builder_version.endswith("-terminal-v1")
-    if compact_terminal and (
+    native_fields = "-native-fields-v1" in checkpoint.request_builder_version
+    if (native_fields or compact_terminal) and (
         request.mode is TransformMode.UNSLOP or not isinstance(snapshot, NativeDocumentSnapshot)
     ):
         raise OutputConflictError
@@ -3001,6 +3010,7 @@ def _copy_checkpoint_document(
             snapshot.google_document if isinstance(snapshot, NativeDocumentSnapshot) else None,
             transformed,
             compact_terminal=compact_terminal,
+            native_fields=native_fields,
         )
         if request.mode is not TransformMode.UNSLOP
         else ()

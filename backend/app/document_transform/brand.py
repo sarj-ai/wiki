@@ -629,10 +629,28 @@ def _native_text_style_ranges(block: TextBlock, range_value: DocsRequest) -> lis
 
 
 def _font_only_requests(block: TextBlock, profile: SarjBrandProfile) -> list[DocsRequest]:
+    # Preserve links, emphasis and object payloads while styling safe prose runs.
+    requests: list[DocsRequest] = []
+    if block.pagination_keep_with_next is not None and block.source_range is not None:
+        requests.append(
+            {
+                "updateParagraphStyle": {
+                    "range": {
+                        "startIndex": block.source_range.start_index,
+                        "endIndex": block.source_range.end_index,
+                        "tabId": block.source_range.tab_id,
+                    },
+                    "paragraphStyle": {
+                        "keepWithNext": block.pagination_keep_with_next,
+                        "keepLinesTogether": True,
+                    },
+                    "fields": "keepWithNext,keepLinesTogether",
+                }
+            }
+        )
     if block.preserved_font_family:
-        return []
-    # Preserve links, emphasis and paragraph semantics while styling safe prose runs.
-    return [
+        return requests
+    return requests + [
         {
             "updateTextStyle": {
                 "range": {

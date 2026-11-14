@@ -214,7 +214,7 @@ async def test_copy_plan_binds_fonts_findings_manifest_and_completed_replay(*, k
         gateway=gateway, store=store, task_id=operation
     ).execute(operation_id=operation, request=request)
     checkpoint = store.checkpoints[-1]
-    assert checkpoint.request_builder_version.endswith("-copy-font-v2")
+    assert checkpoint.request_builder_version.endswith("-copy-font-v2-native-fields-v1")
     assert (
         any(finding.code == "native_font_family_preserved" for finding in result.findings)
         is not known
