@@ -41,8 +41,6 @@
     "SARJ447": 4
   },
   "backend/app/document_transform/custom_furniture.py": {
-    "SARJ444": 1,
-    "SARJ447": 3,
     "SARJ528": 3
   },
   "backend/app/document_transform/docx_renderer.py": {
@@ -102,8 +100,7 @@
   },
   "backend/app/document_transform/native_font_proof.py": {
     "SARJ093": 2,
-    "SARJ444": 1,
-    "SARJ447": 31
+    "SARJ447": 26
   },
   "backend/app/document_transform/native_font_semantics.py": {
     "SARJ447": 13
@@ -117,8 +114,7 @@
     "SARJ528": 2
   },
   "backend/app/document_transform/native_pagination.py": {
-    "SARJ444": 3,
-    "SARJ447": 5,
+    "SARJ447": 4,
     "SARJ528": 2
   },
   "backend/app/document_transform/native_paragraph_layout.py": {
@@ -164,7 +160,6 @@
     "SARJ444": 1
   },
   "backend/app/document_transform/tab_structure.py": {
-    "SARJ444": 2,
     "SARJ447": 7
   },
   "backend/app/document_transform/tab_structure_execution.py": {
@@ -632,10 +627,8 @@
     "SARJ528": 2
   },
   "backend/tests/test_native_spacer_layout.py": {
-    "SARJ442": 1,
-    "SARJ444": 1,
     "SARJ445": 2,
-    "SARJ447": 3
+    "SARJ447": 2
   },
   "backend/tests/test_native_tab_icons.py": {
     "SARJ445": 1,

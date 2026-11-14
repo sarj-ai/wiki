@@ -160,33 +160,44 @@ def _paragraphs(content: object) -> list[dict[str, Any]]:
         element = _mapping(raw_element)
         if element is None:
             return []
-        if element.get("startIndex", 0) == 0 and element.get("endIndex") == 1:
-            if (
-                position != 0
-                or set(element) - {"startIndex", "endIndex", "sectionBreak"}
-                or not isinstance(element.get("sectionBreak"), dict)
-            ):
+        if position == 0:
+            if not _initial_structure_section(element):
                 return []
             continue
-        if position == 0:
+        width = _structure_paragraph_width(element, expected)
+        if width is None:
             return []
-        paragraph = element.get("paragraph")
-        if not isinstance(paragraph, dict) or element.get("startIndex") != expected:
-            return []
-        if set(element) - {"startIndex", "endIndex", "paragraph"}:
-            return []
-        if set(paragraph) - {"elements", "paragraphStyle", "bullet"}:
-            return []
-        if not isinstance(paragraph.get("paragraphStyle", {}), dict):
-            return []
-        if not _safe_runs(paragraph.get("elements", [])):
-            return []
-        text = _text(element)
-        if not text.endswith("\n") or element.get("endIndex") != expected + utf16_length(text):
-            return []
-        expected += utf16_length(text)
+        expected += width
         output.append(element)
     return output
+
+
+def _initial_structure_section(element: dict[str, JsonValue]) -> bool:
+    return (
+        element.get("startIndex", 0) == 0
+        and element.get("endIndex") == 1
+        and not set(element) - {"startIndex", "endIndex", "sectionBreak"}
+        and isinstance(element.get("sectionBreak"), dict)
+    )
+
+
+def _structure_paragraph_width(element: dict[str, JsonValue], expected: int) -> int | None:
+    paragraph = element.get("paragraph")
+    if not isinstance(paragraph, dict) or element.get("startIndex") != expected:
+        return None
+    if set(element) - {"startIndex", "endIndex", "paragraph"}:
+        return None
+    if set(paragraph) - {"elements", "paragraphStyle", "bullet"}:
+        return None
+    if not isinstance(paragraph.get("paragraphStyle", {}), dict):
+        return None
+    if not _safe_runs(paragraph.get("elements", [])):
+        return None
+    text = _text(element)
+    width = utf16_length(text)
+    if not text.endswith("\n") or element.get("endIndex") != expected + width:
+        return None
+    return width
 
 
 def _mapping(value: object) -> dict[str, Any] | None:
@@ -228,18 +239,19 @@ def _section_starts(paragraphs: list[dict[str, Any]]) -> list[int]:
         starts = ([0] if headings[0] else []) + headings
         boundaries = [*starts, len(paragraphs)]
         # An introduction is kept with the first section if it would be a tiny tab.
-        if (
-            headings[0]
-            and sum(len(_text(p).split()) for p in paragraphs[: headings[0]]) < MIN_SECTION_WORDS
-        ):
+        if headings[0] and _section_word_count(paragraphs[: headings[0]]) < MIN_SECTION_WORDS:
             starts = [0, *headings[1:]]
             boundaries = [*starts, len(paragraphs)]
         if all(
-            sum(len(_text(p).split()) for p in paragraphs[start:end]) >= MIN_SECTION_WORDS
+            _section_word_count(paragraphs[start:end]) >= MIN_SECTION_WORDS
             for start, end in pairwise(boundaries)
         ):
             return starts
     return []
+
+
+def _section_word_count(paragraphs: list[dict[str, JsonValue]]) -> int:
+    return sum(len(_text(paragraph).split()) for paragraph in paragraphs)
 
 
 def _sections(

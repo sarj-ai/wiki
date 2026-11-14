@@ -2,7 +2,7 @@ from dataclasses import dataclass, replace
 import hashlib
 import json
 import math
-from typing import Any, Literal
+from typing import Any, Literal, TypeGuard
 
 from loguru import logger
 from pydantic import BaseModel, ConfigDict, Field, JsonValue, StrictBool
@@ -395,77 +395,103 @@ def _spacer_dependencies_known(
                     diagnostics.get("spacer_unused_named_style_count", 0) + 1
                 )
                 continue
-            style = entry.get("paragraphStyle", {})
-            if not _plain_spacing_neighbor({"paragraph": {"paragraphStyle": style}}):
-                diagnostics["spacer_named_paragraph_fields_count"] = 1
-                if isinstance(style, dict):
-                    diagnostics["spacer_named_indent_present"] = any(
-                        field in style for field in ("indentStart", "indentEnd", "indentFirstLine")
-                    )
-                    diagnostics["spacer_named_border_present"] = any(
-                        field in style
-                        for field in (
-                            "borderTop",
-                            "borderBottom",
-                            "borderLeft",
-                            "borderRight",
-                            "borderBetween",
-                        )
-                    )
-                    diagnostics["spacer_named_shading_present"] = "shading" in style
-                    diagnostics.update(_named_style_value_diagnostics(style))
-                return False
-            if not _spacer_style_values_known(style):
-                diagnostics["spacer_named_paragraph_values_count"] = 1
-                return False
-            text_style = entry.get("textStyle", {})
-            if not isinstance(text_style, dict) or "link" in text_style:
-                diagnostics["spacer_named_text_style_count"] = 1
+            if not _spacer_dependency_presentation_known(entry, diagnostics):
                 return False
     return True
 
 
-def _named_style_value_diagnostics(style: dict[str, Any]) -> dict[str, bool]:
+def _spacer_dependency_presentation_known(
+    entry: dict[str, JsonValue], diagnostics: dict[str, int | bool]
+) -> bool:
+    style = entry.get("paragraphStyle", {})
+    if not _plain_spacing_neighbor({"paragraph": {"paragraphStyle": style}}):
+        diagnostics["spacer_named_paragraph_fields_count"] = 1
+        if isinstance(style, dict):
+            diagnostics["spacer_named_indent_present"] = any(
+                field in style for field in ("indentStart", "indentEnd", "indentFirstLine")
+            )
+            diagnostics["spacer_named_border_present"] = any(
+                field in style
+                for field in (
+                    "borderTop",
+                    "borderBottom",
+                    "borderLeft",
+                    "borderRight",
+                    "borderBetween",
+                )
+            )
+            diagnostics["spacer_named_shading_present"] = "shading" in style
+            diagnostics.update(_named_style_value_diagnostics(style))
+        return False
+    if not _spacer_style_values_known(style):
+        diagnostics["spacer_named_paragraph_values_count"] = 1
+        return False
+    text_style = entry.get("textStyle", {})
+    if not isinstance(text_style, dict) or "link" in text_style:
+        diagnostics["spacer_named_text_style_count"] = 1
+        return False
+    return True
+
+
+def _named_style_value_diagnostics(style: dict[str, JsonValue]) -> dict[str, bool]:
     # Describe only the first rejected dependency entry, never provider payloads.
     # Missing fields inherit: they are not explicit zero or transparent values.
     checks = {"spacer_named_values_first_entry_only": True}
+    checks.update(_named_indent_diagnostics(style))
+    checks.update(_named_shading_diagnostics(style))
+    checks.update(_named_border_diagnostics(style))
+    return checks
+
+
+def _named_indent_diagnostics(style: dict[str, JsonValue]) -> dict[str, bool]:
     indents = [
         _dimension_state(style[field])
         for field in ("indentStart", "indentEnd", "indentFirstLine")
         if field in style
     ]
-    if indents:
-        checks["spacer_named_indent_schema_known"] = "unknown" not in indents
-        if "unknown" not in indents:
-            checks["spacer_named_indent_all_zero"] = all(value == "zero" for value in indents)
-    if "shading" in style:
-        shading = style["shading"]
-        color = (
-            _color_state(shading["backgroundColor"])
-            if isinstance(shading, dict) and set(shading) == {"backgroundColor"}
-            else "unknown"
-        )
-        checks["spacer_named_shading_schema_known"] = color != "unknown"
-        if color != "unknown":
-            checks["spacer_named_shading_explicit_transparent"] = color == "transparent"
+    if not indents:
+        return {}
+    checks = {"spacer_named_indent_schema_known": "unknown" not in indents}
+    if "unknown" not in indents:
+        checks["spacer_named_indent_all_zero"] = all(value == "zero" for value in indents)
+    return checks
+
+
+def _named_shading_diagnostics(style: dict[str, JsonValue]) -> dict[str, bool]:
+    if "shading" not in style:
+        return {}
+    shading = style["shading"]
+    color = (
+        _color_state(shading["backgroundColor"])
+        if isinstance(shading, dict) and set(shading) == {"backgroundColor"}
+        else "unknown"
+    )
+    checks = {"spacer_named_shading_schema_known": color != "unknown"}
+    if color != "unknown":
+        checks["spacer_named_shading_explicit_transparent"] = color == "transparent"
+    return checks
+
+
+def _named_border_diagnostics(style: dict[str, JsonValue]) -> dict[str, bool]:
     borders = [
         style[field]
         for field in ("borderTop", "borderBottom", "borderLeft", "borderRight", "borderBetween")
         if field in style
     ]
-    if borders:
-        known = all(_border_schema_known(border) for border in borders)
-        checks["spacer_named_border_schema_known"] = known
-        if known:
-            checks["spacer_named_border_all_width_zero"] = all(
-                _dimension_state(border["width"]) == "zero" for border in borders
-            )
-            checks["spacer_named_border_all_padding_zero"] = all(
-                _dimension_state(border["padding"]) == "zero" for border in borders
-            )
-            checks["spacer_named_border_all_transparent"] = all(
-                _color_state(border["color"]) == "transparent" for border in borders
-            )
+    if not borders:
+        return {}
+    known = all(_border_schema_known(border) for border in borders)
+    checks = {"spacer_named_border_schema_known": known}
+    if known:
+        checks["spacer_named_border_all_width_zero"] = all(
+            _dimension_state(obj(border)["width"]) == "zero" for border in borders
+        )
+        checks["spacer_named_border_all_padding_zero"] = all(
+            _dimension_state(obj(border)["padding"]) == "zero" for border in borders
+        )
+        checks["spacer_named_border_all_transparent"] = all(
+            _color_state(obj(border)["color"]) == "transparent" for border in borders
+        )
     return checks
 
 
@@ -549,16 +575,7 @@ def _spacer_proof(
     *,
     diagnostics: dict[str, int | bool] | None = None,
 ) -> str | None:
-    if (
-        first is None
-        or third is None
-        or any(
-            block.kind not in {BlockKind.PARAGRAPH, BlockKind.HEADING}
-            or block.native_bullet_json is not None
-            or block.source_style_text_sha256 != block.sha256
-            for block in (first, third)
-        )
-    ):
+    if not _unchanged_spacer_neighbor(first) or not _unchanged_spacer_neighbor(third):
         _spacer_declined(diagnostics, "spacer_neighbor_content_count")
         return None
     if first.source_range is None or third.source_range is None:
@@ -582,25 +599,7 @@ def _spacer_proof(
         _spacer_declined(diagnostics, "spacer_container_count")
         return None
     style = paragraph.get("paragraphStyle", {})
-    if (
-        not isinstance(style, dict)
-        or set(style)
-        - {
-            "namedStyleType",
-            "spaceAbove",
-            "spaceBelow",
-            "lineSpacing",
-            "keepWithNext",
-            "keepLinesTogether",
-            "avoidWidowAndOrphan",
-            "alignment",
-            "direction",
-            "pageBreakBefore",
-        }
-        or style.get("namedStyleType", "NORMAL_TEXT") != "NORMAL_TEXT"
-        or style.get("pageBreakBefore", False) is not False
-        or not _spacer_style_values_known(style)
-    ):
+    if not _blank_spacer_style_known(style):
         _spacer_declined(diagnostics, "spacer_style_count")
         return None
     elements = paragraph.get("elements")
@@ -635,6 +634,37 @@ def _spacer_proof(
         _spacer_declined(diagnostics, "spacer_budget_count")
         return None
     return hashlib.sha256(payload).hexdigest()
+
+
+def _blank_spacer_style_known(style: JsonValue) -> bool:
+    return not (
+        not isinstance(style, dict)
+        or set(style)
+        - {
+            "namedStyleType",
+            "spaceAbove",
+            "spaceBelow",
+            "lineSpacing",
+            "keepWithNext",
+            "keepLinesTogether",
+            "avoidWidowAndOrphan",
+            "alignment",
+            "direction",
+            "pageBreakBefore",
+        }
+        or style.get("namedStyleType", "NORMAL_TEXT") != "NORMAL_TEXT"
+        or style.get("pageBreakBefore", False) is not False
+        or not _spacer_style_values_known(style)
+    )
+
+
+def _unchanged_spacer_neighbor(block: TextBlock | None) -> TypeGuard[TextBlock]:
+    return (
+        block is not None
+        and block.kind in {BlockKind.PARAGRAPH, BlockKind.HEADING}
+        and block.native_bullet_json is None
+        and block.source_style_text_sha256 == block.sha256
+    )
 
 
 def _spacer_declined(
