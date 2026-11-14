@@ -461,13 +461,16 @@ def _text_displacement(native: dict[str, JsonValue], document: DocumentIR) -> in
     for block in document.blocks:
         location = block.source_range
         if (
-            not block.editable
-            or location is None
+            location is None
             or location.segment_id is not None
             or location.tab_id != document.tab_ids[0]
         ):
             continue
         source = by_id.get(block.id)
+        if not block.editable and source is not None and not source.editable:
+            continue
+        # Whole-paragraph deletion becomes a protected BLANK. Its original
+        # editable source still contributes its removed UTF-16 text width.
         if (
             source is None
             or not source.editable
