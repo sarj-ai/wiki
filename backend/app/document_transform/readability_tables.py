@@ -17,6 +17,7 @@ from app.document_transform.readability_json import (
 )
 from app.document_transform.readability_table_style import (
     project_readable_table_cells,
+    readable_table_background,
     readable_table_cell_requests,
 )
 from app.document_transform.readability_types import (
@@ -24,6 +25,7 @@ from app.document_transform.readability_types import (
     ReadabilityTable,
     ReadabilityVersion,
 )
+from app.document_transform.table_contrast import table_text_has_readable_contrast
 from app.document_transform.table_layout import (
     numeric_columns,
     table_column_widths,
@@ -179,6 +181,9 @@ def readable_table_requests(
                         document=document,
                         tab=tabs[target.tab_id],
                         header=target.header and cell.row < target.header_rows,
+                        background=readable_table_background(
+                            cell.row, target=target, version=version
+                        ),
                         version=version,
                     )
                 )
@@ -192,6 +197,7 @@ def _cell_font_requests(
     document: dict[str, JsonValue],
     tab: dict[str, JsonValue],
     header: bool,
+    background: JsonValue,
     version: ReadabilityVersion,
 ) -> list[dict[str, JsonValue]]:
     requests: list[dict[str, JsonValue]] = []
@@ -210,6 +216,9 @@ def _cell_font_requests(
             tab,
             obj(obj(part["paragraph"])["paragraphStyle"]),
             obj(obj(run["textRun"]).get("textStyle", {})),
+        )
+        _verify_table_contrast(
+            style, text=str(obj(run["textRun"])["content"]), background=background
         )
         preserve_family = _keep_table_family(
             style, text=str(obj(run["textRun"])["content"]), script_context=context
@@ -320,6 +329,7 @@ def _project_table(
                 document=document,
                 tab=tab,
                 numeric=cell.column in target.numeric,
+                background=readable_table_background(cell.row, target=target, version=version),
                 applied=applied,
                 version=version,
             )
@@ -332,6 +342,7 @@ def _project_paragraph(
     tab: dict[str, JsonValue],
     numeric: bool,
     header: bool,
+    background: JsonValue,
     applied: bool,
     version: ReadabilityVersion,
 ) -> None:
@@ -363,6 +374,7 @@ def _project_paragraph(
             tab=tab,
             style=style,
             header=header,
+            background=background,
             applied=applied,
             context=context,
             version=version,
@@ -435,6 +447,7 @@ def _canonical_table_run(
     tab: dict[str, JsonValue],
     style: dict[str, JsonValue],
     header: bool,
+    background: JsonValue,
     applied: bool,
     context: bool | None,
     version: ReadabilityVersion,
@@ -444,6 +457,7 @@ def _canonical_table_run(
     text_style = effective_text_style(document, tab, style, obj(run.get("textStyle", {})))
     run["textStyle"] = text_style
     text = str(run["content"])
+    _verify_table_contrast(text_style, text=text, background=background)
     if applied and run["content"] != "\n":
         _verify_table_font(text_style, text=text, script_context=context)
     preserve_family = _keep_table_family(text_style, text=text, script_context=context)
@@ -469,6 +483,18 @@ def _canonical_table_run(
     part.pop("startIndex", None)
     part.pop("endIndex", None)
     return part
+
+
+def _verify_table_contrast(
+    style: dict[str, JsonValue], *, text: str, background: JsonValue
+) -> None:
+    if (
+        background is not None
+        and text.strip()
+        and not table_text_has_readable_contrast(style, background)
+    ):
+        msg = "Table shading would make text unreadable"
+        raise ValueError(msg)
 
 
 def _project_regular_table_weight(
