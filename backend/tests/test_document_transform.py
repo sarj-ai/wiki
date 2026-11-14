@@ -3153,7 +3153,7 @@ async def test_copy_native_footer_persists_each_stage_and_does_not_replay_body(
         with pytest.raises(DocumentGatewayError):
             await executor.execute(operation_id=task_id, request=request)
         pending = store.checkpoints[-1]
-        assert pending.request_builder_version == REQUEST_BUILDER_VERSION
+        assert pending.request_builder_version == f"{REQUEST_BUILDER_VERSION}-native-fields-v1"
         assert pending.native_footer is not None
         assert pending.native_footer.coverage is None
         assert pending.native_footer.stage is NativeFooterStage.POPULATE
