@@ -1,4 +1,6 @@
 from io import BytesIO
+import subprocess
+import sys
 
 from docx import Document
 from docx.enum.text import WD_ALIGN_PARAGRAPH
@@ -31,6 +33,8 @@ from tests.test_table_layout import _native_table
         "12.3 μmol m⁻² s⁻¹",
         "1 nm–2 nm",
         "QAR 1.2300",
+        "2 min",
+        "5 mL",
     ],
 )
 def test_prefixed_si_quantities_align_in_native_and_imported_tables(quantity: str) -> None:
@@ -60,3 +64,22 @@ def test_prefixed_si_symbols_do_not_absorb_a_following_prose_clause() -> None:
     assert rewrite_constraints("The team measured 5 kJ/(kg K).").protected_tokens == (
         "5 kJ/(kg K)",
     )
+
+
+def test_failed_repeated_unit_chains_finish_within_a_bounded_process() -> None:
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            (
+                "from app.document_transform.table_layout import numeric_table_value; "
+                "print([numeric_table_value('1 ' + unit * 64 + 'notes') "
+                "for unit in ('m ', 'nm ', 'min ')])"
+            ),
+        ],
+        check=True,
+        capture_output=True,
+        text=True,
+        timeout=3,
+    )
+    assert result.stdout.strip() == "[False, False, False]"

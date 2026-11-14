@@ -40,7 +40,9 @@ UNIT_PRODUCT = rf"(?:{HORIZONTAL_SPACE}*[/*·]{HORIZONTAL_SPACE}*|{HORIZONTAL_SP
 # Full expressions can resolve symbols such as 'as' (attosecond) exactly.
 # Keep the conservative UNIT_SYMBOL inventory for unmarked products in prose,
 # where the same letters can instead introduce a clause ('3 m as measured').
-UNIT_ATOM = rf"(?:{_PREFIXED_SI_UNIT}|{UNIT_SYMBOL})(?:{UNIT_POWER})?"
+# Resolve the complete symbol before committing to an alternative. Otherwise
+# overlapping SI/legacy symbols make a failed chain exponential to reject.
+UNIT_ATOM = rf"(?>(?:{_PREFIXED_SI_UNIT}|{UNIT_SYMBOL})(?![A-Za-zµμ°ΩÅ]))(?:{UNIT_POWER})?"
 # Parentheses bind the complete denominator, not just the first unit.
 UNIT_GROUP = (
     rf"\({HORIZONTAL_SPACE}*{UNIT_ATOM}(?:{UNIT_PRODUCT}{UNIT_ATOM})*"
