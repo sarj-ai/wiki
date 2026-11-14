@@ -37,12 +37,13 @@ UNIT_SYMBOL = (
 )
 UNIT_POWER = rf"(?:{HORIZONTAL_SPACE}*(?:\^|\*\*){HORIZONTAL_SPACE}*[+−-]?\d+|[⁺⁻]?[⁰¹²³⁴⁵⁶⁷⁸⁹]+)"
 UNIT_PRODUCT = rf"(?:{HORIZONTAL_SPACE}*[/*·]{HORIZONTAL_SPACE}*|{HORIZONTAL_SPACE}+)"
-# Full expressions can resolve symbols such as 'as' (attosecond) exactly.
-# Keep the conservative UNIT_SYMBOL inventory for unmarked products in prose,
-# where the same letters can instead introduce a clause ('3 m as measured').
 # Resolve the complete symbol before committing to an alternative. Otherwise
 # overlapping SI/legacy symbols make a failed chain exponential to reject.
-UNIT_ATOM = rf"(?>(?:{_PREFIXED_SI_UNIT}|{UNIT_SYMBOL})(?![A-Za-zµμ°ΩÅ]))(?:{UNIT_POWER})?"
+_COMPLETE_UNIT_SYMBOL = rf"(?>(?:{_PREFIXED_SI_UNIT}|{UNIT_SYMBOL})(?![A-Za-zµμ°ΩÅ]))"
+UNIT_ATOM = rf"{_COMPLETE_UNIT_SYMBOL}(?:{UNIT_POWER})?"
+# An unmarked 'as' may introduce a clause ('3 m as measured'). Explicit
+# powers and grouped/table expressions disambiguate the attosecond symbol.
+UNMARKED_UNIT_SYMBOL = rf"(?!as(?!{UNIT_POWER})\b){_COMPLETE_UNIT_SYMBOL}"
 # Parentheses bind the complete denominator, not just the first unit.
 UNIT_GROUP = (
     rf"\({HORIZONTAL_SPACE}*{UNIT_ATOM}(?:{UNIT_PRODUCT}{UNIT_ATOM})*"

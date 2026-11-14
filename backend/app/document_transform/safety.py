@@ -19,7 +19,7 @@ from app.document_transform.quantity_notation import (
     UNIT_ANNOTATION_PATTERN,
     UNIT_GROUP,
     UNIT_POWER,
-    UNIT_SYMBOL,
+    UNMARKED_UNIT_SYMBOL,
 )
 from app.document_transform.quotations import (
     QUOTED_SPAN_PATTERN,
@@ -60,7 +60,7 @@ _NUMERIC_UNIT = (
     rf"(?:{HORIZONTAL_SPACE}*[/*·]{HORIZONTAL_SPACE}*"
     rf"(?:{_NUMERIC_UNIT_SYMBOL}{_NUMERIC_POWER}|{UNIT_GROUP})"
     # Unmarked multiplication needs known unit symbols, not arbitrary prose words.
-    rf"|{HORIZONTAL_SPACE}+(?:{UNIT_SYMBOL}{_NUMERIC_POWER}(?![A-Za-zµμ°ΩÅ])|{UNIT_GROUP}))*"
+    rf"|{HORIZONTAL_SPACE}+(?:{UNMARKED_UNIT_SYMBOL}{_NUMERIC_POWER}(?![A-Za-zµμ°ΩÅ])|{UNIT_GROUP}))*"
 )
 _QUANTITY_TERM = rf"{_SIGNED_NUMBER}(?:{HORIZONTAL_SPACE}*{_NUMERIC_UNIT})?"
 _QUANTITY_LITERAL = (
