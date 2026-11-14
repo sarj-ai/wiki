@@ -37,6 +37,15 @@ def _xml_paragraph_text(paragraph: Element[str]) -> str:
     return "".join(node.text or "" for node in paragraph.findall(f".//{W}t"))
 
 
+def _has_hyperlink_target(relationships: Element[str], target: str) -> bool:
+    return any(
+        item.get("Type")
+        == "http://schemas.openxmlformats.org/officeDocument/2006/relationships/hyperlink"
+        and item.get("Target") == target
+        for item in relationships
+    )
+
+
 SOURCE = """# Executive summary
 
 This is **important**, *careful*, and uses `inline_code` plus [Sarj](https://sarj.ai).
@@ -173,8 +182,7 @@ def test_render_preserves_native_structure_and_inline_formatting(rendered: bytes
     assert document.find(f".//{W}hyperlink") is not None
     subtle = CURRENT_BRAND_MANIFEST.colors.subtle.removeprefix("#")
     assert document.find(f".//{W}shd[@{W}fill='{subtle}']") is not None
-    targets = [item.attrib.get("Target") for item in relationships]
-    assert "https://sarj.ai" in targets
+    assert _has_hyperlink_target(relationships, "https://sarj.ai")
     checklist_markers = [node.get(f"{W}val") for node in numbering.findall(f".//{W}lvlText")]
     assert "☐" in checklist_markers
     assert "☒" in checklist_markers
@@ -404,7 +412,7 @@ def test_nested_link_and_emphasis_are_preserved_exactly(markdown: str) -> None:
     assert paragraph.find(f".//{W}b") is None
     assert (paragraph.find(f".//{W}i") is not None) == ("italic" in markdown)
     assert manifest.blocks[1].links[0][1] == "https://example.com"
-    assert "https://example.com" in [item.attrib.get("Target") for item in relationships]
+    assert _has_hyperlink_target(relationships, "https://example.com")
 
 
 def test_escaped_emphasis_inside_link_remains_literal() -> None:
@@ -421,7 +429,7 @@ def test_escaped_emphasis_inside_link_remains_literal() -> None:
     assert body_paragraphs[1].find(f".//{W}hyperlink") is not None
     italic = body_paragraphs[1].find(f".//{W}i")
     assert italic is None or italic.get(f"{W}val") in {"0", "false"}
-    assert "https://example.com" in [item.attrib.get("Target") for item in relationships]
+    assert _has_hyperlink_target(relationships, "https://example.com")
 
 
 def test_balanced_parentheses_link_is_preserved_from_commonmark_tokens() -> None:
