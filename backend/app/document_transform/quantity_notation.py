@@ -46,8 +46,9 @@ UNIT_POWER = rf"(?:{HORIZONTAL_SPACE}*(?:\^|\*\*){HORIZONTAL_SPACE}*[+−-]?\d+|
 UNIT_PRODUCT = rf"(?:{HORIZONTAL_SPACE}*[/*·]{HORIZONTAL_SPACE}*|{HORIZONTAL_SPACE}+)"
 # Resolve the complete symbol before committing to an alternative. Otherwise
 # overlapping SI/legacy symbols make a failed chain exponential to reject.
+# Keep temperature expressions ahead of the bare degree angle symbol.
 _COMPLETE_UNIT_SYMBOL = (
-    rf"(?>(?:{_PREFIXED_SI_UNIT}|{_NON_SI_UNIT}|{UNIT_SYMBOL})(?![A-Za-zµμ°ΩÅ]))"
+    rf"(?>(?:{_PREFIXED_SI_UNIT}|{UNIT_SYMBOL}|{_NON_SI_UNIT})(?![A-Za-zµμ°ΩÅ]))"
 )
 UNIT_ATOM = rf"{_COMPLETE_UNIT_SYMBOL}(?:{UNIT_POWER})?"
 # Unmarked 'as' and 'at' can introduce prose ('3 m as measured', '15 ms at night').
