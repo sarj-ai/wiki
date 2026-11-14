@@ -21,7 +21,7 @@ from app.document_transform.quotations import (
 
 UNSLOP_UPSTREAM_COMMIT = "d81f5196167ded24f46fced04958c0c12d681798"
 UNSLOP_UPSTREAM_VERSION = "2.3.0"
-UNSLOP_POLICY_VERSION = "sarj-concise-v45"
+UNSLOP_POLICY_VERSION = "sarj-concise-v46"
 MAX_EDITORIAL_PASSES = 100
 MIN_CONCISION_PROSE_WORDS = 40
 CONCISION_WORD_NUMERATOR = 2
@@ -475,7 +475,7 @@ _REFERENCE_IDENTITY_TOKEN = re.compile(
 # A document's announcement of its own writing is editorial framing.
 # Keep substantive intentions ("the plan aims to reduce outages") constrained.
 _DOCUMENT_SUBJECT_PATTERN = (
-    r"\b(?:this|the|our|a)\s+(?:working\s+)?"
+    r"\b(?:this|the|our|a)\s+(?:(?:working|short|brief)\s+)?"
     r"(?:document|note|guide|report|article|section|page|overview)\s+"
 )
 _QUALIFIED_REFERENCE_PREFIX = re.compile(
