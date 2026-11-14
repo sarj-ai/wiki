@@ -32,6 +32,10 @@ TEMPERATURE_UNIT = rf"(?:°{HORIZONTAL_SPACE}*[CFcf]|[℃℉KK])"
 _SI_PREFIX = r"(?:da|[QRYZEPTGMkhdcmnpfazyrqµμ])"
 _SI_UNIT = r"(?:mol|kat|rad|sr|Hz|Pa|Wb|lm|lx|Bq|Gy|Sv|cd|[mgsAKNJWCVFΩSTH])"
 _PREFIXED_SI_UNIT = rf"(?-i:{_SI_PREFIX}?{_SI_UNIT}|{_SI_PREFIX}?[Ll])"
+# BIPM SI Brochure, section 4, Table 8; NIST SP 330, section 4.
+# These authored symbols also occur in grouped estimates and compound units.
+# Prefix only symbols that accept them; never case-fold scientific unit symbols.
+_NON_SI_UNIT = rf"(?-i:{_SI_PREFIX}?(?:eV|Da|t|Np|B)|ha|au|u|°)"
 UNIT_SYMBOL = (
     r"(?:[\"'′″]|ns|[µμu]s|ms|s|min|h|d|bit|[kKMGTPE]i?bit|B|[KMGTPE]i?B|"
     r"[kKMGT]bps|Hz|[kMGT]Hz|"
@@ -42,11 +46,13 @@ UNIT_POWER = rf"(?:{HORIZONTAL_SPACE}*(?:\^|\*\*){HORIZONTAL_SPACE}*[+−-]?\d+|
 UNIT_PRODUCT = rf"(?:{HORIZONTAL_SPACE}*[/*·]{HORIZONTAL_SPACE}*|{HORIZONTAL_SPACE}+)"
 # Resolve the complete symbol before committing to an alternative. Otherwise
 # overlapping SI/legacy symbols make a failed chain exponential to reject.
-_COMPLETE_UNIT_SYMBOL = rf"(?>(?:{_PREFIXED_SI_UNIT}|{UNIT_SYMBOL})(?![A-Za-zµμ°ΩÅ]))"
+_COMPLETE_UNIT_SYMBOL = (
+    rf"(?>(?:{_PREFIXED_SI_UNIT}|{_NON_SI_UNIT}|{UNIT_SYMBOL})(?![A-Za-zµμ°ΩÅ]))"
+)
 UNIT_ATOM = rf"{_COMPLETE_UNIT_SYMBOL}(?:{UNIT_POWER})?"
-# An unmarked 'as' may introduce a clause ('3 m as measured'). Explicit
-# powers and grouped/table expressions disambiguate the attosecond symbol.
-UNMARKED_UNIT_SYMBOL = rf"(?!as(?!{UNIT_POWER})\b){_COMPLETE_UNIT_SYMBOL}"
+# Unmarked 'as' and 'at' can introduce prose ('3 m as measured', '15 ms at night').
+# Explicit powers and grouped/table expressions disambiguate attoseconds/attotonnes.
+UNMARKED_UNIT_SYMBOL = rf"(?!a[st](?!{UNIT_POWER})\b){_COMPLETE_UNIT_SYMBOL}"
 # Parentheses bind the complete denominator, not just the first unit.
 UNIT_GROUP = (
     rf"\({HORIZONTAL_SPACE}*{UNIT_ATOM}(?:{UNIT_PRODUCT}{UNIT_ATOM})*"
