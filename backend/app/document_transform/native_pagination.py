@@ -9,8 +9,9 @@ from pydantic import BaseModel, ConfigDict, Field, JsonValue, StrictBool
 
 from app.document_transform.errors import InPlaceNeedsReviewError, OutputConflictError
 from app.document_transform.ir import BlockKind, DocumentIR, TextBlock, utf16_length
+from app.document_transform.native_fields import native_field_groups, native_paragraph_matches
 from app.document_transform.native_terminal import plan_terminal_blank
-from app.document_transform.readability_json import array, obj
+from app.document_transform.readability_json import array, integer, obj
 
 
 MAX_PAGINATION_RULES = 60
@@ -110,16 +111,29 @@ class NativePaginationRule(BaseModel):
     below_spacer_sha256: str | None = Field(default=None, pattern="^[0-9a-f]{64}$")
 
 
+def native_grouping_matches(paragraph: JsonValue, *, keep_with_next: bool) -> bool:
+    try:
+        grouping = _StyledParagraph.model_validate(paragraph).paragraph_style
+    except ValueError:
+        return False
+    return grouping.keep_with_next is keep_with_next and grouping.keep_lines_together is True
+
+
 def plan_native_pagination(
     native: dict[str, JsonValue] | None,
     document: DocumentIR,
     *,
     emit_diagnostics: bool = False,
     compact_terminal: bool = True,
+    native_fields: bool = True,
 ) -> tuple[NativePaginationRule, ...]:
     diagnostics: dict[str, int | bool] = {}
     rules = _plan_native_pagination(
-        native, document, diagnostics, compact_terminal=compact_terminal
+        native,
+        document,
+        diagnostics,
+        compact_terminal=compact_terminal,
+        native_fields=native_fields,
     )
     if not emit_diagnostics:
         return rules
@@ -144,6 +158,7 @@ def _plan_native_pagination(
     diagnostics: dict[str, int | bool],
     *,
     compact_terminal: bool,
+    native_fields: bool,
 ) -> tuple[NativePaginationRule, ...]:
     body = _pagination_body(native, document)
     if body is None or native is None:
@@ -161,7 +176,9 @@ def _plan_native_pagination(
     }
     if len(by_start) != len(located):
         return ()
-    mapped = [_body_paragraph(element, by_start) for element in content]
+    mapped = [
+        _body_paragraph(element, by_start, native_fields=native_fields) for element in content
+    ]
     rules = _group_rules(mapped)
     if rules is None:
         return ()
@@ -251,7 +268,13 @@ def _pagination_body(
 
 
 def _group_rules(mapped: list[TextBlock | None]) -> dict[str, NativePaginationRule] | None:
-    rules: dict[str, NativePaginationRule] = {}
+    rules: dict[str, NativePaginationRule] = {
+        block.id: NativePaginationRule(
+            block_id=block.id, text_sha256=block.sha256, keep_with_next=True
+        )
+        for group in native_field_groups(mapped)
+        for block in group
+    }
     for first, second, third in zip(mapped, mapped[1:], mapped[2:], strict=False):
         for block, keep in _pagination_group(first, second, third):
             rule = NativePaginationRule(
@@ -690,7 +713,9 @@ def _page_boundaries_known(native: dict[str, JsonValue], body: dict[str, JsonVal
     )
 
 
-def _body_paragraph(element: object, by_start: dict[int, TextBlock]) -> TextBlock | None:
+def _body_paragraph(
+    element: object, by_start: dict[int, TextBlock], *, native_fields: bool
+) -> TextBlock | None:
     if not isinstance(element, dict) or set(element) - {"startIndex", "endIndex", "paragraph"}:
         return None
     start, end = element.get("startIndex"), element.get("endIndex")
@@ -700,7 +725,7 @@ def _body_paragraph(element: object, by_start: dict[int, TextBlock]) -> TextBloc
     block = by_start.get(start)
     if not isinstance(paragraph, dict) or set(paragraph) - {"elements", "paragraphStyle", "bullet"}:
         return None
-    if block is None or not block.editable or block.native_content or not block.text.strip():
+    if block is None or (not block.editable and not block.native_content) or not block.text.strip():
         return None
     if block.source_range is None or block.source_range.end_index != end - 1:
         return None
@@ -715,16 +740,25 @@ def _body_paragraph(element: object, by_start: dict[int, TextBlock]) -> TextBloc
         return None
     if any(character in block.text for character in "\n\r\v\f\u2028\u2029"):
         return None
-    raw_text = _plain_paragraph_text(elements)
-    if raw_text is None:
-        return None
-    if (
-        hashlib.sha256(raw_text.encode()).hexdigest() != block.source_style_text_sha256
-        or utf16_length(raw_text) != end - start - 1
-        or any(character in raw_text for character in "\n\r\v\f\u2028\u2029")
-    ):
-        return None
-    return _with_existing_keep(block, style)
+    return (
+        _with_existing_keep(block, style)
+        if _body_text_matches(element, block, native_fields=native_fields)
+        else None
+    )
+
+
+def _body_text_matches(
+    element: dict[str, JsonValue], block: TextBlock, *, native_fields: bool
+) -> bool:
+    if block.native_content:
+        return native_fields and native_paragraph_matches(element, block)
+    raw_text = _plain_paragraph_text(array(obj(element["paragraph"])["elements"]))
+    return raw_text is not None and (
+        hashlib.sha256(raw_text.encode()).hexdigest() == block.source_style_text_sha256
+        and utf16_length(raw_text)
+        == integer(element["endIndex"]) - integer(element["startIndex"]) - 1
+        and not any(character in raw_text for character in "\n\r\v\f\u2028\u2029")
+    )
 
 
 def _plain_paragraph_text(elements: list[Any]) -> str | None:
@@ -816,7 +850,10 @@ def existing_native_pagination(
     # Recognize existing exact layout only; never plan new in-place groups.
     terminal = plan_terminal_blank(native, document)
     rules = plan_native_pagination(
-        native, document, compact_terminal=terminal is not None and not terminal.needs_write
+        native,
+        document,
+        compact_terminal=terminal is not None and not terminal.needs_write,
+        native_fields=False,
     )
     if not rules or native is None:
         return ()

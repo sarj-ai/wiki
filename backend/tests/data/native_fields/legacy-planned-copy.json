@@ -1,0 +1,197 @@
+{
+  "scope": "Controlled fake-gateway capture; zero provider calls and zero actual native Docs writes",
+  "reviewed_source_head": "ece6bfc6d85676aba105489092eb6af91bbb2a0f",
+  "operation_id": "01a1d7e8-2361-76b4-8f67-d0e4e440dc0a",
+  "source": {
+    "revisionId": "source-revision-1",
+    "tabs": [
+      {
+        "tabProperties": {
+          "tabId": "tab-1"
+        },
+        "documentTab": {
+          "body": {
+            "content": [
+              {
+                "startIndex": 1,
+                "endIndex": 7,
+                "paragraph": {
+                  "paragraphStyle": {
+                    "namedStyleType": "HEADING_2"
+                  },
+                  "elements": [
+                    {
+                      "startIndex": 1,
+                      "endIndex": 7,
+                      "textRun": {
+                        "content": "Event\n"
+                      }
+                    }
+                  ]
+                }
+              },
+              {
+                "startIndex": 7,
+                "endIndex": 18,
+                "paragraph": {
+                  "paragraphStyle": {
+                    "namedStyleType": "NORMAL_TEXT"
+                  },
+                  "elements": [
+                    {
+                      "startIndex": 7,
+                      "endIndex": 16,
+                      "textRun": {
+                        "content": "When \ud83e\udded: "
+                      }
+                    },
+                    {
+                      "startIndex": 16,
+                      "endIndex": 17,
+                      "dateElement": {
+                        "dateId": "date-one",
+                        "dateElementProperties": {
+                          "displayText": "Nov 14, 2026",
+                          "timestamp": "2026-11-14T00:00:00Z"
+                        }
+                      }
+                    },
+                    {
+                      "startIndex": 17,
+                      "endIndex": 18,
+                      "textRun": {
+                        "content": "\n"
+                      }
+                    }
+                  ]
+                }
+              },
+              {
+                "startIndex": 18,
+                "endIndex": 27,
+                "paragraph": {
+                  "paragraphStyle": {
+                    "namedStyleType": "NORMAL_TEXT"
+                  },
+                  "elements": [
+                    {
+                      "startIndex": 18,
+                      "endIndex": 25,
+                      "textRun": {
+                        "content": "Where: "
+                      }
+                    },
+                    {
+                      "startIndex": 25,
+                      "endIndex": 26,
+                      "richLink": {
+                        "richLinkId": "place-one",
+                        "richLinkProperties": {
+                          "title": "QA place",
+                          "uri": "https://www.google.com/maps/place/QA/data=!4m2!3m1!19sqa-place"
+                        }
+                      }
+                    },
+                    {
+                      "startIndex": 26,
+                      "endIndex": 27,
+                      "textRun": {
+                        "content": "\n"
+                      }
+                    }
+                  ]
+                }
+              },
+              {
+                "startIndex": 27,
+                "endIndex": 78,
+                "paragraph": {
+                  "paragraphStyle": {
+                    "namedStyleType": "NORMAL_TEXT"
+                  },
+                  "elements": [
+                    {
+                      "startIndex": 27,
+                      "endIndex": 78,
+                      "textRun": {
+                        "content": "A factual description with an admission condition.\n"
+                      }
+                    }
+                  ]
+                }
+              }
+            ]
+          }
+        }
+      }
+    ]
+  },
+  "request": {
+    "source": {
+      "kind": "drive_file",
+      "file_id": "source",
+      "expected_modified_time": "initial"
+    },
+    "mode": "format",
+    "output_name": null,
+    "output_strategy": "copy",
+    "copy_destination_folder_id": null
+  },
+  "checkpoint": {
+    "compact_markdown": false,
+    "readability": null,
+    "readability_result": null,
+    "native_chips": null,
+    "native_chip_result": null,
+    "pagination": [],
+    "authored_labels": [],
+    "header_finalization": null,
+    "managed_headers": null,
+    "version": 1,
+    "kind": "copy",
+    "source_title": "Review",
+    "source_sha256": "42ab18e0d608052bfc9b92a566073421175cd11cf42d1f67a043917ab91a13ed",
+    "source_modified_time": "initial",
+    "source_revision_id": "source-revision-1",
+    "source_parent_folder_id": "folder",
+    "output_parent_folder_id": "folder",
+    "brand_profile_id": "sarj-2026-v5",
+    "brand_profile_sha256": "d9467cc5a3d0200a9704f151b67c67e80f092fdc9fabad918499c3a5e72df019",
+    "pipeline_version": "document-transform-v6",
+    "request_builder_version": "google-docs-requests-v30",
+    "unslop_catalog_sha256": "eee777426cfc2c357428f9e572bd1dcf3e89744361de22fc6b94cac45df5e11b",
+    "original_semantic_sha256": "0ed0003153130966e048348fd222e064babfdfb29dafe35275cfe7e5067824c8",
+    "expected_semantic_sha256": "0ed0003153130966e048348fd222e064babfdfb29dafe35275cfe7e5067824c8",
+    "plan_sha256": "2465e49e775ce508defd095dda7bf3eaf26464477089cb54eafd5c5b670cb1b1",
+    "manifest_sha256": "b0cfc5c321e6a5ecf9a17b4e703e61fd69bbeb3b8178ad27f1cc8ce817418f78",
+    "logo_sha256": null,
+    "output_name": "Review \u2014 Sarj Formatted",
+    "replacements": {},
+    "findings": [
+      {
+        "code": "google_doc_text_target_unsupported",
+        "block_id": "b1",
+        "detail": "Visible native Docs text was preserved but not transformed because its rich structure is unsupported"
+      },
+      {
+        "code": "google_doc_text_target_unsupported",
+        "block_id": "b2",
+        "detail": "Visible native Docs text was preserved but not transformed because its rich structure is unsupported"
+      }
+    ],
+    "applied_patch_count": 0,
+    "deterministic_patch_count": 0,
+    "model_patch_count": 0,
+    "llm_invoked": false,
+    "model_ids": [],
+    "tab_naming": null,
+    "tab_naming_declined_reason": null,
+    "native_footer": null,
+    "native_dates": null,
+    "tab_structure": null,
+    "output": null,
+    "output_revision_id": null,
+    "result": null,
+    "stage": "planned"
+  }
+}

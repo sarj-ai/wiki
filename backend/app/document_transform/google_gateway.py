@@ -161,6 +161,7 @@ from app.document_transform.native_footer_flow import (
 from app.document_transform.native_pagination import (
     apply_native_pagination,
     existing_native_pagination,
+    native_grouping_matches,
 )
 from app.document_transform.native_paragraph_layout import (
     apply_paragraph_layout,
@@ -3887,6 +3888,10 @@ def _typography_verification_ir(actual: DocumentIR, expected: DocumentIR) -> Doc
 
 
 def _font_only_has_brand(paragraph: dict[str, Any], block: TextBlock) -> bool:
+    if block.pagination_keep_with_next is not None and not native_grouping_matches(
+        paragraph, keep_with_next=block.pagination_keep_with_next
+    ):
+        return False
     if block.preserved_font_family:
         # This is excluded from full-brand claims. The executor's persisted
         # exact-family proof must independently pass before scoped completion.
@@ -3997,7 +4002,11 @@ def _paragraphs_have_brand(
         source_range = block.source_range
         if source_range is None or block.kind is BlockKind.BLANK:
             continue
-        if not block.editable and not block.font_style_ranges:
+        if (
+            not block.editable
+            and not block.font_style_ranges
+            and block.pagination_keep_with_next is None
+        ):
             continue
         paragraph = paragraphs.get(
             ParagraphRangeKey(
@@ -4092,7 +4101,11 @@ def _paragraph_brand_checks(
         source_range = block.source_range
         if source_range is None or block.kind is BlockKind.BLANK:
             continue
-        if not block.editable and not block.font_style_ranges:
+        if (
+            not block.editable
+            and not block.font_style_ranges
+            and block.pagination_keep_with_next is None
+        ):
             continue
         paragraph = paragraphs.get(
             ParagraphRangeKey(
