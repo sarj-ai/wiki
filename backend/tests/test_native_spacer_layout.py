@@ -1,8 +1,10 @@
 from copy import deepcopy
 from dataclasses import replace
-from typing import Any
+from enum import StrEnum
+from typing import Any, assert_never
 import uuid
 
+from pydantic import JsonValue
 import pytest
 
 from app.document_transform.brand import SarjBrandProfile, build_copy_mutations, paragraph_spacing
@@ -240,80 +242,93 @@ async def test_copy_to_in_place_is_noop_or_truthful_review_never_padding_reset(
     assert document == before
 
 
-@pytest.mark.parametrize(
-    "change",
-    [
-        "gap",
-        "utf16_width",
-        "bool_index",
-        "text",
-        "two_runs",
-        "link",
-        "chip",
-        "unknown",
-        "paragraph_unknown",
-        "border",
-        "page_break",
-        "heading",
-        "neighbor_border",
-        "neighbor_break",
-        "section",
-        "table",
-        "duplicate_blank",
-        "stale_text",
-        "uneditable",
-        "unknown_dimension",
-        "bool_dimension",
-        "nonfinite_dimension",
-    ],
-)
-def test_ambiguous_spacers_never_produce_padding_rules(change: str) -> None:
+class _SpacerCorruption(StrEnum):
+    GAP = "gap"
+    UTF16_WIDTH = "utf16_width"
+    BOOL_INDEX = "bool_index"
+    TEXT = "text"
+    TWO_RUNS = "two_runs"
+    LINK = "link"
+    CHIP = "chip"
+    UNKNOWN = "unknown"
+    PARAGRAPH_UNKNOWN = "paragraph_unknown"
+    BORDER = "border"
+    PAGE_BREAK = "page_break"
+    HEADING = "heading"
+    NEIGHBOR_BORDER = "neighbor_border"
+    NEIGHBOR_BREAK = "neighbor_break"
+    SECTION = "section"
+    TABLE = "table"
+    DUPLICATE_BLANK = "duplicate_blank"
+    STALE_TEXT = "stale_text"
+    UNEDITABLE = "uneditable"
+    UNKNOWN_DIMENSION = "unknown_dimension"
+    BOOL_DIMENSION = "bool_dimension"
+    NONFINITE_DIMENSION = "nonfinite_dimension"
+
+
+@pytest.mark.parametrize("change", list(_SpacerCorruption))
+def test_ambiguous_spacers_never_produce_padding_rules(change: _SpacerCorruption) -> None:
     native = _spaced_document()
     content = native["tabs"][0]["documentTab"]["body"]["content"]
     spacer = content[1]
     paragraph = spacer["paragraph"]
-    if change == "gap":
-        spacer["startIndex"] += 1
-    elif change == "utf16_width":
-        content[0]["endIndex"] -= 1
-    elif change == "bool_index":
-        paragraph["elements"][0]["startIndex"] = True
-    elif change == "text":
-        paragraph["elements"][0]["textRun"]["content"] = " \n"
-    elif change == "two_runs":
-        paragraph["elements"].append({"textRun": {"content": ""}})
-    elif change == "link":
-        paragraph["elements"][0]["textRun"]["textStyle"] = {"link": {"url": "https://example.com"}}
-    elif change == "chip":
-        paragraph["elements"] = [
-            {"dateElement": {"dateElementProperties": {"displayText": "Date"}}}
-        ]
-    elif change == "unknown":
-        spacer["unknown"] = {}
-    elif change == "paragraph_unknown":
-        paragraph["unknown"] = {}
-    elif change == "border":
-        paragraph["paragraphStyle"] = {"borderBottom": {}}
-    elif change == "page_break":
-        paragraph["paragraphStyle"] = {"pageBreakBefore": True}
-    elif change == "heading":
-        paragraph["paragraphStyle"] = {"namedStyleType": "HEADING_1"}
-    elif change == "neighbor_border":
-        content[0]["paragraph"]["paragraphStyle"]["borderBottom"] = {}
-    elif change == "neighbor_break":
-        content[0]["paragraph"]["paragraphStyle"]["pageBreakBefore"] = True
-    elif change in {"section", "table"}:
-        del spacer["paragraph"]
-        spacer["sectionBreak" if change == "section" else "table"] = {}
-    elif change == "duplicate_blank":
-        content.insert(1, deepcopy(spacer))
-    elif change in {"unknown_dimension", "bool_dimension", "nonfinite_dimension"}:
-        dimension: dict[str, Any] = {"magnitude": 2, "unit": "PT"}
-        if change == "unknown_dimension":
-            dimension["unknown"] = True
-        else:
-            dimension["magnitude"] = True if change == "bool_dimension" else float("inf")
-        paragraph["paragraphStyle"] = {"spaceBelow": dimension}
+    match change:
+        case _SpacerCorruption.GAP:
+            spacer["startIndex"] += 1
+        case _SpacerCorruption.UTF16_WIDTH:
+            content[0]["endIndex"] -= 1
+        case _SpacerCorruption.BOOL_INDEX:
+            paragraph["elements"][0]["startIndex"] = True
+        case _SpacerCorruption.TEXT:
+            paragraph["elements"][0]["textRun"]["content"] = " \n"
+        case _SpacerCorruption.TWO_RUNS:
+            paragraph["elements"].append({"textRun": {"content": ""}})
+        case _SpacerCorruption.LINK:
+            paragraph["elements"][0]["textRun"]["textStyle"] = {
+                "link": {"url": "https://example.com"}
+            }
+        case _SpacerCorruption.CHIP:
+            paragraph["elements"] = [
+                {"dateElement": {"dateElementProperties": {"displayText": "Date"}}}
+            ]
+        case _SpacerCorruption.UNKNOWN:
+            spacer["unknown"] = {}
+        case _SpacerCorruption.PARAGRAPH_UNKNOWN:
+            paragraph["unknown"] = {}
+        case _SpacerCorruption.BORDER:
+            paragraph["paragraphStyle"] = {"borderBottom": {}}
+        case _SpacerCorruption.PAGE_BREAK:
+            paragraph["paragraphStyle"] = {"pageBreakBefore": True}
+        case _SpacerCorruption.HEADING:
+            paragraph["paragraphStyle"] = {"namedStyleType": "HEADING_1"}
+        case _SpacerCorruption.NEIGHBOR_BORDER:
+            content[0]["paragraph"]["paragraphStyle"]["borderBottom"] = {}
+        case _SpacerCorruption.NEIGHBOR_BREAK:
+            content[0]["paragraph"]["paragraphStyle"]["pageBreakBefore"] = True
+        case _SpacerCorruption.SECTION | _SpacerCorruption.TABLE:
+            content[1] = {
+                "startIndex": spacer["startIndex"],
+                "endIndex": spacer["endIndex"],
+                "sectionBreak" if change == "section" else "table": {},
+            }
+        case _SpacerCorruption.DUPLICATE_BLANK:
+            content.insert(1, deepcopy(spacer))
+        case (
+            _SpacerCorruption.UNKNOWN_DIMENSION
+            | _SpacerCorruption.BOOL_DIMENSION
+            | _SpacerCorruption.NONFINITE_DIMENSION
+        ):
+            dimension: dict[str, JsonValue] = {"magnitude": 2, "unit": "PT"}
+            if change == "unknown_dimension":
+                dimension["unknown"] = True
+            else:
+                dimension["magnitude"] = True if change == "bool_dimension" else float("inf")
+            paragraph["paragraphStyle"] = {"spaceBelow": dimension}
+        case _SpacerCorruption.STALE_TEXT | _SpacerCorruption.UNEDITABLE:
+            pass
+        case unreachable:
+            assert_never(unreachable)
     original = parse_google_document(native, title="Layout")
     if change in {"stale_text", "uneditable"}:
         original = replace(

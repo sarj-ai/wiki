@@ -37,6 +37,7 @@ from app.document_transform.presentation_state import (
     RecordedPresentationMutation,
 )
 from app.document_transform.schemas import DriveFileSource
+from app.document_transform.verification import BrandVerification
 from app.drive.retry import ProviderDeadlineError
 from app.drive.schemas import MIME_FOLDER, MIME_SLIDE
 from app.files.errors import DriveUpstreamError, FileNotInScopeError
@@ -1153,7 +1154,7 @@ async def test_brand_verification_reports_mismatch() -> None:
     )
     assert verification.content_preserved
     assert verification.structure_preserved
-    assert not verification.brand_applied
+    assert verification.brand not in {BrandVerification.FULL, BrandVerification.NOT_REQUIRED}
     assert state.metadata["output"]["appProperties"]["sarjTransformState"] == "incomplete"
 
 

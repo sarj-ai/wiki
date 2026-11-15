@@ -336,6 +336,16 @@ def test_declined_checkpoint_rejects_later_edits_and_conflicting_outcome() -> No
         NativeDatePayload.model_validate({**declined.model_dump(), "complete": True})
 
 
+@pytest.mark.parametrize("invalid_complete", [0, 1, "true", "false", None])
+def test_date_checkpoint_completion_never_coerces_external_values(
+    invalid_complete: JsonValue,
+) -> None:
+    checkpoint = plan_copy_dates(_document(), operation_id=uuid.uuid7())
+    assert checkpoint is not None
+    with pytest.raises(ValidationError):
+        NativeDatePayload.model_validate({**checkpoint.model_dump(), "complete": invalid_complete})
+
+
 @pytest.mark.asyncio
 async def test_date_timeout_is_not_declined(monkeypatch: pytest.MonkeyPatch) -> None:
     checkpoint = plan_copy_dates(_document(), operation_id=uuid.uuid7())

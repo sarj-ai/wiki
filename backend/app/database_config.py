@@ -12,8 +12,9 @@ from pydantic import (
 )
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+from app.identifiers import NonEmptyStr
 
-NonEmptyStr = Annotated[str, StringConstraints(min_length=1)]
+
 InstanceConnectionName = Annotated[
     str, StringConstraints(pattern=r"^[a-z][a-z0-9-]*:[a-z0-9-]+:[a-z][a-z0-9-]*$")
 ]

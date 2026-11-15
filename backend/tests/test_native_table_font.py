@@ -11,6 +11,7 @@ from app.document_transform.native_table_font import (
     project_table_fonts,
     table_font_requests,
 )
+from app.document_transform.verification import BrandVerification
 from tests.test_document_transform import _branded_google_document
 from tests.test_document_transform_repeat import _inspection_snapshot
 
@@ -241,7 +242,7 @@ async def test_public_gateway_requires_explicit_table_proof_without_weakening_de
     verification = await gateway.verify_in_place(**kwargs, table_font_plan=plan)
     assert verification.content_preserved
     assert verification.structure_preserved
-    assert verification.brand_applied
+    assert verification.brand is BrandVerification.FULL
 
 
 @pytest.mark.parametrize(

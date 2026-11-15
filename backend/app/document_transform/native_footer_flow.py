@@ -92,6 +92,29 @@ class NativeFooterPlan(BaseModel):
     invariant_sha256: str
     invariant_version: NativeFooterInvariant | None = None
 
+    @model_validator(mode="before")
+    @classmethod
+    def read_legacy_coverage(
+        cls, data: dict[str, JsonValue] | NativeFooterPlan
+    ) -> dict[str, JsonValue] | NativeFooterPlan:
+        if not isinstance(data, dict):
+            return data
+        coverage = data.get("coverage")
+        if not isinstance(coverage, dict) or "active" not in coverage:
+            return data
+        stage = data.get("stage")
+        if not isinstance(stage, str) or stage not in {"create", "populate", "complete"}:
+            msg = "Legacy footer coverage requires its persisted stage"
+            raise ValueError(msg)
+        expected_active = stage != "complete" or data.get("footer_id") is not None
+        if type(coverage["active"]) is not bool or coverage["active"] is not expected_active:
+            msg = "Legacy footer coverage contradicts its checkpoint stage"
+            raise ValueError(msg)
+        return {
+            **data,
+            "coverage": {key: value for key, value in coverage.items() if key != "active"},
+        }
+
     @model_validator(mode="after")
     def validate_coverage(self) -> Self:
         if not isinstance(
@@ -109,7 +132,7 @@ class NativeFooterPlan(BaseModel):
             return self
         entries = coverage.completed
         completed_ids = tuple(entry.tab_id for entry in entries)
-        active_ids = (self.tab_id,) if coverage.active else ()
+        active_ids = () if isinstance(self, SkippedNativeFooterCheckpoint) else (self.tab_id,)
         processed = completed_ids + active_ids + coverage.pending
         skipped_ids = tuple(skip.tab_id for skip in coverage.skipped)
         all_ids = processed + skipped_ids
@@ -128,9 +151,7 @@ class NativeFooterPlan(BaseModel):
             entry.coverage is not None or entry.stage is not NativeFooterStage.COMPLETE
             for entry in entries
         )
-        invalid_inactive = not coverage.active and (
-            bool(processed) or self.stage is not NativeFooterStage.COMPLETE
-        )
+        invalid_inactive = isinstance(self, SkippedNativeFooterCheckpoint) and bool(processed)
         if not coverage.topology or invalid_ids or invalid_entries or invalid_inactive:
             msg = "Invalid bounded footer coverage"
             raise ValueError(msg)
@@ -163,7 +184,7 @@ class SkippedNativeFooterCheckpoint(NativeFooterPlan):
 
     @model_validator(mode="after")
     def validate_skipped(self) -> Self:
-        if self.coverage.active or self.coverage.pending or self.coverage.completed:
+        if self.coverage.pending or self.coverage.completed:
             message = "Skipped footer must contain only skipped coverage"
             raise ValueError(message)
         return self
@@ -214,7 +235,6 @@ class NativeFooterCoverage(BaseModel):
         default=(), max_length=MAX_DOC_TABS
     )
     skipped: tuple[NativeFooterSkip, ...] = Field(default=(), max_length=MAX_DOC_TABS)
-    active: bool = True
 
 
 def footer_coverage_complete(checkpoint: NativeFooterCheckpoint) -> bool:
@@ -229,13 +249,22 @@ def verified_footer_coverage_projection(
     if not footer_coverage_complete(checkpoint):
         native_safety_error("footer_coverage", "action")
     coverage = checkpoint.coverage
-    if coverage is not None and not coverage.active:
-        if (
-            versioned_footer_invariant_sha256(document, version=checkpoint.invariant_version)
-            != checkpoint.invariant_sha256
+    match checkpoint:
+        case SkippedNativeFooterCheckpoint():
+            if (
+                versioned_footer_invariant_sha256(document, version=checkpoint.invariant_version)
+                != checkpoint.invariant_sha256
+            ):
+                native_safety_error("footer_coverage", "invariant")
+            return deepcopy(document)
+        case (
+            CreatingNativeFooterCheckpoint()
+            | PopulatingNativeFooterCheckpoint()
+            | CompletedNativeFooterCheckpoint()
         ):
-            native_safety_error("footer_coverage", "invariant")
-        return deepcopy(document)
+            pass
+        case _:
+            assert_never(checkpoint)
     projected, _ = verified_footer_projection(document, checkpoint, populated=True)
     if coverage is not None:
         for prior in reversed(coverage.completed):

@@ -160,6 +160,38 @@ describe("document transform recovery", () => {
     );
     expect(() => readTransformRecovery("first", "markdown")).toThrow();
   });
+
+  it("decodes legacy shared reservations and replaces them with an explicit state on transition", async () => {
+    const storage = "sarj-wiki:transform:owner:drive%3Adoc:shared";
+    const operation = candidate(firstKey);
+    window.localStorage.setItem(
+      storage,
+      JSON.stringify({ operation, completedAt: null }),
+    );
+    expect(readTransformRecovery("owner", "drive:doc")).toEqual(operation);
+    await completeTransformRecovery("owner", "drive:doc", firstKey);
+    const persisted: unknown = JSON.parse(
+      window.localStorage.getItem(storage) ?? "null",
+    );
+    expect(persisted).toMatchObject({
+      kind: "completed",
+      operation,
+      completedAt: expect.any(Number),
+    });
+    expect(readTransformRecovery("owner", "drive:doc")).toBeNull();
+  });
+
+  it("rejects contradictory canonical reservations without discarding evidence", () => {
+    const storage = "sarj-wiki:transform:owner:drive%3Adoc:shared";
+    const raw = JSON.stringify({
+      kind: "pending",
+      operation: candidate(firstKey),
+      completedAt: 1,
+    });
+    window.localStorage.setItem(storage, raw);
+    expect(() => readTransformRecovery("owner", "drive:doc")).toThrow();
+    expect(window.localStorage.getItem(storage)).toBe(raw);
+  });
 });
 
 function candidate(key: string, createdAt = 1): TransformRecovery {

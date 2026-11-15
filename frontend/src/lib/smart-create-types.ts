@@ -80,6 +80,11 @@ export type SmartCreateTask =
       status: "pending" | "running";
     };
 
+export type TerminalSmartCreateTask = Exclude<
+  SmartCreateTask,
+  { status: "pending" | "running" }
+>;
+
 export function initialSmartCreateState(): SmartCreateState {
   return {
     mode: { description: "", fileType: "document", kind: "ai" },

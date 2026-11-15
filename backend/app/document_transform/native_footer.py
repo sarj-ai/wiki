@@ -3,10 +3,12 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 from enum import StrEnum
-from typing import Any, TypedDict
+from typing import Any, Literal, TypedDict, assert_never
 from urllib.parse import urlsplit
+
+from pydantic import ConfigDict, Field
+from pydantic.dataclasses import dataclass
 
 from app.document_transform.brand import DocsRequest, SarjBrandProfile
 from app.document_transform.ir import utf16_length
@@ -26,11 +28,22 @@ class FooterAction(StrEnum):
     NEEDS_REVIEW = "needs_review"
 
 
+class FooterCreation(StrEnum):
+    NOT_STARTED = "not_started"
+    UNCERTAIN = "uncertain"
+
+
 @dataclass(frozen=True, slots=True)
-class FooterCheckpoint:
-    # Ownership cannot be inferred from an arbitrary existing footer.
-    creation_attempted: bool = False
-    owned_footer_id: str | None = None
+class OwnedFooter:
+    footer_id: DocsSegmentId
+
+    def __post_init__(self) -> None:
+        if not self.footer_id:
+            msg = "An owned footer requires its recorded provider identifier"
+            raise ValueError(msg)
+
+
+type FooterCheckpoint = FooterCreation | OwnedFooter
 
 
 class FooterWriteControl(TypedDict):
@@ -42,21 +55,32 @@ class FooterBatchBody(TypedDict):
     writeControl: FooterWriteControl
 
 
-@dataclass(frozen=True, slots=True)
-class NativeFooterPlan:
-    action: FooterAction
+@dataclass(frozen=True, slots=True, config=ConfigDict(extra="forbid"))
+class WritingFooterPlan:
+    action: Literal[FooterAction.CREATE, FooterAction.POPULATE]
     revision_id: DocsRevisionId
-    requests: tuple[DocsRequest, ...] = ()
+    first_request: DocsRequest = Field(min_length=1)
+    remaining_requests: tuple[DocsRequest, ...] = ()
+
+    @property
+    def requests(self) -> tuple[DocsRequest, *tuple[DocsRequest, ...]]:
+        return self.first_request, *self.remaining_requests
 
     def batch_body(self) -> FooterBatchBody:
         # CAS also protects empty-footer plans from concurrent custom edits.
-        if not self.requests:
-            msg = "A non-writing footer plan cannot be submitted"
-            raise ValueError(msg)
         return {
             "requests": list(self.requests),
             "writeControl": {"requiredRevisionId": self.revision_id},
         }
+
+
+@dataclass(frozen=True, slots=True, config=ConfigDict(extra="forbid"))
+class NonWritingFooterPlan:
+    action: Literal[FooterAction.UNCHANGED, FooterAction.PRESERVE, FooterAction.NEEDS_REVIEW]
+    revision_id: DocsRevisionId
+
+
+type NativeFooterPlan = WritingFooterPlan | NonWritingFooterPlan
 
 
 def plan_native_footer(
@@ -66,7 +90,7 @@ def plan_native_footer(
     revision_id: DocsRevisionId,
     short_link: str,
     display_text: str | None = None,
-    checkpoint: FooterCheckpoint | None = None,
+    checkpoint: FooterCheckpoint = FooterCreation.NOT_STARTED,
 ) -> NativeFooterPlan:
     # Supply the complete documentTab, including footers, and an issued URL.
     # Persist the checkpoint before dispatching batch_body(); recover a lost
@@ -76,49 +100,55 @@ def plan_native_footer(
         msg = "Footer caption must use the pinned Wiki label"
         raise ValueError(msg)
     caption = display_text if display_text is not None else short_link
-    checkpoint = checkpoint or FooterCheckpoint()
     style = document_tab.get("documentStyle")
     if not isinstance(style, dict):
-        return NativeFooterPlan(FooterAction.PRESERVE, revision_id)
+        return NonWritingFooterPlan(FooterAction.PRESERVE, revision_id)
     document_format = style.get("documentFormat", {})
     if not isinstance(document_format, dict) or document_format.get("documentMode") == "PAGELESS":
-        return NativeFooterPlan(FooterAction.PRESERVE, revision_id)
+        return NonWritingFooterPlan(FooterAction.PRESERVE, revision_id)
     footer_id = style.get("defaultFooterId")
     if not footer_id:
-        if checkpoint.creation_attempted:
-            return NativeFooterPlan(FooterAction.NEEDS_REVIEW, revision_id)
-        return NativeFooterPlan(
+        if checkpoint is not FooterCreation.NOT_STARTED:
+            return NonWritingFooterPlan(FooterAction.NEEDS_REVIEW, revision_id)
+        return WritingFooterPlan(
             FooterAction.CREATE,
             revision_id,
-            (
-                {
-                    "createFooter": {
-                        "type": "DEFAULT",
-                        "sectionBreakLocation": {"index": 0, "tabId": tab_id},
-                    }
-                },
-            ),
+            {
+                "createFooter": {
+                    "type": "DEFAULT",
+                    "sectionBreakLocation": {"index": 0, "tabId": tab_id},
+                }
+            },
         )
     if not isinstance(footer_id, str):
-        return NativeFooterPlan(FooterAction.NEEDS_REVIEW, revision_id)
-    if checkpoint.creation_attempted and checkpoint.owned_footer_id != footer_id:
-        return NativeFooterPlan(FooterAction.NEEDS_REVIEW, revision_id)
+        return NonWritingFooterPlan(FooterAction.NEEDS_REVIEW, revision_id)
+    match checkpoint:
+        case FooterCreation.UNCERTAIN:
+            return NonWritingFooterPlan(FooterAction.NEEDS_REVIEW, revision_id)
+        case OwnedFooter(footer_id=owned_id) if owned_id != footer_id:
+            return NonWritingFooterPlan(FooterAction.NEEDS_REVIEW, revision_id)
+        case FooterCreation.NOT_STARTED | OwnedFooter():
+            pass
+        case _:
+            assert_never(checkpoint)
     footers = document_tab.get("footers", {})
     footer = footers.get(footer_id) if isinstance(footers, dict) else None
     text = _plain_footer_text(footer)
     if text == caption + "\n":
-        return NativeFooterPlan(FooterAction.UNCHANGED, revision_id)
+        return NonWritingFooterPlan(FooterAction.UNCHANGED, revision_id)
     if text != "\n":
-        return NativeFooterPlan(FooterAction.PRESERVE, revision_id)
-    return NativeFooterPlan(
+        return NonWritingFooterPlan(FooterAction.PRESERVE, revision_id)
+    first, *remaining = _population_requests(
+        tab_id=tab_id,
+        footer_id=DocsSegmentId(footer_id),
+        short_link=short_link,
+        caption=caption,
+    )
+    return WritingFooterPlan(
         FooterAction.POPULATE,
         revision_id,
-        _population_requests(
-            tab_id=tab_id,
-            footer_id=DocsSegmentId(footer_id),
-            short_link=short_link,
-            caption=caption,
-        ),
+        first,
+        tuple(remaining),
     )
 
 

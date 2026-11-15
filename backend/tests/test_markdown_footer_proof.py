@@ -5,6 +5,7 @@ import pytest
 
 from app.document_transform.docx_renderer import markdown_import_manifest
 from app.document_transform.markdown_import import verify_markdown_import
+from app.document_transform.verification import BrandVerification
 from tests.test_markdown_import import _branded_document
 
 
@@ -43,7 +44,7 @@ def test_exact_native_footer_allows_location_metadata_and_single_terminal_newlin
     result = verify_markdown_import(
         document, markdown_import_manifest("Body", title="Import", branded=True)
     )
-    assert result.brand_applied
+    assert result.brand is BrandVerification.FULL
     assert result.content_preserved
     assert result.structure_preserved
     assert document == before
@@ -57,7 +58,7 @@ def test_footer_partial_indices_preserve_proven_adjacency(omitted: str) -> None:
     result = verify_markdown_import(
         document, markdown_import_manifest("Body", title="Import", branded=True)
     )
-    assert result.brand_applied
+    assert result.brand is BrandVerification.FULL
     assert result.content_preserved
     assert result.structure_preserved
 
@@ -155,6 +156,6 @@ def test_footer_proof_rejects_extra_protected_or_malformed_content(change: str) 
     result = verify_markdown_import(
         document, markdown_import_manifest("Body", title="Import", branded=True)
     )
-    assert not result.brand_applied
+    assert result.brand not in {BrandVerification.FULL, BrandVerification.NOT_REQUIRED}
     assert result.content_preserved
     assert result.structure_preserved

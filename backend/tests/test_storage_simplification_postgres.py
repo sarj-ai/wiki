@@ -99,7 +99,7 @@ async def test_upgrade_preserves_settings_tokens_and_concurrent_user_edits() -> 
             )
             await db.execute(  # sarj-noqa: SARJ429 -- Exercise legacy schema migration and database invariants before the current ORM applies.
                 text(
-                    "INSERT INTO mcp_native_state (purpose,key_digest,ciphertext,expires_at) VALUES ('code','digest','unchanged ciphertext',now()+interval '1 hour')"
+                    "INSERT INTO mcp_native_state (purpose,key_digest,ciphertext,expires_at) VALUES ('code','aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa','unchanged ciphertext',now()+interval '1 hour')"
                 )
             )
             await db.execute(  # sarj-noqa: SARJ429 -- Exercise legacy schema migration and database invariants before the current ORM applies.
@@ -166,7 +166,7 @@ async def test_upgrade_preserves_settings_tokens_and_concurrent_user_edits() -> 
             assert (
                 await db.scalar(
                     text(
-                        "SELECT ciphertext FROM mcp_oauth_entries WHERE collection='native:code' AND key_digest='digest'"
+                        "SELECT ciphertext FROM mcp_oauth_entries WHERE collection='native:code' AND key_digest='aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'"
                     )
                 )
                 == "unchanged ciphertext"
@@ -408,3 +408,95 @@ async def test_downgrade_refuses_active_work_and_new_checkpoint_formats(blocker:
             row = await session.get(Task, task_id)
             assert row is not None
             assert row.status == ("running" if blocker == "running" else "failed")
+
+
+async def test_native_oauth_invariant_migration_preserves_opaque_replay_evidence() -> None:
+    async with _migration_database() as engine:
+        dsn = engine.url.render_as_string(hide_password=False)
+        await asyncio.to_thread(_upgrade, dsn, "0029_task_review")
+        expires = datetime.now(UTC) + timedelta(hours=1)
+        purposes = ("client", "intent", "code", "access", "refresh")
+        expected = [
+            {
+                "collection": f"native:{purpose}",
+                "key_digest": f"{index:064x}",
+                "ciphertext": f"retained-{purpose}",
+                "expires_at": expires,
+            }
+            for index, purpose in enumerate(purposes)
+        ]
+        async with engine.begin() as db:
+            await db.execute(insert(MCPOAuthEntry), expected)
+        await asyncio.to_thread(_upgrade, dsn, "0030_native_oauth_invariants")
+        async with engine.connect() as db:
+            rows = (
+                (
+                    await db.execute(
+                        select(MCPOAuthEntry.__table__).order_by(MCPOAuthEntry.key_digest)
+                    )
+                )
+                .mappings()
+                .all()
+            )
+            assert [dict(row) for row in rows] == expected
+            assert (
+                await db.scalar(
+                    text(
+                        "SELECT attnotnull FROM pg_attribute WHERE attrelid='mcp_oauth_entries'::regclass AND attname='expires_at'"
+                    )
+                )
+                is True
+            )
+        for values in (
+            {"collection": "native:code", "key_digest": "f" * 64, "expires_at": None},
+            {"collection": "retired:code", "key_digest": "f" * 64, "expires_at": expires},
+            {"collection": "native:code", "key_digest": "invalid", "expires_at": expires},
+        ):
+            with pytest.raises(IntegrityError):
+                async with engine.begin() as db:
+                    await db.execute(insert(MCPOAuthEntry).values(**values, ciphertext="rejected"))
+        await asyncio.to_thread(_alembic, dsn, "downgrade", "0029_task_review")
+        async with engine.connect() as db:
+            rows = (
+                (
+                    await db.execute(
+                        select(MCPOAuthEntry.__table__).order_by(MCPOAuthEntry.key_digest)
+                    )
+                )
+                .mappings()
+                .all()
+            )
+            assert [dict(row) for row in rows] == expected
+        await asyncio.to_thread(_upgrade, dsn, "0030_native_oauth_invariants")
+
+
+@pytest.mark.parametrize("invalid", ["expiry", "namespace", "digest"])
+async def test_native_oauth_migration_refuses_to_reinterpret_incompatible_legacy_rows(
+    invalid: str,
+) -> None:
+    async with _migration_database() as engine:
+        dsn = engine.url.render_as_string(hide_password=False)
+        await asyncio.to_thread(_upgrade, dsn, "0029_task_review")
+        row = {
+            "collection": "retired:code" if invalid == "namespace" else "native:code",
+            "key_digest": "invalid" if invalid == "digest" else "a" * 64,
+            "ciphertext": "preserved-incompatible-evidence",
+            "expires_at": None if invalid == "expiry" else datetime.now(UTC) + timedelta(hours=1),
+        }
+        async with engine.begin() as db:
+            await db.execute(insert(MCPOAuthEntry).values(**row))
+        with pytest.raises(subprocess.CalledProcessError) as failure:
+            await asyncio.to_thread(_upgrade, dsn, "0030_native_oauth_invariants")
+        expected_error = {
+            "expiry": "contains null values",
+            "namespace": "ck_mcp_oauth_native_collection",
+            "digest": "ck_mcp_oauth_key_digest",
+        }[invalid]
+        assert expected_error in failure.value.stderr
+        async with engine.connect() as db:
+            assert (
+                await db.scalar(text("SELECT version_num FROM alembic_version"))
+                == "0029_task_review"
+            )
+            retained = (await db.execute(select(MCPOAuthEntry.__table__))).mappings().one()
+            assert dict(retained) == row

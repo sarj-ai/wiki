@@ -13,6 +13,7 @@ from app.tasks.errors import TaskEnqueueError
 from app.tasks.internal_auth import (
     GoogleOidcTaskRequestAuthenticator,
     document_transform_task_request_authenticator_dep,
+    task_token_verifier_dep,
 )
 from app.tasks.internal_router import (
     reconcile_document_transform_dispatches,
@@ -28,6 +29,7 @@ def test_reconciliation_requires_oidc_before_accessing_tasks() -> None:
         GoogleOidcTaskRequestAuthenticator(
             audience="https://wiki-api.sarj.ai/internal/tasks/document-transform",
             service_account_email="task-invoker@example.iam.gserviceaccount.com",
+            verifier=task_token_verifier_dep(),
         )
     )
     with TestClient(app) as client:

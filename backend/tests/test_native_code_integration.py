@@ -8,6 +8,7 @@ from app.document_transform.ir import BlockKind, parse_google_document, utf16_le
 from app.document_transform.native_code import plan_native_code_styles
 from app.document_transform.native_code_source import code_object
 from app.document_transform.unslop import model_editable_blocks, scan_unslop_candidates
+from app.document_transform.verification import BrandVerification
 from tests.test_copy_font_preservation import _source, _verify
 from tests.test_document_transform_typography import _document, _run
 
@@ -102,4 +103,4 @@ async def test_public_copy_verification_proves_native_syntax_and_residual_styles
     assert result.structure_preserved is (tamper == "none")
     if tamper == "none":
         assert result.content_preserved
-        assert result.brand_applied
+        assert result.brand is BrandVerification.FULL

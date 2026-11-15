@@ -9,19 +9,39 @@ import { API_URL } from "@/lib/env";
 const IntentSchema = z.string().regex(/^wm_intent_[A-Za-z0-9_-]{43}$/);
 const StatusSchema = z.enum(["pending", "approved", "denied", "expired"]);
 const CapabilitySchema = z.enum(["wiki:read", "wiki:transform"]);
+const ConsentCommandSchema = z.enum([
+  "deny",
+  "approve_read",
+  "approve_transform",
+]);
+export type McpConsentCommand = z.output<typeof ConsentCommandSchema>;
 const ViewSchema = z.object({
-  account_email: z.email(),
-  client_id: z.string().min(1).max(255),
-  client_name: z.string().max(256),
+  "account_email": z.email(),
+  "client_id": z.string().min(1).max(255),
+  "client_name": z.string().max(256),
   csrf: IntentSchema,
   scopes: z.array(CapabilitySchema).max(2),
   status: StatusSchema,
 });
-const RecoverySchema = z.object({
-  restart_required: z.boolean(),
-  status: StatusSchema,
-});
-const DecisionSchema = z.object({ redirect_uri: z.url() });
+const RecoverySchema = z.discriminatedUnion("status", [
+  z.object({
+    status: z.literal("pending"),
+    "restart_required": z.literal(false),
+  }),
+  z.object({
+    status: z.literal("approved"),
+    "restart_required": z.literal(true),
+  }),
+  z.object({
+    status: z.literal("denied"),
+    "restart_required": z.literal(true),
+  }),
+  z.object({
+    status: z.literal("expired"),
+    "restart_required": z.literal(true),
+  }),
+]);
+const DecisionSchema = z.object({ "redirect_uri": z.url() });
 const GrantIdSchema = z.uuid();
 
 const MAX_RESPONSE_BYTES = 256 * 1024;
@@ -30,9 +50,9 @@ const ConnectionsSchema = z.object({
     .array(
       z.object({
         capabilities: z.array(CapabilitySchema).max(2),
-        client_id: z.string().min(1).max(255),
-        expires_at: z.iso.datetime({ offset: true }),
-        grant_id: GrantIdSchema,
+        "client_id": z.string().min(1).max(255),
+        "expires_at": z.iso.datetime({ offset: true }),
+        "grant_id": GrantIdSchema,
       }),
     )
     .max(100),
@@ -138,20 +158,19 @@ export async function disconnectMcpConnection(
 export async function decideMcpConsent(
   intent: string,
   csrf: string,
-  decision: { approve: boolean; transformApproved: boolean },
+  decision: McpConsentCommand,
 ): Promise<string> {
   const result = DecisionSchema.parse(
     await request(endpoint(intent), {
       body: JSON.stringify({
-        approve: decision.approve,
+        command: ConsentCommandSchema.parse(decision),
         csrf: IntentSchema.parse(csrf),
-        transform_approved: decision.approve && decision.transformApproved,
       }),
       headers: { "Content-Type": "application/json" },
       method: "POST",
     }),
   );
-  const callback = new URL(result.redirect_uri);
+  const callback = new URL(result["redirect_uri"]);
   const loopback = ["127.0.0.1", "localhost", "[::1]"].includes(
     callback.hostname,
   );
@@ -163,5 +182,5 @@ export async function decideMcpConsent(
       !(callback.protocol === "http:" && loopback && callback.port))
   )
     throw new McpConsentRequestError(502);
-  return result.redirect_uri;
+  return result["redirect_uri"];
 }

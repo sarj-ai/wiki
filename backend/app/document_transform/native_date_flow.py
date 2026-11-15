@@ -7,7 +7,7 @@ import json
 from typing import TYPE_CHECKING, Any, Literal, NewType, Protocol, TypedDict
 import uuid
 
-from pydantic import BaseModel, ConfigDict, JsonValue, RootModel, with_config
+from pydantic import BaseModel, ConfigDict, JsonValue, RootModel, field_validator, with_config
 
 from app.document_transform.errors import InPlaceNeedsReviewError
 from app.document_transform.ir import parse_google_document, verify_planned_date_conversions
@@ -128,6 +128,13 @@ class NativeDatePlan(BaseModel):
     invariant_version: Literal["stable-images-v2"] | None = None
     paragraphs: list[NativeDateParagraph]
     requests: list[dict[str, JsonValue]]
+
+    @field_validator("complete", mode="before", check_fields=False)
+    @classmethod
+    def strict_completion(cls, value: JsonValue) -> bool:
+        if type(value) is not bool:
+            raise ValueError
+        return value
 
 
 class PendingNativeDateCheckpoint(NativeDatePlan):

@@ -8,6 +8,7 @@ from app.document_transform.markdown_import import (
     markdown_import_brand_diagnostics,
     verify_markdown_import,
 )
+from app.document_transform.verification import BrandVerification
 from tests.test_markdown_native_header_title import _titled_document
 
 
@@ -35,7 +36,7 @@ def test_explicit_unit_only_zero_header_spacing_matches_live_readback(*, inherit
     )
     result = verify_markdown_import(document, manifest)
     checks = markdown_import_brand_diagnostics(document, manifest)
-    assert result.brand_applied
+    assert result.brand is BrandVerification.FULL
     assert result.content_preserved
     assert result.structure_preserved
     assert checks["import_header_title_style"]
@@ -96,7 +97,7 @@ def test_zero_dimension_acceptance_rejects_malformed_and_nonzero_values(
     )
     result = verify_markdown_import(document, manifest)
     checks = markdown_import_brand_diagnostics(document, manifest)
-    assert not result.brand_applied
+    assert result.brand not in {BrandVerification.FULL, BrandVerification.NOT_REQUIRED}
     assert result.content_preserved
     assert not checks["import_header_title_style"]
     assert "PRIVATE" not in json.dumps(checks)
@@ -109,4 +110,7 @@ def test_unit_only_dimension_does_not_satisfy_nonzero_font_size() -> None:
     manifest = markdown_import_manifest(
         "Body", title="Import", branded=True, header_title="Chosen Title"
     )
-    assert not verify_markdown_import(document, manifest).brand_applied
+    assert verify_markdown_import(document, manifest).brand not in {
+        BrandVerification.FULL,
+        BrandVerification.NOT_REQUIRED,
+    }

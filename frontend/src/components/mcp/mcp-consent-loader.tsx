@@ -64,7 +64,7 @@ export function McpConsentLoader({ intent }: { intent: string }) {
         onDecision={async (decision) => {
           const callback = await decideMcpConsent(intent, view.csrf, decision);
           window.location.assign(callback);
-          return decision.approve ? "approved" : "denied";
+          return decision === "deny" ? "denied" : "approved";
         }}
         onRecover={async () => {
           const recovered = await recoverMcpConsent(intent, signal);

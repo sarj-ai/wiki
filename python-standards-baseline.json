@@ -41,8 +41,6 @@
     "SARJ447": 4
   },
   "backend/app/document_transform/custom_furniture.py": {
-    "SARJ444": 1,
-    "SARJ447": 3,
     "SARJ528": 3
   },
   "backend/app/document_transform/docx_renderer.py": {
@@ -83,7 +81,7 @@
   },
   "backend/app/document_transform/markdown_import.py": {
     "SARJ447": 93,
-    "SARJ528": 10
+    "SARJ528": 9
   },
   "backend/app/document_transform/native_date_flow.py": {
     "SARJ447": 5,
@@ -102,8 +100,7 @@
   },
   "backend/app/document_transform/native_font_proof.py": {
     "SARJ093": 2,
-    "SARJ444": 1,
-    "SARJ447": 31
+    "SARJ447": 26
   },
   "backend/app/document_transform/native_font_semantics.py": {
     "SARJ447": 13
@@ -117,8 +114,7 @@
     "SARJ528": 2
   },
   "backend/app/document_transform/native_pagination.py": {
-    "SARJ444": 3,
-    "SARJ447": 5,
+    "SARJ447": 4,
     "SARJ528": 2
   },
   "backend/app/document_transform/native_paragraph_layout.py": {
@@ -146,7 +142,7 @@
     "SARJ451": 6
   },
   "backend/app/document_transform/slides_brand.py": {
-    "SARJ447": 107,
+    "SARJ447": 105,
     "SARJ528": 4
   },
   "backend/app/document_transform/slides_ir.py": {
@@ -164,7 +160,6 @@
     "SARJ444": 1
   },
   "backend/app/document_transform/tab_structure.py": {
-    "SARJ444": 2,
     "SARJ447": 7
   },
   "backend/app/document_transform/tab_structure_execution.py": {
@@ -217,17 +212,14 @@
   "backend/app/openapi.py": {
     "SARJ447": 1
   },
-  "backend/app/sidebar/cache.py": {
-    "SARJ528": 2
-  },
   "backend/app/sidebar/router.py": {
     "SARJ451": 6
   },
   "backend/app/smart_create/router.py": {
-    "SARJ451": 4
+    "SARJ451": 3
   },
   "backend/app/tasks/internal_auth.py": {
-    "SARJ528": 3
+    "SARJ528": 1
   },
   "backend/app/tasks/internal_router.py": {
     "SARJ008": 1,
@@ -266,8 +258,7 @@
     "SARJ528": 2
   },
   "backend/tests/test_auth_cookies.py": {
-    "SARJ442": 1,
-    "SARJ445": 4
+    "SARJ442": 1
   },
   "backend/tests/test_auth_tokens.py": {
     "SARJ442": 2,
@@ -325,7 +316,7 @@
     "SARJ528": 1
   },
   "backend/tests/test_document_transform.py": {
-    "SARJ442": 14,
+    "SARJ442": 11,
     "SARJ445": 47,
     "SARJ447": 13,
     "SARJ477": 10,
@@ -377,10 +368,6 @@
     "SARJ445": 12,
     "SARJ447": 4,
     "SARJ477": 5
-  },
-  "backend/tests/test_document_transform_native_footer.py": {
-    "SARJ447": 5,
-    "SARJ477": 1
   },
   "backend/tests/test_document_transform_native_list_subranges.py": {
     "SARJ445": 2,
@@ -640,10 +627,8 @@
     "SARJ528": 2
   },
   "backend/tests/test_native_spacer_layout.py": {
-    "SARJ442": 1,
-    "SARJ444": 1,
     "SARJ445": 2,
-    "SARJ447": 3
+    "SARJ447": 2
   },
   "backend/tests/test_native_tab_icons.py": {
     "SARJ445": 1,
@@ -761,9 +746,7 @@
     "SARJ528": 4
   },
   "backend/tests/test_task_internal_auth.py": {
-    "SARJ442": 1,
-    "SARJ445": 3,
-    "SARJ528": 3
+    "SARJ442": 1
   },
   "backend/tests/test_task_queue.py": {
     "SARJ442": 1,

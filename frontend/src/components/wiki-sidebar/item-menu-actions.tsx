@@ -72,11 +72,20 @@ export function ItemMenuActions({
   const renameFile = useRenameFile();
   const deleteFile = useDeleteFile();
   const copyFile = useCopyFile();
-  const [confirmingDelete, setConfirmingDelete] = useState(false);
+  const [dialog, setDialog] = useState<
+    "delete" | "duplicate" | "none" | "rename"
+  >("none");
+  const confirmingDelete = dialog === "delete";
+  const renaming = dialog === "rename";
+  const duplicating = dialog === "duplicate";
+  const setDialogOpen = (
+    kind: "delete" | "duplicate" | "rename",
+    open: boolean,
+  ) => {
+    setDialog((current) => (open ? kind : current === kind ? "none" : current));
+  };
   const moveDialog = useDeferredDialog();
   const moveContent = useRef<HTMLElement | null>(null);
-  const [renaming, setRenaming] = useState(false);
-  const [duplicating, setDuplicating] = useState(false);
 
   useEffect(() => {
     if (
@@ -137,7 +146,7 @@ export function ItemMenuActions({
   const handleDelete = async () => {
     await runWithErrorToast(async () => {
       await deleteFile.mutateAsync({ driveId, fileId, parentFolderId });
-      setConfirmingDelete(false);
+      setDialogOpen("delete", false);
       toast.success(isFolder ? "Folder moved to trash" : "File moved to trash");
 
       if (pathname === `/d/${encodeURIComponent(fileId)}`) {
@@ -165,7 +174,7 @@ export function ItemMenuActions({
         <DropdownMenuItem
           className="flex items-center gap-2 text-sm"
           onClick={() => {
-            setRenaming(true);
+            setDialogOpen("rename", true);
           }}
         >
           <Pencil className="size-4" />
@@ -185,7 +194,7 @@ export function ItemMenuActions({
           <DropdownMenuItem
             className="flex items-center gap-2 text-sm"
             onClick={() => {
-              setDuplicating(true);
+              setDialogOpen("duplicate", true);
             }}
           >
             <Copy className="size-4" />
@@ -207,7 +216,7 @@ export function ItemMenuActions({
         <DropdownMenuItem
           className="text-destructive focus:text-destructive flex items-center gap-2 text-sm"
           onClick={() => {
-            setConfirmingDelete(true);
+            setDialogOpen("delete", true);
           }}
         >
           <Trash2 className="size-4" />
@@ -217,7 +226,7 @@ export function ItemMenuActions({
       <AlertDialog
         onOpenChange={(open) => {
           if (deleteFile.isPending) return;
-          setConfirmingDelete(open);
+          setDialogOpen("delete", open);
         }}
         open={confirmingDelete}
       >
@@ -280,7 +289,7 @@ export function ItemMenuActions({
         confirmLabel="Rename"
         defaultValue={currentName}
         onConfirm={handleRenameSubmit}
-        onOpenChange={setRenaming}
+        onOpenChange={(open) => setDialogOpen("rename", open)}
         open={renaming}
         title={isFolder ? "Rename folder" : "Rename file"}
       />
@@ -289,7 +298,7 @@ export function ItemMenuActions({
         defaultValue={`Copy of ${currentName}`}
         description="Creates a copy as a sibling of the original."
         onConfirm={handleDuplicate}
-        onOpenChange={setDuplicating}
+        onOpenChange={(open) => setDialogOpen("duplicate", open)}
         open={duplicating}
         title="Duplicate file"
       />

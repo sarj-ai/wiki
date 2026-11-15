@@ -41,7 +41,7 @@ from app.document_transform.native_table_font import TableFontPlan
 from app.document_transform.readability_types import ReadabilityCheckpoint
 from app.document_transform.tab_names import TabNamingPlan
 from app.document_transform.tab_structure_execution import StructureCheckpoint
-from app.identifiers import BrandProfileId, DocsRevisionId, FileId, ModelId
+from app.identifiers import BrandProfileId, DocsRevisionId, FileId, ModelId, ModelReviewInputHash
 
 
 SourceKind = Literal["drive_file", "markdown", "uploaded_markdown"]
@@ -217,6 +217,7 @@ class PatchEnvelope(StrictTransformModel):
 
 
 class TextPatchReview(StrictTransformModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
     block_id: str
     expected_sha256: str
     replacement_sha256: str
@@ -295,6 +296,7 @@ class CurrentDocumentPolish(StrictTransformModel):
 
 
 class TabNamingCheckpoint(StrictTransformModel):
+    model_config = ConfigDict(extra="forbid", frozen=True, revalidate_instances="always")
     plan: TabNamingPlan
     revision_id: DocsRevisionId
     marker_name: str
@@ -303,14 +305,92 @@ class TabNamingCheckpoint(StrictTransformModel):
     invariant_version: Literal["stable-images-v2"] | None = None
 
 
+class UnplannedTabNaming(StrictTransformModel):
+    model_config = ConfigDict(extra="forbid", frozen=True, revalidate_instances="always")
+    kind: Literal["unplanned"] = "unplanned"
+
+
+class PlannedTabNaming(StrictTransformModel):
+    model_config = ConfigDict(extra="forbid", frozen=True, revalidate_instances="always")
+    kind: Literal["planned"] = "planned"
+    checkpoint: TabNamingCheckpoint
+
+
+class AppliedTabNaming(StrictTransformModel):
+    model_config = ConfigDict(extra="forbid", frozen=True, revalidate_instances="always")
+    kind: Literal["applied"] = "applied"
+    checkpoint: TabNamingCheckpoint
+    revision_id: DocsRevisionId = Field(min_length=1)
+
+
+class UnchangedTabNaming(StrictTransformModel):
+    model_config = ConfigDict(extra="forbid", frozen=True, revalidate_instances="always")
+    kind: Literal["unchanged"] = "unchanged"
+    revision_id: DocsRevisionId = Field(min_length=1)
+
+
+class DeclinedTabNaming(StrictTransformModel):
+    model_config = ConfigDict(extra="forbid", frozen=True, revalidate_instances="always")
+    kind: Literal["declined"] = "declined"
+    reason: TabNamingDeclinedReason = "unsupported_metadata"
+
+
+TabNamingState = Annotated[
+    UnplannedTabNaming
+    | PlannedTabNaming
+    | AppliedTabNaming
+    | UnchangedTabNaming
+    | DeclinedTabNaming,
+    Field(discriminator="kind"),
+]
+
+
+TerminalTabNaming = Annotated[
+    UnplannedTabNaming | AppliedTabNaming | UnchangedTabNaming | DeclinedTabNaming,
+    Field(discriminator="kind"),
+]
+
+
+class TabNamingStateModel(StrictTransformModel):
+    model_config = ConfigDict(extra="forbid", frozen=True, revalidate_instances="always")
+
+    @model_validator(mode="before")
+    @classmethod
+    def decode_legacy_tab_naming(cls, value: object) -> object:
+        if not isinstance(value, dict):
+            return value
+        payload = dict(value)
+        naming = payload.get("tab_naming")
+        reason = payload.pop("tab_naming_declined_reason", None)
+        if reason is not None:
+            if naming is not None or reason != "unsupported_metadata":
+                message = "Invalid legacy tab naming decision"
+                raise ValueError(message)
+            payload["tab_naming"] = {"kind": "declined", "reason": reason}
+        elif naming is None:
+            payload["tab_naming"] = {"kind": "unplanned"}
+        elif isinstance(naming, dict) and "kind" not in naming:
+            if payload.get("stage") in {"complete", "verified"}:
+                revision = payload.get("current_revision_id", payload.get("output_revision_id"))
+                payload["tab_naming"] = {
+                    "kind": "applied",
+                    "checkpoint": naming,
+                    "revision_id": revision,
+                }
+            else:
+                payload["tab_naming"] = {"kind": "planned", "checkpoint": naming}
+        return payload
+
+
 class InPlaceCheckpointStage(StrEnum):
     HEADERS = "headers"
     CONTENT = "content"
+    METADATA = "metadata"
     COMPLETE = "complete"
 
 
-class InPlacePlan(StrictTransformModel):
-    model_config = ConfigDict(extra="forbid", frozen=True)
+class InPlacePlan(TabNamingStateModel):
+    model_config = ConfigDict(extra="forbid", frozen=True, revalidate_instances="always")
 
     readability: ReadabilityCheckpoint | None = None
     readability_result: DocumentTransformResult | None = None
@@ -372,14 +452,9 @@ class InPlacePlan(StrictTransformModel):
     headers: dict[str, str] = Field(default_factory=dict)
     preserved_headers: dict[str, str] = Field(default_factory=dict)
     changed: bool
-    tab_naming: TabNamingCheckpoint | None = None
-    tab_naming_declined_reason: TabNamingDeclinedReason | None = None
 
     @model_validator(mode="after")
     def validate_tab_naming_state(self) -> Self:
-        if self.tab_naming is not None and self.tab_naming_declined_reason is not None:
-            msg = "tab naming cannot be both planned and declined"
-            raise ValueError(msg)
         titles = {(item.tab_id, item.header_id) for item in self.custom_header_titles}
         targets = {(item.tab_id, item.header_id) for item in self.custom_header_title_targets}
         furniture_headers = {
@@ -408,6 +483,7 @@ class InPlacePlan(StrictTransformModel):
 
 
 class InPlaceMutation(InPlacePlan):
+    tab_naming: UnplannedTabNaming = Field(default_factory=UnplannedTabNaming)
     marker_name: str
     marker_range: dict[str, JsonValue]
     mutation_sha256: str
@@ -441,10 +517,17 @@ class NonmutatingInPlacePlan(InPlacePlan):
 
 
 class NoopContentInPlaceCheckpoint(NonmutatingInPlacePlan):
+    tab_naming: UnplannedTabNaming = Field(default_factory=UnplannedTabNaming)
     stage: Literal[InPlaceCheckpointStage.CONTENT] = InPlaceCheckpointStage.CONTENT
 
 
+class MetadataInPlaceCheckpoint(NonmutatingInPlacePlan):
+    tab_naming: TabNamingState = Field(default_factory=UnplannedTabNaming)
+    stage: Literal[InPlaceCheckpointStage.METADATA] = InPlaceCheckpointStage.METADATA
+
+
 class CompletedInPlaceCheckpoint(NonmutatingInPlacePlan):
+    tab_naming: TerminalTabNaming = Field(default_factory=UnplannedTabNaming)
     stage: Literal[InPlaceCheckpointStage.COMPLETE] = InPlaceCheckpointStage.COMPLETE
 
 
@@ -452,6 +535,7 @@ InPlaceCheckpoint = (
     HeaderInPlaceCheckpoint
     | ContentInPlaceCheckpoint
     | NoopContentInPlaceCheckpoint
+    | MetadataInPlaceCheckpoint
     | CompletedInPlaceCheckpoint
 )
 
@@ -460,6 +544,21 @@ class InPlaceCheckpointPayload(RootModel[InPlaceCheckpoint]):
     @model_validator(mode="before")
     @classmethod
     def normalize_nonmutating_plan(cls, value: object) -> object:
+        # The previous executor persisted naming only after verifying content.
+        # Decode that exact legacy receipt into the explicit post-content phase.
+        if isinstance(value, dict) and value.get("stage") == "content":
+            naming = value.get("tab_naming")
+            legacy_planned = isinstance(naming, dict) and "kind" not in naming
+            legacy_declined = value.get("tab_naming_declined_reason") == "unsupported_metadata"
+            if legacy_planned or legacy_declined:
+                value = {
+                    **value,
+                    "stage": "metadata",
+                    "requests": [],
+                    "marker_name": None,
+                    "marker_range": None,
+                    "mutation_sha256": None,
+                }
         # Old checkpoints retained unused markers after a no-op content plan.
         # They never authorized a write. Normalize only that exact harmless shape.
         if (
@@ -484,7 +583,8 @@ def transition_in_place(
 ) -> InPlaceCheckpoint:
     allowed = {
         InPlaceCheckpointStage.HEADERS: {InPlaceCheckpointStage.CONTENT},
-        InPlaceCheckpointStage.CONTENT: {InPlaceCheckpointStage.COMPLETE},
+        InPlaceCheckpointStage.CONTENT: {InPlaceCheckpointStage.METADATA},
+        InPlaceCheckpointStage.METADATA: {InPlaceCheckpointStage.COMPLETE},
         InPlaceCheckpointStage.COMPLETE: set(),
     }
     if stage not in allowed[checkpoint.stage]:
@@ -511,8 +611,8 @@ class CopyCheckpointStage(StrEnum):
     VERIFIED = "verified"
 
 
-class CopyPlan(StrictTransformModel):
-    model_config = ConfigDict(extra="forbid", frozen=True)
+class CopyPlan(TabNamingStateModel):
+    model_config = ConfigDict(extra="forbid", frozen=True, revalidate_instances="always")
 
     # Absent in saved plans: retain their exact generated-title manifest.
     compact_markdown: StrictBool = False
@@ -558,23 +658,13 @@ class CopyPlan(StrictTransformModel):
     model_patch_count: int = Field(ge=0)
     llm_invoked: bool
     model_ids: list[ModelId]
-    tab_naming: TabNamingCheckpoint | None = None
-    tab_naming_declined_reason: TabNamingDeclinedReason | None = None
     native_footer: NativeFooterCheckpoint | None = None
     native_dates: NativeDateCheckpoint | None = None
     tab_structure: StructureCheckpoint | None = None
 
-    @model_validator(mode="after")
-    def validate_stage(
-        self,
-    ) -> Self:
-        if self.tab_naming is not None and self.tab_naming_declined_reason is not None:
-            msg = "tab naming cannot be both planned and declined"
-            raise ValueError(msg)
-        return self
-
 
 class UncreatedCopyPlan(CopyPlan):
+    tab_naming: UnplannedTabNaming = Field(default_factory=UnplannedTabNaming)
     output: None = None
     output_revision_id: None = None
     result: None = None
@@ -604,11 +694,13 @@ class CreatedCopyPlan(CopyPlan):
 
 
 class CreatedCopyCheckpoint(CreatedCopyPlan):
+    tab_naming: TabNamingState = Field(default_factory=UnplannedTabNaming)
     stage: Literal[CopyCheckpointStage.CREATED] = CopyCheckpointStage.CREATED
     result: None = None
 
 
 class VerifiedCopyCheckpoint(CreatedCopyPlan):
+    tab_naming: TerminalTabNaming = Field(default_factory=UnplannedTabNaming)
     stage: Literal[CopyCheckpointStage.VERIFIED] = CopyCheckpointStage.VERIFIED
     result: DocumentTransformResult
 
@@ -753,21 +845,66 @@ class TextDocumentCheckpointPayload(RootModel[TextDocumentCheckpoint]):
     pass
 
 
-class ModelPlanningStage(StrEnum):
-    REVIEW_PENDING = "review_pending"
+class _ModelReviewBatchIdentity(StrictTransformModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+    input_sha256: ModelReviewInputHash = Field(pattern=r"^[a-f0-9]{64}$")
+    attempt_count: int = Field(strict=True, ge=1, le=3)
 
 
-class ModelReviewBatchCheckpoint(StrictTransformModel):
-    input_sha256: str = Field(pattern=r"^[a-f0-9]{64}$")
-    attempt_count: int = Field(ge=1, le=3)
+class ModelReviewAttemptCheckpoint(_ModelReviewBatchIdentity):
+    status: Literal["attempted"] = "attempted"
+
+
+class ModelReviewBackoffCheckpoint(_ModelReviewBatchIdentity):
+    status: Literal["backoff"] = "backoff"
+    retry_not_before: AwareDatetime
+
+
+class ModelReviewCompletedCheckpoint(_ModelReviewBatchIdentity):
+    status: Literal["completed"] = "completed"
+    reviews: tuple[TextPatchReview, ...] = Field(min_length=1, max_length=100)
+
+
+class _LegacyModelReviewBatchCheckpoint(_ModelReviewBatchIdentity):
     retry_not_before: AwareDatetime | None = None
     reviews: tuple[TextPatchReview, ...] = Field(default=(), max_length=100)
 
 
+class _LegacyModelReviewBatches(RootModel[tuple[_LegacyModelReviewBatchCheckpoint, ...]]):
+    root: tuple[_LegacyModelReviewBatchCheckpoint, ...] = Field(max_length=MAX_DOCUMENT_BLOCKS)
+
+
+def _decode_model_review_batch(
+    legacy: _LegacyModelReviewBatchCheckpoint,
+) -> ModelReviewBatchCheckpoint:
+    if legacy.reviews:
+        return ModelReviewCompletedCheckpoint(
+            input_sha256=legacy.input_sha256,
+            attempt_count=legacy.attempt_count,
+            reviews=legacy.reviews,
+        )
+    if legacy.retry_not_before is not None:
+        return ModelReviewBackoffCheckpoint(
+            input_sha256=legacy.input_sha256,
+            attempt_count=legacy.attempt_count,
+            retry_not_before=legacy.retry_not_before,
+        )
+    return ModelReviewAttemptCheckpoint(
+        input_sha256=legacy.input_sha256, attempt_count=legacy.attempt_count
+    )
+
+
+type ModelReviewBatchCheckpoint = Annotated[
+    ModelReviewAttemptCheckpoint | ModelReviewBackoffCheckpoint | ModelReviewCompletedCheckpoint,
+    Field(discriminator="status"),
+]
+
+
 class ModelPlanningCheckpoint(StrictTransformModel):
-    version: Literal[1] = 1
+    model_config = ConfigDict(extra="forbid", frozen=True)
+    version: Literal[2] = 2
     kind: Literal["model_planning"] = "model_planning"
-    stage: ModelPlanningStage = ModelPlanningStage.REVIEW_PENDING
+    stage: Literal["review_pending"] = "review_pending"
     request_sha256: str = Field(pattern=r"^[a-f0-9]{64}$")
     document_sha256: str = Field(pattern=r"^[a-f0-9]{64}$")
     pipeline_version: str
@@ -777,6 +914,22 @@ class ModelPlanningCheckpoint(StrictTransformModel):
     review_batches: tuple[ModelReviewBatchCheckpoint, ...] = Field(
         default=(), max_length=MAX_DOCUMENT_BLOCKS
     )
+
+    @model_validator(mode="before")
+    @classmethod
+    def decode_legacy_review_batches(cls, value: object) -> object:
+        if isinstance(value, dict):
+            version = value.get("version")
+            if type(version) is int and version == 1:
+                batches = _LegacyModelReviewBatches.model_validate(value.get("review_batches", ()))
+                return {
+                    **value,
+                    "version": 2,
+                    "review_batches": tuple(
+                        _decode_model_review_batch(batch) for batch in batches.root
+                    ),
+                }
+        return value
 
     @field_validator("review_batches")
     @classmethod

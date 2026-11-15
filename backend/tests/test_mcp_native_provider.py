@@ -105,7 +105,7 @@ async def test_provider_authorize_accepts_codex_variable_loopback_port(
     lab = _provider(client)
     assert await lab.provider.authorize(client, _params("http://127.0.0.1:9876/callback"))
     assert lab.core.state.intent.redirect_uri == "http://127.0.0.1:9876/callback"
-    assert lab.core.state.intent.scopes == list(McpCapability)
+    assert lab.core.state.intent.scopes == tuple(McpCapability)
 
 
 @pytest.mark.parametrize(

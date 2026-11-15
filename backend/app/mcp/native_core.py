@@ -3,7 +3,7 @@ from contextlib import asynccontextmanager
 from datetime import timedelta
 from functools import wraps
 import hmac
-from typing import Final
+from typing import Final, assert_never
 from urllib.parse import urlencode
 
 from mcp.shared.auth import OAuthClientInformationFull, OAuthToken
@@ -14,15 +14,30 @@ from app.mcp.context import McpAuthorizationError
 from app.mcp.grants import SignedGrantBinding, enroll_approved_client, validate_live_grant
 from app.mcp.native_metadata import canonical_issuer, issuer_redirect
 from app.mcp.native_schemas import (
+    AccessPayload,
+    ActiveAccess,
+    ActiveRefresh,
+    ApprovedIntent,
+    BoundIntent,
+    CodePayload,
     ConnectionView,
-    ConsentDecision,
+    ConsentCommand,
     ConsentStatus,
     ConsentView,
+    DeniedIntent,
     NativeAuthorization,
     NativeCredential,
     NativeIntent,
+    NativeIntentPayload,
     NativeOAuthError,
+    ReadyCode,
+    RefreshPayload,
+    UnboundIntent,
     WikiConsentIdentity,
+    bind_intent,
+    consent_status_view,
+    intent_status,
+    settle_intent,
 )
 from app.mcp.native_state import (
     NativePurpose,
@@ -131,21 +146,16 @@ class NativeOAuthCore:
             raise NativeOAuthError
         return client
 
-    async def intent(
-        self, db: AsyncSession, key: str, browser: str, *, allow_decided: bool = False
-    ) -> NativeIntent:
+    async def intent(self, db: AsyncSession, key: str, browser: str) -> NativeIntent:
         if (
             not valid_native_secret(NativePurpose.INTENT, key)
             or not browser
             or len(browser) > _MAX_BROWSER_BINDING
         ):
             raise NativeOAuthError
-        intent = await self.state.get(db, NativePurpose.INTENT, key, NativeIntent)
-        if (
-            intent is None
-            or (intent.decided and not allow_decided)
-            or not hmac.compare_digest(intent.browser_binding, browser)
-        ):
+        stored = await self.state.get(db, NativePurpose.INTENT, key, NativeIntentPayload)
+        intent = stored.root if stored is not None else None
+        if intent is None or not hmac.compare_digest(intent.browser_binding, browser):
             raise NativeOAuthError
         client = await self.client(db, intent.client_id)
         if (
@@ -162,27 +172,28 @@ class NativeOAuthCore:
     ) -> ConsentView:
         async with self.operations.operation(f"native-intent:{key}") as db:
             await self.current_user(db, identity)
-            intent = await self.intent(db, key, browser, allow_decided=True)
-            if intent.user_id is not None and (
-                intent.user_id != identity.user_id
-                or intent.session_revision != identity.session_revision
-            ):
-                raise NativeOAuthError
-            if intent.user_id is None:
-                intent.user_id = identity.user_id
-                intent.session_revision = identity.session_revision
-                intent.csrf = new_native_secret(NativePurpose.INTENT)
-                # Consent reads bind identity, but do not create a grant or extend expiry.
-                await self.state.put(db, NativePurpose.INTENT, key, intent, intent.expires_at)
-            client = await self.client(db, intent.client_id)
-            if intent.csrf is None:
-                raise NativeOAuthError
+            intent = await self.intent(db, key, browser)
+            bound: BoundIntent | ApprovedIntent | DeniedIntent
+            match intent:
+                case UnboundIntent():
+                    bound = bind_intent(intent, identity, new_native_secret(NativePurpose.INTENT))
+                    await self.state.put(db, NativePurpose.INTENT, key, bound, bound.expires_at)
+                case BoundIntent() | ApprovedIntent() | DeniedIntent():
+                    if (
+                        intent.user_id != identity.user_id
+                        or intent.session_revision != identity.session_revision
+                    ):
+                        raise NativeOAuthError
+                    bound = intent
+                case _:
+                    assert_never(intent)
+            client = await self.client(db, bound.client_id)
             return ConsentView(
-                client_id=intent.client_id,
+                client_id=bound.client_id,
                 client_name=client.client_name or "MCP Client",
-                scopes=intent.scopes,
-                csrf=intent.csrf,
-                status=intent.decision or "pending",
+                scopes=list(bound.scopes),
+                csrf=bound.csrf,
+                status=intent_status(bound),
             )
 
     @native_errors
@@ -193,18 +204,16 @@ class NativeOAuthCore:
             raise NativeOAuthError
         async with self.operations.operation(f"native-intent:{key}") as db:
             await self.current_user(db, identity)
-            saved = await self.state.get(db, NativePurpose.INTENT, key, NativeIntent)
+            saved = await self.state.get(db, NativePurpose.INTENT, key, NativeIntentPayload)
             if saved is None:
-                return ConsentStatus(status="expired", restart_required=True)
-            intent = await self.intent(db, key, browser, allow_decided=True)
-            if intent.user_id is not None and (
+                return consent_status_view(status="expired")
+            intent = await self.intent(db, key, browser)
+            if not isinstance(intent, UnboundIntent) and (
                 intent.user_id != identity.user_id
                 or intent.session_revision != identity.session_revision
             ):
                 raise NativeOAuthError
-            return ConsentStatus(
-                status=intent.decision or "pending", restart_required=intent.decided
-            )
+            return consent_status_view(status=intent_status(intent))
 
     @native_errors
     async def decide(
@@ -214,27 +223,28 @@ class NativeOAuthCore:
         identity: WikiConsentIdentity,
         browser: str,
         csrf: str,
-        approve: bool,
-        transform_approved: bool = False,
+        command: ConsentCommand,
     ) -> str:
-        ConsentDecision(approve=approve, transform_approved=transform_approved)
         async with self.operations.operation(f"native-intent:{key}") as db:
             user = await self.current_user(db, identity)
             intent = await self.intent(db, key, browser)
+            if not isinstance(intent, BoundIntent):
+                raise NativeOAuthError
             if (
                 intent.user_id != identity.user_id
                 or intent.session_revision != identity.session_revision
-                or intent.csrf is None
                 or not hmac.compare_digest(intent.csrf, csrf)
             ):
                 raise NativeOAuthError
-            if transform_approved and McpCapability.TRANSFORM not in intent.scopes:
+            if (
+                command is ConsentCommand.APPROVE_TRANSFORM
+                and McpCapability.TRANSFORM not in intent.scopes
+            ):
                 raise NativeOAuthError
-            intent.decided = True
-            intent.decision = "approved" if approve else "denied"
-            await self.state.put(db, NativePurpose.INTENT, key, intent, intent.expires_at)
+            settled = settle_intent(intent, command)
+            await self.state.put(db, NativePurpose.INTENT, key, settled, settled.expires_at)
             parameters = {"state": intent.state} if intent.state is not None else {}
-            if not approve:
+            if command is ConsentCommand.DENY:
                 parameters["error"] = "access_denied"
             else:
                 count = await db.scalar(
@@ -254,14 +264,14 @@ class NativeOAuthCore:
                     db,
                     approving_user_id=user.id,
                     client_id=intent.client_id,
-                    transform_approved=transform_approved,
+                    transform_approved=command is ConsentCommand.APPROVE_TRANSFORM,
                 )
                 await self.state.promote_client(db, intent.client_id, grant.expires_at)
                 scopes = [McpCapability.READ] + (
-                    [McpCapability.TRANSFORM] if transform_approved else []
+                    [McpCapability.TRANSFORM] if command is ConsentCommand.APPROVE_TRANSFORM else []
                 )
                 now = await native_database_time(db)
-                credential = NativeCredential(
+                credential = ReadyCode(
                     issuer=self.issuer,
                     grant_id=grant.id,
                     client_id=intent.client_id,
@@ -270,7 +280,7 @@ class NativeOAuthCore:
                     issued_at=int(grant.created_at.timestamp()),
                     expires_at=now + timedelta(minutes=5),
                     resource=self.resource,
-                    scopes=scopes,
+                    scopes=tuple(scopes),
                     challenge=intent.challenge,
                     redirect_uri=intent.redirect_uri,
                     redirect_explicit=intent.redirect_explicit,
@@ -281,6 +291,24 @@ class NativeOAuthCore:
                 )
                 parameters["code"] = code
             return issuer_redirect(f"{intent.redirect_uri}?{urlencode(parameters)}", self.issuer)
+
+    async def credential(
+        self, db: AsyncSession, purpose: NativePurpose, key: str
+    ) -> NativeCredential | None:
+        match purpose:
+            case NativePurpose.CODE:
+                code = await self.state.get(db, purpose, key, CodePayload)
+                return code.root if code is not None else None
+            case NativePurpose.ACCESS:
+                access = await self.state.get(db, purpose, key, AccessPayload)
+                return access.root if access is not None else None
+            case NativePurpose.REFRESH:
+                refresh = await self.state.get(db, purpose, key, RefreshPayload)
+                return refresh.root if refresh is not None else None
+            case NativePurpose.CLIENT | NativePurpose.INTENT:
+                raise NativeOAuthError
+            case _:
+                assert_never(purpose)
 
     async def issue(
         self, db: AsyncSession, credential: NativeCredential, scopes: list[McpCapability]
@@ -295,20 +323,20 @@ class NativeOAuthCore:
             new_native_secret(NativePurpose.ACCESS),
             new_native_secret(NativePurpose.REFRESH),
         )
-        for purpose, key, expiry in (
-            (NativePurpose.ACCESS, access, access_expiry),
-            (NativePurpose.REFRESH, refresh, refresh_expiry),
-        ):
-            saved = credential.model_copy(
-                update={
-                    "scopes": scopes,
-                    "expires_at": expiry,
-                    "consumed": False,
-                    "challenge": None,
-                    "redirect_uri": None,
-                }
-            )
-            await self.state.put(db, purpose, key, saved, expiry)
+        claims = {
+            "issuer": credential.issuer,
+            "grant_id": credential.grant_id,
+            "client_id": credential.client_id,
+            "user_id": credential.user_id,
+            "google_subject": credential.google_subject,
+            "issued_at": credential.issued_at,
+            "resource": credential.resource,
+            "scopes": tuple(scopes),
+        }
+        access_state = ActiveAccess.model_validate({**claims, "expires_at": access_expiry})
+        refresh_state = ActiveRefresh.model_validate({**claims, "expires_at": refresh_expiry})
+        await self.state.put(db, NativePurpose.ACCESS, access, access_state, access_expiry)
+        await self.state.put(db, NativePurpose.REFRESH, refresh, refresh_state, refresh_expiry)
         return OAuthToken(
             access_token=access,
             token_type=_BEARER,

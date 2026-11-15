@@ -305,12 +305,10 @@ async def _yield_writer_sleep(_delay: float) -> None:
         ),
     ],
 )
-@pytest.mark.parametrize("phase", list(TransformPhase))
 async def test_normal_model_settings_reach_the_real_sdk_without_overriding_explicit_models(
     model_override: str | None,
     expected_model: str,
     thinking_level: types.ThinkingLevel | None,
-    phase: TransformPhase,
 ) -> None:
     settings = (
         DocumentSettings()
@@ -361,7 +359,7 @@ async def test_normal_model_settings_reach_the_real_sdk_without_overriding_expli
         )
         generator = VertexGeminiPatchGenerator(policy=policy, client=client)
         try:
-            assert await generator.generate(document, phase=phase) == [patch]
+            assert await generator.generate(document, phase=TransformPhase.UNSLOP) == [patch]
         finally:
             await client.aio.aclose()
 

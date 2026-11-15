@@ -28,6 +28,7 @@ from app.document_transform.schemas import (
     OutputStrategy,
     TransformMode,
 )
+from app.document_transform.verification import BrandVerification
 from app.identifiers import DocsRevisionId, FileId, TaskId
 from tests.test_document_transform import (
     _branded_google_document,
@@ -245,8 +246,8 @@ async def test_public_verifier_rejects_changed_scoped_layout(field: str) -> None
         protected_structure_sha256=inspection.protected_structure_sha256,
         verify_brand=True,
     )
-    assert good.supported_brand_applied
-    assert not good.brand_applied
+    assert good.brand is BrandVerification.SUPPORTED
+    assert good.brand not in {BrandVerification.FULL, BrandVerification.NOT_REQUIRED}
     _paragraph(document)["paragraphStyle"][field] = "changed"
     bad = await native.verify_in_place(
         document=document,
@@ -256,8 +257,8 @@ async def test_public_verifier_rejects_changed_scoped_layout(field: str) -> None
         protected_structure_sha256=inspection.protected_structure_sha256,
         verify_brand=True,
     )
-    assert not bad.supported_brand_applied
-    assert not bad.brand_applied
+    assert bad.brand is not BrandVerification.SUPPORTED
+    assert bad.brand not in {BrandVerification.FULL, BrandVerification.NOT_REQUIRED}
 
 
 @pytest.mark.parametrize("mode", [TransformMode.FORMAT, TransformMode.BOTH])

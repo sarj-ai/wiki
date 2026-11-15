@@ -1,7 +1,7 @@
 import json
-from typing import Any, Self
+from typing import Self
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, JsonValue, model_validator
 
 from app.document_transform.ir import MAX_DOC_TABS
 from app.identifiers import DocsSegmentId, DocsTabId
@@ -125,21 +125,19 @@ class CustomHeaderTitleTarget(BaseModel):
 
 
 def custom_furniture_requests_safe(
-    requests: list[dict[str, Any]],
+    requests: list[dict[str, JsonValue]],
     bindings: tuple[CustomFurnitureBinding, ...],
     *,
-    allowed_header_requests: tuple[dict[str, Any], ...] = (),
+    allowed_header_requests: tuple[dict[str, JsonValue], ...] = (),
 ) -> bool:
     if not bindings:
         return True
-    tabs = {binding.tab_id for binding in bindings}
-    header_tabs = {binding.tab_id for binding in bindings if binding.header_ids}
     segments = {
         identifier
         for binding in bindings
         for identifier in (*binding.header_ids, *binding.footer_ids)
     }
-    observed_header_requests: list[dict[str, Any]] = []
+    observed_header_requests: list[dict[str, JsonValue]] = []
     for request in requests:
         if len(request) != 1 or not set(request) <= {
             "insertText",
@@ -153,34 +151,33 @@ def custom_furniture_requests_safe(
             "updateDocumentStyle",
         }:
             return False
-        if not all(isinstance(value, dict) for value in request.values()):
+        ((command, body),) = request.items()
+        if not isinstance(body, dict):
             return False
-        if "updateDocumentStyle" in request:
-            tab_id = request["updateDocumentStyle"].get("tabId")
-            if not isinstance(tab_id, str) or tab_id in tabs:
-                return False
-        if "createHeader" in request:
-            location = request["createHeader"].get("sectionBreakLocation")
-            if not isinstance(location, dict):
-                return False
-            tab_id = location.get("tabId")
-            if not isinstance(tab_id, str) or tab_id in header_tabs:
-                return False
-        pending: list[object] = [request]
-        targets_furniture = False
-        while pending:
-            match pending.pop():
-                case dict() as value:
-                    segment = value.get("segmentId")
-                    if "segmentId" in value:
-                        if not isinstance(segment, str):
-                            return False
-                        targets_furniture = targets_furniture or segment in segments
-                    pending.extend(value.values())
-                case list() as value:
-                    pending.extend(value)
-                case _:
-                    pass
-        if targets_furniture:
+        if not _header_scope_safe(command, body, bindings):
+            return False
+        requested_segments = furniture_context_values(request, frozenset({"segmentId"}))
+        if any(not isinstance(segment, str) for segment in requested_segments):
+            return False
+        if any(segment in segments for segment in requested_segments):
             observed_header_requests.append(request)
     return observed_header_requests == list(allowed_header_requests)
+
+
+def _header_scope_safe(
+    command: str,
+    body: dict[str, JsonValue],
+    bindings: tuple[CustomFurnitureBinding, ...],
+) -> bool:
+    if command == "updateDocumentStyle":
+        tab_id = body.get("tabId")
+        return isinstance(tab_id, str) and all(binding.tab_id != tab_id for binding in bindings)
+    if command == "createHeader":
+        location = body.get("sectionBreakLocation")
+        if not isinstance(location, dict):
+            return False
+        tab_id = location.get("tabId")
+        return isinstance(tab_id, str) and all(
+            binding.tab_id != tab_id or not binding.header_ids for binding in bindings
+        )
+    return True

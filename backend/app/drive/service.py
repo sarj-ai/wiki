@@ -42,6 +42,15 @@ from app.drive.google_schemas import (
     GoogleFileProbe,
     GooglePermission,
 )
+from app.drive.pagination import (
+    FirstPage,
+    Page,
+    PagesComplete,
+    PageToken,
+    advance_page,
+    page_number,
+    page_token,
+)
 from app.drive.retry import (
     execute_batch_with_retry,
     execute_with_retry,
@@ -240,7 +249,7 @@ class DriveService(ABC):
         self,
         drive_id: DriveId,
         *,
-        page_token: str | None = None,
+        page_token: PageToken | None = None,
     ) -> DrivePermissionsPage:
         raise NotImplementedError
 
@@ -730,7 +739,7 @@ class GoogleDriveService(DriveService):
         self,
         drive_id: DriveId,
         *,
-        page_token: str | None = None,
+        page_token: PageToken | None = None,
     ) -> DrivePermissionsPage:
         if await self._is_personal_drive(drive_id):
             return DrivePermissionsPage(
@@ -933,16 +942,16 @@ class GoogleDriveService(DriveService):
             _log_provider_failure("my_drive_root", exc)
         except ValidationError:
             _log_invalid_provider_response("my_drive_root")
-        page_token: str | None = None
-        while True:
+        page: Page = FirstPage()
+        while not isinstance(page, PagesComplete):
             params: dict[str, Any] = {
                 "pageSize": 100,
                 "q": "hidden = false",
                 "useDomainAdminAccess": False,
                 "fields": "nextPageToken,drives(id,name,hidden)",
             }
-            if page_token:
-                params["pageToken"] = page_token
+            if (token := page_token(page)) is not None:
+                params["pageToken"] = token
             try:
                 resp = execute_with_retry(client.drives().list(**params))
             except HttpError as exc:
@@ -956,9 +965,12 @@ class GoogleDriveService(DriveService):
                 if not drive.id or not drive.name or drive.hidden:
                     continue
                 out.append(DriveSummary(id=drive.id, name=drive.name))
-            page_token = resp.get("nextPageToken")
-            if not page_token:
+            try:
+                page = advance_page(page, resp.get("nextPageToken"))
+            except DriveTraversalIncompleteError:
+                _log_invalid_provider_response("list_drives")
                 return out
+        return out
 
     def _is_personal_descendant_sync(
         self,
@@ -1000,17 +1012,17 @@ class GoogleDriveService(DriveService):
     def _walk_folders_sync(self, drive_id: DriveId, *, is_personal: bool = False) -> DriveTree:
         client = self._client()
         out = DriveTree(drive_id=drive_id, folders=[], files=[], files_complete=True)
-        page_token: str | None = None
+        page: Page = FirstPage()
         query = f"(mimeType='{MIME_FOLDER}' or mimeType='{MIME_SHORTCUT}') and trashed=false"
         if is_personal:
             query += _OWNED_BY_ME_CLAUSE
-        while True:
+        while not isinstance(page, PagesComplete):
             params = _drive_files_params(
                 drive_id,
                 is_personal=is_personal,
                 query=query,
                 fields=_DRIVE_TREE_FIELDS,
-                page_token=page_token,
+                page_token=page_token(page),
             )
             try:
                 resp = execute_with_retry(client.files().list(**params))
@@ -1028,9 +1040,8 @@ class GoogleDriveService(DriveService):
                 ):
                     continue
                 out.folders.append(node)
-            page_token = resp.get("nextPageToken")
-            if not page_token:
-                return out
+            page = advance_page(page, resp.get("nextPageToken"))
+        return out
 
     def _list_children_sync(
         self,
@@ -1063,22 +1074,20 @@ class GoogleDriveService(DriveService):
         client = self._client()
         out: list[DriveNode] = []
         raw_children = 0
-        page_token: str | None = None
-        pages = 0
+        page: Page = FirstPage()
         query = f"'{folder_id}' in parents and trashed=false"
         query += f" and {_build_mime_clause(navigator_mime_types)}"
         if name is not None:
             query += f" and name='{escape_query_value(name)}'"
-        while True:
-            if max_pages is not None and pages >= max_pages:
+        while not isinstance(page, PagesComplete):
+            if max_pages is not None and page_number(page) > max_pages:
                 raise DriveTraversalIncompleteError
-            pages += 1
             params = _drive_files_params(
                 drive_id,
                 is_personal=is_personal,
                 query=query,
                 fields=navigator_fields,
-                page_token=page_token,
+                page_token=page_token(page),
             )
             try:
                 resp = execute_with_retry(client.files().list(**params))
@@ -1095,27 +1104,25 @@ class GoogleDriveService(DriveService):
                 node = _folder_member_node(GoogleFile.model_validate(raw), folder_id=folder_id)
                 if node is not None:
                     out.append(node)
-            page_token = resp.get("nextPageToken")
-            if not page_token:
-                return out
+            page = advance_page(page, resp.get("nextPageToken"))
+        return out
 
     def _list_drive_files_sync(
         self, drive_id: DriveId, *, is_personal: bool = False
     ) -> _DriveFilesResult:
         client = self._client()
         out: list[DriveNode] = []
-        page_token: str | None = None
-        pages = 0
+        page: Page = FirstPage()
         query = f"trashed=false and mimeType!='{MIME_FOLDER}' and {_build_mime_clause()}"
         if is_personal:
             query += _OWNED_BY_ME_CLAUSE
-        while True:
+        while not isinstance(page, PagesComplete):
             params = _drive_files_params(
                 drive_id,
                 is_personal=is_personal,
                 query=query,
                 fields=_DRIVE_TREE_FIELDS,
-                page_token=page_token,
+                page_token=page_token(page),
             )
             try:
                 resp = execute_with_retry(client.files().list(**params))
@@ -1126,13 +1133,17 @@ class GoogleDriveService(DriveService):
                 node = _preload_file_node(file, drive_id, is_personal=is_personal)
                 if node is not None:
                     out.append(node)
-            page_token = resp.get("nextPageToken")
-            if not page_token:
-                return _DriveFilesResult(files=out, complete=True)
-            pages += 1
-            if pages >= _MAX_DRIVE_FILE_PAGES:
-                logger.warning("Drive file listing truncated pages={pages}", pages=pages)
+            try:
+                page = advance_page(page, resp.get("nextPageToken"))
+            except DriveTraversalIncompleteError:
+                _log_invalid_provider_response("list_drive_files")
                 return _DriveFilesResult(files=out, complete=False)
+            if not isinstance(page, PagesComplete) and page_number(page) > _MAX_DRIVE_FILE_PAGES:
+                logger.warning(
+                    "Drive file listing truncated pages={pages}", pages=_MAX_DRIVE_FILE_PAGES
+                )
+                return _DriveFilesResult(files=out, complete=False)
+        return _DriveFilesResult(files=out, complete=True)
 
     def _search_drive_sync(
         self, drive_id: DriveId, query: str, limit: int, *, is_personal: bool = False
@@ -1242,7 +1253,7 @@ class GoogleDriveService(DriveService):
     def _list_drive_permissions_sync(
         self,
         drive_id: DriveId,
-        page_token: str | None,
+        page_token: PageToken | None,
     ) -> DrivePermissionsPage:
         params: dict[str, Any] = {
             "fields": _PERMISSION_PAGE_FIELDS,
@@ -1289,13 +1300,14 @@ class GoogleDriveService(DriveService):
 
         permissions: list[DrivePermission] = []
         permission_ids: set[str] = set()
-        page_token: str | None = None
-        seen_page_tokens: set[str] = set()
-        for _page in range(max_pages):
+        page: Page = FirstPage()
+        while not isinstance(page, PagesComplete):
+            if page_number(page) > max_pages:
+                raise DriveTraversalIncompleteError
             raw_page = _read_permission_page(
                 client,
                 file_id=file_id,
-                page_token=page_token,
+                page_token=page_token(page),
                 page_size=min(100, max_permissions - len(permissions)),
             )
             for raw_permission in raw_page["permissions"]:
@@ -1304,21 +1316,9 @@ class GoogleDriveService(DriveService):
                 permissions.append(_drive_permission(permission))
                 if len(permissions) > max_permissions:
                     raise DriveTraversalIncompleteError
-            next_page_token = raw_page.get("nextPageToken")
-            if next_page_token is None:
-                break
-            if len(permissions) >= max_permissions:
+            page = advance_page(page, raw_page.get("nextPageToken"))
+            if not isinstance(page, PagesComplete) and len(permissions) >= max_permissions:
                 raise DriveTraversalIncompleteError
-            if (
-                not isinstance(next_page_token, str)
-                or not next_page_token
-                or next_page_token in seen_page_tokens
-            ):
-                raise DriveTraversalIncompleteError
-            seen_page_tokens.add(next_page_token)
-            page_token = next_page_token
-        else:
-            raise DriveTraversalIncompleteError
 
         if _read_file_permission_metadata(client, file_id) != metadata:
             raise DriveTraversalIncompleteError
@@ -1515,7 +1515,7 @@ def _drive_permission_id(permission: DrivePermission) -> str:
 
 
 def _read_permission_page(
-    client: DriveResource, *, file_id: FileId, page_token: str | None, page_size: int
+    client: DriveResource, *, file_id: FileId, page_token: PageToken | None, page_size: int
 ) -> dict[str, Any]:
     params: dict[str, Any] = {
         "fileId": file_id,
@@ -1600,7 +1600,7 @@ def _drive_files_params(
     is_personal: bool | None,
     query: str,
     fields: str,
-    page_token: str | None,
+    page_token: PageToken | None,
 ) -> dict[str, Any]:
     if is_personal:
         corpora = "user"

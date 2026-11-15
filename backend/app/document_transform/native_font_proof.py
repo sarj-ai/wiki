@@ -3,7 +3,7 @@ from copy import deepcopy
 from dataclasses import dataclass
 import hashlib
 import json
-from typing import Annotated, Any, Literal, NewType, assert_never
+from typing import Annotated, Any, Literal, NewType, TypedDict, assert_never
 
 from loguru import logger
 from pydantic import (
@@ -31,6 +31,7 @@ from app.document_transform.native_font_semantics import (
     capture_font_semantics,
     semantic_font_digest,
 )
+from app.document_transform.readability_json import obj
 from app.identifiers import DocsTabId
 
 
@@ -133,50 +134,37 @@ def _bodies(document: dict[str, Any]) -> dict[str, list[dict[str, Any]]]:
     return result
 
 
+class _CanonicalFontRun(TypedDict):
+    content: str
+    properties: dict[str, JsonValue]
+
+
+@dataclass(frozen=True, slots=True)
+class _ConsumedNativeRun:
+    end_index: int
+    content: str
+
+
 def native_paragraph_font_sha256(
-    element: dict[str, Any], *, preserve_font_family: bool = False
+    element: dict[str, JsonValue], *, preserve_font_family: bool = False
 ) -> str:
     payload = deepcopy(element)
     start, end = payload.pop("startIndex"), payload.pop("endIndex")
     if type(start) is not int or type(end) is not int or not 0 <= start < end:
         raise ValueError
-    paragraph = payload["paragraph"]
+    paragraph = obj(payload["paragraph"])
     parts = paragraph["elements"]
     if not isinstance(parts, list) or not parts:
         raise ValueError
-    canonical: list[dict[str, Any]] = []
+    canonical: list[_CanonicalFontRun] = []
     cursor = start
-    for part in parts:
-        run_start, run_end = part.pop("startIndex"), part.pop("endIndex")
-        run = part["textRun"]
-        content = run.pop("content")
-        if not isinstance(content, str) or not content:
-            raise ValueError
-        if (
-            type(run_start) is not int
-            or type(run_end) is not int
-            or run_start != cursor
-            or run_end != cursor + utf16_length(content)
-        ):
-            raise ValueError
-        cursor = run_end
-        suffix = deepcopy(part) if run_end == end else None
-        style = run.get("textStyle", {})
-        if not isinstance(style, dict):
-            raise TypeError
-        family = style.get("weightedFontFamily", {})
-        if not isinstance(family, dict):
-            raise TypeError
-        if "fontFamily" in family and (
-            not isinstance(family["fontFamily"], str) or not family["fontFamily"]
-        ):
-            raise ValueError
-        if not preserve_font_family:
-            family.pop("fontFamily", None)
-            if not family:
-                style.pop("weightedFontFamily", None)
-            if not style:
-                run.pop("textStyle", None)
+    for raw_part in parts:
+        part = obj(raw_part)
+        run = _take_native_run(part, cursor)
+        cursor = run.end_index
+        content = run.content
+        suffix = deepcopy(part) if cursor == end else None
+        _project_native_family(obj(part["textRun"]), preserve=preserve_font_family)
         if suffix is not None:
             if not content.endswith("\n"):
                 raise ValueError
@@ -187,13 +175,48 @@ def native_paragraph_font_sha256(
             _append_run(canonical, content, part)
     if cursor != end:
         raise ValueError
-    paragraph["elements"] = canonical
+    paragraph["elements"] = [
+        {"content": run["content"], "properties": run["properties"]} for run in canonical
+    ]
     return hashlib.sha256(
         json.dumps(payload, sort_keys=True, ensure_ascii=False, separators=(",", ":")).encode()
     ).hexdigest()
 
 
-def _append_run(canonical: list[dict[str, Any]], content: str, properties: dict[str, Any]) -> None:
+def _take_native_run(part: dict[str, JsonValue], cursor: int) -> _ConsumedNativeRun:
+    run_start, run_end = part.pop("startIndex"), part.pop("endIndex")
+    content = obj(part["textRun"]).pop("content")
+    if not isinstance(content, str) or not content:
+        raise ValueError
+    if (
+        type(run_start) is not int
+        or type(run_end) is not int
+        or run_start != cursor
+        or run_end != cursor + utf16_length(content)
+    ):
+        raise ValueError
+    return _ConsumedNativeRun(end_index=run_end, content=content)
+
+
+def _project_native_family(run: dict[str, JsonValue], *, preserve: bool) -> None:
+    style = obj(run.get("textStyle", {}))
+    family = obj(style.get("weightedFontFamily", {}))
+    if "fontFamily" in family and (
+        not isinstance(family["fontFamily"], str) or not family["fontFamily"]
+    ):
+        raise ValueError
+    if preserve:
+        return
+    family.pop("fontFamily", None)
+    if not family:
+        style.pop("weightedFontFamily", None)
+    if not style:
+        run.pop("textStyle", None)
+
+
+def _append_run(
+    canonical: list[_CanonicalFontRun], content: str, properties: dict[str, JsonValue]
+) -> None:
     if not content:
         return
     # Only exactly equal residual payloads may be coalesced. Unknown fields,
@@ -556,7 +579,7 @@ def _paragraph_components(element: dict[str, Any]) -> NativeFontComponents:
     payload.pop("startIndex")
     payload.pop("endIndex")
     parts = payload["paragraph"].pop("elements")
-    visible: list[dict[str, Any]] = []
+    visible: list[_CanonicalFontRun] = []
     terminal: dict[str, Any] = {}
     family_representation: dict[str, Any] = {}
     for ordinal, part in enumerate(parts):

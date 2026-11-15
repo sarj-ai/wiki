@@ -8,6 +8,7 @@ from googleapiclient.errors import HttpError
 from httplib2 import Response
 import pytest
 
+from app.drive.pagination import PageToken
 from app.drive.schemas import (
     DriveNode,
     DrivePermissionsPage,
@@ -60,7 +61,7 @@ class _FakeDriveService(DriveService):
         self,
         drive_id: DriveId,
         *,
-        page_token: str | None = None,
+        page_token: PageToken | None = None,
     ) -> DrivePermissionsPage:
         return DrivePermissionsPage(
             access_model="shared_drive_membership",

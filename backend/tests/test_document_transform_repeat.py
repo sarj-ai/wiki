@@ -8,11 +8,12 @@ import pytest
 from app.document_transform import google_gateway as gateway_module
 from app.document_transform.brand import SarjBrandProfile, build_copy_mutations
 from app.document_transform.executor import DocumentTransformExecutor
-from app.document_transform.gateway import NativeDocumentSnapshot, SourceSnapshot
+from app.document_transform.gateway import InPlaceInspection, NativeDocumentSnapshot, SourceSnapshot
 from app.document_transform.google_gateway import GoogleDocumentGateway, verify_brand_application
 from app.document_transform.ir import parse_google_document
 from app.document_transform.schemas import TransformMode
 from app.document_transform.source_access import NativeSourceAccess, PersonalDrive
+from app.document_transform.verification import BrandVerification
 from app.identifiers import DocsRevisionId, FileId, TaskId
 from tests.test_document_transform import (
     _branded_google_document,
@@ -27,10 +28,13 @@ async def test_already_branded_format_is_zero_batch_noop(monkeypatch: pytest.Mon
     gateway = _InPlaceGateway("The team approved the plan.")
     inspect_original = gateway.inspect_in_place
 
-    async def inspect(*, snapshot: SourceSnapshot, title: str):
+    async def inspect(*, snapshot: SourceSnapshot, title: str) -> InPlaceInspection:
         inspection = await inspect_original(snapshot=snapshot, title=title)
         return replace(
-            inspection, preserved_headers=inspection.headers, headers=(), fully_branded=True
+            inspection,
+            preserved_headers=inspection.headers,
+            headers=(),
+            brand=BrandVerification.FULL,
         )
 
     monkeypatch.setattr(gateway, "inspect_in_place", inspect)
@@ -57,7 +61,7 @@ def test_existing_brand_header_is_preserved_without_reinsertion() -> None:
     assert inspection.headers == ()
     assert len(inspection.preserved_headers) == 1
     assert inspection.unknown_header_tab_ids == ()
-    assert inspection.fully_branded
+    assert inspection.brand is BrandVerification.FULL
     parsed = parse_google_document(document, title="Decision")
     mutations = build_copy_mutations(
         parsed,
@@ -94,7 +98,7 @@ def test_existing_header_conflicts_stay_blocked(conflict: str) -> None:
     assert inspection.unknown_header_tab_ids == (("tab-a",) if conflict == "extra_header" else ())
     assert bool(inspection.custom_furniture) is (conflict != "extra_header")
     assert not inspection.preserved_headers
-    assert not inspection.fully_branded
+    assert inspection.brand is not BrandVerification.FULL
 
 
 def _inspection_snapshot(document: dict[str, JsonValue]) -> NativeDocumentSnapshot:

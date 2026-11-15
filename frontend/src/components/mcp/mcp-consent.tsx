@@ -4,6 +4,7 @@ import { useId, useRef, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
+import type { McpConsentCommand } from "@/lib/mcp-consent-client";
 
 type ConsentStatus = "approved" | "denied" | "expired" | "pending";
 type DisplayStatus =
@@ -17,10 +18,7 @@ interface McpConsentProps {
   accountEmail: string;
   clientName: string;
   initialStatus?: ConsentStatus;
-  onDecision: (decision: {
-    approve: boolean;
-    transformApproved: boolean;
-  }) => Promise<"approved" | "denied">;
+  onDecision: (decision: McpConsentCommand) => Promise<"approved" | "denied">;
   onRecover: () => Promise<ConsentStatus>;
   requestsTransform: boolean;
 }
@@ -54,42 +52,32 @@ export function McpConsent({
   const [status, setStatus] = useState<DisplayStatus>(
     initialStatus === "approved" ? "approved-recovered" : initialStatus,
   );
-  const decisionLocked = useRef(initialStatus !== "pending");
-  const recoveryLocked = useRef(false);
+  const phase = useRef<DisplayStatus>(status);
   const disabled = status !== "pending";
 
-  function unlockRecovery(): void {
-    recoveryLocked.current = false;
+  function publish(next: DisplayStatus): void {
+    phase.current = next;
+    setStatus(next);
   }
 
-  async function decide(approve: boolean): Promise<void> {
-    if (decisionLocked.current) return;
-    decisionLocked.current = true;
-    setStatus("submitting");
+  async function decide(command: McpConsentCommand): Promise<void> {
+    if (phase.current !== "pending") return;
+    publish("submitting");
     try {
-      setStatus(
-        await onDecision({
-          approve,
-          transformApproved: approve && requestsTransform && transformApproved,
-        }),
-      );
+      publish(await onDecision(command));
     } catch {
-      setStatus("unknown");
+      publish("unknown");
     }
   }
 
   async function recover(): Promise<void> {
-    if (recoveryLocked.current) return;
-    recoveryLocked.current = true;
-    setStatus("checking");
+    if (phase.current !== "unknown") return;
+    publish("checking");
     try {
       const confirmed = await onRecover();
-      decisionLocked.current = confirmed !== "pending";
-      setStatus(confirmed === "approved" ? "approved-recovered" : confirmed);
+      publish(confirmed === "approved" ? "approved-recovered" : confirmed);
     } catch {
-      setStatus("unknown");
-    } finally {
-      unlockRecovery();
+      publish("unknown");
     }
   }
 
@@ -156,12 +144,21 @@ export function McpConsent({
       <div className="flex flex-wrap justify-end gap-3">
         <Button
           disabled={disabled}
-          onClick={() => void decide(false)}
+          onClick={() => void decide("deny")}
           variant="outline"
         >
           Deny
         </Button>
-        <Button disabled={disabled} onClick={() => void decide(true)}>
+        <Button
+          disabled={disabled}
+          onClick={() =>
+            void decide(
+              requestsTransform && transformApproved
+                ? "approve_transform"
+                : "approve_read",
+            )
+          }
+        >
           {transformApproved && requestsTransform
             ? "Allow read and edit access"
             : "Allow read access"}

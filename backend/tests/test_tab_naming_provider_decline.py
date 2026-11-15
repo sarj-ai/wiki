@@ -7,18 +7,21 @@ from pydantic import JsonValue
 import pytest
 
 from app.document_transform.errors import DocumentGatewayError, UnsupportedTabMetadataError
-from app.document_transform.gateway import InPlaceStageResult, OutputVerification
+from app.document_transform.gateway import InPlaceStageResult
 from app.document_transform.google_gateway import GoogleDocumentGateway
 from app.document_transform.schemas import (
     CopyCheckpointPayload,
     CopyCheckpointStage,
+    DeclinedTabNaming,
     InPlaceCheckpointStage,
     TabNamingCheckpoint,
     TransformMode,
 )
 from app.document_transform.tab_metadata import tab_naming_invariant_sha256
 from app.document_transform.tab_names import NativeTabProperties, TabNamingPlan, TabRename
+from app.document_transform.verification import BrandVerification
 from app.identifiers import DocsRevisionId, DocsTabId, FileId, TaskId
+from tests.document_verification import VerificationFacts
 from tests.test_document_transform import (
     _CheckpointStore,
     _copy_executor,
@@ -184,7 +187,7 @@ class _CopyDeclinedTabs(_Gateway):
     def __init__(self) -> None:
         super().__init__(
             _native_copy_gateway().snapshot,
-            verification=OutputVerification(True, True, True),
+            verification=VerificationFacts(brand=BrandVerification.FULL),
         )
         self.naming_attempts = 0
 
@@ -231,8 +234,8 @@ async def test_verified_copy_survives_rejected_tab_write_and_never_replays_it(
         store.checkpoints[-1].model_dump_json()
     ).root
     assert checkpoint.stage is CopyCheckpointStage.VERIFIED
-    assert checkpoint.tab_naming is None
-    assert checkpoint.tab_naming_declined_reason == "unsupported_metadata"
+    assert isinstance(checkpoint.tab_naming, DeclinedTabNaming)
+    assert checkpoint.tab_naming.reason == "unsupported_metadata"
     assert result.validation.source_unchanged
     assert result.validation.protected_content_preserved
     assert result.validation.structure_preserved
@@ -295,8 +298,8 @@ async def test_in_place_rejected_tab_write_retains_verified_body_and_durable_dec
     ).execute(operation_id=task_id, request=request)
     checkpoint = store.checkpoints[-1]
     assert checkpoint.stage is InPlaceCheckpointStage.COMPLETE
-    assert checkpoint.tab_naming is None
-    assert checkpoint.tab_naming_declined_reason == "unsupported_metadata"
+    assert isinstance(checkpoint.tab_naming, DeclinedTabNaming)
+    assert checkpoint.tab_naming.reason == "unsupported_metadata"
     assert result.changed
     assert result.validation.protected_content_preserved
     replayed = await _replay_executor(

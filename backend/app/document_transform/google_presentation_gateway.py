@@ -58,6 +58,7 @@ from app.document_transform.presentation_state import (
 )
 from app.document_transform.schemas import DriveFileSource
 from app.document_transform.slides_ir import parse_google_presentation
+from app.document_transform.verification import BrandVerification
 from app.drive.retry import ProviderDeadlineError, execute_mutation, execute_with_retry
 from app.drive.schemas import MIME_FOLDER, MIME_SLIDE
 from app.drive.service import GoogleRefreshHandler, build_google_credentials, reuse_drive_client
@@ -768,8 +769,12 @@ class GooglePresentationGateway(PresentationGateway):
             structure_preserved=(
                 fingerprints.protected_structure_sha256 == expected_protected_structure_sha256
             ),
-            brand_applied=(
-                expected_brand_sha256 is None or fingerprints.brand_sha256 == expected_brand_sha256
+            brand=(
+                BrandVerification.NOT_REQUIRED
+                if expected_brand_sha256 is None
+                else BrandVerification.FULL
+                if fingerprints.brand_sha256 == expected_brand_sha256
+                else BrandVerification.MISMATCH
             ),
             semantic_sha256=fingerprints.semantic_sha256,
             protected_structure_sha256=fingerprints.protected_structure_sha256,
@@ -779,7 +784,7 @@ class GooglePresentationGateway(PresentationGateway):
             logger.bind(
                 content_preserved=verification.content_preserved,
                 structure_preserved=verification.structure_preserved,
-                brand_applied=verification.brand_applied,
+                brand=verification.brand,
                 expected_semantic_sha256=expected_semantic_sha256,
                 observed_semantic_sha256=fingerprints.semantic_sha256,
                 expected_structure_sha256=expected_protected_structure_sha256,
@@ -947,7 +952,7 @@ def _verification_passed(verification: PresentationVerification) -> bool:
     return (
         verification.content_preserved
         and verification.structure_preserved
-        and verification.brand_applied
+        and verification.brand.acceptable(required=False)
     )
 
 

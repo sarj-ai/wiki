@@ -63,7 +63,6 @@ from app.tasks.errors import (
 from app.tasks.schemas import (
     ActiveDocumentTransformTaskRecord,
     ActiveSmartCreateTaskRecord,
-    DocumentTransformAdmission,
     DocumentTransformSucceededTaskRead,
     DocumentTransformTaskRecord,
     ExistingTaskReservation,
@@ -76,6 +75,7 @@ from app.tasks.schemas import (
     SmartCreateCheckpoint,
     SmartCreateDispatch,
     SmartCreateTaskRecord,
+    TaskAdmission,
     TaskClaim,
     TaskKind,
     TaskRead,
@@ -198,9 +198,9 @@ class TaskService(ABC):
     ) -> DocumentTransformResult | None:
         raise NotImplementedError
 
-    async def get_document_transform_admission(
-        self, owner_user_id: UserId, idempotency_key: IdempotencyKey
-    ) -> DocumentTransformAdmission:
+    async def get_admission(
+        self, owner_user_id: UserId, kind: TaskKind, idempotency_key: IdempotencyKey
+    ) -> TaskAdmission:
         raise NotImplementedError
 
     async def pending_document_transform_dispatches(self, *, limit: int = 50) -> list[TaskId]:
@@ -1302,28 +1302,24 @@ class PostgresTaskService(TaskService):
         return ExistingTaskReservation(task=terminal_read)
 
     @override
-    async def get_document_transform_admission(
-        self, owner_user_id: UserId, idempotency_key: IdempotencyKey
-    ) -> DocumentTransformAdmission:
+    async def get_admission(
+        self, owner_user_id: UserId, kind: TaskKind, idempotency_key: IdempotencyKey
+    ) -> TaskAdmission:
         # Project only public admission identity in one retained-row read. Never
         # load/decrypt payloads or checkpoints, nor renew retention or dispatch.
         row = (
             await self._db.execute(
                 select(Task.id, Task.status).where(
                     Task.owner_user_id == owner_user_id,
-                    Task.kind == TaskKind.FILE_DOCUMENT_TRANSFORM,
+                    Task.kind == kind,
                     _visible_task(),
-                    Task.id.in_(
-                        _task_ids_for_key(
-                            UserId(owner_user_id), TaskKind.FILE_DOCUMENT_TRANSFORM, idempotency_key
-                        )
-                    ),
+                    Task.id.in_(_task_ids_for_key(owner_user_id, kind, idempotency_key)),
                 )
             )
         ).one_or_none()
         if row is None:
             raise TaskNotFoundError
-        return DocumentTransformAdmission(task_id=row.id, status=row.status)
+        return TaskAdmission(task_id=row.id, status=row.status)
 
     async def _owned_lease_update(
         self,

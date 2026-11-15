@@ -12,52 +12,65 @@ import { runAction } from "@/lib/action-client";
 import type { RecentDocumentAlias } from "@/lib/alias-client";
 import { readRecentAliases, writeRecentAliases } from "@/lib/recent-aliases";
 
+type AliasLoad =
+  | { kind: "waiting-for-user" }
+  | { kind: "loading"; userId: string }
+  | { kind: "ready"; userId: string; aliases: QuickLinkItem[] }
+  | { kind: "failed"; userId: string };
+
 export function QuickLinksLoader() {
   const userQuery = useCurrentUser();
-  const [aliases, setAliases] = useState<QuickLinkItem[]>([]);
-  const [error, setError] = useState(false);
-  const [loading, setLoading] = useState(true);
-  const [validatedUserId, setValidatedUserId] = useState<null | string>(null);
   const userId = userQuery.data?.id;
+  const [state, setState] = useState<AliasLoad>(() =>
+    userId === undefined
+      ? { kind: "waiting-for-user" }
+      : { kind: "loading", userId },
+  );
+  const owner = state.kind === "waiting-for-user" ? undefined : state.userId;
+  if (owner !== userId) {
+    setState(
+      userId === undefined
+        ? { kind: "waiting-for-user" }
+        : { kind: "loading", userId },
+    );
+  }
 
   useEffect(() => {
     if (userId === undefined) return;
     let cancelled = false;
     const load = async () => {
-      const items = await loadRecentForUser(userId);
+      const items = await loadRecentForUser(userId, () => !cancelled);
       if (cancelled) return;
-      setAliases(items);
-      setError(false);
-      setValidatedUserId(userId);
+      setState({ kind: "ready", userId, aliases: items });
     };
-    void load()
-      .catch(() => {
-        if (cancelled) return;
-        setError(true);
-        setValidatedUserId(userId);
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false);
-      });
+    void load().catch(() => {
+      if (cancelled) return;
+      setState({ kind: "failed", userId });
+    });
     return () => {
       cancelled = true;
     };
   }, [userId]);
 
   if (userQuery.isError) return <QuickLinks aliases={[]} error />;
-  const isCurrentUserValidated =
-    userId !== undefined && validatedUserId === userId;
-  const showError = isCurrentUserValidated && error;
-  return (
-    <QuickLinks
-      aliases={isCurrentUserValidated ? aliases : []}
-      error={showError}
-      loading={!isCurrentUserValidated || loading}
-    />
-  );
+  if (owner !== userId) return <QuickLinks aliases={[]} loading />;
+  switch (state.kind) {
+    case "waiting-for-user":
+    case "loading":
+      return <QuickLinks aliases={[]} loading />;
+    case "ready":
+      return <QuickLinks aliases={state.aliases} />;
+    case "failed":
+      return <QuickLinks aliases={[]} error />;
+    default:
+      return unreachable(state);
+  }
 }
 
-async function loadRecentForUser(userId: string): Promise<QuickLinkItem[]> {
+async function loadRecentForUser(
+  userId: string,
+  isCurrent: () => boolean,
+): Promise<QuickLinkItem[]> {
   const visits = readRecentAliases(userId);
   if (visits.length === 0) return [];
   const accessible = await runAction(
@@ -71,7 +84,7 @@ async function loadRecentForUser(userId: string): Promise<QuickLinkItem[]> {
       .filter((visit) => !byAlias.has(visit.alias))
       .map((visit) => [visit.alias, visit.visitedAt]),
   );
-  if (deniedVisits.size > 0) {
+  if (isCurrent() && deniedVisits.size > 0) {
     const currentVisits = readRecentAliases(userId);
     const nextVisits = currentVisits.filter(
       (visit) => deniedVisits.get(visit.alias) !== visit.visitedAt,
@@ -86,10 +99,15 @@ function mergeVisits(
   visits: ReturnType<typeof readRecentAliases>,
   byAlias: Map<string, RecentDocumentAlias>,
 ): QuickLinkItem[] {
-  return visits.flatMap((visit) => {
+  const links: QuickLinkItem[] = [];
+  for (const visit of visits) {
     const item = byAlias.get(visit.alias);
-    return item === undefined
-      ? []
-      : [{ ...item, lastVisitedAt: visit.visitedAt }];
-  });
+    if (item !== undefined)
+      links.push({ ...item, lastVisitedAt: visit.visitedAt });
+  }
+  return links;
+}
+
+function unreachable(value: never): never {
+  throw new Error(`Unsupported alias load state: ${String(value)}`);
 }

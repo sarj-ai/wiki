@@ -66,7 +66,6 @@ from app.document_transform.gateway import (
     TabHeader,
 )
 from app.document_transform.google_gateway import GoogleDocumentGateway, verify_brand_application
-from app.document_transform.header_provenance import HeaderIdentityEvidence
 from app.document_transform.ir import (
     BlockKind,
     DocumentIR,
@@ -92,6 +91,7 @@ from app.document_transform.schemas import (
     CopyCheckpoint,
     CopyCheckpointStage,
     CopyPlan,
+    DeclinedTabNaming,
     DocumentOutput,
     DocumentTransformCheckpoint,
     DocumentTransformRequest,
@@ -101,7 +101,9 @@ from app.document_transform.schemas import (
     InPlaceCheckpointStage,
     InPlacePlan,
     MarkdownSource,
+    MetadataInPlaceCheckpoint,
     OutputStrategy,
+    PlannedTabNaming,
     TabNamingCheckpoint,
     TextPatch,
     TransformFinding,
@@ -116,10 +118,12 @@ from app.document_transform.unslop import (
     deterministic_unslop_replacement,
     scan_unslop_candidates,
 )
+from app.document_transform.verification import BrandVerification
 from app.files.errors import FileNotInScopeError
 from app.files.schemas import FileResponse
 from app.identifiers import DocsRevisionId, DocsSegmentId, DocsTabId, FileId, TaskId
 from app.tasks import service as task_service_module
+from tests.document_verification import VerificationFacts
 from tests.support import dependency
 
 
@@ -982,12 +986,11 @@ class _Gateway(DocumentGateway):
         self,
         snapshot: SourceSnapshot | None = None,
         *,
-        verification: OutputVerification | None = None,
+        verification: VerificationFacts | None = None,
     ) -> None:
         self.snapshot = snapshot
-        self.verification = verification or OutputVerification(
-            content_preserved=True,
-            structure_preserved=True,
+        self.verification = verification or VerificationFacts(
+            content_preserved=True, structure_preserved=True, brand=BrandVerification.FULL
         )
         self.draft: OutputDraft | None = None
         self.requests: list[dict[str, Any]] = []
@@ -1130,14 +1133,13 @@ class _Gateway(DocumentGateway):
         verify_brand: bool,
         header_title: str | None = None,
     ) -> OutputVerification:
-        del source, expected, verify_brand
         self.verified_header_titles.append(header_title)
+        assert self.draft is not None
         return OutputVerification(
             content_preserved=self.verification.content_preserved,
             structure_preserved=self.verification.structure_preserved,
-            brand_applied=self.verification.brand_applied,
-            revision_id=draft.revision_id,
-            supported_brand_applied=self.verification.supported_brand_applied,
+            brand=self.verification.brand if verify_brand else BrandVerification.NOT_REQUIRED,
+            revision_id=self.draft.revision_id,
         )
 
     @override
@@ -1363,7 +1365,6 @@ async def test_unmet_word_target_keeps_the_faithful_output_and_leaves_original_u
     executor = DocumentTransformExecutor(
         gateway=gateway,
         generator=generator,
-        allow_format_text_edits=True,
         checkpoint_store=store,
         task_id=task_id,
         lease_token=uuid.uuid7(),
@@ -1382,9 +1383,7 @@ async def test_unmet_word_target_keeps_the_faithful_output_and_leaves_original_u
     if not in_place:
         assert any(finding.code == "concision_target_unmet" for finding in result.findings)
     assert generator.repair_calls == 1
-    assert generator.calls == (
-        [TransformPhase.UNSLOP] if in_place else [TransformPhase.UNSLOP, TransformPhase.FORMAT]
-    )
+    assert generator.calls == [TransformPhase.UNSLOP]
     if in_place:
         assert isinstance(gateway, _InPlaceGateway)
         assert not result.changed
@@ -1493,37 +1492,32 @@ async def test_completed_operation_is_replayed_without_second_mutation() -> None
     [
         (
             TransformMode.FORMAT,
-            OutputVerification(
-                content_preserved=True,
-                structure_preserved=True,
-                brand_applied=True,
+            VerificationFacts(
+                content_preserved=True, structure_preserved=True, brand=BrandVerification.FULL
             ),
             set(),
             False,
         ),
         (
             TransformMode.UNSLOP,
-            OutputVerification(content_preserved=False, structure_preserved=False),
+            VerificationFacts(
+                content_preserved=False, structure_preserved=False, brand=BrandVerification.FULL
+            ),
             {"post_write_content_mismatch", "post_write_structure_mismatch"},
             True,
         ),
         (
             TransformMode.FORMAT,
-            OutputVerification(
-                content_preserved=True,
-                structure_preserved=True,
-                brand_applied=False,
+            VerificationFacts(
+                content_preserved=True, structure_preserved=True, brand=BrandVerification.MISMATCH
             ),
             {"post_write_brand_mismatch"},
             True,
         ),
         (
             TransformMode.FORMAT,
-            OutputVerification(
-                content_preserved=True,
-                structure_preserved=True,
-                brand_applied=False,
-                supported_brand_applied=True,
+            VerificationFacts(
+                content_preserved=True, structure_preserved=True, brand=BrandVerification.SUPPORTED
             ),
             {"custom_furniture_preserved"},
             False,
@@ -1534,7 +1528,7 @@ async def test_completed_operation_is_replayed_without_second_mutation() -> None
 @pytest.mark.parametrize("rich", [False, True], ids=["plain", "preserved-rich"])
 async def test_native_doc_post_write_mismatch_is_reported_for_review(
     mode: TransformMode,
-    verification: OutputVerification,
+    verification: VerificationFacts,
     expected_codes: set[str],
     expected_review: bool,
     rich: bool,
@@ -1614,7 +1608,7 @@ async def test_native_doc_post_write_mismatch_is_reported_for_review(
         if finding.code == "google_doc_text_target_unsupported"
     ]
     assert all(finding.severity.value == "informational" for finding in rich_findings)
-    if verification.supported_brand_applied:
+    if verification.brand is BrandVerification.SUPPORTED:
         supported = next(
             finding for finding in result.findings if finding.code == "custom_furniture_preserved"
         )
@@ -1625,7 +1619,9 @@ async def test_native_doc_post_write_mismatch_is_reported_for_review(
 
 async def test_markdown_import_readback_mismatch_is_reported_for_review() -> None:
     gateway = _Gateway(
-        verification=OutputVerification(content_preserved=False, structure_preserved=False)
+        verification=VerificationFacts(
+            content_preserved=False, structure_preserved=False, brand=BrandVerification.FULL
+        )
     )
     request = DocumentTransformRequest(
         source=MarkdownSource(
@@ -2012,8 +2008,8 @@ async def test_in_place_native_list_preservation_keeps_protected_hash_strict() -
         access=NativeSourceAccess(owned_by_me=True, can_edit=True, location=PersonalDrive()),
     )
     inspection = await gateway.inspect_in_place(snapshot=snapshot, title="Decision")
-    assert inspection.supported_brand_applied
-    assert not inspection.fully_branded
+    assert inspection.brand is BrandVerification.SUPPORTED
+    assert inspection.brand is not BrandVerification.FULL
     expected = parse_google_document(document, title="Decision")
 
     messages: list[str] = []
@@ -2032,7 +2028,7 @@ async def test_in_place_native_list_preservation_keeps_protected_hash_strict() -
 
     assert result.content_preserved
     assert result.structure_preserved
-    assert result.supported_brand_applied
+    assert result.brand is BrandVerification.SUPPORTED
     assert not any("in-place verification failed" in message for message in messages)
     terminal_normalized = deepcopy(document)
     terminal_normalized["tabs"][0]["documentTab"]["body"]["content"][0]["paragraph"]["elements"][
@@ -2047,7 +2043,7 @@ async def test_in_place_native_list_preservation_keeps_protected_hash_strict() -
             protected_structure_sha256=inspection.protected_structure_sha256,
             verify_brand=True,
         )
-    ).supported_brand_applied
+    ).brand is BrandVerification.SUPPORTED
     terminal_linked = deepcopy(terminal_normalized)
     terminal_linked["tabs"][0]["documentTab"]["body"]["content"][0]["paragraph"]["elements"][-1][
         "textRun"
@@ -2121,7 +2117,7 @@ async def test_in_place_non_brand_verification_preserves_brand_short_circuit(
 
     assert result.content_preserved is True
     assert result.structure_preserved is True
-    assert result.brand_applied is True
+    assert result.brand is BrandVerification.NOT_REQUIRED
 
 
 def test_copy_branding_styles_header_deterministically() -> None:
@@ -3183,7 +3179,9 @@ async def test_copy_native_footer_persists_each_stage_and_does_not_replay_body(
 
 async def test_copy_readback_mismatch_fails_with_output_resource_tracked() -> None:
     gateway = _Gateway(
-        verification=OutputVerification(content_preserved=False, structure_preserved=False)
+        verification=VerificationFacts(
+            content_preserved=False, structure_preserved=False, brand=BrandVerification.FULL
+        )
     )
     store = _CopyCheckpointStore()
     task_id = TaskId(uuid.uuid7())
@@ -3394,6 +3392,7 @@ class _InPlaceGateway(_Gateway):
             protected_structure_sha256="protected",
             body_sha256="body",
             header_safe_sha256="header-safe",
+            brand=BrandVerification.MISMATCH,
         )
 
     @override
@@ -3444,10 +3443,14 @@ class _InPlaceGateway(_Gateway):
         custom_header_titles: tuple[Any, ...] = (),
         table_font_plan: TableFontPlan | None = None,
     ) -> OutputVerification:
-        del custom_furniture, custom_header_titles, table_font_plan
-        del document, title, expected, structural_sha256, protected_structure_sha256, verify_brand
+        revision = document.get("revisionId")
+        assert isinstance(revision, str)
+        assert revision
         return OutputVerification(
-            content_preserved=True, structure_preserved=True, brand_applied=True
+            content_preserved=True,
+            structure_preserved=True,
+            brand=BrandVerification.FULL if verify_brand else BrandVerification.NOT_REQUIRED,
+            revision_id=DocsRevisionId(revision),
         )
 
 
@@ -3594,7 +3597,6 @@ def _replay_executor(
     return DocumentTransformExecutor(
         gateway=gateway,
         generator=generator,
-        allow_format_text_edits=True,
         checkpoint_store=store,
         task_id=task_id,
         lease_token=uuid.uuid7(),
@@ -4090,7 +4092,6 @@ async def test_in_place_provider_split_native_list_reaches_verified_post_write_s
     class ProviderSplitGateway(GoogleDocumentGateway):
         def __init__(self) -> None:
             self._logo_uri = "https://wiki.sarj.ai/brand/sarj-logo-light.png"
-            self._header_identity: HeaderIdentityEvidence | None = None
             self.document = deepcopy(document)
             self.calls: list[list[dict[str, Any]]] = []
 
@@ -4196,7 +4197,7 @@ async def test_in_place_persisted_checkpoint_replay_skips_model_and_duplicate_ba
             task_id=task_id,
         ).execute(operation_id=operation_id, request=_in_place_request(TransformMode.BOTH))
 
-    assert first_generator.calls == [TransformPhase.FORMAT]
+    assert first_generator.calls == []
     persisted = store.checkpoints[-1]
     retry_generator = _Generator({TransformPhase.FORMAT: "must never be generated"})
     result = await _replay_executor(
@@ -4256,7 +4257,7 @@ async def test_in_place_tab_checkpoint_resume_never_replays_content(
             store=store,
             task_id=task_id,
         ).execute(operation_id=operation_id, request=_in_place_request(TransformMode.BOTH))
-    assert store.checkpoints[-1].tab_naming is not None
+    assert isinstance(store.checkpoints[-1].tab_naming, PlannedTabNaming)
     monkeypatch.setattr(gateway, "apply_in_place_stage", reject_content_replay)
     result = await _replay_executor(
         gateway=gateway,
@@ -4293,7 +4294,7 @@ async def test_in_place_unsupported_tab_metadata_is_durable_decline_after_verifi
 
     assert gateway.mutations == {"headers": 1, "content": 1}
     assert store.checkpoints[-1].stage is InPlaceCheckpointStage.COMPLETE
-    assert store.checkpoints[-1].tab_naming_declined_reason == "unsupported_metadata"
+    assert isinstance(store.checkpoints[-1].tab_naming, DeclinedTabNaming)
     assert [(finding.code, finding.severity) for finding in result.findings] == [
         ("tab_naming_preserved", FindingSeverity.INFORMATIONAL)
     ]
@@ -4343,7 +4344,7 @@ async def test_in_place_decline_crash_replay_never_reenters_verified_body(
         )
         if (
             isinstance(checkpoint, InPlacePlan)
-            and checkpoint.tab_naming_declined_reason is not None
+            and isinstance(checkpoint.tab_naming, DeclinedTabNaming)
             and not crashed
         ):
             crashed = True
@@ -4361,8 +4362,8 @@ async def test_in_place_decline_crash_replay_never_reenters_verified_body(
         ).execute(operation_id=operation_id, request=_in_place_request(TransformMode.BOTH))
 
     persisted = store.checkpoints[-1]
-    assert persisted.stage is InPlaceCheckpointStage.CONTENT
-    assert persisted.tab_naming_declined_reason == "unsupported_metadata"
+    assert persisted.stage is InPlaceCheckpointStage.METADATA
+    assert isinstance(persisted.tab_naming, DeclinedTabNaming)
     assert gateway.mutations == {"headers": 1, "content": 1}
 
     async def reject_body_reentry(**_kwargs: object) -> Never:
@@ -4385,10 +4386,8 @@ async def test_copy_unsupported_tab_metadata_is_durable_decline_after_verified_b
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     gateway = _native_copy_gateway()
-    gateway.verification = OutputVerification(
-        content_preserved=True,
-        structure_preserved=True,
-        brand_applied=True,
+    gateway.verification = VerificationFacts(
+        content_preserved=True, structure_preserved=True, brand=BrandVerification.FULL
     )
     store = _CopyCheckpointStore()
     operation_id = uuid.uuid7()
@@ -4409,7 +4408,7 @@ async def test_copy_unsupported_tab_metadata_is_durable_decline_after_verified_b
 
     assert gateway.applies == 1
     assert store.checkpoints[-1].stage is CopyCheckpointStage.VERIFIED
-    assert store.checkpoints[-1].tab_naming_declined_reason == "unsupported_metadata"
+    assert isinstance(store.checkpoints[-1].tab_naming, DeclinedTabNaming)
     assert [(finding.code, finding.severity) for finding in result.findings] == [
         ("tab_naming_preserved", FindingSeverity.INFORMATIONAL)
     ]
@@ -4451,7 +4450,7 @@ async def test_in_place_header_retry_rebases_metadata_only_revision_drift() -> N
         checkpoint=persisted,
     ).execute(operation_id=operation_id, request=_in_place_request(TransformMode.BOTH))
 
-    assert first_generator.calls == [TransformPhase.FORMAT]
+    assert first_generator.calls == []
     assert retry_generator.calls == []
     assert gateway.required_revisions[:2] == ["revision-1", "revision-metadata-only"]
     assert gateway.mutations == {"headers": 1, "content": 1}
@@ -4932,3 +4931,76 @@ def test_google_in_place_lost_response_without_marker_fails_closed(
             marker_range,
             [{"createHeader": {"type": "DEFAULT"}}],
         )
+
+
+async def test_branding_required_copy_rejects_unrequested_brand_proof_after_mutation() -> None:
+    gateway = _native_copy_gateway()
+    gateway.verification = VerificationFacts(brand=BrandVerification.NOT_REQUIRED)
+    request = _native_copy_request().model_copy(update={"mode": TransformMode.FORMAT})
+    executor = DocumentTransformExecutor(gateway=gateway, generator=_Generator())
+    with pytest.raises(OutputVerificationError):
+        await executor.execute(operation_id=uuid.uuid7(), request=request)
+    assert gateway.applies == 1
+    assert gateway.completed_result is None
+
+
+async def test_metadata_checkpoint_crash_does_not_repeat_content() -> None:
+    class CrashAfterMetadataStore(_CheckpointStore):
+        @override
+        async def save_document_transform_checkpoint(
+            self,
+            task_id: TaskId,
+            *,
+            lease_token: uuid.UUID,
+            expected_generation: int,
+            checkpoint: DocumentTransformCheckpoint,
+        ) -> int:
+            generation = await super().save_document_transform_checkpoint(
+                task_id,
+                lease_token=lease_token,
+                expected_generation=expected_generation,
+                checkpoint=checkpoint,
+            )
+            if isinstance(checkpoint, MetadataInPlaceCheckpoint) and not any(
+                isinstance(saved, MetadataInPlaceCheckpoint) for saved in self.checkpoints[:-1]
+            ):
+                message = "crash after verified content checkpoint"
+                raise RuntimeError(message)
+            return generation
+
+    class RejectRepeatedBodyGateway(_CrashReplayInPlaceGateway):
+        @override
+        async def apply_in_place_stage(
+            self,
+            *,
+            document_id: FileId,
+            required_revision_id: DocsRevisionId,
+            marker_name: str,
+            marker_range: dict[str, JsonValue],
+            requests: list[dict[str, JsonValue]],
+        ) -> InPlaceStageResult:
+            if self.mutations["content"]:
+                pytest.fail("durably verified content must not be executed again")
+            return await super().apply_in_place_stage(
+                document_id=document_id,
+                required_revision_id=required_revision_id,
+                marker_name=marker_name,
+                marker_range=marker_range,
+                requests=requests,
+            )
+
+    gateway = RejectRepeatedBodyGateway("Moreover, we approved the plan.", crash_stage="never")
+    store = CrashAfterMetadataStore(gateway.events)
+    operation_id, task_id = uuid.uuid7(), TaskId(uuid.uuid7())
+    with pytest.raises(RuntimeError, match="verified content checkpoint"):
+        await _replay_executor(
+            gateway=gateway, generator=_Generator(), store=store, task_id=task_id
+        ).execute(operation_id=operation_id, request=_in_place_request(TransformMode.BOTH))
+    persisted = store.checkpoints[-1]
+    assert isinstance(persisted, MetadataInPlaceCheckpoint)
+    assert gateway.mutations == {"headers": 1, "content": 1}
+    result = await _replay_executor(
+        gateway=gateway, generator=_Generator(), store=store, task_id=task_id, checkpoint=persisted
+    ).execute(operation_id=operation_id, request=_in_place_request(TransformMode.BOTH))
+    assert result.output_strategy is OutputStrategy.IN_PLACE
+    assert gateway.mutations == {"headers": 1, "content": 1}

@@ -23,7 +23,12 @@ from app.extras.service import list_accessible_doc_icons
 from app.files.service import GoogleFilesService
 from app.identifiers import DriveId, FileId
 from app.models.wiki import CacheEntry, DocumentAlias, DriveTreeCache
-from app.sidebar.cache import PostgresSidebarCacheService, tree_etag
+from app.sidebar.cache import (
+    LoadedDriveTree,
+    NotModifiedDriveTree,
+    PostgresSidebarCacheService,
+    tree_etag,
+)
 from app.sidebar.singleflight import Singleflight
 from tests.round7_reads_support import (
     ReadsDatabase,
@@ -98,22 +103,22 @@ async def test_conditional_tree_read_reuses_one_fresh_version_and_releases_trans
                 db, drive_id, request_etag='W/"different-drive:old"'
             )
         assert len(statements) == 1
-        assert changed.cached is not None
+        assert isinstance(changed, LoadedDriveTree)
         assert not db.in_transaction()
-        current_tag = tree_etag(drive_id, changed.refreshed_at)
+        current_tag = tree_etag(drive_id, changed.cached.refreshed_at)
         assert current_tag is not None
         with _record_tree_selects(db) as statements:
             unchanged = await service.get_drive_tree_if_modified(
                 db, drive_id, request_etag=current_tag
             )
         assert len(statements) == 1
-        assert unchanged.cached is None
-        assert unchanged.refreshed_at == changed.refreshed_at
+        assert isinstance(unchanged, NotModifiedDriveTree)
+        assert unchanged.refreshed_at == changed.cached.refreshed_at
         assert not db.in_transaction()
         spelling_changed = await service.get_drive_tree_if_modified(
             db, drive_id, request_etag=current_tag.replace("+00:00", "Z")
         )
-        assert spelling_changed.cached is not None
+        assert isinstance(spelling_changed, LoadedDriveTree)
         assert spelling_changed.cached.tree is changed.cached.tree
 
 
@@ -139,11 +144,11 @@ async def test_conditional_tree_read_observes_same_timestamp_ciphertext_replacem
         changed = await service.get_drive_tree_if_modified(
             db, drive_id, request_etag='W/"different-drive:old"'
         )
-        assert changed.cached is not None
+        assert isinstance(changed, LoadedDriveTree)
         assert changed.cached.tree.files[0].name == "Concurrent fresh name"
         assert original.tree.files[0].name == "Round7 fixture document"
-        assert changed.refreshed_at == original.refreshed_at
-        current_tag = tree_etag(drive_id, changed.refreshed_at)
+        assert changed.cached.refreshed_at == original.refreshed_at
+        current_tag = tree_etag(drive_id, changed.cached.refreshed_at)
         assert current_tag is not None
         async with database.sessions.begin() as writer:
             await writer.execute(
@@ -155,7 +160,7 @@ async def test_conditional_tree_read_observes_same_timestamp_ciphertext_replacem
                 .values(tree="fixture-corrupt-ciphertext")
             )
         unchanged = await service.get_drive_tree_if_modified(db, drive_id, request_etag=current_tag)
-        assert unchanged.cached is None
+        assert isinstance(unchanged, NotModifiedDriveTree)
         assert not db.in_transaction()
 
 

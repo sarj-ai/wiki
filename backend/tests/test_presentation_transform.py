@@ -46,6 +46,7 @@ from app.document_transform.schemas import (
     TransformPhase,
 )
 from app.document_transform.slides_ir import MAX_PRESENTATION_SLIDES, ParsedPresentation
+from app.document_transform.verification import BrandVerification
 from app.drive.schemas import MIME_SLIDE
 from app.identifiers import FileId, TaskId
 from tests.json_values import json_object_at
@@ -231,7 +232,13 @@ class PresentationGatewaySpy:
         return PresentationVerification(
             content_preserved=self.verification_content_preserved,
             structure_preserved=self.verification_structure_preserved,
-            brand_applied=self.verification_brand_applied,
+            brand=(
+                BrandVerification.NOT_REQUIRED
+                if expected_brand_sha256 is None
+                else BrandVerification.FULL
+                if self.verification_brand_applied
+                else BrandVerification.MISMATCH
+            ),
             semantic_sha256=expected_semantic_sha256,
             protected_structure_sha256=expected_protected_structure_sha256,
             brand_sha256=expected_brand_sha256,
@@ -800,7 +807,7 @@ async def test_lost_creation_acknowledgement_never_creates_again() -> None:
     result = await resumed.execute(operation_id=operation_id, request=request)
     assert result.output.file_id == "output"
     assert gateway.created == 1
-    assert store.checkpoints[-1].stage.value == "verified"
+    assert str(store.checkpoints[-1].stage) == "verified"
 
 
 @pytest.mark.parametrize("fail_at_generation", [0, 1])

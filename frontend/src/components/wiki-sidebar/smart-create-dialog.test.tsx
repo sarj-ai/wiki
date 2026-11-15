@@ -1,6 +1,7 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { flushSync } from "react-dom";
 import { createRoot, type Root } from "react-dom/client";
+import { renderToString } from "react-dom/server";
 
 import { ApiError } from "@/lib/api-error";
 import { smartCreateApi } from "@/lib/smart-create-client";
@@ -8,6 +9,10 @@ import type { DriveTemplate } from "@/lib/smart-create-types";
 import { MIME_DOC } from "@/types/wiki";
 
 import { SmartCreateDialog } from "./smart-create-dialog";
+
+vi.mock("@/hooks/use-current-user", () => ({
+  useCurrentUser: () => ({ data: { id: "owner" } }),
+}));
 
 vi.mock("next/navigation", () => ({ useRouter: () => ({ push: vi.fn() }) }));
 
@@ -27,6 +32,7 @@ describe("SmartCreateDialog", () => {
   let root: Root;
 
   beforeEach(() => {
+    window.sessionStorage.clear();
     host = document.createElement("div");
     document.body.append(host);
     root = createRoot(host);
@@ -38,6 +44,29 @@ describe("SmartCreateDialog", () => {
     });
     host.remove();
     vi.restoreAllMocks();
+  });
+
+  function reloadDialog() {
+    flushSync(() => root.unmount());
+    root = createRoot(host);
+    renderDialog(root);
+  }
+
+  it("does not read browser recovery storage during server rendering", () => {
+    const read = vi.spyOn(window.sessionStorage, "getItem");
+    const client = new QueryClient();
+    renderToString(
+      <QueryClientProvider client={client}>
+        <SmartCreateDialog
+          invokingDriveId="drive-1"
+          invokingFolderId="folder-1"
+          onOpenChange={vi.fn()}
+          open
+        />
+      </QueryClientProvider>,
+    );
+    expect(read).not.toHaveBeenCalled();
+    client.clear();
   });
 
   it("uses TemplateMode without invoking Gemini", async () => {
@@ -189,6 +218,77 @@ describe("SmartCreateDialog", () => {
     });
   });
 
+  it("retains a lost enqueue request across reload and only recovers with reads", async () => {
+    vi.spyOn(smartCreateApi, "listTemplates").mockResolvedValue([template]);
+    const create = vi
+      .spyOn(smartCreateApi, "create")
+      .mockRejectedValue(new Error("Response lost"));
+    const admission = vi
+      .spyOn(smartCreateApi, "getAdmission")
+      .mockResolvedValue(null);
+    renderDialog(root);
+    clickButton(await findButton("Template"));
+    clickButton(await findButton("PRD Template"));
+    clickButton(await findButton("Review"));
+    clickButton(await findButton("Create file"));
+    await vi.waitFor(() =>
+      expect(document.body).toHaveTextContent("Response lost"),
+    );
+    const key = create.mock.calls[0]?.[1];
+    expect(key).toMatch(/^[0-9a-f-]{36}$/u);
+    expect(findButtonNow("Create file")).toBeDisabled();
+    expect(findButtonNow("Back")).toBeDisabled();
+    clickButton(await findButton("Check original request"));
+    await vi.waitFor(() =>
+      expect(document.body).toHaveTextContent(
+        "does not prove creation never started",
+      ),
+    );
+    expect(admission).toHaveBeenCalledWith(key, expect.any(AbortSignal));
+    reloadDialog();
+    await vi.waitFor(() =>
+      expect(document.body).toHaveTextContent(
+        "An earlier file creation needs recovery",
+      ),
+    );
+    expect(document.body).toHaveTextContent(String(key));
+    clickButton(await findButton("Check original request"));
+    await vi.waitFor(() => expect(admission).toHaveBeenCalledTimes(2));
+    expect(create).toHaveBeenCalledOnce();
+  });
+
+  it("recovers the original admitted task while preserving a needs-review hold", async () => {
+    vi.spyOn(smartCreateApi, "listTemplates").mockResolvedValue([template]);
+    const create = vi
+      .spyOn(smartCreateApi, "create")
+      .mockRejectedValue(new Error("Response lost"));
+    const taskId = "55555555-5555-4555-8555-555555555555";
+    vi.spyOn(smartCreateApi, "getAdmission").mockResolvedValue(taskId);
+    const task = {
+      id: taskId,
+      status: "needs_review",
+      errorCode: "external_effect_uncertain",
+      errorDetail: "Check Drive before creating another file.",
+    } as const;
+    vi.spyOn(smartCreateApi, "getTask").mockResolvedValue(task);
+    vi.spyOn(smartCreateApi, "waitForCompletion").mockResolvedValue(task);
+    renderDialog(root);
+    clickButton(await findButton("Template"));
+    clickButton(await findButton("PRD Template"));
+    clickButton(await findButton("Review"));
+    clickButton(await findButton("Create file"));
+    await vi.waitFor(() =>
+      expect(document.body).toHaveTextContent("Response lost"),
+    );
+    clickButton(await findButton("Check original request"));
+    await vi.waitFor(() =>
+      expect(document.body).toHaveTextContent(task.errorDetail),
+    );
+    expect(findButtonNow("Create file")).toBeDisabled();
+    expect(create).toHaveBeenCalledOnce();
+    expect(window.sessionStorage.length).toBe(1);
+  });
+
   it("enqueues once and shows progress while polling the typed task", async () => {
     vi.spyOn(smartCreateApi, "listTemplates").mockResolvedValue([template]);
     const taskId = "55555555-5555-4555-8555-555555555555";
@@ -218,17 +318,21 @@ describe("SmartCreateDialog", () => {
     );
 
     completion.resolve({
-      file: {
-        canEdit: true,
-        driveId: "drive-1",
-        id: "file-1",
-        mimeType: MIME_DOC,
-        modifiedTime: undefined,
-        name: "PRD Template",
-        parentFolderId: "folder-1",
+      id: taskId,
+      status: "succeeded",
+      result: {
+        file: {
+          canEdit: true,
+          driveId: "drive-1",
+          id: "file-1",
+          mimeType: MIME_DOC,
+          modifiedTime: undefined,
+          name: "PRD Template",
+          parentFolderId: "folder-1",
+        },
+        taskId,
+        warnings: [],
       },
-      taskId,
-      warnings: [],
     });
     await vi.waitFor(() => {
       expect(document.body).not.toHaveTextContent("Creating in Drive");

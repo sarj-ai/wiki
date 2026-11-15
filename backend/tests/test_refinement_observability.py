@@ -115,3 +115,20 @@ async def test_layout_log_reports_the_actual_checkpoint_counts(
     assert record["layout_refinement"] == plan.refinement.model_dump(mode="json")
     assert plan.passes == plan.accepted_improvements == editor.calls == 1
     assert plan.stop_reason == "pass_limit"
+
+
+async def test_optional_editorial_failure_reports_the_preserved_reviewed_draft(
+    refinement_messages: list[str], refining_editor_factory: type[_RefiningEditor]
+) -> None:
+    source = "The release document was reviewed and approved by the team."
+    final = "The team reviewed and approved the release document."
+    editor = refining_editor_factory((final,), outage_after=1)
+    outcome = await TextTransformPlanner(generator=editor, allow_unslop_model=True).transform(
+        parse_markdown(source, title="Private fixture"), _request(source)
+    )
+    record = _record(refinement_messages, "document editorial refinement finished")
+    assert outcome.document.blocks[0].text == final
+    assert record["editorial_attempted"] == editor.calls == 2
+    assert record["editorial_accepted"] == 1
+    assert record["editorial_stop_reason"] == "model_unavailable"
+    assert record["result_sha256"] == outcome.document.text_sha256

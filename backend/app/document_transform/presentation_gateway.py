@@ -8,6 +8,7 @@ from pydantic import JsonValue
 
 from app.document_transform.presentation_state import PresentationMutation, ReadyPresentation
 from app.document_transform.schemas import DriveFileSource
+from app.document_transform.verification import RequestedBrandVerification
 from app.identifiers import FileId
 
 
@@ -75,7 +76,7 @@ class PresentationDraft:
 class PresentationVerification:
     content_preserved: bool
     structure_preserved: bool
-    brand_applied: bool
+    brand: RequestedBrandVerification
     semantic_sha256: str
     protected_structure_sha256: str
     brand_sha256: str | None = None

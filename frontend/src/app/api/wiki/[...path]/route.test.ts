@@ -41,6 +41,17 @@ beforeEach(() => {
 afterEach(() => vi.restoreAllMocks());
 
 describe("authenticated parallel wiki reads", () => {
+  it("allows only UUID-scoped Smart Create admission reads", async () => {
+    fetchMock.mockResolvedValue(Response.json({}));
+    const valid = "files/smart/admissions/55555555-5555-4555-8555-555555555555";
+    const accepted = await GET(request(valid), context(valid));
+    expect(accepted.status).toBe(200);
+    fetchMock.mockClear();
+    const invalid = "files/smart/admissions/not-a-uuid";
+    const rejected = await GET(request(invalid), context(invalid));
+    expect(rejected.status).toBe(404);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
   it.each([
     "sidebar/drives/{id}/folders",
     "sidebar/drives/{id}/permissions",

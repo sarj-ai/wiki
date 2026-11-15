@@ -1,3 +1,4 @@
+import { act } from "react";
 import { flushSync } from "react-dom";
 import { createRoot, type Root } from "react-dom/client";
 
@@ -7,9 +8,10 @@ import { readRecentAliases, writeRecentAliases } from "@/lib/recent-aliases";
 import { installLocalStorage } from "@/test-stubs/install-local-storage";
 
 const getRecentDocumentAliasesAction = vi.hoisted(() => vi.fn());
+const USER = vi.hoisted(() => ({ id: "user-1" }));
 
 vi.mock("@/hooks/use-current-user", () => ({
-  useCurrentUser: () => ({ data: { id: "user-1" }, isError: false }),
+  useCurrentUser: () => ({ data: { id: USER.id }, isError: false }),
 }));
 
 vi.mock("@/app/actions/wiki-actions", () => ({
@@ -24,6 +26,7 @@ describe("QuickLinksLoader", () => {
   let root: Root;
 
   beforeEach(() => {
+    USER.id = "user-1";
     installLocalStorage();
     window.localStorage.clear();
     writeRecentAliases("user-1", [
@@ -43,6 +46,29 @@ describe("QuickLinksLoader", () => {
     host.remove();
     vi.restoreAllMocks();
   });
+
+  it.each(["unmount", "user-change"] as const)(
+    "does not prune the old owner's visits after %s cancels authorization",
+    async (change) => {
+      const visits = readRecentAliases("user-1");
+      const pending = Promise.withResolvers<{ data: never[]; ok: true }>();
+      getRecentDocumentAliasesAction.mockReturnValueOnce(pending.promise);
+      flushSync(() => root.render(<QuickLinksLoader />));
+      expect(getRecentDocumentAliasesAction).toHaveBeenCalledOnce();
+      if (change === "unmount") flushSync(() => root.render(null));
+      else {
+        USER.id = "user-2";
+        flushSync(() => root.render(<QuickLinksLoader />));
+      }
+      await act(async () => {
+        pending.resolve({ data: [], ok: true });
+        await pending.promise;
+      });
+      expect(readRecentAliases("user-1")).toEqual(visits);
+      expect(host).not.toHaveTextContent("team-handbook");
+      expect(host).not.toHaveTextContent("revoked-page");
+    },
+  );
 
   it("preserves new visits and refreshed timestamps recorded while authorization is pending", async () => {
     const pending = Promise.withResolvers<{

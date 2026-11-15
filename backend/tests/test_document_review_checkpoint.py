@@ -29,6 +29,8 @@ from app.document_transform.schemas import (
     DocumentTransformCheckpoint,
     DocumentTransformRequest,
     ModelPlanningCheckpoint,
+    ModelReviewBackoffCheckpoint,
+    ModelReviewCompletedCheckpoint,
     TextPatch,
     TransformPhase,
 )
@@ -190,6 +192,17 @@ async def saved_writer(provider: Provider, saved: list[ModelPlanningCheckpoint])
     return document
 
 
+async def test_format_only_generation_does_not_dispatch_a_provider_request() -> None:
+    provider = Provider()
+    async with generator(provider) as real:
+        patches = await real.generate(
+            parse_markdown(SOURCE, title="Formatting fixture"), phase=TransformPhase.FORMAT
+        )
+    assert patches == []
+    assert provider.writer_calls == 0
+    assert provider.review_calls == []
+
+
 async def test_partial_review_survives_a_new_sdk_client_without_repeating_completed_batches() -> (
     None
 ):
@@ -317,7 +330,9 @@ async def test_retry_after_is_preserved_across_review_continuation() -> None:
     patches = list(saved[-1].proposals)
     with pytest.raises(ModelReviewPendingError):
         await review_saved(provider, saved, document, patches)
-    assert any(batch.retry_not_before is not None for batch in saved[-1].review_batches)
+    assert any(
+        isinstance(batch, ModelReviewBackoffCheckpoint) for batch in saved[-1].review_batches
+    )
     provider.failure, provider.clock = False, 0.0
     await review_saved(provider, saved, document, patches)
     assert max(provider.sleeps) >= 7
@@ -348,6 +363,7 @@ async def test_recovered_verdicts_still_require_exact_identity_and_complete_cove
     await review_saved(provider, saved, document, patches)
     checkpoint = saved[-1]
     batch = checkpoint.review_batches[0]
+    assert isinstance(batch, ModelReviewCompletedCheckpoint)
     reviews = list(batch.reviews)
     match change:
         case "missing_ids":
@@ -434,7 +450,9 @@ async def test_ambiguous_review_checkpoint_commit_recovers_validated_results_wit
     async def committed_then_lost(plan: ModelPlanningCheckpoint) -> None:
         nonlocal lost
         saved.append(plan)
-        if not lost and any(batch.reviews for batch in plan.review_batches):
+        if not lost and any(
+            isinstance(batch, ModelReviewCompletedCheckpoint) for batch in plan.review_batches
+        ):
             lost = True
             raise TimeoutError
 
@@ -447,7 +465,7 @@ async def test_ambiguous_review_checkpoint_commit_recovers_validated_results_wit
     completed = {
         tuple(review.block_id for review in batch.reviews)
         for batch in saved[-1].review_batches
-        if batch.reviews
+        if isinstance(batch, ModelReviewCompletedCheckpoint)
     }
     assert completed
     count = len(provider.review_calls)
@@ -466,7 +484,9 @@ async def test_cancellation_waits_for_an_inflight_review_checkpoint_commit() -> 
 
     async def save(plan: ModelPlanningCheckpoint) -> None:
         nonlocal interrupted, block
-        if block and any(batch.reviews for batch in plan.review_batches):
+        if block and any(
+            isinstance(batch, ModelReviewCompletedCheckpoint) for batch in plan.review_batches
+        ):
             block = False
             started.set()
             try:
@@ -493,7 +513,7 @@ async def test_cancellation_waits_for_an_inflight_review_checkpoint_commit() -> 
     completed = {
         tuple(review.block_id for review in batch.reviews)
         for batch in saved[-1].review_batches
-        if batch.reviews
+        if isinstance(batch, ModelReviewCompletedCheckpoint)
     }
     assert completed
     count = len(provider.review_calls)

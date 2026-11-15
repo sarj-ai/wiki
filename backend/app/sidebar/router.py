@@ -1,17 +1,23 @@
 from __future__ import annotations
 
-from typing import Annotated
+from typing import Annotated, assert_never
 
 from fastapi import APIRouter, Depends, Path, Query, Request, Response, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
 from app.drive.dependencies import drive_service_dep, require_member_drive
+from app.drive.pagination import PageToken
 from app.drive.schemas import DriveNode, DrivePermissionsPage, DriveSummary, DriveTree
 from app.drive.service import DriveService
 from app.identifiers import DriveId, FileId
 from app.openapi import authentication_responses
-from app.sidebar.cache import SidebarCacheService, tree_etag as _tree_etag
+from app.sidebar.cache import (
+    LoadedDriveTree,
+    NotModifiedDriveTree,
+    SidebarCacheService,
+    tree_etag as _tree_etag,
+)
 from app.sidebar.dependencies import sidebar_cache_service_dep
 
 
@@ -43,7 +49,7 @@ async def get_drive_permissions(
     drive_id: Annotated[DriveId, Path(min_length=1)],
     response: Response,
     drive: Annotated[DriveService, Depends(drive_service_dep)],
-    page_token: Annotated[str | None, Query(max_length=4096)] = None,
+    page_token: Annotated[PageToken | None, Query(max_length=4096)] = None,
 ) -> DrivePermissionsPage:
     response.headers["Cache-Control"] = "private, no-store"
     return await drive.list_drive_permissions(drive_id, page_token=page_token)
@@ -77,16 +83,19 @@ async def get_drive_folders(
         conditional = await cache.get_drive_tree_if_modified(
             db, drive_id, request_etag=request_etag
         )
-        metadata_etag = _tree_etag(drive_id, conditional.refreshed_at)
-        if conditional.cached is None and metadata_etag is not None:
-            return Response(
-                status_code=status.HTTP_304_NOT_MODIFIED,
-                headers={"ETag": metadata_etag, "Cache-Control": _CACHE_CONTROL},
-            )
-        cached = conditional.cached
-        if cached is None:
-            msg = "Conditional tree response lacks a tree or timestamp"
-            raise RuntimeError(msg)
+        match conditional:
+            case NotModifiedDriveTree(refreshed_at=refreshed_at):
+                return Response(
+                    status_code=status.HTTP_304_NOT_MODIFIED,
+                    headers={
+                        "ETag": _tree_etag(drive_id, refreshed_at),
+                        "Cache-Control": _CACHE_CONTROL,
+                    },
+                )
+            case LoadedDriveTree(cached=cached):
+                pass
+            case _:
+                assert_never(conditional)
     else:
         cached = await cache.get_drive_tree(db, drive_id)
     etag = _tree_etag(drive_id, cached.refreshed_at)

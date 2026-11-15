@@ -3,12 +3,17 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from typing import ClassVar, Literal, assert_never, override
-from urllib.parse import urlsplit
 
 from google.api_core.exceptions import AlreadyExists, GoogleAPICallError
 from google.cloud import tasks_v2
 
 from app.identifiers import TaskId
+from app.runtime_config import (
+    ConfiguredCloudTasks,
+    ConfiguredDocumentQueue,
+    DisabledDocumentQueue,
+    DocumentQueueConfiguration,
+)
 from app.tasks.errors import TaskEnqueueError
 from app.tasks.schemas import TaskDispatchRequest
 
@@ -40,37 +45,32 @@ class CloudTasksEnqueuer(TaskEnqueuer):
     def __init__(
         self,
         *,
-        project: str,
-        location: str,
-        queue: str,
-        target_url: str,
-        invoker_service_account: str,
-        document_transform_queue: str | None = None,
-        document_transform_target_url: str | None = None,
+        configuration: ConfiguredCloudTasks,
+        document_transform: DocumentQueueConfiguration,
         client: tasks_v2.CloudTasksAsyncClient | None = None,
     ) -> None:
-        if not _is_internal_task_url(target_url, expected_path="/internal/tasks/smart-create"):
-            msg = "Cloud Tasks target must be the HTTPS internal Smart Create endpoint"
-            raise ValueError(msg)
-        if (document_transform_queue is None) != (document_transform_target_url is None):
-            msg = "Document Transform queue and target URL must be configured together"
-            raise ValueError(msg)
-        if document_transform_target_url is not None and not _is_internal_task_url(
-            document_transform_target_url, expected_path="/internal/tasks/document-transform"
-        ):
-            msg = "Document Transform Cloud Tasks target must be its HTTPS internal endpoint"
-            raise ValueError(msg)
         self._client = client or tasks_v2.CloudTasksAsyncClient()
-        self._parent = self._client.queue_path(project, location, queue)
-        self._smart_create_request = _http_request_template(target_url, invoker_service_account)
+        self._parent = self._client.queue_path(
+            configuration.project, configuration.location, configuration.queue
+        )
+        self._smart_create_request = _http_request_template(
+            configuration.target_url, configuration.invoker_service_account
+        )
         self._document_transform: _DocumentTransformQueue
-        if document_transform_queue is not None and document_transform_target_url is not None:
-            self._document_transform = _ConfiguredDocumentTransformQueue(
-                self._client.queue_path(project, location, document_transform_queue),
-                _http_request_template(document_transform_target_url, invoker_service_account),
-            )
-        else:
-            self._document_transform = _DisabledDocumentTransformQueue()
+        match document_transform:
+            case ConfiguredDocumentQueue():
+                self._document_transform = _ConfiguredDocumentTransformQueue(
+                    self._client.queue_path(
+                        configuration.project, configuration.location, document_transform.queue
+                    ),
+                    _http_request_template(
+                        document_transform.target_url, configuration.invoker_service_account
+                    ),
+                )
+            case DisabledDocumentQueue():
+                self._document_transform = _DisabledDocumentTransformQueue()
+            case _:
+                assert_never(document_transform)
 
     @override
     async def enqueue_smart_create(self, task_id: TaskId) -> None:
@@ -135,17 +135,3 @@ def _http_request_template(target_url: str, service_account: str) -> bytes:
             )
         )
     )
-
-
-def _is_internal_task_url(target_url: str, *, expected_path: str) -> bool:
-    parsed = urlsplit(target_url)
-    has_authority = (
-        parsed.hostname is not None and parsed.username is None and parsed.password is None
-    )
-    has_expected_location = (
-        parsed.scheme == "https"
-        and parsed.path == expected_path
-        and not parsed.query
-        and not parsed.fragment
-    )
-    return has_authority and has_expected_location

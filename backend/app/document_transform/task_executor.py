@@ -56,6 +56,7 @@ from app.document_transform.schemas import (
     DocumentTransformResult,
     DriveFileSource,
     ModelPlanningCheckpoint,
+    ModelReviewCompletedCheckpoint,
     OutputStrategy,
     TransformMode,
 )
@@ -419,7 +420,8 @@ class DriveDocumentTransformTaskExecutor(DocumentTransformTaskExecutor):
                     checkpoint_generation=generation,
                     model_proposal_count=len(plan.proposals),
                     model_completed_review_batches=sum(
-                        bool(batch.reviews) for batch in plan.review_batches
+                        isinstance(batch, ModelReviewCompletedCheckpoint)
+                        for batch in plan.review_batches
                     ),
                     model_started_review_attempts=sum(
                         batch.attempt_count for batch in plan.review_batches
@@ -540,7 +542,7 @@ async def _execute_claimed(
         source_kind=source_kind,
         mode=payload.mode.value,
         output_strategy=payload.output_strategy.value,
-        checkpoint_stage=checkpoint.stage.value if checkpoint is not None else "none",
+        checkpoint_stage=str(checkpoint.stage) if checkpoint is not None else "none",
         mutation_sha256=(
             checkpoint.mutation_sha256
             if (checkpoint is not None and checkpoint.kind == "in_place")

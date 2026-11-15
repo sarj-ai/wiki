@@ -30,8 +30,8 @@ class TaskStatus(StrEnum):
     NEEDS_REVIEW = "needs_review"
 
 
-class DocumentTransformAdmission(BaseModel):
-    model_config = ConfigDict(extra="forbid")
+class TaskAdmission(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
 
     task_id: TaskId
     status: TaskStatus

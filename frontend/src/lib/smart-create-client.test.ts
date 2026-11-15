@@ -84,6 +84,32 @@ afterEach(() => {
 });
 
 describe("smartCreateApi", () => {
+  it("recovers admission identity with an authenticated read and keeps absence distinct", async () => {
+    FETCH_MOCK.mockResolvedValueOnce(
+      Response.json({ "task_id": TASK_ID, status: "pending" }),
+    );
+    await expect(smartCreateApi.getAdmission(TASK_ID)).resolves.toBe(TASK_ID);
+    expect(FETCH_MOCK.mock.calls[0]?.[0]).toBe(
+      `/api/wiki/files/smart/admissions/${TASK_ID}`,
+    );
+    FETCH_MOCK.mockResolvedValueOnce(
+      Response.json({ detail: "Not found" }, { status: 404 }),
+    );
+    await expect(smartCreateApi.getAdmission(TASK_ID)).resolves.toBeNull();
+    expect(ACTION_MOCKS.create).not.toHaveBeenCalled();
+  });
+
+  it("rejects a task read that returns another request's identity", async () => {
+    FETCH_MOCK.mockResolvedValue(
+      Response.json({
+        ...PENDING_TASK,
+        id: "77777777-7777-4777-8777-777777777777",
+      }),
+    );
+    await expect(smartCreateApi.getTask(TASK_ID)).rejects.toThrow(
+      "different request",
+    );
+  });
   it("does not poll an old task using the replacement session after a sleep", async () => {
     vi.useFakeTimers();
     const owner = {};
@@ -278,7 +304,10 @@ describe("smartCreateApi", () => {
         undefined,
         0,
       ),
-    ).resolves.toMatchObject({ file: { id: "file-1" }, taskId: TASK_ID });
+    ).resolves.toMatchObject({
+      status: "succeeded",
+      result: { file: { id: "file-1" }, taskId: TASK_ID },
+    });
     const [url] = FETCH_MOCK.mock.calls[0] ?? [];
     expect(url).toBe(`/api/wiki/tasks/${TASK_ID}`);
   });
@@ -291,6 +320,9 @@ describe("smartCreateApi", () => {
         id: TASK_ID,
         status: "failed",
       }),
-    ).rejects.toThrow("Template changed in Drive");
+    ).resolves.toMatchObject({
+      status: "failed",
+      errorDetail: "Template changed in Drive",
+    });
   });
 });

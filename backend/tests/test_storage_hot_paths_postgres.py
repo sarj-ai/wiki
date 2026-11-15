@@ -939,16 +939,18 @@ async def test_live_lease_waiters_recheck_fresh_generation_without_doomed_update
             await asyncio.gather(*waiting, return_exceptions=True)
 
 
+@pytest.mark.parametrize("kind", list(TaskKind))
 @pytest.mark.parametrize("key_kind", ["original", "alias", "both"])
 @pytest.mark.parametrize("visibility", ["retained", "expired", "wrong-owner", "wrong-kind"])
 async def test_indexed_key_lookup_preserves_identity_owner_kind_and_expiry(
-    database: _Database, key_kind: str, visibility: str
+    database: _Database, key_kind: str, visibility: str, kind: TaskKind
 ) -> None:
     original, alias = IdempotencyKey(uuid.uuid7()), IdempotencyKey(uuid.uuid7())
+    other_kind = next(item for item in TaskKind if item != kind)
     now = datetime.now(UTC)
     task = Task(
         owner_user_id=database.owner,
-        kind=TaskKind.FILE_DOCUMENT_TRANSFORM,
+        kind=kind,
         idempotency_key=original,
         request_hash="0" * 64,
         payload={},
@@ -962,7 +964,7 @@ async def test_indexed_key_lookup_preserves_identity_owner_kind_and_expiry(
             db.add(
                 TaskReplayKey(
                     owner_user_id=database.owner,
-                    kind=TaskKind.FILE_DOCUMENT_TRANSFORM,
+                    kind=kind,
                     idempotency_key=alias if key_kind == "alias" else original,
                     task_id=task.id,
                 )
@@ -970,20 +972,20 @@ async def test_indexed_key_lookup_preserves_identity_owner_kind_and_expiry(
         if visibility == "expired":
             task.expires_at = now - timedelta(days=1)
         elif visibility == "wrong-kind":
-            task.kind = TaskKind.FILE_SMART_CREATE
+            task.kind = other_kind
         await db.commit()
         task_id = task.id
     key = alias if key_kind == "alias" else original
     owner = database.other_owner if visibility == "wrong-owner" else database.owner
     async with database.sessions() as db:
         service = PostgresTaskService(db=db)
-        existing = await service._maybe_existing(owner, TaskKind.FILE_DOCUMENT_TRANSFORM, key)
+        existing = await service._maybe_existing(owner, kind, key)
         if visibility == "retained":
             assert existing is not None
             assert existing.id == task_id
-            admission = await service.get_document_transform_admission(owner, key)
+            admission = await service.get_admission(owner, kind, key)
             assert admission.task_id == task_id
         else:
             assert existing is None
             with pytest.raises(TaskNotFoundError):
-                await service.get_document_transform_admission(owner, key)
+                await service.get_admission(owner, kind, key)

@@ -16,6 +16,7 @@ import pytest
 from app.auth.encryption import encrypt_text
 from app.cache.service import CacheNamespace, CacheService
 from app.drive.errors import DrivePermissionsUpstreamError, DriveTraversalIncompleteError
+from app.drive.pagination import PageToken
 from app.drive.schemas import (
     MIME_FOLDER,
     MIME_SHORTCUT,
@@ -231,6 +232,72 @@ async def test_list_drives_paginates_until_empty_token(patch_drive_client: Any) 
     assert client.drives_captured[1].get("pageToken") == "t1"
 
 
+async def test_drive_listing_stops_when_provider_repeats_its_cursor(
+    patch_drive_client: Callable[[_FakeClient], None],
+) -> None:
+    client = _FakeClient(
+        drives_pages=[
+            {"drives": [{"id": "one", "name": "One"}], "nextPageToken": "same"},
+            {"drives": [{"id": "two", "name": "Two"}], "nextPageToken": "same"},
+        ]
+    )
+    patch_drive_client(client)
+    drives = await _svc().list_drives()
+    assert [drive.id for drive in drives] == ["my-drive-root", "one", "two"]
+    assert len(client.drives_captured) == 2
+
+
+async def test_folder_walk_rejects_a_repeated_provider_cursor(
+    patch_drive_client: Callable[[_FakeClient], None],
+) -> None:
+    client = _FakeClient(
+        files_pages=[
+            {"files": [], "nextPageToken": "same"},
+            {"files": [], "nextPageToken": "same"},
+        ]
+    )
+    patch_drive_client(client)
+    with pytest.raises(DriveTraversalIncompleteError):
+        await _svc().walk_drive_folders(DriveId("drive"))
+    folder_calls = [
+        call for call in client.files_captured if str(call.get("q", "")).startswith("(")
+    ]
+    assert len(folder_calls) == 2
+
+
+async def test_member_listing_rejects_a_repeated_provider_cursor(
+    patch_drive_client: Callable[[_FakeClient], None],
+) -> None:
+    client = _FakeClient(
+        children_pages=[
+            {"files": [], "nextPageToken": "same"},
+            {"files": [], "nextPageToken": "same"},
+        ]
+    )
+    patch_drive_client(client)
+    with pytest.raises(DriveTraversalIncompleteError):
+        await _svc().list_folder_children(FileId("folder"))
+    assert len(client.files_captured) == 2
+
+
+async def test_drive_preload_marks_a_repeated_cursor_incomplete(
+    patch_drive_client: Callable[[_FakeClient], None],
+) -> None:
+    client = _FakeClient(
+        children_pages=[
+            {"files": [], "nextPageToken": "same"},
+            {"files": [], "nextPageToken": "same"},
+        ]
+    )
+    patch_drive_client(client)
+    tree = await _svc().walk_drive_folders(DriveId("drive"))
+    assert not tree.files_complete
+    file_calls = [
+        call for call in client.files_captured if str(call.get("q", "")).startswith("trashed=false")
+    ]
+    assert len(file_calls) == 2
+
+
 async def test_list_drives_skips_hidden_entries(patch_drive_client: Any) -> None:
     client = _FakeClient(
         drives_pages=[
@@ -275,7 +342,7 @@ async def test_list_drive_permissions_maps_page_and_requests_private_fields(
     )
     patch_drive_client(client)
 
-    incoming_page_token = "incoming"
+    incoming_page_token = PageToken("incoming")
     next_page_token = "next"
     page = await _svc().list_drive_permissions(DriveId("d1"), page_token=incoming_page_token)
 

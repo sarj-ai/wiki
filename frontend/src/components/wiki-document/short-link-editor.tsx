@@ -1,7 +1,7 @@
 "use client";
 
 import { Check, Copy, Loader2, Trash2 } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 
 import {
@@ -40,14 +40,30 @@ import { isAbortError } from "@/lib/mutation-toast";
 
 import { useCopyFeedback } from "./use-copy-feedback";
 
-export function ShortLinkEditor({
-  fileId,
-  onOpenChange,
-  open,
-}: ShortLinkEditorProps) {
-  const [confirmingRemove, setConfirmingRemove] = useState(false);
+type AliasEditState =
+  | { readonly kind: "idle" | "confirming-remove" | "removing" | "unmounted" }
+  | { readonly kind: "saving"; readonly value: string }
+  | { readonly kind: "failed"; readonly message: string };
+
+export function ShortLinkEditor(props: ShortLinkEditorProps) {
+  return <EditorForFile key={props.fileId} {...props} />;
+}
+
+function EditorForFile({ fileId, onOpenChange, open }: ShortLinkEditorProps) {
+  const [state, setState] = useState<AliasEditState>({ kind: "idle" });
+  const phase = useRef<AliasEditState>(state);
+  const publish = (next: AliasEditState) => {
+    phase.current = next;
+    setState(next);
+  };
+  useEffect(() => {
+    phase.current = { kind: "idle" };
+    return () => {
+      phase.current = { kind: "unmounted" };
+    };
+  }, []);
   const [draft, setDraft] = useState<null | string>(null);
-  const [saveError, setSaveError] = useState<null | string>(null);
+  const saveError = state.kind === "failed" ? state.message : null;
   const aliasQuery = useDocumentAlias(fileId, open);
   const saveAlias = useSaveDocumentAlias(fileId);
   const retireAlias = useRetireDocumentAlias(fileId);
@@ -59,18 +75,35 @@ export function ShortLinkEditor({
   const value = draft ?? aliasQuery.data?.alias ?? "";
   const validationError = documentAliasError(value);
   const showValidationError = draft !== null && validationError !== null;
-  const isSaving = saveAlias.isPending || retireAlias.isPending;
+  const isSaving = aliasBusy(state);
 
   const handleSave = () => {
-    if (validationError !== null) return;
+    if (
+      validationError !== null ||
+      (phase.current.kind !== "idle" && phase.current.kind !== "failed")
+    )
+      return;
+    const saving: Extract<AliasEditState, { kind: "saving" }> = {
+      kind: "saving",
+      value,
+    };
+    publish(saving);
     void (async () => {
-      const result = await saveAlias.mutateAsync(value);
+      const result = await saveAlias.mutateAsync(saving.value);
+      if (phase.current !== saving) return;
       setDraft(result.alias);
-      setSaveError(null);
+      publish({ kind: "idle" });
       toast.success(savedAlias ? "Short link renamed" : "Short link created");
     })().catch((error: unknown) => {
-      if (!isAbortError(error))
-        setSaveError(aliasErrorMessage(error, "Couldn't save short link"));
+      if (phase.current !== saving) return;
+      publish(
+        isAbortError(error)
+          ? { kind: "idle" }
+          : {
+              kind: "failed",
+              message: aliasErrorMessage(error, "Couldn't save short link"),
+            },
+      );
     });
   };
 
@@ -85,26 +118,41 @@ export function ShortLinkEditor({
   };
 
   const handleRemove = () => {
+    if (phase.current.kind !== "confirming-remove") return;
+    const removing: AliasEditState = { kind: "removing" };
+    publish(removing);
     void (async () => {
       await retireAlias.mutateAsync();
-      setConfirmingRemove(false);
+      if (phase.current !== removing) return;
+      publish({ kind: "idle" });
       setDraft("");
       toast.success("Short link removed");
     })().catch((error: unknown) => {
-      if (!isAbortError(error))
-        toast.error(aliasErrorMessage(error, "Couldn't remove short link"));
+      if (phase.current !== removing) return;
+      publish(
+        isAbortError(error)
+          ? { kind: "idle" }
+          : {
+              kind: "failed",
+              message: aliasErrorMessage(error, "Couldn't remove short link"),
+            },
+      );
     });
+  };
+  const close = () => {
+    if (phase.current.kind === "saving" || phase.current.kind === "removing")
+      return;
+    publish({ kind: "idle" });
+    setDraft(null);
+    onOpenChange(false);
   };
 
   return (
     <>
       <Dialog
         onOpenChange={(nextOpen) => {
-          onOpenChange(nextOpen);
-          if (!nextOpen) {
-            setDraft(null);
-            setSaveError(null);
-          }
+          if (!nextOpen) close();
+          else onOpenChange(true);
         }}
         open={open}
       >
@@ -137,7 +185,8 @@ export function ShortLinkEditor({
                   id="document-alias"
                   onChange={(event) => {
                     setDraft(event.target.value);
-                    setSaveError(null);
+                    if (phase.current.kind === "failed")
+                      publish({ kind: "idle" });
                   }}
                   placeholder="eng-onboarding"
                   spellCheck={false}
@@ -187,7 +236,11 @@ export function ShortLinkEditor({
                 <Button
                   disabled={isSaving}
                   onClick={() => {
-                    setConfirmingRemove(true);
+                    if (
+                      phase.current.kind === "idle" ||
+                      phase.current.kind === "failed"
+                    )
+                      publish({ kind: "confirming-remove" });
                   }}
                   type="button"
                   variant="ghost"
@@ -199,10 +252,8 @@ export function ShortLinkEditor({
             </div>
             <div className="flex justify-end gap-2">
               <Button
-                onClick={() => {
-                  onOpenChange(false);
-                  setDraft(null);
-                }}
+                disabled={isSaving}
+                onClick={close}
                 type="button"
                 variant="outline"
               >
@@ -219,7 +270,7 @@ export function ShortLinkEditor({
                 onClick={handleSave}
                 type="button"
               >
-                {saveAlias.isPending ? (
+                {state.kind === "saving" ? (
                   <Loader2 className="size-4 animate-spin" />
                 ) : null}
                 {savedAlias ? "Save changes" : "Create link"}
@@ -229,7 +280,13 @@ export function ShortLinkEditor({
         </DialogContent>
       </Dialog>
 
-      <AlertDialog onOpenChange={setConfirmingRemove} open={confirmingRemove}>
+      <AlertDialog
+        onOpenChange={(next) => {
+          if (!next && phase.current.kind === "confirming-remove")
+            publish({ kind: "idle" });
+        }}
+        open={state.kind === "confirming-remove" || state.kind === "removing"}
+      >
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Remove this short link?</AlertDialogTitle>
@@ -239,17 +296,17 @@ export function ShortLinkEditor({
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel disabled={retireAlias.isPending}>
+            <AlertDialogCancel disabled={state.kind === "removing"}>
               Keep link
             </AlertDialogCancel>
             <AlertDialogAction
-              disabled={retireAlias.isPending}
+              disabled={state.kind === "removing"}
               onClick={(event) => {
                 event.preventDefault();
                 handleRemove();
               }}
             >
-              {retireAlias.isPending ? (
+              {state.kind === "removing" ? (
                 <Loader2 className="size-4 animate-spin" />
               ) : null}
               Remove link
@@ -265,6 +322,25 @@ interface ShortLinkEditorProps {
   fileId: string;
   onOpenChange: (open: boolean) => void;
   open: boolean;
+}
+
+function aliasBusy(state: AliasEditState): boolean {
+  switch (state.kind) {
+    case "saving":
+    case "removing":
+      return true;
+    case "idle":
+    case "confirming-remove":
+    case "failed":
+    case "unmounted":
+      return false;
+    default:
+      return unreachableAlias(state);
+  }
+}
+
+function unreachableAlias(state: never): never {
+  throw new Error(`Unhandled short-link state: ${JSON.stringify(state)}`);
 }
 
 function aliasErrorMessage(error: unknown, fallback: string): string {

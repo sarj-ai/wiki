@@ -2,6 +2,7 @@ from pydantic import JsonValue, ValidationError
 import pytest
 
 from app.document_transform.copy_draft_state import (
+    AppliedDraftMutation,
     CompletedDraft,
     IncompleteDraft,
     PendingDraftMutation,
@@ -19,20 +20,28 @@ from app.document_transform.errors import IncompatiblePendingOutputError
 def test_pending_copy_preserves_the_previous_durable_receipt() -> None:
     previous = RecordedDraftMutation(sha256="a" * 64)
     pending = prepare_draft_mutation(previous, "b" * 64, "c" * 64)
+    assert isinstance(pending, PendingDraftMutation)
     assert confirmed_draft_mutation(pending) == "a" * 64
     assert prepare_draft_mutation(pending, "b" * 64, "c" * 64) == pending
     recorded = record_draft_mutation(pending, "b" * 64)
-    assert isinstance(recorded, PendingDraftMutation)
+    assert isinstance(recorded, AppliedDraftMutation)
     assert recorded.sha256 == pending.sha256
     assert recorded.base_revision_sha256 == pending.base_revision_sha256
     assert confirmed_draft_mutation(recorded) == "b" * 64
     assert record_draft_mutation(recorded, "b" * 64) == recorded
+    assert prepare_draft_mutation(recorded, "b" * 64, "c" * 64) == recorded
     with pytest.raises(IncompatiblePendingOutputError):
         prepare_draft_mutation(pending, "d" * 64, "c" * 64)
     with pytest.raises(IncompatiblePendingOutputError):
         prepare_draft_mutation(pending, "b" * 64, "d" * 64)
     with pytest.raises(IncompatiblePendingOutputError):
         record_draft_mutation(pending, "d" * 64)
+    with pytest.raises(IncompatiblePendingOutputError):
+        prepare_draft_mutation(recorded, "d" * 64, "c" * 64)
+    with pytest.raises(IncompatiblePendingOutputError):
+        prepare_draft_mutation(recorded, "b" * 64, "d" * 64)
+    with pytest.raises(IncompatiblePendingOutputError):
+        record_draft_mutation(recorded, "d" * 64)
 
 
 def test_copy_without_mutation_and_copy_with_a_recorded_noop_are_distinct() -> None:
@@ -40,6 +49,26 @@ def test_copy_without_mutation_and_copy_with_a_recorded_noop_are_distinct() -> N
     assert isinstance(initial, UnmodifiedDraft)
     assert confirmed_draft_mutation(initial) is None
     assert record_draft_mutation(initial, "a" * 64) == RecordedDraftMutation(sha256="a" * 64)
+    recorded = RecordedDraftMutation(sha256="a" * 64)
+    assert prepare_draft_mutation(recorded, "a" * 64, "b" * 64) == recorded
+
+
+def test_provider_acknowledgement_with_retained_intent_decodes_as_applied() -> None:
+    properties = {
+        "sarjTransformMutation": "a" * 64,
+        "sarjTransformPendingMutation": "a" * 64,
+        "sarjTransformMutationBaseHash": "b" * 64,
+    }
+    before = dict(properties)
+    applied = decode_draft_mutation(properties)
+    assert applied == AppliedDraftMutation(sha256="a" * 64, base_revision_sha256="b" * 64)
+    assert properties == before
+    with pytest.raises(ValidationError, match="acknowledged mutation"):
+        PendingDraftMutation(
+            sha256="a" * 64,
+            base_revision_sha256="b" * 64,
+            previous=RecordedDraftMutation(sha256="a" * 64),
+        )
 
 
 def test_current_provider_properties_decode_without_rewriting_audit_evidence() -> None:

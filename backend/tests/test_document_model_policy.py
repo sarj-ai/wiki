@@ -4,7 +4,6 @@ import pytest
 
 from app.document_settings import DocumentSettings
 from app.document_transform.models import VertexGeminiPatchGenerator
-from app.document_transform.schemas import TransformPhase
 from tests.test_aggressive_unslop_models import _generator
 from tests.test_config import _settings
 
@@ -32,14 +31,13 @@ def test_transform_settings_reject_unverified_model_and_thinking_combinations(
 
 @pytest.mark.parametrize("model", ["gemini-3.1-pro-preview", "gemini-4-argon"])
 @pytest.mark.parametrize("repair", [False, True])
-@pytest.mark.parametrize("phase", list(TransformPhase))
 def test_allowed_pro_models_keep_high_thinking_in_every_writer_path(
-    model: str, *, repair: bool, phase: TransformPhase
+    model: str, *, repair: bool
 ) -> None:
     harness = _generator(types.GenerateContentResponse())
     generator: VertexGeminiPatchGenerator = harness.generator
     thinking = generator._generation_thinking_config(
-        model=model, primary_model=model, phase=phase, repair=repair
+        model=model, primary_model=model, repair=repair
     )
     assert thinking is not None
     assert thinking.thinking_level == types.ThinkingLevel.HIGH

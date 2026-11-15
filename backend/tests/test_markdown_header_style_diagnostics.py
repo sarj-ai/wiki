@@ -8,6 +8,7 @@ from app.document_transform.markdown_import import (
     markdown_import_brand_diagnostics,
     verify_markdown_import,
 )
+from app.document_transform.verification import BrandVerification
 from tests.test_markdown_native_header_title import _titled_document
 
 
@@ -74,7 +75,7 @@ def test_header_component_checks_preserve_review_without_private_payload(change:
     before = deepcopy(document)
     verification = verify_markdown_import(document, manifest)
     checks = markdown_import_brand_diagnostics(document, manifest)
-    assert not verification.brand_applied
+    assert verification.brand not in {BrandVerification.FULL, BrandVerification.NOT_REQUIRED}
     assert verification.content_preserved
     assert verification.structure_preserved
     assert not checks["import_header_title_style"]
@@ -132,7 +133,10 @@ def test_unknown_inherited_fields_do_not_make_malformed_color_diagnostics_raise(
     manifest = markdown_import_manifest(
         "Body", title="Import", branded=True, header_title="Chosen Title"
     )
-    assert not verify_markdown_import(document, manifest).brand_applied
+    assert verify_markdown_import(document, manifest).brand not in {
+        BrandVerification.FULL,
+        BrandVerification.NOT_REQUIRED,
+    }
     checks = markdown_import_brand_diagnostics(document, manifest)
     assert not checks["import_header_run_fields_known"]
     assert not checks["import_header_run_color_exact"]

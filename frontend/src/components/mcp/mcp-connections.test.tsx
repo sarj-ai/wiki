@@ -213,6 +213,23 @@ describe("McpConnections", () => {
     await vi.waitFor(() => expect(buttons("Disconnect")).toHaveLength(0));
   });
 
+  it("requires fresh readback after a failed refresh of an authenticated grant list", async () => {
+    render();
+    await loaded();
+    read.mockRejectedValueOnce(new TypeError("network"));
+    button("Refresh status").click();
+    await vi.waitFor(() =>
+      expect(container).toHaveTextContent("Could not confirm"),
+    );
+    expect(buttons("Disconnect")).toHaveLength(0);
+    expect(container.querySelector("code")).toBeNull();
+    read.mockResolvedValueOnce({ ...INITIAL, csrf: "c".repeat(64) });
+    button("Refresh status").click();
+    await loaded();
+    button("Disconnect").click();
+    expect(disconnect).toHaveBeenCalledExactlyOnceWith(READ_ID, "c".repeat(64));
+  });
+
   it("keeps ambiguous deletion controls absent through failed recovery, then reads fresh state", async () => {
     disconnect.mockRejectedValueOnce(new TypeError("network"));
     render();

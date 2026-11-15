@@ -8,15 +8,18 @@ import pytest
 from app.document_transform import google_gateway as gateway_module
 from app.document_transform.brand import SarjBrandProfile, build_copy_mutations, mutation_sha256
 from app.document_transform.copy_draft_state import (
+    AppliedDraftMutation,
     PendingDraftMutation,
-    RecordedDraftMutation,
     confirmed_draft_mutation,
 )
-from app.document_transform.errors import DocumentGatewayError, SourceChangedError
+from app.document_transform.errors import (
+    DocumentGatewayError,
+    IncompatiblePendingOutputError,
+    SourceChangedError,
+)
 from app.document_transform.gateway import (
     NativeDocumentSnapshot,
     OutputDraft,
-    OutputVerification,
 )
 from app.document_transform.google_gateway import GoogleDocumentGateway
 from app.document_transform.ir import parse_google_document
@@ -28,7 +31,9 @@ from app.document_transform.schemas import (
     TransformMode,
 )
 from app.document_transform.tab_names import TabNamingPlan
+from app.document_transform.verification import BrandVerification
 from app.identifiers import DocsRevisionId, DocsTabId, FileId, TaskId
+from tests.document_verification import VerificationFacts
 from tests.test_document_transform import _copy_executor, _CopyCheckpointStore, _Gateway
 from tests.test_document_transform_protected_content import _document
 
@@ -106,7 +111,11 @@ def test_persisted_header_ownership_rebuilds_identical_requests_and_recovers_mar
         mutation=PendingDraftMutation(
             sha256=digest,
             base_revision_sha256=gateway_module._revision_sha256(DocsRevisionId("revision-1")),
-            previous=None if ambiguous else RecordedDraftMutation(sha256=digest),
+        )
+        if ambiguous
+        else AppliedDraftMutation(
+            sha256=digest,
+            base_revision_sha256=gateway_module._revision_sha256(DocsRevisionId("revision-1")),
         ),
     )
     before = deepcopy(document)
@@ -134,7 +143,7 @@ def test_persisted_header_ownership_rebuilds_identical_requests_and_recovers_mar
     )
     applied = gateway._apply_requests_sync(recovered, digest, replay, recovered.revision_id)
     assert confirmed_draft_mutation(applied.mutation) == digest
-    assert properties == [{gateway_module._PROP_MUTATION: digest}]
+    assert properties == ([{gateway_module._PROP_MUTATION: digest}] if ambiguous else [])
 
 
 @pytest.mark.parametrize(
@@ -224,7 +233,7 @@ class _OutageGateway(_Gateway):
                 revision_id=DocsRevisionId("revision-1"),
                 google_document=deepcopy(self.native),
             ),
-            verification=OutputVerification(True, True, False),
+            verification=VerificationFacts(brand=BrandVerification.MISMATCH),
         )
         self.native_gateway = _gateway(monkeypatch, self.native)
         self.naming_attempts = 0
@@ -262,10 +271,9 @@ class _OutageGateway(_Gateway):
             draft,
             revision_id=DocsRevisionId("revision-2"),
             headers=(),
-            mutation=PendingDraftMutation(
+            mutation=AppliedDraftMutation(
                 sha256=mutation_sha256,
                 base_revision_sha256=gateway_module._revision_sha256(required_revision_id),
-                previous=RecordedDraftMutation(sha256=mutation_sha256),
             ),
         )
         return self.draft
@@ -382,3 +390,14 @@ async def test_pre_body_recovery_uses_persisted_post_shell_revision(
         result = await retry.execute(operation_id=operation, request=request)
         assert result.needs_review
         assert gateway.applies == 1
+
+
+def test_acknowledged_copy_intent_is_idempotent_and_cannot_authorize_another_write() -> None:
+    draft = replace(
+        _draft(),
+        mutation=AppliedDraftMutation(sha256="a" * 64, base_revision_sha256="b" * 64),
+    )
+    gateway = object.__new__(GoogleDocumentGateway)
+    assert gateway._apply_requests_sync(draft, "a" * 64, [], draft.revision_id) is draft
+    with pytest.raises(IncompatiblePendingOutputError):
+        gateway._apply_requests_sync(draft, "c" * 64, [], draft.revision_id)

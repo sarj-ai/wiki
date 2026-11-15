@@ -9,6 +9,7 @@ from app.document_transform.native_font_proof import (
     capture_native_font_proof,
     verify_native_font_proof,
 )
+from app.document_transform.verification import BrandVerification
 from tests.test_custom_furniture import _custom_document, _native_gateway, _verify_preserved
 from tests.test_document_transform_repeat import _inspection_snapshot
 from tests.test_native_preservation_findings import _native
@@ -122,8 +123,8 @@ async def test_in_place_diagnostics_reject_supported_brand_without_native_header
         result = await _verify_preserved(document, inspection, document)
     finally:
         logger.remove(sink)
-    assert not result.brand_applied
-    assert not result.supported_brand_applied
+    assert result.brand not in {BrandVerification.FULL, BrandVerification.NOT_REQUIRED}
+    assert result.brand is not BrandVerification.SUPPORTED
     assert any(
         record.get("diagnostics", {}).get("supported_brand_applied") is False for record in records
     )

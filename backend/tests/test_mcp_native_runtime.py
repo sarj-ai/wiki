@@ -135,7 +135,7 @@ class RuntimeLab:
         response = await self.browser.post(
             path,
             headers=headers,
-            json={"approve": approve, "transform_approved": False, "csrf": view.json()["csrf"]},
+            json={"command": "approve_read" if approve else "deny", "csrf": view.json()["csrf"]},
         )
         assert response.status_code == 200, response.text
         result = parse_qs(urlsplit(response.json()["redirect_uri"]).query)

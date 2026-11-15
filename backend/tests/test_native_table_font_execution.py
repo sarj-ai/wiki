@@ -58,7 +58,6 @@ async def test_table_scope_declines_before_write_when_preceding_body_changes(cha
     scope = await DocumentTransformExecutor(
         gateway=_Gateway(snapshot),
         generator=_Generator(),
-        allow_format_text_edits=True,
         checkpoint_store=_CheckpointStore([]),
         task_id=TaskId(uuid.uuid7()),
         lease_token=uuid.uuid7(),

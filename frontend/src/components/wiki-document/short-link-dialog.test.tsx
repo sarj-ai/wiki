@@ -159,12 +159,7 @@ describe("deferred short-link editor", () => {
     const trigger = host.querySelector("button");
     if (!trigger) throw new Error("Short-link trigger missing");
     flushSync(() => trigger.click());
-    const input = await vi.waitFor(() => {
-      const element =
-        document.body.querySelector<HTMLInputElement>("#document-alias");
-      if (!element) throw new Error("Alias editor input missing");
-      return element;
-    });
+    const input = await vi.waitFor(aliasInput);
     flushSync(() => {
       const writeValue = Object.getOwnPropertyDescriptor(
         HTMLInputElement.prototype,
@@ -184,6 +179,59 @@ describe("deferred short-link editor", () => {
         alias: "people-handbook",
       });
     });
+  });
+
+  it("owns a save once and ignores its late result after document navigation", async () => {
+    const saving =
+      Promise.withResolvers<
+        Awaited<ReturnType<typeof saveDocumentAliasAction>>
+      >();
+    vi.mocked(saveDocumentAliasAction).mockReturnValueOnce(saving.promise);
+    render();
+    const trigger = host.querySelector("button");
+    if (!trigger) throw new Error("Short-link trigger missing");
+    flushSync(() => trigger.click());
+    const input = await vi.waitFor(aliasInput);
+    flushSync(() => {
+      const writeValue = Object.getOwnPropertyDescriptor(
+        HTMLInputElement.prototype,
+        "value",
+      )?.set?.bind(input);
+      if (!writeValue) throw new Error("Input value setter missing");
+      writeValue("people-handbook");
+      input.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    const save = findButton("Save changes");
+    flushSync(() => {
+      save.click();
+      save.click();
+    });
+    await vi.waitFor(() =>
+      expect(saveDocumentAliasAction).toHaveBeenCalledOnce(),
+    );
+    expect(findButton("Remove")).toBeDisabled();
+    render("file-b");
+    const nextTrigger = host.querySelector("button");
+    if (!nextTrigger) throw new Error("Replacement short-link trigger missing");
+    flushSync(() => nextTrigger.click());
+    await vi.waitFor(() =>
+      expect(
+        document.body.querySelector<HTMLInputElement>("#document-alias")?.value,
+      ).toBe("team-handbook"),
+    );
+    saving.resolve({
+      data: { alias: "people-handbook", fileId: "file-a" },
+      ok: true,
+    });
+    await vi.waitFor(() =>
+      expect(client.getQueryData(["document-alias", "file-a"])).toEqual({
+        alias: "people-handbook",
+      }),
+    );
+    expect(
+      document.body.querySelector<HTMLInputElement>("#document-alias")?.value,
+    ).toBe("team-handbook");
+    expect(retireDocumentAliasAction).not.toHaveBeenCalled();
   });
 
   it("preserves explicit removal confirmation after loading the deferred editor", async () => {
@@ -210,4 +258,11 @@ function findButton(label: string): HTMLButtonElement {
   ].find((element) => element.textContent === label);
   if (!button) throw new Error(`Missing ${label} button`);
   return button;
+}
+
+function aliasInput(): HTMLInputElement {
+  const element =
+    document.body.querySelector<HTMLInputElement>("#document-alias");
+  if (!element) throw new Error("Alias editor input missing");
+  return element;
 }

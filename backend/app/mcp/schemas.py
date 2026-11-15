@@ -25,7 +25,7 @@ from app.document_transform.schemas import (
     TransformMode,
 )
 from app.identifiers import FileId, IdempotencyKey, TaskId
-from app.tasks.schemas import DocumentTransformAdmission, TaskKind, TaskRead
+from app.tasks.schemas import TaskAdmission, TaskKind, TaskRead
 
 
 MAX_RESPONSE_BYTES = 65_536
@@ -194,7 +194,7 @@ class AdmissionInput(McpModel):
 
 
 class AdmissionResponse(McpResponse):
-    admission: DocumentTransformAdmission | None
+    admission: TaskAdmission | None
 
 
 class TaskInput(McpModel):

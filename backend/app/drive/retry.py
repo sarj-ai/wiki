@@ -1,11 +1,13 @@
 from __future__ import annotations
 
+from dataclasses import dataclass, field
 from datetime import timedelta
 from math import isfinite
-from typing import TYPE_CHECKING, Any, NamedTuple, Protocol, override, runtime_checkable
+from typing import TYPE_CHECKING, Any, Literal, Protocol, override, runtime_checkable
 
 from googleapiclient.errors import HttpError
 import httplib2
+from pydantic import BaseModel, ConfigDict, Field, StrictBool, StrictInt
 from tenacity import (
     RetryCallState,
     retry,
@@ -33,9 +35,25 @@ class ProviderDeadlineError(TimeoutError):
     pass
 
 
-class DownloadProgress(NamedTuple):
-    status: Any
-    done: bool
+@dataclass(frozen=True, slots=True)
+class ContinuingDownload:
+    total_size: int | None
+    kind: Literal["continuing"] = field(default="continuing", init=False)
+
+
+@dataclass(frozen=True, slots=True)
+class CompletedDownload:
+    total_size: int | None
+    kind: Literal["completed"] = field(default="completed", init=False)
+
+
+type DownloadChunk = ContinuingDownload | CompletedDownload
+
+
+class _DownloadReply(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+    done: StrictBool
+    total_size: StrictInt | None = Field(ge=0)
 
 
 @runtime_checkable
@@ -155,12 +173,20 @@ def execute_batch_with_retry(batch: BatchHttpRequest) -> None:
 
 
 @drive_retry
-def execute_download_chunk_with_retry(download: MediaIoBaseDownload) -> DownloadProgress:
+def execute_download_chunk_with_retry(download: MediaIoBaseDownload) -> DownloadChunk:
     _ensure_attempt_budget()
     increment("google_request_count")
     with timed("google"):
         status, done = download.next_chunk(num_retries=0)
-    return DownloadProgress(status, bool(done))
+    try:
+        total_size = status.total_size if status is not None else None
+    except AttributeError as exc:
+        msg = "Provider download progress is missing its total size"
+        raise ValueError(msg) from exc
+    reply = _DownloadReply.model_validate({"done": done, "total_size": total_size})
+    return (
+        CompletedDownload(reply.total_size) if reply.done else ContinuingDownload(reply.total_size)
+    )
 
 
 def _ensure_attempt_budget() -> None:

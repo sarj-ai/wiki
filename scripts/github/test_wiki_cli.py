@@ -140,7 +140,9 @@ def test_command_environment_does_not_leak_to_the_next_tool(
     assert [call.setting for call in _invocations(native_tool)] == ["inner", "outer"]
 
 
-def test_quality_suppression_failure_stops_before_other_gates(native_tool: Path) -> None:
+def test_quality_suppression_failure_stops_before_other_gates(
+    native_tool: Path,
+) -> None:
     executable = native_tool.parent / "fixture-tool"
     for name in ("uv", "uvx"):
         target = native_tool.parent / name
@@ -196,7 +198,9 @@ def test_quality_prepares_generated_api_once_before_source_analysis(
     assert any("code-standards" in call.arguments and "check" in call.arguments for call in calls)
 
 
-def test_quality_generation_failure_stops_before_source_analysis(native_tool: Path) -> None:
+def test_quality_generation_failure_stops_before_source_analysis(
+    native_tool: Path,
+) -> None:
     executable = native_tool.parent / "fixture-tool"
     for name in ("uv", "uvx", "npm"):
         target = native_tool.parent / name
@@ -292,7 +296,7 @@ def test_full_qualification_keeps_one_repository_audit_and_required_gates() -> N
 
     assert commands[1] == ratchet
     assert commands.count(ratchet) == 1
-    assert wiki.REPOSITORY_STANDARDS_VERSION == "6.22.3"
+    assert wiki.REPOSITORY_STANDARDS_VERSION == "7.0.1"
     distribution = f"repo-standards=={wiki.REPOSITORY_STANDARDS_VERSION}"
     assert sum(distribution in command.arguments for command in commands) == 1
     assert any("--verify-python-baseline" in command.arguments for command in commands)
