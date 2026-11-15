@@ -66,6 +66,14 @@ def _row_style(
     }
 
 
+def readable_table_background(
+    row: int, *, target: ReadabilityTable, version: ReadabilityVersion
+) -> JsonValue:
+    if not (target.header or target.style_cells):
+        return None
+    return _row_style(row, target=target, version=version)["backgroundColor"]
+
+
 def readable_table_cell_requests(
     element: dict[str, JsonValue],
     target: ReadabilityTable,

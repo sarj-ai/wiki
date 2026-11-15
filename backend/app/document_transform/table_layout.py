@@ -9,8 +9,10 @@ from app.document_transform.quantity_notation import (
     CURRENCY_CODE,
     CURRENCY_PREFIX,
     CURRENCY_SYMBOL,
+    HORIZONTAL_SPACE,
     UNIT_EXPRESSION,
     UNIT_POWER,
+    grouped_uncertainty_pattern,
 )
 
 
@@ -31,7 +33,11 @@ _FRACTION = rf"{_SCIENTIFIC}\s*[/⁄]\s*[+−-]?{_SCIENTIFIC}"
 _MAGNITUDE = rf"(?:\d+\s+{_FRACTION}|(?:\d+\s*)?{_VULGAR_FRACTION}|{_FRACTION}|{_SCIENTIFIC})"
 _NUMBER = rf"(?:[+−-]?\s*(?:{CURRENCY_PREFIX}\s*)?|{CURRENCY_PREFIX}\s*[+−-]?)\s*{_MAGNITUDE}"
 _UNIT = UNIT_EXPRESSION
-_QUANTITY_TERM = rf"{_NUMBER}(?:\s*(?:%|٪|‰|×|x|{CURRENCY_CODE}|{CURRENCY_SYMBOL}|{_UNIT}))?"
+_GROUPED_UNCERTAINTY = grouped_uncertainty_pattern(_NUMBER)
+_QUANTITY_TERM = (
+    rf"(?:{_GROUPED_UNCERTAINTY}|{_NUMBER})"
+    rf"(?:{HORIZONTAL_SPACE}*(?:%|٪|‰|×|x|{CURRENCY_CODE}|{CURRENCY_SYMBOL}|{_UNIT}))?"
+)
 _QUANTITY = re.compile(
     rf"(?:(?:approximately|about|roughly|approx\.)\s+)?"
     rf"(?:[<>]=?\s*|[≤≥~≈±]\s*)?{_QUANTITY_TERM}(?:\s*:\s*{_QUANTITY_TERM})?"

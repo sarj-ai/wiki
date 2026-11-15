@@ -1,0 +1,212 @@
+{
+  "version": 7,
+  "source_revision_id": "r1",
+  "source_sha256": "d25e50afe2246373354084f50d9aa0db94d36d761750343a3b43e31e3950d34b",
+  "invariant_sha256": "c4fb9a0e89835518ba4bb1ab869c12e3b9ccad59076acbd25a6b5ec9cc492a08",
+  "paragraphs": [],
+  "tables": [
+    {
+      "tab_id": "t.0",
+      "start": 1,
+      "widths": [
+        9360
+      ],
+      "numeric": [],
+      "header": false,
+      "header_rows": 1,
+      "style_cells": true
+    }
+  ],
+  "terminals": [],
+  "original_lists": {
+    "t.0": {}
+  },
+  "requests": [
+    {
+      "updateTableCellStyle": {
+        "tableRange": {
+          "tableCellLocation": {
+            "tableStartLocation": {
+              "index": 1,
+              "tabId": "t.0"
+            },
+            "rowIndex": 0,
+            "columnIndex": 0
+          },
+          "rowSpan": 1,
+          "columnSpan": 1
+        },
+        "tableCellStyle": {
+          "backgroundColor": {
+            "color": {
+              "rgbColor": {
+                "red": 0.9607843137254902,
+                "green": 0.9607843137254902,
+                "blue": 0.9607843137254902
+              }
+            }
+          },
+          "paddingTop": {
+            "magnitude": 4,
+            "unit": "PT"
+          },
+          "paddingBottom": {
+            "magnitude": 4,
+            "unit": "PT"
+          },
+          "contentAlignment": "TOP"
+        },
+        "fields": "backgroundColor,paddingTop,paddingBottom,contentAlignment"
+      }
+    },
+    {
+      "updateTableCellStyle": {
+        "tableRange": {
+          "tableCellLocation": {
+            "tableStartLocation": {
+              "index": 1,
+              "tabId": "t.0"
+            },
+            "rowIndex": 1,
+            "columnIndex": 0
+          },
+          "rowSpan": 1,
+          "columnSpan": 1
+        },
+        "tableCellStyle": {
+          "backgroundColor": {
+            "color": {
+              "rgbColor": {
+                "red": 1.0,
+                "green": 1.0,
+                "blue": 1.0
+              }
+            }
+          },
+          "paddingTop": {
+            "magnitude": 4,
+            "unit": "PT"
+          },
+          "paddingBottom": {
+            "magnitude": 4,
+            "unit": "PT"
+          },
+          "contentAlignment": "TOP"
+        },
+        "fields": "backgroundColor,paddingTop,paddingBottom,contentAlignment"
+      }
+    },
+    {
+      "updateTableColumnProperties": {
+        "tableStartLocation": {
+          "index": 1,
+          "tabId": "t.0"
+        },
+        "columnIndices": [
+          0
+        ],
+        "tableColumnProperties": {
+          "widthType": "FIXED_WIDTH",
+          "width": {
+            "magnitude": 468.0,
+            "unit": "PT"
+          }
+        },
+        "fields": "widthType,width"
+      }
+    },
+    {
+      "updateParagraphStyle": {
+        "range": {
+          "startIndex": 4,
+          "endIndex": 14,
+          "tabId": "t.0"
+        },
+        "paragraphStyle": {
+          "alignment": "START",
+          "lineSpacing": 100,
+          "spaceAbove": {
+            "magnitude": 0,
+            "unit": "PT"
+          },
+          "spaceBelow": {
+            "magnitude": 2,
+            "unit": "PT"
+          }
+        },
+        "fields": "alignment,lineSpacing,spaceAbove,spaceBelow"
+      }
+    },
+    {
+      "updateTextStyle": {
+        "range": {
+          "startIndex": 4,
+          "endIndex": 13,
+          "tabId": "t.0"
+        },
+        "textStyle": {
+          "fontSize": {
+            "magnitude": 10,
+            "unit": "PT"
+          },
+          "bold": false,
+          "weightedFontFamily": {
+            "fontFamily": "Nunito",
+            "weight": 400
+          }
+        },
+        "fields": "fontSize,weightedFontFamily,bold"
+      }
+    },
+    {
+      "updateParagraphStyle": {
+        "range": {
+          "startIndex": 16,
+          "endIndex": 31,
+          "tabId": "t.0"
+        },
+        "paragraphStyle": {
+          "alignment": "START",
+          "lineSpacing": 100,
+          "spaceAbove": {
+            "magnitude": 0,
+            "unit": "PT"
+          },
+          "spaceBelow": {
+            "magnitude": 2,
+            "unit": "PT"
+          }
+        },
+        "fields": "alignment,lineSpacing,spaceAbove,spaceBelow"
+      }
+    },
+    {
+      "updateTextStyle": {
+        "range": {
+          "startIndex": 16,
+          "endIndex": 30,
+          "tabId": "t.0"
+        },
+        "textStyle": {
+          "fontSize": {
+            "magnitude": 10,
+            "unit": "PT"
+          },
+          "bold": false,
+          "weightedFontFamily": {
+            "fontFamily": "Nunito",
+            "weight": 400
+          }
+        },
+        "fields": "fontSize,weightedFontFamily,bold"
+      }
+    }
+  ],
+  "complete": false,
+  "revision_id": null,
+  "model_invoked": false,
+  "passes": 0,
+  "accepted_improvements": 0,
+  "stop_reason": "not_eligible",
+  "planning_failure_code": null
+}

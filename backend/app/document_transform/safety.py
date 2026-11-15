@@ -7,6 +7,7 @@ import re
 from types import MappingProxyType
 from typing import Final, Literal
 
+from app.document_transform.count_definitions import count_definition_changed
 from app.document_transform.inline_code import inline_code_spans, mask_inline_code
 from app.document_transform.ir import BlockKind, DocumentIR, TextBlock
 from app.document_transform.measurement_actor import reassigned_measurement_action
@@ -20,6 +21,7 @@ from app.document_transform.quantity_notation import (
     UNIT_GROUP,
     UNIT_POWER,
     UNMARKED_UNIT_SYMBOL,
+    grouped_uncertainty_pattern,
 )
 from app.document_transform.quotations import (
     QUOTED_SPAN_PATTERN,
@@ -67,6 +69,14 @@ _QUANTITY_LITERAL = (
     rf"(?:(?:[<>]=?|[≤≥~≈≃])\s*)?{_QUANTITY_TERM}"
     rf"(?:{HORIZONTAL_SPACE}*(?:\+/-|[±∓×xX·÷+−–—*/⁄:^\-]){HORIZONTAL_SPACE}*{_QUANTITY_TERM})*"
 )
+_GROUPED_MEASUREMENT = (
+    rf"{grouped_uncertainty_pattern(_SIGNED_NUMBER)}"
+    rf"(?:{HORIZONTAL_SPACE}*(?:%|٪|‰|{CURRENCY_SYMBOL}|{CURRENCY_CODE}|"
+    rf"{UNIT_GROUP}|{UNMARKED_UNIT_SYMBOL}{_NUMERIC_POWER})"
+    rf"(?:{HORIZONTAL_SPACE}*[/*·]{HORIZONTAL_SPACE}*"
+    rf"(?:{_NUMERIC_UNIT_SYMBOL}{_NUMERIC_POWER}|{UNIT_GROUP})"
+    rf"|{HORIZONTAL_SPACE}+(?:{UNMARKED_UNIT_SYMBOL}{_NUMERIC_POWER}|{UNIT_GROUP}))*)?"
+)
 _PROTECTED_CODE = re.compile(r"```[\s\S]*?```|`[^`\n]+`")
 _PROTECTED_TOKEN = re.compile(
     rf"{RFCISH_EMAIL_PATTERN}|{CUSTOM_URI_PATTERN}|(?i:{UNIT_ANNOTATION_PATTERN})|"
@@ -75,7 +85,7 @@ _PROTECTED_TOKEN = re.compile(
     # Keep grouped integers, mixed fractions, and parenthetical uncertainty
     # together so layout breaks cannot detach part of a quantity or its unit.
     # Compound units and powers may contain authored horizontal spacing.
-    rf"(?<![\w.])(?:\({_QUANTITY_LITERAL}\)|{_QUANTITY_LITERAL})(?![\w])"
+    rf"(?<![\w.])(?:{_GROUPED_MEASUREMENT}|\({_QUANTITY_LITERAL}\)|{_QUANTITY_LITERAL})(?![\w])"
     r"|\b(?=\w*\d)\w+(?:[.:-]\w+)*\b"
     r"|[±∓×÷≤≥≠≈≃]"
     rf"|{HTML_ENTITY_PATTERN}"
@@ -92,6 +102,11 @@ _FORCE_WORD = re.compile(
 )
 _CANONICAL_APOSTROPHES = str.maketrans("\u2018\u2019\u02bc\uff07", "''''")
 _QUOTED_SPAN = re.compile(QUOTED_SPAN_PATTERN)
+_FIRST_PERSON_PREFERENCE = re.compile(
+    r"\b(?:(?P<subject>we|i)\s+prefer|(?P<owner>our|my)\s+preference\b|"
+    r"preferred\s+by\s+(?P<agent>us|me))\b",
+    re.IGNORECASE,
+)
 _NEGATED_TRANSFORMATION_PREFIX = (
     r"\b(?:not|never|cannot|[^\W\d_]+n't)\s+"
     r"(?:to\s+automatically\s+|automatically\s+to\s+|to\s+|automatically\s+)?"
@@ -183,6 +198,8 @@ REPAIRABLE_REWRITE_CODES = frozenset(
         "unit_column_identity_changed",
         "source_entry_relationship_changed",
         "revision_argument_changed",
+        "count_definition_changed",
+        "preference_attribution_changed",
     }
 )
 
@@ -350,6 +367,10 @@ def _empty_replacement_code(
         or re.search(r"[\r\n\v\f\u2028\u2029]", block.text)
     ):
         return "empty_replacement"
+    if count_definition_changed(block.text, patch.replacement):
+        return "count_definition_changed"
+    if _preference_attribution_changed(framing_source or block.text, patch.replacement):
+        return "preference_attribution_changed"
     if _PROCEDURAL_IMPERATIVE.search(
         without_editorial_framing(block.text, framing_source=framing_source)
     ):
@@ -372,7 +393,12 @@ def _empty_replacement_code(
 def _literal_change_code(
     *, before: str, after: str, allow_reordering: bool, framing_source: str | None = None
 ) -> (
-    Literal["protected_content_changed", "force_language_changed", "revision_argument_changed"]
+    Literal[
+        "protected_content_changed",
+        "force_language_changed",
+        "revision_argument_changed",
+        "count_definition_changed",
+    ]
     | None
 ):
     if not _same_retained_values(
@@ -393,6 +419,8 @@ def _literal_change_code(
         allow_reordering=allow_reordering,
     ):
         return "revision_argument_changed"
+    if allow_reordering and count_definition_changed(before, after):
+        return "count_definition_changed"
     return None
 
 
@@ -405,6 +433,8 @@ def _same_retained_values(before: list[str], after: list[str], *, allow_reorderi
 def _aggressive_unslop_code(
     block: TextBlock, replacement: str, *, framing_source: str | None
 ) -> str | None:
+    if _preference_attribution_changed(framing_source or block.text, replacement):
+        return "preference_attribution_changed"
     if ambiguous_reference_framing(block.text, replacement, framing_source=framing_source):
         return "document_reference_identity_ambiguous"
     if reassigned_document_writing_action(block.text, replacement, framing_source=framing_source):
@@ -443,6 +473,25 @@ def _aggressive_unslop_code(
     ):
         return "concision_not_improved"
     return None
+
+
+def _preference_attribution_changed(source: str, replacement: str) -> bool:
+    return not _preference_actors(source).issubset(_preference_actors(replacement))
+
+
+def _preference_actors(text: str) -> frozenset[str]:
+    # Literal examples cannot supply an actor for an unquoted preference.
+    prose = mask_inline_code(text)
+    characters = list(prose)
+    for scan in quotation_scan_sources(prose):
+        for quotation in _QUOTED_SPAN.finditer(scan):
+            start, end = quotation.span()
+            characters[start:end] = " " * (end - start)
+    actors = {
+        next(value for value in match.groups() if value is not None).casefold()
+        for match in _FIRST_PERSON_PREFERENCE.finditer("".join(characters))
+    }
+    return frozenset("we" if actor in {"we", "our", "us"} else "i" for actor in actors)
 
 
 def _latency_column_scope_code(source: str, replacement: str) -> str | None:

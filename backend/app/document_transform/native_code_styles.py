@@ -6,7 +6,7 @@ from itertools import pairwise
 import math
 from typing import TYPE_CHECKING
 
-from pydantic import JsonValue
+from pydantic import BaseModel, ConfigDict, Field, JsonValue
 
 from app.document_transform.brand_manifest import CURRENT_BRAND_MANIFEST
 from app.document_transform.native_code_source import (
@@ -35,6 +35,19 @@ if TYPE_CHECKING:
 
 _RGB_CHANNELS = ("red", "green", "blue")
 _COLOR_TOLERANCE = 0.000001
+
+
+class _CodeTextStyle(BaseModel):
+    model_config = ConfigDict(extra="allow", frozen=True, strict=True)
+
+    foreground: JsonValue = Field(default=None, alias="foregroundColor")
+
+
+class _CodeTextRun(BaseModel):
+    model_config = ConfigDict(extra="allow", frozen=True, strict=True)
+
+    content: str
+    style: _CodeTextStyle = Field(default_factory=_CodeTextStyle, alias="textStyle")
 
 
 def project_native_code_styles(
@@ -82,12 +95,64 @@ def _verify_paragraph(
     if code_json(expected) != item.expected_json:
         msg = "Native code expected style attestation changed"
         raise ValueError(msg)
+    observed = _canonical_terminator_foreground(original, observed, item)
     verified = styled_paragraph(observed, item.colors, verify=True)
     if native_paragraph_font_sha256(
         expected, preserve_font_family=True
     ) != native_paragraph_font_sha256(verified, preserve_font_family=True):
         msg = "Native code literal or residual properties changed"
         raise ValueError(msg)
+
+
+def _canonical_terminator_foreground(
+    original: NativeCodeRecord, observed: NativeCodeRecord, item: NativeCodeParagraph
+) -> NativeCodeRecord:
+    newline = item.target_end - 1
+    adjacent = [color for color in item.colors if color.end == newline]
+    if len(adjacent) != 1:
+        return observed
+    last = _last_part(observed)
+    run = _CodeTextRun.model_validate(last["textRun"])
+    text = run.content
+    if (
+        code_index(last["endIndex"]) != item.target_end
+        or not text.endswith("\n")
+        or not _same_color(run.style.foreground, code_color(adjacent[0].color))
+    ):
+        return observed
+    if code_index(last["endIndex"]) - code_index(last["startIndex"]) != code_units(text):
+        msg = "Invalid native code terminator range"
+        raise ValueError(msg)
+    source_run = _CodeTextRun.model_validate(_last_part(original)["textRun"])
+    # Docs may extend an adjacent token's requested foreground to its newline.
+    # Canonicalize only that exact planned color; the full residual fingerprint
+    # still binds every literal, range, font, link and other style property.
+    result = deepcopy(observed)
+    projected_parts = code_array(code_object(result["paragraph"])["elements"])
+    terminator = deepcopy(last)
+    terminator["startIndex"] = newline
+    terminator_run = code_object(terminator["textRun"])
+    terminator_run["content"] = "\n"
+    terminator_style = code_object(terminator_run.setdefault("textStyle", {}))
+    if "foreground" in source_run.style.model_fields_set:
+        terminator_style["foregroundColor"] = deepcopy(source_run.style.foreground)
+    else:
+        terminator_style.pop("foregroundColor", None)
+    if not terminator_style and "style" not in source_run.model_fields_set:
+        terminator_run.pop("textStyle", None)
+    if text != "\n":
+        prefix = deepcopy(last)
+        prefix["endIndex"] = newline
+        code_object(prefix["textRun"])["content"] = text.removesuffix("\n")
+        projected_parts[-1] = prefix
+        projected_parts.append(terminator)
+    else:
+        projected_parts[-1] = terminator
+    return result
+
+
+def _last_part(element: NativeCodeRecord) -> NativeCodeRecord:
+    return code_object(code_array(code_object(element["paragraph"])["elements"])[-1])
 
 
 def verify_native_code_styles(

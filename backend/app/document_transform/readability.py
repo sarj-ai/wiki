@@ -68,6 +68,7 @@ _KNOWN_PROJECTION_FAILURES = frozenset(
         "Unplanned inline formatting changed",
         "Existing list definitions changed",
         "A generated list changed unrelated content",
+        "Table shading would make text unreadable",
     }
 )
 
