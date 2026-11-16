@@ -2549,9 +2549,7 @@
   "auditStatus": {
     "semanticReviewComplete": true,
     "remaining": [
-      "Complete all canonical repository gates, native staged/commit/push hooks and exact published-head CI qualification.",
-      "Admin merge the fully qualified head, then verify production deployment/migration 0030 and preservation of every held uncertainty record.",
-      "If expired OAuth records are cleaned, require the fresh exact expired snapshot and verified backup restore; preserve grants, spent-replay evidence until expiry, and all new/live rows."
+      "Optional expired OAuth housekeeping requires a fresh exact expired snapshot and verified backup restore. Existing grants, replay evidence and new/live rows must be preserved. No expired-row cleanup was performed in this read-only reconciliation."
     ],
     "completedThisChange": [
       "document-copy-provider-mutation",
@@ -2603,6 +2601,21 @@
       "model-review-batch-continuation",
       "editorial-refinement-loop"
     ],
-    "reviewEvidence": "Prior concrete 44-file provider-content and 13 UI/reservation reviews are retained. Current reconciliation reviews 26 source/config/workflow paths plus the seven application paths changed by upstream PR708/709; it converts the model-planning ownership and review-batch continuation machines. Native final gates and deployment remain pending."
+    "reviewEvidence": "Prior concrete 44-file provider-content and 13 UI/reservation reviews are retained. Current reconciliation reviews 26 source/config/workflow paths plus the seven application paths changed by upstream PR708/709; it converts the model-planning ownership and review-batch continuation machines. Exact merged-source ReleaseMain43743890215 and fresh production schema/state readback now pass. This accounting-only follow-up requires its own exact-head repository checks before merge.",
+    "productionVerification": {
+      "observedAt": "2026-11-16T09:56:35.103021+00:00",
+      "source": "639203c6aba4e0fa8327b0408a8e4f67fd0b0c18",
+      "releaseRun": 43743890215,
+      "conclusion": "success",
+      "migration": "0030_native_oauth_invariants",
+      "applicationTables": 11,
+      "physicalTables": 12,
+      "machines": 90,
+      "heldUncertaintyRecords": 7,
+      "priorSixStillHeld": true,
+      "liveTaskLeases": 0,
+      "unvalidatedConstraints": 0,
+      "readOnly": true
+    }
   }
 }
