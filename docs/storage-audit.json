@@ -1423,33 +1423,47 @@
     ]
   },
   "currentProductionVerification": {
-    "at": "2026-11-13T14:16:40.043072+00:00",
-    "merge": "473f6fb1a2261d72dd94483f204ffa4eea15b3b6",
-    "releaseRun": 43437676983,
+    "at": "2026-11-16T09:56:35.103021+00:00",
+    "merge": "639203c6aba4e0fa8327b0408a8e4f67fd0b0c18",
+    "releaseRun": 43743890215,
     "releaseConclusion": "success",
-    "backendDeployJob": 131928969550,
-    "frontendDeployJob": 131931096072,
-    "backendCompletedBeforeFrontendStarted": true,
-    "readOnlyExecution": "wiki-code-metadata-20261111-r2-w7xmb",
-    "readOnlyObservedAt": "2026-11-13T14:13:43.810180+00:00",
+    "backendRevision": "sarj-docs-backend-dammam-00318-ml8",
+    "backendTrafficPercent": 100,
+    "backendImageDigest": "sha256:dbb07aa3ebc2e04274c8e636b7e595b443ad66c18a8cf771928b054d7c12c8a1",
     "alembic": [
-      "0029_task_review"
+      "0030_native_oauth_invariants"
     ],
     "applicationTables": 11,
     "physicalTables": 12,
-    "constraintsValidated": 30,
+    "allTablesAccountedFor": true,
+    "unvalidatedConstraints": 0,
     "liveTaskLeases": 0,
     "taskStates": {
-      "failed": 50,
-      "needs_review": 5,
-      "succeeded": 70
+      "failed": 49,
+      "needs_review": 7,
+      "succeeded": 104
     },
-    "uncertainRecords": 5,
-    "priorUncertainRecords": 4,
-    "originalEvidenceHashesPreserved": true,
+    "uncertainRecords": 7,
+    "priorCensusRecordsStillHeld": 6,
     "allUncertainStates": "needs_review",
-    "noUncertainTaskReplayed": true,
-    "status": "PR696 production receipt; not evidence that candidate migration 0030 is deployed."
+    "evidenceHashes": [
+      "1c3a274b799ecef6638cbad9d7d72ae1069ea3570867ea7539ae98e8cafa2a98",
+      "20a3e651c2e23b8aea5cb869a2b0f2ed0adfeffa069b0d916d0b107620304e54",
+      "3c820ff52a8ad4904dd5bc87bdb3b1f9a2b87d2f16992eb123b648786ad53232",
+      "6012286072983e5bc4b1725522c91ea01271282bd9dec21d3e66e152d723053a",
+      "7f7e3922b1b9ee1c9952fe92c07abd47c6619cfb1ef2bc3326a208b697dd79ef",
+      "8d1749121d6fed9b48169dc7bb6c8fe858a9a6c9fd8324d70b6a20a00cdced02",
+      "ac82341466d775eee75a96868f83e66623a8b3f944a094723777caadfab5fa2c"
+    ],
+    "hashComparisonLimit": "Current read-only snapshot retains hashes for all seven uncertain records and confirms six predate the prior census. Its hash encoding differs from earlier private snapshots; this receipt does not claim a byte-for-byte comparison with those older hashes. No task execution or replay was performed.",
+    "oauth": {
+      "encryptedRowsSha256": "d7f3bf14af89937754342274484a5782b66aa01dc6d6419f960f5ec579b403fd",
+      "invalidRows": 0,
+      "liveRows": 0,
+      "rows": 14
+    },
+    "productionWrites": false,
+    "status": "Current merged source is deployed; migration0030 and every current table/constraint are verified through the current immutable image. Temporary read-only audit jobs removed after evidence capture."
   },
   "taskResultInvariantChange": {
     "migration": "0028_task_result_invariants",
@@ -1589,12 +1603,14 @@
         "legacy_refresh_spent": 7
       }
     },
-    "verification": "Current pinned-runtime PostgreSQL qualification covers migration 0030, rollback/re-upgrade, incompatible-row preservation, refresh replay and browser runtimes. The full matrix qualifies 304 unique cases, with two additional fresh authentication migration cases. All 14 archived encrypted OAuth records restore byte-for-byte under 0030. Full native release gates and production 0030 application remain pending.",
+    "verification": "Merged-source native ReleaseMain43743890215 passed all required backend/frontend/security gates. Production now reports0030_native_oauth_invariants; every native purpose/digest/expiry constraint is present and validated. Previous pinned-runtime migration/rollback/re-upgrade and archived-record restore evidence remains retained.",
     "productionCensus": {
-      "readOnly": true,
-      "rows": 14,
-      "liveRows": 0,
+      "encryptedRowsSha256": "d7f3bf14af89937754342274484a5782b66aa01dc6d6419f960f5ec579b403fd",
       "invalidRows": 0,
+      "liveRows": 0,
+      "rows": 14,
+      "readOnly": true,
+      "observedAt": "2026-11-16T09:56:35.103021+00:00",
       "productionWrites": false
     },
     "backupRestore": {
@@ -1671,5 +1687,34 @@
     "invalidNativeOauthPurposeDigestOrExpiry": 0,
     "productionWrites": false,
     "status": "Read-only preflight; candidate migration 0030 and deployment remain pending. All six uncertainty records must remain unchanged."
+  },
+  "previousProductionVerificationBefore0030": {
+    "at": "2026-11-13T14:16:40.043072+00:00",
+    "merge": "473f6fb1a2261d72dd94483f204ffa4eea15b3b6",
+    "releaseRun": 43437676983,
+    "releaseConclusion": "success",
+    "backendDeployJob": 131928969550,
+    "frontendDeployJob": 131931096072,
+    "backendCompletedBeforeFrontendStarted": true,
+    "readOnlyExecution": "wiki-code-metadata-20261111-r2-w7xmb",
+    "readOnlyObservedAt": "2026-11-13T14:13:43.810180+00:00",
+    "alembic": [
+      "0029_task_review"
+    ],
+    "applicationTables": 11,
+    "physicalTables": 12,
+    "constraintsValidated": 30,
+    "liveTaskLeases": 0,
+    "taskStates": {
+      "failed": 50,
+      "needs_review": 5,
+      "succeeded": 70
+    },
+    "uncertainRecords": 5,
+    "priorUncertainRecords": 4,
+    "originalEvidenceHashesPreserved": true,
+    "allUncertainStates": "needs_review",
+    "noUncertainTaskReplayed": true,
+    "status": "PR696 production receipt; not evidence that candidate migration 0030 is deployed."
   }
 }
