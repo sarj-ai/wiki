@@ -249,6 +249,29 @@ def test_preserves_an_authored_page_break(inherited: bool) -> None:
     assert plan_terminal_blank(native, parse_google_document(native, title="QA")) is None
 
 
+@pytest.mark.parametrize("field", ["bold", "italic", "underline", "strikethrough", "smallCaps"])
+@pytest.mark.parametrize(
+    "value",
+    [
+        pytest.param(False, id="plain"),
+        pytest.param(True, id="authored"),
+        pytest.param(0, id="integer-zero"),
+        pytest.param(1, id="integer-one"),
+        pytest.param(None, id="null"),
+        pytest.param("false", id="string"),
+        pytest.param([], id="array"),
+        pytest.param({}, id="object"),
+    ],
+)
+def test_normal_text_flags_require_plain_boolean_values(field: str, value: JsonValue) -> None:
+    native = _document()
+    obj(_normal(native)["textStyle"])[field] = value
+
+    plan = plan_terminal_blank(native, parse_google_document(native, title="QA"))
+
+    assert (plan is not None) is (value is False)
+
+
 def test_declines_pageless_and_visible_inherited_layout() -> None:
     native = _document()
     obj(obj(native["documentStyle"])["documentFormat"])["documentMode"] = "PAGELESS"

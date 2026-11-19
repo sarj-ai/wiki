@@ -90,7 +90,7 @@ type _PlanningState = (
 )
 
 
-class CheckpointingPatchGenerator(PatchGenerator):
+class CheckpointingPatchGenerator(PatchGenerator, ReviewCheckpointStore):
     def __init__(
         self,
         *,
@@ -164,9 +164,8 @@ class CheckpointingPatchGenerator(PatchGenerator):
                 # Review binds immutable original prose, which can differ from
                 # the deterministically cleaned document used to plan patches.
                 self._state = _Reviewing(checkpoint)
-                store = ReviewCheckpointStore(get=self._review_batch, save=self._save_review_batch)
                 try:
-                    with checkpointed_review_scope(store):
+                    with checkpointed_review_scope(self):
                         decision = await self._generator.review(document, patches)
                 except ModelDeadlineError as error:
                     batches = self._require_review_checkpoint().review_batches
@@ -190,16 +189,14 @@ class CheckpointingPatchGenerator(PatchGenerator):
             raise OutputConflictError
         return self._state.checkpoint
 
-    def _review_batch(
-        self, input_sha256: ModelReviewInputHash
-    ) -> ModelReviewBatchCheckpoint | None:
+    def get(self, input_sha256: ModelReviewInputHash) -> ModelReviewBatchCheckpoint | None:
         checkpoint = self._require_review_checkpoint()
         return next(
             (batch for batch in checkpoint.review_batches if batch.input_sha256 == input_sha256),
             None,
         )
 
-    async def _save_review_batch(self, batch: ModelReviewBatchCheckpoint) -> None:
+    async def save(self, batch: ModelReviewBatchCheckpoint) -> None:
         async with self._review_save_lock:
             checkpoint = self._require_review_checkpoint()
             batches = {item.input_sha256: item for item in checkpoint.review_batches}

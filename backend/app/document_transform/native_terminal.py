@@ -3,6 +3,7 @@ from dataclasses import dataclass
 import hashlib
 import json
 import math
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, JsonValue
 
@@ -43,15 +44,15 @@ class _NamedStyles(BaseModel):
 class _NormalText(BaseModel):
     model_config = ConfigDict(strict=True, extra="allow")
 
-    bold: JsonValue = False
-    italic: JsonValue = False
-    underline: JsonValue = False
-    strikethrough: JsonValue = False
-    small_caps: JsonValue = Field(default=False, alias="smallCaps")
-    background_color: JsonValue = Field(default_factory=dict, alias="backgroundColor")
-    baseline_offset: JsonValue = Field(default="NONE", alias="baselineOffset")
-    link: JsonValue = None
-    font_size: JsonValue = Field(default_factory=dict, alias="fontSize")
+    bold: bool = False
+    italic: bool = False
+    underline: bool = False
+    strikethrough: bool = False
+    small_caps: bool = Field(default=False, alias="smallCaps")
+    background_color: dict[str, JsonValue] = Field(default_factory=dict, alias="backgroundColor")
+    baseline_offset: Literal["NONE"] = Field(default="NONE", alias="baselineOffset")
+    link: dict[str, JsonValue] | None = None
+    font_size: dict[str, JsonValue] = Field(default_factory=dict, alias="fontSize")
 
 
 class _NormalParagraph(BaseModel):
