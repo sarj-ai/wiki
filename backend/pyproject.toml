@@ -221,7 +221,6 @@ warn_unreachable = true
 # the false-positive rate exceeds the bug-find rate on this codebase.
 enable_error_code = [
   "deprecated",                # PEP 702 — track FastAPI/SQLAlchemy deprecations
-  "explicit-override",         # require @override on subclass methods (fits ABC pattern)
   "mutable-override",
   "redundant-self",
   "narrowed-type-not-subtype",

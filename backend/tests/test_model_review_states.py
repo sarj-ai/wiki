@@ -31,6 +31,23 @@ class _ReviewBatchPayload(RootModel[ModelReviewBatchCheckpoint]):
     pass
 
 
+class _MemoryReviewCheckpointStore(ReviewCheckpointStore):
+    def __init__(self, checkpoint: ModelReviewBatchCheckpoint | None = None) -> None:
+        self.checkpoint = checkpoint
+        self.saved: list[ModelReviewBatchCheckpoint] = []
+
+    def get(self, input_sha256: ModelReviewInputHash) -> ModelReviewBatchCheckpoint | None:
+        return self.checkpoint
+
+    async def save(self, batch: ModelReviewBatchCheckpoint) -> None:
+        self.saved.append(batch)
+
+
+class _FailingReviewCheckpointStore(_MemoryReviewCheckpointStore):
+    async def save(self, batch: ModelReviewBatchCheckpoint) -> None:
+        raise TimeoutError
+
+
 def review(*, equivalent: bool = True) -> PatchReviewEnvelope:
     return PatchReviewEnvelope(
         reviews=[
@@ -46,35 +63,31 @@ def review(*, equivalent: bool = True) -> PatchReviewEnvelope:
 
 
 async def test_review_attempt_backoff_completion_and_duplicate_outcomes() -> None:
-    saved: list[ModelReviewBatchCheckpoint] = []
-
-    async def save(batch: ModelReviewBatchCheckpoint) -> None:
-        saved.append(batch)
-
-    with checkpointed_review_scope(ReviewCheckpointStore(get=lambda _: None, save=save)):
+    store = _MemoryReviewCheckpointStore()
+    with checkpointed_review_scope(store):
         progress = ReviewBatchProgress(PROMPT)
     await progress.begin(1)
-    assert isinstance(saved[-1], ModelReviewAttemptCheckpoint)
+    assert isinstance(store.saved[-1], ModelReviewAttemptCheckpoint)
     with pytest.raises(OutputConflictError):
         await progress.begin(1)
     await progress.defer(1, 60)
-    backoff = saved[-1]
+    backoff = store.saved[-1]
     assert isinstance(backoff, ModelReviewBackoffCheckpoint)
     assert 0 < progress.retry_delay <= 60
     await progress.defer(1, 120)
-    assert saved[-1] is backoff
-    assert len(saved) == 2
+    assert store.saved[-1] is backoff
+    assert len(store.saved) == 2
     with pytest.raises(OutputConflictError):
         await progress.complete(1, review())
     await progress.begin(2)
     with pytest.raises(OutputConflictError):
         await progress.complete(1, review())
     await progress.complete(2, review())
-    assert isinstance(saved[-1], ModelReviewCompletedCheckpoint)
+    assert isinstance(store.saved[-1], ModelReviewCompletedCheckpoint)
     assert progress.reviews == review()
     assert progress.retry_delay == 0
     await progress.complete(2, review())
-    assert len(saved) == 4
+    assert len(store.saved) == 4
     with pytest.raises(OutputConflictError):
         await progress.begin(3)
     with pytest.raises(OutputConflictError):
@@ -84,10 +97,7 @@ async def test_review_attempt_backoff_completion_and_duplicate_outcomes() -> Non
 
 
 async def test_review_state_changes_only_after_the_durable_save() -> None:
-    async def fail(_: ModelReviewBatchCheckpoint) -> None:
-        raise TimeoutError
-
-    with checkpointed_review_scope(ReviewCheckpointStore(get=lambda _: None, save=fail)):
+    with checkpointed_review_scope(_FailingReviewCheckpointStore()):
         progress = ReviewBatchProgress(PROMPT)
     with pytest.raises(TimeoutError):
         await progress.begin(1)
@@ -110,14 +120,13 @@ def test_persisted_batch_must_belong_to_the_requested_input() -> None:
         input_sha256=ModelReviewInputHash("0" * 64), attempt_count=1
     )
 
-    async def save(_: ModelReviewBatchCheckpoint) -> None:
-        pytest.fail("A foreign checkpoint cannot be saved")
-
+    store = _MemoryReviewCheckpointStore(foreign)
     with (
-        checkpointed_review_scope(ReviewCheckpointStore(get=lambda _: foreign, save=save)),
+        checkpointed_review_scope(store),
         pytest.raises(OutputConflictError),
     ):
         ReviewBatchProgress(PROMPT)
+    assert not store.saved
 
 
 @pytest.mark.parametrize("status", ["attempted", "backoff", "completed"])

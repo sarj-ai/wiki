@@ -1,7 +1,7 @@
 from copy import deepcopy
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field, JsonValue
+from pydantic import BaseModel, ConfigDict, Field, JsonValue, NonNegativeInt, PositiveInt
 
 from app.document_transform.readability_geometry import readable_table_width
 from app.document_transform.readability_json import array, bodies, content, integer, obj, plain_text
@@ -16,6 +16,13 @@ from app.document_transform.readability_types import (
 _MINIMUM_TAB_COUNT = 2
 _MINIMUM_TERMINAL_ELEMENTS = 2
 type NativeReadabilityRequest = dict[str, JsonValue]
+
+
+class _TerminalSourceRange(BaseModel):
+    model_config = ConfigDict(extra="ignore", frozen=True, strict=True)
+
+    start: NonNegativeInt = Field(alias="startIndex")
+    end: PositiveInt = Field(alias="endIndex")
 
 
 class _TerminalSpacing(BaseModel):
@@ -108,9 +115,10 @@ def project_readable_terminals(
         elements = content(tabs[item.tab_id])
         observed = obj(elements[-1])
         expected = deepcopy(item.source)
+        source_range = _TerminalSourceRange.model_validate(expected)
         if (
-            expected.get("startIndex") != item.start
-            or expected.get("endIndex") != item.end
+            source_range.start != item.start
+            or source_range.end != item.end
             or item.end != item.start + 1
             or _unstyled_table_tail({"body": {"content": [elements[-2], expected]}}) != expected
         ):

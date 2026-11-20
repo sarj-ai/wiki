@@ -1,7 +1,7 @@
-from collections.abc import Awaitable, Callable, Generator
+from abc import ABC, abstractmethod
+from collections.abc import Generator
 from contextlib import contextmanager
 from contextvars import ContextVar
-from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 import hashlib
 import math
@@ -18,10 +18,12 @@ from app.document_transform.schemas import (
 from app.identifiers import ModelReviewInputHash
 
 
-@dataclass(frozen=True, slots=True)
-class ReviewCheckpointStore:
-    get: Callable[[ModelReviewInputHash], ModelReviewBatchCheckpoint | None]
-    save: Callable[[ModelReviewBatchCheckpoint], Awaitable[None]]
+class ReviewCheckpointStore(ABC):
+    @abstractmethod
+    def get(self, input_sha256: ModelReviewInputHash) -> ModelReviewBatchCheckpoint | None: ...
+
+    @abstractmethod
+    async def save(self, batch: ModelReviewBatchCheckpoint) -> None: ...
 
 
 _store: ContextVar[ReviewCheckpointStore | None] = ContextVar(

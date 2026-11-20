@@ -21,12 +21,14 @@ from app.document_transform.readability_paragraphs import (
     validated_readability_paragraphs,
 )
 from app.document_transform.readability_provider import ReadabilityProvider
+from app.document_transform.readability_terminal import project_readable_terminals
 from app.document_transform.readability_types import (
     CURRENT_READABILITY_VERSION,
     PlannedReadabilityCheckpoint,
     ReadabilityCheckpoint,
     ReadabilityPart,
     ReadabilityProposal,
+    ReadabilityTerminal,
     ReadabilityVersion,
 )
 from app.document_transform.schemas import TextPatch, TransformPhase
@@ -208,6 +210,84 @@ async def test_terminal_font_readback_rejects_unplanned_content_and_styles() -> 
     assert verify_readability(after, plan)
     obj(run["textRun"])["textStyle"] = {"fontSize": {"magnitude": 2, "unit": "PT"}}
     assert not verify_readability(after, plan)
+
+
+@pytest.mark.parametrize("field", ["startIndex", "endIndex"])
+@pytest.mark.parametrize(
+    "malformation", ["missing", "boolean", "float", "string", "null", "object"]
+)
+async def test_terminal_source_proof_requires_integer_indices(
+    field: Literal["startIndex", "endIndex"],
+    malformation: Literal["missing", "boolean", "float", "string", "null", "object"],
+) -> None:
+    document = _table_ending_tabs_fixture()
+    plan = await plan_readability(
+        document, title="Terminal source indices", generator=_LayoutEditor()
+    )
+    assert plan is not None
+    original = plan.terminals[0]
+    elements = content(dict(bodies(document))[original.tab_id])
+    source = deepcopy(original.source)
+    source.update({"startIndex": 0, "endIndex": 1})
+    run = obj(array(obj(source["paragraph"])["elements"])[0])
+    run.update({"startIndex": 0, "endIndex": 1})
+    index = 0 if field == "startIndex" else 1
+    match malformation:
+        case "missing":
+            source = {key: value for key, value in source.items() if key != field}
+        case "boolean":
+            source[field] = bool(index)
+        case "float":
+            source[field] = float(index)
+        case "string":
+            source[field] = str(index)
+        case "null":
+            source[field] = None
+        case "object":
+            source[field] = {}
+    elements[-1] = deepcopy(source)
+    terminal = ReadabilityTerminal(tab_id=original.tab_id, start=0, end=1, source=source)
+
+    with pytest.raises(ValueError, match=field):
+        project_readable_terminals(document, (terminal,), applied=False)
+
+
+async def test_terminal_source_proof_preserves_supported_paragraph_direction() -> None:
+    document = _table_ending_tabs_fixture()
+    plan = await plan_readability(
+        document, title="Terminal source direction", generator=_LayoutEditor()
+    )
+    assert plan is not None
+    original = plan.terminals[0]
+    elements = content(dict(bodies(document))[original.tab_id])
+    source = deepcopy(original.source)
+    obj(obj(source["paragraph"])["paragraphStyle"])["direction"] = "RIGHT_TO_LEFT"
+    terminal = ReadabilityTerminal(
+        tab_id=original.tab_id, start=original.start, end=original.end, source=source
+    )
+    elements[-1] = deepcopy(source)
+    before = deepcopy(document)
+
+    project_readable_terminals(document, (terminal,), applied=False)
+
+    assert document == before
+
+
+async def test_terminal_source_proof_rejects_additional_protected_properties() -> None:
+    document = _table_ending_tabs_fixture()
+    plan = await plan_readability(
+        document, title="Protected terminal source", generator=_LayoutEditor()
+    )
+    assert plan is not None
+    original = plan.terminals[0]
+    source: dict[str, JsonValue] = {**original.source, "providerExtension": {"preserved": True}}
+    terminal = ReadabilityTerminal(
+        tab_id=original.tab_id, start=original.start, end=original.end, source=source
+    )
+    content(dict(bodies(document))[original.tab_id])[-1] = deepcopy(source)
+
+    with pytest.raises(ValueError, match="Terminal paragraph source proof changed"):
+        project_readable_terminals(document, (terminal,), applied=False)
 
 
 @pytest.mark.parametrize("authored", ["font", "break", "border", "content"])

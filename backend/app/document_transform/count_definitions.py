@@ -41,24 +41,23 @@ def count_definition_changed(source: str, replacement: str) -> bool:
     after = _definitions(replacement, _RETAINED)
     source_words = _entity_words(source)
     for original in sorted(before, key=lambda item: len(item.entities), reverse=True):
-        retained = next(
-            (
-                index
-                for index, proposed in enumerate(after)
-                if original.subject == proposed.subject
-                and _same_entities(original.entities, proposed.entities, source_words)
-            ),
-            None,
-        )
-        if retained is None:
+        if (
+            retained := next(
+                (
+                    index
+                    for index, proposed in enumerate(after)
+                    if original.subject == proposed.subject
+                    and _same_entities(original.entities, proposed.entities, source_words)
+                ),
+                None,
+            )
+        ) is None:
             return True
         after.pop(retained)
     return False
 
 
 def _definitions(text: str, patterns: tuple[re.Pattern[str], ...]) -> list[_CountDefinition]:
-    # Mask only syntax, retaining exact offsets and original literal identities.
-    # An example cannot supply a predicate; a quoted/code term can label one.
     prose = _literal_projection(text, hashed=False)
     matches = {
         (
@@ -73,8 +72,6 @@ def _definitions(text: str, patterns: tuple[re.Pattern[str], ...]) -> list[_Coun
         for pattern in patterns
         for match in pattern.finditer(prose)
     }
-    # Different source contexts need distinct count predicates. Repeated facts
-    # in the same context may collapse, as may overlapping syntax alternatives.
     return [definition for _context, definition in matches]
 
 

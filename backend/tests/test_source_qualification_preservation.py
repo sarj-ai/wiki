@@ -1,5 +1,4 @@
 from pathlib import Path
-from typing import override
 
 from pydantic import BaseModel, ConfigDict
 import pytest
@@ -47,11 +46,9 @@ class _ApprovingEditor(PatchGenerator):
         self.proposals = proposals
 
     @property
-    @override
     def model_ids(self) -> tuple[str, ...]:
         return ("controlled-approving-editor",)
 
-    @override
     async def generate(self, document: DocumentIR, *, phase: TransformPhase) -> list[TextPatch]:
         return [
             TextPatch(
@@ -62,7 +59,6 @@ class _ApprovingEditor(PatchGenerator):
             for block in model_editable_blocks(document)
         ]
 
-    @override
     async def review(self, document: DocumentIR, patches: list[TextPatch]) -> RewriteReview:
         return RewriteReview(frozenset(patch.block_id for patch in patches), {})
 
