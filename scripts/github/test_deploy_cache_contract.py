@@ -682,6 +682,23 @@ def test_required_ci_aggregators_skip_only_shapes_the_gate_accepts(
         ),
         (["frontend/src/lib/generated/types.ts"], True, True),
         ([".github/workflows/ci-backend.yml"], True, True),
+        ([".github/workflows/standards.yml"], False, False),
+        (
+            [".github/workflows/standards.yml", "frontend/public/brand/sarj-logo-light.png"],
+            True,
+            True,
+        ),
+        (
+            ["frontend/public/brand/sarj-logo-light.png", ".github/workflows/standards.yml"],
+            True,
+            True,
+        ),
+        ([".github/workflows/standards.yml", "terraform/migrations.tf"], True, True),
+        ([".github/workflows/standards.yml", "backend/tests/conftest.py"], True, True),
+        ([".github/workflows/standards.yml", "unknown.file"], True, True),
+        ([".github/workflows/standards.yml", ".github/workflows/ci-frontend.yml"], True, True),
+        ([".github/workflows/standards.yml", ".github/workflows/renamed.yml"], True, True),
+        ([".github/workflows/standards.yml", ".github/workflows/standards.yml"], True, True),
         (["scripts/github/runtime-ci-policy.sh"], True, True),
         pytest.param(["scripts/wiki.py"], True, True, id="shared-typed-cli"),
         (["docs/notes.txt"], True, True),
@@ -704,6 +721,146 @@ def test_runtime_selection_uses_complete_nul_delimited_paths(
         ]
     )
     assert output == f"backend={str(backend).lower()}\nfrontend={str(frontend).lower()}"
+
+
+@pytest.mark.parametrize("state", ["regular", "missing", "symlink"])
+def test_standards_runtime_exclusion_requires_the_existing_regular_workflow(
+    state: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    workflow = tmp_path / ".github/workflows/standards.yml"
+    workflow.parent.mkdir(parents=True)
+    if state == "regular":
+        workflow.write_text("name: fixture\n")
+    elif state == "symlink":
+        target = tmp_path / "target.yml"
+        target.write_text("name: fixture\n")
+        workflow.symlink_to(target)
+    monkeypatch.chdir(tmp_path)
+    output = command_output(
+        [
+            "bash",
+            "-e",
+            "-c",
+            'printf "%s\\0" .github/workflows/standards.yml | bash "$1"',
+            "runtime-policy-test",
+            str(ROOT / "scripts/github/runtime-ci-policy.sh"),
+        ]
+    )
+    expected = "false" if state == "regular" else "true"
+    assert output == f"backend={expected}\nfrontend={expected}"
+
+
+@pytest.mark.parametrize("prefix", ["", ".github/workflows/standards.yml"])
+def test_runtime_selection_retains_full_qualification_for_truncated_paths(prefix: str) -> None:
+    result = command_output(
+        [
+            "bash",
+            "-e",
+            "-c",
+            '{ if [[ -n "$1" ]]; then printf "%s\\0" "$1"; fi; printf "%s" .github/workflows/standards.yml; } | bash "$2"',
+            "runtime-policy-test",
+            prefix,
+            str(ROOT / "scripts/github/runtime-ci-policy.sh"),
+        ]
+    )
+    assert result == "backend=true\nfrontend=true"
+
+
+def test_runtime_selection_preserves_zero_byte_input() -> None:
+    output = command_output(
+        [
+            "bash",
+            "-e",
+            "-c",
+            'bash "$1" </dev/null',
+            "runtime-policy-test",
+            str(ROOT / "scripts/github/runtime-ci-policy.sh"),
+        ]
+    )
+    assert output == "backend=false\nfrontend=false"
+
+
+@pytest.mark.parametrize(
+    "change", ["modify", "add", "delete", "rename", "rename-into", "mixed", "missing-base", "empty"]
+)
+def test_runtime_workflow_exclusion_isolates_git_and_preserves_real_changes(
+    change: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    for name in command_output(["git", "rev-parse", "--local-env-vars"]).splitlines():
+        monkeypatch.delenv(name, raising=False)
+    monkeypatch.chdir(tmp_path)
+    command_output(["git", "init", "--quiet"])
+    workflow = tmp_path / ".github/workflows/standards.yml"
+    workflow.parent.mkdir(parents=True)
+    previous = tmp_path / "backend/tests/data/previous-workflow.yml"
+    previous.parent.mkdir(parents=True)
+    if change in {"add", "rename-into"}:
+        previous.write_text("name: original\n")
+    else:
+        workflow.write_text("name: original\n")
+    command_output(["git", "add", "."])
+    command_output(
+        [
+            "git",
+            "-c",
+            "user.name=CI fixture",
+            "-c",
+            "user.email=ci@example.invalid",
+            "commit",
+            "--quiet",
+            "-m",
+            "fixture",
+        ]
+    )
+    base = command_output(["git", "rev-parse", "HEAD"])
+    match change:
+        case "empty":
+            pass
+        case "delete":
+            workflow.unlink()
+        case "rename":
+            workflow.rename(workflow.with_name("renamed.yml"))
+        case "rename-into":
+            previous.rename(workflow)
+        case _:
+            workflow.write_text("name: changed\n")
+    if change == "mixed":
+        asset = tmp_path / "frontend/public/brand/sarj-logo-light.png"
+        asset.parent.mkdir(parents=True)
+        asset.write_bytes(b"changed input")
+    command_output(["git", "add", "--all"])
+    if change == "rename-into":
+        assert command_output(
+            ["git", "diff", "--cached", "--find-renames", "--name-only", base]
+        ) == (".github/workflows/standards.yml")
+    command_output(
+        [
+            "git",
+            "-c",
+            "user.name=CI fixture",
+            "-c",
+            "user.email=ci@example.invalid",
+            "commit",
+            "--quiet",
+            *(["--allow-empty"] if change == "empty" else []),
+            "-m",
+            "changed fixture",
+        ]
+    )
+    output = tmp_path / "output"
+    monkeypatch.setenv("RUNNER_TEMP", str(tmp_path))
+    monkeypatch.setenv("GITHUB_OUTPUT", str(output))
+    command_output(
+        [
+            "bash",
+            str(ROOT / "scripts/github/runtime-ci-policy.sh"),
+            "--diff",
+            "0" * 40 if change == "missing-base" else base,
+            "HEAD",
+        ]
+    )
+    expected = "false" if change in {"modify", "add", "empty"} else "true"
+    assert output.read_text() == f"backend={expected}\nfrontend={expected}\n"
 
 
 @pytest.mark.parametrize("component", ["backend", "frontend"])

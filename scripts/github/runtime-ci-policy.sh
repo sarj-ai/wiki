@@ -20,7 +20,12 @@ fi
 
 backend=false
 frontend=false
+path_count=0
+only_path=''
+path=''
 while IFS= read -r -d '' path; do
+  path_count=$((path_count + 1))
+  only_path=$path
   case "$path" in
     backend/app/* | backend/pyproject.toml | backend/uv.lock | backend/uv.toml | backend/.python-version | \
       frontend/openapi.json | frontend/openapi-ts.config.ts | frontend/scripts/patch-generated.ts | frontend/scripts/patch-generated.mjs | frontend/src/lib/generated/*)
@@ -34,8 +39,17 @@ while IFS= read -r -d '' path; do
       # Shared tooling and unknown paths cannot prove either domain irrelevant.
       backend=true
       frontend=true
-      break
       ;;
   esac
 done
+# The unconditional Quality job owns this workflow's contract tests. Retain the
+# original routing for every mixed diff, including cross-domain asset consumers.
+if [[ -n "$path" ]]; then
+  backend=true
+  frontend=true
+elif ((path_count == 1)) && [[ "$only_path" == .github/workflows/standards.yml &&
+  -f .github/workflows/standards.yml && ! -L .github/workflows/standards.yml ]]; then
+  backend=false
+  frontend=false
+fi
 printf 'backend=%s\nfrontend=%s\n' "$backend" "$frontend"
