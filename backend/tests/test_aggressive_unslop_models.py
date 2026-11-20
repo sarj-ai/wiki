@@ -289,16 +289,6 @@ async def _yield_writer_sleep(_delay: float) -> None:
     await asyncio.sleep(0)
 
 
-@pytest.fixture
-def offline_credentials() -> Credentials:
-    return Credentials(token="offline-fixture-not-a-real-token")
-
-
-@pytest.fixture
-def workload_credentials() -> Credentials:
-    return Credentials(token="offline-workload-not-a-real-token")
-
-
 @pytest.mark.parametrize(
     ("model_override", "expected_model", "thinking_level"),
     [
@@ -315,7 +305,6 @@ async def test_normal_model_settings_reach_the_real_sdk_without_overriding_expli
     model_override: str | None,
     expected_model: str,
     thinking_level: types.ThinkingLevel | None,
-    offline_credentials: Credentials,
 ) -> None:
     settings = (
         DocumentSettings()
@@ -358,7 +347,7 @@ async def test_normal_model_settings_reach_the_real_sdk_without_overriding_expli
             vertexai=True,
             project=policy.project,
             location=policy.location,
-            credentials=offline_credentials,
+            credentials=Credentials(token="offline-fixture-not-a-real-token"),
             http_options=types.HttpOptions(
                 base_url="http://127.0.0.1:9",
                 httpx_async_client=http,
@@ -382,7 +371,7 @@ async def test_normal_model_settings_reach_the_real_sdk_without_overriding_expli
 
 @pytest.mark.parametrize(("paragraph_count", "repetitions"), [(77, 1), (12, 7)])
 async def test_high_pro_writer_bounds_wire_workload_without_losing_any_source_block(
-    paragraph_count: int, repetitions: int, workload_credentials: Credentials
+    paragraph_count: int, repetitions: int
 ) -> None:
     document = parse_markdown(
         "\n\n".join(SOURCE * repetitions for _ in range(paragraph_count)), title="Private workload"
@@ -419,7 +408,7 @@ async def test_high_pro_writer_bounds_wire_workload_without_losing_any_source_bl
             vertexai=True,
             project=policy.project,
             location=policy.location,
-            credentials=workload_credentials,
+            credentials=Credentials(token="offline-workload-not-a-real-token"),
             http_options=types.HttpOptions(base_url="http://127.0.0.1:9", httpx_async_client=http),
         )
         try:
