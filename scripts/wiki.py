@@ -22,6 +22,10 @@ import typer
 ROOT = Path(__file__).resolve().parents[1]
 # Audit the latest repository engine independently of the immutable Standards bundle.
 REPOSITORY_STANDARDS_VERSION = "7.0.1"
+_LOG_METADATA_TEST = (
+    "tests/test_aggressive_unslop_transport.py::"
+    "test_sdk_invalid_writer_logs_only_bounded_metadata_and_preserves_parse_failure"
+)
 REPOSITORY_TESTS = (
     "test_release_gate.py",
     "test_wiki_cli.py",
@@ -153,9 +157,17 @@ def checks(scope: Check, *, platform: str = sys.platform) -> tuple[Command, ...]
             _backend("ty", "check", "app"),
             _backend("vulture"),
             _backend("lint-imports"),
+            _backend("pytest", _LOG_METADATA_TEST, "--cov=app", "--cov-report="),
             _backend(
                 "pytest",
+                "-n",
+                "4",
+                "--dist",
+                "worksteal",
+                "--deselect",
+                f"{_LOG_METADATA_TEST}[",
                 "--cov=app",
+                "--cov-append",
                 "--cov-report=term-missing",
                 "--cov-fail-under=70",
             ),

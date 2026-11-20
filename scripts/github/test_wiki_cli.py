@@ -105,22 +105,26 @@ def test_unknown_check_scope_fails_before_starting_a_tool(native_tool: Path) -> 
     assert not native_tool.exists()
 
 
+@pytest.mark.parametrize("failed_first", [True, False], ids=["first-command", "later-command"])
 def test_failed_native_command_preserves_exit_code_and_stops_later_steps(
     native_tool: Path,
+    *,
+    failed_first: bool,
 ) -> None:
     commands = tuple(
         wiki.Command(arguments=("fixture-tool", argument))
-        for argument in ("first", "fail", "unreachable")
+        for argument in (
+            ("fail", "unreachable") if failed_first else ("first", "fail", "unreachable")
+        )
     )
 
     with pytest.raises(typer.Exit) as failed:
         wiki.run(commands)
 
     assert failed.value.exit_code == _NATIVE_FAILURE
-    assert [call.arguments for call in _invocations(native_tool)] == [
-        ["first"],
-        ["fail"],
-    ]
+    assert [call.arguments for call in _invocations(native_tool)] == (
+        [["fail"]] if failed_first else [["first"], ["fail"]]
+    )
 
 
 def test_command_environment_does_not_leak_to_the_next_tool(
@@ -219,7 +223,7 @@ def test_quality_generation_failure_stops_before_source_analysis(
 
 @pytest.mark.parametrize(
     ("scopes", "expected_count"),
-    [(["backend", "frontend"], 18), (["backend", "backend"], 9)],
+    [(["backend", "frontend"], 19), (["backend", "backend"], 10)],
     ids=["ordered-subsystems", "duplicate-subsystem-runs-once"],
 )
 def test_multiple_scopes_preserve_order_without_repeating_native_commands(
@@ -261,7 +265,31 @@ def test_backend_contract_keeps_all_type_architecture_and_coverage_gates() -> No
         ("ty", "check", "app"),
         ("vulture",),
         ("lint-imports",),
-        ("pytest", "--cov=app", "--cov-report=term-missing", "--cov-fail-under=70"),
+        (
+            "pytest",
+            (
+                "tests/test_aggressive_unslop_transport.py::"
+                "test_sdk_invalid_writer_logs_only_bounded_metadata_and_preserves_parse_failure"
+            ),
+            "--cov=app",
+            "--cov-report=",
+        ),
+        (
+            "pytest",
+            "-n",
+            "4",
+            "--dist",
+            "worksteal",
+            "--deselect",
+            (
+                "tests/test_aggressive_unslop_transport.py::"
+                "test_sdk_invalid_writer_logs_only_bounded_metadata_and_preserves_parse_failure["
+            ),
+            "--cov=app",
+            "--cov-append",
+            "--cov-report=term-missing",
+            "--cov-fail-under=70",
+        ),
     ]
     assert all(
         command.arguments[:5] == ("uv", "--directory", "backend", "run", "--locked")

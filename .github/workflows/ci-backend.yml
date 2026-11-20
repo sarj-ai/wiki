@@ -133,8 +133,17 @@ jobs:
       - name: Install dependencies
         run: uv sync --group dev --locked
 
+      - name: Run logging metadata tests in a fresh process
+        run: >-
+          uv run pytest
+          tests/test_aggressive_unslop_transport.py::test_sdk_invalid_writer_logs_only_bounded_metadata_and_preserves_parse_failure
+          --cov=app --cov-report=
+
       - name: Run pytest
-        run: uv run pytest --cov=app --cov-report=term-missing --cov-fail-under=70
+        run: >-
+          uv run pytest -n 4 --dist worksteal
+          --deselect 'tests/test_aggressive_unslop_transport.py::test_sdk_invalid_writer_logs_only_bounded_metadata_and_preserves_parse_failure['
+          --cov=app --cov-append --cov-report=term-missing --cov-fail-under=70
 
   postgres-concurrency:
     needs: changes

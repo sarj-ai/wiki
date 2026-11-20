@@ -131,7 +131,9 @@ async def test_missing_or_revoked_token_denies_before_application_context(
     assert contexts.principals == []
 
 
-@pytest.mark.parametrize("subject", [None, str(uuid.uuid7())])
+@pytest.mark.parametrize(
+    "subject", [None, str(uuid.uuid7())], ids=["missing-subject", "different-subject"]
+)
 async def test_verified_subject_must_match_verified_user_claim(
     monkeypatch: pytest.MonkeyPatch, subject: str | None
 ) -> None:

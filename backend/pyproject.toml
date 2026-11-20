@@ -59,6 +59,7 @@ dev = [
     "deptry>=0.25.1",
     "jsonschema==4.26.0",
     "types-jsonschema>=4.26.0.20261006",
+    "pytest-xdist==3.8.0",
 ]
 
 [tool.deptry.package_module_name_map]
