@@ -29,14 +29,16 @@ jobs:
           persist-credentials: false
       - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
         with:
+          cache-suffix: wiki-ci-audit-20261120T154007Z-standards-${{ github.job }}
+          cache-local-path: ${{ runner.temp }}/wiki-ci-cold-uv-${{ github.run_id }}-${{ github.run_attempt }}-${{ github.job }}
           version-file: "backend/uv.toml"
-          enable-cache: true
+          enable-cache: false
           cache-dependency-glob: |
             .sarj-standards.toml
             **/uv.lock
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
-          node-version: 24
+          node-version: 26.13.0
           check-latest: true
       - name: Activate declared npm version
         run: npm install --global npm@12.2.2 --ignore-scripts
@@ -44,7 +46,12 @@ jobs:
         run: npm ci --no-audit --no-fund --ignore-scripts
         working-directory: "frontend"
       - name: Install Python dependencies
-        run: uv sync --locked --project backend
+        run: |-
+          printf 'Cold UV package cache initial listing: %s\n' "$UV_CACHE_DIR"
+          mkdir -p "$UV_CACHE_DIR"
+          ls -la "$UV_CACHE_DIR"
+          uv sync --locked --project backend
+
       - name: Install the pinned native tool bootstrap
         env:
           UV_PYTHON_DOWNLOADS_JSON_URL: https://raw.githubusercontent.com/astral-sh/uv/4ecd0eff2a81e3ffdcd7cfee10d08936e4747c17/crates/uv-python-managed/download-metadata.json
