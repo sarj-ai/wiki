@@ -89,8 +89,10 @@ jobs:
       - name: Install uv
         uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
         with:
+          cache-suffix: wiki-ci-audit-20261120T154007Z-ci-quality-${{ github.job }}
+          cache-local-path: ${{ runner.temp }}/wiki-ci-cold-uv-${{ github.run_id }}-${{ github.run_attempt }}-${{ github.job }}
           version-file: backend/uv.toml
-          enable-cache: true
+          enable-cache: false
           cache-dependency-glob: backend/uv.lock
 
       - name: Cache pre-commit environments
@@ -108,7 +110,12 @@ jobs:
       - name: Activate declared npm version
         run: npm install --global npm@12.2.2 --ignore-scripts
       - name: Install analysis dependencies
-        run: uv sync --locked --project backend
+        run: |-
+          printf 'Cold UV package cache initial listing: %s\n' "$UV_CACHE_DIR"
+          mkdir -p "$UV_CACHE_DIR"
+          ls -la "$UV_CACHE_DIR"
+          uv sync --locked --project backend
+
       - name: Install frontend analysis dependencies
         run: npm ci --prefix frontend --no-audit --no-fund --ignore-scripts
       - name: Bootstrap analysis inputs
@@ -163,13 +170,20 @@ jobs:
       - name: Install uv
         uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
         with:
+          cache-suffix: wiki-ci-audit-20261120T154007Z-ci-quality-${{ github.job }}
+          cache-local-path: ${{ runner.temp }}/wiki-ci-cold-uv-${{ github.run_id }}-${{ github.run_attempt }}-${{ github.job }}
           version-file: backend/uv.toml
-          enable-cache: true
+          enable-cache: false
           cache-dependency-glob: backend/uv.lock
 
       - name: Verify committed OpenAPI spec
         working-directory: backend
-        run: uv run --locked python scripts/export_openapi.py --check ../frontend/openapi.json
+        run: |-
+          printf 'Cold UV package cache initial listing: %s\n' "$UV_CACHE_DIR"
+          mkdir -p "$UV_CACHE_DIR"
+          ls -la "$UV_CACHE_DIR"
+          uv run --locked python scripts/export_openapi.py --check ../frontend/openapi.json
+
 
   secret-scan:
     name: gitleaks (full history)
