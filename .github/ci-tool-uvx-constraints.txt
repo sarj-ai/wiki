@@ -1,0 +1,2 @@
+-c ci-tool-constraints.txt
+typer==0.27.3

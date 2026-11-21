@@ -80,6 +80,8 @@ jobs:
     needs: route-quality
     if: ${{ !cancelled() && (needs.route-quality.result != 'success' || needs.route-quality.outputs.run_quality != 'false') }}
     runs-on: ${{ vars.CI_RUNNER || 'ubuntu-24.04' }}
+    env:
+      UV_CONSTRAINT: ${{ github.workspace }}/.github/ci-tool-uvx-constraints.txt
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -89,6 +91,7 @@ jobs:
       - name: Install uv
         uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
         with:
+          cache-suffix: wiki-ci-inputs4-20261120T154007Z-ci-quality-${{ github.job }}
           version-file: backend/uv.toml
           enable-cache: true
           cache-dependency-glob: backend/uv.lock
@@ -148,6 +151,9 @@ jobs:
           HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
         run: bash scripts/github/run-pre-commit.sh
 
+      - name: Record resolved CI tool inputs
+        working-directory: .
+        run: bash .github/ci-tool-inputs.sh
   api-contract:
     name: OpenAPI spec in sync
     needs: route-quality
@@ -155,6 +161,8 @@ jobs:
     runs-on: ${{ vars.CI_RUNNER || 'ubuntu-24.04' }}
     permissions:
       contents: read
+    env:
+      UV_CONSTRAINT: ${{ github.workspace }}/.github/ci-tool-uvx-constraints.txt
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -163,6 +171,7 @@ jobs:
       - name: Install uv
         uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
         with:
+          cache-suffix: wiki-ci-inputs4-20261120T154007Z-ci-quality-${{ github.job }}
           version-file: backend/uv.toml
           enable-cache: true
           cache-dependency-glob: backend/uv.lock
@@ -171,6 +180,10 @@ jobs:
         working-directory: backend
         run: uv run --locked python scripts/export_openapi.py --check ../frontend/openapi.json
 
+      - name: Record resolved CI tool inputs
+        if: always()
+        working-directory: .
+        run: bash .github/ci-tool-inputs.sh
   secret-scan:
     name: gitleaks (full history)
     needs: route-quality
