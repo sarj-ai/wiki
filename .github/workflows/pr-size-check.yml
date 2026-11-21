@@ -19,6 +19,8 @@ jobs:
   size:
     runs-on: ${{ vars.CI_RUNNER || 'ubuntu-24.04' }}
     timeout-minutes: 10
+    env:
+      UV_CONSTRAINT: ${{ github.workspace }}/.github/ci-tool-uvx-constraints.txt
     steps:
       - name: Check out pull request
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
@@ -56,3 +58,7 @@ jobs:
         run: printf '```\n' >>"$RUNNER_TEMP/repo-standards-pr-size.md"
       - name: Publish pull-request size summary
         run: cat "$RUNNER_TEMP/repo-standards-pr-size.md" >>"$GITHUB_STEP_SUMMARY"
+      - name: Record resolved CI tool inputs
+        if: always()
+        working-directory: .
+        run: bash .github/ci-tool-inputs.sh

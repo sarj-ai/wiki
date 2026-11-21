@@ -18,6 +18,8 @@ jobs:
   standards:
     runs-on: ubuntu-24.04
     timeout-minutes: 15
+    env:
+      UV_CONSTRAINT: ${{ github.workspace }}/.github/ci-tool-uvx-constraints.txt
     steps:
       - name: Harden the runner
         uses: step-security/harden-runner@1d88384fd173af6ecb012dfd0264a306b711241a # v2.22.4
@@ -29,14 +31,16 @@ jobs:
           persist-credentials: false
       - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
         with:
+          cache-suffix: wiki-ci-inputs4-20261120T154007Z-standards-${{ github.job }}
+          cache-local-path: ${{ runner.temp }}/wiki-ci-cold-uv-${{ github.run_id }}-${{ github.run_attempt }}-${{ github.job }}
           version-file: "backend/uv.toml"
-          enable-cache: true
+          enable-cache: false
           cache-dependency-glob: |
             .sarj-standards.toml
             **/uv.lock
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
-          node-version: 24
+          node-version: 26.13.0
           check-latest: true
       - name: Activate declared npm version
         run: npm install --global npm@12.2.2 --ignore-scripts
@@ -44,11 +48,16 @@ jobs:
         run: npm ci --no-audit --no-fund --ignore-scripts
         working-directory: "frontend"
       - name: Install Python dependencies
-        run: uv sync --locked --project backend
+        run: |-
+          printf 'Cold UV package cache initial listing: %s\n' "$UV_CACHE_DIR"
+          mkdir -p "$UV_CACHE_DIR"
+          ls -la "$UV_CACHE_DIR"
+          uv sync --locked --project backend
+
       - name: Install the pinned native tool bootstrap
         env:
           UV_PYTHON_DOWNLOADS_JSON_URL: https://raw.githubusercontent.com/astral-sh/uv/4ecd0eff2a81e3ffdcd7cfee10d08936e4747c17/crates/uv-python-managed/download-metadata.json
-        run: uv run --no-config --no-project --python 3.15.0 --with code-standards==9.35.5 python -m sarj_standards.libs.adoption.native_bootstrap
+        run: uv run --with-requirements .github/ci-tool-requirements.txt --no-config --no-project --python 3.15.0 --with code-standards==9.35.5 python -m sarj_standards.libs.adoption.native_bootstrap
       - name: Install and attest applicable native tools
         env:
           GITHUB_TOKEN: ${{ github.token }}
@@ -100,3 +109,7 @@ jobs:
         with:
           path: ${{ runner.temp }}/standards-results
           key: ${{ steps.standards-results.outputs.cache-primary-key }}
+      - name: Record resolved CI tool inputs
+        if: always()
+        working-directory: .
+        run: bash .github/ci-tool-inputs.sh
