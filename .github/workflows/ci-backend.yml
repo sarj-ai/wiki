@@ -43,6 +43,8 @@ jobs:
   lint-and-typecheck:
     name: Backend / Lint + typecheck
     runs-on: ${{ vars.CI_RUNNER || 'ubuntu-24.04' }}
+    env:
+      UV_CONSTRAINT: ${{ github.workspace }}/.github/ci-tool-uvx-constraints.txt
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -52,6 +54,7 @@ jobs:
       - name: Install uv
         uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
         with:
+          cache-suffix: wiki-ci-inputs4-20261120T154007Z-ci-backend-${{ github.job }}
           version-file: backend/uv.toml
           enable-cache: true
           cache-dependency-glob: backend/uv.lock
@@ -110,11 +113,17 @@ jobs:
           path: backend/.mypy_cache
           key: ${{ steps.mypy-cache.outputs.cache-primary-key }}
 
+      - name: Record resolved CI tool inputs
+        if: always()
+        working-directory: .
+        run: bash .github/ci-tool-inputs.sh
   test:
     needs: changes
     if: always() && (needs.changes.result != 'success' || needs.changes.outputs.runtime == 'true')
     name: Backend / Unit tests
     runs-on: ${{ vars.CI_RUNNER || 'ubuntu-24.04' }}
+    env:
+      UV_CONSTRAINT: ${{ github.workspace }}/.github/ci-tool-uvx-constraints.txt
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -123,6 +132,7 @@ jobs:
       - name: Install uv
         uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
         with:
+          cache-suffix: wiki-ci-inputs4-20261120T154007Z-ci-backend-${{ github.job }}
           version-file: backend/uv.toml
           enable-cache: true
           cache-dependency-glob: backend/uv.lock
@@ -145,6 +155,10 @@ jobs:
           --deselect 'tests/test_aggressive_unslop_transport.py::test_sdk_invalid_writer_logs_only_bounded_metadata_and_preserves_parse_failure['
           --cov=app --cov-append --cov-report=term-missing --cov-fail-under=70
 
+      - name: Record resolved CI tool inputs
+        if: always()
+        working-directory: .
+        run: bash .github/ci-tool-inputs.sh
   postgres-concurrency:
     needs: changes
     if: always() && (needs.changes.result != 'success' || needs.changes.outputs.runtime == 'true')
@@ -166,6 +180,7 @@ jobs:
           --health-retries 10
     env:
       # Disposable runner-local fixtures only; no cloud or repository secrets.
+      UV_CONSTRAINT: ${{ github.workspace }}/.github/ci-tool-uvx-constraints.txt
       DATABASE_URL: postgresql+asyncpg://postgres@127.0.0.1:5432/wiki_polish29_qa
       WIKI_POLISH29_QA_DATABASE_URL: postgresql+asyncpg://postgres@127.0.0.1:5432/wiki_polish29_qa
       WIKI_MCP_QA_DATABASE_URL: postgresql+asyncpg://postgres@127.0.0.1:5432/wiki_polish29_qa
@@ -181,6 +196,7 @@ jobs:
       - name: Install uv
         uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
         with:
+          cache-suffix: wiki-ci-inputs4-20261120T154007Z-ci-backend-${{ github.job }}
           version-file: backend/uv.toml
           enable-cache: true
           cache-dependency-glob: backend/uv.lock
@@ -237,6 +253,10 @@ jobs:
           tests/test_native_mcp_core.py tests/test_mcp_native_runtime.py
           tests/test_mcp_native_admission.py -q -rA
 
+      - name: Record resolved CI tool inputs
+        if: always()
+        working-directory: .
+        run: bash .github/ci-tool-inputs.sh
   image:
     name: Backend / Image build + Trivy scan
     runs-on: ${{ vars.CI_RUNNER || 'ubuntu-24.04' }}
@@ -267,6 +287,10 @@ jobs:
           severity: HIGH,CRITICAL
           exit-code: "1"
 
+      - name: Record updated Trivy data identities
+        if: always()
+        working-directory: .
+        run: bash .github/ci-trivy-inputs.sh
   required:
     name: Backend / required
     # Skip only the result shapes release_gate.py accepts; any other shape runs
@@ -292,6 +316,8 @@ jobs:
     needs: [changes, lint-and-typecheck, test, postgres-concurrency, image]
     runs-on: ${{ vars.CI_RUNNER || 'ubuntu-24.04' }}
     timeout-minutes: 1
+    env:
+      UV_CONSTRAINT: ${{ github.workspace }}/.github/ci-tool-uvx-constraints.txt
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -312,3 +338,7 @@ jobs:
           POSTGRES_RESULT: ${{ needs.postgres-concurrency.result }}
           TEST_RESULT: ${{ needs.test.result }}
         run: uv run --no-project --with typer==0.27.3 --python 3.14 python scripts/github/release_gate.py ci backend
+      - name: Record resolved CI tool inputs
+        if: always()
+        working-directory: .
+        run: bash .github/ci-tool-inputs.sh
