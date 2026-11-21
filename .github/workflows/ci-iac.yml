@@ -31,6 +31,7 @@ jobs:
     runs-on: ${{ vars.CI_RUNNER || 'ubuntu-24.04' }}
     timeout-minutes: 10
     env:
+      UV_CONSTRAINT: ${{ github.workspace }}/.github/ci-tool-uvx-constraints.txt
       TF_PLUGIN_CACHE_DIR: /tmp/terraform-provider-cache
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -40,8 +41,10 @@ jobs:
       - name: Install uv
         uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
         with:
+          cache-suffix: wiki-ci-inputs4-20261120T154007Z-ci-iac-${{ github.job }}
+          cache-local-path: ${{ runner.temp }}/wiki-ci-cold-uv-${{ github.run_id }}-${{ github.run_attempt }}-${{ github.job }}
           version-file: backend/uv.toml
-          enable-cache: true
+          enable-cache: false
 
       - name: Install pinned Terraform
         uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e # v4.0.1
@@ -60,6 +63,11 @@ jobs:
           restore-keys: |
             terraform-providers-${{ runner.os }}-${{ runner.arch }}-
 
+      - name: Record initial cold UV package cache
+        run: |-
+          printf 'Cold UV package cache initial listing: %s\n' "$UV_CACHE_DIR"
+          mkdir -p "$UV_CACHE_DIR"
+          ls -la "$UV_CACHE_DIR"
       - name: Validate real provider schemas and offline preview wiring
         run: uv run scripts/wiki.py check iac
 
@@ -89,3 +97,11 @@ jobs:
       - name: Upload IaC scan summary
         if: always() && steps.trivy_summary_header.outcome == 'success' && steps.trivy_summary_report.outcome == 'success' && steps.trivy_summary_footer.outcome == 'success'
         run: cat "$RUNNER_TEMP/trivy-summary.md" >>"$GITHUB_STEP_SUMMARY"
+      - name: Record resolved CI tool inputs
+        if: always()
+        working-directory: .
+        run: bash .github/ci-tool-inputs.sh
+      - name: Record updated Trivy data identities
+        if: always()
+        working-directory: .
+        run: bash .github/ci-trivy-inputs.sh

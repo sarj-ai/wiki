@@ -43,6 +43,8 @@ jobs:
   lint-and-typecheck:
     name: Frontend / Lint + typecheck + format
     runs-on: ${{ vars.CI_RUNNER || 'ubuntu-24.04' }}
+    env:
+      UV_CONSTRAINT: ${{ github.workspace }}/.github/ci-tool-uvx-constraints.txt
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -69,12 +71,20 @@ jobs:
       - name: Install uv
         uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
         with:
+          cache-suffix: wiki-ci-inputs4-20261120T154007Z-ci-frontend-${{ github.job }}
+          cache-local-path: ${{ runner.temp }}/wiki-ci-cold-uv-${{ github.run_id }}-${{ github.run_attempt }}-${{ github.job }}
+          enable-cache: false
           version-file: backend/uv.toml
       - name: Install the pinned native tool bootstrap
         working-directory: .
         env:
           UV_PYTHON_DOWNLOADS_JSON_URL: https://raw.githubusercontent.com/astral-sh/uv/4ecd0eff2a81e3ffdcd7cfee10d08936e4747c17/crates/uv-python-managed/download-metadata.json
-        run: uv run --no-config --no-project --python 3.15.0 --with code-standards==9.35.5 python -m sarj_standards.libs.adoption.native_bootstrap
+        run: |-
+          printf 'Cold UV package cache initial listing: %s\n' "$UV_CACHE_DIR"
+          mkdir -p "$UV_CACHE_DIR"
+          ls -la "$UV_CACHE_DIR"
+          uv run --with-requirements .github/ci-tool-requirements.txt --no-config --no-project --python 3.15.0 --with code-standards==9.35.5 python -m sarj_standards.libs.adoption.native_bootstrap
+
       - name: Install and attest applicable native tools
         working-directory: .
         env:
@@ -107,11 +117,17 @@ jobs:
       - name: npm audit
         run: npm audit --omit=dev --audit-level=moderate
 
+      - name: Record resolved CI tool inputs
+        if: always()
+        working-directory: .
+        run: bash .github/ci-tool-inputs.sh
   test:
     needs: changes
     if: always() && (needs.changes.result != 'success' || needs.changes.outputs.runtime == 'true')
     name: Frontend / Unit tests
     runs-on: ${{ vars.CI_RUNNER || 'ubuntu-24.04' }}
+    env:
+      NPM_CONFIG_CACHE: /tmp/wiki-ci-cold-npm-${{ github.run_id }}-${{ github.run_attempt }}-test
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -119,12 +135,15 @@ jobs:
 
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
+          package-manager-cache: false
           node-version: 26.13.0
-          cache: npm
-          cache-dependency-path: frontend/package-lock.json
 
       - name: Activate declared npm version
-        run: npm install --global npm@12.2.2 --ignore-scripts
+        run: |-
+          test ! -e "$NPM_CONFIG_CACHE/_cacache"
+          printf 'Cold npm package cache initially absent: %s\n' "$NPM_CONFIG_CACHE"
+          npm install --global npm@12.2.2 --ignore-scripts
+
       - name: Install dependencies
         run: npm ci
 
@@ -136,6 +155,8 @@ jobs:
     if: always() && (needs.changes.result != 'success' || needs.changes.outputs.runtime == 'true')
     name: Frontend / Next.js build
     runs-on: ${{ vars.CI_RUNNER || 'ubuntu-24.04' }}
+    env:
+      NPM_CONFIG_CACHE: /tmp/wiki-ci-cold-npm-${{ github.run_id }}-${{ github.run_attempt }}-build
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -143,15 +164,19 @@ jobs:
 
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
+          package-manager-cache: false
           node-version: 26.13.0
-          cache: npm
-          cache-dependency-path: frontend/package-lock.json
 
       - name: Activate declared npm version
-        run: npm install --global npm@12.2.2 --ignore-scripts
+        run: |-
+          test ! -e "$NPM_CONFIG_CACHE/_cacache"
+          printf 'Cold npm package cache initially absent: %s\n' "$NPM_CONFIG_CACHE"
+          npm install --global npm@12.2.2 --ignore-scripts
+
       - name: Restore Next.js incremental build cache
         id: next-cache
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        if: github.event_name != 'pull_request'
         with:
           path: frontend/.next/cache
           key: nextjs-v1-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('frontend/package-lock.json') }}-${{ github.sha }}
@@ -205,6 +230,8 @@ jobs:
     needs: [changes, lint-and-typecheck, test, build]
     runs-on: ${{ vars.CI_RUNNER || 'ubuntu-24.04' }}
     timeout-minutes: 1
+    env:
+      UV_CONSTRAINT: ${{ github.workspace }}/.github/ci-tool-uvx-constraints.txt
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -224,3 +251,7 @@ jobs:
           LINT_RESULT: ${{ needs.lint-and-typecheck.result }}
           TEST_RESULT: ${{ needs.test.result }}
         run: uv run --no-project --with typer==0.27.3 --python 3.14 python scripts/github/release_gate.py ci frontend
+      - name: Record resolved CI tool inputs
+        if: always()
+        working-directory: .
+        run: bash .github/ci-tool-inputs.sh
