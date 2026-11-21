@@ -605,6 +605,7 @@ async def test_sdk_audits_each_source_sentence_against_the_complete_reordered_bl
                 restyle_model="gemini-3.8-flash",
             ),
             client=client,
+            writer_sleep=_yield_writer_sleep,
         )
         try:
             if case in {"omit_editorial", "forged_output"}:
@@ -947,6 +948,7 @@ async def test_real_sdk_review_gateway_timeout_uses_the_configured_fallback(
                 restyle_model="gemini-3.8-flash",
             ),
             client=client,
+            writer_sleep=_yield_writer_sleep,
         )
         try:
             decision = await generator.review(document, [patch])
@@ -1012,6 +1014,7 @@ async def test_review_collision_uses_a_sticky_configured_fallback_effort(
                 restyle_model=reviewer,
             ),
             client=client,
+            writer_sleep=_yield_writer_sleep,
         )
         try:
             if status is HTTPStatus.FORBIDDEN:
@@ -1268,6 +1271,7 @@ async def test_distinct_review_fallback_cannot_approve_a_wrong_binding(
                 restyle_model="gemini-3.1-pro-preview",
             ),
             client=client,
+            writer_sleep=_yield_writer_sleep,
         )
         try:
             with pytest.raises(ModelUnavailableError):
@@ -1458,6 +1462,7 @@ async def test_json_schema_responses_still_enforce_strict_local_validation(
                 restyle_model="gemini-3.8-flash",
             ),
             client=client,
+            writer_sleep=_yield_writer_sleep,
         )
         try:
             operation = (
@@ -2057,6 +2062,7 @@ async def test_sdk_initial_fallback_and_flash_repair_keep_independent_review_hig
                 restyle_model="gemini-3.1-pro-preview",
             ),
             client=client,
+            writer_sleep=_yield_writer_sleep,
         )
         try:
             assert await generator.generate(document, phase=TransformPhase.UNSLOP) == [patch]
