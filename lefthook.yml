@@ -42,6 +42,7 @@ pre-commit:
     frontend-format:
       root: frontend/
       glob: "*.{js,jsx,mjs,cjs,ts,tsx,mts,cts,json,css,md,yml,yaml}"
+      exclude: "**/oxlint-suppressions.json"
       run: npm exec --call "oxfmt --check {staged_files}"
       fail_text: "Staged frontend files need formatting. Run npm run format in frontend/, stage, and retry."
     markdownlint:

@@ -1,9 +1,9 @@
 {
   "schemaVersion": 2,
   "provenance": {
-    "bundleVersion": "9.35.5",
-    "consumerBaseSha": "f60451b1fcff241b5ef0045f8e45f13ec8998087",
-    "catalogDigest": "8ff44d08f7145acce05915dfb24dc33b6af044e393c04141426f60b11d259d94"
+    "bundleVersion": "9.76.1",
+    "consumerBaseSha": "e4b44a2e52080c6db55357c0e3d73fae6f7c62ff",
+    "catalogDigest": "96079a17cc322df93d6319b06c66649474e157642d9aeb14d86fa49dc3e614d9"
   },
   "diagnostics": [
     {
@@ -12,20 +12,6 @@
       "ruleId": "@eslint-react/web-api-no-leaked-timeout",
       "path": "frontend/src/components/wiki-document/doc-viewer-host.tsx",
       "count": 4
-    },
-    {
-      "fingerprint": "ff330b49e936c889a659b737fe0775d04001951b141a9081f7605a1b253d79ea",
-      "source": "oxlint",
-      "ruleId": "@sarj/no-explicit-type-predicate",
-      "path": "frontend/scripts/benchmark-bundle.ts",
-      "count": 1
-    },
-    {
-      "fingerprint": "d3936bf142b7082cb6a9bdf22e961a4ffdd1c36ce1dcc4805b4780fa57389c66",
-      "source": "oxlint",
-      "ruleId": "@sarj/no-explicit-type-predicate",
-      "path": "frontend/scripts/eslint-owned/shared/ast.ts",
-      "count": 3
     },
     {
       "fingerprint": "0d3b1a5d4cf50e9769414245b2d360640c0dfb79100fcce787f9b3e17220dfd0",
@@ -63,13 +49,6 @@
       "count": 1
     },
     {
-      "fingerprint": "5cbb15b2cc8528744be1292943ce130e95d9644064c935f99fb455b3b0128a66",
-      "source": "oxlint",
-      "ruleId": "@sarj/no-logical-or-fallback",
-      "path": "frontend/src/components/wiki-document/document-polish-dialog.tsx",
-      "count": 1
-    },
-    {
       "fingerprint": "f66bc4d3b96733dc8ae6cf2f65ec98dcf239ba667a0eb1276bc6ac16fcedc80a",
       "source": "oxlint",
       "ruleId": "@sarj/no-logical-or-fallback",
@@ -102,13 +81,6 @@
       "source": "oxlint",
       "ruleId": "@sarj/no-logical-or-fallback",
       "path": "frontend/src/lib/markdown-import.ts",
-      "count": 1
-    },
-    {
-      "fingerprint": "1d265e34a682a917f781cfbd108079d36be79f08dda0ed55cf6ffda06b7c2da8",
-      "source": "oxlint",
-      "ruleId": "@sarj/no-zod-parse-typed-object",
-      "path": "frontend/src/app/(app)/d/[driveId]/page.tsx",
       "count": 1
     },
     {
@@ -152,6 +124,13 @@
       "ruleId": "@sarj/prefer-zod-enum-validator",
       "path": "frontend/src/components/wiki-sidebar/use-document-intent.ts",
       "count": 1
+    },
+    {
+      "fingerprint": "0c853bf25fa125f351cbad41e2b6ac9fafd99406cd7223199b2b1d37c44d082e",
+      "source": "oxlint",
+      "ruleId": "@sarj/react-prefer-updater-function",
+      "path": "frontend/src/components/wiki-sidebar/smart-create-dialog.tsx",
+      "count": 3
     },
     {
       "fingerprint": "753a404e4cd1922c58bdd74657413da9f312bb0bc73b176538e28c428900de8b",
@@ -231,24 +210,52 @@
       "count": 1
     },
     {
-      "fingerprint": "e324886b89a483cd084fa7d8ccec2607ae07c1635a9d125c85888c12597275ff",
+      "fingerprint": "bc851d285183de64945e115bc37cb84a807ca2db33e98dd3e4f1088a23644298",
       "source": "oxlint",
-      "ruleId": "import/no-duplicates",
-      "path": "frontend/src/lib/smart-create-types.ts",
+      "ruleId": "no-empty",
+      "path": "frontend/src/components/wiki-document/document-polish-dialog.tsx",
       "count": 1
     },
     {
-      "fingerprint": "f2a9d243b1d7be46297c304d61f85fab440f15408ec9a729e83e31900f449668",
+      "fingerprint": "7a7837c2f6b1158323ccf2f38847583bad043597201eb1fb1f5e0fe807e78796",
       "source": "oxlint",
-      "ruleId": "oxlint/unused-directive",
-      "path": "frontend/src/hooks/use-document-alias.ts",
+      "ruleId": "no-empty",
+      "path": "frontend/src/lib/clients/wiki-read-http.ts",
       "count": 1
     },
     {
-      "fingerprint": "b1539fab25a73b95d7d695775b647a084d3f39ecb68c9ecc48f99e71b36abc45",
+      "fingerprint": "3606fa608070f7c285b165e99f241df042ae8cac6448dcf24d787321f93459b8",
       "source": "oxlint",
-      "ruleId": "oxlint/unused-directive",
-      "path": "frontend/src/lib/wiki-keys.ts",
+      "ruleId": "typescript/promise-function-async",
+      "path": "frontend/next.config.ts",
+      "count": 1
+    },
+    {
+      "fingerprint": "43608528f49ccedafd61f34b62000a86b2a6f9d6db16f2becdde686b6f26b29b",
+      "source": "oxlint",
+      "ruleId": "typescript/promise-function-async",
+      "path": "frontend/scripts/format-generated.ts",
+      "count": 1
+    },
+    {
+      "fingerprint": "1ac5e75a569c8a5660f596eca71f62a96d2f413f807f299e64d3894786188155",
+      "source": "oxlint",
+      "ruleId": "typescript/promise-function-async",
+      "path": "frontend/src/lib/fetch-authorized-file.ts",
+      "count": 1
+    },
+    {
+      "fingerprint": "b7f82579297e4c0ddf84e8581da0b052f54cc3a07956b191e1d2857fece9183d",
+      "source": "oxlint",
+      "ruleId": "typescript/promise-function-async",
+      "path": "frontend/src/lib/session-client.ts",
+      "count": 1
+    },
+    {
+      "fingerprint": "d05debf58bb4c9ca7424da6298e26ecf687c44e44782b7445d2db83f1bb51d9a",
+      "source": "oxlint",
+      "ruleId": "typescript/strict-boolean-expressions",
+      "path": "frontend/src/components/ui/sidebar.tsx",
       "count": 1
     },
     {
@@ -285,111 +292,6 @@
       "ruleId": "vitest/no-conditional-expect",
       "path": "frontend/src/lib/build-destination-sort-orders.test.ts",
       "count": 1
-    },
-    {
-      "fingerprint": "6d35c02243ee92af699da8a5f20e7ed3c0b6681888123abb3663ca9ddfdc2de7",
-      "source": "sarj-iac-lint",
-      "ruleId": "conditional-resource-presence",
-      "path": "terraform/backend.tf",
-      "count": 3
-    },
-    {
-      "fingerprint": "0c9e16d0319ef0bae44152f0b919b100d1a3b907a4bb40b37d084519a82ff7a9",
-      "source": "sarj-iac-lint",
-      "ruleId": "conditional-resource-presence",
-      "path": "terraform/database.tf",
-      "count": 1
-    },
-    {
-      "fingerprint": "8f8e88520529c59e70d5b956f1ea642878277b4503dc57ee4153bf250f23b750",
-      "source": "sarj-iac-lint",
-      "ruleId": "conditional-resource-presence",
-      "path": "terraform/document_transform_alerts.tf",
-      "count": 2
-    },
-    {
-      "fingerprint": "aadcb5dae872ccb73b3f2faa8b8b9231a7b1ccf3d16e02edab78d75cd9eec37b",
-      "source": "sarj-iac-lint",
-      "ruleId": "conditional-resource-presence",
-      "path": "terraform/document_transform_recovery.tf",
-      "count": 1
-    },
-    {
-      "fingerprint": "6838c483c45ccdd1732417ecf1b25ee2472d457e2ae9e8600326a8a486ed409c",
-      "source": "sarj-iac-lint",
-      "ruleId": "conditional-resource-presence",
-      "path": "terraform/images.tf",
-      "count": 1
-    },
-    {
-      "fingerprint": "56c6423a0044b9c75ac18c40411b8f2f2799b2210795b6af95f06e2dd77236e6",
-      "source": "sarj-iac-lint",
-      "ruleId": "conditional-resource-presence",
-      "path": "terraform/loadbalancer.tf",
-      "count": 2
-    },
-    {
-      "fingerprint": "1c6bcd8ce3e7fe59f2ffdc75d592999c2411d66cf579fa974cbc3fa156d55965",
-      "source": "sarj-iac-lint",
-      "ruleId": "conditional-resource-presence",
-      "path": "terraform/migrations.tf",
-      "count": 2
-    },
-    {
-      "fingerprint": "647022c3da96909f8919a9cbbc46c52051105dcf1e60a6e7ffebad6f721f1b5c",
-      "source": "sarj-iac-lint",
-      "ruleId": "conditional-resource-presence",
-      "path": "terraform/network.tf",
-      "count": 2
-    },
-    {
-      "fingerprint": "9f8821596039ad592ceac8149bf167edc610fdc28a0919dbbc1b98f3ab581bb8",
-      "source": "sarj-iac-lint",
-      "ruleId": "conditional-resource-presence",
-      "path": "terraform/queues.tf",
-      "count": 6
-    },
-    {
-      "fingerprint": "0d52b4660e8863ad68cfa208fa45a4c7f150c6b063d58bda5e7ef26b1426982d",
-      "source": "sarj-iac-lint",
-      "ruleId": "conditional-resource-presence",
-      "path": "terraform/secrets.tf",
-      "count": 6
-    },
-    {
-      "fingerprint": "6b64b7e8e9ba6ee3bbae34fd280565ea4a0c64d9bf224a3ffbb3ee04206d06f6",
-      "source": "sarj-iac-lint",
-      "ruleId": "conditional-resource-presence",
-      "path": "terraform/storage.tf",
-      "count": 6
-    },
-    {
-      "fingerprint": "2f8435b338e61adce308d6ae3f4de6c2b119a527d63b3ed61ac427f847f2fd17",
-      "source": "sarj-iac-lint",
-      "ruleId": "no-boolean-enable-variable",
-      "path": "terraform/variables.tf",
-      "count": 1
-    },
-    {
-      "fingerprint": "a3c88d41b673dad6fc93ac11fb2eee7dfe9fe633bbcb0b1e71f63f44ab5d01c0",
-      "source": "sarj-iac-lint",
-      "ruleId": "no-boolean-enable-variable",
-      "path": "terraform/variables.tf",
-      "count": 1
-    },
-    {
-      "fingerprint": "f844bacd6169cf04311d4eed0da9db3318b3dd543dd0e41257e18ba1b590ea88",
-      "source": "sarj-iac-lint",
-      "ruleId": "no-boolean-enable-variable",
-      "path": "terraform/variables.tf",
-      "count": 1
-    },
-    {
-      "fingerprint": "f71c5c3aabada1ba05e05abfb29057273ec28c6c187b436b53a3ba50e3e21362",
-      "source": "sarj-iac-lint",
-      "ruleId": "no-terraform-guard-blocks",
-      "path": "terraform/variables.tf",
-      "count": 15
     },
     {
       "fingerprint": "585f361f931f2c34335ec054f76633e4ed155c9eeb0078fadce06d5faf26d9fe",
@@ -550,7 +452,7 @@
       "source": "sarj-python-lint",
       "ruleId": "fastapi-class-router-contract",
       "path": "backend/app/smart_create/router.py",
-      "count": 3
+      "count": 2
     },
     {
       "fingerprint": "f57d9c35c067f25677e0ca447e7892f07c7d50a8360fed47894123ee620d4da0",
@@ -1008,25 +910,18 @@
       "count": 4
     },
     {
-      "fingerprint": "7af749437ca80b42b3c43c3e97ee0abcb004b31d773771e3b2a09d395e3a9025",
-      "source": "sarj-python-lint",
-      "ruleId": "no-any-mapping-types",
-      "path": "backend/app/document_transform/custom_furniture.py",
-      "count": 3
-    },
-    {
       "fingerprint": "b84eba4b788abfe1ddec9c1e44a494d1c44e421d9a198241942488e7a38b7763",
       "source": "sarj-python-lint",
       "ruleId": "no-any-mapping-types",
       "path": "backend/app/document_transform/executor.py",
-      "count": 9
+      "count": 8
     },
     {
       "fingerprint": "bb6462d9c06b876450ad64852b9ea1ad66e4c0cbd26d027e716ba6b0a59d7728",
       "source": "sarj-python-lint",
       "ruleId": "no-any-mapping-types",
       "path": "backend/app/document_transform/gateway.py",
-      "count": 9
+      "count": 7
     },
     {
       "fingerprint": "ade31360db8454ca3ef176facd55eba2157ec50ccadae8439f7c7c3112b28662",
@@ -1040,14 +935,14 @@
       "source": "sarj-python-lint",
       "ruleId": "no-any-mapping-types",
       "path": "backend/app/document_transform/google_gateway.py",
-      "count": 111
+      "count": 107
     },
     {
       "fingerprint": "b2b0fc599d5f1de3a90f221f952f8720038af5dc700d85a3618fd4f9cfa4848a",
       "source": "sarj-python-lint",
       "ruleId": "no-any-mapping-types",
       "path": "backend/app/document_transform/google_presentation_gateway.py",
-      "count": 19
+      "count": 17
     },
     {
       "fingerprint": "4dbd8845929260ede01f38c4feb4594743f10418154a32b132623c2c68cc5916",
@@ -1075,7 +970,7 @@
       "source": "sarj-python-lint",
       "ruleId": "no-any-mapping-types",
       "path": "backend/app/document_transform/native_date_flow.py",
-      "count": 8
+      "count": 5
     },
     {
       "fingerprint": "24df53b75f9a1e40cf18b8e372a69d7051911cf2814e4f6343abf3cdbb3a915e",
@@ -1096,7 +991,7 @@
       "source": "sarj-python-lint",
       "ruleId": "no-any-mapping-types",
       "path": "backend/app/document_transform/native_font_defense.py",
-      "count": 15
+      "count": 12
     },
     {
       "fingerprint": "81b39d4c2d70f453fec78a626fb2a92bb3fb743b78b9a4dfbb3c85b217b3ecdd",
@@ -1124,7 +1019,7 @@
       "source": "sarj-python-lint",
       "ruleId": "no-any-mapping-types",
       "path": "backend/app/document_transform/native_font_proof.py",
-      "count": 28
+      "count": 23
     },
     {
       "fingerprint": "f762345d4a8bf3e4c3f8e80fb126c12da8d7a8b745b987d5d155ddd7a6dea8fa",
@@ -1138,7 +1033,7 @@
       "source": "sarj-python-lint",
       "ruleId": "no-any-mapping-types",
       "path": "backend/app/document_transform/native_font_semantics.py",
-      "count": 14
+      "count": 13
     },
     {
       "fingerprint": "550ca9359db6476e2caeb80e80cd6ae805a4bc453b816b112411d83e76b51eb4",
@@ -1159,7 +1054,7 @@
       "source": "sarj-python-lint",
       "ruleId": "no-any-mapping-types",
       "path": "backend/app/document_transform/native_pagination.py",
-      "count": 10
+      "count": 4
     },
     {
       "fingerprint": "474167e49a2117f617ccbcb7c34a3256509a6e48ef242e33d66af7735e1888ef",
@@ -1194,20 +1089,13 @@
       "source": "sarj-python-lint",
       "ruleId": "no-any-mapping-types",
       "path": "backend/app/document_transform/presentation_gateway.py",
-      "count": 3
+      "count": 2
     },
     {
       "fingerprint": "7fe4687aadcb8b927eddc194526e5604dfb33e3345ecc3fd17c8dc616d1542ce",
       "source": "sarj-python-lint",
       "ruleId": "no-any-mapping-types",
       "path": "backend/app/document_transform/provider_diagnostics.py",
-      "count": 3
-    },
-    {
-      "fingerprint": "275c0db4a45292c4eeee20e0fd0bcc311350ecb7afa242bddefb8f884fe4bbe6",
-      "source": "sarj-python-lint",
-      "ruleId": "no-any-mapping-types",
-      "path": "backend/app/document_transform/schemas.py",
       "count": 3
     },
     {
@@ -1229,7 +1117,7 @@
       "source": "sarj-python-lint",
       "ruleId": "no-any-mapping-types",
       "path": "backend/app/document_transform/slides_brand.py",
-      "count": 100
+      "count": 98
     },
     {
       "fingerprint": "2e85fd1c2597744bab3401a022eb8c6e37e3b23043b5685bca30ccef69eb7644",
@@ -1264,7 +1152,7 @@
       "source": "sarj-python-lint",
       "ruleId": "no-any-mapping-types",
       "path": "backend/app/document_transform/tab_structure_execution.py",
-      "count": 18
+      "count": 9
     },
     {
       "fingerprint": "c49df6d458256f87df16e122ec2394c123c78003fd3640f62447c5cbaf608c49",
@@ -1299,7 +1187,7 @@
       "source": "sarj-python-lint",
       "ruleId": "no-any-mapping-types",
       "path": "backend/tests/test_authored_labels.py",
-      "count": 4
+      "count": 3
     },
     {
       "fingerprint": "70582b3f247b164ef0b22d34e36f15f82e007142976a8aff249648111c2c5c6e",
@@ -1341,7 +1229,7 @@
       "source": "sarj-python-lint",
       "ruleId": "no-any-mapping-types",
       "path": "backend/tests/test_document_transform.py",
-      "count": 15
+      "count": 13
     },
     {
       "fingerprint": "e44dc3f93ae7b49fd4460a4b61102aabb02602dcdfd1415f29c1a5df40b13550",
@@ -1383,7 +1271,7 @@
       "source": "sarj-python-lint",
       "ruleId": "no-any-mapping-types",
       "path": "backend/tests/test_document_transform_header_provenance.py",
-      "count": 2
+      "count": 1
     },
     {
       "fingerprint": "b6ac32e560f3224e7a9a3237bd123ccf874fd98fd9e90a02badf4f9ba3b5139e",
@@ -1405,13 +1293,6 @@
       "ruleId": "no-any-mapping-types",
       "path": "backend/tests/test_document_transform_native_date_flow.py",
       "count": 4
-    },
-    {
-      "fingerprint": "7d76ba34e849b7f0a8c6b33ceedef72d6c18ab21bec0b112c881e3eec0f17cb4",
-      "source": "sarj-python-lint",
-      "ruleId": "no-any-mapping-types",
-      "path": "backend/tests/test_document_transform_native_footer.py",
-      "count": 5
     },
     {
       "fingerprint": "f37f60f234e70cc42e18477c87331dc8aa0edf781d430463824132dddaa326f6",
@@ -1446,13 +1327,6 @@
       "source": "sarj-python-lint",
       "ruleId": "no-any-mapping-types",
       "path": "backend/tests/test_document_transform_provider_diagnostics.py",
-      "count": 1
-    },
-    {
-      "fingerprint": "172bd093888a55adf3b02535e2e6d0a3c376d83ce9020feb2a04fb60e790d41a",
-      "source": "sarj-python-lint",
-      "ruleId": "no-any-mapping-types",
-      "path": "backend/tests/test_document_transform_repeat.py",
       "count": 1
     },
     {
@@ -1572,7 +1446,7 @@
       "source": "sarj-python-lint",
       "ruleId": "no-any-mapping-types",
       "path": "backend/tests/test_markdown_import.py",
-      "count": 16
+      "count": 14
     },
     {
       "fingerprint": "e42abaacfd328dbdf7d5d5f9b6bd76b649673688e543caa9a2234e9d8d555dd5",
@@ -1691,7 +1565,7 @@
       "source": "sarj-python-lint",
       "ruleId": "no-any-mapping-types",
       "path": "backend/tests/test_native_spacer_layout.py",
-      "count": 3
+      "count": 2
     },
     {
       "fingerprint": "64352cc37ee233ffd6a35798b9ea6eb7c588a538d4203e65747c7f675734253f",
@@ -1740,7 +1614,7 @@
       "source": "sarj-python-lint",
       "ruleId": "no-any-mapping-types",
       "path": "backend/tests/test_shared_drive_transform_access.py",
-      "count": 3
+      "count": 2
     },
     {
       "fingerprint": "4adda07f2f54778623a23e48d1c9e1d3bc04c21bbb5b5f6441853174dc09af7c",
@@ -1876,13 +1750,6 @@
       "count": 5
     },
     {
-      "fingerprint": "7e64cba9a3f059439b49b5a61886d70d5da90d5a7eadd427c258f0cae4fcf486",
-      "source": "sarj-python-lint",
-      "ruleId": "no-broad-keyword-capture",
-      "path": "backend/tests/test_document_transform_native_footer.py",
-      "count": 1
-    },
-    {
       "fingerprint": "ced81c895669ee7f030a347a4e5972f3af48fd30e20fb7d3957b72575b3954fa",
       "source": "sarj-python-lint",
       "ruleId": "no-broad-keyword-capture",
@@ -1904,24 +1771,10 @@
       "count": 1
     },
     {
-      "fingerprint": "6f0828605edbf0bfacaa9675cb1dc498c33d9bcac6c4305b297b33f9d1aa409a",
-      "source": "sarj-python-lint",
-      "ruleId": "no-broad-keyword-capture",
-      "path": "backend/tests/test_document_transform_task_executor.py",
-      "count": 4
-    },
-    {
       "fingerprint": "285d7837e27f50aea5e422b041725b19e35116842074afdde970a7530c6ec627",
       "source": "sarj-python-lint",
       "ruleId": "no-broad-keyword-capture",
       "path": "backend/tests/test_document_transform_typography.py",
-      "count": 1
-    },
-    {
-      "fingerprint": "7c23ff4a89dfbc35b2f9e55f27f842c45776d8380d7b4fc57c46447079ff918f",
-      "source": "sarj-python-lint",
-      "ruleId": "no-broad-keyword-capture",
-      "path": "backend/tests/test_drive_modules.py",
       "count": 1
     },
     {
@@ -1943,7 +1796,7 @@
       "source": "sarj-python-lint",
       "ruleId": "no-broad-keyword-capture",
       "path": "backend/tests/test_files_service.py",
-      "count": 11
+      "count": 10
     },
     {
       "fingerprint": "d214d332f59063dde9806ad75c08c8423b4b3f25363a708e126e76ff161830bf",
@@ -2093,13 +1946,6 @@
       "count": 1
     },
     {
-      "fingerprint": "23cb1846cdd886d69089685f2424b0f20cfd5158d082d8e2e8b2ace9b77e21c5",
-      "source": "sarj-python-lint",
-      "ruleId": "no-broad-keyword-capture",
-      "path": "backend/tests/test_presentation_transform.py",
-      "count": 1
-    },
-    {
       "fingerprint": "e820958aa8b394c3c59b3926db3d3e9a98e3a3914e4139a09014151886150760",
       "source": "sarj-python-lint",
       "ruleId": "no-broad-keyword-capture",
@@ -2142,49 +1988,119 @@
       "count": 1
     },
     {
-      "fingerprint": "fc18eb58c9b77c1e193e762121b855e84e75c0eda0f080b36ac09b6d0d5c4249",
+      "fingerprint": "2e7e60a9526b33734d0d6eab19676b98b4bb07250bde7413e5cd46283b72de94",
       "source": "sarj-python-lint",
       "ruleId": "no-custom-control-flow-exception",
       "path": "backend/app/auth/google_tokens.py",
       "count": 1
     },
     {
-      "fingerprint": "696a4bc0c8def123f961d89fe244d0d699e48e31672963298da97bc1b5793161",
+      "fingerprint": "78dde76240bc1f12eee32f8d4a31ddcf9b734983c16eb673615fc9dd57b367ae",
+      "source": "sarj-python-lint",
+      "ruleId": "no-custom-control-flow-exception",
+      "path": "backend/app/document_transform/model_planning.py",
+      "count": 1
+    },
+    {
+      "fingerprint": "304c1c860d1bc811e8dfff9289190872050030a0432318cbe8d7259ea21b8169",
+      "source": "sarj-python-lint",
+      "ruleId": "no-custom-control-flow-exception",
+      "path": "backend/app/document_transform/tab_structure_execution.py",
+      "count": 1
+    },
+    {
+      "fingerprint": "0a6d5c30e1395c321134ea83ca509448a8e7ac2502d59333ed47fbd78ce251aa",
       "source": "sarj-python-lint",
       "ruleId": "no-custom-control-flow-exception",
       "path": "backend/app/document_transform/word_package.py",
       "count": 1
     },
     {
-      "fingerprint": "6c3ddf3d76afef4e06415191a10bfdbdfa0fe348f29f80de799281801e0ed01e",
+      "fingerprint": "ec53b1769d2d02306342567d0058c5373256bd57f7d5e47a1502a65d506857a0",
+      "source": "sarj-python-lint",
+      "ruleId": "no-custom-control-flow-exception",
+      "path": "backend/app/drive/pagination.py",
+      "count": 1
+    },
+    {
+      "fingerprint": "211d9d9d4922422e553cdcba21a91db0b8570ca4bd091fba32dca96e6822f4dc",
+      "source": "sarj-python-lint",
+      "ruleId": "no-custom-control-flow-exception",
+      "path": "backend/app/drive/service.py",
+      "count": 1
+    },
+    {
+      "fingerprint": "228da49861c776fdbd199f6056286df9ae357a1b3627867ec6b91c6c2028ad50",
       "source": "sarj-python-lint",
       "ruleId": "no-custom-control-flow-exception",
       "path": "backend/app/mcp/context.py",
       "count": 1
     },
     {
-      "fingerprint": "33ac81505fac6d81472e94962b9ff0f92924442507cff7aea5376c9a4c232b3c",
+      "fingerprint": "e68491879460a799b76af3da89d48ddfe80c3f1680067e7fc30b236d0dcd574b",
+      "source": "sarj-python-lint",
+      "ruleId": "no-custom-control-flow-exception",
+      "path": "backend/app/mcp/grants.py",
+      "count": 4
+    },
+    {
+      "fingerprint": "0301665c1bf5fee19e4f76072ef4efc8a82798d8096143ac0c753edaf2cbbad3",
       "source": "sarj-python-lint",
       "ruleId": "no-custom-control-flow-exception",
       "path": "backend/app/mcp/identity.py",
       "count": 1
     },
     {
-      "fingerprint": "b9d8592ff19ba7bdaf097675b965a140c650e20615f11fb3230962e50df8d383",
+      "fingerprint": "aa30865361b7a0a2bab662cea54d098315a0a1cb4bb1f8d4a5e94c502ddbd4db",
       "source": "sarj-python-lint",
       "ruleId": "no-custom-control-flow-exception",
       "path": "backend/app/mcp/native_admission.py",
       "count": 1
     },
     {
-      "fingerprint": "aa6f6f8328e06a8fa70ea28e0b9c68b7c681c2c8d247cd22c273d52b3d5831f0",
+      "fingerprint": "7170ed7a081cca9127620f62b9f8bd865557196c60f9a11062bbf44d0810ac68",
+      "source": "sarj-python-lint",
+      "ruleId": "no-custom-control-flow-exception",
+      "path": "backend/app/mcp/native_core.py",
+      "count": 4
+    },
+    {
+      "fingerprint": "41da6ccfc8b1445ae95649b4bbd2521f3bd46b1e4fbf45119d7677f006ecfa7b",
+      "source": "sarj-python-lint",
+      "ruleId": "no-custom-control-flow-exception",
+      "path": "backend/app/mcp/native_metadata.py",
+      "count": 3
+    },
+    {
+      "fingerprint": "9431023ab270c5e4b317b2465a452221f32ebed71c2931bb8f5adf2daf907711",
+      "source": "sarj-python-lint",
+      "ruleId": "no-custom-control-flow-exception",
+      "path": "backend/app/mcp/native_provider.py",
+      "count": 1
+    },
+    {
+      "fingerprint": "d9dd7098cfb8c73fb69010602056d3a0ad3c8875afb6c92ed6594f6be9d4d27a",
       "source": "sarj-python-lint",
       "ruleId": "no-custom-control-flow-exception",
       "path": "backend/app/mcp/native_request_context.py",
       "count": 1
     },
     {
-      "fingerprint": "29da721ba695f20572d180236f89e313a4dac3d5cdf0929258e34279e49fc12b",
+      "fingerprint": "8d7831ed4691b1f30f1465990b636df10a79b1f52b558574ed2192800b6775c8",
+      "source": "sarj-python-lint",
+      "ruleId": "no-custom-control-flow-exception",
+      "path": "backend/app/mcp/native_runtime.py",
+      "count": 1
+    },
+    {
+      "fingerprint": "ac4f02a92d6bbe7eac4ff85aa86ef74c34a5c75c531138eff3990daf579aa176",
+      "source": "sarj-python-lint",
+      "ruleId": "no-custom-control-flow-exception",
+      "path": "backend/app/mcp/native_state.py",
+      "count": 2
+    },
+    {
+      "fingerprint": "8680700e8132c56e95fac504ab99ed34f212a8992753f87c1bd1ab43205e1a7f",
       "source": "sarj-python-lint",
       "ruleId": "no-custom-control-flow-exception",
       "path": "backend/app/mcp/protection.py",
@@ -2279,21 +2195,14 @@
       "source": "sarj-python-lint",
       "ruleId": "no-delete-statement",
       "path": "backend/tests/test_copy_header_recovery.py",
-      "count": 2
+      "count": 1
     },
     {
       "fingerprint": "c0e215b9e05291348c73e4cf9dc7a7916512c8e2062621338ec23600b93b3de3",
       "source": "sarj-python-lint",
       "ruleId": "no-delete-statement",
       "path": "backend/tests/test_document_transform.py",
-      "count": 21
-    },
-    {
-      "fingerprint": "79b75bbf6d90276cb29f2060e21e49d94eb9f6cfef2e93b5c3171d819b26331e",
-      "source": "sarj-python-lint",
-      "ruleId": "no-delete-statement",
-      "path": "backend/tests/test_document_transform_bullet_style_projection.py",
-      "count": 1
+      "count": 11
     },
     {
       "fingerprint": "6ff5699741e5b8be061f7bedd6e49f25adac999857bb1b35deaf0f642a0808f5",
@@ -2335,7 +2244,7 @@
       "source": "sarj-python-lint",
       "ruleId": "no-delete-statement",
       "path": "backend/tests/test_document_transform_task_executor.py",
-      "count": 13
+      "count": 9
     },
     {
       "fingerprint": "cb1afe45d04a3aee4160a6056edf1d55ca623c894ef846749944bfb37662d8b2",
@@ -2429,18 +2338,11 @@
       "count": 1
     },
     {
-      "fingerprint": "8ba3da7dba05cbc4ce5e622a35e56c2dbbf5c596dbb4c531eab8f45274c38cf0",
-      "source": "sarj-python-lint",
-      "ruleId": "no-delete-statement",
-      "path": "backend/tests/test_native_spacer_layout.py",
-      "count": 1
-    },
-    {
       "fingerprint": "239fc5f4de6cdb5d18a6f722351104c9aa0f04508bdafdb3c2a05c859da95253",
       "source": "sarj-python-lint",
       "ruleId": "no-delete-statement",
       "path": "backend/tests/test_presentation_transform.py",
-      "count": 7
+      "count": 3
     },
     {
       "fingerprint": "9b95a14f5ab105009ba37ba2057f99cbe118811365168ef4703d9ed574d847da",
@@ -2513,62 +2415,6 @@
       "count": 1
     },
     {
-      "fingerprint": "7ef59f74efa9199ebdea1dc289e5850a4e963b07601bdb0957191834ba695c7a",
-      "source": "sarj-python-lint",
-      "ruleId": "no-excessive-cognitive-complexity",
-      "path": "backend/app/document_transform/bullet_style_projection.py",
-      "count": 1
-    },
-    {
-      "fingerprint": "dbcd46c8cd97d67b383e95daa88d59b2f08ec03811b248d1042118297ad72e11",
-      "source": "sarj-python-lint",
-      "ruleId": "no-excessive-cognitive-complexity",
-      "path": "backend/app/document_transform/custom_furniture.py",
-      "count": 1
-    },
-    {
-      "fingerprint": "315d800c75924f5c3e0a493c9110febfbd9e00c92fc2fba32d441f30b8adb422",
-      "source": "sarj-python-lint",
-      "ruleId": "no-excessive-cognitive-complexity",
-      "path": "backend/app/document_transform/header_recovery.py",
-      "count": 1
-    },
-    {
-      "fingerprint": "bf08e754f22f2b1391db589f0c6fd751fded5298bdd8f55229aed33f89ffdc88",
-      "source": "sarj-python-lint",
-      "ruleId": "no-excessive-cognitive-complexity",
-      "path": "backend/app/document_transform/header_recovery.py",
-      "count": 1
-    },
-    {
-      "fingerprint": "0f9f7b5c7cba83359221c048631ba3c3cda789f7230263d81d3db5e82a213dcc",
-      "source": "sarj-python-lint",
-      "ruleId": "no-excessive-cognitive-complexity",
-      "path": "backend/app/document_transform/ir.py",
-      "count": 1
-    },
-    {
-      "fingerprint": "5d408c53a8e15262f86bdd93c591f479285ad7b1eaf274c54b87cdb65c56b149",
-      "source": "sarj-python-lint",
-      "ruleId": "no-excessive-cognitive-complexity",
-      "path": "backend/app/document_transform/ir.py",
-      "count": 1
-    },
-    {
-      "fingerprint": "a9d029e4fdfff4308330d681b163b573aa67a15af5405e5fe14e2bea97b157f6",
-      "source": "sarj-python-lint",
-      "ruleId": "no-excessive-cognitive-complexity",
-      "path": "backend/app/document_transform/ir.py",
-      "count": 1
-    },
-    {
-      "fingerprint": "ccb635ef18a296e8e07efcf078fcd6816a1ded0679f09690ff1b5b1744d0c9dc",
-      "source": "sarj-python-lint",
-      "ruleId": "no-excessive-cognitive-complexity",
-      "path": "backend/app/document_transform/ir.py",
-      "count": 1
-    },
-    {
       "fingerprint": "a0cc610233dfa09f23fce442ad2955f58e4bfc72448a7fe109d9fa0c19e8ef91",
       "source": "sarj-python-lint",
       "ruleId": "no-excessive-cognitive-complexity",
@@ -2576,101 +2422,10 @@
       "count": 1
     },
     {
-      "fingerprint": "582065591be3de49441684d1777e672193bae2d5f5f4c44717c6dbdb80e9667b",
-      "source": "sarj-python-lint",
-      "ruleId": "no-excessive-cognitive-complexity",
-      "path": "backend/app/document_transform/native_font_defense.py",
-      "count": 1
-    },
-    {
       "fingerprint": "559d3776ebfd3ae0ecec5cf8370d9ec76553fc9c53ec8c571109e952cd246060",
       "source": "sarj-python-lint",
       "ruleId": "no-excessive-cognitive-complexity",
       "path": "backend/app/document_transform/native_font_noop.py",
-      "count": 1
-    },
-    {
-      "fingerprint": "12c4f3ec2e1e280bbaa9f7645613261d36101c9dc0d11476be84430600c42fb6",
-      "source": "sarj-python-lint",
-      "ruleId": "no-excessive-cognitive-complexity",
-      "path": "backend/app/document_transform/native_font_proof.py",
-      "count": 1
-    },
-    {
-      "fingerprint": "9a2b177178b5c6daed161d327dc3ddb85c9d25d5efa71d63cee3593cf31ef7ec",
-      "source": "sarj-python-lint",
-      "ruleId": "no-excessive-cognitive-complexity",
-      "path": "backend/app/document_transform/native_font_proof.py",
-      "count": 1
-    },
-    {
-      "fingerprint": "be5f1f38a910d7238f479c7f5dc3c613afbf4b87710b49fa31da010128b1ed65",
-      "source": "sarj-python-lint",
-      "ruleId": "no-excessive-cognitive-complexity",
-      "path": "backend/app/document_transform/native_font_proof.py",
-      "count": 1
-    },
-    {
-      "fingerprint": "62a56dbb976367a79e871ae12c5d8de579624a38794d5e64fec4e8c08aba54f7",
-      "source": "sarj-python-lint",
-      "ruleId": "no-excessive-cognitive-complexity",
-      "path": "backend/app/document_transform/native_font_semantics.py",
-      "count": 1
-    },
-    {
-      "fingerprint": "0951c1f12764cb8cdfd9a3d286ca2ddf5f3d9dad976c43d230afad75db108079",
-      "source": "sarj-python-lint",
-      "ruleId": "no-excessive-cognitive-complexity",
-      "path": "backend/app/document_transform/native_pagination.py",
-      "count": 1
-    },
-    {
-      "fingerprint": "2cf37e83440e978c72a51dd42955d21b2fdeb1ddc541c32b92a8f0e2d074f512",
-      "source": "sarj-python-lint",
-      "ruleId": "no-excessive-cognitive-complexity",
-      "path": "backend/app/document_transform/native_pagination.py",
-      "count": 1
-    },
-    {
-      "fingerprint": "3537a23cc43105afaf317b3e14e125b13c26a33ac59d73a5fe5e23d37069920f",
-      "source": "sarj-python-lint",
-      "ruleId": "no-excessive-cognitive-complexity",
-      "path": "backend/app/document_transform/native_pagination.py",
-      "count": 1
-    },
-    {
-      "fingerprint": "35d16d1a90a05c81c4ba94e0c75225b4906b7953a71708a5d5a6dd37c641700a",
-      "source": "sarj-python-lint",
-      "ruleId": "no-excessive-cognitive-complexity",
-      "path": "backend/app/document_transform/native_pagination.py",
-      "count": 1
-    },
-    {
-      "fingerprint": "a0c2b5c33c5a675033c9b42fb8d90007354dd655a9404ca73c43e2f18a7b5802",
-      "source": "sarj-python-lint",
-      "ruleId": "no-excessive-cognitive-complexity",
-      "path": "backend/app/document_transform/native_pagination.py",
-      "count": 1
-    },
-    {
-      "fingerprint": "e8e5a3fa0213823cb2fae83b67f1b28667fb21718b85fadfcbced6fb78c38ff6",
-      "source": "sarj-python-lint",
-      "ruleId": "no-excessive-cognitive-complexity",
-      "path": "backend/app/document_transform/native_pagination.py",
-      "count": 1
-    },
-    {
-      "fingerprint": "9b870a9266fe9da00ff193b88447fbe3e1534aa0cc088052c85c9ba553b8021f",
-      "source": "sarj-python-lint",
-      "ruleId": "no-excessive-cognitive-complexity",
-      "path": "backend/app/document_transform/native_paragraph_layout.py",
-      "count": 1
-    },
-    {
-      "fingerprint": "a0f78f131a4b5d8ad753b2d726a62d06c87a64fe89613883ce52632749a9855a",
-      "source": "sarj-python-lint",
-      "ruleId": "no-excessive-cognitive-complexity",
-      "path": "backend/app/document_transform/native_paragraph_layout.py",
       "count": 1
     },
     {
@@ -2716,41 +2471,6 @@
       "count": 1
     },
     {
-      "fingerprint": "5869782813f7a81938e6344019e9f40c8bf81a3df2face1616da7bef169fdf4b",
-      "source": "sarj-python-lint",
-      "ruleId": "no-excessive-cognitive-complexity",
-      "path": "backend/app/document_transform/tab_structure.py",
-      "count": 1
-    },
-    {
-      "fingerprint": "e411b01bf6ff1670a8e28a1a48fe99d8692f4b7af754cfb5e31e523f96455466",
-      "source": "sarj-python-lint",
-      "ruleId": "no-excessive-cognitive-complexity",
-      "path": "backend/app/document_transform/tab_structure.py",
-      "count": 1
-    },
-    {
-      "fingerprint": "3260498de5ef4e0e660d9c03551b3a27a91ca787ad4bad48ddec70c97aca604d",
-      "source": "sarj-python-lint",
-      "ruleId": "no-excessive-cognitive-complexity",
-      "path": "backend/app/document_transform/tab_structure_execution.py",
-      "count": 1
-    },
-    {
-      "fingerprint": "6bf217c2d6d021a17802ef0d290fa503fddda7334d39c4b6d58d45a2c5e877f9",
-      "source": "sarj-python-lint",
-      "ruleId": "no-excessive-cognitive-complexity",
-      "path": "backend/app/document_transform/tab_structure_execution.py",
-      "count": 1
-    },
-    {
-      "fingerprint": "9a87656e3d5747c430369301e7e97b62eb58dad8c3f737b9e950ec2ba1905308",
-      "source": "sarj-python-lint",
-      "ruleId": "no-excessive-cognitive-complexity",
-      "path": "backend/app/document_transform/tab_structure_execution.py",
-      "count": 1
-    },
-    {
       "fingerprint": "e486cbbcd6885c2971c2906aec96d306c2c690913190bc9e554b1e05d47f7bba",
       "source": "sarj-python-lint",
       "ruleId": "no-excessive-cognitive-complexity",
@@ -2769,20 +2489,6 @@
       "source": "sarj-python-lint",
       "ruleId": "no-excessive-cognitive-complexity",
       "path": "backend/tests/test_header_postcondition_recovery.py",
-      "count": 1
-    },
-    {
-      "fingerprint": "f514ac22870ba0e498cea3e538184608e5e0db86609d4b918fba71a39309afbf",
-      "source": "sarj-python-lint",
-      "ruleId": "no-excessive-cognitive-complexity",
-      "path": "backend/tests/test_native_spacer_layout.py",
-      "count": 1
-    },
-    {
-      "fingerprint": "2322e300b3efbbb12da677115db67822d6337a8e730b4eb1d78d344b42b15f3f",
-      "source": "sarj-python-lint",
-      "ruleId": "no-excessive-cognitive-complexity",
-      "path": "scripts/github/read-transform-diagnostics.py",
       "count": 1
     },
     {
@@ -2814,18 +2520,228 @@
       "count": 1
     },
     {
-      "fingerprint": "732392a65b8a209e75ae34908e150c30ca125bfc04cb498f934f64ee34efab14",
-      "source": "sarj-python-lint",
-      "ruleId": "no-input-model-mutation",
-      "path": "backend/app/document_transform/native_pagination.py",
-      "count": 1
-    },
-    {
       "fingerprint": "72eba4f6d7dd3d18717390b7c8eee80f744305b4b27282f34f6f036906c08fce",
       "source": "sarj-python-lint",
       "ruleId": "no-mutating-input-with-result",
       "path": "backend/app/mcp/native_http_guard.py",
       "count": 5
+    },
+    {
+      "fingerprint": "7a7144261e4ef7d389ef26df0bee25e34da0c628e402bb5f66fc0ee7832f0edb",
+      "source": "sarj-python-lint",
+      "ruleId": "no-nonlocal-statement",
+      "path": "backend/app/auth/google_tokens.py",
+      "count": 1
+    },
+    {
+      "fingerprint": "e2e099608da9f6b30bef37b0e32eda12749b7c4abc308def59b387efd1795052",
+      "source": "sarj-python-lint",
+      "ruleId": "no-nonlocal-statement",
+      "path": "backend/app/document_transform/application.py",
+      "count": 1
+    },
+    {
+      "fingerprint": "1668481d35652bb4dcd08cae7b56cc65d0317e63fced051ed4266fe69d70f7bc",
+      "source": "sarj-python-lint",
+      "ruleId": "no-nonlocal-statement",
+      "path": "backend/app/document_transform/docx_renderer.py",
+      "count": 1
+    },
+    {
+      "fingerprint": "cf5368b4242a07ec71a2f4fbfb3b1585d03054772d816e8b8a3704282a4fcb16",
+      "source": "sarj-python-lint",
+      "ruleId": "no-nonlocal-statement",
+      "path": "backend/app/mcp/native_http_guard.py",
+      "count": 2
+    },
+    {
+      "fingerprint": "ca783afd47aeb91485b417a05b38719ddceebe70bd23184306ae8ef1fe0adba2",
+      "source": "sarj-python-lint",
+      "ruleId": "no-nonlocal-statement",
+      "path": "backend/app/request_body.py",
+      "count": 2
+    },
+    {
+      "fingerprint": "97601a7bd44221ed3c554f14c342c6fe40f75fedcc0c6c5f66d4b09746c0345c",
+      "source": "sarj-python-lint",
+      "ruleId": "no-nonlocal-statement",
+      "path": "backend/app/request_id.py",
+      "count": 1
+    },
+    {
+      "fingerprint": "ae9ab476459313be41026cc6cc992c6ee59a4bb41feaa4825ebab88b6c310931",
+      "source": "sarj-python-lint",
+      "ruleId": "no-nonlocal-statement",
+      "path": "backend/tests/test_aggressive_unslop_transport.py",
+      "count": 7
+    },
+    {
+      "fingerprint": "60d25ecb9d3e73e849c4c18f3155adada21443da9cafcec3dee118808512db08",
+      "source": "sarj-python-lint",
+      "ruleId": "no-nonlocal-statement",
+      "path": "backend/tests/test_client_reuse.py",
+      "count": 2
+    },
+    {
+      "fingerprint": "4fd992b7ae7cef72ed0258fedf9a05a7f2f412d513131c2bb6facc123ca15800",
+      "source": "sarj-python-lint",
+      "ruleId": "no-nonlocal-statement",
+      "path": "backend/tests/test_document_model_concurrency.py",
+      "count": 1
+    },
+    {
+      "fingerprint": "5e615eb620ac548c896453ea25be655d35e72da0660e6317a601934501d999bb",
+      "source": "sarj-python-lint",
+      "ruleId": "no-nonlocal-statement",
+      "path": "backend/tests/test_document_review_checkpoint.py",
+      "count": 2
+    },
+    {
+      "fingerprint": "557394985e33b02441b59b0feea18e3dc277ff937a62257f51dde49e91976244",
+      "source": "sarj-python-lint",
+      "ruleId": "no-nonlocal-statement",
+      "path": "backend/tests/test_document_transform.py",
+      "count": 5
+    },
+    {
+      "fingerprint": "3ff825943359e51fc9d15fd2fb0f4e84ca167dce0eaf0493b12259251411b2d9",
+      "source": "sarj-python-lint",
+      "ruleId": "no-nonlocal-statement",
+      "path": "backend/tests/test_document_transform_native_date_flow.py",
+      "count": 1
+    },
+    {
+      "fingerprint": "e442d0998d55bcdca7ba8317b0664421015bdb34160ec9af4b6308aba1d46ada",
+      "source": "sarj-python-lint",
+      "ruleId": "no-nonlocal-statement",
+      "path": "backend/tests/test_document_transform_tab_structure_execution.py",
+      "count": 1
+    },
+    {
+      "fingerprint": "6d0c8ad1fa4346ab6804bd40c640519c22f05fe09baf2f7a39a67abff0f6737a",
+      "source": "sarj-python-lint",
+      "ruleId": "no-nonlocal-statement",
+      "path": "backend/tests/test_drive_modules.py",
+      "count": 2
+    },
+    {
+      "fingerprint": "163b4bb192588a54df27d2380c00c97a671eb13a51e32e248849d34e343d0cff",
+      "source": "sarj-python-lint",
+      "ruleId": "no-nonlocal-statement",
+      "path": "backend/tests/test_files_service.py",
+      "count": 1
+    },
+    {
+      "fingerprint": "cfd9899fb1e2d48ecbae9981ef30fbec98445b7ab973ca9dd58e8156f9ad7417",
+      "source": "sarj-python-lint",
+      "ruleId": "no-nonlocal-statement",
+      "path": "backend/tests/test_google_presentation_gateway.py",
+      "count": 1
+    },
+    {
+      "fingerprint": "cf0681636b14313c11af87baafbec9f502e5405bf275281566d3d8c163861230",
+      "source": "sarj-python-lint",
+      "ruleId": "no-nonlocal-statement",
+      "path": "backend/tests/test_google_token_manager.py",
+      "count": 1
+    },
+    {
+      "fingerprint": "44113e3f2dcffc96bb747f11b851524acaa395aa51d3d3f65e18fc2656b333d0",
+      "source": "sarj-python-lint",
+      "ruleId": "no-nonlocal-statement",
+      "path": "backend/tests/test_mcp_native_http_guard.py",
+      "count": 2
+    },
+    {
+      "fingerprint": "833295fa7406c910acbd84c7ec7b9a8f8c50641af9dccf7b96f294a3fef0b193",
+      "source": "sarj-python-lint",
+      "ruleId": "no-nonlocal-statement",
+      "path": "backend/tests/test_native_chip_execution.py",
+      "count": 1
+    },
+    {
+      "fingerprint": "26b5bc83711fd5b16412c4b1655d548cf30f2f573007978ba0d9295b53ff6590",
+      "source": "sarj-python-lint",
+      "ruleId": "no-nonlocal-statement",
+      "path": "backend/tests/test_native_chip_flow.py",
+      "count": 1
+    },
+    {
+      "fingerprint": "c4eb4d1181e84ab504dffbb3fe324fa83b45f76c325e07231059c821484dcf85",
+      "source": "sarj-python-lint",
+      "ruleId": "no-nonlocal-statement",
+      "path": "backend/tests/test_provider_performance_postgres.py",
+      "count": 1
+    },
+    {
+      "fingerprint": "74e40aec8c9a5e7267be88dcba97751771fd0f348351f6db17adb9dd4dbb42bd",
+      "source": "sarj-python-lint",
+      "ruleId": "no-nonlocal-statement",
+      "path": "backend/tests/test_readability_body_tables.py",
+      "count": 1
+    },
+    {
+      "fingerprint": "6e2fb8ff7839dc31a9b849d403325762f3684c7736e77746bb8aaacc740bc8e5",
+      "source": "sarj-python-lint",
+      "ruleId": "no-nonlocal-statement",
+      "path": "backend/tests/test_readability_lists.py",
+      "count": 1
+    },
+    {
+      "fingerprint": "63834e88ba9bce05a4ec0ba19d1c217193c9a2594df62bf739b999667f31ca60",
+      "source": "sarj-python-lint",
+      "ruleId": "no-nonlocal-statement",
+      "path": "backend/tests/test_request_body.py",
+      "count": 3
+    },
+    {
+      "fingerprint": "af7691bc67d52dab5ce91881b3f32ff572433f14a6a559efbce87cf290cec25c",
+      "source": "sarj-python-lint",
+      "ruleId": "no-nonlocal-statement",
+      "path": "backend/tests/test_routes_round5.py",
+      "count": 1
+    },
+    {
+      "fingerprint": "85f14c7ff3fc7d8516622a446b5af6083b735d1a31b677f6c033076a57c4de7b",
+      "source": "sarj-python-lint",
+      "ruleId": "no-nonlocal-statement",
+      "path": "backend/tests/test_sidebar_cache.py",
+      "count": 2
+    },
+    {
+      "fingerprint": "2991c6accbb90aa069bd3a28272a19709d50c528b6161495770e307dd46a4024",
+      "source": "sarj-python-lint",
+      "ruleId": "no-nonlocal-statement",
+      "path": "backend/tests/test_singleflight.py",
+      "count": 3
+    },
+    {
+      "fingerprint": "ccd81eed34927b299eb45b3be646e0984641cb41fcd86ad976e03f048eb667ef",
+      "source": "sarj-python-lint",
+      "ruleId": "no-nonlocal-statement",
+      "path": "backend/tests/test_storage_hot_paths_postgres.py",
+      "count": 3
+    },
+    {
+      "fingerprint": "cdd02b41b7987c76cc67fac9364a564b3fdc99abd935a1d74c257a1878abbe58",
+      "source": "sarj-python-lint",
+      "ruleId": "no-nonlocal-statement",
+      "path": "backend/tests/test_task_source_dedupe_postgres.py",
+      "count": 6
+    },
+    {
+      "fingerprint": "ec0278d79124c61770f6da775d643096928ef2c18d8b51322406ffd2e7234ed5",
+      "source": "sarj-python-lint",
+      "ruleId": "no-nonlocal-statement",
+      "path": "backend/tests/test_tasks.py",
+      "count": 1
+    },
+    {
+      "fingerprint": "b128fed41dc8c56549d2596a7104c38d6bdfcea93f73d4eb1cde125fb6416677",
+      "source": "sarj-python-lint",
+      "ruleId": "no-nonlocal-statement",
+      "path": "scripts/github/test_backend_recovery.py",
+      "count": 3
     },
     {
       "fingerprint": "8bd5961e5b69d4aa91b9453b2ac16ab5d8fb56310847e0583b3d548dab7ed465",
@@ -2846,7 +2762,7 @@
       "source": "sarj-python-lint",
       "ruleId": "no-positional-tuple-record",
       "path": "backend/app/document_transform/markdown_import.py",
-      "count": 3
+      "count": 2
     },
     {
       "fingerprint": "ddb8315df4b6a3132a5c60052eb6e9c823584d6f8f3250a0173868cb43ae7e98",
@@ -2863,31 +2779,17 @@
       "count": 1
     },
     {
-      "fingerprint": "0c4878e8df81d86a3cf6b594c5a5fa33a2d7ac804c7b5da208f256d7a473584a",
-      "source": "sarj-python-lint",
-      "ruleId": "no-raw-source-text-test-oracle",
-      "path": "backend/tests/test_container_contract.py",
-      "count": 1
-    },
-    {
       "fingerprint": "c0e962e29320f994f05dcda004d8bef241e9087c4dd3d3f43983646931b55a51",
       "source": "sarj-python-lint",
       "ruleId": "no-redundant-attribute-unpacking",
       "path": "backend/app/document_transform/executor.py",
-      "count": 13
+      "count": 12
     },
     {
       "fingerprint": "0df77cedc26defdd369d970f088f71beb6757e86fe4b4c02dd7c8dd3e16aa3ba",
       "source": "sarj-python-lint",
       "ruleId": "no-redundant-attribute-unpacking",
       "path": "backend/app/document_transform/native_preservation.py",
-      "count": 1
-    },
-    {
-      "fingerprint": "29d620459249f1a5e2af1fc104e8cbb4f50cffdbfc6aa37fcaf6ef7ed79a67d3",
-      "source": "sarj-python-lint",
-      "ruleId": "no-redundant-attribute-unpacking",
-      "path": "backend/app/sidebar/cache.py",
       "count": 1
     },
     {
@@ -3164,13 +3066,6 @@
       "count": 1
     },
     {
-      "fingerprint": "9ce66862f27c8d8e73f5bd96dd61c575f7abc1b8e626d180988be69140bf6e72",
-      "source": "sarj-python-lint",
-      "ruleId": "opaque-parametrize-case-needs-id",
-      "path": "backend/tests/test_provider_round5.py",
-      "count": 1
-    },
-    {
       "fingerprint": "1ef8d2702168f9ca25356a63b0601678b0164116efe78e4a750edb39e930774d",
       "source": "sarj-python-lint",
       "ruleId": "opaque-parametrize-case-needs-id",
@@ -3225,20 +3120,6 @@
       "ruleId": "prefer-grouped-settings",
       "path": "backend/app/config.py",
       "count": 1
-    },
-    {
-      "fingerprint": "6798e8e3154a7f6edcbb9f7022318a72a7c679a92237737dfe4224361847adf1",
-      "source": "sarj-python-lint",
-      "ruleId": "prefer-grouped-settings",
-      "path": "backend/app/database_config.py",
-      "count": 1
-    },
-    {
-      "fingerprint": "b9aa03fcd85eba4e9361afcf2ce826fd27c5fe40576bce8d3d70649ae082eb44",
-      "source": "sarj-python-lint",
-      "ruleId": "prefer-injected-dependency-over-monkeypatch",
-      "path": "backend/tests/test_auth_cookies.py",
-      "count": 4
     },
     {
       "fingerprint": "55f4968a14ce350e670b6e51cef278ab732350229c4fb7eb7b8f81f66e0d57c0",
@@ -3301,7 +3182,7 @@
       "source": "sarj-python-lint",
       "ruleId": "prefer-injected-dependency-over-monkeypatch",
       "path": "backend/tests/test_document_transform.py",
-      "count": 51
+      "count": 47
     },
     {
       "fingerprint": "7408e18aa6cb1302036692c1bf0f97ce49de2c520f1207d6c87d72fccb49c3c4",
@@ -3427,7 +3308,7 @@
       "source": "sarj-python-lint",
       "ruleId": "prefer-injected-dependency-over-monkeypatch",
       "path": "backend/tests/test_drive_modules.py",
-      "count": 5
+      "count": 4
     },
     {
       "fingerprint": "9aed3453ec839ccc069f25f5ec88d5073cdaf166f7366c97918b93ff3767373b",
@@ -3647,13 +3528,6 @@
       "count": 1
     },
     {
-      "fingerprint": "e64b141e26cbf594debf12a653827b1bd05a861150e8bad1723201903626306c",
-      "source": "sarj-python-lint",
-      "ruleId": "prefer-injected-dependency-over-monkeypatch",
-      "path": "backend/tests/test_task_internal_auth.py",
-      "count": 3
-    },
-    {
       "fingerprint": "480669b6378862165d7ffd503640250d3bbadc817cabb95504a86da6d29e3ad8",
       "source": "sarj-python-lint",
       "ruleId": "prefer-injected-dependency-over-monkeypatch",
@@ -3724,13 +3598,6 @@
       "count": 1
     },
     {
-      "fingerprint": "77b9c0f2f91cf7cde7e15f36c022de04f5916212b29123d769a469fc378316bb",
-      "source": "sarj-python-lint",
-      "ruleId": "prefer-nominal-id-types",
-      "path": "backend/app/document_transform/executor.py",
-      "count": 1
-    },
-    {
       "fingerprint": "da21af1c90800f9e2c3dad3f12076082001703df9c0c5c8710dd35cf2d18dc97",
       "source": "sarj-python-lint",
       "ruleId": "prefer-nominal-id-types",
@@ -3759,24 +3626,10 @@
       "count": 1
     },
     {
-      "fingerprint": "279b4ee34741e8e61c9d42bfe808b4616041b99d2f2da9fc6fd1bc2d121bab15",
-      "source": "sarj-python-lint",
-      "ruleId": "prefer-optional-composite",
-      "path": "backend/app/document_transform/custom_furniture.py",
-      "count": 1
-    },
-    {
       "fingerprint": "ea2c032f4cc1a447548d2807c2f4103e7ddc6baefe0f639bbcdd1b7f1063fa94",
       "source": "sarj-python-lint",
       "ruleId": "prefer-optional-composite",
       "path": "backend/app/document_transform/gateway.py",
-      "count": 1
-    },
-    {
-      "fingerprint": "a17397f684b1d8d5e55e695d77578a17fd962be5d7a438389ad65fa2d6a575e4",
-      "source": "sarj-python-lint",
-      "ruleId": "prefer-optional-composite",
-      "path": "backend/app/document_transform/presentation_gateway.py",
       "count": 1
     },
     {
@@ -3861,14 +3714,14 @@
       "source": "sarj-python-lint",
       "ruleId": "prefer-precise-object-contract",
       "path": "backend/app/document_transform/google_gateway.py",
-      "count": 25
+      "count": 23
     },
     {
       "fingerprint": "70e060067b2c5b008d677dfd138e5580037be0fdf2da5d1db7cea6b41b6122fa",
       "source": "sarj-python-lint",
       "ruleId": "prefer-precise-object-contract",
       "path": "backend/app/document_transform/google_presentation_gateway.py",
-      "count": 14
+      "count": 13
     },
     {
       "fingerprint": "d671e78e00ddbbf76262b78381c9211a04b613c3634a38170fbe5b419ea40119",
@@ -3882,7 +3735,7 @@
       "source": "sarj-python-lint",
       "ruleId": "prefer-precise-object-contract",
       "path": "backend/app/document_transform/markdown_import.py",
-      "count": 10
+      "count": 9
     },
     {
       "fingerprint": "47101def3f6cb38d1e8f471b18783dce59b8831e95869462e67de49b90f65713",
@@ -3927,13 +3780,6 @@
       "count": 7
     },
     {
-      "fingerprint": "aa5931327ac472409c53875bec91c40e099bcd7f36c9c8e7c27e85093cf5f9ef",
-      "source": "sarj-python-lint",
-      "ruleId": "prefer-precise-object-contract",
-      "path": "backend/app/document_transform/tab_structure.py",
-      "count": 1
-    },
-    {
       "fingerprint": "fce5c59e621e86406a53a9c7226b0b49be4b32810a56f729f5d4b42eaa2140d3",
       "source": "sarj-python-lint",
       "ruleId": "prefer-precise-object-contract",
@@ -3976,25 +3822,11 @@
       "count": 2
     },
     {
-      "fingerprint": "2a9e685f68a615ccbffee1cca9d955da1cd5f1674f89b8fb878f665bb7cfacd3",
-      "source": "sarj-python-lint",
-      "ruleId": "prefer-precise-object-contract",
-      "path": "backend/app/sidebar/cache.py",
-      "count": 2
-    },
-    {
       "fingerprint": "ff2dc0df84b85c15143942cbf4473030bead8f4e25d9d3f0ca20fa7bbc0272f6",
       "source": "sarj-python-lint",
       "ruleId": "prefer-precise-object-contract",
       "path": "backend/app/tasks/internal_auth.py",
-      "count": 3
-    },
-    {
-      "fingerprint": "da9a9fffd58eab373b79d7a6d1b99c90e1dee44bde7289c1ac25e97025d85add",
-      "source": "sarj-python-lint",
-      "ruleId": "prefer-precise-object-contract",
-      "path": "backend/app/tasks/service.py",
-      "count": 5
+      "count": 1
     },
     {
       "fingerprint": "e9838e28567d9c5570a5d1b87818bf581b78a382f6af7649bc9264840d41c4ee",
@@ -4092,7 +3924,7 @@
       "source": "sarj-python-lint",
       "ruleId": "prefer-precise-object-contract",
       "path": "backend/tests/test_custom_furniture.py",
-      "count": 2
+      "count": 1
     },
     {
       "fingerprint": "2be52ef54ff5dba4e7238e5899a16f21472975f25b2a0a743de501fe739e904a",
@@ -4155,7 +3987,7 @@
       "source": "sarj-python-lint",
       "ruleId": "prefer-precise-object-contract",
       "path": "backend/tests/test_document_transform_task_executor.py",
-      "count": 9
+      "count": 1
     },
     {
       "fingerprint": "66146300ce9e0effe27e6af606fbf275cadf30d7cdec3dd96cff2c464611ccff",
@@ -4163,13 +3995,6 @@
       "ruleId": "prefer-precise-object-contract",
       "path": "backend/tests/test_document_transform_typography.py",
       "count": 1
-    },
-    {
-      "fingerprint": "4209d86837dec639b41baa306cab09a57261b9de6ba1eaf7f02df97cab269660",
-      "source": "sarj-python-lint",
-      "ruleId": "prefer-precise-object-contract",
-      "path": "backend/tests/test_drive_modules.py",
-      "count": 2
     },
     {
       "fingerprint": "427f363c9cb6ba6b52ee5b138e898b6225fa19dc0271df7a66cd5d0c4776e8c2",
@@ -4267,7 +4092,7 @@
       "source": "sarj-python-lint",
       "ruleId": "prefer-precise-object-contract",
       "path": "backend/tests/test_mcp_mutation.py",
-      "count": 4
+      "count": 2
     },
     {
       "fingerprint": "b38af689d2532a06ef5bc0bb9979ac37530ed1e83011be67402d76df3b10c39e",
@@ -4361,13 +4186,6 @@
       "count": 2
     },
     {
-      "fingerprint": "6379c706d676b2fd173e0a58d404485fe8b39b90c9f1444293a9aeef8c4a8ea0",
-      "source": "sarj-python-lint",
-      "ruleId": "prefer-precise-object-contract",
-      "path": "backend/tests/test_presentation_transform.py",
-      "count": 3
-    },
-    {
       "fingerprint": "0bff4cf94df50669ffa6bc15eb171e188aa81f7b5a230679554115070d285a52",
       "source": "sarj-python-lint",
       "ruleId": "prefer-precise-object-contract",
@@ -4414,7 +4232,7 @@
       "source": "sarj-python-lint",
       "ruleId": "prefer-precise-object-contract",
       "path": "backend/tests/test_round6_sidebar_reuse.py",
-      "count": 4
+      "count": 2
     },
     {
       "fingerprint": "340130194dc677175356ee6a28f3657977b5377fcfe966f3bf1c3d1f2a4322e2",
@@ -4442,13 +4260,6 @@
       "source": "sarj-python-lint",
       "ruleId": "prefer-precise-object-contract",
       "path": "backend/tests/test_runtime_validation.py",
-      "count": 1
-    },
-    {
-      "fingerprint": "f50d527d71a9eb420f6b564f5c92ecbad94e95461d4e76b1da815045cbf939b1",
-      "source": "sarj-python-lint",
-      "ruleId": "prefer-precise-object-contract",
-      "path": "backend/tests/test_shared_drive_transform_access.py",
       "count": 1
     },
     {
@@ -4494,13 +4305,6 @@
       "count": 4
     },
     {
-      "fingerprint": "0a4fc86ee323547cef3fa0fdab78b3ff21c003058542250e61f18b0c7b98c800",
-      "source": "sarj-python-lint",
-      "ruleId": "prefer-precise-object-contract",
-      "path": "backend/tests/test_task_internal_auth.py",
-      "count": 3
-    },
-    {
       "fingerprint": "81b07fd381baae1010e055f811f609aee00eb5d3dad74f3e3888004d6165a7dd",
       "source": "sarj-python-lint",
       "ruleId": "prefer-precise-object-contract",
@@ -4512,14 +4316,14 @@
       "source": "sarj-python-lint",
       "ruleId": "prefer-precise-object-contract",
       "path": "backend/tests/test_tasks.py",
-      "count": 4
+      "count": 3
     },
     {
       "fingerprint": "b5dea1914253ec0d77a8a792a211827c3ce691f4d428af7ada8b9a811aa8ea1c",
       "source": "sarj-python-lint",
       "ruleId": "prefer-precise-object-contract",
       "path": "backend/tests/test_transform_diagnostics_workflow.py",
-      "count": 7
+      "count": 6
     },
     {
       "fingerprint": "2f58ff8ccd070bd637a501ae53247a9cdef0998a6c599589b15b1bcd44530e4c",
@@ -4592,13 +4396,6 @@
       "count": 1
     },
     {
-      "fingerprint": "aae1d4f7f3db3fbbac3d01e8267c4c53d3a5a0a6a0c09e63015f3cbc281a5fa5",
-      "source": "sarj-python-lint",
-      "ruleId": "prefer-pydantic-model-assertion",
-      "path": "backend/tests/test_document_transform_footer_flow.py",
-      "count": 1
-    },
-    {
       "fingerprint": "e4ab6916961200efbce2097ebb9a8289b659e4a9595ac7c0fd96f3d3dbb0c1be",
       "source": "sarj-python-lint",
       "ruleId": "prefer-pydantic-model-assertion",
@@ -4618,13 +4415,6 @@
       "ruleId": "prefer-pydantic-model-assertion",
       "path": "backend/tests/test_schemas.py",
       "count": 2
-    },
-    {
-      "fingerprint": "d354c89895d07f3f33527cd9eb7b3d688e903c774d00a50f53ae0e20cfa92df4",
-      "source": "sarj-python-lint",
-      "ruleId": "prefer-pydantic-model-assertion",
-      "path": "backend/tests/test_tab_naming_provider_decline.py",
-      "count": 1
     },
     {
       "fingerprint": "3e7b66887b0bcc84008864019a471e8584492401a5be863a8212c877b20fa4ff",
@@ -4701,7 +4491,7 @@
       "source": "sarj-python-lint",
       "ruleId": "prefer-pytest-dependency-fixtures",
       "path": "backend/tests/test_document_transform_admission.py",
-      "count": 2
+      "count": 1
     },
     {
       "fingerprint": "9ccff800cbe0a162f2ae9bf0858e472553a3d4146d6a76fd71c55a891ae8c2c0",
@@ -4949,13 +4739,6 @@
       "count": 1
     },
     {
-      "fingerprint": "79920589ae76bd7a4c8ace5b8ae5ff258a67cfc83fe073217c8834ba70ceb1dc",
-      "source": "sarj-python-lint",
-      "ruleId": "prefer-required-constructor-parameters",
-      "path": "backend/app/document_transform/executor.py",
-      "count": 1
-    },
-    {
       "fingerprint": "a005f2f1885ef2797d22e07edb150a963cd775e7f08c1fffcab466aa7f37ba7d",
       "source": "sarj-python-lint",
       "ruleId": "prefer-required-constructor-parameters",
@@ -4963,21 +4746,7 @@
       "count": 1
     },
     {
-      "fingerprint": "ba94420e65cb9708275b78bce82742a60536ec045963b0b41431d5ac48ba01ed",
-      "source": "sarj-python-lint",
-      "ruleId": "prefer-required-constructor-parameters",
-      "path": "backend/app/document_transform/executor.py",
-      "count": 1
-    },
-    {
       "fingerprint": "efdb8613b62a421ff8aeaa713722640ab2bb74f3d89a89b817f4b182e3237d86",
-      "source": "sarj-python-lint",
-      "ruleId": "prefer-required-constructor-parameters",
-      "path": "backend/app/document_transform/executor.py",
-      "count": 1
-    },
-    {
-      "fingerprint": "f437b037adb654b4e258a036c2e1452a1f8b8f3e9a82d1037a145a11c0ca1a86",
       "source": "sarj-python-lint",
       "ruleId": "prefer-required-constructor-parameters",
       "path": "backend/app/document_transform/executor.py",
@@ -5034,13 +4803,6 @@
     },
     {
       "fingerprint": "883b2b6c014b3d3a1fc868e834c168932ffa05bdaf60df62127909654c50fa41",
-      "source": "sarj-python-lint",
-      "ruleId": "prefer-required-constructor-parameters",
-      "path": "backend/app/document_transform/planner.py",
-      "count": 1
-    },
-    {
-      "fingerprint": "c4fee87d4fecbf8f4f0ded706c46e3f361ac65ec3ec228b0e3e27648347895e5",
       "source": "sarj-python-lint",
       "ruleId": "prefer-required-constructor-parameters",
       "path": "backend/app/document_transform/planner.py",
@@ -5131,28 +4893,7 @@
       "count": 1
     },
     {
-      "fingerprint": "73a248eceb9c476ff496147623d101f57f291d58854d60b6b09332fe5253e9d2",
-      "source": "sarj-python-lint",
-      "ruleId": "prefer-required-constructor-parameters",
-      "path": "backend/app/tasks/internal_auth.py",
-      "count": 1
-    },
-    {
       "fingerprint": "e7eb8ccd28ac88e3ef6ff48b516deef42c02760a1a45b9be7c483e7186086e22",
-      "source": "sarj-python-lint",
-      "ruleId": "prefer-required-constructor-parameters",
-      "path": "backend/app/tasks/queue.py",
-      "count": 1
-    },
-    {
-      "fingerprint": "f8c62676832dea2945dcbf3e7330dc0a2971bb2631efcd77f77ee0a2c29729dd",
-      "source": "sarj-python-lint",
-      "ruleId": "prefer-required-constructor-parameters",
-      "path": "backend/app/tasks/queue.py",
-      "count": 1
-    },
-    {
-      "fingerprint": "fa40054b8fe951dc737d12519336ec68708ea88ba1b7cc9a35785466d7c7c0e2",
       "source": "sarj-python-lint",
       "ruleId": "prefer-required-constructor-parameters",
       "path": "backend/app/tasks/queue.py",
@@ -5163,6 +4904,13 @@
       "source": "sarj-python-lint",
       "ruleId": "prefer-required-constructor-parameters",
       "path": "backend/app/templates/service.py",
+      "count": 1
+    },
+    {
+      "fingerprint": "51b5a967efb9f9ac1695a344d4dcaffe15ef3507f6042693e6aeb2849cee3c95",
+      "source": "sarj-python-lint",
+      "ruleId": "prefer-required-prerequisite",
+      "path": "backend/app/smart_create/executor.py",
       "count": 1
     },
     {
@@ -5191,7 +4939,7 @@
       "source": "sarj-python-lint",
       "ruleId": "prefer-typed-mapping-get",
       "path": "backend/app/document_transform/google_gateway.py",
-      "count": 135
+      "count": 133
     },
     {
       "fingerprint": "a3a8a7ade304265f337f252230ca19265fd28c3d6ceb015f33fd996b8daf7dfb",
@@ -5282,7 +5030,7 @@
       "source": "sarj-python-lint",
       "ruleId": "prefer-typed-mapping-get",
       "path": "backend/app/document_transform/native_pagination.py",
-      "count": 38
+      "count": 36
     },
     {
       "fingerprint": "59bed496412563cff6ab0ad8c5fd78c2d9c944f71dbb7494dd7d7a48820b4682",
@@ -5373,7 +5121,7 @@
       "source": "sarj-python-lint",
       "ruleId": "prefer-typed-mapping-get",
       "path": "backend/app/tasks/service.py",
-      "count": 6
+      "count": 5
     },
     {
       "fingerprint": "2297ba3c3395775641d53bcb1b6e971e54337945931139b2fd058eba4b05e60a",
@@ -5548,7 +5296,7 @@
       "source": "sarj-python-lint",
       "ruleId": "require-pydantic-for-mapping-shape",
       "path": "backend/app/tasks/service.py",
-      "count": 5
+      "count": 2
     },
     {
       "fingerprint": "b177c1494b562d441c4f0992d71a54adacc97ee31cfce4dfc3bd20328c72a13f",

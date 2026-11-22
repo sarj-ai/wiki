@@ -382,12 +382,8 @@ async def test_recovered_verdicts_still_require_exact_identity_and_complete_cove
         checkpoint.model_copy(update={"review_batches": (tampered, *checkpoint.review_batches[1:])})
     )
     calls = len(provider.review_calls)
-    with pytest.raises(ExceptionGroup) as caught:
+    with pytest.RaisesGroup(pytest.RaisesExc((ModelBindingError, ModelCoverageError))):
         await review_saved(provider, saved, document, patches)
-    assert any(
-        isinstance(error, ModelBindingError | ModelCoverageError)
-        for error in caught.value.exceptions
-    )
     assert len(provider.review_calls) == calls
 
 
@@ -460,7 +456,10 @@ async def test_ambiguous_review_checkpoint_commit_recovers_validated_results_wit
         staged = CheckpointingPatchGenerator(
             generator=real, request=request(), checkpoint=saved[-1], save=committed_then_lost
         )
-        with provider_retry_budget(timedelta(seconds=240)), pytest.raises(ExceptionGroup):
+        with (
+            provider_retry_budget(timedelta(seconds=240)),
+            pytest.RaisesGroup(TimeoutError, flatten_subgroups=True),
+        ):
             await staged.review(document, patches)
     completed = {
         tuple(review.block_id for review in batch.reviews)
