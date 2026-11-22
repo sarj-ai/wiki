@@ -280,13 +280,12 @@ def _observed_paragraph_block(
         list_groups=list_groups,
         next_list_group=next_list_group,
     )
-    if structure.kind == "code":
-        # Docs encodes imported Word line breaks as U+000B within a paragraph.
-        # Markdown DOCX inputs reject that XML control character, so this maps
-        # only the native representation of a code newline, keeping tabs and
-        # spaces exact. Native-to-native code preservation remains untouched.
-        text = text.replace("\v", "\n")
-        runs = tuple(_TextRun(content.replace("\v", "\n"), style) for content, style in runs)
+    # Docs encodes imported Word line breaks, from code newlines and Markdown
+    # hard breaks, as U+000B within a paragraph. Markdown DOCX inputs reject
+    # that XML control character, so this maps only the native representation
+    # of a rendered line break, keeping tabs and spaces exact.
+    text = text.replace("\v", "\n")
+    runs = tuple(_TextRun(content.replace("\v", "\n"), style) for content, style in runs)
     signature = _inline_signature(
         runs,
         ignore_bold=structure.kind in {"title", "heading"},
