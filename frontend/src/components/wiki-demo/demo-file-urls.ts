@@ -20,9 +20,7 @@ const PUBLIC_FILE_ALIASES: ReadonlyMap<string, string> = new Map([
   ["1VzPtXow0E-cGFSTrQCQymMer-Fa5eYVDNf_jlH44rJA", "latency-guide"],
   ["12M9C0VB90yj2zoaowlshi7papBMfoFhJlroYr4lTDKQ", "ai-draft"],
   ["1BDbrvpKtmGG57TzGNnCxIChxztmfssUwJNxA44SwSVI", "latency-workbook"],
-  ["1JEdWZnuH9oIZ3JYv95k6a516hE2w5fzv9fiGhEtGjWY", "latency-slides"],
   ["1EJbR3gurhRRvIB1RFhVoKxiBtyLHHqu4WcATUSa3M74", "latency-guide"],
-  ["1ABWhf8XI2pxgC_uvAjkhSTapxAwD10iRgtpEJHSic0w", "latency-slides"],
   ["1OABiTptZ9hM6NOoa5FCLR8OoTEVg7VU6EdE0JTZIt4I", "ai-draft"],
 ]);
 

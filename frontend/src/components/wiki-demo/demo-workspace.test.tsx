@@ -101,7 +101,7 @@ describe("public read-only Wiki demo", () => {
     }
   });
 
-  it("shows one Drive with eight direct file rows and no folder controls", async () => {
+  it("shows one Drive with five direct file rows and no folder controls", async () => {
     await mount();
     const drive = screen.getByRole("navigation", { name: "Demo Drive" });
     const files = within(drive)
@@ -110,12 +110,9 @@ describe("public read-only Wiki demo", () => {
     expect(files.map((link) => link.textContent)).toEqual([
       "Numbers Every Programmer Should Know",
       "AI draft",
-      "Numbers workbook",
-      "Numbers slides",
-      "AI example · Before",
-      "AI example · After",
-      "NYC weekend · Before",
-      "NYC weekend · After",
+      "Sheets Demo",
+      "AI example · Before and After",
+      "NYC weekend · Before and After",
     ]);
     expect(files[0]).toHaveAttribute("aria-current", "page");
     expect(within(drive).getByText("Sarj Wiki")).toBeInTheDocument();
@@ -276,7 +273,7 @@ describe("public read-only Wiki demo", () => {
       await vi.advanceTimersByTimeAsync(0);
     });
     const result = within(dialog).getByRole("option", {
-      name: /Numbers workbook/u,
+      name: /Sheets Demo/u,
     });
     expect(result).toBeVisible();
     expect(within(dialog).getAllByRole("option")[0]).toBe(result);
