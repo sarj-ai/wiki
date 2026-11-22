@@ -78,7 +78,7 @@ describe("public read-only Wiki demo", () => {
       screen.queryByRole("group", { name: "Compare versions" }),
     ).toBeNull();
     expect(
-      screen.queryByText(
+      within(screen.getByRole("main")).queryByText(
         /Before|After|Processing record|Review note|fewer words/u,
       ),
     ).toBeNull();
@@ -101,7 +101,7 @@ describe("public read-only Wiki demo", () => {
     }
   });
 
-  it("shows one Drive with exactly four direct file rows and no folder controls", async () => {
+  it("shows one Drive with eight direct file rows and no folder controls", async () => {
     await mount();
     const drive = screen.getByRole("navigation", { name: "Demo Drive" });
     const files = within(drive)
@@ -112,6 +112,10 @@ describe("public read-only Wiki demo", () => {
       "AI draft",
       "Numbers workbook",
       "Numbers slides",
+      "AI example · Before",
+      "AI example · After",
+      "NYC weekend · Before",
+      "NYC weekend · After",
     ]);
     expect(files[0]).toHaveAttribute("aria-current", "page");
     expect(within(drive).getByText("Sarj Wiki")).toBeInTheDocument();

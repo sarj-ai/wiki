@@ -15,7 +15,7 @@ export interface DemoFile {
 
 export const DEMO_WORKSPACE_NAME = "Sarj Wiki";
 export const DEMO_SEARCH_SUGGESTION =
-  "Try “guide”, “draft”, “workbook”, or “slides”.";
+  "Try “unslop”, “NYC”, “guide”, or “slides”.";
 
 const GUIDE_BASE =
   "https://docs.google.com/document/d/1kdnYpl3uHMASWYA0Pd92RhXpOoTFrJdYEspn6TTmQ74";
@@ -25,6 +25,14 @@ const WORKBOOK_BASE =
   "https://docs.google.com/spreadsheets/d/1YdtEf6kXaO5t9-hg9BD4o7QExJsikqfmhoiTSDP0oP0";
 const SLIDES_BASE =
   "https://docs.google.com/presentation/d/1tPlL5sQBQtfRzOcHTe8F0BYZ70RNMAo5a5E_G-D1tgs";
+const AI_BEFORE_BASE =
+  "https://docs.google.com/document/d/1U7L649uf2E94_5yeSIi7ijkYvsVVBau_-uLYfzTFIyc";
+const AI_AFTER_BASE =
+  "https://docs.google.com/document/d/169R8wVks02yMX6eg2I_U-zwF4XUqMZnfbj8fct-QR_U";
+const NYC_BEFORE_BASE =
+  "https://docs.google.com/document/d/1jU-ERlxXqfzS7Knipi-9R1GECrY-sDJRj2sV9DXgBtI";
+const NYC_AFTER_BASE =
+  "https://docs.google.com/document/d/19V4tScsSjVEDGZl-ImvclS2UUsaga02PIeaZmR_w-pk";
 const WORKBOOK_PREVIEW = `${WORKBOOK_BASE}/preview#gid=696566412`;
 
 const GUIDE_FILE: DemoFile = {
@@ -82,6 +90,62 @@ export const DEMO_FILES: readonly DemoFile[] = [
     name: "Numbers slides",
     previewUrl: `${SLIDES_BASE}/preview`,
     viewUrl: `${SLIDES_BASE}/preview`,
+  },
+  {
+    description:
+      "A deliberately padded AI draft with reference values and a code example.",
+    downloadFilename: "ai-example-before.docx",
+    downloadUrl: `${AI_BEFORE_BASE}/export?format=docx&tab=t.0`,
+    format: "Document",
+    id: "unslop-ai-before",
+    keywords:
+      "unslop AI example before draft latency reference prose code comparison",
+    mimeType: MIME_DOC,
+    name: "AI example · Before",
+    previewUrl: `${AI_BEFORE_BASE}/preview`,
+    viewUrl: `${AI_BEFORE_BASE}/preview`,
+  },
+  {
+    description:
+      "The same AI draft after Unslop: 303 body words reduced to 158.",
+    downloadFilename: "ai-example-after.docx",
+    downloadUrl: `${AI_AFTER_BASE}/export?format=docx&tab=t.0`,
+    format: "Document",
+    id: "unslop-ai-after",
+    keywords:
+      "unslop AI example after concise latency reference prose code comparison",
+    mimeType: MIME_DOC,
+    name: "AI example · After",
+    previewUrl: `${AI_AFTER_BASE}/preview`,
+    viewUrl: `${AI_AFTER_BASE}/preview`,
+  },
+  {
+    description:
+      "The original New York City weekend guide for November 13–15, 2026.",
+    downloadFilename: "nyc-weekend-before.docx",
+    downloadUrl: `${NYC_BEFORE_BASE}/export?format=docx&tab=t.0`,
+    format: "Document",
+    id: "nyc-before",
+    keywords:
+      "NYC New York weekend before guide November 13 14 15 2026 unslop comparison",
+    mimeType: MIME_DOC,
+    name: "NYC weekend · Before",
+    previewUrl: `${NYC_BEFORE_BASE}/preview`,
+    viewUrl: `${NYC_BEFORE_BASE}/preview`,
+  },
+  {
+    description:
+      "An edited and formatted version of the same historical weekend guide.",
+    downloadFilename: "nyc-weekend-after.docx",
+    downloadUrl: `${NYC_AFTER_BASE}/export?format=docx&tab=t.0`,
+    format: "Document",
+    id: "nyc-after",
+    keywords:
+      "NYC New York weekend after polished formatted guide November 13 14 15 2026 unslop comparison",
+    mimeType: MIME_DOC,
+    name: "NYC weekend · After",
+    previewUrl: `${NYC_AFTER_BASE}/preview`,
+    viewUrl: `${NYC_AFTER_BASE}/preview`,
   },
 ];
 

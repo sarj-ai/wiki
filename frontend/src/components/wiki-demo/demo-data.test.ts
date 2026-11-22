@@ -3,12 +3,16 @@ import { MIME_DOC, MIME_SHEET, MIME_SLIDE } from "@/types/wiki";
 import { DEMO_FILES, demoFileFor, demoHref } from "./demo-data";
 
 describe("public demo file selection", () => {
-  it("opens Numbers Every Programmer Should Know and offers the four native files in one Drive", () => {
+  it("opens Numbers Every Programmer Should Know and offers native files and before-and-after examples", () => {
     expect(DEMO_FILES.map((file) => [file.id, file.name])).toEqual([
       ["latency-guide", "Numbers Every Programmer Should Know"],
       ["ai-draft", "AI draft"],
       ["latency-workbook", "Numbers workbook"],
       ["latency-slides", "Numbers slides"],
+      ["unslop-ai-before", "AI example · Before"],
+      ["unslop-ai-after", "AI example · After"],
+      ["nyc-before", "NYC weekend · Before"],
+      ["nyc-after", "NYC weekend · After"],
     ]);
     expect(demoFileFor(null).id).toBe("latency-guide");
     expect(DEMO_FILES.map((file) => file.mimeType)).toEqual([
@@ -16,6 +20,10 @@ describe("public demo file selection", () => {
       MIME_DOC,
       MIME_SHEET,
       MIME_SLIDE,
+      MIME_DOC,
+      MIME_DOC,
+      MIME_DOC,
+      MIME_DOC,
     ]);
   });
 
