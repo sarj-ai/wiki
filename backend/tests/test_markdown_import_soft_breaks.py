@@ -55,3 +55,85 @@ def test_soft_break_equivalence_cannot_hide_code_or_whitespace_loss(before: str,
 def test_authored_vertical_tab_is_not_a_supported_markdown_docx_literal():
     with pytest.raises(UnsupportedSourceError):
         markdown_import_manifest('```python\nprint("a\vb")\n```', title="Code", branded=False)
+
+
+_HARD_BREAK_SOURCE = "# Weekend notes\n\nWhen: Friday  \nWhere: [Park](https://example.com/park)\n"
+
+
+def _hard_break_document(separator: str) -> dict[str, JsonValue]:
+    lines = ("When: Friday", "Where: ", "Park", "\n")
+    contents = (lines[0] + separator + lines[1], lines[2], lines[3])
+    styles: tuple[dict[str, JsonValue], ...] = (
+        {},
+        {"link": {"url": "https://example.com/park"}},
+        {},
+    )
+    start = 16
+    elements: list[JsonValue] = []
+    for content, style in zip(contents, styles, strict=True):
+        elements.append(
+            {
+                "startIndex": start,
+                "endIndex": start + len(content),
+                "textRun": {"content": content, "textStyle": style},
+            }
+        )
+        start += len(content)
+    return {
+        "revisionId": "native-hard-break-fixture",
+        "tabs": [
+            {
+                "tabProperties": {"tabId": "t.0"},
+                "documentTab": {
+                    "body": {
+                        "content": [
+                            {"endIndex": 1, "sectionBreak": {"sectionStyle": {}}},
+                            {
+                                "startIndex": 1,
+                                "endIndex": 16,
+                                "paragraph": {
+                                    "elements": [
+                                        {
+                                            "startIndex": 1,
+                                            "endIndex": 16,
+                                            "textRun": {
+                                                "content": "Weekend notes\n",
+                                                "textStyle": {},
+                                            },
+                                        }
+                                    ],
+                                    "paragraphStyle": {"namedStyleType": "HEADING_1"},
+                                },
+                            },
+                            {
+                                "startIndex": 16,
+                                "endIndex": start,
+                                "paragraph": {
+                                    "elements": elements,
+                                    "paragraphStyle": {"namedStyleType": "NORMAL_TEXT"},
+                                },
+                            },
+                        ]
+                    }
+                },
+            }
+        ],
+    }
+
+
+def test_markdown_hard_break_imported_as_native_line_break_verifies():
+    manifest = markdown_import_manifest(_HARD_BREAK_SOURCE, title="Weekend notes", branded=False)
+
+    result = verify_markdown_import(_hard_break_document("\v"), manifest)
+
+    assert result.content_preserved
+    assert result.structure_preserved
+
+
+@pytest.mark.parametrize("separator", [" ", "", "\t"])
+def test_markdown_hard_break_equivalence_cannot_hide_a_lost_break(separator: str):
+    manifest = markdown_import_manifest(_HARD_BREAK_SOURCE, title="Weekend notes", branded=False)
+
+    result = verify_markdown_import(_hard_break_document(separator), manifest)
+
+    assert not result.content_preserved
