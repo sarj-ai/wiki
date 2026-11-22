@@ -26,9 +26,9 @@ const WORKBOOK_BASE =
 const SLIDES_BASE =
   "https://docs.google.com/presentation/d/1tPlL5sQBQtfRzOcHTe8F0BYZ70RNMAo5a5E_G-D1tgs";
 const AI_BEFORE_BASE =
-  "https://docs.google.com/document/d/1U7L649uf2E94_5yeSIi7ijkYvsVVBau_-uLYfzTFIyc";
+  "https://docs.google.com/document/d/1TRKXYlvjhggZTrnsbQOtIxmkAVTMJhh-zcLz825qFoc";
 const AI_AFTER_BASE =
-  "https://docs.google.com/document/d/169R8wVks02yMX6eg2I_U-zwF4XUqMZnfbj8fct-QR_U";
+  "https://docs.google.com/document/d/19AHVYqSmmF-5f9N23rVS37C7Vl_JyWP8SRKdob3v7Lw";
 const NYC_BEFORE_BASE =
   "https://docs.google.com/document/d/1jU-ERlxXqfzS7Knipi-9R1GECrY-sDJRj2sV9DXgBtI";
 const NYC_AFTER_BASE =
@@ -92,14 +92,12 @@ export const DEMO_FILES: readonly DemoFile[] = [
     viewUrl: `${SLIDES_BASE}/preview`,
   },
   {
-    description:
-      "A deliberately padded AI draft with reference values and a code example.",
+    description: "A fictional incident review drafted in a padded AI style.",
     downloadFilename: "ai-example-before.docx",
     downloadUrl: `${AI_BEFORE_BASE}/export?format=docx&tab=t.0`,
     format: "Document",
     id: "unslop-ai-before",
-    keywords:
-      "unslop AI example before draft latency reference prose code comparison",
+    keywords: "unslop AI example before draft incident review prose comparison",
     mimeType: MIME_DOC,
     name: "AI example · Before",
     previewUrl: `${AI_BEFORE_BASE}/preview`,
@@ -107,13 +105,13 @@ export const DEMO_FILES: readonly DemoFile[] = [
   },
   {
     description:
-      "The same AI draft after Unslop: 303 body words reduced to 158.",
+      "The same review after Wiki Unslop: 378 body words reduced to 248.",
     downloadFilename: "ai-example-after.docx",
     downloadUrl: `${AI_AFTER_BASE}/export?format=docx&tab=t.0`,
     format: "Document",
     id: "unslop-ai-after",
     keywords:
-      "unslop AI example after concise latency reference prose code comparison",
+      "unslop AI example after concise incident review prose comparison",
     mimeType: MIME_DOC,
     name: "AI example · After",
     previewUrl: `${AI_AFTER_BASE}/preview`,
@@ -135,13 +133,13 @@ export const DEMO_FILES: readonly DemoFile[] = [
   },
   {
     description:
-      "An edited and formatted version of the same historical weekend guide.",
+      "The same guide after Wiki Unslop: 854 body words reduced to 758.",
     downloadFilename: "nyc-weekend-after.docx",
     downloadUrl: `${NYC_AFTER_BASE}/export?format=docx&tab=t.0`,
     format: "Document",
     id: "nyc-after",
     keywords:
-      "NYC New York weekend after polished formatted guide November 13 14 15 2026 unslop comparison",
+      "NYC New York weekend after concise guide November 13 14 15 2026 unslop comparison",
     mimeType: MIME_DOC,
     name: "NYC weekend · After",
     previewUrl: `${NYC_AFTER_BASE}/preview`,
