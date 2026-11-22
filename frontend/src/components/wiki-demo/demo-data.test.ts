@@ -1,4 +1,4 @@
-import { MIME_DOC, MIME_SHEET, MIME_SLIDE } from "@/types/wiki";
+import { MIME_DOC, MIME_SHEET } from "@/types/wiki";
 
 import { DEMO_FILES, demoFileFor, demoHref } from "./demo-data";
 
@@ -7,21 +7,15 @@ describe("public demo file selection", () => {
     expect(DEMO_FILES.map((file) => [file.id, file.name])).toEqual([
       ["latency-guide", "Numbers Every Programmer Should Know"],
       ["ai-draft", "AI draft"],
-      ["latency-workbook", "Numbers workbook"],
-      ["latency-slides", "Numbers slides"],
-      ["unslop-ai-before", "AI example · Before"],
-      ["unslop-ai-after", "AI example · After"],
-      ["nyc-before", "NYC weekend · Before"],
-      ["nyc-after", "NYC weekend · After"],
+      ["latency-workbook", "Sheets Demo"],
+      ["unslop-ai", "AI example · Before and After"],
+      ["nyc-weekend", "NYC weekend · Before and After"],
     ]);
     expect(demoFileFor(null).id).toBe("latency-guide");
     expect(DEMO_FILES.map((file) => file.mimeType)).toEqual([
       MIME_DOC,
       MIME_DOC,
       MIME_SHEET,
-      MIME_SLIDE,
-      MIME_DOC,
-      MIME_DOC,
       MIME_DOC,
       MIME_DOC,
     ]);
