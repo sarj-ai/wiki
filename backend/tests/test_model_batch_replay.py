@@ -102,6 +102,48 @@ def test_vertex_batch_line_carries_the_call_label() -> None:
     }
 
 
+def _schema_keys(node: JsonValue) -> set[str]:
+    match node:
+        case dict():
+            return set(node) | {key for value in node.values() for key in _schema_keys(value)}
+        case list():
+            return {key for item in node for key in _schema_keys(item)}
+        case _:
+            return set()
+
+
+def test_vertex_batch_line_inlines_schema_references() -> None:
+    schema = PatchEnvelope.model_json_schema()
+    config = _config().model_copy(update={"response_json_schema": schema})
+    request = model_request(operation="unslop", model=_MODEL, contents="x", config=config)
+
+    line = request.vertex_batch_line(ModelCallId(uuid.uuid7()))
+
+    assert "$defs" in schema
+    assert not {key for key in _schema_keys(line) if key.startswith("$")}
+    assert request.response_json_schema == schema
+
+
+@pytest.mark.parametrize(
+    "schema",
+    [
+        {"$ref": "#/$defs/Missing"},
+        {
+            "$defs": {"Node": {"properties": {"next": {"$ref": "#/$defs/Node"}}}},
+            "$ref": "#/$defs/Node",
+        },
+    ],
+)
+def test_vertex_batch_line_rejects_unresolvable_references(
+    schema: dict[str, JsonValue],
+) -> None:
+    config = _config().model_copy(update={"response_json_schema": schema})
+    request = model_request(operation="unslop", model=_MODEL, contents="x", config=config)
+
+    with pytest.raises(ValueError, match="Cannot inline"):
+        request.vertex_batch_line(ModelCallId(uuid.uuid7()))
+
+
 def _succeeded(request: ModelRequest, occurrence: int, text: str) -> SucceededModelCall:
     response: dict[str, JsonValue] = {
         "candidates": [
