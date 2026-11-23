@@ -162,10 +162,21 @@ resource "google_compute_security_policy" "backend_armor" {
     priority = 540
     match {
       expr {
-        expression = "evaluatePreconfiguredWaf('rce-v33-stable', {'opt_out_rule_ids': ['owasp-crs-v030301-id932200-rce']})"
+        expression = "!(request.method == 'POST' && request.path.urlDecode() == '/document-transforms') && evaluatePreconfiguredWaf('rce-v33-stable', {'opt_out_rule_ids': ['owasp-crs-v030301-id932200-rce']})"
       }
     }
     description = "block RCE (opt-out 932200: fires on JWT base64url cookies)"
+  }
+
+  rule {
+    action   = "deny(403)"
+    priority = 541
+    match {
+      expr {
+        expression = "request.method == 'POST' && request.path.urlDecode() == '/document-transforms' && evaluatePreconfiguredWaf('rce-v33-stable', {'opt_out_rule_ids': ['owasp-crs-v030301-id932200-rce', 'owasp-crs-v030301-id932115-rce']})"
+      }
+    }
+    description = "block RCE on document imports (also opt-out 932115: fires on Markdown prose)"
   }
 
   rule {

@@ -78,7 +78,7 @@ run "native_oauth_preview_preserves_enforced_security" {
   assert {
     condition = toset([
       for rule in google_compute_security_policy.backend_armor.rule : rule.priority
-    ]) == toset([500, 510, 520, 530, 540, 550, 553, 554, 555, 556, 560, 570, 580, 600, 610, 620, 2147483647])
+    ]) == toset([500, 510, 520, 530, 540, 541, 550, 553, 554, 555, 556, 560, 570, 580, 600, 610, 620, 2147483647])
     error_message = "Preserve every existing priority and add only the four supported MCP previews."
   }
 
@@ -86,9 +86,19 @@ run "native_oauth_preview_preserves_enforced_security" {
     condition = alltrue([
       for rule in google_compute_security_policy.backend_armor.rule : (
         rule.action == "deny(403)" && strcontains(rule.match[0].expr[0].expression, "evaluatePreconfiguredWaf(")
-      ) if contains([500, 510, 520, 530, 540], rule.priority)
+      ) if contains([500, 510, 520, 530, 540, 541], rule.priority)
     ])
     error_message = "Existing WAF rules cannot become allows or throttles."
+  }
+
+  assert {
+    condition = alltrue([
+      for rule in google_compute_security_policy.backend_armor.rule : (
+        strcontains(rule.match[0].expr[0].expression, "932115") ==
+        (rule.priority == 541 && startswith(rule.match[0].expr[0].expression, "request.method == 'POST' && request.path.urlDecode() == '/document-transforms' && "))
+      ) if length(rule.match[0].expr) > 0
+    ])
+    error_message = "The 932115 opt-out applies only to POST /document-transforms."
   }
 
   assert {
