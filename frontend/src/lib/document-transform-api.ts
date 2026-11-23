@@ -109,7 +109,7 @@ const TaskSchema = z.discriminatedUnion("status", [
     id: UuidSchema,
     status: z.literal("running"),
     "attempt_count": z.int().positive(),
-    "execution_state": z.enum(["running", "retrying"]),
+    "execution_state": z.enum(["running", "retrying", "awaiting_model"]),
   }),
   z.object({
     "error_code": z.string(),
@@ -313,7 +313,8 @@ async function waitForTask(
     signal === undefined ? owner : AbortSignal.any([owner, signal]);
   let current = task;
   let transientFailures = 0;
-  for (let poll = 0; ; poll += 1) {
+  let activePolls = 0;
+  for (;;) {
     pollSignal.throwIfAborted();
     onProgress?.(current);
     switch (current.status) {
@@ -363,10 +364,16 @@ async function waitForTask(
         return current.result;
       case "pending":
       case "running":
-        if (poll >= maxPolls) {
-          throw new Error(
-            "Document polish timed out; check its task status before retrying",
-          );
+        if (
+          current.status !== "running" ||
+          current.executionState !== "awaiting_model"
+        ) {
+          if (activePolls >= maxPolls) {
+            throw new Error(
+              "Document polish timed out; check its task status before retrying",
+            );
+          }
+          activePolls += 1;
         }
         // eslint-disable-next-line no-await-in-loop -- Polling must wait before issuing the next status request.
         await abortableDelay(pollIntervalMs, pollSignal);

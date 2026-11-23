@@ -37,6 +37,8 @@ from app.document_transform.task_executor import (
 from app.drive.service import GoogleDriveService
 from app.files.service import GoogleFilesService
 from app.identifiers import UserId
+from app.model_batches.dependencies import document_model_transport_dep
+from app.model_batches.transport import DocumentModelTransport
 from app.models.user import User
 from app.tasks.dependencies import task_service_dep
 from app.tasks.service import TaskService
@@ -131,11 +133,13 @@ def document_patch_generator_dep() -> PatchGenerator:
 
 
 async def document_transform_task_executor_dep(
+    *,
     db: Annotated[AsyncSession, Depends(get_db)],
     tasks: Annotated[TaskService, Depends(task_service_dep)],
     cache_service: Annotated[CacheService, Depends(cache_service_dep)],
     http: Annotated[httpx.AsyncClient, Depends(http_client_dep)],
     generator: Annotated[PatchGenerator, Depends(document_patch_generator_dep)],
+    model_transport: Annotated[DocumentModelTransport, Depends(document_model_transport_dep)],
 ) -> DocumentTransformTaskExecutor:
     return DriveDocumentTransformTaskExecutor(
         db=db,
@@ -145,4 +149,5 @@ async def document_transform_task_executor_dep(
         generator=generator,
         logo_uri=str(settings.DOCUMENT.TRANSFORM_LOGO_URI),
         in_place_enabled=settings.DOCUMENT.TRANSFORM_IN_PLACE_ENABLED,
+        model_transport=model_transport,
     )

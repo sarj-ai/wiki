@@ -13,7 +13,19 @@ import uuid
 
 from cryptography.fernet import InvalidToken
 from pydantic import BaseModel, ConfigDict, Field, JsonValue, RootModel, model_validator
-from sqlalchemy import Text, and_, case, cast, delete, func, literal, or_, select, union_all, update
+from sqlalchemy import (
+    Text,
+    and_,
+    case,
+    cast,
+    delete,
+    func,
+    literal,
+    or_,
+    select,
+    union_all,
+    update,
+)
 from sqlalchemy.dialects.postgresql import JSONB, insert as pg_insert
 from sqlalchemy.engine import Row
 from sqlalchemy.exc import NoResultFound
@@ -618,7 +630,13 @@ class PostgresTaskService(TaskService):
                     Task.owner_user_id == owner_user_id,
                     Task.kind == TaskKind.FILE_DOCUMENT_TRANSFORM,
                     Task.status.in_(
-                        (TaskStatus.PENDING, TaskStatus.RUNNING, TaskStatus.NEEDS_REVIEW)
+                        (
+                            TaskStatus.PENDING,
+                            TaskStatus.RUNNING,
+                            TaskStatus.AWAITING_MODEL,
+                            TaskStatus.MODEL_READY,
+                            TaskStatus.NEEDS_REVIEW,
+                        )
                     ),
                     source_predicate,
                 )
@@ -651,7 +669,13 @@ class PostgresTaskService(TaskService):
                 .where(
                     Task.id == active_row[0].id,
                     Task.status.in_(
-                        (TaskStatus.PENDING, TaskStatus.RUNNING, TaskStatus.NEEDS_REVIEW)
+                        (
+                            TaskStatus.PENDING,
+                            TaskStatus.RUNNING,
+                            TaskStatus.AWAITING_MODEL,
+                            TaskStatus.MODEL_READY,
+                            TaskStatus.NEEDS_REVIEW,
+                        )
                     ),
                 )
                 .with_for_update()
@@ -708,7 +732,14 @@ class PostgresTaskService(TaskService):
             .select_from(Task)
             .where(
                 Task.owner_user_id == owner_user_id,
-                Task.status.in_((TaskStatus.PENDING, TaskStatus.RUNNING)),
+                Task.status.in_(
+                    (
+                        TaskStatus.PENDING,
+                        TaskStatus.RUNNING,
+                        TaskStatus.AWAITING_MODEL,
+                        TaskStatus.MODEL_READY,
+                    )
+                ),
                 Task.expires_at > func.now(),
             )
         )
@@ -745,6 +776,8 @@ class PostgresTaskService(TaskService):
                         Task.status == TaskStatus.RUNNING,
                         Task.lease_expires_at <= func.now(),
                     ),
+                    # Every model batch of this task has settled into its ledger.
+                    Task.status == TaskStatus.MODEL_READY,
                 ),
             )
             .values(
@@ -756,11 +789,15 @@ class PostgresTaskService(TaskService):
                     Task.expires_at,
                     now + lease_duration + _LEASE_RETENTION_GRACE,
                 ),
-                attempt_count=Task.attempt_count + 1,
+                # A resume after a model batch starts a fresh attempt budget.
+                attempt_count=case(
+                    (Task.status == TaskStatus.MODEL_READY, 1),
+                    else_=Task.attempt_count + 1,
+                ),
                 updated_at=now,
             )
             .returning(Task)
-            .options(_PUBLIC_TASK_LOAD)
+            .options(load_only(*_PUBLIC_TASK_COLUMNS, Task.dispatch_ready_at, raiseload=True))
         )
         task = (await self._db.execute(statement)).scalar_one_or_none()
         if task is None:
@@ -771,7 +808,10 @@ class PostgresTaskService(TaskService):
         if not isinstance(claimed, RunningTaskRead):  # pragma: no cover — UPDATE fixes status
             msg = "Claim did not return a running task"
             raise TypeError(msg)
-        return TaskClaim(task=claimed, lease_token=lease_token)
+        # Admission, or the latest re-admission after a model batch, starts the
+        # execution budget: time spent awaiting Gemini is not execution.
+        active_since = task.dispatch_ready_at or task.created_at
+        return TaskClaim(task=claimed, lease_token=lease_token, active_since=active_since)
 
     @override
     async def defer(self, task_id: TaskId, *, lease_token: uuid.UUID) -> TaskRead:
@@ -1319,7 +1359,7 @@ class PostgresTaskService(TaskService):
         ).one_or_none()
         if row is None:
             raise TaskNotFoundError
-        return TaskAdmission(task_id=row.id, status=row.status)
+        return TaskAdmission(task_id=row.id, status=_public_status(row.status))
 
     async def _owned_lease_update(
         self,
@@ -1780,7 +1820,33 @@ def _visible_task() -> ColumnElement[bool]:
     return or_(Task.expires_at > func.now(), Task.status == TaskStatus.NEEDS_REVIEW)
 
 
+_AWAITING_MODEL_STATUSES = frozenset({TaskStatus.AWAITING_MODEL, TaskStatus.MODEL_READY})
+
+
+def _public_status(status: TaskStatus) -> TaskStatus:
+    # Awaiting a model batch is an execution detail of a running operation.
+    public = TaskStatus(status)  # rows carry plain strings
+    return TaskStatus.RUNNING if public in _AWAITING_MODEL_STATUSES else public
+
+
 def _to_read(task: Task) -> TaskRead:
+    if TaskStatus(task.status) in _AWAITING_MODEL_STATUSES:
+        return _TaskReadPayload.model_validate(
+            {
+                "id": task.id,
+                "created_at": task.created_at,
+                "kind": task.kind,
+                "status": TaskStatus.RUNNING,
+                "execution_state": "awaiting_model",
+                "result": None,
+                "resource_id": task.resource_id,
+                "error_code": None,
+                "error_detail": None,
+                "attempt_count": task.attempt_count,
+                "started_at": task.started_at,
+                "finished_at": None,
+            }
+        ).root
     result = _TaskReadPayload.model_validate(task, from_attributes=True).root
     match result:
         case RunningTaskRead():

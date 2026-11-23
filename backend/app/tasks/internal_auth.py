@@ -115,6 +115,30 @@ def document_transform_task_request_authenticator_dep(
     )
 
 
+def model_batch_event_request_authenticator_dep(
+    app_settings: Annotated[Settings, Depends(settings_dep)],
+    verifier: Annotated[_TaskTokenVerifier, Depends(task_token_verifier_dep)],
+) -> TaskRequestAuthenticator:
+    transport = app_settings.DOCUMENT.model_transport
+    if transport.kind != "batch":
+        msg = "Model batch event settings are required"
+        raise RuntimeError(msg)
+    # The Pub/Sub push subscription signs with the same invoker identity.
+    return _task_request_authenticator(
+        transport.event_url, require_cloud_tasks(app_settings.cloud_tasks), verifier
+    )
+
+
+async def require_model_batch_event(
+    authenticator: Annotated[
+        TaskRequestAuthenticator,
+        Depends(model_batch_event_request_authenticator_dep),
+    ],
+    authorization: Annotated[str | None, Header()] = None,
+) -> None:
+    await authenticator.authenticate(authorization)
+
+
 async def require_smart_create_cloud_task(
     authenticator: Annotated[
         TaskRequestAuthenticator,

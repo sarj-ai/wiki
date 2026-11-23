@@ -87,6 +87,10 @@ resource "google_cloud_run_v2_service" "backend_dammam" {
           DOCUMENT_TRANSFORM_UPLOAD_SIGNER    = google_service_account.backend.email
           DOCUMENT_TRANSFORM_TARGET_URL       = "https://${var.backend_domain}/internal/tasks/document-transform"
           DOCUMENT_TRANSFORM_IN_PLACE_ENABLED = "true"
+          DOCUMENT_TRANSFORM_MODEL_TRANSPORT  = "batch"
+          DOCUMENT_TRANSFORM_BATCH_BUCKET     = google_storage_bucket.model_batches_dammam[0].name
+          DOCUMENT_TRANSFORM_BATCH_LOCATION   = var.model_batch_location
+          DOCUMENT_TRANSFORM_BATCH_EVENT_URL  = local.model_batch_event_url
           LOG_JSON                            = "true"
           MAINTENANCE_MODE                    = tostring(var.maintenance_mode)
           MCP_NATIVE_ENABLED                  = tostring(var.enable_mcp_native)
@@ -161,6 +165,7 @@ resource "google_cloud_run_v2_service" "backend_dammam" {
     google_secret_manager_secret_iam_member.backend_mcp_native_lock_key_access,
     google_cloud_tasks_queue_iam_member.backend_enqueuer_dammam,
     google_cloud_tasks_queue_iam_member.backend_document_transform_enqueuer_dammam,
+    google_storage_bucket_iam_member.model_batches_backend,
   ]
 }
 

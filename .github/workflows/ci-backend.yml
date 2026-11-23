@@ -221,6 +221,7 @@ jobs:
           tests/test_storage_performance_postgres.py
           tests/test_storage_hot_paths_postgres.py
           tests/test_storage_simplification_postgres.py
+          tests/test_model_batches_postgres.py
 
       - name: Exercise native MCP transactions and client grants across database sessions
         run: >-

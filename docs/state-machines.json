@@ -2475,6 +2475,159 @@
         "backend/tests/test_editorial_refinement.py",
         "backend/tests/test_refinement_observability.py"
       ]
+    },
+    {
+      "id": "model-call-ledger",
+      "oldRepresentation": "none (new); online Gemini responses were transient except the first-pass review checkpoint",
+      "authoritativeReplacement": "PendingModelCall | QueuedModelCall | SucceededModelCall | FailedModelCall; queue_call, resolve_call, requeue_call; ModelCallLedger.resolve",
+      "states": [
+        "pending",
+        "queued",
+        "succeeded",
+        "failed"
+      ],
+      "terminalStates": [
+        "succeeded",
+        "failed"
+      ],
+      "events": [
+        "replay miss recorded at suspension",
+        "assign to prepared job",
+        "ingest labelled batch output line",
+        "request absent from output",
+        "whole job failed or rejected"
+      ],
+      "guards": [
+        "strict closed runtime union",
+        "(task, request_sha256, occurrence) uniqueness",
+        "request identity excludes transport timeouts and SDK retries",
+        "outcome job must equal queued job",
+        "encrypted request and outcome at rest"
+      ],
+      "invalidTransition": "Reject malformed external/persisted data at the boundary; domain selectors use exhaustive class or enum matching. No fallback invents ownership, completion or missing proof.",
+      "recovery": "Every document model request is replayed deterministically by request hash and per-replay occurrence. A recorded failure is replayed as the provider error so the existing attempt/fallback sequence advances to a new occurrence instead of looping. A request missing from batch output becomes a retryable failure, never an invented answer. Calls of a failed job return to pending and are resubmitted by the next suspension; at most three failed jobs per task.",
+      "decision": "convert",
+      "sources": [
+        "backend/app/model_batches/states.py",
+        "backend/app/model_batches/ledger.py",
+        "backend/app/model_batches/requests.py",
+        "backend/app/model_batches/service.py",
+        "backend/app/document_transform/models.py",
+        "backend/tests/test_model_batch_states.py",
+        "backend/tests/test_model_batch_replay.py",
+        "backend/tests/test_model_batches_postgres.py"
+      ]
+    },
+    {
+      "id": "model-batch-job",
+      "oldRepresentation": "none (new)",
+      "authoritativeReplacement": "PreparedModelBatchJob | SubmittingModelBatchJob | RunningModelBatchJob | IngestedModelBatchJob | FailedModelBatchJob; begin_submission, record_submission, recover_submission, ingest_job, fail_job; ModelBatchCoordinator.advance",
+      "states": [
+        "prepared",
+        "submitting",
+        "running",
+        "ingested",
+        "failed"
+      ],
+      "terminalStates": [
+        "ingested",
+        "failed"
+      ],
+      "events": [
+        "input JSONL written",
+        "persist create intent",
+        "Vertex create returns name",
+        "create rejected (4xx other than 408/429)",
+        "display-name lookup after interrupted create",
+        "GCS output finalize via Pub/Sub push",
+        "scheduled reconcile",
+        "provider succeeded/partially succeeded",
+        "provider failed/cancelled/expired"
+      ],
+      "guards": [
+        "strict closed runtime union",
+        "status/name/provider_state CHECK per variant",
+        "compare-and-set on (status, vertex_job_name)",
+        "submitting persisted before external create",
+        "rejected only from submitting; terminal provider states only from running"
+      ],
+      "invalidTransition": "Reject malformed external/persisted data at the boundary; domain selectors use exhaustive class or enum matching. No fallback invents ownership, completion or missing proof.",
+      "recovery": "Create intent is persisted before the external call. An interrupted create is resolved by exact display-name lookup: adopt the found job or return to prepared and resubmit; it is never blindly recreated. An output event that precedes a terminal provider state answers 503 so Pub/Sub redelivers with backoff; the reconcile schedule advances stale active jobs. Ingestion of every queued call and the job's terminal state commit in one transaction.",
+      "sideEffects": [
+        "GCS input object",
+        "Vertex AI batch prediction job",
+        "GCS output objects (8-day lifecycle)"
+      ],
+      "decision": "convert",
+      "sources": [
+        "backend/app/model_batches/states.py",
+        "backend/app/model_batches/service.py",
+        "backend/app/model_batches/gateway.py",
+        "backend/app/model_batches/router.py",
+        "terraform/model_batches.tf",
+        "backend/tests/test_model_batch_coordinator.py",
+        "backend/tests/test_model_batch_states.py"
+      ]
+    },
+    {
+      "id": "task-model-suspension",
+      "oldRepresentation": "none (new); a model call held the running lease for the whole provider round",
+      "authoritativeReplacement": "tasks.status awaiting_model | model_ready with ck_tasks_legal_state; PostgresModelBatchStore.suspend/resume; claim admits model_ready",
+      "states": [
+        "running",
+        "awaiting_model",
+        "model_ready",
+        "running"
+      ],
+      "events": [
+        "replay misses -> suspend (lease released, misses recorded, jobs prepared, one transaction)",
+        "last active job settles -> resume (awaiting_model -> model_ready, dispatch_ready_at stamped)",
+        "resume delivery claims model_ready (attempt budget reset)",
+        "suspension exceeds 26h -> failed model_batch_expired"
+      ],
+      "guards": [
+        "resume only when no prepared/submitting/running job exists",
+        "claim needs no batch-table predicate (schema-stable)",
+        "awaiting states are document transforms only",
+        "public API reports running with execution_state=awaiting_model",
+        "cancel/discard_pending never apply (not pending)"
+      ],
+      "invalidTransition": "Reject malformed external/persisted data at the boundary; domain selectors use exhaustive class or enum matching. No fallback invents ownership, completion or missing proof.",
+      "recovery": "Execution age is measured from dispatch_ready_at (admission or latest resume), so time awaiting Gemini is neither execution nor an attempt. Resume deliveries are named by task and dispatch_ready_at, so the reconcile backstop re-enqueues a lost resume under the same Cloud Tasks name. Repeated suspension beyond the failed-job budget fails the task while it still holds its lease.",
+      "decision": "convert",
+      "sources": [
+        "backend/app/tasks/service.py",
+        "backend/app/tasks/schemas.py",
+        "backend/app/models/task.py",
+        "backend/app/tasks/queue.py",
+        "backend/app/document_transform/task_executor.py",
+        "backend/alembic/versions/0031_model_batches.py",
+        "backend/tests/test_model_batches_postgres.py"
+      ]
+    },
+    {
+      "id": "model-pacing",
+      "oldRepresentation": "wall-clock admission of editorial (180s) and layout (90s) passes",
+      "authoritativeReplacement": "OnlinePacing | BatchPacing(editorial_passes=2, layout_passes=1); current_model_pacing",
+      "states": [
+        "online",
+        "batch"
+      ],
+      "events": [
+        "ledger scope entered"
+      ],
+      "guards": [
+        "batch replay never reads the wall clock for admission",
+        "batch replay never sleeps between attempts"
+      ],
+      "invalidTransition": "Reject malformed external/persisted data at the boundary; domain selectors use exhaustive class or enum matching. No fallback invents ownership, completion or missing proof.",
+      "recovery": "Pacing is derived from the transport in scope, so a resumed replay admits exactly the passes the previous delivery admitted.",
+      "decision": "convert",
+      "sources": [
+        "backend/app/model_batches/ledger.py",
+        "backend/app/document_transform/planner.py",
+        "backend/app/document_transform/readability.py"
+      ]
     }
   ],
   "exceptions": [
@@ -2599,7 +2752,11 @@
       "markdown-header-parser-sequence",
       "model-planning-review-ownership",
       "model-review-batch-continuation",
-      "editorial-refinement-loop"
+      "editorial-refinement-loop",
+      "model-call-ledger",
+      "model-batch-job",
+      "task-model-suspension",
+      "model-pacing"
     ],
     "reviewEvidence": "Prior concrete 44-file provider-content and 13 UI/reservation reviews are retained. Current reconciliation reviews 26 source/config/workflow paths plus the seven application paths changed by upstream PR708/709; it converts the model-planning ownership and review-batch continuation machines. Exact merged-source ReleaseMain43743890215 and fresh production schema/state readback now pass. This accounting-only follow-up requires its own exact-head repository checks before merge.",
     "productionVerification": {

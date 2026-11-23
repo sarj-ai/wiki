@@ -14,7 +14,7 @@ import json
 import re
 import secrets
 from time import monotonic
-from typing import TYPE_CHECKING, Literal, NewType, override
+from typing import TYPE_CHECKING, Literal, NewType, assert_never, override
 
 from google import genai
 from google.genai import errors as genai_errors, types as genai_types
@@ -67,6 +67,13 @@ from app.document_transform.unslop import (
     concision_target,
     model_editable_blocks,
 )
+from app.model_batches.ledger import (
+    collect_pending,
+    current_model_call_ledger,
+    no_retry_pause,
+    require_answered,
+)
+from app.model_batches.requests import ModelOperation, model_request
 from app.performance import provider_retry_remaining_seconds
 
 
@@ -533,10 +540,22 @@ class VertexGeminiPatchGenerator(PatchGenerator):
             if config.http_options is not None
             else None,
         )
+        ledger = current_model_call_ledger()
         try:
-            response = await self._client.aio.models.generate_content(
-                model=model, contents=contents, config=config
-            )
+            if ledger is None:
+                response = await self._client.aio.models.generate_content(
+                    model=model, contents=contents, config=config
+                )
+            else:
+                # Batch transport: answer from durable outcomes or record a miss.
+                response = ledger.resolve(
+                    model_request(
+                        operation=_model_operation(operation),
+                        model=model,
+                        contents=contents,
+                        config=config,
+                    )
+                )
         except Exception as error:
             failure = classify_model_failure(error)
             if failure is None:
@@ -579,19 +598,27 @@ class VertexGeminiPatchGenerator(PatchGenerator):
             async with asyncio.TaskGroup() as group:
                 tasks = [
                     group.create_task(
-                        self._bounded_generate_batch(
-                            batch,
-                            failure=failure,
-                            feedback=tuple(
-                                feedback[block.id] for block in batch.blocks if block.id in feedback
-                            ),
+                        collect_pending(
+                            self._bounded_generate_batch(
+                                batch,
+                                failure=failure,
+                                feedback=tuple(
+                                    feedback[block.id]
+                                    for block in batch.blocks
+                                    if block.id in feedback
+                                ),
+                            )
                         )
                     )
                     for batch in _editor_batches(document)
                 ]
         except* ModelUnavailableError as error:
             raise grouped_model_failure(error) from error
-        return [patch for task in tasks for patch in task.result()]
+        return [
+            patch
+            for patches in require_answered(task.result() for task in tasks)
+            for patch in patches
+        ]
 
     async def _bounded_generate_batch(
         self,
@@ -659,6 +686,10 @@ class VertexGeminiPatchGenerator(PatchGenerator):
         raise exhausted_model_failure(last_error) from _model_failure_cause(last_error)
 
     async def _admit_initial_writer(self, *, attempt: int, last_error: Exception | None) -> None:
+        if current_model_call_ledger() is not None:
+            # Batch rounds have no online start rate to protect; jitter would
+            # only add wall-clock nondeterminism to the replay.
+            return
         loop = asyncio.get_running_loop()
         async with self._writer_start_lock:
             delay = max(self._writer_next_start - loop.time(), 0.0)
@@ -828,15 +859,17 @@ class VertexGeminiPatchGenerator(PatchGenerator):
             async with asyncio.TaskGroup() as group:
                 tasks = [
                     group.create_task(
-                        self._bounded_review_batch(
-                            batch, self._model_semaphore, denied_models, failure
+                        collect_pending(
+                            self._bounded_review_batch(
+                                batch, self._model_semaphore, denied_models, failure
+                            )
                         )
                     )
                     for batch in batches
                 ]
         except* ModelUnavailableError as error:
             raise grouped_model_failure(error) from error
-        return tuple(task.result() for task in tasks)
+        return tuple(require_answered(task.result() for task in tasks))
 
     async def _bounded_review_batch(
         self,
@@ -959,6 +992,23 @@ class VertexGeminiPatchGenerator(PatchGenerator):
             raise
 
 
+def _model_operation(
+    operation: TransformPhase | Literal["review", "readability"],
+) -> ModelOperation:
+    match operation:
+        case TransformPhase.UNSLOP:
+            return "unslop"
+        case TransformPhase.FORMAT:
+            msg = "Formatting never calls the document model"
+            raise ValueError(msg)
+        case "review":
+            return "review"
+        case "readability":
+            return "readability"
+        case unreachable:
+            assert_never(unreachable)
+
+
 def _constraint_repair_feedback(block: TextBlock, patch: TextPatch) -> tuple[str, ...]:
     framing_source = _original_block(block).text
     original = rewrite_constraints(block.text, framing_source=framing_source)
@@ -1047,6 +1097,8 @@ async def _model_retry_delay(
     if remaining is not None and remaining < delay + _MIN_MODEL_ATTEMPT_BUDGET.total_seconds():
         raise ModelDeadlineError
     sleeper = asyncio.sleep if sleep is None else sleep
+    if current_model_call_ledger() is not None:
+        sleeper = no_retry_pause
     await sleeper(delay)
 
 

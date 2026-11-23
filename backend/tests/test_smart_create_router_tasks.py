@@ -154,7 +154,9 @@ class _Enqueuer(TaskEnqueuer):
         self.task_ids.append(task_id)
 
     @override
-    async def enqueue_document_transform(self, task_id: TaskId) -> None:
+    async def enqueue_document_transform(
+        self, task_id: TaskId, *, resumed_at: datetime | None = None
+    ) -> None:
         self.document_task_ids.append(task_id)
 
 
