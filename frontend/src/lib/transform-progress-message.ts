@@ -6,8 +6,12 @@ export function transformProgressMessage(
   if (task.status === "pending") return "Queued for a worker…";
   if (task.status !== "running") return null;
   const attempt = task.attemptCount;
-  if (task.executionState === "retrying") {
-    return `Waiting to retry after attempt ${attempt}…`;
+  switch (task.executionState) {
+    case "retrying":
+      return `Waiting to retry after attempt ${attempt}…`;
+    case "awaiting_model":
+      return "Gemini is processing the document as a batch job. This can take a while…";
+    case "running":
+      return `Running and checking the document (attempt ${attempt})…`;
   }
-  return `Running and checking the document (attempt ${attempt})…`;
 }

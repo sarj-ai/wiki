@@ -171,7 +171,10 @@ class _RetryTasks:
         claim = _claim(task_id, attempt_count=self.attempt_count)
         if self.created_at is not None:
             claim = claim.model_copy(
-                update={"task": claim.task.model_copy(update={"created_at": self.created_at})}
+                update={
+                    "task": claim.task.model_copy(update={"created_at": self.created_at}),
+                    "active_since": self.created_at,
+                }
             )
         return claim
 
@@ -931,6 +934,7 @@ def _claim(task_id: TaskId, *, attempt_count: int) -> TaskClaim:
             finished_at=None,
         ),
         lease_token=uuid.uuid7(),
+        active_since=now,
     )
 
 

@@ -33,7 +33,7 @@ const UPLOAD_FIELDS = {
 } as const;
 
 describe("documentTransformApi", () => {
-  it.each(["running", "retrying"] as const)(
+  it.each(["running", "retrying", "awaiting_model"] as const)(
     "requires positive attempt evidence when a task is %s",
     async (executionState) => {
       ACTION_MOCKS.getTask.mockResolvedValue({
@@ -666,6 +666,40 @@ describe("documentTransformApi", () => {
       "Document polish timed out; check its task status before retrying",
     );
     expect(ACTION_MOCKS.getTask).toHaveBeenCalledOnce();
+  });
+
+  it("does not time out while the model batch is still running", async () => {
+    const awaiting = {
+      data: JSON.stringify({
+        id: TASK_ID,
+        status: "running",
+        "attempt_count": 1,
+        "execution_state": "awaiting_model",
+      }),
+      ok: true,
+    } as const;
+    ACTION_MOCKS.getTask
+      .mockResolvedValueOnce(awaiting)
+      .mockResolvedValueOnce(awaiting)
+      .mockResolvedValueOnce(awaiting)
+      .mockResolvedValue({ data: JSON.stringify(task("pending")), ok: true });
+
+    await expect(
+      DOCUMENT_TRANSFORM_API.waitForCompletion(
+        {
+          id: TASK_ID,
+          status: "running",
+          attemptCount: 1,
+          executionState: "running",
+        },
+        undefined,
+        0,
+        1,
+      ),
+    ).rejects.toThrow(
+      "Document polish timed out; check its task status before retrying",
+    );
+    expect(ACTION_MOCKS.getTask).toHaveBeenCalledTimes(4);
   });
 
   it("retries transient task reads without starting a second transform", async () => {

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
+from datetime import datetime
 from typing import ClassVar, Literal, assert_never, override
 
 from google.api_core.exceptions import AlreadyExists, GoogleAPICallError
@@ -22,7 +23,9 @@ class TaskEnqueuer(ABC):
     @abstractmethod
     async def enqueue_smart_create(self, task_id: TaskId) -> None: ...
 
-    async def enqueue_document_transform(self, task_id: TaskId) -> None:
+    async def enqueue_document_transform(
+        self, task_id: TaskId, *, resumed_at: datetime | None = None
+    ) -> None:
         raise NotImplementedError
 
 
@@ -82,7 +85,9 @@ class CloudTasksEnqueuer(TaskEnqueuer):
         )
 
     @override
-    async def enqueue_document_transform(self, task_id: TaskId) -> None:
+    async def enqueue_document_transform(
+        self, task_id: TaskId, *, resumed_at: datetime | None = None
+    ) -> None:
         match self._document_transform:
             case _ConfiguredDocumentTransformQueue(parent, request_template):
                 await self._enqueue(
@@ -90,6 +95,12 @@ class CloudTasksEnqueuer(TaskEnqueuer):
                     parent=parent,
                     prefix="document-transform",
                     request_template=request_template,
+                    # A resume needs its own name: Cloud Tasks keeps a task
+                    # name reserved after delivery, and AlreadyExists is
+                    # deliberately treated as an idempotent success.
+                    suffix=""
+                    if resumed_at is None
+                    else f"-resume-{round(resumed_at.timestamp() * 1_000_000)}",
                 )
             case _DisabledDocumentTransformQueue():
                 msg = "Document Transform Cloud Tasks queue is not configured"
@@ -104,6 +115,7 @@ class CloudTasksEnqueuer(TaskEnqueuer):
         parent: str,
         prefix: str,
         request_template: bytes,
+        suffix: str = "",
     ) -> None:
         request = TaskDispatchRequest(task_id=task_id)
         # The template contains only immutable queue configuration. Each
@@ -111,7 +123,7 @@ class CloudTasksEnqueuer(TaskEnqueuer):
         http_request = tasks_v2.HttpRequest.deserialize(request_template)
         http_request.body = request.model_dump_json().encode()
         task = tasks_v2.Task(
-            name=f"{parent}/tasks/{prefix}-{task_id.hex}",
+            name=f"{parent}/tasks/{prefix}-{task_id.hex}{suffix}",
             http_request=http_request,
         )
         try:

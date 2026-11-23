@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Any, Self
 import uuid
 
@@ -97,7 +98,9 @@ class _Queue:
         self.created: set[TaskId] = set()
         self.fail = True
 
-    async def enqueue_document_transform(self, task_id: TaskId) -> None:
+    async def enqueue_document_transform(
+        self, task_id: TaskId, *, resumed_at: datetime | None = None
+    ) -> None:
         if self.fail:
             raise TaskEnqueueError
         self.created.add(task_id)

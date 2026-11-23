@@ -93,7 +93,7 @@ export type DocumentTransformTask = (
       id: string;
       status: "running";
       attemptCount: number;
-      executionState: "running" | "retrying";
+      executionState: "running" | "retrying" | "awaiting_model";
     }
 ) & { replayed?: boolean };
 
