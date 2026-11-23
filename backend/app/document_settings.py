@@ -1,13 +1,16 @@
-from typing import Self, override
+from typing import Literal, Self, override
 
 from pydantic import HttpUrl, PrivateAttr, field_validator, model_validator
 from pydantic_settings import BaseSettings, PydanticBaseSettingsSource, SettingsConfigDict
 
 from app.identifiers import NonEmptyStr
 from app.runtime_config import (
+    BatchModelTransportConfiguration,
     ConfiguredDocumentQueue,
     DisabledDocumentQueue,
     DocumentQueueConfiguration,
+    ModelTransportConfiguration,
+    OnlineModelTransportConfiguration,
 )
 
 
@@ -30,11 +33,22 @@ class DocumentSettings(BaseSettings):
     TRANSFORM_TARGET_URL: NonEmptyStr | None = None
     TRANSFORM_UPLOAD_BUCKET: NonEmptyStr | None = None
     TRANSFORM_UPLOAD_SIGNER: NonEmptyStr | None = None
+    # "batch" answers every document model request through Vertex AI batch
+    # prediction; the task suspends between rounds and wakes on completion.
+    TRANSFORM_MODEL_TRANSPORT: Literal["online", "batch"] = "online"
+    TRANSFORM_BATCH_BUCKET: NonEmptyStr | None = None
+    TRANSFORM_BATCH_LOCATION: NonEmptyStr = "global"
+    TRANSFORM_BATCH_EVENT_URL: NonEmptyStr | None = None
     _queue: DocumentQueueConfiguration = PrivateAttr()
+    _model_transport: ModelTransportConfiguration = PrivateAttr()
 
     @property
     def queue(self) -> DocumentQueueConfiguration:
         return self._queue
+
+    @property
+    def model_transport(self) -> ModelTransportConfiguration:
+        return self._model_transport
 
     @classmethod
     @override
@@ -64,6 +78,26 @@ class DocumentSettings(BaseSettings):
             )
         else:
             self._queue = DisabledDocumentQueue()
+        if self.TRANSFORM_MODEL_TRANSPORT == "online":
+            if (
+                self.TRANSFORM_BATCH_BUCKET is not None
+                or self.TRANSFORM_BATCH_EVENT_URL is not None
+            ):
+                msg = "Model batch settings require TRANSFORM_MODEL_TRANSPORT=batch"
+                raise ValueError(msg)
+            self._model_transport = OnlineModelTransportConfiguration()
+        else:
+            if self.TRANSFORM_BATCH_BUCKET is None or self.TRANSFORM_BATCH_EVENT_URL is None:
+                msg = "Batch model transport requires its bucket and event URL"
+                raise ValueError(msg)
+            if isinstance(self._queue, DisabledDocumentQueue):
+                msg = "Batch model transport requires the Document Transform queue for resumes"
+                raise ValueError(msg)
+            self._model_transport = BatchModelTransportConfiguration(
+                bucket=self.TRANSFORM_BATCH_BUCKET,
+                location=self.TRANSFORM_BATCH_LOCATION,
+                event_url=self.TRANSFORM_BATCH_EVENT_URL,
+            )
         return self
 
     @field_validator(

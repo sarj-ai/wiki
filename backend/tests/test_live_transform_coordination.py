@@ -21,6 +21,7 @@ from app.document_transform.task_executor import (
     DriveDocumentTransformTaskExecutor,
 )
 from app.identifiers import FileId, GoogleUserId, IdempotencyKey, TaskId, UserId
+from app.model_batches.transport import OnlineModelTransport
 from app.models.task import Task
 from app.models.user import User
 from app.tasks.errors import TaskExecutionDeferredError, TaskIdempotencyConflictError
@@ -95,6 +96,7 @@ class _ProbeWorker(DriveDocumentTransformTaskExecutor):
     def __init__(self, tasks: TaskService, probe: _MutationProbe) -> None:
         self._tasks = tasks
         self._in_place_enabled = True
+        self._model_transport = OnlineModelTransport()
         self._probe = probe
 
     @override

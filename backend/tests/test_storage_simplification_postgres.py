@@ -180,7 +180,7 @@ async def test_upgrade_preserves_settings_tokens_and_concurrent_user_edits() -> 
                         "SELECT count(*) FROM information_schema.tables WHERE table_schema='public' AND table_type='BASE TABLE'"
                     )
                 )
-                == 12
+                == 14
             )
 
         async def write(index: int) -> None:

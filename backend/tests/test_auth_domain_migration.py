@@ -30,7 +30,7 @@ from app.models.wiki import DocumentAlias
 
 
 _BACKEND = Path(__file__).parents[1]
-_HEAD = "0030_native_oauth_invariants"
+_HEAD = "0031_model_batches"
 
 
 @runtime_checkable
@@ -86,10 +86,10 @@ def test_seed_revision_preserves_history_without_seeding_or_deleting_aliases() -
     assert scripts.get_heads() == [_HEAD]
     head = scripts.get_revision(_HEAD)
     assert head is not None
-    assert head.down_revision == "0029_task_review"
-    previous = scripts.get_revision("0029_task_review")
+    assert head.down_revision == "0030_native_oauth_invariants"
+    previous = scripts.get_revision("0030_native_oauth_invariants")
     assert previous is not None
-    assert previous.down_revision == "0028_task_result_invariants"
+    assert previous.down_revision == "0029_task_review"
 
 
 def _drop_obsolete_check_again(connection: Connection) -> None:

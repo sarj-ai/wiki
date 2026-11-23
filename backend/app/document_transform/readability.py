@@ -1,5 +1,6 @@
 from copy import deepcopy
 from dataclasses import dataclass, replace
+from typing import assert_never
 
 from loguru import logger
 from pydantic import JsonValue
@@ -43,6 +44,7 @@ from app.document_transform.readability_types import (
     UnavailableReadabilityRefinement,
 )
 from app.identifiers import DocsRevisionId
+from app.model_batches.ledger import BatchPacing, OnlinePacing, current_model_pacing
 from app.performance import provider_retry_remaining_seconds
 
 
@@ -51,7 +53,7 @@ MAX_READABILITY_PASSES = 100
 # 30-second write/readback reserve. A 180-second admission floor skipped layout
 # after an ordinary one-minute editorial pass in the four-minute worker budget.
 _MIN_LAYOUT_SECONDS = 90
-_MAX_LAYOUT_CHARACTERS = 60000
+_MAX_LAYOUT_CHARACTERS = 60_000
 # A useful group of 2-6 facts should improve on one short paragraph. Tiny
 # fragments still incur a separate penalty in the layout score.
 _LIST_ITEM_BURDEN = 8
@@ -196,8 +198,8 @@ async def _refine_layout(
         return best
     score = _layout_burden([], document, title=title)
     feedback = ""
-    for number in range(1, max_passes + 1):
-        remaining = provider_retry_remaining_seconds()
+    for number in range(1, _paced_layout_passes(max_passes) + 1):
+        remaining = _layout_admission_seconds()
         if remaining is not None and remaining < _MIN_LAYOUT_SECONDS:
             best = replace(
                 best,
@@ -265,6 +267,26 @@ async def _refine_layout(
         layout_refinement=best.refinement.model_dump(mode="json"),
     )
     return best
+
+
+def _paced_layout_passes(max_passes: int) -> int:
+    match current_model_pacing():
+        case OnlinePacing():
+            return max_passes
+        case BatchPacing(layout_passes=passes):
+            return min(max_passes, passes)
+        case unreachable:
+            assert_never(unreachable)
+
+
+def _layout_admission_seconds() -> float | None:
+    match current_model_pacing():
+        case OnlinePacing():
+            return provider_retry_remaining_seconds()
+        case BatchPacing():
+            return None
+        case unreachable:
+            assert_never(unreachable)
 
 
 def _provider_stopped_draft(best: _LayoutDraft, error: ModelUnavailableError) -> _LayoutDraft:

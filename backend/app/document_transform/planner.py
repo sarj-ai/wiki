@@ -38,6 +38,7 @@ from app.document_transform.unslop import (
     prose_word_count,
     scan_unslop_candidates,
 )
+from app.model_batches.ledger import BatchPacing, OnlinePacing, current_model_pacing
 from app.performance import provider_retry_remaining_seconds
 
 
@@ -338,11 +339,21 @@ class TextTransformPlanner:
         while True:
             match state:
                 case _EditorialReady():
-                    state = _admit_editorial_pass(
-                        state,
-                        limit=self._max_editorial_passes,
-                        remaining=provider_retry_remaining_seconds(),
-                    )
+                    match current_model_pacing():
+                        case OnlinePacing():
+                            state = _admit_editorial_pass(
+                                state,
+                                limit=self._max_editorial_passes,
+                                remaining=provider_retry_remaining_seconds(),
+                            )
+                        case BatchPacing(editorial_passes=passes):
+                            state = _admit_editorial_pass(
+                                state,
+                                limit=min(self._max_editorial_passes, passes),
+                                remaining=None,
+                            )
+                        case unreachable:
+                            assert_never(unreachable)
                 case _EditorialAttempt():
                     previous = state.previous
                     try:

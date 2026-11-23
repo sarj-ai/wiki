@@ -186,7 +186,9 @@ class SubmissionHarness:
                 assert await admit_terminal_replay(self.reservation.task)
         return self.reservation
 
-    async def enqueue_document_transform(self, task_id: TaskId) -> None:
+    async def enqueue_document_transform(
+        self, task_id: TaskId, *, resumed_at: datetime | None = None
+    ) -> None:
         self.calls.append("enqueue")
         assert task_id == self.reservation.task.id
         if self.enqueue_error is not None:

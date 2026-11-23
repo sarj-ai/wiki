@@ -24,6 +24,8 @@ class TaskKind(StrEnum):
 class TaskStatus(StrEnum):
     PENDING = "pending"
     RUNNING = "running"
+    AWAITING_MODEL = "awaiting_model"
+    MODEL_READY = "model_ready"
     SUCCEEDED = "succeeded"
     FAILED = "failed"
     CANCELLED = "cancelled"
@@ -59,7 +61,7 @@ class PendingTaskRead[TaskKindType: TaskKind = TaskKind](_TaskReadBase):
 class RunningTaskRead[TaskKindType: TaskKind = TaskKind](_TaskReadBase):
     kind: TaskKindType
     status: Literal[TaskStatus.RUNNING]
-    execution_state: Literal["running", "retrying"] = "running"
+    execution_state: Literal["running", "retrying", "awaiting_model"] = "running"
     result: None
     resource_id: FileId | None
     error_code: None
@@ -210,6 +212,7 @@ class TaskClaim(BaseModel):
         Field(discriminator="kind"),
     ]
     lease_token: uuid.UUID
+    active_since: datetime
 
 
 class ActiveSmartCreateTaskRecord(BaseModel):

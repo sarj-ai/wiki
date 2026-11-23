@@ -131,7 +131,7 @@ class _Tasks(TaskService):
         self.lease_duration = lease_duration
         task = self.read()
         assert isinstance(task, RunningTaskRead)
-        return TaskClaim(task=task, lease_token=uuid.uuid7())
+        return TaskClaim(task=task, lease_token=uuid.uuid7(), active_since=task.created_at)
 
     @override
     async def defer(self, task_id: TaskId, *, lease_token: uuid.UUID) -> TaskRead:

@@ -5,7 +5,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 import hashlib
 import time
-from typing import Protocol, override
+from typing import Protocol, assert_never, override
 import uuid
 
 from cryptography.fernet import InvalidToken
@@ -70,7 +70,20 @@ from app.drive.service import GoogleDriveService
 from app.files.errors import FileNotInScopeError, FilesError
 from app.files.schemas import FileResponse
 from app.files.service import GoogleFilesService
-from app.identifiers import FileId, TaskId
+from app.identifiers import FileId, TaskId, UserId
+from app.model_batches.ledger import ModelBatchPendingError, model_call_ledger_scope
+from app.model_batches.service import (
+    RECOVERABLE_BATCH_ERRORS,
+    ModelBatchBudgetExhausted,
+    ModelBatchCoordinator,
+    ModelBatchStore,
+    SuspendedForModelBatch,
+)
+from app.model_batches.transport import (
+    BatchModelTransport,
+    DocumentModelTransport,
+    OnlineModelTransport,
+)
 from app.models.user import User
 from app.models.wiki import DocumentHeaderProvenance
 from app.performance import provider_retry_budget
@@ -176,6 +189,8 @@ class DocumentTransformRuntime:
 
 
 class DriveDocumentTransformTaskExecutor(DocumentTransformTaskExecutor):
+    _model_transport: DocumentModelTransport
+
     def __init__(
         self,
         *,
@@ -186,7 +201,9 @@ class DriveDocumentTransformTaskExecutor(DocumentTransformTaskExecutor):
         generator: PatchGenerator,
         logo_uri: str,
         in_place_enabled: bool,
+        model_transport: DocumentModelTransport | None = None,
     ) -> None:
+        self._model_transport = model_transport or OnlineModelTransport()
         self._db = db
         self._tasks = tasks
         self._cache = cache
@@ -224,7 +241,7 @@ class DriveDocumentTransformTaskExecutor(DocumentTransformTaskExecutor):
                 error_detail="The saved document transformation request could not be read",
             )
         try:
-            if datetime.now(UTC) - claim.task.created_at >= _MAX_TASK_AGE:
+            if datetime.now(UTC) - claim.active_since >= _MAX_TASK_AGE:
                 return await self._tasks.fail(
                     task_id,
                     lease_token=claim.lease_token,
@@ -301,7 +318,7 @@ class DriveDocumentTransformTaskExecutor(DocumentTransformTaskExecutor):
                 error_detail="The document transformation could not be initialized",
                 cause=exc,
             )
-        remaining = _MAX_TASK_AGE - (datetime.now(UTC) - claim.task.created_at)
+        remaining = _MAX_TASK_AGE - (datetime.now(UTC) - claim.active_since)
         if remaining.total_seconds() < 1:
             return await self._tasks.fail(
                 task_id,
@@ -310,15 +327,94 @@ class DriveDocumentTransformTaskExecutor(DocumentTransformTaskExecutor):
                 error_detail="The task exceeded its total execution budget before execution.",
             )
         with provider_retry_budget(min(_MAX_DELIVERY_BUDGET, remaining)):
-            return await _execute_claimed(
-                tasks=self._tasks,
-                transform=runtime.transform,
-                task_id=task_id,
-                claim=claim,
-                payload=claimed_payload,
-                checkpoint=claimed_record.checkpoint,
-                short_links=runtime.short_links,
+            return await self._execute_with_transport(
+                task_id, claim=claim, claimed_record=claimed_record, runtime=runtime
             )
+
+    async def _execute_with_transport(
+        self,
+        task_id: TaskId,
+        *,
+        claim: TaskClaim,
+        claimed_record: ActiveDocumentTransformTaskRecord,
+        runtime: DocumentTransformRuntime,
+    ) -> TaskRead:
+        claimed_payload = claimed_record.payload
+        match self._model_transport:
+            case OnlineModelTransport():
+                return await _execute_claimed(
+                    tasks=self._tasks,
+                    transform=runtime.transform,
+                    task_id=task_id,
+                    claim=claim,
+                    payload=claimed_payload,
+                    checkpoint=claimed_record.checkpoint,
+                    short_links=runtime.short_links,
+                )
+            case BatchModelTransport(store=store, coordinator=coordinator):
+                ledger = await store.load_ledger(task_id)
+                try:
+                    with model_call_ledger_scope(ledger):
+                        return await _execute_claimed(
+                            tasks=self._tasks,
+                            transform=runtime.transform,
+                            task_id=task_id,
+                            claim=claim,
+                            payload=claimed_payload,
+                            checkpoint=claimed_record.checkpoint,
+                            short_links=runtime.short_links,
+                        )
+                except ModelBatchPendingError as pending:
+                    return await self._suspend_for_batch(
+                        task_id,
+                        owner_user_id=UserId(claimed_record.owner_user_id),
+                        claim=claim,
+                        pending=pending,
+                        store=store,
+                        coordinator=coordinator,
+                    )
+            case unreachable:
+                assert_never(unreachable)
+
+    async def _suspend_for_batch(
+        self,
+        task_id: TaskId,
+        *,
+        owner_user_id: UserId,
+        claim: TaskClaim,
+        pending: ModelBatchPendingError,
+        store: ModelBatchStore,
+        coordinator: ModelBatchCoordinator,
+    ) -> TaskRead:
+        suspension = await store.suspend(
+            task_id, lease_token=claim.lease_token, misses=pending.misses
+        )
+        match suspension:
+            case ModelBatchBudgetExhausted():
+                return await self._tasks.fail(
+                    task_id,
+                    lease_token=claim.lease_token,
+                    error_code="model_batch_failed",
+                    error_detail="Gemini batch prediction failed repeatedly. Start the polish again.",
+                )
+            case SuspendedForModelBatch(jobs=jobs):
+                logger.info(
+                    "document transform awaiting model batch",
+                    task_id=task_id,
+                    model_batch_requests=len(pending.misses),
+                    model_batch_jobs=len(jobs),
+                )
+                for job in jobs:
+                    try:
+                        await coordinator.advance(job.id)
+                    except RECOVERABLE_BATCH_ERRORS:
+                        logger.exception(
+                            "model batch submission deferred to reconciliation",
+                            model_batch_job_id=job.id,
+                        )
+                return await self._tasks.get_for_owner(task_id, owner_user_id)
+            case unreachable:
+                assert_never(unreachable)
 
     async def _runtime(
         self,
@@ -407,7 +503,9 @@ class DriveDocumentTransformTaskExecutor(DocumentTransformTaskExecutor):
         planning = checkpoint if isinstance(checkpoint, ModelPlanningCheckpoint) else None
         generator = self._generator
         if (
-            payload.mode is not TransformMode.FORMAT
+            # The batch ledger already persists every model outcome.
+            isinstance(self._model_transport, OnlineModelTransport)
+            and payload.mode is not TransformMode.FORMAT
             and generator.supports_semantic_rewrite
             and (checkpoint is None or planning is not None)
         ):
@@ -554,6 +652,8 @@ async def _execute_claimed(
     )
     try:
         result = await transform.execute(operation_id=task_id, request=payload)
+    except ModelBatchPendingError:
+        raise  # Batch transport suspends the task; it is not a failure.
     except ModelReviewPendingError as exc:
         logger.info(
             "document model proposals checkpointed; independent review pending", task_id=task_id
@@ -724,7 +824,7 @@ async def defer_or_fail_retryable_task(
 ) -> TaskRead:
     if (
         claim.task.attempt_count >= _MAX_TASK_ATTEMPTS
-        or datetime.now(UTC) - claim.task.created_at >= _MAX_TASK_AGE
+        or datetime.now(UTC) - claim.active_since >= _MAX_TASK_AGE
     ):
         return await tasks.fail(
             task_id,

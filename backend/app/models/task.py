@@ -29,7 +29,8 @@ class Task(Base):
             name="ck_tasks_kind",
         ),
         CheckConstraint(
-            "status IN ('pending', 'running', 'succeeded', 'failed', 'cancelled', 'needs_review')",
+            "status IN ('pending', 'running', 'awaiting_model', 'model_ready', 'succeeded', "
+            "'failed', 'cancelled', 'needs_review')",
             name="ck_tasks_status",
         ),
         CheckConstraint("char_length(request_hash) = 64", name="ck_tasks_request_hash"),
@@ -64,7 +65,9 @@ class Task(Base):
         CheckConstraint(
             "(status = 'pending' AND attempt_count = 0) OR "
             "(status = 'cancelled' AND attempt_count = 0) OR "
-            "status IN ('running', 'succeeded', 'failed', 'needs_review') AND attempt_count > 0",
+            "status IN ('running', 'awaiting_model', 'model_ready', 'succeeded', 'failed', "
+            "'needs_review') "
+            "AND attempt_count > 0",
             name="ck_tasks_attempt_count_matches_state",
         ),
         CheckConstraint("expires_at > created_at", name="ck_tasks_expiry_after_creation"),
@@ -83,6 +86,11 @@ class Task(Base):
             "(status = 'running' AND started_at IS NOT NULL AND finished_at IS NULL "
             "AND lease_token IS NOT NULL AND lease_expires_at IS NOT NULL AND result IS NULL "
             "AND error_code IS NULL AND error_detail IS NULL) OR "
+            "(status IN ('awaiting_model', 'model_ready') AND kind = 'file.document_transform' "
+            "AND started_at IS NOT NULL AND finished_at IS NULL "
+            "AND lease_token IS NULL AND lease_expires_at IS NULL AND result IS NULL "
+            "AND error_code IS NULL AND error_detail IS NULL "
+            "AND (status = 'awaiting_model' OR dispatch_ready_at IS NOT NULL)) OR "
             "(status = 'succeeded' AND started_at IS NOT NULL AND finished_at IS NOT NULL "
             "AND lease_token IS NULL AND lease_expires_at IS NULL AND result IS NOT NULL "
             "AND error_code IS NULL AND error_detail IS NULL) OR "
@@ -131,7 +139,9 @@ class Task(Base):
             "in_place_target",
             unique=True,
             postgresql_where=text(
-                "in_place_target IS NOT NULL AND status IN ('pending', 'running', 'needs_review')"
+                "in_place_target IS NOT NULL "
+                "AND status IN ('pending', 'running', 'awaiting_model', 'model_ready', "
+                "'needs_review')"
             ),
         ),
     )

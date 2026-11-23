@@ -29,6 +29,12 @@ variable "maintenance_mode" {
   default     = false
 }
 
+variable "model_batch_location" {
+  description = "Vertex AI location for document-transform batch prediction jobs; it must support Gemini batch prediction for the configured model"
+  type        = string
+  default     = "global"
+}
+
 variable "frontend_url" {
   description = "Frontend URL (e.g. https://docs.sarj.ai)"
   type        = string

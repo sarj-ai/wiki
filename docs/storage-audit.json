@@ -305,13 +305,15 @@
         "get_admission projects only id/status through owner/kind/key and retained visibility"
       ],
       "writers": [
-        "create_or_replay, claim, begin_smart_create, record_resource, save_document_transform_checkpoint, _owned_lease_update, cancel/discard_pending, _retain_expired_executions"
+        "create_or_replay, claim, begin_smart_create, record_resource, save_document_transform_checkpoint, _owned_lease_update, cancel/discard_pending, _retain_expired_executions",
+        "PostgresModelBatchStore suspend/resume/expire_awaiting_tasks"
       ],
       "constraints": [
         "Kind/status/evidence/checkpoint/attempt and lease CHECKs from migrations 0028/0029",
         "Unique owner/kind/idempotency key",
         "Live or needs_review in-place target exclusion",
-        "Lease-token/version/expiry CAS and transactional checkpoint generation"
+        "Lease-token/version/expiry CAS and transactional checkpoint generation",
+        "awaiting_model/model_ready legal states from migration 0031"
       ],
       "lifecycle": "Checkpoint before dispatch; ambiguous expired execution becomes needs_review and reserves its target. Duplicate events, worker races and cancellation cannot clear unknown side effects. All five known production review records and their original raw evidence are retained."
     },
@@ -428,6 +430,46 @@
         "Nonnegative token generation and required token version"
       ],
       "lifecycle": "Keep one identity and token-ownership row. Session revision revokes credentials; refresh leases use owner/deadline CAS. Consolidated principal preferences merge atomically so concurrent edits do not overwrite independent values."
+    },
+    {
+      "table": "model_batch_jobs",
+      "decision": "create",
+      "runtime": "backend/app/model_batches/service.py",
+      "reason": "Durable identity and state of each Vertex AI batch prediction job, so submission, completion events and reconciliation converge without duplicate creates.",
+      "lifecycleEvidence": "backend/app/model_batches/service.py",
+      "readers": [
+        "PostgresModelBatchStore.job/stale_active_jobs/resume (active-job predicate)"
+      ],
+      "writers": [
+        "PostgresModelBatchStore._prepare_jobs/transition/ingest/fail"
+      ],
+      "constraints": [
+        "ck_model_batch_jobs_status",
+        "ck_model_batch_jobs_legal_state",
+        "status/name CAS on every transition",
+        "task FK ON DELETE CASCADE"
+      ],
+      "lifecycle": "Created at suspension; terminal at ingested/failed; deleted with its task."
+    },
+    {
+      "table": "model_calls",
+      "decision": "create",
+      "runtime": "backend/app/model_batches/service.py",
+      "reason": "Replay ledger of document model requests and their batch outcomes.",
+      "lifecycleEvidence": "backend/app/model_batches/ledger.py",
+      "readers": [
+        "PostgresModelBatchStore.load_ledger/queued_requests"
+      ],
+      "writers": [
+        "PostgresModelBatchStore._suspend/_prepare_jobs/ingest/fail"
+      ],
+      "constraints": [
+        "ck_model_calls_status",
+        "ck_model_calls_legal_state",
+        "uq_model_calls_task_request (task, request_sha256, occurrence)",
+        "encrypted request/outcome"
+      ],
+      "lifecycle": "Rows persist for the task's retention and are deleted with the task; GCS batch objects expire after 8 days."
     }
   ],
   "retainedInputContracts": {
@@ -471,15 +513,15 @@
     "reason": "Old encrypted normal copy checkpoints contain null QA metadata. Discard only those null legacy keys when decoding; keep strict rejection of non-null retired QA payloads and every other unknown field. New checkpoints omit the retired keys."
   },
   "migrationIsolation": "Acquire the unchanged global registration advisory lock, then pause the old admission table and cache writes for the copy/drop transaction. Native OAuth state is preserved byte-for-byte; only replaced proxy collections and disposable provider caches are removed.",
-  "previousMigration": "0029_task_review",
+  "previousMigration": "0030_native_oauth_invariants",
   "reviewedBase": "b4ec17bed22ba4c1d8036aefb5c478704f772ce6",
   "retiredCode": [
     "Unused generic OAuth SDK key/value and bulk API; active native state remains encrypted and permission checked.",
     "Unused alias attribution columns, foreign keys, indexes and service injection.",
     "Legacy disposable provider-cache cleanup branch and index."
   ],
-  "currentMigration": "0030_native_oauth_invariants",
-  "currentApplicationTableCount": 11,
+  "currentMigration": "0031_model_batches",
+  "currentApplicationTableCount": 13,
   "productionPreflight": {
     "credentialInvariants": {
       "access_without_expiry": 16,
@@ -1716,5 +1758,18 @@
     "allUncertainStates": "needs_review",
     "noUncertainTaskReplayed": true,
     "status": "PR696 production receipt; not evidence that candidate migration 0030 is deployed."
+  },
+  "modelBatchMigration": {
+    "revision": "0031_model_batches",
+    "applicationTablesBefore": 11,
+    "applicationTablesAfter": 13,
+    "physicalTablesAfter": 14,
+    "changes": [
+      "tasks status CHECKs admit awaiting_model and model_ready (document transforms only; no lease, started, unfinished; model_ready requires dispatch_ready_at)",
+      "uq_tasks_active_in_place_target reserves targets of awaiting tasks",
+      "new model_batch_jobs and model_calls tables with per-variant legal-state CHECKs"
+    ],
+    "dataPolicy": "No task rows are rewritten. Downgrade refuses while any task awaits a model batch.",
+    "runtimePayloads": "model_calls request/outcome are Fernet ciphertext of strict ModelRequest/ModelOutcome JSON."
   }
 }

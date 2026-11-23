@@ -1,5 +1,6 @@
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
+from datetime import datetime
 
 from cryptography.fernet import Fernet
 import httpx
@@ -60,7 +61,9 @@ class NoEnqueue(TaskEnqueuer):
     async def enqueue_smart_create(self, task_id: TaskId) -> None:
         pytest.fail("No task admission expected")
 
-    async def enqueue_document_transform(self, task_id: TaskId) -> None:
+    async def enqueue_document_transform(
+        self, task_id: TaskId, *, resumed_at: datetime | None = None
+    ) -> None:
         pytest.fail("No task admission expected")
 
 

@@ -68,6 +68,30 @@ class ConfiguredDocumentQueue(_Configuration):
 type DocumentQueueConfiguration = DisabledDocumentQueue | ConfiguredDocumentQueue
 
 
+class OnlineModelTransportConfiguration(_Configuration):
+    kind: Literal["online"] = "online"
+
+
+class BatchModelTransportConfiguration(_Configuration):
+    kind: Literal["batch"] = "batch"
+    bucket: NonEmptyStr
+    location: NonEmptyStr
+    event_url: NonEmptyStr
+
+    @field_validator("event_url")
+    @classmethod
+    def require_internal_event_target(cls, value: str) -> str:
+        if not _is_internal_task_url(value, expected_path="/internal/model-batches/events"):
+            msg = "Model batch events must target the HTTPS internal model batch endpoint"
+            raise ValueError(msg)
+        return value
+
+
+type ModelTransportConfiguration = (
+    OnlineModelTransportConfiguration | BatchModelTransportConfiguration
+)
+
+
 class DisabledNativeMcp(_Configuration):
     kind: Literal["disabled"] = "disabled"
 

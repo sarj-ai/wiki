@@ -35,6 +35,7 @@ from app.mcp.native_composition import (
 )
 from app.mcp.native_consent_router import NativeConsentSettings, create_native_consent_router
 from app.mcp.native_core import NativeOAuthCore
+from app.model_batches.router import ModelBatchesRouter
 from app.request_body import (
     MAX_MCP_REQUEST_BODY_BYTES,
     MAX_REQUEST_BODY_BYTES,
@@ -206,6 +207,7 @@ def create_app(
     application.include_router(document_transform_router)
     application.include_router(tasks_router)
     application.include_router(internal_tasks_router)
+    application.include_router(ModelBatchesRouter.build())
 
     match native_configuration:
         case EnabledNativeMcp():
