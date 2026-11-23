@@ -25,7 +25,7 @@
     "SARJ578": 1
   },
   "backend/app/document_transform/brand.py": {
-    "SARJ447": 3
+    "SARJ447": 2
   },
   "backend/app/document_transform/bullet_stage_diagnostics.py": {
     "SARJ444": 1,

@@ -22,6 +22,7 @@ from app.document_transform.schemas import (
     DocumentTransformResult,
     DriveFileSource,
     MarkdownSource,
+    OutputStrategy,
     TransformMode,
     ValidationSummary,
 )
@@ -926,13 +927,6 @@ async def test_real_postgres_expired_source_recovery_respects_execution_lease(
                 payload=payload,
             )
             assert alias.task.id == first.task.id
-            original_evidence = (
-                await session.execute(
-                    select(Task.payload, Task.checkpoint, Task.checkpoint_generation).where(
-                        Task.id == first.task.id
-                    )
-                )
-            ).one()
             await session.execute(
                 update(Task)
                 .where(Task.id == first.task.id)
@@ -1001,38 +995,6 @@ async def test_real_postgres_expired_source_recovery_respects_execution_lease(
                 admit=admit,
             )
             assert admissions == [True]
-            if state in {"boundary", "stale"}:
-                assert not replacement.created
-                assert replacement.task.id == first.task.id
-                assert replacement.task.status is TaskStatus.NEEDS_REVIEW
-                retained_evidence = (
-                    await session.execute(
-                        select(Task.payload, Task.checkpoint, Task.checkpoint_generation).where(
-                            Task.id == first.task.id
-                        )
-                    )
-                ).one()
-                assert retained_evidence == original_evidence
-                for retry_key in keys.values():
-                    replay = await service.create_or_replay(
-                        kind=TaskKind.FILE_DOCUMENT_TRANSFORM,
-                        owner_user_id=owner,
-                        idempotency_key=retry_key,
-                        payload=payload,
-                        admit=admit,
-                    )
-                    assert not replay.created
-                    assert replay.task.id == first.task.id
-                    assert replay.task.status is TaskStatus.NEEDS_REVIEW
-                assert (
-                    await session.scalar(
-                        select(func.count()).select_from(Task).where(Task.owner_user_id == owner)
-                    )
-                    == 1
-                )
-                with pytest.raises(TaskNotClaimableError):
-                    await service.claim(first.task.id, lease_duration=timedelta(minutes=1))
-                return
             assert replacement.created
             assert replacement.task.id != first.task.id
             assert (
@@ -1332,12 +1294,12 @@ async def test_smart_create_dispatch_is_durable_and_claim_owned_under_concurrenc
         await engine.dispose()
 
 
-async def test_review_with_unreadable_payload_retains_request_identity() -> None:
+async def test_new_submission_supersedes_review_but_same_key_still_replays_it() -> None:
     engine = _qa_engine()
     sessions = async_sessionmaker(engine, expire_on_commit=False)
     owner = UserId(uuid.uuid7())
     payload = _markdown_payload()
-    evidence = {"unreadable_saved_evidence": "retain verbatim"}
+    first_key = IdempotencyKey(uuid.uuid7())
     try:
         async with sessions() as session:
             session.add(
@@ -1348,30 +1310,89 @@ async def test_review_with_unreadable_payload_retains_request_identity() -> None
             original = await service.create_or_replay(
                 kind=TaskKind.FILE_DOCUMENT_TRANSFORM,
                 owner_user_id=owner,
-                idempotency_key=IdempotencyKey(uuid.uuid7()),
+                idempotency_key=first_key,
                 payload=payload,
             )
             claim = await service.claim(original.task.id, lease_duration=timedelta(minutes=1))
-            await session.execute(
-                update(Task).where(Task.id == original.task.id).values(payload=evidence)
-            )
-            await session.commit()
             await service.require_review(original.task.id, lease_token=claim.lease_token)
             replay = await service.create_or_replay(
+                kind=TaskKind.FILE_DOCUMENT_TRANSFORM,
+                owner_user_id=owner,
+                idempotency_key=first_key,
+                payload=payload,
+            )
+            assert replay.task.id == original.task.id
+            assert replay.task.status is TaskStatus.NEEDS_REVIEW
+
+            retry = await service.create_or_replay(
                 kind=TaskKind.FILE_DOCUMENT_TRANSFORM,
                 owner_user_id=owner,
                 idempotency_key=IdempotencyKey(uuid.uuid7()),
                 payload=payload,
             )
-            assert not replay.created
-            assert replay.task.id == original.task.id
-            assert replay.task.status is TaskStatus.NEEDS_REVIEW
-            assert (
-                await session.scalar(select(Task.payload).where(Task.id == original.task.id))
-                == evidence
+            assert retry.created
+            released = (
+                await session.execute(
+                    select(Task.status, Task.error_code, Task.payload).where(
+                        Task.id == original.task.id
+                    )
+                )
+            ).one()
+            assert released == (
+                TaskStatus.FAILED,
+                "external_effect_uncertain",
+                {"redacted": True},
             )
     finally:
         async with sessions() as session:
             await session.execute(delete(User).where(User.id == owner))
+            await session.commit()
+        await engine.dispose()
+
+
+async def test_in_place_review_never_locks_the_document_for_other_editors() -> None:
+    engine = _qa_engine()
+    sessions = async_sessionmaker(engine, expire_on_commit=False)
+    owners = (UserId(uuid.uuid7()), UserId(uuid.uuid7()))
+    payload = DocumentTransformRequest(
+        source=DriveFileSource(
+            kind="drive_file",
+            file_id=FileId(f"qa-review-lock-{uuid.uuid7().hex}"),
+            expected_modified_time="before",
+        ),
+        mode=TransformMode.UNSLOP,
+        output_strategy=OutputStrategy.IN_PLACE,
+    )
+    try:
+        async with sessions() as session:
+            session.add_all(
+                User(id=owner, email=f"qa-{owner}@sarj.ai", google_id=GoogleUserId(str(owner)))
+                for owner in owners
+            )
+            await session.commit()
+            service = PostgresTaskService(db=session)
+            reviewed = await service.create_or_replay(
+                kind=TaskKind.FILE_DOCUMENT_TRANSFORM,
+                owner_user_id=owners[0],
+                idempotency_key=IdempotencyKey(uuid.uuid7()),
+                payload=payload,
+            )
+            claim = await service.claim(reviewed.task.id, lease_duration=timedelta(minutes=1))
+            await service.require_review(reviewed.task.id, lease_token=claim.lease_token)
+
+            other_editor = await service.create_or_replay(
+                kind=TaskKind.FILE_DOCUMENT_TRANSFORM,
+                owner_user_id=owners[1],
+                idempotency_key=IdempotencyKey(uuid.uuid7()),
+                payload=payload,
+            )
+            assert other_editor.created
+            assert (
+                await session.scalar(select(Task.status).where(Task.id == reviewed.task.id))
+                == TaskStatus.FAILED
+            )
+    finally:
+        async with sessions() as session:
+            await session.execute(delete(User).where(User.id.in_(owners)))
             await session.commit()
         await engine.dispose()

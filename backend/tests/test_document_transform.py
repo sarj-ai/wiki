@@ -123,6 +123,7 @@ from app.files.errors import FileNotInScopeError
 from app.files.schemas import FileResponse
 from app.identifiers import DocsRevisionId, DocsSegmentId, DocsTabId, FileId, TaskId
 from app.tasks import service as task_service_module
+from tests.docs_text_support import apply_body_text_requests
 from tests.document_verification import VerificationFacts
 from tests.support import dependency
 
@@ -3412,15 +3413,7 @@ class _InPlaceGateway(_Gateway):
             revision = "revision-2"
         else:
             source = parse_google_document(self.document, title="Source")
-            replacement = next(
-                (
-                    request["insertText"]["text"]
-                    for request in requests
-                    if "insertText" in request
-                    and request["insertText"].get("location", {}).get("segmentId") is None
-                ),
-                source.blocks[0].text,
-            )
+            replacement = apply_body_text_requests(source.blocks[0].text, requests)
             self.document = _in_place_document(replacement, revision="revision-3")
             revision = "revision-3"
         self.document["revisionId"] = revision

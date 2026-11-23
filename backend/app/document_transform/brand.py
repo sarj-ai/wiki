@@ -1,8 +1,11 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, replace
+from difflib import SequenceMatcher
 import hashlib
+from itertools import accumulate
 import json
+import re
 from typing import Any
 
 from pydantic import JsonValue
@@ -199,21 +202,19 @@ def build_copy_text_mutations(
             continue
         replacement = _copy_prose_replacement(block, transformed_by_id[block.id].text)
         end_index = source_range.end_index - utf16_length(block.protected_suffix or "")
-        location: dict[str, Any] = {
-            "index": source_range.start_index,
-            "tabId": source_range.tab_id,
-        }
+        prose = (
+            block.text
+            if block.protected_suffix is None
+            else block.text.removesuffix(block.protected_suffix)
+        )
         range_value: dict[str, Any] = {
             "startIndex": source_range.start_index,
             "endIndex": end_index,
             "tabId": source_range.tab_id,
         }
         if source_range.segment_id is not None:
-            location["segmentId"] = source_range.segment_id
             range_value["segmentId"] = source_range.segment_id
-        requests.append({"deleteContentRange": {"range": range_value}})
-        if replacement:
-            requests.append({"insertText": {"location": location, "text": replacement}})
+        requests.extend(_text_edit_requests(range_value, prose=prose, replacement=replacement))
         if block.protected_suffix is not None:
             requests.append(
                 {
@@ -227,6 +228,34 @@ def build_copy_text_mutations(
                     }
                 }
             )
+    return requests
+
+
+_WORD_TOKENS = re.compile(r"\w+|\s+|[^\w\s]")
+
+
+def _text_edit_requests(
+    range_value: DocsRequest, *, prose: str, replacement: str
+) -> list[DocsRequest]:
+    # Rewrite only the changed words, last first so earlier offsets stay valid.
+    # Untouched text keeps its authored run styles (e.g. a bold list label).
+    start, end = range_value["startIndex"], range_value["endIndex"]
+    before, after = _WORD_TOKENS.findall(prose), _WORD_TOKENS.findall(replacement)
+    offsets = list(accumulate((utf16_length(token) for token in before), initial=start))
+    if offsets[-1] != end:
+        before, after, offsets = [prose], [replacement], [start, end]
+    location = {key: value for key, value in range_value.items() if key in {"tabId", "segmentId"}}
+    requests: list[DocsRequest] = []
+    for tag, first, last, inserted_first, inserted_last in reversed(
+        SequenceMatcher(None, before, after, autojunk=False).get_opcodes()
+    ):
+        if tag in {"replace", "delete"}:
+            deleted = {**range_value, "startIndex": offsets[first], "endIndex": offsets[last]}
+            requests.append({"deleteContentRange": {"range": deleted}})
+        if tag in {"replace", "insert"}:
+            text = "".join(after[inserted_first:inserted_last])
+            at = {**location, "index": offsets[first]}
+            requests.append({"insertText": {"location": at, "text": text}})
     return requests
 
 

@@ -3605,12 +3605,6 @@ def _native_list_text_style_inventory(value: JsonValue) -> list[JsonValue]:
     return inventory
 
 
-@dataclass(frozen=True, slots=True)
-class _NativeListRun:
-    style: dict[str, JsonValue]
-    text: str
-
-
 def _native_list_paragraph_inventory(paragraph: dict[str, JsonValue]) -> list[JsonValue]:
     elements = paragraph.get("elements")
     if not isinstance(elements, list):
@@ -3618,20 +3612,10 @@ def _native_list_paragraph_inventory(paragraph: dict[str, JsonValue]) -> list[Js
     collected = _native_list_runs(elements)
     if collected is None:
         return [{"malformed": True}]
-    visible, terminal_count = collected
-    styles: list[JsonValue] = [item.style for item in visible]
-    visible_styles: list[JsonValue] = (
-        styles
-        if len(styles) <= 1
-        else [
-            {
-                "style": item.style,
-                "textSha256": hashlib.sha256(item.text.encode()).hexdigest(),
-            }
-            for item in visible
-        ]
-    )
+    visible_styles, terminal_count = collected
     payload: JsonValue = {
+        # Text is verified separately and may be reworded; the item's emphasis
+        # pattern (e.g. a bold label, then plain text) must survive exactly.
         "visible": visible_styles,
         # Docs may canonicalize this invisible provider-owned newline
         # when the following paragraph is styled. Preserve its exact
@@ -3641,20 +3625,17 @@ def _native_list_paragraph_inventory(paragraph: dict[str, JsonValue]) -> list[Js
     return [payload]
 
 
-def _native_list_runs(elements: list[JsonValue]) -> tuple[list[_NativeListRun], int] | None:
-    visible: list[_NativeListRun] = []
+def _native_list_runs(elements: list[JsonValue]) -> tuple[list[JsonValue], int] | None:
+    # Docs may split or join identically styled runs, so merge them.
+    visible: list[JsonValue] = []
     terminal_count = 0
     for element in elements:
         parsed = _native_list_run(element)
         if parsed is None:
             return None
         content, style = parsed
-        visible_text = content.removesuffix("\n")
-        if visible_text:
-            if visible and visible[-1].style == style:
-                visible[-1] = replace(visible[-1], text=visible[-1].text + visible_text)
-            else:
-                visible.append(_NativeListRun(style, visible_text))
+        if content.removesuffix("\n") and (not visible or visible[-1] != style):
+            visible.append(style)
         if content.endswith("\n"):
             terminal_count += 1
     return visible, terminal_count

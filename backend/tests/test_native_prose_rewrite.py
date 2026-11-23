@@ -10,6 +10,7 @@ import pytest
 
 from app.document_transform import google_gateway as native_gateway
 from app.document_transform.brand import (
+    DocsRequest,
     SarjBrandProfile,
     build_copy_mutations,
     build_copy_text_mutations,
@@ -25,6 +26,7 @@ from app.document_transform.native_font_proof import (
 from app.document_transform.safety import validate_patches
 from app.document_transform.schemas import DocumentOutput, TextPatch, TransformPhase
 from app.identifiers import DocsRevisionId, DocsTabId, FileId
+from tests.docs_text_support import apply_body_text_requests
 from tests.support import dependency
 
 
@@ -104,10 +106,11 @@ def test_linked_paragraph_exposes_prose_but_locks_citation() -> None:
     )
     assert decision.accepted == {block.id: replacement}
     requests = build_copy_text_mutations(parsed, parsed.replace_blocks(decision.accepted))
-    assert requests[0]["deleteContentRange"]["range"]["endIndex"] == 1 + utf16_length(PREFIX)
-    assert requests[1]["insertText"]["text"] == replacement.removesuffix(SUFFIX)
-    assert requests[2]["updateTextStyle"]["textStyle"] == {"bold": False}
-    assert "link" in requests[2]["updateTextStyle"]["fields"].split(",")
+    *edits, restyle = requests
+    assert _max_edit_index(edits) <= 1 + utf16_length(PREFIX)
+    assert apply_body_text_requests(block.text, edits) == replacement
+    assert restyle["updateTextStyle"]["textStyle"] == {"bold": False}
+    assert "link" in restyle["updateTextStyle"]["fields"].split(",")
 
 
 @pytest.mark.parametrize("replacement", ["The bird can sing. Changed citation", SUFFIX])
@@ -207,9 +210,17 @@ def test_native_link_write_ranges_use_utf16_before_astral_characters() -> None:
     changed = original.replace_blocks(
         {original.blocks[0].id: "A 🐦 bird can sing from scrub. " + SUFFIX}
     )
-    requests = build_copy_text_mutations(original, changed)
-    assert requests[0]["deleteContentRange"]["range"]["endIndex"] == 1 + utf16_length(
-        original.blocks[0].text.removesuffix(SUFFIX)
+    *edits, _restyle = build_copy_text_mutations(original, changed)
+    assert _max_edit_index(edits) <= 1 + utf16_length(original.blocks[0].text.removesuffix(SUFFIX))
+    assert apply_body_text_requests(original.blocks[0].text, edits) == changed.blocks[0].text
+
+
+def _max_edit_index(requests: list[DocsRequest]) -> int:
+    return max(
+        request["deleteContentRange"]["range"]["endIndex"]
+        if "deleteContentRange" in request
+        else request["insertText"]["location"]["index"]
+        for request in requests
     )
 
 
