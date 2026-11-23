@@ -16,4 +16,34 @@ describe("private API header precedence", () => {
       value: "private, no-store",
     });
   });
+
+  it("denies framing pages but lets the viewer frame API documents", async () => {
+    const rules = (await nextConfig.headers?.()) ?? [];
+    const headersFor = (source: string) =>
+      Object.fromEntries(
+        rules
+          .filter((rule) => rule.source === source)
+          .flatMap((rule) => rule.headers)
+          .map(({ key, value }) => [key, value]),
+      );
+    expect(
+      headersFor("/((?!_next/static|_next/image|brand/).*)"),
+    ).toMatchObject({
+      "Content-Security-Policy": expect.stringContaining(
+        "frame-ancestors 'none'",
+      ),
+      "Cross-Origin-Opener-Policy": "same-origin",
+      "X-Frame-Options": "DENY",
+    });
+    expect(headersFor("/api/:path*")).toMatchObject({
+      "Content-Security-Policy": expect.stringContaining(
+        "frame-ancestors 'self'",
+      ),
+      "X-Frame-Options": "SAMEORIGIN",
+    });
+    for (const source of ["/", "/login", "/mcp/:path*"])
+      expect(headersFor(source)["Cross-Origin-Opener-Policy"]).toBe(
+        "unsafe-none",
+      );
+  });
 });

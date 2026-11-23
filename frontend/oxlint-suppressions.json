@@ -1,8 +1,5 @@
 {
   "next.config.ts": {
-    "@sarj/prefer-immutable-module-constant": {
-      "count": 1
-    },
     "@sarj/sole-export-matches-filename": {
       "count": 1
     }

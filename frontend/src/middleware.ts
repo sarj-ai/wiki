@@ -24,6 +24,14 @@ const PREVIEW_HTML = `<!doctype html>
 <body>Sarj Wiki</body>
 </html>`;
 
+const RESPONSE_HEADERS = {
+  "cache-control": "private, no-store",
+  "content-security-policy": "default-src 'none'; frame-ancestors 'none'",
+  "referrer-policy": "strict-origin-when-cross-origin",
+  "x-content-type-options": "nosniff",
+  "x-frame-options": "DENY",
+} as const;
+
 export default function middleware(request: NextRequest) {
   if (
     request.cookies.has("access_token") ||
@@ -38,29 +46,31 @@ export default function middleware(request: NextRequest) {
     demoHref !== null &&
     (request.method === "GET" || request.method === "HEAD")
   ) {
-    const response = NextResponse.redirect(new URL(demoHref, request.url));
-    response.headers.set("cache-control", "private, no-store");
-    return response;
+    return redirect(new URL(demoHref, request.url));
   }
   if (UNFURL_CRAWLERS.test(request.headers.get("user-agent") ?? "")) {
     return new NextResponse(PREVIEW_HTML, {
       headers: {
-        "cache-control": "private, no-store",
+        ...RESPONSE_HEADERS,
         "content-security-policy":
-          "default-src 'none'; img-src https://wiki.sarj.ai",
+          "default-src 'none'; img-src https://wiki.sarj.ai; frame-ancestors 'none'",
         "content-type": "text/html; charset=utf-8",
-        "x-content-type-options": "nosniff",
       },
       status: 200,
     });
   }
   const url = request.nextUrl.clone();
-  const redirect = url.pathname + url.search;
+  const target = url.pathname + url.search;
   url.pathname = "/login";
   url.search = "";
-  if (redirect !== "/") url.searchParams.set("redirect", redirect);
+  if (target !== "/") url.searchParams.set("redirect", target);
+  return redirect(url);
+}
+
+function redirect(url: URL): NextResponse {
   const response = NextResponse.redirect(url);
-  response.headers.set("cache-control", "private, no-store");
+  for (const [name, value] of Object.entries(RESPONSE_HEADERS))
+    response.headers.set(name, value);
   return response;
 }
 

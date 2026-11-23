@@ -96,6 +96,20 @@ describe("private Wiki link previews", () => {
     expect(response.headers.get("cache-control")).toBe("private, no-store");
   });
 
+  it("sends browser security headers on redirects without severing popups", () => {
+    const response = preview("/", "Mozilla/5.0");
+    expect(response.status).toBe(307);
+    expect(response.headers.get("content-security-policy")).toBe(
+      "default-src 'none'; frame-ancestors 'none'",
+    );
+    expect(response.headers.get("x-frame-options")).toBe("DENY");
+    expect(response.headers.get("referrer-policy")).toBe(
+      "strict-origin-when-cross-origin",
+    );
+    expect(response.headers.get("x-content-type-options")).toBe("nosniff");
+    expect(response.headers.get("cross-origin-opener-policy")).toBeNull();
+  });
+
   it("prevents browser caching of authenticated document and RSC responses", () => {
     const request = new NextRequest("https://wiki.sarj.ai/d/private");
     request.cookies.set("access_token", "authenticated");
