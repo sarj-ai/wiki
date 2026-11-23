@@ -210,7 +210,7 @@ def _transform_success_result(task_id: TaskId, mode: TransformMode) -> DocumentT
 async def test_in_place_admission_reserves_target_before_queueing() -> None:
     row = _task(request_hash="0" * 64)
     row.kind = TaskKind.FILE_DOCUMENT_TRANSFORM
-    session = _Session(True, None, None, None, (0, 0), row)
+    session = _Session(True, None, None, None, (0, 0), None, row)
 
     reservation = await _service(session).create_or_replay(
         kind=TaskKind.FILE_DOCUMENT_TRANSFORM,
@@ -229,7 +229,7 @@ async def test_in_place_admission_reserves_target_before_queueing() -> None:
 async def test_admission_finishes_before_dispatch_intent_is_committed() -> None:
     row = _task(request_hash="0" * 64)
     row.kind = TaskKind.FILE_DOCUMENT_TRANSFORM
-    session = _Session(True, None, None, None, (0, 0), row)
+    session = _Session(True, None, None, None, (0, 0), None, row)
 
     async def admit() -> None:
         assert session.commits == 0
@@ -292,7 +292,7 @@ async def test_admitted_replay_does_not_revalidate_changed_provider_state() -> N
 
 async def test_distinct_active_in_place_task_for_same_target_is_rejected() -> None:
     row = _task(request_hash="0" * 64)
-    session = _Session(True, None, None, None, (0, 0), None, None, None)
+    session = _Session(True, None, None, None, (0, 0), None, None, None, None)
 
     with pytest.raises(TaskTargetBusyError):
         await _service(session).create_or_replay(
@@ -643,7 +643,7 @@ async def test_terminal_changed_during_output_admission_creates_replacement(
     terminal.result = _transform_success_result(terminal.id, payload.mode).model_dump(mode="json")
     replacement = _task(request_hash=request_hash)
     replacement.kind = TaskKind.FILE_DOCUMENT_TRANSFORM
-    session = _Session(True, None, None, terminal, None, (0, 0), replacement)
+    session = _Session(True, None, None, terminal, None, (0, 0), None, replacement)
     new_admissions: list[bool] = []
 
     async def admit_terminal_replay(_task: TaskRead) -> bool:
@@ -690,7 +690,7 @@ async def test_missing_terminal_output_creates_exactly_one_replacement() -> None
     terminal.result = _transform_success_result(terminal.id, payload.mode).model_dump(mode="json")
     replacement = _task(request_hash=request_hash)
     replacement.kind = TaskKind.FILE_DOCUMENT_TRANSFORM
-    session = _Session(True, None, None, terminal, (0, 0), replacement)
+    session = _Session(True, None, None, terminal, (0, 0), None, replacement)
     output_checks: list[TaskId] = []
     new_admissions: list[bool] = []
 
@@ -786,7 +786,7 @@ async def test_markdown_task_persists_ciphertext_and_hash_without_plaintext() ->
     serialized = task_service_module._serialize(payload)
     row = _task(request_hash=task_service_module._request_hash(serialized))
     row.kind = TaskKind.FILE_DOCUMENT_TRANSFORM
-    session = _Session(True, None, None, None, (0, 0), row)
+    session = _Session(True, None, None, None, (0, 0), None, row)
 
     reservation = await _service(session).create_or_replay(
         kind=TaskKind.FILE_DOCUMENT_TRANSFORM,
@@ -915,7 +915,9 @@ async def test_expired_transform_key_retries_identical_insert_once(
 ) -> None:
     row = _task(request_hash="0" * 64)
     row.kind = TaskKind.FILE_DOCUMENT_TRANSFORM
-    session = _Session(True, None, None, None, (0, 0), None, None, row if insert_succeeds else None)
+    session = _Session(
+        True, None, None, None, (0, 0), None, None, None, row if insert_succeeds else None
+    )
     admissions: list[bool] = []
 
     async def admit() -> None:
@@ -942,8 +944,8 @@ async def test_expired_transform_key_retries_identical_insert_once(
         assert session.commits == 0
         assert session.rollbacks == 1
     assert admissions == [True]
-    assert len(session.statements) == 8
-    assert session.statements[5] is session.statements[7]
+    assert len(session.statements) == 9
+    assert session.statements[6] is session.statements[8]
 
 
 async def test_worker_load_decrypts_markdown_and_accepts_legacy_payloads() -> None:

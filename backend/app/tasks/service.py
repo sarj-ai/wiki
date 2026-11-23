@@ -551,7 +551,34 @@ class PostgresTaskService(TaskService):
             await self._db.rollback()
             raise
         await self._check_document_transform_limits(owner_user_id, payload)
+        await self._release_reviews(owner_user_id, payload, request_hash)
         return None
+
+    async def _release_reviews(
+        self, owner_user_id: uuid.UUID, payload: DocumentTransformRequest, request_hash: str
+    ) -> None:
+        # A review task is terminal: its worker is gone and every Docs write is
+        # revision-guarded, so it cannot race a fresh run. An authorized new
+        # submission is the user's acknowledgement; release the review's slot
+        # (including another owner's in-place lock on this document) so the
+        # document never stays locked waiting for a review nobody can record.
+        superseded = and_(
+            Task.owner_user_id == owner_user_id,
+            _same_transform_source(payload, request_hash),
+        )
+        if payload.output_strategy is OutputStrategy.IN_PLACE and isinstance(
+            payload.source, DriveFileSource
+        ):
+            superseded = or_(superseded, Task.in_place_target == payload.source.file_id)
+        await self._db.execute(
+            update(Task)
+            .where(
+                Task.kind == TaskKind.FILE_DOCUMENT_TRANSFORM,
+                Task.status == TaskStatus.NEEDS_REVIEW,
+                superseded,
+            )
+            .values(status=TaskStatus.FAILED, payload=_terminal_payload(), updated_at=func.now())
+        )
 
     async def _lock_document_transform_owner(
         self,
@@ -607,21 +634,6 @@ class PostgresTaskService(TaskService):
         payload: DocumentTransformRequest,
         request_hash: str,
     ) -> Row[Task, str] | None:
-        source = payload.source
-        source_predicate: ColumnElement[bool] = Task.request_hash == request_hash
-        match source:
-            case DriveFileSource():
-                source_predicate = or_(
-                    source_predicate,
-                    and_(
-                        Task.payload["source"]["kind"].astext == "drive_file",
-                        Task.payload["source"]["file_id"].astext == source.file_id,
-                    ),
-                )
-            case MarkdownSource():
-                pass
-            case _:
-                assert_never(source)
         return (
             await self._db.execute(
                 select(Task, _transform_slot_phase(func.now()).label("slot_phase"))
@@ -629,16 +641,8 @@ class PostgresTaskService(TaskService):
                 .where(
                     Task.owner_user_id == owner_user_id,
                     Task.kind == TaskKind.FILE_DOCUMENT_TRANSFORM,
-                    Task.status.in_(
-                        (
-                            TaskStatus.PENDING,
-                            TaskStatus.RUNNING,
-                            TaskStatus.AWAITING_MODEL,
-                            TaskStatus.MODEL_READY,
-                            TaskStatus.NEEDS_REVIEW,
-                        )
-                    ),
-                    source_predicate,
+                    Task.status.in_(_ACTIVE_TRANSFORM_STATUSES),
+                    _same_transform_source(payload, request_hash),
                 )
                 .order_by(Task.created_at, Task.id)
                 .limit(1)
@@ -668,15 +672,7 @@ class PostgresTaskService(TaskService):
                 .options(_REPLAY_TASK_LOAD)
                 .where(
                     Task.id == active_row[0].id,
-                    Task.status.in_(
-                        (
-                            TaskStatus.PENDING,
-                            TaskStatus.RUNNING,
-                            TaskStatus.AWAITING_MODEL,
-                            TaskStatus.MODEL_READY,
-                            TaskStatus.NEEDS_REVIEW,
-                        )
-                    ),
+                    Task.status.in_(_ACTIVE_TRANSFORM_STATUSES),
                 )
                 .with_for_update()
             )
@@ -685,31 +681,26 @@ class PostgresTaskService(TaskService):
             return None
         phase = _TransformSlotPhase(refreshed[1])
         match phase:
-            case _TransformSlotPhase.EXPIRED_PENDING:
+            case _TransformSlotPhase.EXPIRED_PENDING | _TransformSlotPhase.REVIEW:
                 return None
             case _TransformSlotPhase.RETAINED_LEASE:
                 await self._db.rollback()
                 raise TaskTargetBusyError
             case _TransformSlotPhase.ABANDONED:
-                retained = (
-                    await self._db.execute(
-                        update(Task)
-                        .where(Task.id == refreshed[0].id)
-                        .values(**_review_values(func.clock_timestamp()))
-                        .returning(Task)
-                        .options(_REPLAY_TASK_LOAD)
-                        .execution_options(populate_existing=True)
-                    )
-                ).scalar_one()
-            case _TransformSlotPhase.LIVE | _TransformSlotPhase.REVIEW:
+                # Record the uncertain effect; this authorized submission then
+                # supersedes it like any other review (see _release_reviews).
+                await self._db.execute(
+                    update(Task)
+                    .where(Task.id == refreshed[0].id)
+                    .values(**_review_values(func.clock_timestamp()))
+                )
+                return None
+            case _TransformSlotPhase.LIVE:
                 retained = refreshed[0]
             case _:
                 assert_never(phase)
         if retained.request_hash != request_hash:
-            if phase is _TransformSlotPhase.ABANDONED:
-                await self._db.commit()
-            else:
-                await self._db.rollback()
+            await self._db.rollback()
             raise TaskTargetBusyError
         if retained.idempotency_key != idempotency_key:
             await self._bind_replay_key(
@@ -1745,6 +1736,33 @@ def _checkpoint_requires_review(raw: _TaskJsonObject) -> bool:
         | PlannedPresentationCheckpoint
         | ModelPlanningCheckpoint,
     )
+
+
+_ACTIVE_TRANSFORM_STATUSES = (
+    TaskStatus.PENDING,
+    TaskStatus.RUNNING,
+    TaskStatus.AWAITING_MODEL,
+    TaskStatus.MODEL_READY,
+)
+
+
+def _same_transform_source(
+    payload: DocumentTransformRequest, request_hash: str
+) -> ColumnElement[bool]:
+    source = payload.source
+    match source:
+        case DriveFileSource():
+            return or_(
+                Task.request_hash == request_hash,
+                and_(
+                    Task.payload["source"]["kind"].astext == "drive_file",
+                    Task.payload["source"]["file_id"].astext == source.file_id,
+                ),
+            )
+        case MarkdownSource():
+            return Task.request_hash == request_hash
+        case _:
+            assert_never(source)
 
 
 def _transform_slot_phase(now: ColumnElement[datetime]) -> ColumnElement[str]:
