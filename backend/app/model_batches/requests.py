@@ -26,6 +26,7 @@ _SUPPORTED_CONFIG_FIELDS = frozenset(
     }
 )
 _CALL_LABEL = "wiki_call"
+_DEFINITIONS_PREFIX = "#/$defs/"
 # One JSONL line of Vertex AI batch prediction input or output (open provider shape).
 type VertexBatchLine = dict[str, JsonValue]
 
@@ -61,7 +62,7 @@ class ModelRequest(BaseModel):
     def vertex_batch_line(self, call_id: ModelCallId) -> VertexBatchLine:
         generation_config: dict[str, JsonValue] = {
             "responseMimeType": "application/json",
-            "responseJsonSchema": self.response_json_schema,
+            "responseJsonSchema": _inline_schema_refs(self.response_json_schema),
             "maxOutputTokens": self.max_output_tokens,
         }
         if self.thinking_level is not None:
@@ -115,6 +116,46 @@ def model_request(
         },
         strict=False,
     )
+
+
+# Vertex imports batch JSONL through BigQuery, which rejects "$" in field
+# names, so "$ref"/"$defs" must be resolved before a schema enters a line.
+def _inline_schema_refs(schema: dict[str, JsonValue]) -> dict[str, JsonValue]:
+    definitions = schema.get("$defs", {})
+    if not isinstance(definitions, dict):
+        msg = "JSON schema $defs must be an object"
+        raise TypeError(msg)
+
+    def resolve(node: JsonValue, seen: frozenset[str]) -> JsonValue:
+        match node:
+            case dict():
+                resolved = {
+                    key: resolve(value, seen)
+                    for key, value in node.items()
+                    if key not in {"$defs", "$ref"}
+                }
+                ref = node.get("$ref")
+                if ref is None:
+                    return resolved
+                name = str(ref).removeprefix(_DEFINITIONS_PREFIX)
+                target = definitions.get(name)
+                if name in seen or not isinstance(target, dict):
+                    msg = f"Cannot inline JSON schema reference {ref}"
+                    raise ValueError(msg)
+                return {**_as_object(resolve(target, seen | {name})), **resolved}
+            case list():
+                return [resolve(item, seen) for item in node]
+            case _:
+                return node
+
+    return _as_object(resolve(schema, frozenset()))
+
+
+def _as_object(node: JsonValue) -> dict[str, JsonValue]:
+    if not isinstance(node, dict):
+        msg = "JSON schema node must be an object"
+        raise TypeError(msg)
+    return node
 
 
 def batch_line_call_id(line: VertexBatchLine) -> str | None:
