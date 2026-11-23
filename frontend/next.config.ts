@@ -35,7 +35,7 @@ const CSP_DIRECTIVES = [
   "font-src 'self' data: https://*.gstatic.com",
   `connect-src 'self' ${BACKEND_API_ORIGIN} ${GOOGLE_CONNECT_SRC}`,
   `frame-src 'self' ${BACKEND_API_ORIGIN} ${GOOGLE_FRAME_SRC}`,
-  "frame-ancestors 'self'",
+  "frame-ancestors 'none'",
   "base-uri 'self'",
   "form-action 'self' https://accounts.google.com",
   "object-src 'none'",
@@ -47,14 +47,31 @@ const SECURITY_HEADERS = [
     key: "Strict-Transport-Security",
     value: "max-age=31536000; includeSubDomains; preload",
   },
-  { key: "X-Frame-Options", value: "SAMEORIGIN" },
+  { key: "X-Frame-Options", value: "DENY" },
   { key: "X-Content-Type-Options", value: "nosniff" },
   { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
   {
     key: "Permissions-Policy",
     value: "camera=(), microphone=(), geolocation=(), payment=(), usb=()",
   },
-];
+  { key: "Cross-Origin-Opener-Policy", value: "same-origin" },
+] as const;
+
+const OAUTH_POPUP_OPENER = {
+  key: "Cross-Origin-Opener-Policy",
+  value: "unsafe-none",
+} as const;
+
+const SAME_ORIGIN_FRAME_HEADERS = [
+  {
+    key: "Content-Security-Policy",
+    value: CSP_DIRECTIVES.replace(
+      "frame-ancestors 'none'",
+      "frame-ancestors 'self'",
+    ),
+  },
+  { key: "X-Frame-Options", value: "SAMEORIGIN" },
+] as const;
 
 const NEXT_CONFIG: NextConfig = {
   experimental: {
@@ -66,8 +83,8 @@ const NEXT_CONFIG: NextConfig = {
       "@dnd-kit/utilities",
     ],
   },
-  headers: () =>
-    Promise.resolve([
+  headers: async () =>
+    await Promise.resolve([
       {
         headers: [
           {
@@ -108,29 +125,27 @@ const NEXT_CONFIG: NextConfig = {
         source: "/health",
       },
       {
-        headers: [{ key: "Cache-Control", value: "private, no-store" }],
+        headers: [
+          { key: "Cache-Control", value: "private, no-store" },
+          ...SAME_ORIGIN_FRAME_HEADERS,
+        ],
         source: "/api/:path*",
       },
+      ...["/", "/login"].map((source) => ({
+        headers: [OAUTH_POPUP_OPENER],
+        source,
+      })),
       {
         headers: [
           ...SECURITY_HEADERS.filter(
             (header) =>
-              ![
-                "Content-Security-Policy",
-                "Referrer-Policy",
-                "X-Frame-Options",
-              ].includes(header.key),
+              !["Cross-Origin-Opener-Policy", "Referrer-Policy"].includes(
+                header.key,
+              ),
           ),
           { key: "Cache-Control", value: "private, no-store" },
           { key: "Referrer-Policy", value: "no-referrer" },
-          { key: "X-Frame-Options", value: "DENY" },
-          {
-            key: "Content-Security-Policy",
-            value: CSP_DIRECTIVES.replace(
-              "frame-ancestors 'self'",
-              "frame-ancestors 'none'",
-            ),
-          },
+          OAUTH_POPUP_OPENER,
         ],
         source: "/mcp/:path*",
       },
