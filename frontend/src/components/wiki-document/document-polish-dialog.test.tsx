@@ -2623,22 +2623,52 @@ describe("DocumentPolishDialog", () => {
     await vi.waitFor(() => {
       expect(DOCUMENT_TRANSFORM_API.create).toHaveBeenCalledWith(
         {
-          content: "# Launch\n\nA concise plan.",
           destinationFolderId: "folder-1",
-          kind: "markdown",
+          kind: "uploaded_markdown",
           name: "Untitled document",
+          uploadId: "77777777-7777-4777-8777-777777777777",
         },
         "format",
         expect.any(String),
         "copy",
       );
     });
+    const [uploaded] = vi.mocked(DOCUMENT_TRANSFORM_API.uploadMarkdown).mock
+      .calls[0] ?? [new File([], "")];
+    await expect(uploaded.text()).resolves.toBe("# Launch\n\nA concise plan.");
     await vi.waitFor(() => {
       expect(document.body).toHaveTextContent(
         "Importing and checking the new document…",
       );
     });
     expect(document.body).not.toHaveTextContent("Keep this window open");
+  });
+
+  it("does not create a task when the pasted Markdown upload fails", async () => {
+    vi.mocked(DOCUMENT_TRANSFORM_API.uploadMarkdown).mockRejectedValue(
+      new Error("Markdown upload failed. Choose the file again to retry."),
+    );
+    const create = vi.spyOn(DOCUMENT_TRANSFORM_API, "create");
+    renderDialog(root, {
+      initialDestination: {
+        driveId: "drive-1",
+        driveName: "Current workspace",
+        folderId: "folder-1",
+        folderPath: ["Current folder"],
+      },
+      kind: "markdown",
+    });
+
+    typeTextarea("# Launch\n\nA concise plan.");
+    await vi.waitFor(() =>
+      expect(findButtonNow("Import Google Doc")).toBeEnabled(),
+    );
+    clickButton(findButtonNow("Import Google Doc"));
+
+    await vi.waitFor(() =>
+      expect(document.body).toHaveTextContent("Markdown upload failed"),
+    );
+    expect(create).not.toHaveBeenCalled();
   });
 
   it("loads dropped UTF-8 Markdown and derives the document name", async () => {

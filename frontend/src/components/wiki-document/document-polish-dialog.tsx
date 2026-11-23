@@ -551,6 +551,33 @@ export function DocumentPolishDialog({
         finishSubmission();
         return;
       }
+    } else if (transformSource.kind === "markdown") {
+      try {
+        const uploadId = await DOCUMENT_TRANSFORM_API.uploadMarkdown(
+          new File([transformSource.content], `${transformSource.name}.md`, {
+            type: "text/markdown",
+          }),
+        );
+        controller.signal.throwIfAborted();
+        setUploadedMarkdownId(uploadId);
+        transformSource = {
+          destinationFolderId: transformSource.destinationFolderId,
+          kind: "uploaded_markdown",
+          name: transformSource.name,
+          uploadId,
+        };
+      } catch (error: unknown) {
+        if (
+          !(error instanceof DOMException && error.name === "AbortError") &&
+          isCurrent()
+        ) {
+          const message = errorMessage(error, "Couldn’t upload the Markdown");
+          sendPolish({ type: "retryable", message });
+          toast.error(message);
+        }
+        finishSubmission();
+        return;
+      }
     }
     if (!isCurrent()) {
       finishSubmission();
