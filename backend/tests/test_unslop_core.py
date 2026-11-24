@@ -5,11 +5,36 @@ from dataclasses import replace
 import pytest
 
 from app.document_transform.ir import parse_markdown
+from app.document_transform.safety import validate_patches
+from app.document_transform.schemas import TextPatch, TransformPhase
 from app.document_transform.unslop import (
     deterministic_unslop_replacement,
     model_editable_blocks,
     scan_unslop_candidates,
 )
+
+
+def test_authored_title_survives_both_fixed_deletions_and_model_patches() -> None:
+    document = parse_markdown(
+        "\n# Furthermore, we approved the plan.\n\n# Furthermore, we approved the date.",
+        title="File name",
+    )
+    title, section = document.blocks[1], document.blocks[3]
+    assert model_editable_blocks(document) == (section,)
+    assert {candidate.block_id for candidate in scan_unslop_candidates(document)} == {section.id}
+    patches = [
+        TextPatch(
+            block_id=block.id,
+            expected_sha256=block.sha256,
+            replacement=block.text.removeprefix("Furthermore, ").capitalize(),
+        )
+        for block in (title, section)
+    ]
+    decision = validate_patches(
+        document, patches, phase=TransformPhase.UNSLOP, aggressive_unslop=True
+    )
+    assert decision.accepted == {section.id: "We approved the date."}
+    assert [f.code for f in decision.findings] == ["protected_block"]
 
 
 @pytest.mark.parametrize(

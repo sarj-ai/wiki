@@ -7,6 +7,7 @@ from zipfile import ZipFile
 
 from defusedxml.ElementTree import fromstring
 from docx import Document as WordDocument
+from docx.enum.text import WD_ALIGN_PARAGRAPH
 from markdown_it import MarkdownIt
 import pytest
 
@@ -99,6 +100,7 @@ def test_branded_fence_uses_syntax_colors_without_changing_imported_text() -> No
     assert paragraph.text == code.removesuffix("\n")
     assert paragraph.style is not None
     assert paragraph.style.name == "Sarj Code"
+    assert paragraph.alignment is WD_ALIGN_PARAGRAPH.LEFT
     assert all(run.font.name == "Courier New" for run in paragraph.runs)
     colors = {str(run.font.color.rgb) for run in paragraph.runs}
     assert {"6D28D9", "006D77", "62616C"} <= colors
@@ -106,6 +108,31 @@ def test_branded_fence_uses_syntax_colors_without_changing_imported_text() -> No
     expected = markdown_import_manifest(source, title="Code", branded=True)
     assert expected.blocks[-1].text == paragraph.text
     assert len(document.paragraphs) == 2  # Title and code; no added language label.
+
+
+@pytest.mark.parametrize(
+    ("markdown", "expected"),
+    [
+        ("# Weekend\n\n# Friday\n\nWalk.\n\n# Saturday", [1, 2, 2]),
+        ("# Weekend\n\n## Friday\n\nWalk.\n\n# Appendix", [1, 2, 1]),
+        ("Preface.\n\n# Friday\n\nWalk.\n\n# Saturday", [1, 1]),
+    ],
+)
+def test_branded_import_nests_only_a_flat_outline_under_an_authored_title(
+    markdown: str, expected: list[int]
+) -> None:
+    manifest = markdown_import_manifest(markdown, title="Trip", branded=True)
+    assert [b.level for b in manifest.blocks if b.kind == "heading"] == expected
+    doc = WordDocument(BytesIO(render_markdown_docx(markdown, title="Trip")))
+    assert [
+        name
+        for p in doc.paragraphs
+        if p.style and (name := p.style.name) and name.startswith("Heading ")
+    ] == [f"Heading {level}" for level in expected]
+    before = markdown_import_manifest(markdown, title="Trip", branded=False)
+    assert [b.level for b in before.blocks if b.kind == "heading"] == [
+        len(line.split()[0]) for line in markdown.splitlines() if line.startswith("#")
+    ]
 
 
 def test_unbranded_fence_remains_plain_before_rendering() -> None:

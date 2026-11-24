@@ -6,7 +6,7 @@ import json
 import re
 
 from app.document_transform.inline_code import INLINE_CODE_POLICY_VERSION, mask_inline_code
-from app.document_transform.ir import BlockKind, DocumentIR, TextBlock
+from app.document_transform.ir import BlockKind, DocumentIR, TextBlock, authored_title_ids
 from app.document_transform.limits import MIN_MODEL_PROSE_WORDS
 from app.document_transform.quantity_notation import (
     UNIT_ANNOTATION_POLICY_VERSION,
@@ -21,7 +21,7 @@ from app.document_transform.quotations import (
 
 UNSLOP_UPSTREAM_COMMIT = "d81f5196167ded24f46fced04958c0c12d681798"
 UNSLOP_UPSTREAM_VERSION = "2.3.0"
-UNSLOP_POLICY_VERSION = "sarj-concise-v50"
+UNSLOP_POLICY_VERSION = "sarj-concise-v52"
 MAX_EDITORIAL_PASSES = 100
 MIN_CONCISION_PROSE_WORDS = 40
 CONCISION_WORD_NUMERATOR = 2
@@ -847,9 +847,11 @@ def without_editorial_framing(text: str, *, framing_source: str | None = None) -
 
 
 def model_editable_blocks(document: DocumentIR) -> tuple[TextBlock, ...]:
-    quoted = quoted_block_ids(document)
+    protected = quoted_block_ids(document) | authored_title_ids(document)
     return tuple(
-        block for block in document.blocks if block.id not in quoted and _is_model_editable(block)
+        block
+        for block in document.blocks
+        if block.id not in protected and _is_model_editable(block)
     )
 
 
@@ -961,11 +963,11 @@ def _has_model_rewrite_scope(block: TextBlock) -> bool:
 
 def scan_unslop_candidates(document: DocumentIR) -> tuple[UnslopCandidate, ...]:
     candidates: list[UnslopCandidate] = []
-    quoted = quoted_block_ids(document)
+    protected = quoted_block_ids(document) | authored_title_ids(document)
     for block in document.blocks:
         if (
             len(block.text) > MAX_MODEL_EDITABLE_BLOCK_CHARS
-            or block.id in quoted
+            or block.id in protected
             or not block.editable
             or block.kind
             in {

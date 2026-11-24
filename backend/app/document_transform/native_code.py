@@ -82,12 +82,13 @@ class NativeCodeStylePlan:
                     "updateParagraphStyle": {
                         "range": _range(item, item.target_start, item.target_end),
                         "paragraphStyle": {
+                            "alignment": "START",
                             "keepLinesTogether": True,
                             "shading": {
                                 "backgroundColor": code_color(CURRENT_BRAND_MANIFEST.colors.subtle)
                             },
                         },
-                        "fields": "shading.backgroundColor,keepLinesTogether",
+                        "fields": "shading.backgroundColor,keepLinesTogether,alignment",
                     }
                 }
             )
@@ -112,7 +113,7 @@ def plan_native_code_styles(
     for group in native_code_groups(raw):
         planned.extend(_plan_group(group, blocks, original, transformed))
     return NativeCodeStylePlan(
-        f"native-code-v2/pygments-{version('Pygments')}", code_parents(raw), tuple(planned)
+        f"native-code-v3/pygments-{version('Pygments')}", code_parents(raw), tuple(planned)
     )
 
 

@@ -190,6 +190,24 @@ class DocumentIR:
         return hashlib.sha256(payload.encode()).hexdigest()
 
 
+def authored_title_ids(document: DocumentIR) -> frozenset[str]:
+    if document.source_format not in {"markdown", "google_doc"}:
+        return frozenset()
+    seen: set[DocsTabId | None] = set()
+    titles: set[str] = set()
+    for block in document.blocks:
+        source = block.source_range
+        if not block.text.strip() or (source is not None and source.segment_id is not None):
+            continue
+        tab = source.tab_id if source is not None else None
+        if block.native_named_style == "TITLE" or (
+            tab not in seen and block.kind is BlockKind.HEADING and block.level == 1
+        ):
+            titles.add(block.id)
+        seen.add(tab)
+    return frozenset(titles)
+
+
 _HEADING = re.compile(r"^(#{1,6})\s+(.*)$")
 _LIST = re.compile(r"^\s*(?:[-*+] |\d+[.)] )(.*)$")
 

@@ -100,6 +100,15 @@ def test_captured_date_only_overnight_and_emoji_chips_preserve_native_semantics_
     assert repeated is not None
     assert not repeated.spans
 
+    punctuation = next(
+        obj(part["textRun"])
+        for part in _elements(after)
+        if "textRun" in part and obj(part["textRun"])["content"] == ".\n"
+    )
+    punctuation["content"] = " .\n"
+    with pytest.raises(InPlaceNeedsReviewError):
+        verify_native_chips(after, checkpoint)
+
 
 def test_captured_table_date_conversion_preserves_effective_newline_style() -> None:
     checkpoint = plan_native_chips(

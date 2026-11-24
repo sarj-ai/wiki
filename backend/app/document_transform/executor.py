@@ -1253,7 +1253,7 @@ class DocumentTransformExecutor(DocumentTransformRunner):
             ),
         )
         return DocumentTransformResult(
-            promoted_heading_count=len(checkpoint.authored_labels),
+            promoted_heading_count=sum(role.level == 1 for role in checkpoint.authored_labels),
             header_identity=(
                 await self._gateway.capture_header_identity(
                     draft=applied,
@@ -1418,7 +1418,9 @@ class DocumentTransformExecutor(DocumentTransformRunner):
                         title=checkpoint.source_title,
                         operation_id=operation_id,
                         required_revision_id=draft.revision_id,
-                        prefer_document_title=bool(checkpoint.authored_labels)
+                        prefer_document_title=any(
+                            role.level == 1 for role in checkpoint.authored_labels
+                        )
                         and not source_has_native_title,
                     )
                 except UnsupportedTabMetadataError:
@@ -2954,7 +2956,7 @@ def _copy_builder_version(
     if document.source_format == "google_doc" and any(
         block.kind is BlockKind.CODE for block in document.blocks
     ):
-        version = f"{version}-code-v2"
+        version = f"{version}-code-v3"
     if document.copy_font_defended:
         version = f"{version}-copy-font-v2"
     elif _copy_visual_ids(document):
