@@ -3,20 +3,20 @@ import { MIME_DOC, MIME_SHEET } from "@/types/wiki";
 import { DEMO_FILES, demoFileFor, demoHref } from "./demo-data";
 
 describe("public demo file selection", () => {
-  it("opens Numbers Every Programmer Should Know and offers native files and before-and-after examples", () => {
+  it("opens the AI example Before and offers native files and before-and-after examples", () => {
     expect(DEMO_FILES.map((file) => [file.id, file.name])).toEqual([
-      ["latency-guide", "Numbers Every Programmer Should Know"],
+      ["unslop-ai-before", "AI example · Before"],
+      ["unslop-ai", "AI example · After"],
       ["ai-draft", "AI draft"],
       ["latency-workbook", "Sheets Demo"],
-      ["unslop-ai", "AI example · Before and After"],
       ["nyc-weekend", "NYC weekend · Before and After"],
     ]);
-    expect(demoFileFor(null).id).toBe("latency-guide");
+    expect(demoFileFor(null).id).toBe("unslop-ai-before");
     expect(DEMO_FILES.map((file) => file.mimeType)).toEqual([
       MIME_DOC,
       MIME_DOC,
-      MIME_SHEET,
       MIME_DOC,
+      MIME_SHEET,
       MIME_DOC,
     ]);
   });
@@ -37,7 +37,7 @@ describe("public demo file selection", () => {
     "../api/wiki/files/private-id",
     "<script>alert(1)</script>",
   ])(
-    "resolves an unknown selector to Numbers Every Programmer Should Know: %s",
+    "resolves an unknown selector to the AI example Before: %s",
     (selector) => {
       const selected = demoFileFor(selector);
       expect(selected).toBe(demoFileFor(null));

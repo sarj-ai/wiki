@@ -88,18 +88,10 @@ describe("public sample view switching", () => {
 
 describe("public sample document links", () => {
   it.each([
-    [
-      "1VzPtXow0E-cGFSTrQCQymMer-Fa5eYVDNf_jlH44rJA",
-      "/demo?file=latency-guide",
-    ],
     ["12M9C0VB90yj2zoaowlshi7papBMfoFhJlroYr4lTDKQ", "/demo?file=ai-draft"],
     [
       "1BDbrvpKtmGG57TzGNnCxIChxztmfssUwJNxA44SwSVI",
       "/demo?file=latency-workbook",
-    ],
-    [
-      "1EJbR3gurhRRvIB1RFhVoKxiBtyLHHqu4WcATUSa3M74",
-      "/demo?file=latency-guide",
     ],
     ["1OABiTptZ9hM6NOoa5FCLR8OoTEVg7VU6EdE0JTZIt4I", "/demo?file=ai-draft"],
   ])("preserves the published public link /d/%s", (id, expected) => {
@@ -132,15 +124,8 @@ describe("public sample document links", () => {
 
 describe("public sample download URL boundary", () => {
   it("uses native Docs and Sheets with their Office exports", () => {
-    const guide = demoFileFor("latency-guide");
     const draft = demoFileFor("ai-draft");
     const workbook = demoFileFor("latency-workbook");
-    expect(demoPreviewUrl(guide)).toBe(
-      "https://docs.google.com/document/d/1kdnYpl3uHMASWYA0Pd92RhXpOoTFrJdYEspn6TTmQ74/preview",
-    );
-    expect(demoDownloadUrl(guide)).toBe(
-      "https://docs.google.com/document/d/1kdnYpl3uHMASWYA0Pd92RhXpOoTFrJdYEspn6TTmQ74/export?format=docx&tab=t.0",
-    );
     expect(demoPreviewUrl(draft)).toBe(
       "https://docs.google.com/document/d/1ld4ojYAI6fZwS0NTqkz6DVNx12Mdypsv8kWhA6zVco8/preview",
     );

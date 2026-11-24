@@ -17,34 +17,48 @@ export const DEMO_WORKSPACE_NAME = "Sarj Wiki";
 export const DEMO_SEARCH_SUGGESTION =
   "Try “unslop”, “NYC”, “guide”, or “sheets”.";
 
-const GUIDE_BASE =
-  "https://docs.google.com/document/d/1kdnYpl3uHMASWYA0Pd92RhXpOoTFrJdYEspn6TTmQ74";
 const DRAFT_BASE =
   "https://docs.google.com/document/d/1ld4ojYAI6fZwS0NTqkz6DVNx12Mdypsv8kWhA6zVco8";
 const WORKBOOK_BASE =
   "https://docs.google.com/spreadsheets/d/1YdtEf6kXaO5t9-hg9BD4o7QExJsikqfmhoiTSDP0oP0";
-const AI_EXAMPLE_BASE =
-  "https://docs.google.com/document/d/1kba2VzkEk4Dqy0610nDkpLOyDhSZOjTWY442-lgzlfA";
+const AI_BEFORE_BASE =
+  "https://docs.google.com/document/d/1PIYA6mIuDLh1vwPb-yM9DzdX9vv8t3xmGtvbdOu4zHs";
+const AI_AFTER_BASE =
+  "https://docs.google.com/document/d/1-qCwZc5ja9JsVxFfG1zb2vs-DvRPaun9HzmBy6lmNJU";
 const NYC_EXAMPLE_BASE =
   "https://docs.google.com/document/d/1q24LIwuOzlXnh1xZFb7BoSzTNsr29nyfAAnwmEVv2Yg";
 const WORKBOOK_PREVIEW = `${WORKBOOK_BASE}/preview#gid=696566412`;
 
-const GUIDE_FILE: DemoFile = {
-  description: "Reference estimates, a formatted table, and code examples.",
-  downloadFilename: "numbers-guide.docx",
-  downloadUrl: `${GUIDE_BASE}/export?format=docx&tab=t.0`,
+const AI_BEFORE_FILE: DemoFile = {
+  description:
+    "An incident review drafted in a padded AI style, before Wiki Unslop and Format.",
+  downloadFilename: "ai-example-before.docx",
+  downloadUrl: `${AI_BEFORE_BASE}/export?format=docx`,
   format: "Document",
-  id: "latency-guide",
+  id: "unslop-ai-before",
   keywords:
-    "numbers programmer latency guide Google SRE reference estimates cache memory storage network Python TypeScript SQL code formatting",
+    "unslop format AI example before draft incident review prose comparison",
   mimeType: MIME_DOC,
-  name: "Numbers Every Programmer Should Know",
-  previewUrl: `${GUIDE_BASE}/preview`,
-  viewUrl: `${GUIDE_BASE}/preview`,
+  name: "AI example · Before",
+  previewUrl: `${AI_BEFORE_BASE}/preview`,
+  viewUrl: `${AI_BEFORE_BASE}/preview`,
 };
 
 export const DEMO_FILES: readonly DemoFile[] = [
-  GUIDE_FILE,
+  AI_BEFORE_FILE,
+  {
+    description:
+      "The same incident review after Wiki Unslop and Format: 416 body words reduced to 281.",
+    downloadFilename: "ai-example-after.docx",
+    downloadUrl: `${AI_AFTER_BASE}/export?format=docx`,
+    format: "Document",
+    id: "unslop-ai",
+    keywords: "unslop format AI example after incident review prose comparison",
+    mimeType: MIME_DOC,
+    name: "AI example · After",
+    previewUrl: `${AI_AFTER_BASE}/preview`,
+    viewUrl: `${AI_AFTER_BASE}/preview`,
+  },
   {
     description: "An AI draft refined into a concise Google SRE reference.",
     downloadFilename: "numbers-ai-draft.docx",
@@ -74,20 +88,6 @@ export const DEMO_FILES: readonly DemoFile[] = [
   },
   {
     description:
-      "An incident review drafted in a padded AI style, with Before and After tabs. Wiki Unslop and Format: 369 body words reduced to 219.",
-    downloadFilename: "ai-example-before-and-after.docx",
-    downloadUrl: `${AI_EXAMPLE_BASE}/export?format=docx`,
-    format: "Document",
-    id: "unslop-ai",
-    keywords:
-      "unslop format AI example before after draft incident review prose comparison tabs",
-    mimeType: MIME_DOC,
-    name: "AI example · Before and After",
-    previewUrl: `${AI_EXAMPLE_BASE}/preview`,
-    viewUrl: `${AI_EXAMPLE_BASE}/preview`,
-  },
-  {
-    description:
       "The New York City weekend guide for November 13–15, 2026, with Before and After tabs. Wiki Unslop and Format: 854 body words reduced to 746.",
     downloadFilename: "nyc-weekend-before-and-after.docx",
     downloadUrl: `${NYC_EXAMPLE_BASE}/export?format=docx`,
@@ -103,7 +103,7 @@ export const DEMO_FILES: readonly DemoFile[] = [
 ];
 
 export function demoFileFor(id: null | string): DemoFile {
-  return DEMO_FILES.find((file) => file.id === id) ?? GUIDE_FILE;
+  return DEMO_FILES.find((file) => file.id === id) ?? AI_BEFORE_FILE;
 }
 
 export function demoHref(file: DemoFile): `/demo?file=${string}` {

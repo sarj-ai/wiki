@@ -17,10 +17,8 @@ const DRIVE_DOWNLOAD =
 const DRIVE_VIEW =
   /^https:\/\/drive\.google\.com\/file\/d\/[A-Za-z0-9_-]{1,128}\/view$/u;
 const PUBLIC_FILE_ALIASES: ReadonlyMap<string, string> = new Map([
-  ["1VzPtXow0E-cGFSTrQCQymMer-Fa5eYVDNf_jlH44rJA", "latency-guide"],
   ["12M9C0VB90yj2zoaowlshi7papBMfoFhJlroYr4lTDKQ", "ai-draft"],
   ["1BDbrvpKtmGG57TzGNnCxIChxztmfssUwJNxA44SwSVI", "latency-workbook"],
-  ["1EJbR3gurhRRvIB1RFhVoKxiBtyLHHqu4WcATUSa3M74", "latency-guide"],
   ["1OABiTptZ9hM6NOoa5FCLR8OoTEVg7VU6EdE0JTZIt4I", "ai-draft"],
 ]);
 
