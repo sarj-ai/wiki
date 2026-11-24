@@ -15,6 +15,7 @@ from app.document_transform.readability_provider import ReadabilityProvider
 from app.document_transform.readability_types import ReadabilityCheckpoint, ReadabilityProposal
 from app.document_transform.schemas import DocumentTransformRequest, MarkdownSource, TransformMode
 from app.identifiers import FileId, TaskId
+from tests.postprocessing_support import unexpected_rollback
 from tests.test_document_readability import _fixture, _LayoutEditor
 from tests.test_document_transform import _CopyCheckpointStore, _Gateway, _Generator
 
@@ -85,7 +86,9 @@ async def test_zero_request_model_outcome_rejects_a_changed_source_revision() ->
         pytest.fail("A changed source must not be mutated")
 
     with pytest.raises(OutputConflictError):
-        await ReadabilityProvider(read, write).apply(document_id=FileId("output"), checkpoint=plan)
+        await ReadabilityProvider(read, write, rollback=unexpected_rollback).apply(
+            document_id=FileId("output"), checkpoint=plan
+        )
 
 
 async def test_failed_layout_receipt_requests_review_and_recovers_without_repeating_calls() -> None:
@@ -125,7 +128,7 @@ async def test_failed_layout_receipt_requests_review_and_recovers_without_repeat
     async def write(_document_id: FileId, _checkpoint: ReadabilityCheckpoint) -> None:
         pytest.fail("A failed layout plan must never write to Google Docs")
 
-    gateway.readability_provider = ReadabilityProvider(read, write)
+    gateway.readability_provider = ReadabilityProvider(read, write, rollback=unexpected_rollback)
     editor = _LayoutEditor(unavailable=True)
 
     result = await resume(editor).execute(operation_id=task_id, request=request)

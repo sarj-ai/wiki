@@ -49,6 +49,11 @@ class OutputVerificationError(DocumentTransformError):
     public_detail = "The transformed output did not pass lossless verification"
 
 
+class PostprocessingSkippedError(DocumentTransformError):
+    code = "postprocessing_skipped"
+    public_detail = "Optional finishing was skipped to retain the verified document"
+
+
 class IncompatiblePendingOutputError(DocumentTransformError):
     code = "incompatible_pending_output"
     public_detail = "An incomplete output from an older transform needs review"

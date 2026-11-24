@@ -34,6 +34,7 @@ from app.document_transform.readability_types import (
 from app.document_transform.schemas import TextPatch, TransformPhase
 from app.identifiers import FileId
 from app.performance import provider_retry_budget
+from tests.postprocessing_support import unexpected_rollback
 
 
 _DATA = Path(__file__).parent / "data" / "readability"
@@ -357,7 +358,7 @@ async def test_provider_applies_terminal_proof_once_and_recovers_the_pending_rec
         run = obj(array(obj(terminal["paragraph"])["elements"])[0])
         obj(run["textRun"])["textStyle"] = {"fontSize": {"magnitude": 1, "unit": "PT"}}
 
-    provider = ReadabilityProvider(read, write)
+    provider = ReadabilityProvider(read, write, rollback=unexpected_rollback)
     file_id = FileId("readability-fixture")
     completed = await provider.apply(document_id=file_id, checkpoint=plan)
     assert await provider.apply(document_id=file_id, checkpoint=plan) == completed
@@ -387,7 +388,7 @@ async def test_provider_rejects_a_forged_terminal_source_before_writing() -> Non
         pytest.fail("A forged terminal proof must fail before any write")
 
     with pytest.raises(OutputConflictError):
-        await ReadabilityProvider(read, write).apply(
+        await ReadabilityProvider(read, write, rollback=unexpected_rollback).apply(
             document_id=FileId("readability-fixture"), checkpoint=forged
         )
 
@@ -530,7 +531,7 @@ async def test_provider_recovers_a_completed_write_without_reapplying_or_calling
         document.clear()
         document.update(_fixture("after"))
 
-    provider = ReadabilityProvider(read, write)
+    provider = ReadabilityProvider(read, write, rollback=unexpected_rollback)
     completed = await provider.apply(document_id=FileId("readability-fixture"), checkpoint=plan)
     assert completed.complete
     assert completed.revision_id == "r2"
@@ -558,7 +559,7 @@ async def test_provider_rejects_tampered_requests_before_writing() -> None:
         pytest.fail("Must reject before any write")
 
     with pytest.raises(OutputConflictError):
-        await ReadabilityProvider(read, write).apply(
+        await ReadabilityProvider(read, write, rollback=unexpected_rollback).apply(
             document_id=FileId("readability-fixture"),
             checkpoint=plan.model_copy(update={"requests": [{"deleteContentRange": {}}]}),
         )
@@ -573,8 +574,15 @@ async def test_provider_never_reports_success_for_an_incomplete_readback() -> No
     async def write(_document_id: FileId, _checkpoint: ReadabilityCheckpoint) -> None:
         pass
 
+    async def rollback(
+        _document_id: FileId,
+        before: dict[str, JsonValue],
+        observed: dict[str, JsonValue],
+    ) -> None:
+        assert observed == before
+
     with pytest.raises(OutputVerificationError):
-        await ReadabilityProvider(read, write).apply(
+        await ReadabilityProvider(read, write, rollback=rollback).apply(
             document_id=FileId(str(uuid.uuid7())), checkpoint=plan
         )
 
@@ -646,7 +654,7 @@ async def test_repeated_formatting_preserves_layout_and_reports_failed_model_wor
     async def write(_document_id: FileId, _checkpoint: ReadabilityCheckpoint) -> None:
         pytest.fail("An unchanged native layout must not be written")
 
-    completed = await ReadabilityProvider(read, write).apply(
+    completed = await ReadabilityProvider(read, write, rollback=unexpected_rollback).apply(
         document_id=FileId("readability-fixture"), checkpoint=plan
     )
     assert completed.complete

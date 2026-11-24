@@ -6,7 +6,11 @@ import uuid
 
 from pydantic import BaseModel, ConfigDict, Field, JsonValue, RootModel
 
-from app.document_transform.errors import InPlaceNeedsReviewError, SourceChangedError
+from app.document_transform.errors import (
+    InPlaceNeedsReviewError,
+    PostprocessingSkippedError,
+    SourceChangedError,
+)
 from app.document_transform.ir import parse_google_document, utf16_length
 from app.document_transform.native_chip_detection import (
     BlockedNativeSpan,
@@ -29,6 +33,10 @@ from app.document_transform.native_chip_protection import (
     protected_native_chip_ranges,
 )
 from app.document_transform.native_quote_spans import NativeInlineRange
+from app.document_transform.postprocessing_recovery import (
+    NativeDocumentRollback,
+    restore_verified_document,
+)
 from app.document_transform.readability_json import (
     array,
     bodies,
@@ -546,6 +554,7 @@ def has_chip_marker(document: dict[str, JsonValue], checkpoint: NativeChipCheckp
 class NativeChipProvider:
     read: Callable[[FileId], Awaitable[dict[str, JsonValue]]]
     write: Callable[[FileId, NativeChipCheckpoint], Awaitable[None]]
+    rollback: NativeDocumentRollback | None = None
 
     async def apply(self, checkpoint: NativeChipCheckpoint) -> CompletedNativeChipCheckpoint:
         _validate_chip_checkpoint(checkpoint)
@@ -576,11 +585,22 @@ class NativeChipProvider:
     async def _write_and_verify(self, checkpoint: NativeChipCheckpoint) -> dict[str, JsonValue]:
         if legacy_protected_conversion_count(checkpoint):
             raise InPlaceNeedsReviewError
+        rollback = self.rollback
+        if rollback is None:
+            raise PostprocessingSkippedError
         await self.write(checkpoint.document_id, checkpoint)
         document = await self.read(checkpoint.document_id)
-        if not has_chip_marker(document, checkpoint):
-            raise InPlaceNeedsReviewError
-        verify_native_chips(document, checkpoint)
+        try:
+            verify_native_chips(document, checkpoint)
+        except InPlaceNeedsReviewError, KeyError, IndexError, TypeError, ValueError:
+            await restore_verified_document(
+                document_id=checkpoint.document_id,
+                before=checkpoint.before,
+                observed=document,
+                read=self.read,
+                rollback=rollback,
+            )
+            raise
         return document
 
 

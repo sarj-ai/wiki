@@ -20,6 +20,7 @@ from app.document_transform.schemas import (
     TransformMode,
 )
 from app.identifiers import FileId, TaskId
+from tests.postprocessing_support import unexpected_rollback
 from tests.test_document_transform import (
     _CheckpointStore,
     _CopyCheckpointStore,
@@ -110,7 +111,7 @@ async def test_chip_stage_recovers_copy_and_in_place_without_duplicating_native_
         if writes == 1 and interrupt == "after-write":
             raise TimeoutError
 
-    gateway.native_chip_provider = NativeChipProvider(read, write)
+    gateway.native_chip_provider = NativeChipProvider(read, write, rollback=unexpected_rollback)
     with pytest.raises(TimeoutError):
         await executor._finish_native_chips(operation_id=task_id, request=request, result=base)
     assert store.checkpoints[-1].native_chips is not None

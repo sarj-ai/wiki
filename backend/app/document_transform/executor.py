@@ -47,6 +47,7 @@ from app.document_transform.errors import (
     InPlacePostMutationVerificationError,
     OutputConflictError,
     OutputVerificationError,
+    PostprocessingSkippedError,
     SourceChangedError,
     SourceTooLargeError,
     UnsupportedSourceError,
@@ -490,7 +491,15 @@ class DocumentTransformExecutor(DocumentTransformRunner):
             != result.output_revision_id
         ):
             raise OutputConflictError
-        completed = await provider.apply(chips)
+        try:
+            completed = await provider.apply(chips)
+        except PostprocessingSkippedError:
+            return await self._skip_postprocessing(
+                operation_id=operation_id,
+                checkpoint=checkpoint,
+                result=result,
+                stage="native_chips",
+            )
         if chips.complete:
             return _legacy_chip_review_result(result, completed)
         result = _native_chip_result(result, completed)
@@ -545,9 +554,10 @@ class DocumentTransformExecutor(DocumentTransformRunner):
         result: DocumentTransformResult,
     ) -> DocumentTransformResult:
         checkpoint = self._checkpoint
+        provider = self._gateway.readability_provider
         if (
             request.mode is TransformMode.UNSLOP
-            or self._gateway.readability_provider is None
+            or provider is None
             or checkpoint is None
             or checkpoint.kind == "word_copy"
             or self._checkpoint_store is None
@@ -555,9 +565,16 @@ class DocumentTransformExecutor(DocumentTransformRunner):
             return result
         layout = checkpoint.readability
         if layout is None:
-            document = await self._gateway.readability_provider.read(result.output.file_id)
+            document = await provider.read(result.output.file_id)
             if document.get("revisionId") != result.output_revision_id:
                 raise OutputConflictError
+            if provider.rollback is None:
+                return await self._skip_postprocessing(
+                    operation_id=operation_id,
+                    checkpoint=checkpoint,
+                    result=result,
+                    stage="readability",
+                )
             layout = await plan_readability(
                 document, title=result.output.name, generator=self._generator
             )
@@ -566,9 +583,15 @@ class DocumentTransformExecutor(DocumentTransformRunner):
             checkpoint = await self._save_readability_checkpoint(
                 checkpoint.model_copy(update={"readability": layout, "readability_result": result})
             )
-        completed = await self._gateway.readability_provider.apply(
-            document_id=result.output.file_id, checkpoint=layout
-        )
+        try:
+            completed = await provider.apply(document_id=result.output.file_id, checkpoint=layout)
+        except PostprocessingSkippedError:
+            return await self._skip_postprocessing(
+                operation_id=operation_id,
+                checkpoint=checkpoint,
+                result=result,
+                stage="readability",
+            )
         if layout.complete:
             return result
         result = _readability_result(
@@ -581,6 +604,43 @@ class DocumentTransformExecutor(DocumentTransformRunner):
         )
         await self._save_readability_checkpoint(
             checkpoint.model_copy(update={"readability": completed, "readability_result": result})
+        )
+        return result
+
+    async def _skip_postprocessing(
+        self,
+        *,
+        operation_id: uuid.UUID,
+        checkpoint: CopyCheckpoint | InPlaceCheckpoint,
+        result: DocumentTransformResult,
+        stage: Literal["readability", "native_chips"],
+    ) -> DocumentTransformResult:
+        code = f"document_{stage}_skipped"
+        if not any(finding.code == code for finding in result.findings):
+            label = "Readability" if stage == "readability" else "Native smart-chip finishing"
+            result = result.model_copy(
+                update={
+                    "findings": [
+                        *result.findings,
+                        TransformFinding(
+                            code=code,
+                            detail=f"{label} was skipped to keep the verified document intact.",
+                            severity=FindingSeverity.INFORMATIONAL,
+                        ),
+                    ]
+                }
+            )
+        checkpoint = await self._record_postprocessed_result(
+            operation_id=operation_id, checkpoint=checkpoint, result=result
+        )
+        checkpoint = checkpoint.model_copy(
+            update={"readability": None, "readability_result": None}
+            if stage == "readability"
+            else {"native_chips": None, "native_chip_result": None}
+        )
+        await self._save_readability_checkpoint(checkpoint)
+        logger.info(
+            "document optional finishing skipped", stage=stage, reason="rollback_unavailable"
         )
         return result
 

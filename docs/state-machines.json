@@ -155,7 +155,7 @@
         "planned revision absent",
         "request reconstruction/preimage digest"
       ],
-      "recovery": "Unknown outcome is resolved by verified projection; changed source never authorizes another batch.",
+      "recovery": "Unknown outcome is resolved by verified projection; changed source never authorizes another batch. New optional writes require a provider-owned rollback capability. Explicit rejection restores and verifies the preimage before failure; providers without that capability retain the verified output and record a skipped diagnostic before writing.",
       "decision": "convert",
       "sources": [
         "backend/app/document_transform/readability_types.py",

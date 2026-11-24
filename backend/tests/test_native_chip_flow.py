@@ -19,6 +19,7 @@ from app.document_transform.native_chip_flow import (
 )
 from app.document_transform.readability_json import array, bodies, obj
 from app.identifiers import FileId
+from tests.postprocessing_support import unexpected_rollback
 from tests.test_native_table_font import _document as table_document
 
 
@@ -213,7 +214,7 @@ async def test_interrupted_write_is_recovered_from_native_marker_without_repeati
         state = _fixture("after")
         raise TimeoutError
 
-    provider = NativeChipProvider(read=read, write=write)
+    provider = NativeChipProvider(read=read, write=write, rollback=unexpected_rollback)
     checkpoint = _checkpoint()
     with pytest.raises(TimeoutError):
         await provider.apply(checkpoint)

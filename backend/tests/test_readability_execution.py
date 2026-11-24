@@ -9,6 +9,7 @@ from app.document_transform.readability_provider import ReadabilityProvider
 from app.document_transform.readability_types import ReadabilityCheckpoint
 from app.document_transform.schemas import DocumentTransformRequest, MarkdownSource, TransformMode
 from app.identifiers import FileId, TaskId
+from tests.postprocessing_support import unexpected_rollback
 from tests.test_document_readability import _fixture, _LayoutEditor
 from tests.test_document_transform import (
     _CheckpointStore,
@@ -56,7 +57,7 @@ async def test_copy_readability_finalizes_the_new_receipt_and_resumes_without_ne
         document.update(_fixture("after"))
         document["documentId"] = "output"
 
-    gateway.readability_provider = ReadabilityProvider(read, write)
+    gateway.readability_provider = ReadabilityProvider(read, write, rollback=unexpected_rollback)
     editor = _LayoutEditor()
     executor = _resume_executor(gateway, store, task_id, editor)
     result = await executor._finish_readability(operation_id=task_id, request=request, result=base)
@@ -99,7 +100,7 @@ async def test_in_place_readability_is_durable_and_a_retry_keeps_the_completed_d
         document.update(_fixture("after"))
         document["documentId"] = document_id
 
-    gateway.readability_provider = ReadabilityProvider(read, write)
+    gateway.readability_provider = ReadabilityProvider(read, write, rollback=unexpected_rollback)
     editor = _LayoutEditor()
     executor = _resume_executor(gateway, store, task_id, editor)
     result = await executor._finish_readability(operation_id=task_id, request=request, result=base)

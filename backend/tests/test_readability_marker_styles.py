@@ -97,5 +97,15 @@ async def test_provider_rejects_a_completed_write_with_unreadable_markers() -> N
         styles = _marker_styles(document, role="numbered")
         styles.paragraph["fontSize"] = {"magnitude": 1, "unit": "PT"}
 
+    async def rollback(
+        _identifier: FileId,
+        before: dict[str, JsonValue],
+        _observed: dict[str, JsonValue],
+    ) -> None:
+        document.clear()
+        document.update(deepcopy(before))
+
     with pytest.raises(OutputVerificationError):
-        await ReadabilityProvider(read, write).apply(document_id=FileId("fixture"), checkpoint=plan)
+        await ReadabilityProvider(read, write, rollback=rollback).apply(
+            document_id=FileId("fixture"), checkpoint=plan
+        )
