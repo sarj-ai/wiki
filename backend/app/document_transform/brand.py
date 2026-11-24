@@ -619,7 +619,7 @@ def _block_text_style_requests(
         "foregroundColor": {"color": {"rgbColor": {**_rgb_color(paragraph_color(block, profile))}}},
     }
     fields = "weightedFontFamily,fontSize,foregroundColor,bold"
-    text_style["bold"] = block.kind is BlockKind.HEADING and block.native_named_style != "SUBTITLE"
+    text_style["bold"] = paragraph_bold(block)
     if block.kind != BlockKind.HEADING and not preserve_native_style:
         emphasis = {key: value for key, value in block.authored_emphasis if key != "bold"}
         text_style.update(emphasis)
@@ -808,6 +808,12 @@ def paragraph_keep_lines_together(block: TextBlock) -> bool:
 
 def paragraph_font_size(block: TextBlock, profile: SarjBrandProfile) -> int:
     return _font_size(block, profile)
+
+
+def paragraph_bold(block: TextBlock) -> bool:
+    if block.kind is BlockKind.HEADING:
+        return block.native_named_style != "SUBTITLE"
+    return block.is_authored_lead_in and block.text.endswith(":")
 
 
 def paragraph_color(block: TextBlock, profile: SarjBrandProfile) -> str:
