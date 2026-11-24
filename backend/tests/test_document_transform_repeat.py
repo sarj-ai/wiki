@@ -15,13 +15,87 @@ from app.document_transform.schemas import TransformMode
 from app.document_transform.source_access import NativeSourceAccess, PersonalDrive
 from app.document_transform.verification import BrandVerification
 from app.identifiers import DocsRevisionId, FileId, TaskId
+from tests.test_copy_font_defense import _ReadbackGateway
 from tests.test_document_transform import (
     _branded_google_document,
     _CheckpointStore,
     _Generator,
     _in_place_request,
     _InPlaceGateway,
+    _output_draft,
 )
+
+
+def _branded_evidence_labels(representation: str = "explicit") -> dict[str, JsonValue]:
+    document = _branded_google_document()
+    document["documentId"] = "source"
+    tab = document["tabs"][0]["documentTab"]
+    content = tab["body"]["content"]
+    plain = content[0]
+    plain["paragraph"]["elements"][0]["textRun"]["content"] = "Evidence:\n"
+    bold = deepcopy(plain)
+    bold.update(startIndex=11, endIndex=21)
+    run = bold["paragraph"]["elements"][0]
+    run.update(startIndex=11, endIndex=21)
+    if representation == "explicit":
+        run["textRun"]["textStyle"]["bold"] = True
+    elif representation == "inherited":
+        tab["namedStyles"]["styles"][0]["textStyle"]["bold"] = True
+        plain["paragraph"]["elements"][0]["textRun"]["textStyle"]["bold"] = False
+    content.append(bold)
+    return document
+
+
+def test_copy_format_keeps_bold_independent_of_label_heading_level() -> None:
+    document = _branded_evidence_labels()
+    parsed = parse_google_document(document, title="Decision")
+    requests = build_copy_mutations(
+        parsed,
+        parsed,
+        profile=SarjBrandProfile(),
+        headers=(),
+        logo_uri="",
+        source_document=document,
+    )
+    body_bold = {
+        style["range"]["startIndex"]: style["textStyle"]["bold"]
+        for request in requests
+        if (style := request.get("updateTextStyle"))
+        and "segmentId" not in style["range"]
+        and "bold" in style["textStyle"]
+    }
+    assert body_bold == {1: False, 11: True}
+
+
+@pytest.mark.parametrize("representation", ["explicit", "inherited", "stripped"])
+async def test_native_readback_checks_authored_label_bold(representation: str) -> None:
+    source = _branded_evidence_labels()
+    output = _branded_evidence_labels(representation)
+    gateway = _ReadbackGateway(output)
+    gateway._logo_uri = "https://wiki.sarj.ai/brand/sarj-logo-light.png"
+    snapshot = _inspection_snapshot(source)
+    expected = parse_google_document(source, title="Decision")
+    copy = await gateway.verify_output(
+        draft=_output_draft(),
+        source=snapshot,
+        expected=expected,
+        verify_brand=True,
+        header_title="Decision",
+    )
+    inspection = await gateway.inspect_in_place(snapshot=snapshot, title="Decision")
+    in_place = await gateway.verify_in_place(
+        document=output,
+        title="Decision",
+        expected=expected,
+        structural_sha256=inspection.structural_sha256,
+        protected_structure_sha256=inspection.protected_structure_sha256,
+        verify_brand=True,
+    )
+    for result in (copy, in_place):
+        assert result.content_preserved
+        assert result.structure_preserved is (representation != "stripped")
+        if representation != "stripped":
+            assert result.brand is BrandVerification.FULL
 
 
 async def test_already_branded_format_is_zero_batch_noop(monkeypatch: pytest.MonkeyPatch) -> None:

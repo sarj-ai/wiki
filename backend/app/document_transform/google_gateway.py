@@ -34,6 +34,7 @@ from app.document_transform.brand import (
     DocsRequest,
     SarjBrandProfile,
     paragraph_alignment,
+    paragraph_bold,
     paragraph_color,
     paragraph_font_size,
     paragraph_keep_lines_together,
@@ -113,6 +114,7 @@ from app.document_transform.ir import (
     parse_google_document,
     parse_markdown,
     rewrite_markdown,
+    uniform_authored_emphasis,
     utf16_length,
 )
 from app.document_transform.limits import MAX_MARKDOWN_BYTES, MIN_MODEL_PROSE_WORDS
@@ -881,6 +883,7 @@ class GoogleDocumentGateway(DocumentGateway):
                 table_preserved = False
         structure_preserved = (
             table_preserved
+            and _authored_label_bold_preserved(document, parsed, expected)
             and _inventory_sha256(_structural_inventory(document)) == structural_sha256
             and _inventory_sha256(
                 _protected_structure_inventory(
@@ -3907,6 +3910,7 @@ def _typography_verification_ir(actual: DocumentIR, expected: DocumentIR) -> Doc
                 replace(
                     observed,
                     id=planned.id,
+                    authored_emphasis=planned.authored_emphasis,
                     pagination_keep_with_next=planned.pagination_keep_with_next,
                     suppress_space_above=planned.suppress_space_above,
                     suppress_space_below=planned.suppress_space_below,
@@ -4823,10 +4827,7 @@ def _text_run_has_brand(
                 if key != "bold"
             )
         )
-        and (
-            style.get("bold", False)
-            is (block.kind is BlockKind.HEADING and block.native_named_style != "SUBTITLE")
-        )
+        and style.get("bold", False) is paragraph_bold(block)
     )
 
 
@@ -5006,6 +5007,35 @@ def _copy_style_projection(
         return None
 
 
+def _authored_label_bold_preserved(
+    document: dict[str, JsonValue], actual: DocumentIR, expected: DocumentIR
+) -> bool:
+    nonempty = (block for block in expected.blocks if block.text)
+    bold_indices = [
+        index
+        for index, block in enumerate(nonempty)
+        if block.kind is BlockKind.PARAGRAPH and paragraph_bold(block)
+    ]
+    if not bold_indices:
+        return True
+    if bold_indices[-1] >= len(actual.blocks):
+        return False
+    paragraphs = _paragraphs_by_range(tuple(_document_tabs(document)))
+    for index in bold_indices:
+        location = actual.blocks[index].source_range
+        if location is None:
+            return False
+        key = ParagraphRangeKey(
+            tab_id=location.tab_id, start_index=location.start_index, end_index=location.end_index
+        )
+        elements = paragraphs.get(key, {}).get("elements", [])
+        if not isinstance(elements, list) or ("bold", True) not in uniform_authored_emphasis(
+            elements
+        ):
+            return False
+    return True
+
+
 def _copy_structure_verification(
     source_document: dict[str, JsonValue] | None,
     output_document: dict[str, JsonValue],
@@ -5038,6 +5068,7 @@ def _copy_structure_verification(
     structure_preserved = (
         structural_preserved
         and protected_preserved
+        and _authored_label_bold_preserved(output_document, parsed, expected)
         and (
             source_document is None or _occupied_headers_preserved(source_document, output_document)
         )
