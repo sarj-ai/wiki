@@ -207,11 +207,16 @@ def validated_readability_paragraphs(
         ):
             msg = "Readability proposal is not bound to eligible source text"
             raise ValueError(msg)
-        _validate_parts(block, proposal)
-        if len(proposal.parts) == 1 and proposal.parts[0].role == "paragraph":
-            continue
         source = block.source_range
         element = positions[source.tab_id, source.start_index]
+        following = positions.get((source.tab_id, integer(element["endIndex"])), {})
+        _validate_parts(
+            block,
+            proposal,
+            followed_by_list="bullet" in obj(following.get("paragraph", {})),
+        )
+        if len(proposal.parts) == 1 and proposal.parts[0].role == "paragraph":
+            continue
         result.append(
             ReadabilityParagraph(
                 tab_id=source.tab_id,
@@ -235,7 +240,9 @@ def validated_readability_paragraphs(
     return tuple(result)
 
 
-def _validate_parts(block: TextBlock, proposal: ReadabilityProposal) -> None:
+def _validate_parts(
+    block: TextBlock, proposal: ReadabilityProposal, *, followed_by_list: bool
+) -> None:
     if " ".join(part.text for part in proposal.parts) != block.text or any(
         part.text != part.text.strip() or "\n" in part.text or "\t" in part.text
         for part in proposal.parts
@@ -245,6 +252,15 @@ def _validate_parts(block: TextBlock, proposal: ReadabilityProposal) -> None:
         )
         raise ValueError(msg)
     _validate_literal_breaks(block.text, proposal.parts)
+    for index, part in enumerate(proposal.parts):
+        next_is_list = (
+            proposal.parts[index + 1].role in {"bullet", "numbered"}
+            if index + 1 < len(proposal.parts)
+            else followed_by_list
+        )
+        if part.role.startswith("heading") and (part.text.endswith(":") or next_is_list):
+            msg = "Keep short labels and list lead-ins as body text"
+            raise ValueError(msg)
     if any(
         part.role.startswith("heading")
         and (len(part.text.split()) > _HEADING_WORDS or part.text.endswith((".", "!", "?")))

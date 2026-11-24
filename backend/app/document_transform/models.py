@@ -445,6 +445,7 @@ class VertexGeminiPatchGenerator(PatchGenerator):
             "definitions and separation; leave a bordering paragraph as prose when a new list could attach to that list. "
             "If validation feedback reports list joining or unrelated list changes, remove that list proposal rather than repeat it. "
             "Promote concise existing section labels to heading2/heading3 when they improve the existing hierarchy. "
+            "Keep short labels ending in a colon and lead-ins directly followed by a list as body paragraphs, never headings. "
             "Preserve document order. Propose only blocks with may_restructure=true. Every proposal must repeat its exact block_id "
             "and source_sha256. Parts must join with a SINGLE SPACE to reproduce the source text CHARACTER FOR CHARACTER. "
             "Do not rewrite, add, omit, round, normalize, reorder, or summarize ANY text, number, unit, qualification, or punctuation. "
