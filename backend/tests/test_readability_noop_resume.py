@@ -12,6 +12,7 @@ from app.document_transform.readability_provider import ReadabilityProvider
 from app.document_transform.readability_types import ReadabilityCheckpoint, ReadabilityProposal
 from app.document_transform.schemas import DocumentTransformRequest, MarkdownSource, TransformMode
 from app.identifiers import FileId, TaskId
+from tests.postprocessing_support import unexpected_rollback
 from tests.test_document_readability import _fixture, _LayoutEditor
 from tests.test_document_transform import (
     _CheckpointStore,
@@ -79,7 +80,7 @@ async def test_no_change_layout_review_is_checkpointed_and_never_regenerated_on_
     async def write(_document_id: FileId, _checkpoint: ReadabilityCheckpoint) -> None:
         pytest.fail("A no-change review must not write document content")
 
-    gateway.readability_provider = ReadabilityProvider(read, write)
+    gateway.readability_provider = ReadabilityProvider(read, write, rollback=unexpected_rollback)
     editor = _NoChangeEditor(unavailable=outage)
     executor = _resume_executor(gateway, store, task_id, editor)
     result = await executor._finish_readability(operation_id=task_id, request=request, result=base)

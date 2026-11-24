@@ -10,6 +10,7 @@ from app.document_transform.readability_provider import ReadabilityProvider
 from app.document_transform.readability_tables import plan_readable_tables, readable_table_requests
 from app.document_transform.readability_types import ReadabilityCheckpoint
 from app.identifiers import FileId
+from tests.postprocessing_support import unexpected_rollback
 from tests.test_document_readability import _LayoutEditor
 from tests.test_readability_body_tables import _body_readback
 from tests.test_table_layout import _native_table
@@ -97,7 +98,7 @@ async def test_single_column_uncertain_write_recovers_without_replaying_edits() 
         document.update(after)
         raise ModelUnavailableError
 
-    provider = ReadabilityProvider(read, write)
+    provider = ReadabilityProvider(read, write, rollback=unexpected_rollback)
     with pytest.raises(ModelUnavailableError):
         await provider.apply(document_id=FileId("single-column"), checkpoint=plan)
     completed = await provider.apply(document_id=FileId("single-column"), checkpoint=plan)

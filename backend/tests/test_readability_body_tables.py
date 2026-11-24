@@ -20,6 +20,7 @@ from app.document_transform.readability_types import (
     ReadabilityVersion,
 )
 from app.identifiers import FileId
+from tests.postprocessing_support import unexpected_rollback
 from tests.test_document_readability import _LayoutEditor
 from tests.test_table_layout import _native_table
 
@@ -187,7 +188,7 @@ async def test_body_table_uncertain_write_recovers_once_and_repeated_formatting_
         document.update(after)
         raise ModelUnavailableError
 
-    provider = ReadabilityProvider(read, write)
+    provider = ReadabilityProvider(read, write, rollback=unexpected_rollback)
     with pytest.raises(ModelUnavailableError):
         await provider.apply(document_id=FileId("body-table"), checkpoint=plan)
     completed = await provider.apply(document_id=FileId("body-table"), checkpoint=plan)
@@ -244,7 +245,7 @@ async def test_new_table_plan_preserves_omitted_explicit_and_unknown_horizontal_
         document.clear()
         document.update(after)
 
-    provider = ReadabilityProvider(read, write)
+    provider = ReadabilityProvider(read, write, rollback=unexpected_rollback)
     completed = await provider.apply(document_id=FileId("spacing"), checkpoint=plan)
     assert completed.complete
     assert await provider.apply(document_id=FileId("spacing"), checkpoint=completed) == completed
@@ -300,7 +301,7 @@ async def test_legacy_table_plan_retains_exact_horizontal_requests_and_strict_re
         writes.append(checkpoint.requests)
         current = after
 
-    provider = ReadabilityProvider(read, write)
+    provider = ReadabilityProvider(read, write, rollback=unexpected_rollback)
     completed = await provider.apply(document_id=FileId("legacy-spacing"), checkpoint=legacy)
     assert completed.complete
     assert completed.version == version

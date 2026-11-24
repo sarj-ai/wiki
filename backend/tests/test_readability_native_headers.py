@@ -13,6 +13,7 @@ from app.document_transform.readability_types import (
     ReadabilityCheckpoint,
 )
 from app.identifiers import FileId
+from tests.postprocessing_support import unexpected_rollback
 from tests.test_document_readability import _fixture, _LayoutEditor, _paragraph, _plan
 from tests.test_table_layout import _native_table
 
@@ -119,7 +120,7 @@ async def test_native_header_checkpoint_recovers_an_uncertain_write_without_repl
         document.update(_multirow_header_fixture("after"))
         raise ModelUnavailableError
 
-    provider = ReadabilityProvider(read, write)
+    provider = ReadabilityProvider(read, write, rollback=unexpected_rollback)
     with pytest.raises(ModelUnavailableError):
         await provider.apply(document_id=FileId("native-header-qa"), checkpoint=plan)
     completed = await provider.apply(document_id=FileId("native-header-qa"), checkpoint=plan)

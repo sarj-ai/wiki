@@ -23,6 +23,7 @@ from app.document_transform.readability_types import (
     ReadabilityCheckpoint,
 )
 from app.identifiers import FileId
+from tests.postprocessing_support import unexpected_rollback
 from tests.test_document_readability import _fixture, _LayoutEditor, _paragraph, _plan
 
 
@@ -144,7 +145,7 @@ async def test_version_one_checkpoint_retries_its_original_per_item_requests() -
         writes.append(checkpoint.requests)
         current = after
 
-    provider = ReadabilityProvider(read, write)
+    provider = ReadabilityProvider(read, write, rollback=unexpected_rollback)
     completed = await provider.apply(document_id=FileId("fixture"), checkpoint=legacy)
     assert completed.complete
     assert completed.version == 1
@@ -165,7 +166,7 @@ async def test_legacy_checkpoint_next_to_authored_list_fails_before_mutation() -
         pytest.fail("An old checkpoint must not extend an authored list")
 
     with pytest.raises(OutputConflictError):
-        await ReadabilityProvider(read, write).apply(
+        await ReadabilityProvider(read, write, rollback=unexpected_rollback).apply(
             document_id=FileId("fixture"), checkpoint=legacy
         )
 
