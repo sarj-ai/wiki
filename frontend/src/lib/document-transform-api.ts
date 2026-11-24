@@ -167,7 +167,7 @@ const TASK_FAILURE_FALLBACKS: Readonly<Record<string, string>> = {
   "output_verification_failed":
     "The polished result did not pass safety verification. Review the document before trying again.",
   "source_changed":
-    "The document changed after polishing started. Reload and review the latest version before trying again.",
+    "The source document changed while polishing; run Polish again",
 };
 
 export const DOCUMENT_TRANSFORM_API = {
