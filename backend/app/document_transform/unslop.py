@@ -359,6 +359,7 @@ _EDITORIAL_FRAMING_PATTERN = re.compile(
     rf"(?:{_TABLE_ATTENTION_CONTEXT})?[Ii]t should be noted that[ \t]+|"
     rf"(?:{_TABLE_ATTENTION_CONTEXT})?[Ii]t should be noted[ \t]+(?={_DEFINITE_FACT_CLAUSE})|"
     rf"{_PARAGRAPH_RECAP_PATTERN}|"
+    r"[Ww]hen all is said and done,[ \t]+|"
     r"[Ii]n today['’]s (?:increasingly )?fast[-\u2011 ]moving and ever[-\u2011 ]evolving "
     r"world of (?=[^,;:.!?\n]+,[ \t]*)|"
     r"(?:[Tt]o put it|[Pp]ut(?: it)?) another way[,:][ \t]*"
