@@ -569,7 +569,7 @@ const RULES = {
   "unicorn/no-instanceof-builtins": ["error", {"useErrorIsError": false, "strategy": "loose", "include": [], "exclude": []}],
   "unicorn/no-invalid-fetch-options": "error",
   "unicorn/no-invalid-remove-event-listener": "error",
-  "unicorn/no-lonely-if": "warn",
+  "unicorn/no-lonely-if": "error",
   "unicorn/no-magic-array-flat-depth": "error",
   "unicorn/no-negation-in-equality-check": "error",
   "unicorn/no-new-buffer": "error",
@@ -733,7 +733,7 @@ const RULES = {
       "message": "Use ES modules instead of namespaces."
     }
   ],
-  "eslint-js/preserve-caught-error": ["warn", {"requireCatchParameter": true, "errorClassNames": []}],
+  "eslint-js/preserve-caught-error": ["error", {"requireCatchParameter": true, "errorClassNames": []}],
 
   // Unicorn rules without a native port, or whose port reports differently.
   "unicorn-js/class-reference-in-static-methods": ["error", {"preferThis": true, "preferSuper": true}],
@@ -810,7 +810,7 @@ const RULES = {
   "unicorn-js/prefer-combined-guards": ["warn", {"checkCompoundConditions": false, "checkMultiStatementBodies": false}],
   "unicorn-js/prefer-iterator-to-array": "error",
   "unicorn-js/prefer-logical-operator-over-ternary": "error",
-  "unicorn-js/prefer-single-object-destructuring": "warn",
+  "unicorn-js/prefer-single-object-destructuring": "error",
   "unicorn-js/prefer-top-level-await": "error",
   "unicorn-js/prefer-type-error": "error",
   "unicorn-js/require-css-escape": ["error", {"checkAllSelectors": false}],
@@ -875,7 +875,7 @@ const RULES = {
   "@sarj/no-contradictory-overload-return": "error",
   "@sarj/no-contradictory-type-predicate": "error",
   "@sarj/no-cors-wildcard-with-credentials": "error",
-  "@sarj/no-credential-in-browser-storage": "warn",
+  "@sarj/no-credential-in-browser-storage": "error",
   "@sarj/no-dangerously-allow-svg": "error",
   "@sarj/no-declaration-comment-wall": [
     "error",
@@ -899,7 +899,7 @@ const RULES = {
   "@sarj/no-explicit-type-predicate": "warn",
   "@sarj/no-fat-try-blocks": ["error", {"max": 5}],
   "@sarj/no-first-party-module-mock": ["error", {"additionalModulePrefixes": []}],
-  "@sarj/no-flake-masking": "warn",
+  "@sarj/no-flake-masking": "error",
   "@sarj/no-frontend-comments": ["error", {}],
   "@sarj/no-generic-json-parser": "warn",
   "@sarj/no-generic-single-export-module": "error",
@@ -993,8 +993,8 @@ const RULES = {
   "@sarj/prefer-named-complex-return-type": "error",
   "@sarj/prefer-native-fetch-in-server-actions": "warn",
   "@sarj/prefer-native-random-uuid": "error",
-  "@sarj/prefer-node-crypto-hash": "warn",
-  "@sarj/prefer-node-fs-promises": "warn",
+  "@sarj/prefer-node-crypto-hash": "error",
+  "@sarj/prefer-node-fs-promises": "error",
   "@sarj/prefer-nominal-id-types": "error",
   "@sarj/prefer-non-nullable-collection": "error",
   "@sarj/prefer-nullish-filter-predicate": "error",
@@ -1089,7 +1089,7 @@ const RULES = {
 
 // Vitest rules: on in tests when Vitest is a test framework, off in Bun and Playwright tests.
 const VITEST_RULES = {
-  "vitest/expect-expect": ["warn", {"assertFunctionNames": ["expect", "assert"], "additionalTestBlockFunctions": []}],
+  "vitest/expect-expect": ["warn", {"assertFunctionNames": ["expect", "expectTypeOf", "assert", "assertType"], "additionalTestBlockFunctions": []}],
   "vitest/no-focused-tests": "error",
   "vitest/prefer-called-once": "error",
   "vitest/prefer-expect-resolves": "error",
