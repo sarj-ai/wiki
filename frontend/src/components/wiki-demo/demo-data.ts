@@ -24,9 +24,9 @@ const DRAFT_BASE =
 const WORKBOOK_BASE =
   "https://docs.google.com/spreadsheets/d/1YdtEf6kXaO5t9-hg9BD4o7QExJsikqfmhoiTSDP0oP0";
 const AI_EXAMPLE_BASE =
-  "https://docs.google.com/document/d/1XPM6IzYdzPk5f79H2y6z4QX5_9y9foBp1zplXXgMUFw";
+  "https://docs.google.com/document/d/1kba2VzkEk4Dqy0610nDkpLOyDhSZOjTWY442-lgzlfA";
 const NYC_EXAMPLE_BASE =
-  "https://docs.google.com/document/d/1bQtAb82lN6zj5WobVxMDJdTPpPjqqCtOZthKXtgqF0w";
+  "https://docs.google.com/document/d/1q24LIwuOzlXnh1xZFb7BoSzTNsr29nyfAAnwmEVv2Yg";
 const WORKBOOK_PREVIEW = `${WORKBOOK_BASE}/preview#gid=696566412`;
 
 const GUIDE_FILE: DemoFile = {
@@ -74,7 +74,7 @@ export const DEMO_FILES: readonly DemoFile[] = [
   },
   {
     description:
-      "An incident review drafted in a padded AI style, with Before and After tabs. Wiki Unslop and Format: 369 body words reduced to 281.",
+      "An incident review drafted in a padded AI style, with Before and After tabs. Wiki Unslop and Format: 369 body words reduced to 219.",
     downloadFilename: "ai-example-before-and-after.docx",
     downloadUrl: `${AI_EXAMPLE_BASE}/export?format=docx`,
     format: "Document",
@@ -88,7 +88,7 @@ export const DEMO_FILES: readonly DemoFile[] = [
   },
   {
     description:
-      "The New York City weekend guide for November 13–15, 2026, with Before and After tabs. Wiki Unslop: 854 body words reduced to 758.",
+      "The New York City weekend guide for November 13–15, 2026, with Before and After tabs. Wiki Unslop and Format: 854 body words reduced to 746.",
     downloadFilename: "nyc-weekend-before-and-after.docx",
     downloadUrl: `${NYC_EXAMPLE_BASE}/export?format=docx`,
     format: "Document",
