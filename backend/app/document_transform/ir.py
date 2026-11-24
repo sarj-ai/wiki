@@ -632,7 +632,7 @@ def _parse_structural_element(
         editable=editable,
         native_bullet_json=json.dumps(bullet, sort_keys=True) if isinstance(bullet, dict) else None,
         native_content=tuple(captured.native_content),
-        authored_emphasis=_uniform_authored_emphasis(elements),
+        authored_emphasis=uniform_authored_emphasis(elements),
         source_named_style=(
             paragraph_style["namedStyleType"]
             if isinstance(paragraph_style.get("namedStyleType"), str)
@@ -680,7 +680,7 @@ def _with_native_prose_tail(
     )
 
 
-def _uniform_authored_emphasis(elements: list[Any]) -> tuple[tuple[str, bool], ...]:
+def uniform_authored_emphasis(elements: list[Any]) -> tuple[tuple[str, bool], ...]:
     styles = [
         part["textRun"].get("textStyle", {})
         for part in elements
