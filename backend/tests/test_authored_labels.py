@@ -13,7 +13,7 @@ from app.document_transform.copy_draft_state import (
 from app.document_transform.errors import OutputConflictError
 from app.document_transform.gateway import NativeDocumentSnapshot
 from app.document_transform.google_gateway import GoogleDocumentGateway
-from app.document_transform.ir import BlockKind, parse_google_document
+from app.document_transform.ir import BlockKind, authored_title_ids, parse_google_document
 from app.document_transform.schemas import (
     DocumentTransformCheckpoint,
     DocumentTransformRequest,
@@ -104,6 +104,24 @@ def _split_terminal_runs(document: dict[str, Any]) -> None:
                 "textRun": {"content": "\n", "textStyle": {"bold": False}},
             },
         ]
+
+
+def test_flat_native_headings_keep_the_title_and_nest_existing_sections_only() -> None:
+    document = _document()
+    _with_native_title(document)
+    content = document["tabs"][0]["documentTab"]["body"]["content"]
+    for index in (0, 1, 3):
+        content[index]["paragraph"]["paragraphStyle"]["namedStyleType"] = "HEADING_1"
+    original = parse_google_document(document, title="File name")
+    assert authored_title_ids(original) == {original.blocks[0].id}
+    roles = plan_authored_labels(original)
+    assert [r.block_id for r in roles] == [original.blocks[i].id for i in (1, 3)]
+    transformed = apply_authored_labels(original, roles)
+    assert [b.level for b in transformed.blocks] == [1, 2, None, 2, None]
+    assert [b.text for b in transformed.blocks] == [b.text for b in original.blocks]
+    assert plan_authored_labels(transformed) == ()
+    content[3]["paragraph"]["paragraphStyle"]["namedStyleType"] = "HEADING_2"
+    assert plan_authored_labels(parse_google_document(document, title="File name")) == ()
 
 
 def test_role_plan_preserves_all_text_ranges_and_is_a_repeat_noop() -> None:

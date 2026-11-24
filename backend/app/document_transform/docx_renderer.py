@@ -309,19 +309,23 @@ def markdown_import_manifest(
 
 def _presentation_blocks(markdown: str, *, title: str, branded: bool) -> tuple[_Block, ...]:
     blocks = _validated_blocks(markdown, title=title)
-    if not branded:
+    if not branded or not blocks:
         return blocks
+    flat_outline = blocks[0].kind == "heading" and all(
+        block.level == 1 for block in blocks if block.kind == "heading"
+    )
     # Keep the render and its import proof identical. Headings and table
     # headers receive weight from their semantic roles, not scattered **spans**.
     return tuple(
         replace(
             block,
+            level=2 if flat_outline and index > 0 and block.kind == "heading" else block.level,
             inlines=_body_weight_inlines(block.inlines),
             cell_inlines=tuple(
                 tuple(_body_weight_inlines(cell) for cell in row) for row in block.cell_inlines
             ),
         )
-        for block in blocks
+        for index, block in enumerate(blocks)
     )
 
 
@@ -1132,6 +1136,8 @@ def _append_code_block(
     paragraph = document.add_paragraph(style="Sarj Code" if branded else "Normal")
     _set_paragraph_direction(paragraph, text)
     if branded:
+        # Docs imports the runs but can drop the custom paragraph style.
+        paragraph.alignment = WD_ALIGN_PARAGRAPH.LEFT
         _set_paragraph_box(paragraph, fill=_CODE_FILL)
         paragraph.paragraph_format.keep_together = len(text.splitlines()) <= _MAX_KEPT_CODE_LINES
     tokens = format_code(text, language).tokens if branded else (CodeToken(text),)

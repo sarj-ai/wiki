@@ -1654,6 +1654,8 @@ def _runs_match_brand(
             return False
         if _effective_bool(style, inherited, "bold") is not role.bold:
             return False
+        if _effective_bool(style, inherited, "underline") and not _run_has_link(style):
+            return False
         if role.italic and _effective_bool(style, inherited, "italic") is not True:
             return False
     return _runs_match_colors(runs, expected, inherited, role)
@@ -1786,15 +1788,14 @@ def _paragraph_spacing_matches(
     above = _effective_dimension_points(style, inherited, "spaceAbove")
     below = _effective_dimension_points(style, inherited, "spaceBelow")
     line_spacing = style.get("lineSpacing", inherited.get("lineSpacing"))
+    alignment = style.get("alignment", inherited.get("alignment", "START"))
     return (
         abs(above - expected_above) <= _TOLERANCE
         and abs(below - expected_below) <= _TOLERANCE
         and isinstance(line_spacing, int | float)
         and abs(float(line_spacing) - expected_line) <= _TOLERANCE
-        and (
-            block.kind != "paragraph"
-            or style.get("alignment", inherited.get("alignment")) == tokens.body_alignment
-        )
+        and (block.kind != "paragraph" or alignment == tokens.body_alignment)
+        and (block.kind != "code" or alignment == "START")
     )
 
 

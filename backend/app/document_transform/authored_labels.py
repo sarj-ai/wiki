@@ -31,7 +31,7 @@ class AuthoredLabelRole(BaseModel):
 
     block_id: str
     source_sha256: str = Field(pattern="^[0-9a-f]{64}$")
-    level: Literal[1] = 1
+    level: Literal[1, 2] = 1
 
 
 def plan_authored_labels(document: DocumentIR) -> tuple[AuthoredLabelRole, ...]:
@@ -40,6 +40,8 @@ def plan_authored_labels(document: DocumentIR) -> tuple[AuthoredLabelRole, ...]:
     if document.source_format != "google_doc" or len(document.tab_ids) != 1:
         return ()
     blocks = tuple(block for block in document.blocks if block.text.strip())
+    if blocks and blocks[0].source_named_style == "HEADING_1":
+        return _flat_sections(blocks)
     if not all(
         _supports_authored_labels(block, first=index == 0) for index, block in enumerate(blocks)
     ):
@@ -61,6 +63,26 @@ def plan_authored_labels(document: DocumentIR) -> tuple[AuthoredLabelRole, ...]:
     if not _MIN_LABELS <= len(roles) <= MAX_AUTHORED_LABELS:
         return ()
     return tuple(roles) if _has_unique_authored_labels(blocks, roles) else ()
+
+
+def _flat_sections(blocks: tuple[TextBlock, ...]) -> tuple[AuthoredLabelRole, ...]:
+    first = blocks[0].source_range
+    if first is None or first.start_index != 1:
+        return ()
+    headings = [block for block in blocks if block.kind is BlockKind.HEADING]
+    if not headings or any(
+        block.level != 1 or block.source_named_style != "HEADING_1" for block in headings
+    ):
+        return ()
+    sections = headings[1:]
+    if len(sections) > MAX_AUTHORED_LABELS or any(
+        block.requires_font_only_format or block.preserved_visual_authority for block in sections
+    ):
+        return ()
+    return tuple(
+        AuthoredLabelRole(block_id=block.id, source_sha256=block.sha256, level=2)
+        for block in sections
+    )
 
 
 def _supports_authored_labels(block: TextBlock, *, first: bool) -> bool:
@@ -94,7 +116,16 @@ def apply_authored_labels(document: DocumentIR, roles: tuple[AuthoredLabelRole, 
     for block in document.blocks:
         role = by_id.get(block.id)
         if role is not None:
-            if block.sha256 != role.source_sha256 or block.kind != BlockKind.PARAGRAPH:
+            if role.level == 1:
+                matches = block.kind == BlockKind.PARAGRAPH and block.sha256 == role.source_sha256
+            else:
+                matches = (
+                    block.kind == BlockKind.HEADING
+                    and block.level == 1
+                    and block.source_named_style == "HEADING_1"
+                    and block.source_style_text_sha256 == role.source_sha256
+                )
+            if not matches:
                 raise OutputConflictError
             blocks.append(replace(block, kind=BlockKind.HEADING, level=role.level))
         else:

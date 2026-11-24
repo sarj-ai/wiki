@@ -170,7 +170,7 @@ def test_code_requests_follow_utf16_prose_edits_and_preserve_native_blank_lines(
         code_string(code_object(update)["fields"])
         for request in plan.requests
         for update in request.values()
-    } == {"foregroundColor", "shading.backgroundColor,keepLinesTogether"}
+    } == {"foregroundColor", "shading.backgroundColor,keepLinesTogether,alignment"}
     actual = deepcopy(source)
     replacement = transformed.blocks[0].text + "\n"
     delta = utf16_length(replacement) - utf16_length(code_string(_run(actual)["content"]))
@@ -205,7 +205,9 @@ def test_native_soft_line_code_is_kept_together_with_exact_scoped_projection():
         ]
     )
     source_style = code_object(_paragraph(source, 1)["paragraphStyle"])
-    source_style.update({"keepLinesTogether": False, "keepWithNext": False})
+    source_style.update(
+        {"keepLinesTogether": False, "keepWithNext": False, "alignment": "JUSTIFIED"}
+    )
     original = _protected(source)
     plan = plan_native_code_styles(source, original, original)
     assert len(plan.paragraphs) == 1
@@ -213,13 +215,14 @@ def test_native_soft_line_code_is_kept_together_with_exact_scoped_projection():
     actual_style = code_object(_paragraph(actual, 1)["paragraphStyle"])
     assert actual_style["keepLinesTogether"] is True
     assert actual_style["keepWithNext"] is False
+    assert actual_style["alignment"] == "START"
     assert verify_native_code_styles(source, actual, plan)
     projected = project_native_code_styles(source, actual, plan)
     assert _body(projected)[1] == _body(source)[1]
     assert _body(projected)[0] == _body(actual)[0]
     assert _body(projected)[2] == _body(actual)[2]
     legacy = replace(
-        plan, syntax_version=plan.syntax_version.replace("native-code-v2/", "native-code-v1/", 1)
+        plan, syntax_version=plan.syntax_version.replace("native-code-v3/", "native-code-v2/", 1)
     )
     assert not verify_native_code_styles(source, actual, legacy)
 
@@ -266,7 +269,7 @@ def test_ambiguous_mono_is_protected_plain_text_without_style_requests():
     actual["namedStyles"] = {"styles": []}
     assert project_native_code_styles(source, actual, plan) == actual
     legacy = replace(
-        plan, syntax_version=plan.syntax_version.replace("native-code-v2/", "native-code-v1/", 1)
+        plan, syntax_version=plan.syntax_version.replace("native-code-v3/", "native-code-v2/", 1)
     )
     assert not verify_native_code_styles(source, actual, legacy)
 

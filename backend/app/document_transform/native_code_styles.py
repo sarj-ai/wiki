@@ -53,7 +53,7 @@ class _CodeTextRun(BaseModel):
 def project_native_code_styles(
     source: NativeCodeRecord, actual: NativeCodeRecord, plan: NativeCodeStylePlan
 ) -> NativeCodeRecord:
-    if plan.syntax_version != f"native-code-v2/pygments-{version('Pygments')}":
+    if plan.syntax_version != f"native-code-v3/pygments-{version('Pygments')}":
         msg = "Unsupported native code syntax version"
         raise ValueError(msg)
     if not plan.paragraphs:
@@ -175,6 +175,10 @@ def styled_paragraph(
     result = _rebased(element, delta)
     paragraph = code_object(result["paragraph"])
     style = code_object(paragraph.setdefault("paragraphStyle", {}))
+    if verify and style.get("alignment") != "START":
+        msg = "Native code paragraph alignment changed"
+        raise ValueError(msg)
+    style["alignment"] = "START"
     if verify and style.get("keepLinesTogether") is not True:
         msg = "Native code paragraph lines were not kept together"
         raise ValueError(msg)

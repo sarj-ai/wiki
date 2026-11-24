@@ -9,7 +9,7 @@ from typing import Final, Literal
 
 from app.document_transform.count_definitions import count_definition_changed
 from app.document_transform.inline_code import inline_code_spans, mask_inline_code
-from app.document_transform.ir import BlockKind, DocumentIR, TextBlock
+from app.document_transform.ir import BlockKind, DocumentIR, TextBlock, authored_title_ids
 from app.document_transform.measurement_actor import reassigned_measurement_action
 from app.document_transform.quantity_notation import (
     CURRENCY_CODE,
@@ -252,6 +252,7 @@ def validate_patches(
     findings: list[TransformFinding] = []
     seen: set[str] = set()
     quoted = quoted_block_ids(document)
+    titles = authored_title_ids(document if framing_source is None else framing_source)
     for patch in patches:
         block = by_id.get(patch.block_id)
         code = _rejection_code(
@@ -262,6 +263,13 @@ def validate_patches(
             aggressive_unslop=aggressive_unslop,
             framing_source=framing_text.get(patch.block_id),
         )
+        if (
+            code is None
+            and patch.block_id in titles
+            and block is not None
+            and patch.replacement != block.text
+        ):
+            code = "protected_block"
         if (
             code is None
             and patch.block_id in quoted

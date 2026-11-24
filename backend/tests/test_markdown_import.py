@@ -771,8 +771,35 @@ def _branded_code_document():
         style = _brand_run_style(size=CURRENT_BRAND_MANIFEST.document.body_size_pt, color=color)
         style["weightedFontFamily"] = {"fontFamily": "Courier New"}
         elements.append({"textRun": {"content": text, "textStyle": style}})
-    document["tabs"][0]["documentTab"]["body"]["content"][1]["paragraph"]["elements"] = elements
+    paragraph = document["tabs"][0]["documentTab"]["body"]["content"][1]["paragraph"]
+    paragraph["elements"] = elements
+    paragraph["paragraphStyle"]["alignment"] = "START"
     return document
+
+
+def test_import_rejects_code_that_inherits_justification() -> None:
+    manifest = markdown_import_manifest(
+        '```python\nreturn "μs"  # note\n```', title="Import", branded=True
+    )
+    document = _branded_code_document()
+    tab = document["tabs"][0]["documentTab"]
+    tab["body"]["content"][1]["paragraph"]["paragraphStyle"].pop("alignment")
+    tab["namedStyles"] = {
+        "styles": [{"namedStyleType": "NORMAL_TEXT", "paragraphStyle": {"alignment": "JUSTIFIED"}}]
+    }
+    verification = verify_markdown_import(document, manifest)
+    assert verification.content_preserved
+    assert verification.structure_preserved
+    assert verification.brand is not BrandVerification.FULL
+
+
+def test_import_rejects_link_underline_on_plain_text() -> None:
+    document = _branded_document()
+    manifest = markdown_import_manifest("Body", title="Import", branded=True)
+    assert verify_markdown_import(document, manifest).brand is BrandVerification.FULL
+    paragraph = document["tabs"][0]["documentTab"]["body"]["content"][1]["paragraph"]
+    paragraph["elements"][0]["textRun"]["textStyle"]["underline"] = True
+    assert verify_markdown_import(document, manifest).brand is not BrandVerification.FULL
 
 
 def test_code_brand_verifies_exact_syntax_colors_with_fragmented_unicode_runs() -> None:
