@@ -7,17 +7,21 @@ describe("public demo file selection", () => {
     expect(DEMO_FILES.map((file) => [file.id, file.name])).toEqual([
       ["unslop-ai-before", "AI example · Before"],
       ["unslop-ai", "AI example · After"],
-      ["ai-draft", "AI draft"],
+      ["nyc-weekend-before", "NYC weekend · Before"],
+      ["nyc-weekend", "NYC weekend · After"],
+      ["proof-review-before", "Trail map · Before"],
+      ["proof-review", "Trail map · After"],
       ["latency-workbook", "Sheets Demo"],
-      ["nyc-weekend", "NYC weekend · Before and After"],
     ]);
     expect(demoFileFor(null).id).toBe("unslop-ai-before");
     expect(DEMO_FILES.map((file) => file.mimeType)).toEqual([
       MIME_DOC,
       MIME_DOC,
       MIME_DOC,
-      MIME_SHEET,
       MIME_DOC,
+      MIME_DOC,
+      MIME_DOC,
+      MIME_SHEET,
     ]);
   });
 

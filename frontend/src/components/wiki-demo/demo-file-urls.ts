@@ -4,7 +4,7 @@ import {
   supportsDocumentMode,
 } from "@/lib/file-urls";
 
-import { DEMO_FILES, type DemoFile, demoHref } from "./demo-data";
+import { type DemoFile, PUBLIC_DEMO_FILES, demoHref } from "./demo-data";
 
 const GOOGLE_PREVIEW =
   /^https:\/\/(?:docs\.google\.com\/(?:document|spreadsheets|presentation)|drive\.google\.com\/file)\/d\/[A-Za-z0-9_-]{1,128}\/preview$/u;
@@ -17,6 +17,9 @@ const DRIVE_DOWNLOAD =
 const DRIVE_VIEW =
   /^https:\/\/drive\.google\.com\/file\/d\/[A-Za-z0-9_-]{1,128}\/view$/u;
 const PUBLIC_FILE_ALIASES: ReadonlyMap<string, string> = new Map([
+  ["1PIYA6mIuDLh1vwPb-yM9DzdX9vv8t3xmGtvbdOu4zHs", "unslop-ai-before"],
+  ["1-qCwZc5ja9JsVxFfG1zb2vs-DvRPaun9HzmBy6lmNJU", "unslop-ai"],
+  ["1q24LIwuOzlXnh1xZFb7BoSzTNsr29nyfAAnwmEVv2Yg", "nyc-weekend"],
   ["12M9C0VB90yj2zoaowlshi7papBMfoFhJlroYr4lTDKQ", "ai-draft"],
   ["1BDbrvpKtmGG57TzGNnCxIChxztmfssUwJNxA44SwSVI", "latency-workbook"],
   ["1OABiTptZ9hM6NOoa5FCLR8OoTEVg7VU6EdE0JTZIt4I", "ai-draft"],
@@ -49,7 +52,7 @@ export function demoHrefForDocumentPath(path: string): null | string {
   const id = /^\/d\/([A-Za-z0-9_-]{1,128})$/u.exec(path)?.[1];
   if (id === undefined) return null;
   const aliasedDemoId = PUBLIC_FILE_ALIASES.get(id);
-  const file = DEMO_FILES.find((candidate) => {
+  const file = PUBLIC_DEMO_FILES.find((candidate) => {
     const preview = demoPreviewUrl(candidate);
     return (
       preview !== null &&

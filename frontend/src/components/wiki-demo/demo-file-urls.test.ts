@@ -88,6 +88,12 @@ describe("public sample view switching", () => {
 
 describe("public sample document links", () => {
   it.each([
+    [
+      "1PIYA6mIuDLh1vwPb-yM9DzdX9vv8t3xmGtvbdOu4zHs",
+      "/demo?file=unslop-ai-before",
+    ],
+    ["1-qCwZc5ja9JsVxFfG1zb2vs-DvRPaun9HzmBy6lmNJU", "/demo?file=unslop-ai"],
+    ["1q24LIwuOzlXnh1xZFb7BoSzTNsr29nyfAAnwmEVv2Yg", "/demo?file=nyc-weekend"],
     ["12M9C0VB90yj2zoaowlshi7papBMfoFhJlroYr4lTDKQ", "/demo?file=ai-draft"],
     [
       "1BDbrvpKtmGG57TzGNnCxIChxztmfssUwJNxA44SwSVI",
