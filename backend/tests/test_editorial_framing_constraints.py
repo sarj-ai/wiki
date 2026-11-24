@@ -20,6 +20,7 @@ def _decision(before: str, after: str) -> PatchDecision:
     "framing",
     [
         "As an AI language model, ",
+        "When all is said and done, ",
         "This deliberately wordy AI draft opens with an expansive preamble. ",
         "An AI draft takes shape. ",
         "BEFORE — deliberately padded AI-draft demonstration. ",
@@ -105,6 +106,30 @@ def test_editorial_framing_can_be_removed_without_losing_the_qualified_fact(fram
         (
             "As an AI language model, playback can divert birds from other duties.",
             "Playback diverts birds from other duties.",
+            "force_language_changed",
+        ),
+        (
+            (
+                "When all is said and done, the root cause was not the individual change itself "
+                "but rather the absence of a safeguard that would have caught it before it reached "
+                "production. Our review process focused on correctness and did not take into "
+                "account how the new setting would behave under peak traffic."
+            ),
+            (
+                "The root cause was not the change at all, but lacking a safeguard that would have "
+                "caught it before production. The review focused on correctness and did not "
+                "consider how the setting would behave under peak traffic."
+            ),
+            "force_language_changed",
+        ),
+        (
+            "When all is said and done, all requests must succeed.",
+            "Requests must succeed.",
+            "force_language_changed",
+        ),
+        (
+            'The label reads "When all is said and done, review the results."',
+            'The label reads "Review the results."',
             "force_language_changed",
         ),
         (
