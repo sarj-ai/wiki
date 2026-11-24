@@ -27,6 +27,25 @@ def test_self_referential_nominal_description_can_be_direct(subject: str) -> Non
     assert not decision.findings
 
 
+@pytest.mark.parametrize("overview", ["a comprehensive overview", "an overview"])
+def test_incident_overview_can_state_what_its_document_covers(overview: str) -> None:
+    source = (
+        f"This document aims to provide {overview} of the checkout incident "
+        "that occurred on 14 October, delve into its root cause, and highlight the key "
+        "learnings that will help us move forward together as a team."
+    )
+    target = (
+        "This document covers the checkout incident that occurred on 14 October, delves "
+        "into its root cause, and highlights the key learnings that will help us move "
+        "forward together as a team."
+    )
+
+    decision = _decision(source, target)
+
+    assert decision.accepted == {"b0": target}, decision.findings
+    assert not decision.findings
+
+
 @pytest.mark.parametrize(
     ("source", "target"),
     [
@@ -49,6 +68,18 @@ def test_self_referential_nominal_description_can_be_direct(subject: str) -> Non
         (
             "This note is intended to provide a description of the cache.",
             "The cache describes itself.",
+        ),
+        (
+            "The service aims to provide a comprehensive overview of each incident.",
+            "The service provides a comprehensive overview of each incident.",
+        ),
+        (
+            "This report aims to provide a comprehensive overview of the checkout incident.",
+            "The checkout incident describes the report.",
+        ),
+        (
+            "The editor wrote “This report aims to provide an overview of the incident.”",
+            "The editor wrote “This report covers the incident.”",
         ),
     ],
 )

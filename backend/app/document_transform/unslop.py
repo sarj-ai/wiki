@@ -21,7 +21,7 @@ from app.document_transform.quotations import (
 
 UNSLOP_UPSTREAM_COMMIT = "d81f5196167ded24f46fced04958c0c12d681798"
 UNSLOP_UPSTREAM_VERSION = "2.3.0"
-UNSLOP_POLICY_VERSION = "sarj-concise-v52"
+UNSLOP_POLICY_VERSION = "sarj-concise-v53"
 MAX_EDITORIAL_PASSES = 100
 MIN_CONCISION_PROSE_WORDS = 40
 CONCISION_WORD_NUMERATOR = 2
@@ -524,11 +524,14 @@ _DOCUMENT_WRITING_ACTIONS = (
     "combine",
     "assemble",
 )
+_DOCUMENT_DESCRIPTION_NOUN_PHRASE = (
+    r"(?:(?:a\s+)?description|(?:an|a\s+comprehensive)\s+overview)\s+of"
+)
 _DOCUMENT_WRITING_FRAME = re.compile(
     _DOCUMENT_SUBJECT_PATTERN + rf"(?P<framing>{_DOCUMENT_WRITING_MODAL_PATTERN}\s+)"
     r"(?=bring\s+together\b|collect\b|summari[sz]e\b|describe\b|explain\b|present\b|"
     r"consolidate\b|outline\b|list\b|catalog(?:ue)?\b|cover\b|"
-    r"provide\s+(?:a\s+)?description\s+of\b)",
+    rf"provide\s+{_DOCUMENT_DESCRIPTION_NOUN_PHRASE}\b)",
     re.IGNORECASE,
 )
 _DOCUMENT_GATHERING_FRAME = re.compile(
@@ -662,7 +665,7 @@ def _writing_action_pattern(action: str) -> re.Pattern[str]:
     if action == "bring together":
         forms = r"(?:brings?|bringing|brought)\s+together"
     elif action == "describe":
-        forms = r"describ(?:e(?:s|d)?|ing)|provid(?:e(?:s|d)?|ing)\s+(?:a\s+)?description\s+of"
+        forms = rf"describ(?:e(?:s|d)?|ing)|provid(?:e(?:s|d)?|ing)\s+{_DOCUMENT_DESCRIPTION_NOUN_PHRASE}"
     elif action.startswith("summari"):
         forms = r"summari[sz](?:e(?:s|d)?|ing)"
     elif action.startswith("catalog"):
