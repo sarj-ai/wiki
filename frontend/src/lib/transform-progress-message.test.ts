@@ -25,18 +25,21 @@ describe("transform task progress", () => {
     ).toContain("Waiting to retry after attempt 1");
   });
 
-  it("describes a suspended model batch as a long wait", () => {
-    expect(
-      transformProgressMessage({
-        id: "task",
-        status: "running",
-        attemptCount: 1,
-        executionState: "awaiting_model",
-      }),
-    ).toBe(
-      "Gemini is processing the document as a batch job. This can take a while…",
-    );
-  });
+  it.each([1, 2])(
+    "shows active model-round progress for attempt %s",
+    (attempt) => {
+      expect(
+        transformProgressMessage({
+          id: "task",
+          status: "running",
+          attemptCount: attempt,
+          executionState: "awaiting_model",
+        }),
+      ).toBe(
+        `Polishing in progress: waiting for the current Gemini round (attempt ${attempt})…`,
+      );
+    },
+  );
 
   it("49 does not describe a terminal task as ongoing work", () => {
     expect(

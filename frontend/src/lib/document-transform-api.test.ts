@@ -25,7 +25,10 @@ vi.mock("@/lib/clients/transform-http", () => ({
 }));
 
 import { DOCUMENT_TRANSFORM_API } from "@/lib/document-transform-api";
-import { DocumentTransformNeedsReviewError } from "@/lib/document-transform-types";
+import {
+  DocumentTransformNeedsReviewError,
+  type DocumentTransformTask,
+} from "@/lib/document-transform-types";
 const TASK_ID = "55555555-5555-4555-8555-555555555555";
 const UPLOAD_FIELDS = {
   expiresInSeconds: "expires_in_seconds",
@@ -597,20 +600,26 @@ describe("documentTransformApi", () => {
     );
   });
 
-  it("uses code-specific guidance when a terminal task has no detail", async () => {
-    await expect(
-      DOCUMENT_TRANSFORM_API.waitForCompletion({
+  it.each([undefined, "Task could not be completed"])(
+    "explains a source change when the terminal detail is %s",
+    async (errorDetail) => {
+      const sourceChangedTask: DocumentTransformTask = {
         errorCode: "source_changed",
         id: TASK_ID,
         status: "failed",
-      }),
-    ).rejects.toMatchObject({
-      code: "source_changed",
-      message:
-        "The document changed after polishing started. Reload and review the latest version before trying again.",
-      name: "DocumentTransformTerminalError",
-    });
-  });
+      };
+      if (errorDetail !== undefined)
+        sourceChangedTask.errorDetail = errorDetail;
+      await expect(
+        DOCUMENT_TRANSFORM_API.waitForCompletion(sourceChangedTask),
+      ).rejects.toMatchObject({
+        code: "source_changed",
+        message:
+          "The source document changed while polishing; run Polish again",
+        name: "DocumentTransformTerminalError",
+      });
+    },
+  );
 
   it("reports model response truncation without retrying or implying that preservation succeeded", async () => {
     await expect(

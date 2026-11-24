@@ -10,7 +10,7 @@ export function transformProgressMessage(
     case "retrying":
       return `Waiting to retry after attempt ${attempt}…`;
     case "awaiting_model":
-      return "Gemini is processing the document as a batch job. This can take a while…";
+      return `Polishing in progress: waiting for the current Gemini round (attempt ${attempt})…`;
     case "running":
       return `Running and checking the document (attempt ${attempt})…`;
   }
