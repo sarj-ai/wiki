@@ -3910,6 +3910,14 @@ def _typography_verification_ir(actual: DocumentIR, expected: DocumentIR) -> Doc
                 replace(
                     observed,
                     id=planned.id,
+                    # Unchanged linked prose has an exact copy font and layout proof.
+                    # Its editable prefix does not authorize a full paragraph restyle.
+                    editable=observed.editable
+                    and not (
+                        expected.copy_font_defended
+                        and planned.protected_suffix is not None
+                        and planned.source_style_text_sha256 == planned.sha256
+                    ),
                     authored_emphasis=planned.authored_emphasis,
                     pagination_keep_with_next=planned.pagination_keep_with_next,
                     suppress_space_above=planned.suppress_space_above,
@@ -3928,6 +3936,7 @@ def _typography_verification_ir(actual: DocumentIR, expected: DocumentIR) -> Doc
                 observed,
                 id=planned.id,
                 editable=False,
+                pagination_keep_with_next=planned.pagination_keep_with_next,
                 preserved_font_family=planned.preserved_font_family,
                 font_style_ranges=tuple(
                     replace(

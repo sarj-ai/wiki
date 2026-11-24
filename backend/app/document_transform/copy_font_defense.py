@@ -5,7 +5,11 @@ from typing import Any
 
 from pydantic import JsonValue
 
-from app.document_transform.brand import copy_style_locations, font_only_paragraph_alignment
+from app.document_transform.brand import (
+    copy_style_locations,
+    font_only_pagination_style,
+    font_only_paragraph_alignment,
+)
 from app.document_transform.brand_manifest import CURRENT_BRAND_MANIFEST
 from app.document_transform.copy_identity import (
     align_verified_copy_list_metadata,
@@ -182,8 +186,11 @@ def _copy_font_layout(
     targets = {}
     for candidate in expected.blocks:
         source = candidate.source_range
-        if source is not None and font_only_paragraph_alignment(candidate) is not None:
-            targets[source.tab_id, source.start_index] = candidate
+        if source is not None and (
+            font_only_paragraph_alignment(candidate) is not None
+            or font_only_pagination_style(candidate)
+        ):
+            targets[source.tab_id, source.start_index] = (candidate, source)
     if not targets:
         return _CopyFontLayout(document, [])
     projected = deepcopy(document)
@@ -191,17 +198,20 @@ def _copy_font_layout(
     deltas = _position_deltas(original, expected)
     requests: list[dict[str, JsonValue]] = []
     for tab_id, start, element, paragraph in _font_paragraphs(projected):
-        block = targets.get((tab_id, start))
-        if block is None:
+        target = targets.get((tab_id, start))
+        if target is None:
             continue
+        block, source = target
         alignment = font_only_paragraph_alignment(block)
-        source = block.source_range
-        if source is None:
-            raise ValueError
         raw = obj(element["paragraph"])
         style = (
             obj(raw["paragraphStyle"]) if "paragraph_style" in paragraph.model_fields_set else {}
         )
+        if grouping := font_only_pagination_style(block):
+            style.update(grouping)
+            raw["paragraphStyle"] = style
+        if alignment is None:
+            continue
         project_regular_prose(raw, block)
         delta = deltas.get(block.id, 0)
         if paragraph.paragraph_style.alignment != alignment:
