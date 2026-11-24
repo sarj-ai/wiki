@@ -657,10 +657,20 @@ def _native_text_style_ranges(block: TextBlock, range_value: DocsRequest) -> lis
     ]
 
 
+def font_only_pagination_style(block: TextBlock) -> dict[str, bool]:
+    if (
+        not block.requires_font_only_format
+        or block.preserved_visual_authority
+        or block.pagination_keep_with_next is None
+    ):
+        return {}
+    return {"keepWithNext": block.pagination_keep_with_next, "keepLinesTogether": True}
+
+
 def _font_only_requests(block: TextBlock, profile: SarjBrandProfile) -> list[DocsRequest]:
     # Preserve links, emphasis and object payloads while styling safe prose runs.
     requests: list[DocsRequest] = []
-    if block.pagination_keep_with_next is not None and block.source_range is not None:
+    if (grouping := font_only_pagination_style(block)) and block.source_range is not None:
         requests.append(
             {
                 "updateParagraphStyle": {
@@ -669,10 +679,7 @@ def _font_only_requests(block: TextBlock, profile: SarjBrandProfile) -> list[Doc
                         "endIndex": block.source_range.end_index,
                         "tabId": block.source_range.tab_id,
                     },
-                    "paragraphStyle": {
-                        "keepWithNext": block.pagination_keep_with_next,
-                        "keepLinesTogether": True,
-                    },
+                    "paragraphStyle": grouping,
                     "fields": "keepWithNext,keepLinesTogether",
                 }
             }

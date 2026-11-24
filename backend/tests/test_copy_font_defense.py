@@ -697,3 +697,69 @@ async def test_completed_copy_tab_projection_retains_bound_font_preservation(
         ).execute(operation_id=operation, request=request)
     assert checks[-1] is False
     assert (gateway.applies, gateway.brand_prepares) == writes
+
+
+@pytest.mark.parametrize(
+    ("keep_next", "change"),
+    [
+        (True, "none"),
+        (False, "none"),
+        (None, "none"),
+        (True, "keep_next"),
+        (False, "keep_lines"),
+        (None, "extra_grouping"),
+        (True, "indent"),
+        (True, "link"),
+        (True, "weight"),
+    ],
+)
+async def test_copy_verifies_grouped_list_item_with_editable_prefix_and_link(
+    keep_next: bool | None, change: str, readback_gateway_factory: type[_ReadbackGateway]
+) -> None:
+    source = document()
+    tab = source["tabs"][0]["documentTab"]
+    paragraph = tab["body"]["content"][0]["paragraph"]
+    paragraph["paragraphStyle"] = {
+        "namedStyleType": "NORMAL_TEXT",
+        "indentStart": {"magnitude": 36, "unit": "PT"},
+    }
+    paragraph["bullet"] = {"listId": "sources"}
+    tab["lists"] = {"sources": {"listId": "sources"}}
+    parts(source)[1]["textRun"]["textStyle"]["link"] = {"url": "https://example.test/evidence"}
+    original = planned(source)
+    (block,) = original.blocks
+    assert block.editable
+    assert block.protected_suffix == "Beta"
+    expected = replace(original, blocks=(replace(block, pagination_keep_with_next=keep_next),))
+    actual = deepcopy(source)
+    style = actual["tabs"][0]["documentTab"]["body"]["content"][0]["paragraph"]["paragraphStyle"]
+    if keep_next is not None:
+        style.update({"keepWithNext": keep_next, "keepLinesTogether": True})
+    for part in parts(actual)[:-1]:
+        part["textRun"]["textStyle"]["weightedFontFamily"]["fontFamily"] = "Nunito"
+    match change:
+        case "keep_next":
+            style["keepWithNext"] = False
+        case "keep_lines":
+            style["keepLinesTogether"] = False
+        case "extra_grouping":
+            style.update({"keepWithNext": True, "keepLinesTogether": True})
+        case "indent":
+            style["indentStart"]["magnitude"] = 18
+        case "link":
+            parts(actual)[1]["textRun"]["textStyle"]["link"]["url"] = "https://example.test/other"
+        case "weight":
+            parts(actual)[0]["textRun"]["textStyle"]["weightedFontFamily"]["weight"] = 900
+        case _:
+            assert change == "none"
+    verified = await readback_gateway_factory(actual).verify_output(
+        draft=transform._output_draft(),
+        source=provenance._snapshot(source),
+        expected=expected,
+        verify_brand=True,
+        header_title="Decision",
+    )
+    assert verified.structure_preserved is (change == "none")
+    if change == "none":
+        assert verified.content_preserved
+        assert verified.brand is BrandVerification.FULL
