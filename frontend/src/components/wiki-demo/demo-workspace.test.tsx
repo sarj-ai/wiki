@@ -62,11 +62,11 @@ describe("public read-only Wiki demo", () => {
     });
   }
 
-  it("opens Numbers Every Programmer Should Know without authentication, private requests or a context banner", async () => {
+  it("opens the AI example Before without authentication, private requests or a context banner", async () => {
     await mount();
     expect(screen.getByText("Read-only workspace")).toBeInTheDocument();
     expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent(
-      "Numbers Every Programmer Should Know",
+      "AI example · Before",
     );
     expect(screen.getByTitle(/read-only preview/)).toHaveAttribute(
       "src",
@@ -79,7 +79,7 @@ describe("public read-only Wiki demo", () => {
     ).toBeNull();
     expect(
       within(screen.getByRole("main")).queryByText(
-        /Before|After|Processing record|Review note|fewer words/u,
+        /Processing record|Review note|fewer words/u,
       ),
     ).toBeNull();
     expect(screen.queryByRole("textbox")).toBeNull();
@@ -108,10 +108,10 @@ describe("public read-only Wiki demo", () => {
       .getAllByRole("link")
       .filter((link) => link.getAttribute("href")?.startsWith("/demo?file="));
     expect(files.map((link) => link.textContent)).toEqual([
-      "Numbers Every Programmer Should Know",
+      "AI example · Before",
+      "AI example · After",
       "AI draft",
       "Sheets Demo",
-      "AI example · Before and After",
       "NYC weekend · Before and After",
     ]);
     expect(files[0]).toHaveAttribute("aria-current", "page");
@@ -143,7 +143,7 @@ describe("public read-only Wiki demo", () => {
     "../d/private",
     "<script>alert(1)</script>",
   ])(
-    "uses only the trusted Numbers Every Programmer Should Know for an unknown selector: %s",
+    "uses only the trusted AI example Before for an unknown selector: %s",
     async (selector) => {
       ROUTING.search = new URLSearchParams({ file: selector }).toString();
       await mount();
@@ -232,7 +232,7 @@ describe("public read-only Wiki demo", () => {
       "src",
       demoFileFor("latency-workbook").previewUrl,
     );
-    ROUTING.search = "file=latency-guide";
+    ROUTING.search = "file=ai-draft";
     view?.rerender(<DemoWorkspace />);
     expect(screen.queryByTitle(/ — editor view$/)).toBeNull();
     expect(screen.getByRole("button", { name: "Preview" })).toHaveAttribute(
