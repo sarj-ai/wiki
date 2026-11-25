@@ -187,7 +187,12 @@ def _original_block(block: TextBlock) -> TextBlock:
 def _response_json_schema(
     envelope: type[PatchEnvelope | PatchReviewEnvelope | ReadabilityEnvelope],
 ) -> dict[str, JsonValue]:
-    schema = genai_types.JSONSchema.model_validate(envelope.model_json_schema())
+    response_schema = envelope.model_json_schema()
+    if envelope is PatchEnvelope:
+        # Stored proposals can carry a rationale. New writer responses only need the edit.
+        patch = response_schema["$defs"][TextPatch.__name__]
+        patch["properties"] = {key: patch["properties"][key] for key in patch["required"]}
+    schema = genai_types.JSONSchema.model_validate(response_schema)
     # Vertex rejects these large bounded object arrays while compiling its decoder.
     # Keep the exact 100-item limit in Pydantic's mandatory response validation.
     if schema.properties is not None:
@@ -1530,8 +1535,7 @@ def _prompt(
             (
                 'The exact JSON shape is {"patches":[{"block_id":"b0",'
                 '"expected_sha256":"<supplied sha256>","replacement":"<complete replacement '
-                'block>","rationale":"<brief reason>"}]}. '
-                "Each rationale must be at most 240 characters. "
+                'block>"}]}. '
                 "Do not use JSON Patch op/path/value fields."
             ),
             (

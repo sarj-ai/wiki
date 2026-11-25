@@ -455,7 +455,7 @@ async def test_aggressive_generation_uses_structured_output_and_supported_thinki
     assert config.thinking_config is not None
     assert config.thinking_config.thinking_level is types.ThinkingLevel.LOW
     assert SOURCE in harness.call.prompts[0]
-    assert "Each rationale must be at most 240 characters." in harness.call.prompts[0]
+    assert "rationale" not in harness.call.prompts[0]
     assert isinstance(config.system_instruction, str)
     assert "60% fewer words" in config.system_instruction
     assert (
@@ -1034,7 +1034,7 @@ def test_conventional_framing_can_go_without_relaxing_the_following_obligation(p
     )
     assert decision.accepted == {block.id: proposed}
     assert not decision.findings
-    assert UNSLOP_POLICY_VERSION == "sarj-concise-v53"
+    assert UNSLOP_POLICY_VERSION == "sarj-concise-v54"
 
 
 @pytest.mark.parametrize(
