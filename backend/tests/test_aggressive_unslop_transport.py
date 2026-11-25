@@ -1305,7 +1305,7 @@ async def test_real_sdk_serializes_structured_rewrite_and_review_without_samplin
     )
     responses = iter(
         (
-            PatchEnvelope(patches=[patch]).model_dump_json(),
+            PatchEnvelope(patches=[patch]).model_dump_json(exclude_defaults=True),
             review.model_dump_json(),
         )
     )
@@ -1351,6 +1351,10 @@ async def test_real_sdk_serializes_structured_rewrite_and_review_without_samplin
         assert request.generation_config.response_schema is None
     writer_schema = PatchEnvelope.model_json_schema()
     writer_schema["properties"]["patches"].pop("maxItems")
+    writer_schema["$defs"]["TextPatch"]["properties"] = {
+        key: writer_schema["$defs"]["TextPatch"]["properties"][key]
+        for key in ("block_id", "expected_sha256", "replacement")
+    }
     assert requests[0].generation_config.response_json_schema == writer_schema
     review_schema = requests[1].generation_config.response_json_schema
     assert review_schema is not None
