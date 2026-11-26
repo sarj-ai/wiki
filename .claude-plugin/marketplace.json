@@ -1,0 +1,15 @@
+{
+  "name": "sarj",
+  "owner": { "name": "Sarj AI" },
+  "metadata": {
+    "description": "Sarj Wiki document tools for Claude",
+    "version": "1.0.0"
+  },
+  "plugins": [
+    {
+      "name": "sarj-wiki",
+      "source": "./plugins/sarj-wiki",
+      "description": "Read accessible Wiki documents and run Unslop and Format using a Google document ID."
+    }
+  ]
+}

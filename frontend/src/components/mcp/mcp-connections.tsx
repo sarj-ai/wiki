@@ -44,12 +44,19 @@ const COPY_LABELS = {
   copied: "Setup command copied",
   unavailable: "Copy unavailable; select the command above",
 } as const;
+const CLAUDE_COPY_LABELS = {
+  ready: "Copy Claude Code command",
+  copied: "Claude Code command copied",
+  unavailable: "Copy unavailable; select the Claude command above",
+} as const;
 
 export function McpConnections() {
   const [state, setState] = useState<ConnectionsState>({ kind: "loading" });
   const phase = useRef<ConnectionsState>(state);
   const reads = useRef<AbortController | null>(null);
   const [copyStatus, setCopyStatus] =
+    useState<keyof typeof COPY_LABELS>("ready");
+  const [claudeCopyStatus, setClaudeCopyStatus] =
     useState<keyof typeof COPY_LABELS>("ready");
   const publish = (next: ConnectionsState) =>
     publishConnections(phase, setState, next);
@@ -143,6 +150,7 @@ export function McpConnections() {
 
   const resource = `${API_URL}/mcp`;
   const command = `codex mcp add sarj-wiki --url ${quoteShell(resource)} && codex mcp login sarj-wiki`;
+  const claudeCommand = `claude mcp add --transport http sarj-wiki ${quoteShell(resource)}`;
 
   async function copyCommand(): Promise<void> {
     try {
@@ -150,6 +158,15 @@ export function McpConnections() {
       setCopyStatus("copied");
     } catch {
       setCopyStatus("unavailable");
+    }
+  }
+
+  async function copyClaudeCommand(): Promise<void> {
+    try {
+      await navigator.clipboard.writeText(claudeCommand);
+      setClaudeCopyStatus("copied");
+    } catch {
+      setClaudeCopyStatus("unavailable");
     }
   }
 
@@ -189,6 +206,38 @@ export function McpConnections() {
               If sarj-wiki is already configured, inspect that entry before
               replacing it. No API key or Google token needs to be copied.
             </p>
+          </section>
+          <section className="bg-card space-y-3 rounded-xl border p-6">
+            <h2 className="text-lg font-semibold">Connect Claude</h2>
+            <p className="text-muted-foreground text-sm">
+              For Claude Code, run this command and authenticate from its MCP
+              menu. In Wiki, choose whether to allow document changes.
+            </p>
+            <pre className="bg-muted overflow-x-auto rounded-md p-3 text-sm">
+              <code>{claudeCommand}</code>
+            </pre>
+            <Button onClick={() => void copyClaudeCommand()} variant="outline">
+              {CLAUDE_COPY_LABELS[claudeCopyStatus]}
+            </Button>
+            <p className="text-muted-foreground text-sm">
+              In Claude web or Desktop, add a custom connector with{" "}
+              <code className="wrap-anywhere">{resource}</code> and choose
+              “Register automatically.” Sign in with your authorized Google
+              account and review the Wiki consent screen.
+            </p>
+            <p className="text-muted-foreground text-sm">
+              Then ask: “Run Unslop and Format on Google document ID …”. The
+              shortcut creates a copy by default. It returns a task to follow
+              until the document is ready.
+            </p>
+            <a
+              className="text-primary underline underline-offset-4"
+              href="https://github.com/sarj-ai/wiki/blob/main/docs/mcp.json"
+              rel="noreferrer"
+              target="_blank"
+            >
+              Marketplace installation and REST API guide
+            </a>
           </section>
           <h2 className="text-lg font-semibold">Your active connections</h2>
           {connections.connections.length === 0 ? (

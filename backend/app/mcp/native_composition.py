@@ -129,7 +129,9 @@ class NativeDispatchMiddleware:
         await composition.runtime.app(scope, receive, send)
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
-        if scope["type"] == "http" and scope.get("path") in NATIVE_PATHS:
+        if scope["type"] == "http" and (
+            scope.get("path") in NATIVE_PATHS or scope.get("path", "").startswith("/mcp/v1/")
+        ):
             await self._native(scope, receive, send)
             return
         await self._rest(scope, receive, send)

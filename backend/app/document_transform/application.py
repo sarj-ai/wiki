@@ -190,6 +190,10 @@ async def validate_transform_authorization(
         await _require_writable_destination(payload.source.destination_folder_id, files)
     if isinstance(payload.source, DriveFileSource):
         source = await files.get(payload.source.file_id)
+        if payload.source.kind == "drive_file_id" and source.mime_type != MIME_DOC:
+            raise HTTPException(
+                status_code=422, detail="Document-ID polishing requires a native Google Doc"
+            )
         if payload.copy_destination_folder_id is not None:
             if source.mime_type != MIME_DOC:
                 raise HTTPException(

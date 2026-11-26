@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.identifiers import UserId
 from app.mcp.context import (
+    ContextFactory,
     McpApplicationContext,
     McpAuthorizationError,
     ValidatedMcpPrincipal,
@@ -15,7 +16,6 @@ from app.mcp.context import (
 )
 from app.mcp.native_provider import NativeWikiOAuthProvider
 from app.mcp.schemas import McpCapability
-from app.mcp.server import ContextFactory
 
 
 class _VerifiedClaims(BaseModel):

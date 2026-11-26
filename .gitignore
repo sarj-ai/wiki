@@ -5,6 +5,7 @@
 *.tfstate*
 .terraform/
 .mcp.json
+!plugins/sarj-wiki/.mcp.json
 .playwright-mcp/
 .stamps/
 backend/.drive-organizer/

@@ -50,7 +50,7 @@ if [[ "$enabled_flag" == true ]]; then
       and ($entry[0].valueFrom.secretKeyRef.key | test("^[1-9][0-9]*$"));
     env("MCP_NATIVE_ISSUER") == [{"name":"MCP_NATIVE_ISSUER","value":$issuer}]
     and env("MCP_NATIVE_LOOPBACK_PATHS") == [{"name":"MCP_NATIVE_LOOPBACK_PATHS","value":"[\"/callback\"]"}]
-    and env("MCP_NATIVE_HTTPS_CALLBACKS") == [{"name":"MCP_NATIVE_HTTPS_CALLBACKS","value":"[]"}]
+    and env("MCP_NATIVE_HTTPS_CALLBACKS") == [{"name":"MCP_NATIVE_HTTPS_CALLBACKS","value":"[\"https://claude.ai/api/mcp/auth_callback\"]"}]
     and pinned_secret("MCP_NATIVE_FERNET_KEYS")
     and pinned_secret("MCP_NATIVE_LOCK_KEY")
   ' "$revision_file" >/dev/null || {

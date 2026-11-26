@@ -44,6 +44,7 @@ from app.document_transform.errors import (
     DocumentGatewayError,
     IncompatiblePendingOutputError,
     InPlaceNeedsReviewError,
+    InPlaceNotAllowedError,
     InPlacePostMutationVerificationError,
     ModelUnavailableError,
     OutputConflictError,
@@ -1017,7 +1018,7 @@ class _Gateway(DocumentGateway):
         *,
         expected_modified_time: str,
         expected_revision_id: DocsRevisionId | None,
-        expected_parent_folder_id: FileId,
+        expected_parent_folder_id: FileId | None,
     ) -> bool:
         return True
 
@@ -2577,6 +2578,66 @@ async def test_drive_markdown_parent_move_fails_source_fence(
     assert unchanged is False
 
 
+@pytest.mark.parametrize("parents", [None, []], ids=["omitted", "empty"])
+async def test_direct_id_native_source_can_hide_its_parent(parents: list[JsonValue] | None) -> None:
+    class SharedFiles:
+        async def get_direct(self, file_id: FileId) -> FileResponse:
+            return FileResponse(
+                id=file_id,
+                name="Decision",
+                mime_type="application/vnd.google-apps.document",
+                parent_folder_id=None,
+                drive_id=None,
+                modified_time="2026-09-03T00:00:00Z",
+            )
+
+        async def get(self, _file_id: FileId) -> FileResponse:
+            pytest.fail("Explicit shared source reads must not require a visible parent")
+
+    metadata: dict[str, JsonValue] = {
+        "name": "Decision",
+        "mimeType": "application/vnd.google-apps.document",
+        "modifiedTime": "2026-09-03T00:00:00Z",
+    }
+    if parents is not None:
+        metadata["parents"] = parents
+
+    class SharedSourceGateway(GoogleDocumentGateway):
+        def __init__(self) -> None:
+            self._files = dependency(SharedFiles())
+            self._header_identity_proof = None
+
+        @override
+        def _files_get_sync(self, file_id: FileId) -> dict[str, JsonValue]:
+            assert file_id == "source"
+            return metadata
+
+        @override
+        def _get_document_sync(self, file_id: FileId) -> dict[str, JsonValue]:
+            assert file_id == "source"
+            return _in_place_document("Decision.", revision="source-revision")
+
+    gateway = SharedSourceGateway()
+    source = DriveFileSource(
+        kind="drive_file_id",
+        file_id=FileId("source"),
+        expected_modified_time="2026-09-03T00:00:00Z",
+    )
+
+    snapshot = await gateway.load_drive_source(source)
+
+    assert isinstance(snapshot, NativeDocumentSnapshot)
+    assert snapshot.parent_folder_id is None
+    assert await gateway.source_is_unchanged(
+        source,
+        expected_modified_time="2026-09-03T00:00:00Z",
+        expected_revision_id=DocsRevisionId("source-revision"),
+        expected_parent_folder_id=None,
+    )
+    with pytest.raises(InPlaceNotAllowedError):
+        gateway._inspect_in_place_sync(snapshot, "Decision")
+
+
 async def test_source_permission_loss_is_terminal_gateway_error(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -2909,6 +2970,39 @@ async def test_native_copy_uses_and_checkpoints_explicit_destination() -> None:
 
     assert result.output.parent_folder_id == "qa-folder"
     assert {checkpoint.output_parent_folder_id for checkpoint in store.checkpoints} == {"qa-folder"}
+
+
+async def test_parentless_native_copy_checkpoints_and_recovers_in_explicit_destination() -> None:
+    gateway = _native_copy_gateway()
+    assert isinstance(gateway.snapshot, NativeDocumentSnapshot)
+    gateway.snapshot = replace(gateway.snapshot, parent_folder_id=None)
+    request = DocumentTransformRequest(
+        source=DriveFileSource(
+            kind="drive_file_id",
+            file_id=FileId("source"),
+            expected_modified_time="2026-09-03T00:00:00Z",
+        ),
+        mode=TransformMode.UNSLOP,
+        copy_destination_folder_id=FileId("qa-folder"),
+    )
+    store = _CopyCheckpointStore()
+    task_id = TaskId(uuid.uuid7())
+    result = await _copy_executor(gateway=gateway, store=store, task_id=task_id).execute(
+        operation_id=task_id, request=request
+    )
+
+    assert result.output.parent_folder_id == "qa-folder"
+    assert {checkpoint.source_parent_folder_id for checkpoint in store.checkpoints} == {None}
+    assert {checkpoint.output_parent_folder_id for checkpoint in store.checkpoints} == {"qa-folder"}
+    saved = store.checkpoints[-1]
+    restored = type(saved).model_validate(saved.model_dump())
+    assert restored == saved
+    with pytest.raises(ValidationError, match="known output destination"):
+        type(saved).model_validate({**saved.model_dump(), "output_parent_folder_id": None})
+    repeated = await _copy_executor(
+        gateway=gateway, store=store, task_id=task_id, checkpoint=restored
+    ).execute(operation_id=task_id, request=request)
+    assert repeated == result
 
 
 async def test_native_copy_rejects_recovered_output_in_wrong_destination() -> None:

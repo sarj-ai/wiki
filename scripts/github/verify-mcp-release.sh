@@ -50,6 +50,9 @@ POST /register
 POST /revoke
 POST /mcp
 POST /mcp/
+POST /mcp/v1/polish
+GET /mcp/v1/tasks/00000000-0000-0000-0000-000000000000
+GET /mcp/v1/admissions/00000000-0000-0000-0000-000000000000
 GET /integrations/mcp/connections
 GET /integrations/mcp/consent/synthetic-intent
 GET /integrations/mcp/consent/synthetic-intent/status
@@ -101,6 +104,20 @@ if [[ "$PROBE_STATUS" != 401 || "$challenge" != *"$resource_metadata"* ]]; then
   echo "Unauthenticated native MCP did not return the expected OAuth challenge" >&2
   exit 1
 fi
+
+while read -r method path; do
+  probe "$method" "$path" --header 'Content-Type: application/json' --data '{}'
+  challenge=$(awk 'tolower($1) == "www-authenticate:" { sub(/\r$/, "", $0); print }' \
+    "$probe_dir/headers" | tail -n 1)
+  if [[ "$PROBE_STATUS" != 401 || "$challenge" != *"$resource_metadata"* ]]; then
+    echo "OAuth REST route $method $path did not require authentication ($PROBE_STATUS)" >&2
+    exit 1
+  fi
+done <<'EOF'
+POST /mcp/v1/polish
+GET /mcp/v1/tasks/00000000-0000-0000-0000-000000000000
+GET /mcp/v1/admissions/00000000-0000-0000-0000-000000000000
+EOF
 
 for hostile in host origin; do
   if [[ "$hostile" == host ]]; then

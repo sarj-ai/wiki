@@ -39,7 +39,7 @@ if TYPE_CHECKING:
 @dataclass(frozen=True, slots=True, kw_only=True)
 class _SourceMetadata:
     title: str
-    parent_folder_id: FileId
+    parent_folder_id: FileId | None
     modified_time: str | None
     web_url: str | None = None
 
@@ -56,6 +56,7 @@ class NativeDocumentSnapshot(_SourceMetadata):
 
 @dataclass(frozen=True, slots=True, kw_only=True)
 class MarkdownSnapshot(_SourceMetadata):
+    parent_folder_id: FileId
     markdown: str
     compact_markdown: bool = False
     media_type: Literal["text/markdown"] = field(default="text/markdown", init=False)
@@ -191,7 +192,7 @@ class DocumentGateway(ABC):
         *,
         expected_modified_time: str,
         expected_revision_id: DocsRevisionId | None,
-        expected_parent_folder_id: FileId,
+        expected_parent_folder_id: FileId | None,
     ) -> bool: ...
 
     async def inspect_in_place(

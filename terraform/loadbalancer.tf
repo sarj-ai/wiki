@@ -1,5 +1,6 @@
 
 locals {
+  native_oauth_redirect_request = "(request.method == 'GET' && request.path.urlDecode() == '/authorize') || (request.method == 'POST' && request.path.urlDecode() == '/token')"
   cloudflare_origin_cidrs = [
     "173.245.48.0/20",
     "103.21.244.0/22",
@@ -148,13 +149,35 @@ resource "google_compute_security_policy" "backend_armor" {
 
   rule {
     action   = "deny(403)"
+    priority = 525
+    preview  = false
+    match {
+      expr {
+        expression = "(${local.native_oauth_redirect_request}) && evaluatePreconfiguredWaf('rfi-v33-stable', {'sensitivity': 1})"
+      }
+    }
+    preconfigured_waf_config {
+      exclusion {
+        target_rule_set = "rfi-v33-stable"
+        target_rule_ids = ["owasp-crs-v030301-id931100-rfi"]
+        request_query_param {
+          operator = "EQUALS"
+          value    = "redirect_uri"
+        }
+      }
+    }
+    description = "OAuth authorize/token: validate redirect_uri in the application; retain all other RFI inspection"
+  }
+
+  rule {
+    action   = "deny(403)"
     priority = 530
     match {
       expr {
-        expression = "evaluatePreconfiguredWaf('rfi-v33-stable', {'sensitivity': 1})"
+        expression = "!(${local.native_oauth_redirect_request}) && evaluatePreconfiguredWaf('rfi-v33-stable', {'sensitivity': 1})"
       }
     }
-    description = "block RFI (sensitivity 1, OAuth-callback compatible)"
+    description = "block RFI outside exact OAuth redirect-bearing routes (sensitivity 1)"
   }
 
   rule {

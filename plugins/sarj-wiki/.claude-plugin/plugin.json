@@ -1,0 +1,12 @@
+{
+  "name": "sarj-wiki",
+  "version": "1.0.0",
+  "description": "Use Sarj Wiki from Claude: find documents, run Unslop and Format by Google document ID, and track the result.",
+  "author": { "name": "Sarj AI" },
+  "homepage": "https://wiki.sarj.ai",
+  "privacyPolicyUrl": "https://sarj.ai/privacy",
+  "icon": "./assets/icon.png",
+  "repository": "https://github.com/sarj-ai/wiki",
+  "license": "MIT",
+  "mcpServers": "./.mcp.json"
+}

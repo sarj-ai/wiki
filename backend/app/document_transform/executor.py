@@ -1602,7 +1602,7 @@ class DocumentTransformExecutor(DocumentTransformRunner):
             raise DocumentGatewayError
 
         snapshot = await self._gateway.load_drive_source(request.source)
-        if not isinstance(snapshot, NativeDocumentSnapshot):
+        if not isinstance(snapshot, NativeDocumentSnapshot) or snapshot.parent_folder_id is None:
             raise InPlaceNotAllowedError
         checkpoint = self._resume_in_place_checkpoint(request, request.source, snapshot)
         if checkpoint is not None and checkpoint.stage is InPlaceCheckpointStage.COMPLETE:
@@ -2749,7 +2749,7 @@ class DocumentTransformExecutor(DocumentTransformRunner):
                 source=request.source,
                 source_sha256=source_sha256,
                 output_name=output_name,
-                parent_folder_id=request.copy_destination_folder_id or snapshot.parent_folder_id,
+                parent_folder_id=_copy_output_parent(request, snapshot),
             )
         return await self._gateway.create_from_markdown(
             operation_id=operation_id,
@@ -2902,7 +2902,10 @@ def _copy_output_name(request: DocumentTransformRequest, original: DocumentIR) -
 
 
 def _copy_output_parent(request: DocumentTransformRequest, snapshot: SourceSnapshot) -> FileId:
-    return request.copy_destination_folder_id or snapshot.parent_folder_id
+    parent = request.copy_destination_folder_id or snapshot.parent_folder_id
+    if parent is None:
+        raise UnsupportedSourceError
+    return parent
 
 
 def _strip_generated_copy_suffixes(title: str) -> str:
@@ -3021,7 +3024,7 @@ def _new_copy_checkpoint(
         if isinstance(snapshot, NativeDocumentSnapshot)
         else None,
         source_parent_folder_id=snapshot.parent_folder_id,
-        output_parent_folder_id=request.copy_destination_folder_id or snapshot.parent_folder_id,
+        output_parent_folder_id=_copy_output_parent(request, snapshot),
         brand_profile_id=CURRENT_BRAND_MANIFEST.profile_id,
         brand_profile_sha256=CURRENT_BRAND_MANIFEST.sha256,
         pipeline_version=PIPELINE_VERSION,
@@ -3083,7 +3086,7 @@ def _validate_copy_checkpoint(
         snapshot.modified_time,
         snapshot.revision_id if isinstance(snapshot, NativeDocumentSnapshot) else None,
         snapshot.parent_folder_id,
-        request.copy_destination_folder_id or snapshot.parent_folder_id,
+        _copy_output_parent(request, snapshot),
         CURRENT_BRAND_MANIFEST.profile_id,
         CURRENT_BRAND_MANIFEST.sha256,
         PIPELINE_VERSION,

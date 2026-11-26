@@ -218,6 +218,12 @@ class PolishResponse(TaskResponse):
     replayed: bool = Field(strict=True)
 
 
+class DocumentIdPolishResponse(PolishResponse):
+    idempotency_key: IdempotencyKey = Field(
+        description="Retain this key to recover the admitted task or retry the same operation."
+    )
+
+
 class ShortLinkInput(McpModel):
     file_id: McpFileId
 

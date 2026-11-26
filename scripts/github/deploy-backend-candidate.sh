@@ -31,6 +31,19 @@ echo "started_at=$started_at" >>"$GITHUB_OUTPUT"
 
 candidate_env_arguments=()
 if jq -e 'any(.spec.template.spec.containers[0].env[]?;
+  .name == "MCP_NATIVE_ENABLED" and .value == "true")' <<<"$service_json" >/dev/null; then
+  if ! jq -e '
+    [.spec.template.spec.containers[0].env[]? | select(.name == "MCP_NATIVE_HTTPS_CALLBACKS")]
+    | length == 1 and (.[0].value == "[]" or .[0].value == "[\"https://claude.ai/api/mcp/auth_callback\"]")
+  ' <<<"$service_json" >/dev/null; then
+    echo "Native MCP callbacks differ from the reviewed Claude rollout contract" >&2
+    exit 1
+  fi
+  candidate_env_arguments+=(
+    '--update-env-vars=^|^MCP_NATIVE_HTTPS_CALLBACKS=["https://claude.ai/api/mcp/auth_callback"]'
+  )
+fi
+if jq -e 'any(.spec.template.spec.containers[0].env[]?;
   .name == "DOCUMENT_TRANSFORM_FALLBACK_MODEL" and .value == "gemini-2.5-flash-lite")' \
   <<<"$service_json" >/dev/null; then
   candidate_env_arguments+=(--remove-env-vars=DOCUMENT_TRANSFORM_FALLBACK_MODEL)

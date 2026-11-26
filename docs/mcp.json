@@ -1,0 +1,174 @@
+{
+  "title": "Sarj Wiki MCP and REST guide",
+  "endpoint": "https://api-wiki.sarj.ai/mcp",
+  "account_access": "Approved sarj.ai Google accounts only.",
+  "authentication": {
+    "method": "Google-backed native OAuth; no permanent API key or copied Google credential is required.",
+    "issuer": "https://api-wiki.sarj.ai/",
+    "resource": "https://api-wiki.sarj.ai/mcp",
+    "authorization_server_metadata": "https://api-wiki.sarj.ai/.well-known/oauth-authorization-server",
+    "protected_resource_metadata": "https://api-wiki.sarj.ai/.well-known/oauth-protected-resource/mcp",
+    "scopes": [
+      "wiki:read",
+      "wiki:transform"
+    ],
+    "consent": "Read access is the default. Document changes need the separate, unchecked-by-default approval.",
+    "controls": [
+      "S256 PKCE",
+      "Resource-bound opaque tokens",
+      "Expiring client grants",
+      "Revocation checks on every request"
+    ],
+    "revocation": "Disconnect the client from Wiki App connections to revoke both MCP and REST access."
+  },
+  "clients": {
+    "claude_code": {
+      "marketplace_install_commands": [
+        "/plugin marketplace add sarj-ai/wiki",
+        "/plugin install sarj-wiki@sarj"
+      ],
+      "direct_configuration_command": "claude mcp add --transport http sarj-wiki https://api-wiki.sarj.ai/mcp",
+      "sign_in": "Authenticate in the MCP menu and review the Wiki consent screen.",
+      "plugin_contents": "Remote MCP configuration only; no local server, shell hook, or executable."
+    },
+    "claude_web_and_desktop": {
+      "connector_url": "https://api-wiki.sarj.ai/mcp",
+      "oauth_client_choice": "Register automatically",
+      "reason": "Wiki supports Dynamic Client Registration. Client ID Metadata Documents are intentionally disabled.",
+      "exact_https_callback": "https://claude.ai/api/mcp/auth_callback",
+      "cli_callback": "Allowed loopback address with an ephemeral port and /callback path."
+    },
+    "codex": {
+      "commands": [
+        "codex mcp add sarj-wiki --url https://api-wiki.sarj.ai/mcp",
+        "codex mcp login sarj-wiki"
+      ],
+      "existing_configuration": "Inspect an existing entry before replacing it."
+    }
+  },
+  "polish_by_document_id": {
+    "tool": "wiki_polish_document_by_id",
+    "example_arguments": {
+      "request": {
+        "file_id": "GOOGLE_DOCUMENT_ID"
+      }
+    },
+    "required_fields": [
+      "file_id"
+    ],
+    "defaults": {
+      "mode": "both",
+      "output_strategy": "copy",
+      "copy_destination": "Signed-in user My Drive",
+      "idempotency_key": "Server-generated UUID, returned in the response"
+    },
+    "source_access": "Google authorizes the explicitly supplied ID. Native Google Docs shared outside the navigable workspace are supported, including sources that do not expose their parent folder.",
+    "optional_fields": {
+      "mode": [
+        "both",
+        "format",
+        "unslop"
+      ],
+      "output_strategy": [
+        "copy",
+        "in_place"
+      ],
+      "output_name": "Name of the new copy",
+      "copy_destination_folder_id": "Writable folder in the signed-in user Wiki workspace",
+      "idempotency_key": "Caller-generated UUID for retry recovery"
+    },
+    "in_place": "Must be explicitly requested and satisfy existing native-document eligibility checks. An editor grant alone does not make an unowned personal-Drive Doc eligible. Copy options are invalid for in-place edits.",
+    "permission_boundaries": "This shortcut does not broaden search, navigation, copy-destination access, or other file mutations.",
+    "retry_contract": [
+      "Generate a UUID before the first call when timeout recovery is needed.",
+      "Reuse that key only for the same source ID, mode, output name, destination, and output strategy.",
+      "The first admitted source version stays bound to the operation. A later source edit does not create another task when the original key is retried.",
+      "A lost response cannot reveal a server-generated key; a client needing ambiguous-response recovery should supply its own key."
+    ],
+    "response_fields": [
+      "task",
+      "idempotency_key",
+      "replayed",
+      "retry_after_seconds"
+    ],
+    "polling": {
+      "tool": "wiki_get_task",
+      "argument": "task_id"
+    },
+    "ambiguous_submission_recovery": {
+      "tool": "wiki_get_polish_admission",
+      "argument": "Original idempotency_key"
+    },
+    "completion": "Pending or running is not completion. Check terminal status, validation, findings, and needs_review before presenting an output as ready. A successful task is not a substitute for visual review.",
+    "advanced_tool": "wiki_polish_document remains available for callers who already have a reviewed expected_modified_time and an explicit idempotency key."
+  },
+  "oauth_rest": {
+    "authentication": "Use the same MCP OAuth resource and scopes. Google access tokens, browser-session JWTs, and cookies do not authorize this API.",
+    "routes": [
+      {
+        "method": "POST",
+        "path": "/mcp/v1/polish",
+        "body": {
+          "file_id": "GOOGLE_DOCUMENT_ID"
+        },
+        "success_status": 202
+      },
+      {
+        "method": "GET",
+        "path": "/mcp/v1/tasks/{task_id}"
+      },
+      {
+        "method": "GET",
+        "path": "/mcp/v1/admissions/{idempotency_key}"
+      }
+    ],
+    "curl_example": "curl --fail-with-body https://api-wiki.sarj.ai/mcp/v1/polish -H \"Authorization: Bearer $WIKI_ACCESS_TOKEN\" -H \"Content-Type: application/json\" -H \"Idempotency-Key: 550e8400-e29b-41d4-a716-446655440000\" --data '{\"file_id\":\"GOOGLE_DOCUMENT_ID\"}'",
+    "submission_response": "Same response shape as the MCP ID shortcut. Follow the relative Location on the same API origin.",
+    "response_headers": [
+      "Location",
+      "Idempotency-Key",
+      "Idempotency-Replayed",
+      "Retry-After",
+      "Cache-Control"
+    ],
+    "error_contract": {
+      "missing_or_invalid_oauth": 401,
+      "read_only_grant_cannot_submit": 403,
+      "details": "Provider errors are redacted; input is bounded."
+    },
+    "read_security": "Task ownership and fresh completed-output access are checked. All responses are private and non-cacheable.",
+    "first_party_session_route": {
+      "method": "POST",
+      "path": "/document-transforms/by-id",
+      "body": {
+        "file_id": "GOOGLE_DOCUMENT_ID"
+      },
+      "response": "Existing Wiki task representation",
+      "authentication": "Existing Wiki session security boundary; third-party clients should use the OAuth API."
+    }
+  },
+  "distribution": {
+    "self_hosted_marketplace": "sarj-wiki@sarj",
+    "plugin_source": "plugins/sarj-wiki",
+    "validation_commands": [
+      "claude plugin validate .",
+      "claude plugin validate ./plugins/sarj-wiki"
+    ],
+    "anthropic_directory": "Separate submission and approval process. A repository manifest does not imply Anthropic approval.",
+    "submission_portal": "https://claude.ai/directory/manage"
+  },
+  "references": [
+    {
+      "title": "Claude marketplace creation",
+      "url": "https://code.claude.com/docs/en/plugins/create-marketplace"
+    },
+    {
+      "title": "Claude custom remote connectors",
+      "url": "https://support.claude.com/en/articles/11175166-get-started-with-custom-connectors-using-remote-mcp"
+    },
+    {
+      "title": "Claude directory publishing",
+      "url": "https://claude.com/docs/directory/publish"
+    }
+  ]
+}

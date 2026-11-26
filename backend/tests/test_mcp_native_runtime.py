@@ -333,6 +333,7 @@ async def test_real_http_pg_oauth_to_mcp_and_revocation(
         "wiki_search",
         "wiki_get_document",
         "wiki_polish_document",
+        "wiki_polish_document_by_id",
         "wiki_import_markdown",
         "wiki_get_polish_admission",
         "wiki_get_task",
@@ -369,6 +370,30 @@ async def test_real_http_pg_oauth_to_mcp_and_revocation(
     )
     assert denied.status_code == 401
     assert len(runtime.prepared) == 2
+
+
+async def test_native_oauth_rest_enforces_scope_and_revocation(runtime: RuntimeLab) -> None:
+    client_id = await runtime.register()
+    approved = await runtime.consent(await runtime.authorize(client_id), approve=True)
+    issued = await runtime.exchange(client_id, approved["code"][0])
+    assert issued.status_code == 200
+    token = str(issued.json()["access_token"])
+    headers = {"Authorization": f"Bearer {token}"}
+    denied = await runtime.client.post(
+        "/mcp/v1/polish", json={"file_id": "source"}, headers=headers
+    )
+    assert denied.status_code == 403
+    assert denied.json()["code"] == "insufficient_scope"
+    assert "no-store" in denied.headers["Cache-Control"]
+    session_only = await runtime.browser.post("/mcp/v1/polish", json={"file_id": "source"})
+    assert session_only.status_code == 401
+    prepared = len(runtime.prepared)
+    revoked = await runtime.client.post("/revoke", data={"client_id": client_id, "token": token})
+    assert revoked.status_code == 200
+    rejected = await runtime.client.get(f"/mcp/v1/tasks/{uuid.uuid7()}", headers=headers)
+    assert rejected.status_code == 401
+    assert "resource_metadata" in rejected.headers["WWW-Authenticate"]
+    assert len(runtime.prepared) == prepared
 
 
 async def test_import_maximum_escaped_markdown_reaches_tool_validation(runtime: RuntimeLab) -> None:
