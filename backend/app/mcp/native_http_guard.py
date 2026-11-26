@@ -143,6 +143,7 @@ class _RegistrationBody(BaseModel):
     client_name: str = ""
     scope: str | None = None
     application_type: str | None = None
+    client_uri: str | None = Field(default=None, max_length=_FIELD_LIMIT)
 
 
 def _clean_response(
@@ -253,11 +254,27 @@ def _registration(raw: bytes, policy: McpRedirectPolicy) -> None:
         raise NativeOAuthRequestError
     name = value.client_name
     scope = value.scope
-    if value.application_type not in {None, "native"}:
-        raise NativeOAuthRequestError
+    _validate_hosted_metadata(value)
     if len(name.encode()) > _CLIENT_NAME_LIMIT:
         raise NativeOAuthRequestError
     _scope(scope)
+
+
+def _validate_hosted_metadata(value: _RegistrationBody) -> None:
+    redirects = value.redirect_uris
+    hosted = all(urlsplit(uri).scheme == "https" for uri in redirects)
+    if value.application_type not in {None, "native", "web"} or (
+        value.application_type == "web" and not hosted
+    ):
+        raise NativeOAuthRequestError
+    # Informational only: never fetch metadata URLs. Hosted clients may identify
+    # an exact approved callback origin, without adding any redirect authority.
+    if value.client_uri is not None and (
+        not hosted
+        or value.client_uri.removesuffix("/")
+        not in {f"https://{urlsplit(uri).netloc}" for uri in redirects}
+    ):
+        raise NativeOAuthRequestError
 
 
 def _pairs(pairs: list[tuple[str, object]]) -> dict[str, object]:

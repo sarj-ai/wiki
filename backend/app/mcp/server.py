@@ -179,11 +179,11 @@ def create_mcp_server(
             read_only_hint=False, destructive_hint=True, idempotent_hint=False
         ),
         description=(
-            "Run Unslop then Format given only a Google document ID. Defaults to a new copy "
-            "in your My Drive; Google permissions are checked. Set output_strategy=in_place "
-            "only when explicitly requested and eligible. Supply a UUID idempotency_key for "
-            "safe retries, or retain the generated key returned here. Poll wiki_get_task; "
-            "a pending task is not a completed or visually approved document."
+            "Submit asynchronous Unslop and Format for a Google document ID. Defaults to a "
+            "new copy in your My Drive, subject to Google permissions. Eligible in-place "
+            "editing is available through output_strategy. An optional UUID idempotency_key "
+            "identifies a retry; the response includes the admitted key and task status. "
+            "Pending status does not indicate a finished or visually reviewed output."
         ),
     )
     async def wiki_polish_document_by_id(
@@ -196,10 +196,9 @@ def create_mcp_server(
         title="Import and polish Markdown",
         annotations=_WRITE,
         description=(
-            "Create a new Google Doc from Markdown content with FORMAT, UNSLOP, or BOTH. "
-            "For a local .md file, read its UTF-8 contents and pass them as content; "
-            "this remote server cannot read a client file path. Reuse the idempotency "
-            "key only with identical inputs, then poll wiki_get_task."
+            "Create a new Google Doc from UTF-8 Markdown content with FORMAT, UNSLOP, or BOTH. "
+            "Accepts document contents, not a local file path. Reusing an idempotency key "
+            "with identical inputs returns the existing asynchronous task."
         ),
     )
     async def wiki_import_markdown(request: MarkdownImportInput) -> PolishResponse:

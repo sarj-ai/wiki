@@ -180,6 +180,7 @@ class NativeWikiOAuthProvider(OAuthProvider):
                 grant_types=["authorization_code", "refresh_token"],
                 response_types=["code"],
                 scope=" ".join(scopes),
+                application_type=client_info.application_type,
             )
         # Admission commits independently before client persistence. Do not put
         # its typed failures through SDK RegistrationError's blanket HTTP 400.

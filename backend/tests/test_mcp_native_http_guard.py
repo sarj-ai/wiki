@@ -154,13 +154,15 @@ class Provider(OAuthProvider):
         self.revoked.append(token.token)
 
 
-def client(provider: Provider) -> httpx.AsyncClient:
+def client(provider: Provider, *, https_callbacks: tuple[str, ...] = ()) -> httpx.AsyncClient:
     app = NativeOAuthHTTPGuard(
         Starlette(routes=provider.get_routes()),
         NativeOAuthGuardSettings(
             issuer="https://wiki.test/",
             resource=RESOURCE,
-            redirect_policy=McpRedirectPolicy(loopback_paths=("/callback",)),
+            redirect_policy=McpRedirectPolicy(
+                loopback_paths=("/callback",), https_callbacks=https_callbacks
+            ),
         ),
     )
     return httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="https://wiki.test")
@@ -304,6 +306,64 @@ async def test_actual_sdk_registration_public_only_no_remote_metadata() -> None:
             denied = await http.post("/register", json={**values, **changed})
             assert denied.status_code == 400
     assert len(provider.clients) == 1
+
+
+@pytest.mark.parametrize("application_type", [None, "native", "web"])
+async def test_hosted_public_registration_accepts_exact_callback_origin_metadata(
+    application_type: str | None,
+) -> None:
+    provider = Provider()
+    callback = "https://claude.ai/api/mcp/auth_callback"
+    async with client(provider, https_callbacks=(callback,)) as http:
+        response = await http.post(
+            "/register",
+            json={
+                "redirect_uris": [callback],
+                "token_endpoint_auth_method": "none",
+                "client_name": "Claude",
+                "client_uri": "https://claude.ai",
+                **({"application_type": application_type} if application_type is not None else {}),
+            },
+        )
+    assert response.status_code == 201, response.text
+    assert response.json().get("client_secret") is None
+    assert len(provider.clients) == 1
+    assert str(provider.clients[0].client_uri).rstrip("/") == "https://claude.ai"
+    assert provider.clients[0].grant_types == ["authorization_code", "refresh_token"]
+
+
+@pytest.mark.parametrize(
+    "client_uri",
+    [
+        "http://claude.ai",
+        "https://attacker.invalid",
+        "https://claude.ai.attacker.invalid",
+        "https://claude.ai/api/mcp/auth_callback",
+        "https://claude.ai//",
+        "https://claude.ai?private=canary",
+        "https://claude.ai#private-canary",
+        "https://user:password@claude.ai",
+        "https://127.0.0.1",
+    ],
+)
+async def test_hosted_registration_rejects_unapproved_informational_origins(
+    client_uri: str,
+) -> None:
+    provider = Provider()
+    callback = "https://claude.ai/api/mcp/auth_callback"
+    async with client(provider, https_callbacks=(callback,)) as http:
+        response = await http.post(
+            "/register",
+            json={
+                "redirect_uris": [callback],
+                "token_endpoint_auth_method": "none",
+                "application_type": "web",
+                "client_uri": client_uri,
+            },
+        )
+    assert response.status_code == 400
+    assert provider.clients == []
+    assert provider.registration_attempts == 0
 
 
 @pytest.mark.parametrize("retry", [1, 17, 1800])

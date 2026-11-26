@@ -44,6 +44,7 @@ _ISSUER = "https://api.runtime.test/"
 _RESOURCE = "https://api.runtime.test/mcp"
 _FRONTEND = "https://wiki.runtime.test"
 _CALLBACK = "http://127.0.0.1:4321/callback"
+_HOSTED_CALLBACK = "https://claude.ai/api/mcp/auth_callback"
 _VERIFIER = "v" * 43
 _CHALLENGE = urlsafe_b64encode(hashlib.sha256(_VERIFIER.encode()).digest()).decode().rstrip("=")
 _CANARY = "synthetic-private-runtime-canary"
@@ -217,7 +218,7 @@ async def runtime(
         _RESOURCE,
         issuer=_ISSUER,
     )
-    policy = McpRedirectPolicy(loopback_paths=("/callback",))
+    policy = McpRedirectPolicy(loopback_paths=("/callback",), https_callbacks=(_HOSTED_CALLBACK,))
     provider = NativeWikiOAuthProvider(
         core=core,
         base_url=_ISSUER,
@@ -293,6 +294,47 @@ async def runtime(
         async with engine.begin() as connection:
             await connection.execute(DropSchema(schema, cascade=True))
         await engine.dispose()
+
+
+async def test_hosted_registration_completes_pkce_without_remote_metadata_fetch(
+    runtime: RuntimeLab,
+) -> None:
+    registered = await runtime.client.post(
+        "/register",
+        json={
+            "redirect_uris": [_HOSTED_CALLBACK],
+            "token_endpoint_auth_method": "none",
+            "application_type": "web",
+            "client_name": "Claude",
+            "client_uri": "https://claude.ai",
+        },
+    )
+    assert registered.status_code == 201, registered.text
+    assert registered.json().get("client_secret") is None
+    client_id = str(registered.json()["client_id"])
+    saved = await runtime.provider.get_client(client_id)
+    assert saved is not None
+    assert saved.application_type == "web"
+    assert saved.client_uri is None
+    authorized = await runtime.browser.get(
+        "/authorize",
+        params={
+            "client_id": client_id,
+            "redirect_uri": _HOSTED_CALLBACK,
+            "response_type": "code",
+            "code_challenge": _CHALLENGE,
+            "code_challenge_method": "S256",
+            "resource": _RESOURCE,
+            "scope": "wiki:read",
+            "state": "synthetic-client-state",
+        },
+    )
+    assert authorized.status_code == 302
+    intent = parse_qs(urlsplit(authorized.headers["location"]).query)["intent"][0]
+    consent = await runtime.consent(intent, approve=True)
+    issued = await runtime.exchange(client_id, consent["code"][0], redirect_uri=_HOSTED_CALLBACK)
+    assert issued.status_code == 200, issued.text
+    assert issued.json()["scope"] == "wiki:read"
 
 
 @pytest.mark.parametrize("route", ["polish", "tasks", "admissions"])
