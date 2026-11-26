@@ -233,10 +233,16 @@ def create_mcp_server(
         async with open_context() as context:
             return await McpReadService(context).get_short_link(request)
 
+    resource_base = auth.resource_base_url or auth.base_url
     register_rest_routes(
         server,
         context_factory=context_factory,
         enqueuer=enqueuer,
         request_timeout=request_timeout,
+        resource_metadata_url=(
+            f"{str(resource_base).rstrip('/')}/.well-known/oauth-protected-resource/mcp"
+            if resource_base is not None
+            else None
+        ),
     )
     return server

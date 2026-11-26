@@ -295,6 +295,23 @@ async def runtime(
         await engine.dispose()
 
 
+@pytest.mark.parametrize("route", ["polish", "tasks", "admissions"])
+async def test_native_rest_challenge_keeps_https_behind_proxy(
+    runtime: RuntimeLab, route: str
+) -> None:
+    url = "http://api.runtime.test/mcp/v1/" + route
+    if route == "polish":
+        response = await runtime.client.post(url, json={})
+    else:
+        response = await runtime.client.get(f"{url}/{uuid.uuid7()}")
+    assert response.status_code == 401
+    assert response.headers["WWW-Authenticate"] == (
+        'Bearer resource_metadata="https://api.runtime.test/.well-known/oauth-protected-resource/mcp"'
+    )
+    assert response.headers["Cache-Control"] == "private, no-store"
+    assert runtime.prepared == []
+
+
 async def test_real_http_pg_oauth_to_mcp_and_revocation(
     runtime: RuntimeLab, caplog: pytest.LogCaptureFixture
 ) -> None:

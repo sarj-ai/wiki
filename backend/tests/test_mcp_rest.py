@@ -7,6 +7,7 @@ import uuid
 from fastmcp.server.auth import StaticTokenVerifier
 from fastmcp.server.dependencies import get_access_token
 from httpx import ASGITransport, AsyncClient
+from pydantic import AnyHttpUrl
 import pytest
 
 from app.identifiers import IdempotencyKey, TaskId, UserId
@@ -84,8 +85,11 @@ async def api() -> AsyncGenerator[RestLab]:
             aliases=dependency(harness),
         )
 
+    verifier = StaticTokenVerifier(dependency(tokens))
+    verifier.base_url = AnyHttpUrl("https://authorization.test")
+    verifier.resource_base_url = AnyHttpUrl("https://api.test")
     server = create_mcp_server(
-        auth=StaticTokenVerifier(dependency(tokens)),
+        auth=verifier,
         context_factory=contexts,
         enqueuer=dependency(harness),
     )
@@ -121,10 +125,34 @@ async def test_rest_requires_mcp_oauth_not_browser_sessions(
     else:
         response = await api.client.get(f"/mcp/v1/{route}/{uuid.uuid7()}", headers=headers)
     assert response.status_code == 401
-    assert "resource_metadata" in response.headers["WWW-Authenticate"]
+    assert response.headers["WWW-Authenticate"] == (
+        'Bearer resource_metadata="https://api.test/.well-known/oauth-protected-resource/mcp"'
+    )
     assert response.headers["Cache-Control"] == "private, no-store"
     assert api.harness.submissions == 0
     assert api.harness.owners == []
+
+
+@pytest.mark.parametrize("route", ["polish", "tasks", "admissions"])
+async def test_rest_challenge_uses_configured_resource_after_tls_termination(
+    api: RestLab, route: str
+):
+    headers = {
+        "X-Forwarded-Proto": "http",
+        "X-Forwarded-Host": "attacker.invalid",
+        "Forwarded": "host=attacker.invalid;proto=http",
+    }
+    if route == "polish":
+        response = await api.client.post("http://api.test/mcp/v1/polish", headers=headers, json={})
+    else:
+        response = await api.client.get(
+            f"http://api.test/mcp/v1/{route}/{uuid.uuid7()}", headers=headers
+        )
+    assert response.status_code == 401
+    assert response.headers["WWW-Authenticate"] == (
+        'Bearer resource_metadata="https://api.test/.well-known/oauth-protected-resource/mcp"'
+    )
+    assert api.harness.submissions == 0
 
 
 async def test_id_only_oauth_submission_and_task_recovery_use_authenticated_owner(api: RestLab):
