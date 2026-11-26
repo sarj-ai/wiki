@@ -589,6 +589,7 @@ output=/dev/null
 headers=/dev/null
 hostile=false
 bearer=false
+body=false
 url=
 while (($#)); do
   case "$1" in
@@ -600,12 +601,17 @@ while (($#)); do
       [[ $2 == Authorization:\\ Bearer* ]] && bearer=true
       shift 2
       ;;
-    --connect-timeout|--max-time|--write-out|--data) shift 2 ;;
+    --data) body=true; shift 2 ;;
+    --connect-timeout|--max-time|--write-out) shift 2 ;;
     --silent|--show-error) shift ;;
     *) url=$1; shift ;;
   esac
 done
-printf 'curl:%s:%s:hostile=%s:bearer=%s\\n' "$method" "$url" "$hostile" "$bearer" >> "$FAKE_TRACE"
+printf 'curl:%s:%s:hostile=%s:bearer=%s:body=%s\\n' "$method" "$url" "$hostile" "$bearer" "$body" >> "$FAKE_TRACE"
+if [[ $method == GET && $body == true ]]; then
+  printf '%s\\n' 'GET request bodies are rejected by the production edge' >&2
+  exit 92
+fi
 if [[ $FAKE_MCP_MODE == disabled ]]; then
   : > "$output"
   : > "$headers"
@@ -704,6 +710,19 @@ def test_mcp_disabled_inventory_covers_browser_route_shapes(tmp_path: Path) -> N
         "POST /integrations/mcp/consent/synthetic-intent",
         "DELETE /integrations/mcp/connections/00000000-0000-0000-0000-000000000000",
     }.issubset(observed)
+
+
+def test_mcp_release_verifier_keeps_get_probes_bodyless(tmp_path: Path) -> None:
+    result = _run_mcp_verifier(tmp_path, mode="enabled")
+    assert result.completed.returncode == 0, result.completed.stderr
+    get_probes = [event for event in result.trace if event.startswith("curl:GET:")]
+    assert get_probes
+    assert all(event.endswith("body=false") for event in get_probes)
+    assert any(
+        event.startswith("curl:POST:https://api.example.test/mcp/v1/polish:")
+        and event.endswith("body=true")
+        for event in result.trace
+    )
 
 
 def _mcp_revision(*, enabled: bool) -> dict:
