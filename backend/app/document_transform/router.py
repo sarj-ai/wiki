@@ -24,6 +24,7 @@ from app.document_transform.application import (
     get_current_document_polish,
     submit_document_transform,
 )
+from app.document_transform.by_id import submit_document_by_id
 from app.document_transform.dependencies import (
     CurrentPolishContext,
     CurrentPolishRuntime,
@@ -39,13 +40,17 @@ from app.document_transform.inspection import (
 )
 from app.document_transform.schemas import (
     CurrentDocumentPolish,
+    DocumentIdPolishRequest,
     DocumentTransformCapabilities,
     DocumentTransformRequest,
     DriveFileSource,
     MarkdownUpload,
     TransformMode,
 )
+from app.drive.dependencies import drive_service_dep
+from app.drive.service import DriveService
 from app.files.dependencies import files_service_dep
+from app.files.service import FilesService
 from app.identifiers import FileId, IdempotencyKey, TaskId, UserId
 from app.models.user import User
 from app.openapi import authentication_responses
@@ -64,6 +69,58 @@ router = APIRouter(
     tags=["document-transforms"],
     responses=authentication_responses(),
 )
+
+
+@router.post(
+    "/by-id",
+    response_model=TaskRead,
+    status_code=status.HTTP_202_ACCEPTED,
+    operation_id="polish_document_by_id",
+    summary="Run Unslop and Format using a Google document ID",
+    description=(
+        "Only file_id is required. Defaults to both and a new native Google Doc in My Drive. "
+        "Google authorizes explicit source reads; destinations retain workspace checks. "
+        "Supply a UUID Idempotency-Key for retry recovery, or retain the generated key "
+        "in the response header. Poll the task in Location. In-place edits must be explicit "
+        "and satisfy the normal native-document eligibility checks."
+    ),
+)
+async def polish_document_by_id(
+    *,
+    payload: Annotated[DocumentIdPolishRequest, Body()],
+    response: Response,
+    user: Annotated[User, Security(get_current_user)],
+    tasks: Annotated[TaskService, Depends(task_service_dep)],
+    enqueuer: Annotated[TaskEnqueuer, Depends(task_enqueuer_dep)],
+    files: Annotated[FilesService, Depends(files_service_dep)],
+    drive: Annotated[DriveService, Depends(drive_service_dep)],
+    in_place_enabled: Annotated[bool, Depends(document_transform_in_place_enabled)],
+    idempotency_key: Annotated[uuid.UUID | None, Header(alias="Idempotency-Key")] = None,
+) -> TaskRead:
+    if idempotency_key is not None:
+        if (
+            "idempotency_key" in payload.model_fields_set
+            and payload.idempotency_key != idempotency_key
+        ):
+            raise HTTPException(
+                status_code=422, detail="Body and header idempotency keys must match"
+            )
+        payload = payload.model_copy(update={"idempotency_key": IdempotencyKey(idempotency_key)})
+    submission = await submit_document_by_id(
+        payload,
+        owner_user_id=user.id,
+        files=files,
+        drive=drive,
+        tasks=tasks,
+        enqueuer=enqueuer,
+        in_place_enabled=in_place_enabled,
+    )
+    response.headers["Idempotency-Key"] = str(payload.idempotency_key)
+    response.headers["Idempotency-Replayed"] = str(submission.replayed).lower()
+    response.headers["Location"] = f"/tasks/{submission.task.id}"
+    response.headers["Retry-After"] = str(submission.retry_after)
+    response.headers["Cache-Control"] = "no-store"
+    return submission.task
 
 
 @router.post(
@@ -192,6 +249,7 @@ async def get_current_polish(
 
 @router.post(
     "",
+    response_model=TaskRead,
     status_code=status.HTTP_202_ACCEPTED,
     operation_id="create_document_transform",
     summary="Import Markdown or polish a Drive document",

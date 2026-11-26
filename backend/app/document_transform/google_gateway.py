@@ -531,33 +531,24 @@ class GoogleDocumentGateway(DocumentGateway):
     @override
     async def load_drive_source(self, source: DriveFileSource) -> SourceSnapshot:
         try:
-            file = await self._files.get(source.file_id)
+            file = await (
+                self._files.get_direct(source.file_id)
+                if source.kind == "drive_file_id"
+                else self._files.get(source.file_id)
+            )
         except FilesError as exc:
             raise DocumentGatewayError(
                 retryable=is_retryable_provider_status(exc.http_status),
                 http_status=exc.http_status,
             ) from exc
-        if file.parent_folder_id is None:
+        if file.parent_folder_id is None and source.kind != "drive_file_id":
             raise UnsupportedSourceError
         if file.mime_type == MIME_DOC:
             document, metadata = await asyncio.gather(
                 asyncio.to_thread(self._get_document_sync, source.file_id),
                 asyncio.to_thread(self._files_get_sync, source.file_id),
             )
-            proof = self._header_identity_proof
-            if proof is not None:
-                properties = metadata.get("appProperties", {})
-                if not isinstance(properties, dict):
-                    raise InPlaceNeedsReviewError
-                if (
-                    proof.evidence.file_id != source.file_id
-                    or properties.get(_PROP_OPERATION) != str(proof.evidence.operation_id)
-                    or properties.get(_PROP_STATE) != _STATE_COMPLETE
-                    or properties.get(_PROP_RESULT_HASH) != proof.result_sha256
-                    or properties.get(_PROP_VERIFIED_REVISION_HASH)
-                    != proof.verified_revision_sha256
-                ):
-                    raise InPlaceNeedsReviewError
+            self._verify_header_identity_proof(source.file_id, metadata)
             revision_id = document.get("revisionId")
             if not isinstance(revision_id, str) or metadata.get("mimeType") != MIME_DOC:
                 raise DocumentGatewayError
@@ -565,7 +556,9 @@ class GoogleDocumentGateway(DocumentGateway):
             access = native_source_access(metadata)
             return NativeDocumentSnapshot(
                 title=_required_string(metadata, "name"),
-                parent_folder_id=_required_parent(metadata),
+                parent_folder_id=None
+                if metadata.get("parents", []) == []
+                else _required_parent(metadata),
                 modified_time=_required_string(metadata, "modifiedTime"),
                 revision_id=DocsRevisionId(revision_id),
                 google_document=document,
@@ -574,7 +567,7 @@ class GoogleDocumentGateway(DocumentGateway):
                 else None,
                 access=access,
             )
-        if file.mime_type != "text/markdown":
+        if file.mime_type != "text/markdown" or file.parent_folder_id is None:
             raise UnsupportedSourceError
         markdown = await asyncio.to_thread(self._download_markdown_sync, source.file_id)
         return MarkdownSnapshot(
@@ -583,6 +576,24 @@ class GoogleDocumentGateway(DocumentGateway):
             modified_time=file.modified_time,
             markdown=markdown,
         )
+
+    def _verify_header_identity_proof(
+        self, file_id: FileId, metadata: dict[str, JsonValue]
+    ) -> None:
+        proof = self._header_identity_proof
+        if proof is None:
+            return
+        properties = metadata.get("appProperties", {})
+        if not isinstance(properties, dict):
+            raise InPlaceNeedsReviewError
+        if (
+            proof.evidence.file_id != file_id
+            or properties.get(_PROP_OPERATION) != str(proof.evidence.operation_id)
+            or properties.get(_PROP_STATE) != _STATE_COMPLETE
+            or properties.get(_PROP_RESULT_HASH) != proof.result_sha256
+            or properties.get(_PROP_VERIFIED_REVISION_HASH) != proof.verified_revision_sha256
+        ):
+            raise InPlaceNeedsReviewError
 
     @override
     async def inspect_in_place(
@@ -960,10 +971,14 @@ class GoogleDocumentGateway(DocumentGateway):
         *,
         expected_modified_time: str,
         expected_revision_id: DocsRevisionId | None,
-        expected_parent_folder_id: FileId,
+        expected_parent_folder_id: FileId | None,
     ) -> bool:
         try:
-            file = await self._files.get(source.file_id)
+            file = await (
+                self._files.get_direct(source.file_id)
+                if source.kind == "drive_file_id"
+                else self._files.get(source.file_id)
+            )
         except FilesError as exc:
             raise DocumentGatewayError(
                 retryable=is_retryable_provider_status(exc.http_status),
@@ -1158,7 +1173,7 @@ class GoogleDocumentGateway(DocumentGateway):
         snapshot: SourceSnapshot,
         title: str,
     ) -> InPlaceInspection:
-        if not isinstance(snapshot, NativeDocumentSnapshot):
+        if not isinstance(snapshot, NativeDocumentSnapshot) or snapshot.parent_folder_id is None:
             raise InPlaceNotAllowedError
         document = snapshot.google_document
         eligible = all(

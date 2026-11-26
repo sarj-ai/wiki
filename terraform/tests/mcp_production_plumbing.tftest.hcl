@@ -151,9 +151,9 @@ run "native_mcp_is_provisioned_but_disabled" {
       } == {
       MCP_NATIVE_ISSUER          = "https://api-wiki.example.test"
       MCP_NATIVE_LOOPBACK_PATHS  = jsonencode(["/callback"])
-      MCP_NATIVE_HTTPS_CALLBACKS = jsonencode([])
+      MCP_NATIVE_HTTPS_CALLBACKS = jsonencode(["https://claude.ai/api/mcp/auth_callback"])
     }
-    error_message = "Native MCP must use the fixed API issuer and only Codex's portless variable-loopback callback path."
+    error_message = "Native MCP must use the fixed API issuer, the exact verified Claude callback and the portless variable-loopback callback path."
   }
 
   assert {

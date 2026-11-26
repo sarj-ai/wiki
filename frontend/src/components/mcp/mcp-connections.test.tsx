@@ -190,10 +190,26 @@ describe("McpConnections", () => {
     );
     button("Refresh status").click();
     await loaded();
-    expect(container.querySelector("a")).toBeNull();
+    expect(container.querySelector('a[href^="/login"]')).toBeNull();
     expect(container.querySelector("code")).toHaveTextContent(
       "codex mcp add sarj-wiki",
     );
+  });
+
+  it("offers Claude setup with the same server and an explicit registration flow", async () => {
+    render();
+    await loaded();
+    const command = [...container.querySelectorAll("code")].find((item) =>
+      item.textContent.startsWith("claude mcp add"),
+    );
+    expect(command).toHaveTextContent("--transport http sarj-wiki");
+    expect(command).toHaveTextContent("/mcp");
+    expect(button("Copy Claude Code command")).toBeEnabled();
+    expect(container).toHaveTextContent("Register automatically");
+    expect(container).toHaveTextContent("creates a copy by default");
+    expect(
+      container.querySelector('a[href$="/docs/mcp.json"]'),
+    ).toHaveTextContent("REST API guide");
   });
 
   it("latches duplicate and competing disconnects before rerender", async () => {

@@ -41,10 +41,17 @@ from app.document_transform.native_table_font import TableFontPlan
 from app.document_transform.readability_types import ReadabilityCheckpoint
 from app.document_transform.tab_names import TabNamingPlan
 from app.document_transform.tab_structure_execution import StructureCheckpoint
-from app.identifiers import BrandProfileId, DocsRevisionId, FileId, ModelId, ModelReviewInputHash
+from app.identifiers import (
+    BrandProfileId,
+    DocsRevisionId,
+    FileId,
+    IdempotencyKey,
+    ModelId,
+    ModelReviewInputHash,
+)
 
 
-SourceKind = Literal["drive_file", "markdown", "uploaded_markdown"]
+SourceKind = Literal["drive_file", "drive_file_id", "markdown", "uploaded_markdown"]
 ArtifactKind = Literal["document", "presentation"]
 AccessScope = Literal["inherited", "owner_only"]
 TabNamingDeclinedReason = Literal["unsupported_metadata"]
@@ -91,7 +98,7 @@ class DocumentTransformCapabilities(StrictTransformModel):
 
 
 class DriveFileSource(StrictTransformModel):
-    kind: Literal["drive_file"]
+    kind: Literal["drive_file", "drive_file_id"]
     file_id: FileId = Field(description="ID of the Drive file to transform.")
     expected_modified_time: str = Field(
         description="Drive modifiedTime read before submission; rejects stale requests."
@@ -173,6 +180,14 @@ class DocumentTransformRequest(StrictTransformModel):
 
     @model_validator(mode="after")
     def validate_output_strategy(self) -> Self:
+        if (
+            isinstance(self.source, DriveFileSource)
+            and self.source.kind == "drive_file_id"
+            and self.output_strategy is OutputStrategy.COPY
+            and self.copy_destination_folder_id is None
+        ):
+            msg = "Document-ID copies require an explicitly resolved destination"
+            raise ValueError(msg)
         if self.copy_destination_folder_id is not None and (
             self.output_strategy is not OutputStrategy.COPY
             or not isinstance(self.source, DriveFileSource)
@@ -194,6 +209,44 @@ class DocumentTransformRequest(StrictTransformModel):
             code = "in_place_output_name"
             msg = "output_name is not allowed for in-place transformation"
             raise PydanticCustomError(code, msg)
+        return self
+
+
+GoogleDocumentId = Annotated[
+    FileId, StringConstraints(min_length=1, max_length=128, pattern=r"^[A-Za-z0-9_-]+$")
+]
+
+
+class DocumentIdPolishRequest(StrictTransformModel):
+    model_config = ConfigDict(extra="forbid", hide_input_in_errors=True)
+
+    file_id: GoogleDocumentId = Field(description="Native Google document ID, without a URL.")
+    mode: TransformMode = Field(
+        default=TransformMode.BOTH, description="both runs Unslop then Format."
+    )
+    output_strategy: OutputStrategy = Field(
+        default=OutputStrategy.COPY,
+        description="Create a copy by default. In-place editing must be explicitly requested and eligible.",
+    )
+    output_name: OutputName | None = Field(
+        default=None, description="Optional title for the new copy; not allowed for in-place edits."
+    )
+    copy_destination_folder_id: GoogleDocumentId | None = Field(
+        default=None,
+        description="Writable folder in the Wiki workspace; defaults to My Drive for copies.",
+    )
+    idempotency_key: IdempotencyKey = Field(
+        default_factory=lambda: IdempotencyKey(uuid.uuid7()),
+        description="UUID for retry recovery. Generate it before submitting, or retain the returned generated key.",
+    )
+
+    @model_validator(mode="after")
+    def validate_in_place_options(self) -> Self:
+        if self.output_strategy is OutputStrategy.IN_PLACE and (
+            self.output_name is not None or self.copy_destination_folder_id is not None
+        ):
+            msg = "In-place polishing cannot rename or choose a copy destination"
+            raise ValueError(msg)
         return self
 
 
@@ -638,7 +691,7 @@ class CopyPlan(TabNamingStateModel):
     source_sha256: str
     source_modified_time: str | None
     source_revision_id: DocsRevisionId | None
-    source_parent_folder_id: FileId
+    source_parent_folder_id: FileId | None
     output_parent_folder_id: FileId | None = None
     brand_profile_id: BrandProfileId
     brand_profile_sha256: str
@@ -661,6 +714,13 @@ class CopyPlan(TabNamingStateModel):
     native_footer: NativeFooterCheckpoint | None = None
     native_dates: NativeDateCheckpoint | None = None
     tab_structure: StructureCheckpoint | None = None
+
+    @model_validator(mode="after")
+    def require_copy_parent(self) -> Self:
+        if self.source_parent_folder_id is None and self.output_parent_folder_id is None:
+            message = "A copy plan requires a known output destination"
+            raise ValueError(message)
+        return self
 
 
 class UncreatedCopyPlan(CopyPlan):

@@ -16,7 +16,7 @@ import pytest
 from app.document_transform.application import TransformSubmission
 from app.files.errors import FileNotInScopeError
 from app.identifiers import TaskId, UserId
-from app.mcp.context import ValidatedMcpPrincipal
+from app.mcp.context import DEFAULT_TOOL_TIMEOUT, ValidatedMcpPrincipal
 from app.mcp.mutation import polish_document
 from app.mcp.schemas import McpCapability, PolishInput
 from app.mcp.server import create_mcp_server
@@ -61,8 +61,13 @@ class Contexts:
         raise TaskNotFoundError
 
 
-def server(contexts: Contexts) -> Any:
-    return create_mcp_server(auth=AuthProvider(), context_factory=contexts.open, enqueuer=NoQueue())
+def server(contexts: Contexts, *, request_timeout: timedelta = DEFAULT_TOOL_TIMEOUT) -> Any:
+    return create_mcp_server(
+        auth=AuthProvider(),
+        context_factory=contexts.open,
+        enqueuer=NoQueue(),
+        request_timeout=request_timeout,
+    )
 
 
 async def test_context_switch_does_not_reuse_previous_task_owner() -> None:
@@ -127,12 +132,11 @@ async def test_disconnect_closes_context_after_client_cancels_its_wait() -> None
 
 
 async def test_server_deadline_closes_abandoned_context_while_client_remains_connected(
-    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+    caplog: pytest.LogCaptureFixture,
 ) -> None:
-    monkeypatch.setattr("app.mcp.server._TOOL_TIMEOUT", timedelta(milliseconds=50))
     contexts = Contexts()
     contexts.block = True
-    async with Client(server(contexts)) as client:
+    async with Client(server(contexts, request_timeout=timedelta(milliseconds=50))) as client:
         task = asyncio.create_task(
             client.call_tool("wiki_get_task", {"request": {"task_id": str(uuid.uuid7())}})
         )

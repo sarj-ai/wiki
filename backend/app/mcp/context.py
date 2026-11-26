@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+import asyncio
 from collections.abc import AsyncGenerator, Callable
 from contextlib import AbstractAsyncContextManager, asynccontextmanager
 from dataclasses import dataclass
+from datetime import timedelta
 
 import httpx
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -14,6 +16,7 @@ from app.files.service import FilesService, GoogleFilesService
 from app.identifiers import UserId
 from app.mcp.schemas import McpCapability
 from app.models.user import User
+from app.performance import provider_retry_budget
 from app.tasks.service import PostgresTaskService, TaskService
 
 
@@ -40,6 +43,25 @@ class McpApplicationContext:
     files: FilesService
     tasks: TaskService
     aliases: AliasService
+
+
+type ContextFactory = Callable[[], AbstractAsyncContextManager[McpApplicationContext]]
+DEFAULT_TOOL_TIMEOUT = timedelta(seconds=30)
+_PROVIDER_RETRY_BUDGET = timedelta(seconds=20)
+
+
+@asynccontextmanager
+async def authorized_mcp_context(
+    factory: ContextFactory,
+    capability: McpCapability = McpCapability.READ,
+    *,
+    request_timeout: timedelta = DEFAULT_TOOL_TIMEOUT,
+) -> AsyncGenerator[McpApplicationContext]:
+    with provider_retry_budget(_PROVIDER_RETRY_BUDGET):
+        async with asyncio.timeout(request_timeout.total_seconds()), factory() as context:
+            context.principal.require(McpCapability.READ)
+            context.principal.require(capability)
+            yield context
 
 
 @asynccontextmanager

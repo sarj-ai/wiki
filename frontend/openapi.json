@@ -417,6 +417,69 @@
         "title": "DocumentAliasWrite",
         "type": "object"
       },
+      "DocumentIdPolishRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "copy_destination_folder_id": {
+            "anyOf": [
+              {
+                "maxLength": 128,
+                "minLength": 1,
+                "pattern": "^[A-Za-z0-9_-]+$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Writable folder in the Wiki workspace; defaults to My Drive for copies.",
+            "title": "Copy Destination Folder Id"
+          },
+          "file_id": {
+            "description": "Native Google document ID, without a URL.",
+            "maxLength": 128,
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9_-]+$",
+            "title": "File Id",
+            "type": "string"
+          },
+          "idempotency_key": {
+            "description": "UUID for retry recovery. Generate it before submitting, or retain the returned generated key.",
+            "format": "uuid",
+            "title": "Idempotency Key",
+            "type": "string"
+          },
+          "mode": {
+            "$ref": "#/components/schemas/TransformMode",
+            "default": "both",
+            "description": "both runs Unslop then Format."
+          },
+          "output_name": {
+            "anyOf": [
+              {
+                "maxLength": 255,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Optional title for the new copy; not allowed for in-place edits.",
+            "title": "Output Name"
+          },
+          "output_strategy": {
+            "$ref": "#/components/schemas/OutputStrategy",
+            "default": "copy",
+            "description": "Create a copy by default. In-place editing must be explicitly requested and eligible."
+          }
+        },
+        "required": [
+          "file_id"
+        ],
+        "title": "DocumentIdPolishRequest",
+        "type": "object"
+      },
       "DocumentOutput": {
         "additionalProperties": false,
         "properties": {
@@ -532,6 +595,7 @@
             "discriminator": {
               "mapping": {
                 "drive_file": "#/components/schemas/DriveFileSource",
+                "drive_file_id": "#/components/schemas/DriveFileSource",
                 "markdown": "#/components/schemas/MarkdownSource",
                 "uploaded_markdown": "#/components/schemas/MarkdownSource"
               },
@@ -872,7 +936,10 @@
             "type": "string"
           },
           "kind": {
-            "const": "drive_file",
+            "enum": [
+              "drive_file",
+              "drive_file_id"
+            ],
             "title": "Kind",
             "type": "string"
           }
@@ -4137,6 +4204,100 @@
           }
         ],
         "summary": "Recover a transform submission by idempotency key",
+        "tags": [
+          "document-transforms"
+        ]
+      }
+    },
+    "/document-transforms/by-id": {
+      "post": {
+        "description": "Only file_id is required. Defaults to both and a new native Google Doc in My Drive. Google authorizes explicit source reads; destinations retain workspace checks. Supply a UUID Idempotency-Key for retry recovery, or retain the generated key in the response header. Poll the task in Location. In-place edits must be explicit and satisfy the normal native-document eligibility checks.",
+        "operationId": "polish_document_by_id",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DocumentIdPolishRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "discriminator": {
+                    "mapping": {
+                      "file.document_transform": "#/components/schemas/DocumentTransformTaskRead",
+                      "file.smart_create": "#/components/schemas/SmartCreateTaskRead"
+                    },
+                    "propertyName": "kind"
+                  },
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/SmartCreateTaskRead"
+                    },
+                    {
+                      "$ref": "#/components/schemas/DocumentTransformTaskRead"
+                    }
+                  ],
+                  "title": "Response Polish Document By Id"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Authentication is required or the session is invalid."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyCookie": []
+          },
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Run Unslop and Format using a Google document ID",
         "tags": [
           "document-transforms"
         ]

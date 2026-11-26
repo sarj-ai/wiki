@@ -78,17 +78,47 @@ run "native_oauth_preview_preserves_enforced_security" {
   assert {
     condition = toset([
       for rule in google_compute_security_policy.backend_armor.rule : rule.priority
-    ]) == toset([500, 510, 520, 530, 540, 550, 553, 554, 555, 556, 560, 570, 580, 600, 610, 620, 2147483647])
-    error_message = "Preserve every existing priority and add only the four supported MCP previews."
+    ]) == toset([500, 510, 520, 525, 530, 540, 550, 553, 554, 555, 556, 560, 570, 580, 600, 610, 620, 2147483647])
+    error_message = "Preserve every existing priority and add only the OAuth redirect-field RFI rule."
   }
 
   assert {
     condition = alltrue([
       for rule in google_compute_security_policy.backend_armor.rule : (
         rule.action == "deny(403)" && strcontains(rule.match[0].expr[0].expression, "evaluatePreconfiguredWaf(")
-      ) if contains([500, 510, 520, 530, 540], rule.priority)
+      ) if contains([500, 510, 520, 525, 530, 540], rule.priority)
     ])
     error_message = "Existing WAF rules cannot become allows or throttles."
+  }
+
+  assert {
+    condition = alltrue([
+      for rule in google_compute_security_policy.backend_armor.rule : (
+        rule.action == "deny(403)" && !rule.preview &&
+        rule.match[0].expr[0].expression == "((request.method == 'GET' && request.path.urlDecode() == '/authorize') || (request.method == 'POST' && request.path.urlDecode() == '/token')) && evaluatePreconfiguredWaf('rfi-v33-stable', {'sensitivity': 1})" &&
+        length(rule.preconfigured_waf_config) == 1 &&
+        length(rule.preconfigured_waf_config[0].exclusion) == 1 &&
+        one(rule.preconfigured_waf_config[0].exclusion).target_rule_set == "rfi-v33-stable" &&
+        toset(one(rule.preconfigured_waf_config[0].exclusion).target_rule_ids) == toset(["owasp-crs-v030301-id931100-rfi"]) &&
+        length(one(rule.preconfigured_waf_config[0].exclusion).request_query_param) == 1 &&
+        one(one(rule.preconfigured_waf_config[0].exclusion).request_query_param).operator == "EQUALS" &&
+        one(one(rule.preconfigured_waf_config[0].exclusion).request_query_param).value == "redirect_uri" &&
+        length(one(rule.preconfigured_waf_config[0].exclusion).request_header) == 0 &&
+        length(one(rule.preconfigured_waf_config[0].exclusion).request_cookie) == 0 &&
+        length(one(rule.preconfigured_waf_config[0].exclusion).request_uri) == 0
+      ) if rule.priority == 525
+    ])
+    error_message = "Only redirect_uri values on exact OAuth authorize GET/token POST routes may skip RFI signature 931100."
+  }
+
+  assert {
+    condition = alltrue([
+      for rule in google_compute_security_policy.backend_armor.rule : (
+        rule.match[0].expr[0].expression == "!((request.method == 'GET' && request.path.urlDecode() == '/authorize') || (request.method == 'POST' && request.path.urlDecode() == '/token')) && evaluatePreconfiguredWaf('rfi-v33-stable', {'sensitivity': 1})" &&
+        length(rule.preconfigured_waf_config) == 0
+      ) if rule.priority == 530
+    ])
+    error_message = "All other routes retain full RFI inspection without a field exclusion."
   }
 
   assert {

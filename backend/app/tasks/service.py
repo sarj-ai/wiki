@@ -1755,7 +1755,7 @@ def _same_transform_source(
             return or_(
                 Task.request_hash == request_hash,
                 and_(
-                    Task.payload["source"]["kind"].astext == "drive_file",
+                    Task.payload["source"]["kind"].astext.in_(("drive_file", "drive_file_id")),
                     Task.payload["source"]["file_id"].astext == source.file_id,
                 ),
             )
@@ -1779,6 +1779,17 @@ def _transform_slot_phase(now: ColumnElement[datetime]) -> ColumnElement[str]:
 
 
 def _request_hash(payload: dict[str, JsonValue]) -> str:
+    source = payload.get("source")
+    if isinstance(source, dict) and source.get("kind") == "drive_file_id":
+        # The ID shortcut promises the latest revision at first admission. Its
+        # freshness is server-derived; retain the first payload for safe retries
+        # even after that source is edited. All caller choices stay in the hash.
+        payload = {
+            **payload,
+            "source": {
+                key: value for key, value in source.items() if key != "expected_modified_time"
+            },
+        }
     canonical = json.dumps(payload, ensure_ascii=False, separators=(",", ":"), sort_keys=True)
     return hashlib.sha256(canonical.encode()).hexdigest()
 

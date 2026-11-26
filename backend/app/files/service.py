@@ -125,6 +125,9 @@ class FilesService(ABC):
     @abstractmethod
     async def get(self, file_id: FileId) -> FileResponse: ...
 
+    async def get_direct(self, file_id: FileId) -> FileResponse:
+        return await self.get(file_id)
+
     async def require_access(self, file_id: FileId) -> None:
         await self.get(file_id)
 
@@ -262,6 +265,12 @@ class GoogleFilesService(FilesService):
     async def get(self, file_id: FileId) -> FileResponse:
         result = await asyncio.to_thread(self._get_sync, file_id)
         return await self._normalize_member_drive(result)
+
+    @override
+    async def get_direct(self, file_id: FileId) -> FileResponse:
+        # Deliberately read-only: navigation, destinations and file mutations retain
+        # member-drive checks. Google still authorizes every explicit source read.
+        return await asyncio.to_thread(self._get_sync, file_id)
 
     @override
     async def require_access(self, file_id: FileId) -> None:

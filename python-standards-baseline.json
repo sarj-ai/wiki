@@ -149,7 +149,7 @@
     "SARJ447": 3
   },
   "backend/app/document_transform/router.py": {
-    "SARJ451": 6
+    "SARJ451": 5
   },
   "backend/app/document_transform/slides_brand.py": {
     "SARJ447": 105,
@@ -585,7 +585,7 @@
     "SARJ447": 3
   },
   "backend/tests/test_mcp_adversarial.py": {
-    "SARJ445": 2,
+    "SARJ445": 1,
     "SARJ447": 1,
     "SARJ477": 1,
     "SARJ528": 1

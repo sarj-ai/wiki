@@ -4,17 +4,13 @@ import json
 import os
 from pathlib import Path
 import subprocess  # ruff: ignore[suspicious-subprocess-import] -- fixed repository verifier
-from typing import TYPE_CHECKING
 
 import pytest
 import yaml
 
 from scripts.backend_release import recovery
-from scripts.github.release_gate import JsonObject
+from scripts.github.release_gate import JsonObject, JsonValue
 
-
-if TYPE_CHECKING:
-    from scripts.github.release_gate import JsonValue
 
 SOURCE_SHA = "3c5937f7a559fc23ec655dd845efbdbac300943d"
 VERIFIER_SHA = "d" * 40
@@ -717,7 +713,10 @@ def _mcp_revision(*, enabled: bool) -> dict:
             [
                 {"name": "MCP_NATIVE_ISSUER", "value": "https://api-wiki.sarj.ai"},
                 {"name": "MCP_NATIVE_LOOPBACK_PATHS", "value": '["/callback"]'},
-                {"name": "MCP_NATIVE_HTTPS_CALLBACKS", "value": "[]"},
+                {
+                    "name": "MCP_NATIVE_HTTPS_CALLBACKS",
+                    "value": '["https://claude.ai/api/mcp/auth_callback"]',
+                },
                 {
                     "name": "MCP_NATIVE_FERNET_KEYS",
                     "valueFrom": {"secretKeyRef": {"name": "mcp-fernet", "key": "1"}},
@@ -806,6 +805,127 @@ def test_mcp_mode_resolver_rejects_partial_enabled_key_contract(tmp_path: Path) 
     assert result.returncode != 0
 
 
+@pytest.mark.parametrize(
+    "callbacks",
+    ["[]", '["https://attacker.test/callback"]', '["https://claude.ai/other"]'],
+)
+def test_mcp_mode_resolver_requires_exact_hosted_claude_callback(
+    tmp_path: Path, callbacks: str
+) -> None:
+    revision = _mcp_revision(enabled=True)
+    setting = next(
+        value
+        for value in revision["spec"]["containers"][0]["env"]
+        if value["name"] == "MCP_NATIVE_HTTPS_CALLBACKS"
+    )
+    setting["value"] = callbacks
+    result = _run_mcp_mode_resolver(tmp_path, revision)
+    assert result.returncode != 0
+
+
+@pytest.mark.parametrize(
+    ("enabled", "callbacks", "accepted"),
+    [
+        (True, "[]", True),
+        (True, '["https://claude.ai/api/mcp/auth_callback"]', True),
+        (True, '["https://attacker.test/callback"]', False),
+        (False, "[]", True),
+    ],
+)
+def test_candidate_rolls_out_only_the_reviewed_claude_callback(
+    tmp_path: Path, *, enabled: bool, callbacks: str, accepted: bool
+) -> None:
+    fake_bin = tmp_path / "bin"
+    fake_bin.mkdir()
+    trace = tmp_path / "trace.jsonl"
+    service = {
+        "spec": {
+            "template": {
+                "spec": {
+                    "containers": [
+                        {
+                            "env": [
+                                {
+                                    "name": "MCP_NATIVE_ENABLED",
+                                    "value": str(enabled).lower(),
+                                },
+                                {
+                                    "name": "MCP_NATIVE_HTTPS_CALLBACKS",
+                                    "value": callbacks,
+                                },
+                            ]
+                        }
+                    ]
+                }
+            }
+        },
+        "status": {
+            "traffic": [{"percent": 100, "revisionName": "wiki-backend-old"}],
+            "latestCreatedRevisionName": "wiki-backend-new",
+        },
+    }
+    fake = fake_bin / "gcloud"
+    fake.write_text(
+        "#!/usr/bin/env python3\n"
+        "import json, os, pathlib, sys\n"
+        "args = sys.argv[1:]\n"
+        "with pathlib.Path(os.environ['TRACE']).open('a') as stream:\n"
+        "    stream.write(json.dumps(args) + '\\n')\n"
+        "if args[:4] == ['artifacts', 'docker', 'images', 'describe']:\n"
+        "    print(os.environ['DIGEST'])\n"
+        "elif args[:3] == ['run', 'services', 'describe']:\n"
+        "    print(os.environ['SERVICE_JSON'])\n"
+        "elif args[:3] == ['run', 'revisions', 'describe']:\n"
+        "    if '--format=json' in args:\n"
+        "        print(json.dumps({'status': {'conditions': [{'type':'Ready','status':'True'}]}, 'spec': {'containers': [{'env': []}]}}))\n"
+        "    elif args[3] == 'wiki-backend-old':\n"
+        "        print('old-image')\n"
+        "    else:\n"
+        "        print(os.environ['EXPECTED_IMAGE'])\n"
+        "elif args[:3] != ['run', 'services', 'update']:\n"
+        "    sys.exit(2)\n"
+    )
+    fake.chmod(0o755)
+    root = Path(__file__).resolve().parents[2]
+    result = subprocess.run(  # ruff: ignore[subprocess-without-shell-equals-true] -- isolated fake deployment exercises arguments without cloud access
+        [str(root / "scripts/github/deploy-backend-candidate.sh")],
+        capture_output=True,
+        text=True,
+        check=False,
+        env={
+            **os.environ,  # ruff: ignore[banned-api] -- controlled fake subprocess environment
+            "PATH": f"{fake_bin}:{os.environ['PATH']}",  # ruff: ignore[banned-api] -- fake gcloud first
+            "TRACE": str(trace),
+            "SERVICE_JSON": json.dumps(service),
+            "DIGEST": DIGEST,
+            "EXPECTED_IMAGE": f"us-central1-docker.pkg.dev/wiki-test/backend/wiki@{DIGEST}",
+            "PROJECT_ID": "wiki-test",
+            "REGION": "us-central1",
+            "REPOSITORY": "backend",
+            "IMAGE": "wiki",
+            "SERVICE": "wiki-backend",
+            "GITHUB_SHA": SOURCE_SHA,
+            "GITHUB_OUTPUT": str(tmp_path / "output"),
+        },
+    )
+    assert (result.returncode == 0) is accepted, result.stderr
+    calls = [json.loads(line) for line in trace.read_text().splitlines()]
+    updates = [call for call in calls if call[:3] == ["run", "services", "update"]]
+    if not accepted:
+        assert updates == []
+        return
+    assert len(updates) == 1
+    assert "--no-traffic" in updates[0]
+    callback_updates = [value for value in updates[0] if value.startswith("--update-env-vars=")]
+    assert callback_updates == (
+        [
+            '--update-env-vars=^|^MCP_NATIVE_HTTPS_CALLBACKS=["https://claude.ai/api/mcp/auth_callback"]'
+        ]
+        if enabled
+        else []
+    )
+
+
 def test_mcp_mode_resolver_rejects_wrong_service_or_unready_revision(
     tmp_path: Path,
 ) -> None:
@@ -844,7 +964,10 @@ def skipped_runtime_source() -> _SkippedRuntimeSource:
     data = receipts()
     page: JsonObject = data[recovery.source_jobs_endpoint(RUN_ID, RUN_ATTEMPT)]
     jobs: list[JsonObject] = data[recovery.source_jobs_endpoint(RUN_ID, RUN_ATTEMPT)]["jobs"]
-    for name in ("ci-backend / Backend / required", "ci-frontend / Frontend / required"):
+    for name in (
+        "ci-backend / Backend / required",
+        "ci-frontend / Frontend / required",
+    ):
         job = next(candidate for candidate in jobs if candidate["name"] == name)
         job["conclusion"] = "skipped"
     jobs.extend(
@@ -963,7 +1086,9 @@ def test_skipped_header_rejects_missing_or_ambiguous_native_children(
         "ci-quality / gitleaks (full history)",
     ],
 )
-def test_only_runtime_aggregates_can_use_the_skipped_native_shape(job_name: str) -> None:
+def test_only_runtime_aggregates_can_use_the_skipped_native_shape(
+    job_name: str,
+) -> None:
     source = skipped_runtime_source()
     job = next(candidate for candidate in source.jobs if candidate["name"] == job_name)
     job["conclusion"] = "skipped"

@@ -1,8 +1,7 @@
 from __future__ import annotations
 
-import asyncio
-from collections.abc import AsyncGenerator, Callable
-from contextlib import AbstractAsyncContextManager, asynccontextmanager
+from collections.abc import AsyncGenerator
+from contextlib import asynccontextmanager
 from datetime import timedelta
 import json
 from types import MappingProxyType
@@ -14,19 +13,28 @@ from fastmcp.server.auth import AuthProvider
 from fastmcp.server.middleware import CallNext, Middleware, MiddlewareContext
 from fastmcp.tools.base import ToolResult
 from mcp.types import CallToolRequestParams, ToolAnnotations
+from pydantic import BaseModel
 
-from app.mcp.context import McpApplicationContext, McpAuthorizationError
-from app.mcp.mutation import polish_document
+from app.document_transform.schemas import DocumentIdPolishRequest
+from app.mcp.context import (
+    DEFAULT_TOOL_TIMEOUT,
+    ContextFactory,
+    McpApplicationContext,
+    McpAuthorizationError,
+    authorized_mcp_context,
+)
+from app.mcp.mutation import polish_document, polish_document_by_id
+from app.mcp.rest import register_rest_routes
 from app.mcp.schemas import (
     AdmissionInput,
     AdmissionResponse,
     ConnectionInput,
     ConnectionResponse,
+    DocumentIdPolishResponse,
     DocumentInput,
     DocumentResponse,
     MarkdownImportInput,
     McpCapability,
-    McpModel,
     PolishInput,
     PolishResponse,
     SearchInput,
@@ -37,22 +45,19 @@ from app.mcp.schemas import (
     TaskResponse,
 )
 from app.mcp.service import McpReadService
-from app.performance import provider_retry_budget
 from app.request_body import MAX_MCP_REQUEST_BODY_BYTES
 from app.tasks.queue import TaskEnqueuer
 
 
-ContextFactory = Callable[[], AbstractAsyncContextManager[McpApplicationContext]]
 _MAX_ARGUMENT_BYTES = 16_384
 _MAX_MARKDOWN_ARGUMENT_BYTES = MAX_MCP_REQUEST_BODY_BYTES
-_TOOL_TIMEOUT = timedelta(seconds=30)
-_PROVIDER_RETRY_BUDGET = timedelta(seconds=20)
-_INPUTS: MappingProxyType[str, type[McpModel]] = MappingProxyType(
+_INPUTS: MappingProxyType[str, type[BaseModel]] = MappingProxyType(
     {
         "wiki_connection_status": ConnectionInput,
         "wiki_search": SearchInput,
         "wiki_get_document": DocumentInput,
         "wiki_polish_document": PolishInput,
+        "wiki_polish_document_by_id": DocumentIdPolishRequest,
         "wiki_import_markdown": MarkdownImportInput,
         "wiki_get_polish_admission": AdmissionInput,
         "wiki_get_task": TaskInput,
@@ -92,7 +97,11 @@ class _ValidateArguments(Middleware):
 
 
 def create_mcp_server(
-    *, auth: AuthProvider | None, context_factory: ContextFactory, enqueuer: TaskEnqueuer
+    *,
+    auth: AuthProvider | None,
+    context_factory: ContextFactory,
+    enqueuer: TaskEnqueuer,
+    request_timeout: timedelta = DEFAULT_TOOL_TIMEOUT,
 ) -> FastMCP:
     if not isinstance(auth, AuthProvider):
         message = "An explicit MCP authentication provider is required"
@@ -115,14 +124,10 @@ def create_mcp_server(
         capability: McpCapability = McpCapability.READ,
     ) -> AsyncGenerator[McpApplicationContext]:
         try:
-            with provider_retry_budget(_PROVIDER_RETRY_BUDGET):
-                async with (
-                    asyncio.timeout(_TOOL_TIMEOUT.total_seconds()),
-                    context_factory() as context,
-                ):
-                    context.principal.require(McpCapability.READ)
-                    context.principal.require(capability)
-                    yield context
+            async with authorized_mcp_context(
+                context_factory, capability, request_timeout=request_timeout
+            ) as context:
+                yield context
         except McpAuthorizationError:
             message = "Wiki integration authorization required"
             raise ToolError(message) from None
@@ -131,27 +136,36 @@ def create_mcp_server(
             message = "Wiki request failed; review the operation in Wiki"
             raise ToolError(message) from None
 
-    @server.tool(annotations=_READ, description="Check this integration's granted capabilities.")
+    @server.tool(
+        title="Connection status",
+        annotations=_READ,
+        description="Check this integration's granted capabilities.",
+    )
     async def wiki_connection_status(request: ConnectionInput) -> ConnectionResponse:
         del request
         async with open_context() as context:
             return McpReadService(context).connection()
 
     @server.tool(
-        annotations=_READ, description="Search accessible documents; results are not exhaustive."
+        title="Search Wiki documents",
+        annotations=_READ,
+        description="Search accessible documents; results are not exhaustive.",
     )
     async def wiki_search(request: SearchInput) -> SearchResponse:
         async with open_context() as context:
             return await McpReadService(context).search(request)
 
     @server.tool(
-        annotations=_READ, description="Read metadata and an explicitly requested lossy excerpt."
+        title="Read a document",
+        annotations=_READ,
+        description="Read metadata and an explicitly requested lossy excerpt.",
     )
     async def wiki_get_document(request: DocumentInput) -> DocumentResponse:
         async with open_context() as context:
             return await McpReadService(context).get_document(request)
 
     @server.tool(
+        title="Polish a reviewed document revision",
         annotations=_WRITE,
         description="Submit COPY or IN_PLACE polishing; reuse keys only for identical inputs.",
     )
@@ -160,6 +174,26 @@ def create_mcp_server(
             return await polish_document(request, context=context, enqueuer=enqueuer)
 
     @server.tool(
+        title="Unslop and Format by Google document ID",
+        annotations=ToolAnnotations(
+            read_only_hint=False, destructive_hint=True, idempotent_hint=False
+        ),
+        description=(
+            "Run Unslop then Format given only a Google document ID. Defaults to a new copy "
+            "in your My Drive; Google permissions are checked. Set output_strategy=in_place "
+            "only when explicitly requested and eligible. Supply a UUID idempotency_key for "
+            "safe retries, or retain the generated key returned here. Poll wiki_get_task; "
+            "a pending task is not a completed or visually approved document."
+        ),
+    )
+    async def wiki_polish_document_by_id(
+        request: DocumentIdPolishRequest,
+    ) -> DocumentIdPolishResponse:
+        async with open_context(McpCapability.TRANSFORM) as context:
+            return await polish_document_by_id(request, context=context, enqueuer=enqueuer)
+
+    @server.tool(
+        title="Import and polish Markdown",
         annotations=_WRITE,
         description=(
             "Create a new Google Doc from Markdown content with FORMAT, UNSLOP, or BOTH. "
@@ -173,6 +207,7 @@ def create_mcp_server(
             return await polish_document(request, context=context, enqueuer=enqueuer)
 
     @server.tool(
+        title="Recover a polish submission",
         annotations=_READ,
         description="Recover an owned admission using its original idempotency key.",
     )
@@ -181,6 +216,7 @@ def create_mcp_server(
             return await McpReadService(context).get_admission(request)
 
     @server.tool(
+        title="Check a polish task",
         annotations=_READ,
         description="Read an owned transformation task with fresh output access checks.",
     )
@@ -189,6 +225,7 @@ def create_mcp_server(
             return await McpReadService(context).get_task(request)
 
     @server.tool(
+        title="Read an existing short link",
         annotations=_READ,
         description="Read an existing accessible short link without creating or replacing it.",
     )
@@ -196,4 +233,10 @@ def create_mcp_server(
         async with open_context() as context:
             return await McpReadService(context).get_short_link(request)
 
+    register_rest_routes(
+        server,
+        context_factory=context_factory,
+        enqueuer=enqueuer,
+        request_timeout=request_timeout,
+    )
     return server

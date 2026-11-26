@@ -59,6 +59,7 @@ async def test_exact_curated_tools_and_annotations() -> None:
             "wiki_search",
             "wiki_get_document",
             "wiki_polish_document",
+            "wiki_polish_document_by_id",
             "wiki_import_markdown",
             "wiki_get_polish_admission",
             "wiki_get_task",
@@ -67,9 +68,14 @@ async def test_exact_curated_tools_and_annotations() -> None:
         assert await client.list_resources() == []
         assert await client.list_prompts() == []
         for tool in tools:
+            assert tool.title
             assert set(tool.input_schema["properties"]) == {"request"}
             assert tool.annotations is not None
-            writes = tool.name in {"wiki_polish_document", "wiki_import_markdown"}
+            writes = tool.name in {
+                "wiki_polish_document",
+                "wiki_polish_document_by_id",
+                "wiki_import_markdown",
+            }
             assert tool.annotations.read_only_hint is not writes
             assert tool.annotations.destructive_hint is writes
         import_tool = next(tool for tool in tools if tool.name == "wiki_import_markdown")

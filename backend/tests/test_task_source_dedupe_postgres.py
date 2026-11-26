@@ -809,6 +809,128 @@ def _markdown_payload() -> DocumentTransformRequest:
     )
 
 
+@pytest.mark.parametrize("source_kind", ["drive_file", "drive_file_id"])
+async def test_real_postgres_id_retry_retains_initial_source_revision(source_kind: str) -> None:
+    engine = _qa_engine()
+    sessions = async_sessionmaker(engine, expire_on_commit=False)
+    owner = UserId(uuid.uuid7())
+    key = IdempotencyKey(uuid.uuid7())
+    payload = DocumentTransformRequest.model_validate(
+        {
+            "source": {
+                "kind": source_kind,
+                "file_id": "source",
+                "expected_modified_time": "2026-11-26T12:00:00Z",
+            },
+            "mode": "both",
+            "copy_destination_folder_id": "qa-folder",
+        }
+    )
+    assert isinstance(payload.source, DriveFileSource)
+    changed = payload.model_copy(
+        update={
+            "source": payload.source.model_copy(
+                update={"expected_modified_time": "2026-11-27T12:00:00Z"}
+            )
+        }
+    )
+    try:
+        async with sessions() as session:
+            session.add(
+                User(id=owner, email=f"qa-{owner}@sarj.ai", google_id=GoogleUserId(str(owner)))
+            )
+            await session.commit()
+            service = PostgresTaskService(db=session)
+            first = await service.create_or_replay(
+                kind=TaskKind.FILE_DOCUMENT_TRANSFORM,
+                owner_user_id=owner,
+                idempotency_key=key,
+                payload=payload,
+            )
+        async with sessions() as session:
+            service = PostgresTaskService(db=session)
+            if source_kind == "drive_file":
+                with pytest.raises(TaskIdempotencyConflictError):
+                    await service.create_or_replay(
+                        kind=TaskKind.FILE_DOCUMENT_TRANSFORM,
+                        owner_user_id=owner,
+                        idempotency_key=key,
+                        payload=changed,
+                    )
+            else:
+                replay = await service.create_or_replay(
+                    kind=TaskKind.FILE_DOCUMENT_TRANSFORM,
+                    owner_user_id=owner,
+                    idempotency_key=key,
+                    payload=changed,
+                )
+                assert not replay.created
+                assert replay.task.id == first.task.id
+            stored = await session.get(Task, first.task.id)
+            assert stored is not None
+            assert DocumentTransformRequest.model_validate(stored.payload) == payload
+    finally:
+        await engine.dispose()
+
+
+@pytest.mark.parametrize("choice", ["mode", "name", "destination", "strategy", "source"])
+async def test_real_postgres_id_retry_rejects_changed_user_choices(choice: str) -> None:
+    engine = _qa_engine()
+    sessions = async_sessionmaker(engine, expire_on_commit=False)
+    owner = UserId(uuid.uuid7())
+    key = IdempotencyKey(uuid.uuid7())
+    payload = DocumentTransformRequest(
+        source=DriveFileSource(
+            kind="drive_file_id",
+            file_id=FileId("source"),
+            expected_modified_time="2026-11-26T12:00:00Z",
+        ),
+        mode=TransformMode.BOTH,
+        copy_destination_folder_id=FileId("qa-folder"),
+    )
+    match choice:
+        case "mode":
+            changed = payload.model_copy(update={"mode": TransformMode.FORMAT})
+        case "name":
+            changed = payload.model_copy(update={"output_name": "Other output"})
+        case "destination":
+            changed = payload.model_copy(update={"copy_destination_folder_id": FileId("other")})
+        case "strategy":
+            changed = payload.model_copy(
+                update={
+                    "output_strategy": OutputStrategy.IN_PLACE,
+                    "copy_destination_folder_id": None,
+                }
+            )
+        case _:
+            changed = payload.model_copy(
+                update={"source": payload.source.model_copy(update={"file_id": FileId("other")})}
+            )
+    try:
+        async with sessions() as session:
+            session.add(
+                User(id=owner, email=f"qa-{owner}@sarj.ai", google_id=GoogleUserId(str(owner)))
+            )
+            await session.commit()
+            service = PostgresTaskService(db=session)
+            await service.create_or_replay(
+                kind=TaskKind.FILE_DOCUMENT_TRANSFORM,
+                owner_user_id=owner,
+                idempotency_key=key,
+                payload=payload,
+            )
+        async with sessions() as session:
+            with pytest.raises(TaskIdempotencyConflictError):
+                await PostgresTaskService(db=session).create_or_replay(
+                    kind=TaskKind.FILE_DOCUMENT_TRANSFORM,
+                    owner_user_id=owner,
+                    idempotency_key=key,
+                    payload=changed,
+                )
+    finally:
+        await engine.dispose()
+
+
 def _completed_result(operation_id: uuid.UUID, mode: TransformMode) -> DocumentTransformResult:
     return DocumentTransformResult(
         operation_id=operation_id,
