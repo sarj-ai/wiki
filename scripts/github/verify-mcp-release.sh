@@ -106,7 +106,11 @@ if [[ "$PROBE_STATUS" != 401 || "$challenge" != *"$resource_metadata"* ]]; then
 fi
 
 while read -r method path; do
-  probe "$method" "$path" --header 'Content-Type: application/json' --data '{}'
+  if [[ "$method" == POST ]]; then
+    probe "$method" "$path" --header 'Content-Type: application/json' --data '{}'
+  else
+    probe "$method" "$path"
+  fi
   challenge=$(awk 'tolower($1) == "www-authenticate:" { sub(/\r$/, "", $0); print }' \
     "$probe_dir/headers" | tail -n 1)
   if [[ "$PROBE_STATUS" != 401 || "$challenge" != *"$resource_metadata"* ]]; then
