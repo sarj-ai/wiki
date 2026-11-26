@@ -99,7 +99,9 @@ class NativeWikiOAuthProvider(OAuthProvider):
             base_url=base_url,
             required_scopes=[McpCapability.READ],
             client_registration_options=ClientRegistrationOptions(
-                enabled=True, valid_scopes=list(McpCapability), default_scopes=[McpCapability.READ]
+                enabled=True,
+                valid_scopes=list(McpCapability),
+                default_scopes=list(McpCapability),
             ),
             revocation_options=RevocationOptions(enabled=True),
         )
@@ -109,6 +111,13 @@ class NativeWikiOAuthProvider(OAuthProvider):
         self.request_guard = request_guard
         self.registration_admission = registration_admission
         self.issuer_responses_enabled = issuer_responses_enabled
+
+    @property
+    @override
+    def challenge_scopes(self) -> list[str]:
+        # Offer both choices during sign-in. The consent decision still grants
+        # only READ unless the user separately approves document changes.
+        return list(McpCapability)
 
     @override
     def get_routes(self, mcp_path: str | None = None) -> list[Route]:
@@ -180,6 +189,7 @@ class NativeWikiOAuthProvider(OAuthProvider):
                 grant_types=["authorization_code", "refresh_token"],
                 response_types=["code"],
                 scope=" ".join(scopes),
+                application_type=client_info.application_type,
             )
         # Admission commits independently before client persistence. Do not put
         # its typed failures through SDK RegistrationError's blanket HTTP 400.

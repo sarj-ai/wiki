@@ -79,8 +79,14 @@ async def test_exact_curated_tools_and_annotations() -> None:
             assert tool.annotations.read_only_hint is not writes
             assert tool.annotations.destructive_hint is writes
         import_tool = next(tool for tool in tools if tool.name == "wiki_import_markdown")
-        assert "read its UTF-8 contents" in (import_tool.description or "")
-        assert "poll wiki_get_task" in (import_tool.description or "")
+        assert "UTF-8 Markdown content" in (import_tool.description or "")
+        assert "local file path" in (import_tool.description or "")
+        for tool in tools:
+            assert all(
+                other.name not in (tool.description or "")
+                for other in tools
+                if other.name != tool.name
+            )
 
 
 async def test_each_call_opens_fresh_context_and_rechecks_authorization() -> None:

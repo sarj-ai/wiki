@@ -13,6 +13,7 @@
       "wiki:transform"
     ],
     "consent": "Read access is the default. Document changes need the separate, unchecked-by-default approval.",
+    "initial_scope_request": "Default client registration and sign-in challenges offer read and transform so standard MCP clients can show both consent choices. A read-only decision still issues only wiki:read; registration and requested scopes do not grant write access.",
     "controls": [
       "S256 PKCE",
       "Resource-bound opaque tokens",

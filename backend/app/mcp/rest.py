@@ -50,11 +50,11 @@ def _error(status: int, code: str, *, authenticate: str | None = None) -> JSONRe
     )
 
 
-def _authentication_required(request: Request) -> JSONResponse:
-    metadata = f"{str(request.base_url).rstrip('/')}/.well-known/oauth-protected-resource/mcp"
-    return _error(
-        401, "authentication_required", authenticate=f'Bearer resource_metadata="{metadata}"'
-    )
+def _authentication_required(resource_metadata_url: str | None) -> JSONResponse:
+    challenge = "Bearer"
+    if resource_metadata_url is not None:
+        challenge += f' resource_metadata="{resource_metadata_url}"'
+    return _error(401, "authentication_required", authenticate=challenge)
 
 
 def _success(result: McpResponse) -> JSONResponse:
@@ -83,12 +83,13 @@ def register_rest_routes(
     context_factory: ContextFactory,
     enqueuer: TaskEnqueuer,
     request_timeout: timedelta,
+    resource_metadata_url: str | None,
 ) -> None:
     async def execute(
-        request: Request, operation: _Operation, capability: McpCapability = McpCapability.READ
+        operation: _Operation, capability: McpCapability = McpCapability.READ
     ) -> JSONResponse:
         if get_access_token() is None:
-            return _authentication_required(request)
+            return _authentication_required(resource_metadata_url)
         try:
             async with authorized_mcp_context(
                 context_factory, capability, request_timeout=request_timeout
@@ -118,7 +119,7 @@ def register_rest_routes(
     async def polish(request: Request) -> JSONResponse:
         # Bearer-only: browser session cookies never authorize this API.
         if get_access_token() is None:
-            return _authentication_required(request)
+            return _authentication_required(resource_metadata_url)
         if (
             request.headers.get("content-type", "").split(";", 1)[0].strip().lower()
             != "application/json"
@@ -142,12 +143,12 @@ def register_rest_routes(
         async def operation(context: McpApplicationContext) -> McpResponse:
             return await polish_document_by_id(payload, context=context, enqueuer=enqueuer)
 
-        return await execute(request, operation, McpCapability.TRANSFORM)
+        return await execute(operation, McpCapability.TRANSFORM)
 
     @server.custom_route(f"{REST_PREFIX}/tasks/{{task_id}}", methods=["GET"])
     async def task(request: Request) -> JSONResponse:
         if get_access_token() is None:
-            return _authentication_required(request)
+            return _authentication_required(resource_metadata_url)
         try:
             payload = TaskInput(task_id=request.path_params["task_id"])
         except ValidationError:
@@ -156,12 +157,12 @@ def register_rest_routes(
         async def operation(context: McpApplicationContext) -> McpResponse:
             return await McpReadService(context).get_task(payload)
 
-        return await execute(request, operation)
+        return await execute(operation)
 
     @server.custom_route(f"{REST_PREFIX}/admissions/{{idempotency_key}}", methods=["GET"])
     async def admission(request: Request) -> JSONResponse:
         if get_access_token() is None:
-            return _authentication_required(request)
+            return _authentication_required(resource_metadata_url)
         try:
             payload = AdmissionInput(idempotency_key=request.path_params["idempotency_key"])
         except ValidationError:
@@ -170,4 +171,4 @@ def register_rest_routes(
         async def operation(context: McpApplicationContext) -> McpResponse:
             return await McpReadService(context).get_admission(payload)
 
-        return await execute(request, operation)
+        return await execute(operation)

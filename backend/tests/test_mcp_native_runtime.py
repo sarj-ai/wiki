@@ -29,6 +29,7 @@ from app.mcp.native_core import NativeOAuthCore
 from app.mcp.native_provider import NativeWikiOAuthProvider
 from app.mcp.native_request_context import require_native_oauth_request
 from app.mcp.native_runtime import create_native_runtime
+from app.mcp.native_schemas import ConsentCommand
 from app.mcp.native_state import NativeStateStore
 from app.mcp.protection import OAuthStateProtector
 from app.mcp.redirect_policy import McpRedirectPolicy
@@ -44,6 +45,7 @@ _ISSUER = "https://api.runtime.test/"
 _RESOURCE = "https://api.runtime.test/mcp"
 _FRONTEND = "https://wiki.runtime.test"
 _CALLBACK = "http://127.0.0.1:4321/callback"
+_HOSTED_CALLBACK = "https://claude.ai/api/mcp/auth_callback"
 _VERIFIER = "v" * 43
 _CHALLENGE = urlsafe_b64encode(hashlib.sha256(_VERIFIER.encode()).digest()).decode().rstrip("=")
 _CANARY = "synthetic-private-runtime-canary"
@@ -217,7 +219,7 @@ async def runtime(
         _RESOURCE,
         issuer=_ISSUER,
     )
-    policy = McpRedirectPolicy(loopback_paths=("/callback",))
+    policy = McpRedirectPolicy(loopback_paths=("/callback",), https_callbacks=(_HOSTED_CALLBACK,))
     provider = NativeWikiOAuthProvider(
         core=core,
         base_url=_ISSUER,
@@ -293,6 +295,134 @@ async def runtime(
         async with engine.begin() as connection:
             await connection.execute(DropSchema(schema, cascade=True))
         await engine.dispose()
+
+
+@pytest.mark.parametrize(
+    ("decision", "granted"),
+    [
+        (ConsentCommand.APPROVE_READ, ["wiki:read"]),
+        (ConsentCommand.APPROVE_TRANSFORM, ["wiki:read", "wiki:transform"]),
+    ],
+)
+async def test_standard_signin_offers_polishing_but_grants_only_explicit_consent(
+    runtime: RuntimeLab, decision: ConsentCommand, granted: list[str]
+) -> None:
+    challenged = await runtime.client.post(
+        "/mcp", json={"jsonrpc": "2.0", "id": 1, "method": "tools/list"}
+    )
+    assert challenged.status_code == 401
+    assert 'scope="wiki:read wiki:transform"' in challenged.headers["WWW-Authenticate"]
+    registered = await runtime.client.post(
+        "/register",
+        json={
+            "redirect_uris": [_HOSTED_CALLBACK],
+            "token_endpoint_auth_method": "none",
+            "application_type": "web",
+            "client_name": "Claude",
+            "client_uri": "https://claude.ai",
+        },
+    )
+    assert registered.status_code == 201, registered.text
+    assert registered.json()["scope"] == "wiki:read wiki:transform"
+    client_id = str(registered.json()["client_id"])
+    authorized = await runtime.browser.get(
+        "/authorize",
+        params={
+            "client_id": client_id,
+            "redirect_uri": _HOSTED_CALLBACK,
+            "response_type": "code",
+            "code_challenge": _CHALLENGE,
+            "code_challenge_method": "S256",
+            "resource": _RESOURCE,
+            "scope": registered.json()["scope"],
+            "state": "synthetic-client-state",
+        },
+    )
+    assert authorized.status_code == 302
+    intent = parse_qs(urlsplit(authorized.headers["location"]).query)["intent"][0]
+    path = f"/integrations/mcp/consent/{intent}"
+    headers = {"Origin": _FRONTEND}
+    view = await runtime.browser.get(path, headers=headers)
+    assert view.status_code == 200
+    assert view.json()["scopes"] == ["wiki:read", "wiki:transform"]
+    consent = await runtime.browser.post(
+        path, headers=headers, json={"command": decision, "csrf": view.json()["csrf"]}
+    )
+    assert consent.status_code == 200
+    result = parse_qs(urlsplit(consent.json()["redirect_uri"]).query)
+    issued = await runtime.exchange(client_id, result["code"][0], redirect_uri=_HOSTED_CALLBACK)
+    assert issued.status_code == 200
+    assert issued.json()["scope"].split() == granted
+    token = str(issued.json()["access_token"])
+    connected = await runtime.rpc(
+        token, "tools/call", {"name": "wiki_connection_status", "arguments": {"request": {}}}
+    )
+    assert connected.json()["result"]["structuredContent"]["capabilities"] == granted
+    if decision is ConsentCommand.APPROVE_READ:
+        denied = await runtime.client.post(
+            "/mcp/v1/polish",
+            json={"file_id": "source"},
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        assert denied.status_code == 403
+
+
+async def test_hosted_registration_completes_pkce_without_remote_metadata_fetch(
+    runtime: RuntimeLab,
+) -> None:
+    registered = await runtime.client.post(
+        "/register",
+        json={
+            "redirect_uris": [_HOSTED_CALLBACK],
+            "token_endpoint_auth_method": "none",
+            "application_type": "web",
+            "client_name": "Claude",
+            "client_uri": "https://claude.ai",
+        },
+    )
+    assert registered.status_code == 201, registered.text
+    assert registered.json().get("client_secret") is None
+    client_id = str(registered.json()["client_id"])
+    saved = await runtime.provider.get_client(client_id)
+    assert saved is not None
+    assert saved.application_type == "web"
+    assert saved.client_uri is None
+    authorized = await runtime.browser.get(
+        "/authorize",
+        params={
+            "client_id": client_id,
+            "redirect_uri": _HOSTED_CALLBACK,
+            "response_type": "code",
+            "code_challenge": _CHALLENGE,
+            "code_challenge_method": "S256",
+            "resource": _RESOURCE,
+            "scope": "wiki:read",
+            "state": "synthetic-client-state",
+        },
+    )
+    assert authorized.status_code == 302
+    intent = parse_qs(urlsplit(authorized.headers["location"]).query)["intent"][0]
+    consent = await runtime.consent(intent, approve=True)
+    issued = await runtime.exchange(client_id, consent["code"][0], redirect_uri=_HOSTED_CALLBACK)
+    assert issued.status_code == 200, issued.text
+    assert issued.json()["scope"] == "wiki:read"
+
+
+@pytest.mark.parametrize("route", ["polish", "tasks", "admissions"])
+async def test_native_rest_challenge_keeps_https_behind_proxy(
+    runtime: RuntimeLab, route: str
+) -> None:
+    url = "http://api.runtime.test/mcp/v1/" + route
+    if route == "polish":
+        response = await runtime.client.post(url, json={})
+    else:
+        response = await runtime.client.get(f"{url}/{uuid.uuid7()}")
+    assert response.status_code == 401
+    assert response.headers["WWW-Authenticate"] == (
+        'Bearer resource_metadata="https://api.runtime.test/.well-known/oauth-protected-resource/mcp"'
+    )
+    assert response.headers["Cache-Control"] == "private, no-store"
+    assert runtime.prepared == []
 
 
 async def test_real_http_pg_oauth_to_mcp_and_revocation(
