@@ -112,8 +112,9 @@ class NativeWikiOAuthProvider(OAuthProvider):
         self.registration_admission = registration_admission
         self.issuer_responses_enabled = issuer_responses_enabled
 
+    @property
     @override
-    def get_challenge_scopes(self, required_scopes: list[str] | None = None) -> list[str]:
+    def challenge_scopes(self) -> list[str]:
         # Offer both choices during sign-in. The consent decision still grants
         # only READ unless the user separately approves document changes.
         return list(McpCapability)
